@@ -15,13 +15,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/services"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/codec"
-	"github.com/grafana/dskit/services"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 )
 
 const (

@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/grafana/dskit/kv/codec"
-	"github.com/grafana/dskit/kv/memberlist"
+
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
 // ByAddr is a sortable list of InstanceDesc.

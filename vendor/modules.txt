@@ -358,10 +358,8 @@ github.com/gorilla/mux
 # github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 ## explicit
 github.com/grafana/dskit/backoff
-github.com/grafana/dskit/concurrency
 github.com/grafana/dskit/crypto/tls
 github.com/grafana/dskit/flagext
-github.com/grafana/dskit/internal/math
 github.com/grafana/dskit/kv
 github.com/grafana/dskit/kv/codec
 github.com/grafana/dskit/kv/consul

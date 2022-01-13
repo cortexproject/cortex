@@ -6207,7 +6207,68 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;p>For each tenant, if a tenant-specific &lt;em>runtime_config&lt;/em> value exists, it will be used directly, otherwise, if a default &lt;em>limits_config&lt;/em> value exists, then the default value will be used; If neither exists, do nothing.&lt;/p>
 &lt;h3 id="implementation">Implementation&lt;/h3>
 &lt;p>A BlocksCleaner within the Compactor run periodically (which defaults to 15 minutes) and the retention logic will insert into it. The logic should compare retention value to block &lt;code>maxTime&lt;/code> and blocks that match &lt;code>maxTime &amp;lt; now - retention&lt;/code> will be marked for delete.&lt;/p>
-&lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/chunks-storage/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/running-chunks-storage-in-production/</guid><description>
+&lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Ruler Tenant Federation</title><link>/docs/proposals/ruler-tenant-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-tenant-federation/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/rdooley">Rees Dooley&lt;/a>&lt;/li>
+&lt;li>Date: November 2021&lt;/li>
+&lt;li>Status: Accepted&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>This document aims to describe how to implement the ability to allow rules to cover data from more than a single Cortex tenant, here after referred to as federated rules. Since currently rules are owned by, query data from and save resulting series in the same tenant, this document aims to provide clear delineation of who owns a federated rule, what tenants the federated rule queries data from and where the federated rule saves resulting series.&lt;/p>
+&lt;p>A federated rule is any rule which contains the &lt;code>src_tenants&lt;/code> field.&lt;/p>
+&lt;h2 id="reasoning">Reasoning&lt;/h2>
+&lt;p>The primary use case for allowing federated rules which query data from multiple tenants is the administration of cortex.&lt;/p>
+&lt;p>In the case of the administration of cortex, when running Cortex within a large organization, there may be metrics spanning across tenants which might be desired to be monitored e.g. administrative metrics of the cortex system like &lt;code>prometheus_rule_evaluation_failures_total&lt;/code> aggregated by &lt;code>__tenant_id__&lt;/code>. In this case, a team e.g. &lt;code>infra&lt;/code> may wish to be able to create a rule, owned by &lt;code>infra&lt;/code> which queries multiple tenants &lt;code>t0|t1|...|ti&lt;/code> and stores resulting series in &lt;code>infra&lt;/code>.&lt;/p>
+&lt;h2 id="challenges">Challenges&lt;/h2>
+&lt;h3 id="allow-federated-rules-behind-feature-flag">Allow federated rules behind feature flag&lt;/h3>
+&lt;h4 id="challenge">Challenge&lt;/h4>
+&lt;p>Federated tenant rules and alerts will not be a good fit for organization and should be behind a feature flag.&lt;/p>
+&lt;h4 id="proposal">Proposal&lt;/h4>
+&lt;p>For federated rules, creation of federated rules (those sourcing data from multiple tenants) should be blocked behind the feature flag &lt;code>ruler.enable-federated-rules&lt;/code>&lt;/p>
+&lt;p>If tenant federation is enabled, then ruler should use a &lt;code>mergeQueryable&lt;/code> to aggregate the results of querying multiple tenants.&lt;/p>
+&lt;h3 id="allow-federated-rules-only-for-select-tenants">Allow federated rules only for select tenants&lt;/h3>
+&lt;h4 id="challenge-1">Challenge&lt;/h4>
+&lt;p>For many organizations, the ability for any tenant to write a rule querying any other tenant is not acceptable and more fine grained control is required&lt;/p>
+&lt;h4 id="proposal-1">Proposal&lt;/h4>
+&lt;p>Since the current default is that a tenant should only be able to write rules against itself, we suggest a config option &lt;code>ruler.allowed-federated-tenants&lt;/code>, a string slice of OrgIDs like &lt;code>infra&lt;/code> or &lt;code>0|1|2|3|4&lt;/code> which are allowed to write rules against all tenants. If a tenant &lt;code>bar&lt;/code> attempts to create a federated rule, an error should be returned by the ruler api. Similarly an option &lt;code>ruler.disallowed-federated-tenants&lt;/code> explicitly states a list of tenants for which federated rules are not allowed. Combining these in a &lt;code>util.AllowedTenants&lt;/code> should allow one to quickly determine if federation is enabled or disabled for a given tenant at rule creation.&lt;/p>
+&lt;h3 id="where-to-store-resulting-series-of-federated-rule">Where to store resulting series of federated rule&lt;/h3>
+&lt;h4 id="challenge-2">Challenge&lt;/h4>
+&lt;p>A single tenant rule always stores produced series in the tenant where the rule exists. This 1 -&amp;gt; 1 mapping becomes a many -&amp;gt; 1 mapping for federated rules.&lt;/p>
+&lt;h4 id="proposal-2">Proposal&lt;/h4>
+&lt;p>Tenants owning a federated rule the resulting series is saved in the tenant which owns the rule.&lt;/p>
+&lt;h3 id="which-tenants-to-query-from-for-federated-rules">Which tenants to query from for federated rules&lt;/h3>
+&lt;h4 id="challenge-3">Challenge&lt;/h4>
+&lt;p>A single tenant rule always queries the tenant which owns the rule. This 1 -&amp;gt; 1 mapping becomes a 1 -&amp;gt; many mapping for federated rules.&lt;/p>
+&lt;h4 id="proposal-3">Proposal&lt;/h4>
+&lt;p>As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed.&lt;/p>
+&lt;p>To support this we suggest an additional field &lt;code>src_tenants&lt;/code> on the rule group containing an array of OrgIDs e.g. &lt;code>[t0,t1,...,ti]&lt;/code> which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.&lt;/p>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Challenge&lt;/th>
+&lt;th>Status&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Allow federated rules behind feature flag&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Allow federated rules only for select tenants&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Where to store resulting series of federated rules&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Which tenants to query from for federated rules&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table></description></item><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/chunks-storage/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/running-chunks-storage-in-production/</guid><description>
 &lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>This document builds on the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and specifies the steps needed to get Cortex &lt;a href="/docs/chunks-storage/">&lt;strong>chunks storage&lt;/strong>&lt;/a> into production.
 Ensure you have completed all the steps in the &lt;a href="/docs/getting-started/">getting started guide&lt;/a> and read about &lt;a href="/docs/architecture/">the Cortex architecture&lt;/a> before you start this one.&lt;/p>
@@ -11295,88 +11356,4 @@ Running two query-schedulers should be enough even for large Cortex clusters wit
 The existing endpoint &lt;code>/ready&lt;/code> returns HTTP 200 status code only when the query frontend is ready to serve queries.
 Make sure to configure this endpoint as a healthcheck in your load balancer,
 otherwise a query frontend scale up event might result in failed queries or high latency for a bit while queriers attach.&lt;/p>
-&lt;p>When using query frontend with query scheduler, &lt;code>/ready&lt;/code> will report 200 status code only after frontend discovers some schedulers via DNS resolution.&lt;/p></description></item><item><title>Docs: Convert long-term storage from chunks to blocks</title><link>/docs/blocks-storage/convert-long-term-storage-from-chunks-to-blocks/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/convert-long-term-storage-from-chunks-to-blocks/</guid><description>
-&lt;p>If you have &lt;a href="/docs/blocks-storage/migrate-cortex-cluster-from-chunks-to-blocks/">configured your cluster to write new data to blocks&lt;/a>, there is still a question about old data.
-Cortex can query both chunks and the blocks at the same time, but converting old chunks to blocks still has some benefits, like being able to decommission the chunks storage backend and save costs.
-This document presents set of tools for doing the conversion.&lt;/p>
-&lt;p>&lt;em>&lt;a href="https://docs.google.com/document/d/1VI0cgaJmHD0pcrRb3UV04f8szXXGmFKQyqUJnFOcf6Q/edit?usp=sharing">Original design document&lt;/a> for &lt;code>blocksconvert&lt;/code> is also available.&lt;/em>&lt;/p>
-&lt;h2 id="tools">Tools&lt;/h2>
-&lt;p>Cortex provides a tool called &lt;code>blocksconvert&lt;/code>, which is actually collection of three tools for converting chunks to blocks.&lt;/p>
-&lt;p>Tools are:&lt;/p>
-&lt;ul>
-&lt;li>&lt;a href="#scanner">&lt;strong>Scanner&lt;/strong>&lt;/a>&lt;br />
-Scans the chunks index database and produces so-called &amp;ldquo;plan files&amp;rdquo;, each file being a set of series and chunks for each series. Plan files are uploaded to the same object store bucket where blocks live.&lt;/li>
-&lt;li>&lt;a href="#scheduler">&lt;strong>Scheduler&lt;/strong>&lt;/a>&lt;br />
-Looks for plan files, and distributes them to builders. Scheduler has global view of overall conversion progress.&lt;/li>
-&lt;li>&lt;a href="#builder">&lt;strong>Builder&lt;/strong>&lt;/a>&lt;br />
-Asks scheduler for next plan file to work on, fetches chunks, puts them into TSDB block, and uploads the block to the object store. It repeats this process until there are no more plans.&lt;/li>
-&lt;li>&lt;a href="#cleaner">&lt;strong>Cleaner&lt;/strong>&lt;/a>&lt;br />
-Cleaner asks scheduler for next plan file to work on, but instead of building the block, it actually &lt;strong>REMOVES CHUNKS&lt;/strong> and &lt;strong>INDEX ENTRIES&lt;/strong> from the Index database.&lt;/li>
-&lt;/ul>
-&lt;p>All tools start HTTP server (see &lt;code>-server.http*&lt;/code> options) exposing the &lt;code>/metrics&lt;/code> endpoint.
-All tools also start gRPC server (&lt;code>-server.grpc*&lt;/code> options), but only Scheduler exposes services on it.&lt;/p>
-&lt;h3 id="scanner">Scanner&lt;/h3>
-&lt;p>Scanner is started by running &lt;code>blocksconvert -target=scanner&lt;/code>. Scanner requires configuration for accessing Cortex Index:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-schema-config-file&lt;/code> – this is standard Cortex schema file.&lt;/li>
-&lt;li>&lt;code>-bigtable.instance&lt;/code>, &lt;code>-bigtable.project&lt;/code> – options for BigTable access.&lt;/li>
-&lt;li>&lt;code>-dynamodb.url&lt;/code> - for DynamoDB access. Example &lt;code>dynamodb://us-east-1/&lt;/code>&lt;/li>
-&lt;li>&lt;code>-blocks-storage.backend&lt;/code> and corresponding &lt;code>-blocks-storage.*&lt;/code> options for storing plan files.&lt;/li>
-&lt;li>&lt;code>-scanner.output-dir&lt;/code> – specifies local directory for writing plan files to. Finished plan files are deleted after upload to the bucket. List of scanned tables is also kept in this directory, to avoid scanning the same tables multiple times when Scanner is restarted.&lt;/li>
-&lt;li>&lt;code>-scanner.allowed-users&lt;/code> – comma-separated list of Cortex tenants that should have plans generated. If empty, plans for all found users are generated.&lt;/li>
-&lt;li>&lt;code>-scanner.ignore-users-regex&lt;/code> - If plans for all users are generated (&lt;code>-scanner.allowed-users&lt;/code> is not set), then users matching this non-empty regular expression will be skipped.&lt;/li>
-&lt;li>&lt;code>-scanner.tables-limit&lt;/code> – How many tables should be scanned? By default all tables are scanned, but when testing scanner it may be useful to start with small number of tables first.&lt;/li>
-&lt;li>&lt;code>-scanner.tables&lt;/code> – Comma-separated list of tables to be scanned. Can be used to scan specific tables only. Note that schema is still used to find all tables first, and then this list is consulted to select only specified tables.&lt;/li>
-&lt;li>&lt;code>-scanner.scan-period-start&lt;/code> &amp;amp; &lt;code>-scanner.scan-period-end&lt;/code> - limit the scan to a particular date range (format like &lt;code>2020-12-31&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;p>Scanner will read the Cortex schema file to discover Index tables, and then it will start scanning them from most-recent table first, going back.
-For each table, it will fully read the table and generate a plan for each user and day stored in the table.
-Plan files are then uploaded to the configured blocks-storage bucket (at the &lt;code>-blocksconvert.bucket-prefix&lt;/code> location prefix), and local copies are deleted.
-After that, scanner continues with the next table until it scans them all or &lt;code>-scanner.tables-limit&lt;/code> is reached.&lt;/p>
-&lt;p>Note that even though &lt;code>blocksconvert&lt;/code> has options for configuring different Index store backends, &lt;strong>it only supports BigTable and DynamoDB at the moment.&lt;/strong>&lt;/p>
-&lt;p>It is expected that only single Scanner process is running.
-Scanner does the scanning of multiple table subranges concurrently.&lt;/p>
-&lt;p>Scanner exposes metrics with &lt;code>cortex_blocksconvert_scanner_&lt;/code> prefix, eg. total number of scanned index entries of different type, number of open files (scanner doesn&amp;rsquo;t close currently plan files until entire table has been scanned), scanned rows and parsed index entries.&lt;/p>
-&lt;p>&lt;strong>Scanner only supports schema version v9 on DynamoDB; v9, v10 and v11 on BigTable. Earlier schema versions are currently not supported.&lt;/strong>&lt;/p>
-&lt;h3 id="scheduler">Scheduler&lt;/h3>
-&lt;p>Scheduler is started by running &lt;code>blocksconvert -target=scheduler&lt;/code>. It only needs to be configured with options to access the object store with blocks:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-blocks-storage.*&lt;/code> - Blocks storage object store configuration.&lt;/li>
-&lt;li>&lt;code>-scheduler.scan-interval&lt;/code> – How often to scan for plan files and their status.&lt;/li>
-&lt;li>&lt;code>-scheduler.allowed-users&lt;/code> – Comma-separated list of Cortex tenants. If set, only plans for these tenants will be offered to Builders.&lt;/li>
-&lt;/ul>
-&lt;p>It is expected that only single Scheduler process is running. Schedulers consume very little resources.&lt;/p>
-&lt;p>Scheduler&amp;rsquo;s metrics have &lt;code>cortex_blocksconvert_scheduler&lt;/code> prefix (number of plans in different states, oldest/newest plan).
-Scheduler HTTP server also exposes &lt;code>/plans&lt;/code> page that shows currently queued plans, and all plans and their status for all users.&lt;/p>
-&lt;h3 id="builder">Builder&lt;/h3>
-&lt;p>Builder asks scheduler for next plan to work on, downloads the plan, builds the block and uploads the block to the blocks storage. It then repeats the process while there are still plans.&lt;/p>
-&lt;p>Builder is started by &lt;code>blocksconvert -target=builder&lt;/code>. It needs to be configured with Scheduler endpoint, Cortex schema file, chunk-store specific options and blocks storage to upload blocks to.&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-builder.scheduler-endpoint&lt;/code> - where to find scheduler, eg. &amp;ldquo;scheduler:9095&amp;rdquo;&lt;/li>
-&lt;li>&lt;code>-schema-config-file&lt;/code> - Cortex schema file, used to find out which chunks store to use for given plan&lt;/li>
-&lt;li>&lt;code>-gcs.bucketname&lt;/code> – when using GCS as chunks store (other chunks backend storages, like S3, are supported as well)&lt;/li>
-&lt;li>&lt;code>-blocks-storage.*&lt;/code> - blocks storage configuration&lt;/li>
-&lt;li>&lt;code>-builder.output-dir&lt;/code> - Local directory where Builder keeps the block while it is being built. Once block is uploaded to blocks storage, it is deleted from local directory.&lt;/li>
-&lt;/ul>
-&lt;p>Multiple builders may run at the same time, each builder will receive different plan to work on from scheduler.
-Builders are CPU intensive (decoding and merging chunks), and require fast disk IO for writing blocks.&lt;/p>
-&lt;p>Builders&amp;rsquo;s metrics have &lt;code>cortex_blocksconvert_builder&lt;/code> prefix, and include total number of fetched chunks and their size, read position of the current plan and plan size, total number of written series and samples, number of chunks that couldn&amp;rsquo;t be downloaded.&lt;/p>
-&lt;h3 id="cleaner">Cleaner&lt;/h3>
-&lt;p>Cleaner is similar to builder in that it asks scheduler for next plan to work on, but instead of building blocks, it actually &lt;strong>REMOVES CHUNKS and INDEX ENTRIES&lt;/strong>. Use with caution.&lt;/p>
-&lt;p>Cleaner is started by using &lt;code>blocksconvert -target=cleaner&lt;/code>. Like Builder, it needs Scheduler endpoint, Cortex schema file, index and chunk-store specific options. Note that Cleaner works with any index store supported by Cortex, not just BigTable.&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-cleaner.scheduler-endpoint&lt;/code> – where to find scheduler&lt;/li>
-&lt;li>&lt;code>-blocks-storage.*&lt;/code> – blocks storage configuration, used for downloading plan files&lt;/li>
-&lt;li>&lt;code>-cleaner.plans-dir&lt;/code> – local directory to store plan file while it is being processed by Cleaner.&lt;/li>
-&lt;li>&lt;code>-schema-config-file&lt;/code> – Cortex schema file.&lt;/li>
-&lt;/ul>
-&lt;p>Cleaner doesn&amp;rsquo;t &lt;strong>scan&lt;/strong> for index entries, but uses existing plan files to find chunks and index entries. For each series, Cleaner needs to download at least one chunk. This is because plan file doesn&amp;rsquo;t contain label names and values, but chunks do. Cleaner will then delete all index entries associated with the series, and also all chunks.&lt;/p>
-&lt;p>&lt;strong>WARNING:&lt;/strong> If both Builder and Cleaner run at the same time and use use the same Scheduler, &lt;strong>some plans will be handled by builder, and some by cleaner!&lt;/strong> This will result in a loss of data!&lt;/p>
-&lt;p>Cleaner should only be deployed if no other Builder is running. Running multiple Cleaners at once is not supported, and will result in leftover chunks and index entries. Reason for this is that chunks can span multiple days, and chunk is fully deleted only when processing plan (day) when chunk started. Since cleaner also needs to download some chunks to be able to clean up all index entries, when using multiple cleaners, it can happen that cleaner processing older plans will delete chunks required to properly clean up data in newer plans. When using single cleaner only, this is not a problem, since scheduler sends plans to cleaner in time-reversed order.&lt;/p>
-&lt;p>&lt;strong>Note:&lt;/strong> Cleaner is designed for use in very special cases, eg. when deleting chunks and index entries for a specific customer. If &lt;code>blocksconvert&lt;/code> was used to convert ALL chunks to blocks, it is simpler to just drop the index and chunks database afterwards. In such case, Cleaner is not needed.&lt;/p>
-&lt;h3 id="limitations">Limitations&lt;/h3>
-&lt;p>The &lt;code>blocksconvert&lt;/code> toolset currently has the following limitations:&lt;/p>
-&lt;ul>
-&lt;li>Scanner supports only BigTable and DynamoDB for chunks index backend, and cannot currently scan other databases.&lt;/li>
-&lt;li>Supports only chunks schema versions v9 for DynamoDB; v9, v10 and v11 for Bigtable.&lt;/li>
-&lt;/ul></description></item></channel></rss>
+&lt;p>When using query frontend with query scheduler, &lt;code>/ready&lt;/code> will report 200 status code only after frontend discovers some schedulers via DNS resolution.&lt;/p></description></item></channel></rss>

@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	dsmiddleware "github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -28,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	cortexmiddleware "github.com/cortexproject/cortex/pkg/util/middleware"
 )
 
 func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
@@ -198,7 +198,7 @@ func (sp *schedulerProcessor) createFrontendClient(addr string) (client.PoolClie
 	opts, err := sp.grpcConfig.DialOption([]grpc.UnaryClientInterceptor{
 		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 		middleware.ClientUserHeaderInterceptor,
-		dsmiddleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
+		cortexmiddleware.PrometheusGRPCUnaryInstrumentation(sp.frontendClientRequestDuration),
 	}, nil)
 
 	if err != nil {

@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -37,6 +36,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"gopkg.in/yaml.v2"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"

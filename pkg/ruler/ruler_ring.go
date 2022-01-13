@@ -9,7 +9,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/ring"
+
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 const (

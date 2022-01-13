@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -28,6 +27,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
+	"github.com/cortexproject/cortex/pkg/ring"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )

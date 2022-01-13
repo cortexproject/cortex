@@ -13,17 +13,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/dskit/kv"
-	shardUtil "github.com/grafana/dskit/ring/shard"
-	"github.com/grafana/dskit/ring/util"
-	"github.com/grafana/dskit/services"
-
-	"github.com/grafana/dskit/flagext"
-	dsmath "github.com/grafana/dskit/internal/math"
+	shardUtil "github.com/cortexproject/cortex/pkg/ring/shard"
+	"github.com/cortexproject/cortex/pkg/ring/util"
+	utilmath "github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -461,7 +460,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		// Given data is replicated to RF different zones, we can tolerate a number of
 		// RF/2 failing zones. However, we need to protect from the case the ring currently
 		// contains instances in a number of zones < RF.
-		numReplicatedZones := dsmath.Min(len(r.ringZones), r.cfg.ReplicationFactor)
+		numReplicatedZones := utilmath.Min(len(r.ringZones), r.cfg.ReplicationFactor)
 		minSuccessZones := (numReplicatedZones / 2) + 1
 		maxUnavailableZones = minSuccessZones - 1
 

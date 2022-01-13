@@ -3,7 +3,7 @@ package client
 import (
 	"errors"
 
-	"github.com/grafana/dskit/ring"
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 func NewRingServiceDiscovery(r ring.ReadRing) PoolServiceDiscovery {

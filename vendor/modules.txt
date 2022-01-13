@@ -369,7 +369,6 @@ github.com/grafana/dskit/kv/etcd
 github.com/grafana/dskit/kv/memberlist
 github.com/grafana/dskit/limiter
 github.com/grafana/dskit/middleware
-github.com/grafana/dskit/modules
 github.com/grafana/dskit/multierror
 github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services

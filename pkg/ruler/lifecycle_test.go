@@ -9,11 +9,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 

@@ -9,23 +9,23 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/transport"
 
-	"github.com/grafana/dskit/backoff"
-	dstls "github.com/grafana/dskit/crypto/tls"
-	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	cortextls "github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a new etcd.Client.
 type Config struct {
-	Endpoints   []string           `yaml:"endpoints"`
-	DialTimeout time.Duration      `yaml:"dial_timeout"`
-	MaxRetries  int                `yaml:"max_retries"`
-	EnableTLS   bool               `yaml:"tls_enabled"`
-	TLS         dstls.ClientConfig `yaml:",inline"`
+	Endpoints   []string               `yaml:"endpoints"`
+	DialTimeout time.Duration          `yaml:"dial_timeout"`
+	MaxRetries  int                    `yaml:"max_retries"`
+	EnableTLS   bool                   `yaml:"tls_enabled"`
+	TLS         cortextls.ClientConfig `yaml:",inline"`
 
 	UserName string `yaml:"username"`
 	Password string `yaml:"password"`

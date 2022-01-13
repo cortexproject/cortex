@@ -18,7 +18,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -38,6 +37,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"

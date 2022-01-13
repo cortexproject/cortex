@@ -19,7 +19,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -36,6 +35,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"

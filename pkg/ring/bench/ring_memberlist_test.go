@@ -8,13 +8,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/codec"
-	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
 type dnsProviderMock struct {

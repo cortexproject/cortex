@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"

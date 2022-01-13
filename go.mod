@@ -30,6 +30,7 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/gorilla/mux v1.8.0
 	github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
+	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/json-iterator/go v1.1.12
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.10

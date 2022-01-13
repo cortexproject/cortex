@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/expfmt"
 	"github.com/thanos-io/thanos/pkg/runutil"
+
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 var (

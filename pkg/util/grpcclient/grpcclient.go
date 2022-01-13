@@ -5,15 +5,15 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/backoff"
 	middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/crypto/tls"
-	"github.com/grafana/dskit/grpcencoding/snappy"
+	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappy"
+	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 // Config for a gRPC client.

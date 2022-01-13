@@ -361,9 +361,6 @@ github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency
 github.com/grafana/dskit/crypto/tls
 github.com/grafana/dskit/flagext
-github.com/grafana/dskit/grpcclient
-github.com/grafana/dskit/grpcencoding/snappy
-github.com/grafana/dskit/grpcutil
 github.com/grafana/dskit/internal/math
 github.com/grafana/dskit/kv
 github.com/grafana/dskit/kv/codec
@@ -378,6 +375,7 @@ github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services
 github.com/grafana/dskit/test
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+## explicit
 github.com/grpc-ecosystem/go-grpc-middleware
 # github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.0-rc.2.0.20201207153454-9f6bf00c00a7
 github.com/grpc-ecosystem/go-grpc-middleware/v2

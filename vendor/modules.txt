@@ -63,6 +63,7 @@ github.com/alicebob/miniredis/v2
 github.com/alicebob/miniredis/v2/geohash
 github.com/alicebob/miniredis/v2/server
 # github.com/armon/go-metrics v0.3.9
+## explicit
 github.com/armon/go-metrics
 github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20200907205600-7a23bdc65eef
@@ -335,7 +336,8 @@ github.com/golang/protobuf/ptypes/wrappers
 # github.com/golang/snappy v0.0.4
 ## explicit
 github.com/golang/snappy
-# github.com/google/btree v1.0.0
+# github.com/google/btree v1.0.1
+## explicit
 github.com/google/btree
 # github.com/google/go-cmp v0.5.6
 github.com/google/go-cmp/cmp
@@ -358,13 +360,9 @@ github.com/gorilla/mux
 # github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 ## explicit
 github.com/grafana/dskit/backoff
-github.com/grafana/dskit/crypto/tls
+github.com/grafana/dskit/concurrency
 github.com/grafana/dskit/flagext
-github.com/grafana/dskit/kv
-github.com/grafana/dskit/kv/codec
-github.com/grafana/dskit/kv/consul
-github.com/grafana/dskit/kv/etcd
-github.com/grafana/dskit/kv/memberlist
+github.com/grafana/dskit/internal/math
 github.com/grafana/dskit/middleware
 github.com/grafana/dskit/multierror
 github.com/grafana/dskit/runutil
@@ -382,10 +380,12 @@ github.com/grpc-ecosystem/go-grpc-middleware/v2/util/metautils
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.11.0
+## explicit
 github.com/hashicorp/consul/api
 # github.com/hashicorp/errwrap v1.0.0
 github.com/hashicorp/errwrap
 # github.com/hashicorp/go-cleanhttp v0.5.2
+## explicit
 github.com/hashicorp/go-cleanhttp
 # github.com/hashicorp/go-hclog v0.16.2
 github.com/hashicorp/go-hclog
@@ -398,11 +398,13 @@ github.com/hashicorp/go-multierror
 # github.com/hashicorp/go-rootcerts v1.0.2
 github.com/hashicorp/go-rootcerts
 # github.com/hashicorp/go-sockaddr v1.0.2
+## explicit
 github.com/hashicorp/go-sockaddr
 # github.com/hashicorp/golang-lru v0.5.4
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
 # github.com/hashicorp/memberlist v0.2.4
+## explicit
 github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.9.5
 github.com/hashicorp/serf/coordinate
@@ -747,8 +749,10 @@ github.com/yuin/gopher-lua/pm
 ## explicit
 go.etcd.io/bbolt
 # go.etcd.io/etcd v3.3.25+incompatible
+## explicit
 go.etcd.io/etcd/pkg/transport
 # go.etcd.io/etcd/api/v3 v3.5.0
+## explicit
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
 go.etcd.io/etcd/api/v3/membershippb
@@ -760,6 +764,7 @@ go.etcd.io/etcd/client/pkg/v3/logutil
 go.etcd.io/etcd/client/pkg/v3/systemd
 go.etcd.io/etcd/client/pkg/v3/types
 # go.etcd.io/etcd/client/v3 v3.5.0
+## explicit
 go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/credentials
 go.etcd.io/etcd/client/v3/internal/endpoint

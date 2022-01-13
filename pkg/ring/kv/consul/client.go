@@ -11,14 +11,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 )
 
 const (

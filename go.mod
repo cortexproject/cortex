@@ -11,6 +11,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a
 	github.com/alicebob/miniredis/v2 v2.14.3
+	github.com/armon/go-metrics v0.3.9
 	github.com/aws/aws-sdk-go v1.42.8
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
@@ -28,9 +29,14 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.7.0
 	github.com/golang/protobuf v1.5.2
 	github.com/golang/snappy v0.0.4
+	github.com/google/btree v1.0.1 // indirect
 	github.com/gorilla/mux v1.8.0
 	github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+	github.com/hashicorp/consul/api v1.11.0
+	github.com/hashicorp/go-cleanhttp v0.5.2
+	github.com/hashicorp/go-sockaddr v1.0.2
+	github.com/hashicorp/memberlist v0.2.4
 	github.com/json-iterator/go v1.1.12
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.10
@@ -54,6 +60,9 @@ require (
 	github.com/uber/jaeger-client-go v2.29.1+incompatible
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/etcd v3.3.25+incompatible
+	go.etcd.io/etcd/api/v3 v3.5.0
+	go.etcd.io/etcd/client/v3 v3.5.0
 	go.uber.org/atomic v1.9.0
 	golang.org/x/net v0.0.0-20211020060615-d418f374d309
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c

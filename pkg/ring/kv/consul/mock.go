@@ -12,7 +12,7 @@ import (
 	consul "github.com/hashicorp/consul/api"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/dskit/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 )
 
 type mockKV struct {

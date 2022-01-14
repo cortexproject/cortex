@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/grafana/dskit/multierror"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 // ForEachUser runs the provided userFunc for each userIDs up to concurrency concurrent workers.

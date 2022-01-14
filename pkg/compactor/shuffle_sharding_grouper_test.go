@@ -149,6 +149,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				prometheus.NewRegistry(),
 				nil,
 				nil,
+				nil,
 				metadata.NoneFunc,
 				*compactorCfg)
 			actual, err := g.Groups(testData.blocks)

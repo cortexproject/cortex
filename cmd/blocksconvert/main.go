@@ -8,13 +8,13 @@ import (
 	"strings"
 
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 
 	"github.com/cortexproject/cortex/pkg/cortex"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/builder"
 	"github.com/cortexproject/cortex/tools/blocksconvert/cleaner"

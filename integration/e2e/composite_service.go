@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 // CompositeHTTPService abstract an higher-level service composed, under the hood,

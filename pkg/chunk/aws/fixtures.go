@@ -5,12 +5,12 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/dskit/backoff"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 type fixture struct {

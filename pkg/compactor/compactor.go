@@ -72,6 +72,7 @@ var (
 			true,  // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
+			prometheus.NewCounter(prometheus.CounterOpts{}),
 			garbageCollectedBlocks,
 			metadata.NoneFunc,
 			cfg)

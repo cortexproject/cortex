@@ -11,7 +11,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/dskit/runutil"
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
 type CA struct {

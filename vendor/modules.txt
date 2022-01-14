@@ -360,7 +360,6 @@ github.com/gorilla/mux
 # github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 ## explicit
 github.com/grafana/dskit/multierror
-github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services
 # github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 ## explicit

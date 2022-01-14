@@ -13,7 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -26,6 +26,7 @@ type ShuffleShardingGrouper struct {
 	enableVerticalCompaction bool
 	reg                      prometheus.Registerer
 	blocksMarkedForDeletion  prometheus.Counter
+	blocksMarkedForNoCompact prometheus.Counter
 	garbageCollectedBlocks   prometheus.Counter
 	hashFunc                 metadata.HashFunc
 	compactions              *prometheus.CounterVec
@@ -43,6 +44,7 @@ func NewShuffleShardingGrouper(
 	enableVerticalCompaction bool,
 	reg prometheus.Registerer,
 	blocksMarkedForDeletion prometheus.Counter,
+	blocksMarkedForNoCompact prometheus.Counter,
 	garbageCollectedBlocks prometheus.Counter,
 	hashFunc metadata.HashFunc,
 	compactorCfg Config,
@@ -58,6 +60,7 @@ func NewShuffleShardingGrouper(
 		enableVerticalCompaction: enableVerticalCompaction,
 		reg:                      reg,
 		blocksMarkedForDeletion:  blocksMarkedForDeletion,
+		blocksMarkedForNoCompact: blocksMarkedForNoCompact,
 		garbageCollectedBlocks:   garbageCollectedBlocks,
 		hashFunc:                 hashFunc,
 		// Metrics are copied from Thanos DefaultGrouper constructor
@@ -135,6 +138,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 				g.verticalCompactions.WithLabelValues(groupKey),
 				g.garbageCollectedBlocks,
 				g.blocksMarkedForDeletion,
+				g.blocksMarkedForNoCompact,
 				g.hashFunc,
 			)
 			if err != nil {

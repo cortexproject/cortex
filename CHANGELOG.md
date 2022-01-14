@@ -85,14 +85,10 @@
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
 * [BUGFIX] Update go-kit package to fix spurious log messages #4544
 
-
 ## 1.10.0 / 2021-08-03
 
 * [CHANGE] Prevent path traversal attack from users able to control the HTTP header `X-Scope-OrgID`. #4375 (CVE-2021-36157)
   * Users only have control of the HTTP header when Cortex is not frontend by an auth proxy validating the tenant IDs
-
-## 1.10.0-rc.0 / 2021-06-28
-
 * [CHANGE] Enable strict JSON unmarshal for `pkg/util/validation.Limits` struct. The custom `UnmarshalJSON()` will now fail if the input has unknown fields. #4298
 * [CHANGE] Cortex chunks storage has been deprecated and it's now in maintenance mode: all Cortex users are encouraged to migrate to the blocks storage. No new features will be added to the chunks storage. The default Cortex configuration still runs the chunks engine; please check out the [blocks storage doc](https://cortexmetrics.io/docs/blocks-storage/) on how to configure Cortex to run with the blocks storage.  #4268
 * [CHANGE] The example Kubernetes manifests (stored at `k8s/`) have been removed due to a lack of proper support and maintenance. #4268

@@ -31,7 +31,6 @@ require (
 	github.com/golang/snappy v0.0.4
 	github.com/google/btree v1.0.1 // indirect
 	github.com/gorilla/mux v1.8.0
-	github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/hashicorp/consul/api v1.11.0
 	github.com/hashicorp/go-cleanhttp v0.5.2

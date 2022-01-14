@@ -9,7 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/dskit/multierror"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 // CloseWithErrCapture closes closer and wraps any error with the provided message and assigns it to err.

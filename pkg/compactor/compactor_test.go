@@ -1073,7 +1073,7 @@ func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuff
 
 func removeIgnoredLogs(input []string) []string {
 	ignoredLogStringsMap := map[string]struct{}{
-		// Since we moved to the component logger from the global logger for the ring in dskit these lines are now expected but are just ring setup information.
+		// Since we moved to the component logger from the global logger for the ring these lines are now expected, but are just ring setup information.
 		`level=info component=compactor msg="ring doesn't exist in KV store yet"`:                                                                                 {},
 		`level=info component=compactor msg="not loading tokens from file, tokens file path is empty"`:                                                            {},
 		`level=info component=compactor msg="instance not found in ring, adding with no tokens" ring=compactor`:                                                   {},

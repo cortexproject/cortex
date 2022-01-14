@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -18,6 +17,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func setupFrontend(t *testing.T, config Config) (*Frontend, error) {

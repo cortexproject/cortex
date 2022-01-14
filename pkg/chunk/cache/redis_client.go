@@ -10,7 +10,8 @@ import (
 	"unsafe"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/grafana/dskit/flagext"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.

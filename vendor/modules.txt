@@ -359,7 +359,6 @@ github.com/googleapis/gax-go/v2/apierror/internal/proto
 github.com/gorilla/mux
 # github.com/grafana/dskit v0.0.0-20220105080720-01ce9286d7d5
 ## explicit
-github.com/grafana/dskit/flagext
 github.com/grafana/dskit/multierror
 github.com/grafana/dskit/runutil
 github.com/grafana/dskit/services

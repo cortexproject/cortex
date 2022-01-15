@@ -23,14 +23,14 @@ import (
 )
 
 type ShuffleShardingGrouper struct {
-	logger                   log.Logger
-	bkt                      objstore.Bucket
-	acceptMalformedIndex     bool
-	enableVerticalCompaction bool
-	reg                      prometheus.Registerer
-	blocksMarkedForDeletion  prometheus.Counter
-	blocksMarkedForNoCompact prometheus.Counter
-	garbageCollectedBlocks   prometheus.Counter
+	logger                      log.Logger
+	bkt                         objstore.Bucket
+	acceptMalformedIndex        bool
+	enableVerticalCompaction    bool
+	reg                         prometheus.Registerer
+	blocksMarkedForDeletion     prometheus.Counter
+	blocksMarkedForNoCompact    prometheus.Counter
+	garbageCollectedBlocks      prometheus.Counter
 	remainingPlannedCompactions prometheus.Gauge
 	hashFunc                    metadata.HashFunc
 	compactions                 *prometheus.CounterVec
@@ -68,16 +68,16 @@ func NewShuffleShardingGrouper(
 	}
 
 	return &ShuffleShardingGrouper{
-		logger:                   logger,
-		bkt:                      bkt,
-		acceptMalformedIndex:     acceptMalformedIndex,
-		enableVerticalCompaction: enableVerticalCompaction,
-		reg:                      reg,
-		blocksMarkedForDeletion:  blocksMarkedForDeletion,
-		blocksMarkedForNoCompact: blocksMarkedForNoCompact,
-		garbageCollectedBlocks:   garbageCollectedBlocks,
+		logger:                      logger,
+		bkt:                         bkt,
+		acceptMalformedIndex:        acceptMalformedIndex,
+		enableVerticalCompaction:    enableVerticalCompaction,
+		reg:                         reg,
+		blocksMarkedForDeletion:     blocksMarkedForDeletion,
+		blocksMarkedForNoCompact:    blocksMarkedForNoCompact,
+		garbageCollectedBlocks:      garbageCollectedBlocks,
 		remainingPlannedCompactions: remainingPlannedCompactions,
-		hashFunc:                 hashFunc,
+		hashFunc:                    hashFunc,
 		// Metrics are copied from Thanos DefaultGrouper constructor
 		compactions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "thanos_compact_group_compactions_total",

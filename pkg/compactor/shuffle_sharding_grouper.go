@@ -39,7 +39,7 @@ type ShuffleShardingGrouper struct {
 	compactionFailures          *prometheus.CounterVec
 	verticalCompactions         *prometheus.CounterVec
 	compactorCfg                Config
-	limits                      CompactorLimits
+	limits                      Limits
 	userID                      string
 
 	ring               ring.ReadRing
@@ -60,7 +60,7 @@ func NewShuffleShardingGrouper(
 	compactorCfg Config,
 	ring ring.ReadRing,
 	ringLifecyclerAddr string,
-	limits CompactorLimits,
+	limits Limits,
 	userID string,
 ) *ShuffleShardingGrouper {
 	if logger == nil {

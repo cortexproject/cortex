@@ -54,7 +54,7 @@ var (
 	errShardingRequired         = errors.New("sharding must be enabled to use shuffle-sharding sharding strategy")
 	errInvalidTenantShardSize   = errors.New("invalid tenant shard size, the value must be greater than 0")
 
-	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion , blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ *ring.Ring, _ *ring.Lifecycler, _ CompactorLimits, _ string) compact.Grouper {
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion , blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string) compact.Grouper {
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
@@ -67,7 +67,7 @@ var (
 			metadata.NoneFunc)
 	}
 
-	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits CompactorLimits, userID string) compact.Grouper {
+	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion prometheus.Counter, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string) compact.Grouper {
 		return NewShuffleShardingGrouper(
 			logger,
 			bkt,
@@ -126,7 +126,7 @@ type BlocksGrouperFactory func(
 	remainingPlannedCompactions prometheus.Gauge,
 	ring *ring.Ring,
 	ringLifecycler *ring.Lifecycler,
-	limit CompactorLimits,
+	limit Limits,
 	userID string,
 ) compact.Grouper
 
@@ -144,8 +144,8 @@ type PlannerFactory func(
 	noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter,
 ) compact.Planner
 
-// CompactorLimits defines limits used by the Compactor.
-type CompactorLimits interface { //nolint
+// Limits defines limits used by the Compactor.
+type Limits interface {
 	CompactorTenantShardSize(userID string) int
 }
 
@@ -259,7 +259,7 @@ type Compactor struct {
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
 	allowedTenants *util.AllowedTenants
-	limits         CompactorLimits
+	limits         Limits
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -307,7 +307,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer, limits CompactorLimits) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer, limits Limits) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -347,7 +347,7 @@ func newCompactor(
 	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
-	limits CompactorLimits,
+	limits Limits,
 ) (*Compactor, error) {
 	var remainingPlannedCompactions prometheus.Gauge
 	if compactorCfg.ShardingStrategy == "shuffle-sharding" {

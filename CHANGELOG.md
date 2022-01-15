@@ -7,7 +7,7 @@
 * [CHANGE] Distributor: Apply `max_fetched_series_per_query` limit for `/series` API. #4683
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction
-* [FEATURE] Add shuffle sharding grouper and planner within compactor to allow further work towards parallelizing compaction #4624
+* [FEATURE] Add shuffle sharding grouper and planner within compactor to allow further work towards parallelizing compaction #4621
 
 ## 1.12.0 in progress
 
@@ -18,7 +18,8 @@
 * [CHANGE] Memberlist: changed probe interval from `1s` to `5s` and probe timeout from `500ms` to `2s`. #4601
 * [ENHANCEMENT] Update Go version to 1.17.8. #4602 #4604 #4658
 * [ENHANCEMENT] Keep track of discarded samples due to bad relabel configuration in `cortex_discarded_samples_total`. #4503
-* [FEATURE] Add shuffle sharding grouper and planner within compactor to allow further work towards parallelizing compaction #4621
+* [FEATURE] Add shuffle sharding grouper and planner within compactor to allow further work towards parallelizing compaction #4624
+>>>>>>> bf3d29f2b (Fix up change log)
 * [FEATURE] Add shuffle sharding for the compactor #4433
 * [ENHANCEMENT] Update Go version to 1.17.5. #4602 #4604
 * [ENHANCEMENT] Keep track of discarded samples due to relabel configuration in `cortex_discarded_samples_total`. #4503

@@ -5317,6 +5317,10 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.sharding-enabled
 [sharding_enabled: <boolean> | default = false]
 
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -compactor.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
+
 sharding_ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,

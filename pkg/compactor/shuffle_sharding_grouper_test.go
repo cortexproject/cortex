@@ -177,6 +177,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				registerer,
 				nil,
 				nil,
+				nil,
 				remainingPlannedCompactions,
 				metadata.NoneFunc,
 				*compactorCfg,

@@ -667,7 +667,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Accepted, Implemented in &lt;a href="https://github.com/cortexproject/cortex/pull/3879">PR #3879&lt;/a>.&lt;/li>
 &lt;/ul>
 &lt;h2 id="retention-of-tenant-data">Retention of tenant data&lt;/h2>
 &lt;h2 id="problem">Problem&lt;/h2>

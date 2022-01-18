@@ -130,7 +130,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 		return nil, errors.Wrap(err, "unable to check sub-ring for compactor ownership")
 	}
 	if !onSubring {
-		level.Info(g.logger).Log("msg", "compactor is not on the current sub-ring skipping user", "user", g.userID)
+		level.Debug(g.logger).Log("msg", "compactor is not on the current sub-ring skipping user", "user", g.userID)
 		return outGroups, nil
 	}
 	// Metrics for the remaining planned compactions

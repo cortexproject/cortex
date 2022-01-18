@@ -51,7 +51,6 @@ var (
 
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	errInvalidShardingStrategy  = errors.New("invalid sharding strategy")
-	errShardingRequired         = errors.New("sharding must be enabled to use shuffle-sharding sharding strategy")
 	errInvalidTenantShardSize   = errors.New("invalid tenant shard size, the value must be greater than 0")
 
 	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion , blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string) compact.Grouper {
@@ -231,10 +230,8 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		if !cfg.ShardingEnabled {
-			return errShardingRequired
-		} else if limits.CompactorTenantShardSize <= 0 {
+	if cfg.ShardingEnabled && cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		if limits.CompactorTenantShardSize <= 0 {
 			return errInvalidTenantShardSize
 		}
 	}
@@ -350,10 +347,10 @@ func newCompactor(
 	limits Limits,
 ) (*Compactor, error) {
 	var remainingPlannedCompactions prometheus.Gauge
-	if compactorCfg.ShardingStrategy == "shuffle-sharding" {
+	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
 		remainingPlannedCompactions = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_remaining_planned_compactions",
-			Help: "Total number of plans that remain to be compacted.",
+			Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
 		})
 	}
 	c := &Compactor{

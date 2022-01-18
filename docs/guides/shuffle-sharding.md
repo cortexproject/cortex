@@ -160,10 +160,8 @@ Note that when using sharding strategy, each rule group is evaluated by single r
 Cortex compactor can run in three modes:
 
 1. **No sharding at all.** This is the most basic mode of the compactor. It is activated by using `-compactor.sharding-enabled=false` (default). In this mode every compactor will run every compaction.
-2. **Default sharding**, activated by using `-compactor.sharding-enabled=true` and `-compactor.sharding-strategy=default` (default). In this mode compactors register themselves into the ring. Each compactor will then select and evaluate only those users that it "owns".
-3. **Shuffle sharding**, activated by using `-compactor.sharding-enabled=true` and `-compactor.sharding-strategy=shuffle-sharding`. Similarly to default sharding, compactors use the ring to distribute workload, but compactions groups for each tenant can only be evaluated on limited number of compactors (`-compactor.tenant-shard-size`, can also be set per tenant as `compactor_tenant_shard_size` in overrides).
-
-The Cortex compactor by default shards by tenant ID when sharding is enabled.
+2. **Default sharding**, activated by using `-compactor.sharding-enabled=true` and `-compactor.sharding-strategy=default` (default). In this mode compactors register themselves into the ring. One single tenant will belong to only 1 compactor.
+3. **Shuffle sharding**, activated by using `-compactor.sharding-enabled=true` and `-compactor.sharding-strategy=shuffle-sharding`. Similarly to default sharding, but compactions for each tenant can be carried out on multiple compactors (`-compactor.tenant-shard-size`, can also be set per tenant as `compactor_tenant_shard_size` in overrides).
 
 With shuffle sharding selected as the sharding strategy, a subset of the compactors will be used to handle a user based on the shard size.
 

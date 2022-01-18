@@ -125,14 +125,6 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expected: "",
 		},
-		"should fail with shuffle sharding strategy selected without sharding enabled": {
-			setup: func(cfg *Config) {
-				cfg.ShardingStrategy = util.ShardingStrategyShuffle
-				cfg.ShardingEnabled = false
-			},
-			initLimits: func(_ *validation.Limits) {},
-			expected:   errShardingRequired.Error(),
-		},
 		"should fail with bad compactor tenant shard size": {
 			setup: func(cfg *Config) {
 				cfg.ShardingStrategy = util.ShardingStrategyShuffle

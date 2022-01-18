@@ -1394,7 +1394,7 @@ func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuff
 	var log *concurrency.SyncBuffer
 
 	for i, c := range compactors {
-		owned, err := c.ownUser(userID)
+		owned, err := c.ownUserForCompaction(userID)
 		if err != nil {
 			return nil, nil, err
 		}

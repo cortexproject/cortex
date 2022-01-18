@@ -457,7 +457,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	c.bucketClient = bucketindex.BucketWithGlobalMarkers(c.bucketClient)
 
 	// Create the users scanner.
-	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.cleanUser, c.parentLogger)
+	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUserForCleanUp, c.parentLogger)
 
 	// Create the blocks cleaner (service).
 	c.blocksCleaner = NewBlocksCleaner(BlocksCleanerConfig{
@@ -611,7 +611,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		}
 
 		// Ensure the user ID belongs to our shard.
-		if owned, err := c.ownUser(userID); err != nil {
+		if owned, err := c.ownUserForCompaction(userID); err != nil {
 			c.compactionRunSkippedTenants.Inc()
 			level.Warn(c.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 			continue
@@ -813,15 +813,15 @@ func (c *Compactor) discoverUsers(ctx context.Context) ([]string, error) {
 	return users, err
 }
 
-func (c *Compactor) ownUser(userID string) (bool, error) {
-	return c.ownUserHelper(userID, false)
+func (c *Compactor) ownUserForCompaction(userID string) (bool, error) {
+	return c.ownUser(userID, false)
 }
 
-func (c *Compactor) cleanUser(userID string) (bool, error) {
-	return c.ownUserHelper(userID, true)
+func (c *Compactor) ownUserForCleanUp(userID string) (bool, error) {
+	return c.ownUser(userID, true)
 }
 
-func (c *Compactor) ownUserHelper(userID string, isCleanUp bool) (bool, error) {
+func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 	if !c.allowedTenants.IsAllowed(userID) {
 		return false, nil
 	}
@@ -831,7 +831,8 @@ func (c *Compactor) ownUserHelper(userID string, isCleanUp bool) (bool, error) {
 		return true, nil
 	}
 
-	// If we aren't cleaning up user blocks, and we are using shuffle-sharding, ownership is determined by the ring
+	// If we aren't cleaning up user blocks, and we are using shuffle-sharding, ownership is determined by a subring
+	// Cleanup should only be owned by a single compactor, as there could be race conditions during block deletion
 	if !isCleanUp && c.compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
 		subRing := c.ring.ShuffleShard(userID, c.limits.CompactorTenantShardSize(userID))
 

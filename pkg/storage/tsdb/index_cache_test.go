@@ -3,8 +3,9 @@ package tsdb
 import (
 	"testing"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestIndexCacheConfig_Validate(t *testing.T) {

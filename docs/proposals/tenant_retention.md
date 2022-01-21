@@ -7,7 +7,7 @@ slug: tenant-retention
 
 - Author: [Allenzhli](https://github.com/Allenzhli)
 - Date: January 2021
-- Status: Proposed
+- Status: Accepted, Implemented in [PR #3879](https://github.com/cortexproject/cortex/pull/3879).
 
 ## Retention of tenant data
 

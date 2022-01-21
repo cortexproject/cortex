@@ -18,11 +18,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,8 +32,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"gopkg.in/yaml.v2"
 
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -1073,7 +1073,7 @@ func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuff
 
 func removeIgnoredLogs(input []string) []string {
 	ignoredLogStringsMap := map[string]struct{}{
-		// Since we moved to the component logger from the global logger for the ring in dskit these lines are now expected but are just ring setup information.
+		// Since we moved to the component logger from the global logger for the ring these lines are now expected, but are just ring setup information.
 		`level=info component=compactor msg="ring doesn't exist in KV store yet"`:                                                                                 {},
 		`level=info component=compactor msg="not loading tokens from file, tokens file path is empty"`:                                                            {},
 		`level=info component=compactor msg="instance not found in ring, adding with no tokens" ring=compactor`:                                                   {},
@@ -1086,6 +1086,7 @@ func removeIgnoredLogs(input []string) []string {
 		`level=debug component=compactor msg="unregistering instance from ring" ring=compactor`:                                                                   {},
 		`level=info component=compactor msg="instance removed from the KV store" ring=compactor`:                                                                  {},
 		`level=info component=compactor msg="observing tokens before going ACTIVE" ring=compactor`:                                                                {},
+		`level=info component=compactor msg="lifecycler entering final sleep before shutdown" final_sleep=0s`:                                                     {},
 	}
 
 	out := make([]string, 0, len(input))

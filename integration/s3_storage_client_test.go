@@ -10,13 +10,13 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
 	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestS3Client(t *testing.T) {

@@ -72,3 +72,39 @@ distributor:
 For further configuration file documentation, see the [distributor section](../configuration/config-file-reference.md#distributor_config) and [Ring/HA Tracker Store](../configuration/arguments.md#ringha-tracker-store).
 
 For flag configuration, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.
+
+## Remote Read
+
+If you plan to use remote_read, you can't have the `__replica__` label in the
+external section. Instead, you will need to add it only on the remote_write
+section of your prometheus.yml.
+
+```
+global:
+  external_labels:
+    cluster: prom-team1
+remote_write:
+- url: https://cortex/api/v1/push
+  write_relabel_configs:
+    - target_label: __replica__
+      replacement: 1
+```
+
+and
+
+```
+global:
+  external_labels:
+    cluster: prom-team1
+remote_write:
+- url: https://cortex/api/v1/push
+  write_relabel_configs:
+    - target_label: __replica__
+      replacement: replica2
+```
+
+When Prometheus is executing remote read queries, it will add the external
+labels to the query. In this case, if it asks for the `__replica__` label,
+Cortex will not return any data.
+
+Therefore, the `__replica__` label should only be added for remote write.

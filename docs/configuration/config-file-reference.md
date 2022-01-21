@@ -5296,7 +5296,7 @@ The `compactor_config` configures the compactor for the blocks storage.
 # location too. This option can (and should) be safely disabled as soon as the
 # compactor has successfully run at least once.
 # CLI flag: -compactor.block-deletion-marks-migration-enabled
-[block_deletion_marks_migration_enabled: <boolean> | default = true]
+[block_deletion_marks_migration_enabled: <boolean> | default = false]
 
 # Comma separated list of tenants that can be compacted. If specified, only
 # these tenants will be compacted by compactor, otherwise all tenants can be
@@ -5316,6 +5316,10 @@ The `compactor_config` configures the compactor for the blocks storage.
 # different instances.
 # CLI flag: -compactor.sharding-enabled
 [sharding_enabled: <boolean> | default = false]
+
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -compactor.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
 
 sharding_ring:
   kvstore:

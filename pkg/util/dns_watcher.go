@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/dskit/grpcutil"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Notifications about address resolution. All notifications are sent on the same goroutine.
@@ -33,7 +33,7 @@ func NewDNSWatcher(address string, dnsLookupPeriod time.Duration, notifications 
 		return nil, err
 	}
 
-	watcher, err := resolver.Resolve(address)
+	watcher, err := resolver.Resolve(address, "")
 	if err != nil {
 		return nil, err
 	}

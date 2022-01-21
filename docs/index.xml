@@ -7208,10 +7208,14 @@ Cons:&lt;/li>
 &lt;li>&lt;a href="#distributor">Distributor&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#ingester">Ingester&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#querier">Querier&lt;/a>&lt;/li>
-&lt;li>&lt;a href="#query-frontend">Query frontend&lt;/a> (optional)&lt;/li>
-&lt;li>&lt;a href="#ruler">Ruler&lt;/a> (optional)&lt;/li>
+&lt;li>&lt;a href="/docs/blocks-storage/compactor/">Compactor&lt;/a> (required for blocks storage)&lt;/li>
+&lt;li>&lt;a href="/docs/blocks-storage/store-gateway/">Store gateway&lt;/a> (required for blocks storage)&lt;/li>
 &lt;li>&lt;a href="#alertmanager">Alertmanager&lt;/a> (optional)&lt;/li>
 &lt;li>&lt;a href="#configs-api">Configs API&lt;/a> (optional)&lt;/li>
+&lt;li>&lt;a href="/docs/guides/overrides-exporter/">Overrides exporter&lt;/a> (optional)&lt;/li>
+&lt;li>&lt;a href="#query-frontend">Query frontend&lt;/a> (optional)&lt;/li>
+&lt;li>&lt;a href="/docs/operations/scaling-query-frontend/#query-scheduler">Query scheduler&lt;/a> (optional)&lt;/li>
+&lt;li>&lt;a href="#ruler">Ruler&lt;/a> (optional)&lt;/li>
 &lt;/ul>
 &lt;h3 id="distributor">Distributor&lt;/h3>
 &lt;p>The &lt;strong>distributor&lt;/strong> service is responsible for handling incoming samples from Prometheus. It&amp;rsquo;s the first stop in the write path for series samples. Once the distributor receives samples from Prometheus, each sample is validated for correctness and to ensure that it is within the configured tenant limits, falling back to default ones in case limits have not been overridden for the specific tenant. Valid samples are then split into batches and sent to multiple &lt;a href="#ingester">ingesters&lt;/a> in parallel.&lt;/p>

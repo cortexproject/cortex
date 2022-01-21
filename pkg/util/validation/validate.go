@@ -201,10 +201,10 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {
 			DiscardedSamples.WithLabelValues(labelNameTooLong, userID).Inc()
-			return newLabelNameTooLongError(ls, l.Name)
+			return newLabelNameTooLongError(ls, l.Name, maxLabelNameLength)
 		} else if len(l.Value) > maxLabelValueLength {
 			DiscardedSamples.WithLabelValues(labelValueTooLong, userID).Inc()
-			return newLabelValueTooLongError(ls, l.Value)
+			return newLabelValueTooLongError(ls, l.Value, maxLabelValueLength)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp >= 0 {
 			if cmp == 0 {
 				DiscardedSamples.WithLabelValues(duplicateLabelNames, userID).Inc()

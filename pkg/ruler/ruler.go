@@ -83,6 +83,8 @@ type Config struct {
 	RulePath string `yaml:"rule_path"`
 
 	// URL of the Alertmanager to send notifications to.
+	// If your are configuring the ruler to send to a Cortex Alertmanager,
+	// ensure this includes any path set in the Alertmanager external URL.
 	AlertmanagerURL string `yaml:"alertmanager_url"`
 	// Whether to use DNS SRV records to discover Alertmanager.
 	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`

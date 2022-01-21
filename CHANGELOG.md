@@ -23,6 +23,7 @@
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
+* [BUGFIX] Set appropriate `Content-Type` header for /services endpoint, which previously hard-coded `text/plain`. #4596
 * [BUGFIX] Querier: Disable query scheduler SRV DNS lookup, which removes noisy log messages about "failed DNS SRV record lookup". #4601
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
 

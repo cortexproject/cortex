@@ -20,6 +20,7 @@
 * [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #4601
 * [ENHANCEMENT] Add length and limit to labelNameTooLongError and labelValueTooLongError #4595
+* [ENHANCEMENT] Remove outdated documentation of removed limit config #4632
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585

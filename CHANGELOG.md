@@ -26,6 +26,7 @@
 * [BUGFIX] Set appropriate `Content-Type` header for /services endpoint, which previously hard-coded `text/plain`. #4596
 * [BUGFIX] Querier: Disable query scheduler SRV DNS lookup, which removes noisy log messages about "failed DNS SRV record lookup". #4601
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
+* [BUGIX] Query Frontend: If 'LogQueriesLongerThan' is set to < 0, log all queries as described in the docs. #4633
 
 ## 1.11.0 2021-11-25
 

@@ -111,7 +111,8 @@ func TestFrontend_LogsSlowQueriesFormValues(t *testing.T) {
 
 	// Configure the query-frontend with the mocked downstream server.
 	config := defaultFrontendConfig()
-	config.Handler.LogQueriesLongerThan = 1 * time.Microsecond
+	// Setting to < 0 to ensure all queries are logged.
+	config.Handler.LogQueriesLongerThan = -1 * time.Microsecond
 	config.DownstreamURL = fmt.Sprintf("http://%s", downstreamListen.Addr())
 
 	var buf concurrency.SyncBuffer

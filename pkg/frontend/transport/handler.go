@@ -147,7 +147,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, resp.Body)
 
 	// Check whether we should parse the query string.
-	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan > 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
+	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
 	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
 	}

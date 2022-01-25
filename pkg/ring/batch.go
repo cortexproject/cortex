@@ -128,20 +128,19 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 }
 
 func (b *batchTracker) record(sampleTrackers []*itemTracker, err error) {
-	// If we succeed, decrement each sample's pending count by one.  If we reach
-	// the required number of successful puts on this sample, then decrement the
-	// number of pending samples by one.  If we successfully push all samples to
-	// min success instances, wake up the waiting rpc so it can return early.
-	// Similarly, track the number of errors, and if it exceeds maxFailures
-	// shortcut the waiting rpc.
+	// If we reach the required number of successful puts on this sample, then decrement the
+	// number of pending samples by one.
 	//
-	// The use of atomic increments here guarantees only a single sendSamples
-	// goroutine will write to either channel.
+	// The use of atomic increments here is needed as:
+	// * rpcsPending and rpcsPending guarantees only a single sendSamples goroutine will write to either channel
+	// * succeeded, failed4xx, failed5xx and remaining guarantees that the "return decision" is made atomically
+	// avoiding race condition
 	for i := range sampleTrackers {
 		if err != nil {
-			// We count the error by error family (4xx and 5xx)
+			// Track the number of errors by error family, and if it exceeds maxFailures
+			// shortcut the waiting rpc.
 			errCount := sampleTrackers[i].recordError(err)
-			// We should return an error if we reach the maxFailure (quorum) on a give error family OR
+			// We should return an error if we reach the maxFailure (quorum) on a given error family OR
 			// we dont have any remaining ingesters to try
 			// Ex: 2xx, 4xx, 5xx -> return 5xx
 			// Ex: 4xx, 4xx, _ -> return 4xx
@@ -152,7 +151,8 @@ func (b *batchTracker) record(sampleTrackers []*itemTracker, err error) {
 				}
 			}
 		} else {
-			// We should return success if we succeeded calling `minSuccess` ingesters.
+			// If we successfully push all samples to min success instances,
+			// wake up the waiting rpc so it can return early.
 			if sampleTrackers[i].succeeded.Inc() >= int32(sampleTrackers[i].minSuccess) {
 				if b.rpcsPending.Dec() == 0 {
 					b.done <- struct{}{}

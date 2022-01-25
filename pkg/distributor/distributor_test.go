@@ -494,6 +494,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 }
 
 func TestPush_QuorumError(t *testing.T) {
+
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
 
@@ -513,13 +514,16 @@ func TestPush_QuorumError(t *testing.T) {
 
 	d := dists[0]
 
+	// we should run several write request to make sure we dont have any race condition on the batchTracker#record code
+	numberOfWrites := 10000
+
 	// Using 429 just to make sure we are not hitting the &limits
 	// Simulating 2 4xx and 1 5xx -> Should return 4xx
 	ingesters[0].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[1].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
 	ingesters[2].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < numberOfWrites; i++ {
 		request := makeWriteRequest(0, 30, 20)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
@@ -532,7 +536,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[2].failResp.Store(httpgrpc.Errorf(500, "InternalServerError"))
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < numberOfWrites; i++ {
 		request := makeWriteRequest(0, 300, 200)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
@@ -545,7 +549,7 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].failResp.Store(httpgrpc.Errorf(429, "Throttling"))
 	ingesters[2].happy.Store(true)
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < numberOfWrites; i++ {
 		request := makeWriteRequest(0, 30, 20)
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
@@ -569,18 +573,6 @@ func TestPush_QuorumError(t *testing.T) {
 	ingesters[1].happy.Store(true)
 	ingesters[2].happy.Store(true)
 
-	// Wait group to check when the ring got updated
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
-
-	go func() {
-		r.KVClient.WatchKey(context.Background(), ingester.RingKey, func(i interface{}) bool {
-			wg.Done()
-			// False will terminate the watch
-			return false
-		})
-	}()
-
 	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
 		r := in.(*ring.Desc)
 		ingester2 := r.Ingesters["2"]
@@ -593,9 +585,15 @@ func TestPush_QuorumError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Give time to the ring get updated with the KV value
-	wg.Wait()
+	for {
+		replicationSet, _ := r.GetAllHealthy(ring.Read)
+		if len(replicationSet.Instances) == 2 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < numberOfWrites; i++ {
 		request := makeWriteRequest(0, 30, 20)
 		_, err := d.Push(ctx, request)
 		require.Error(t, err)

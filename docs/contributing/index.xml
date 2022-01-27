@@ -128,6 +128,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Invite to &lt;a href="https://groups.google.com/forum/#!forum/cortex-team">&lt;code>cortex-team&lt;/code> group&lt;/a>&lt;/li>
 &lt;li>Invite to &lt;a href="https://quay.io/organization/cortexproject?tab=teams">Quay.io repository&lt;/a>&lt;/li>
 &lt;li>Invite to &lt;a href="https://hub.docker.com/u/cortexproject">Docker Hub organization&lt;/a>&lt;/li>
+&lt;li>Submit a PR to &lt;a href="http://maintainers.cncf.io">CNCF maintainer list for Cortex&lt;/a>&lt;/li>
 &lt;li>Invite to &lt;a href="https://lists.cncf.io/g/cncf-cortex-maintainers">CNCF &lt;code>cncf-cortex-maintainers&lt;/code> mailing list&lt;/a> (via &lt;a href="https://servicedesk.cncf.io">CNCF Service Desk&lt;/a>)&lt;/li>
 &lt;li>Add to the Google Analytics property used for the website statistics&lt;/li>
 &lt;/ol></description></item></channel></rss>

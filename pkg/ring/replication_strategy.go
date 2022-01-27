@@ -26,19 +26,9 @@ func NewDefaultReplicationStrategy() ReplicationStrategy {
 // - Checks there are enough instances for an operation to succeed.
 // The instances argument may be overwritten.
 func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]InstanceDesc, int, error) {
-	// We need a response from a quorum of instances, which is n/2 + 1.  In the
-	// case of a node joining/leaving, the actual replica set might be bigger
-	// than the replication factor, so use the bigger or the two.
-	if len(instances) > replicationFactor {
-		replicationFactor = len(instances)
-	}
-
-	minSuccess := (replicationFactor / 2) + 1
 	now := time.Now()
 
-	// Skip those that have not heartbeated in a while. NB these are still
-	// included in the calculation of minSuccess, so if too many failed instances
-	// will cause the whole write to fail.
+	// Skip those that have not heartbeated in a while.
 	var unhealthy []string
 	for i := 0; i < len(instances); {
 		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
@@ -49,6 +39,14 @@ func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operati
 		}
 	}
 
+	// We need a response from a quorum of instances, which is n/2 + 1.  In the
+	// case of a node joining/leaving with extend-writes enabled, the actual replica
+	// set will be bigger than the replication factor, so use the bigger or the two.
+	if len(instances) > replicationFactor {
+		replicationFactor = len(instances)
+	}
+
+	minSuccess := (replicationFactor / 2) + 1
 	// This is just a shortcut - if there are not minSuccess available instances,
 	// after filtering out dead ones, don't even bother trying.
 	if len(instances) < minSuccess {

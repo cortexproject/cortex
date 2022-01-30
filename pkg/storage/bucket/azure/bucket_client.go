@@ -2,7 +2,7 @@ package azure
 
 import (
 	"github.com/go-kit/log"
-	"github.com/prometheus/common/model"
+	"github.com/thanos-io/thanos/pkg/httpconfig"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/azure"
 	yaml "gopkg.in/yaml.v2"
@@ -16,14 +16,17 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		Endpoint:           cfg.Endpoint,
 		MaxRetries:         cfg.MaxRetries,
 		HTTPConfig: azure.HTTPConfig{
-			IdleConnTimeout:       model.Duration(cfg.IdleConnTimeout),
-			ResponseHeaderTimeout: model.Duration(cfg.ResponseHeaderTimeout),
-			InsecureSkipVerify:    cfg.InsecureSkipVerify,
-			TLSHandshakeTimeout:   model.Duration(cfg.TLSHandshakeTimeout),
-			ExpectContinueTimeout: model.Duration(cfg.ExpectContinueTimeout),
-			MaxIdleConns:          cfg.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       cfg.MaxConnsPerHost,
+			TransportConfig: httpconfig.TransportConfig{
+				IdleConnTimeout:       int64(cfg.IdleConnTimeout),
+				ResponseHeaderTimeout: int64(cfg.ResponseHeaderTimeout),
+				TLSHandshakeTimeout:   int64(cfg.TLSHandshakeTimeout),
+				MaxIdleConns:          cfg.MaxIdleConns,
+				MaxIdleConnsPerHost:   cfg.MaxIdleConnsPerHost,
+				MaxConnsPerHost:       cfg.MaxConnsPerHost,
+			},
+			TLSConfig: httpconfig.TLSConfig{
+				InsecureSkipVerify: cfg.InsecureSkipVerify,
+			},
 		},
 	}
 

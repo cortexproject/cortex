@@ -2,7 +2,7 @@ package s3
 
 import (
 	"github.com/go-kit/log"
-	"github.com/prometheus/common/model"
+	"github.com/thanos-io/thanos/pkg/httpconfig"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/objstore/s3"
 )
@@ -42,15 +42,18 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		Insecure:  cfg.Insecure,
 		SSEConfig: sseCfg,
 		HTTPConfig: s3.HTTPConfig{
-			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
-			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
-			InsecureSkipVerify:    cfg.HTTP.InsecureSkipVerify,
-			TLSHandshakeTimeout:   model.Duration(cfg.HTTP.TLSHandshakeTimeout),
-			ExpectContinueTimeout: model.Duration(cfg.HTTP.ExpectContinueTimeout),
-			MaxIdleConns:          cfg.HTTP.MaxIdleConns,
-			MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
-			Transport:             cfg.HTTP.Transport,
+			TransportConfig: httpconfig.TransportConfig{
+				IdleConnTimeout:       int64(cfg.HTTP.IdleConnTimeout),
+				ResponseHeaderTimeout: int64(cfg.HTTP.ResponseHeaderTimeout),
+				TLSHandshakeTimeout:   int64(cfg.HTTP.TLSHandshakeTimeout),
+				MaxIdleConns:          cfg.HTTP.MaxIdleConns,
+				MaxIdleConnsPerHost:   cfg.HTTP.MaxIdleConnsPerHost,
+				MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
+			},
+			TLSConfig: httpconfig.TLSConfig{
+				InsecureSkipVerify: cfg.HTTP.InsecureSkipVerify,
+			},
+			Transport: cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set
 		SignatureV2: cfg.SignatureVersion == SignatureVersionV2,

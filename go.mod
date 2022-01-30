@@ -63,7 +63,7 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.0
 	go.etcd.io/etcd/client/v3 v3.5.0
 	go.uber.org/atomic v1.9.0
-	golang.org/x/net v0.0.0-20211020060615-d418f374d309
+	golang.org/x/net v0.0.0-20220114011407-0dd24b26b47d
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 	google.golang.org/api v0.60.0
@@ -93,7 +93,7 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.38.0
 // currently fails because Thanos isn't merging release branches to main branch, and Go modules system is then
 // confused about which version is the latest one. v0.22.0 was released in July, but latest tag reachable from main
 // is v0.19.1. We pin version from early December here. Feel free to remove when updating to later version.
-replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211208205607-d1acaea2a11a
+replace github.com/thanos-io/thanos v0.22.0 => github.com/someshkoli/thanos v0.13.1-0.20220130010113-1056df839e44
 
 // Pin aws-sdk to version prior to go-kit update, to reduce the bulk of change.
 // Un-pin once Cortex 1.11 is released.

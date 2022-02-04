@@ -597,6 +597,11 @@ instance_limits:
   # unlimited.
   # CLI flag: -distributor.instance-limits.max-inflight-push-requests
   [max_inflight_push_requests: <int> | default = 0]
+
+# Enable to remove unhealthy distributors from the ring after
+# `ring.kvstore.heartbeat_timeout`
+# CLI flag: -distributor.autoforget-unhealthy
+[autoforget_unhealthy: <boolean> | default = false]
 ```
 
 ### `ingester_config`

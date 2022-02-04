@@ -95,22 +95,23 @@ type Distributor struct {
 	inflightPushRequests atomic.Int64
 
 	// Metrics
-	queryDuration                    *instrument.HistogramCollector
-	receivedSamples                  *prometheus.CounterVec
-	receivedExemplars                *prometheus.CounterVec
-	receivedMetadata                 *prometheus.CounterVec
-	incomingSamples                  *prometheus.CounterVec
-	incomingExemplars                *prometheus.CounterVec
-	incomingMetadata                 *prometheus.CounterVec
-	nonHASamples                     *prometheus.CounterVec
-	dedupedSamples                   *prometheus.CounterVec
-	labelsHistogram                  prometheus.Histogram
-	ingesterAppends                  *prometheus.CounterVec
-	ingesterAppendFailures           *prometheus.CounterVec
-	ingesterQueries                  *prometheus.CounterVec
-	ingesterQueryFailures            *prometheus.CounterVec
-	replicationFactor                prometheus.Gauge
-	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+	queryDuration                        *instrument.HistogramCollector
+	receivedSamples                      *prometheus.CounterVec
+	receivedExemplars                    *prometheus.CounterVec
+	receivedMetadata                     *prometheus.CounterVec
+	incomingSamples                      *prometheus.CounterVec
+	incomingExemplars                    *prometheus.CounterVec
+	incomingMetadata                     *prometheus.CounterVec
+	nonHASamples                         *prometheus.CounterVec
+	dedupedSamples                       *prometheus.CounterVec
+	labelsHistogram                      prometheus.Histogram
+	ingesterAppends                      *prometheus.CounterVec
+	ingesterAppendFailures               *prometheus.CounterVec
+	ingesterQueries                      *prometheus.CounterVec
+	ingesterQueryFailures                *prometheus.CounterVec
+	replicationFactor                    prometheus.Gauge
+	latestSeenSampleTimestampPerUser     *prometheus.GaugeVec
+	autoForgetUnhealthyDistributorsTotal prometheus.Counter
 }
 
 // Config contains the configuration required to
@@ -143,6 +144,8 @@ type Config struct {
 
 	// Limits for distributor
 	InstanceLimits InstanceLimits `yaml:"instance_limits"`
+
+	AutoForgetUnhealthy bool `yaml:"autoforget_unhealthy"`
 }
 
 type InstanceLimits struct {
@@ -162,6 +165,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
+	f.BoolVar(&cfg.AutoForgetUnhealthy, "distributor.autoforget-unhealthy", false, "Enable to remove unhealthy distributors from the ring after `ring.kvstore.heartbeat_timeout`")
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
@@ -323,6 +327,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
+		autoForgetUnhealthyDistributorsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "distributor_autoforget_unhealthy_distributors_total",
+			Help:      "Total number of distributors automatically forgotten",
+		}),
 	}
 
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -361,7 +370,83 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	d.subservicesWatcher.WatchManager(d.subservices)
 
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
+
+	d.setupAutoForget()
+
 	return d, nil
+}
+
+// setupAutoForget looks for ring status if `AutoForgetUnhealthy` is enabled
+// when enabled, unhealthy distributors that reach `ring.kvstore.heartbeat_timeout` are removed from the ring every `HeartbeatPeriod`
+func (d *Distributor) setupAutoForget() {
+	if !d.cfg.AutoForgetUnhealthy {
+		return
+	}
+
+	go func() {
+		ctx := context.Background()
+		err := d.Service.AwaitRunning(ctx)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
+			return
+		}
+
+		lifecyclerConfig := d.cfg.DistributorRing.ToLifecyclerConfig()
+
+		level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget is enabled and will remove unhealthy instances from the ring after %v with no heartbeat", lifecyclerConfig.RingConfig.HeartbeatTimeout))
+
+		ticker := time.NewTicker(lifecyclerConfig.HeartbeatPeriod)
+		defer ticker.Stop()
+
+		var forgetList []string
+		for range ticker.C {
+			err := d.distributorsLifeCycler.KVStore.CAS(ctx, ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				forgetList = forgetList[:0]
+				if in == nil {
+					return nil, false, nil
+				}
+
+				ringDesc, ok := in.(*ring.Desc)
+				if !ok {
+					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget saw a KV store value that was not `ring.Desc`, got `%T`", in))
+					return nil, false, nil
+				}
+
+				for id, ingester := range ringDesc.Ingesters {
+					if !ingester.IsHealthy(ring.Reporting, lifecyclerConfig.HeartbeatPeriod, time.Now()) {
+						if d.distributorsLifeCycler.ID == id {
+							level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget has seen our ID `%s` as unhealthy in the ring, network may be partitioned, skip forgetting distributors this round", id))
+							return nil, false, nil
+						}
+						forgetList = append(forgetList, id)
+					}
+				}
+
+				if len(forgetList) == len(ringDesc.Ingesters)-1 {
+					level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("autoforget have seen %d unhealthy distributors out of %d, network may be partioned, skip forgetting distributors this round", len(forgetList), len(ringDesc.Ingesters)))
+					forgetList = forgetList[:0]
+					return nil, false, nil
+				}
+
+				if len(forgetList) > 0 {
+					for _, id := range forgetList {
+						ringDesc.RemoveIngester(id)
+					}
+					return ringDesc, true, nil
+				}
+				return nil, false, nil
+			})
+			if err != nil {
+				level.Warn(util_log.Logger).Log("msg", err)
+				continue
+			}
+
+			for _, id := range forgetList {
+				level.Info(util_log.Logger).Log("msg", fmt.Sprintf("autoforget removed distributor %v from the ring because it was not healthy after %v", id, lifecyclerConfig.RingConfig.HeartbeatTimeout))
+			}
+			d.autoForgetUnhealthyDistributorsTotal.Add(float64(len(forgetList)))
+		}
+	}()
 }
 
 func (d *Distributor) starting(ctx context.Context) error {

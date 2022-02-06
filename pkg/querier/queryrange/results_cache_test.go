@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -31,6 +31,12 @@ var (
 		End:   1536716898 * 1e3,
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
+	}
+	reqHeaders = []*PrometheusRequestHeader{
+		{
+			Name:   "Test-Header",
+			Values: []string{"test"},
+		},
 	}
 	noCacheRequest = &PrometheusRequest{
 		Path:           "/api/v1/query_range",

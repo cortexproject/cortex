@@ -14,16 +14,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
@@ -31,11 +26,16 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -48,6 +48,9 @@ var (
 )
 
 const (
+	// ringKey is the key under which we store the rulers ring in the KVStore.
+	ringKey = "ring"
+
 	// Number of concurrent group list and group loads operations.
 	loadRulesConcurrency  = 10
 	fetchRulesConcurrency = 16
@@ -80,6 +83,8 @@ type Config struct {
 	RulePath string `yaml:"rule_path"`
 
 	// URL of the Alertmanager to send notifications to.
+	// If your are configuring the ruler to send to a Cortex Alertmanager,
+	// ensure this includes any path set in the Alertmanager external URL.
 	AlertmanagerURL string `yaml:"alertmanager_url"`
 	// Whether to use DNS SRV records to discover Alertmanager.
 	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`
@@ -115,7 +120,8 @@ type Config struct {
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 
-	EnableQueryStats bool `yaml:"query_stats_enabled"`
+	EnableQueryStats      bool `yaml:"query_stats_enabled"`
+	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
 }
 
 // Validate config and returns error on failure
@@ -179,6 +185,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
+	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -295,10 +302,6 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		if err = enableSharding(ruler, ringStore); err != nil {
 			return nil, errors.Wrap(err, "setup ruler sharding ring")
 		}
-
-		if reg != nil {
-			reg.MustRegister(ruler.ring)
-		}
 	}
 
 	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
@@ -306,7 +309,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 }
 
 func enableSharding(r *Ruler, ringStore kv.Client) error {
-	lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig()
+	lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig(r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler config")
 	}
@@ -318,12 +321,12 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	rulerRingName := "ruler"
-	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix("cortex_", r.registry))
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r.registry), r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}

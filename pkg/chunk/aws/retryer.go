@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/grafana/dskit/backoff"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 // Map Cortex Backoff into AWS Retryer interface

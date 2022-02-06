@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -51,9 +51,9 @@ func testQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T, streamChunks
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Start Cortex components.
-	ingesterBlocks := e2ecortex.NewIngester("ingester-blocks", consul.NetworkHTTPEndpoint(), blockFlags, "")
-	ingesterChunks := e2ecortex.NewIngester("ingester-chunks", consul.NetworkHTTPEndpoint(), chunksFlags, "")
-	storeGateway := e2ecortex.NewStoreGateway("store-gateway", consul.NetworkHTTPEndpoint(), blockFlags, "")
+	ingesterBlocks := e2ecortex.NewIngester("ingester-blocks", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), blockFlags, "")
+	ingesterChunks := e2ecortex.NewIngester("ingester-chunks", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), chunksFlags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), blockFlags, "")
 	require.NoError(t, s.StartAndWaitReady(ingesterBlocks, ingesterChunks, storeGateway))
 
 	// Sharding is disabled, pass gateway address.
@@ -61,7 +61,7 @@ func testQuerierWithStreamingBlocksAndChunksIngesters(t *testing.T, streamChunks
 		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
 		"-distributor.shard-by-all-labels": "true",
 	})
-	querier := e2ecortex.NewQuerier("querier", consul.NetworkHTTPEndpoint(), querierFlags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), querierFlags, "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(1024), "cortex_ring_tokens_total"))

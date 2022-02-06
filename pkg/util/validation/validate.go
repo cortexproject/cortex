@@ -57,6 +57,11 @@ const (
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
 
+	// DroppedByRelabelConfiguration Samples can also be discarded because of relabeling configuration
+	DroppedByRelabelConfiguration = "relabel_configuration"
+	// DroppedByUserConfigurationOverride Samples discarded due to user configuration removing label __name__
+	DroppedByUserConfigurationOverride = "user_label_removal_configuration"
+
 	// The combined length of the label names and values of an Exemplar's LabelSet MUST NOT exceed 128 UTF-8 characters
 	// https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#exemplars
 	ExemplarMaxLabelSetLength = 128
@@ -196,10 +201,10 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {
 			DiscardedSamples.WithLabelValues(labelNameTooLong, userID).Inc()
-			return newLabelNameTooLongError(ls, l.Name)
+			return newLabelNameTooLongError(ls, l.Name, maxLabelNameLength)
 		} else if len(l.Value) > maxLabelValueLength {
 			DiscardedSamples.WithLabelValues(labelValueTooLong, userID).Inc()
-			return newLabelValueTooLongError(ls, l.Value)
+			return newLabelValueTooLongError(ls, l.Value, maxLabelValueLength)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp >= 0 {
 			if cmp == 0 {
 				DiscardedSamples.WithLabelValues(duplicateLabelNames, userID).Inc()

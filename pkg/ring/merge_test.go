@@ -256,7 +256,26 @@ func TestMergeLeft(t *testing.T) {
 		}
 	}
 
+	// Not normalised because it contains duplicate and unsorted tokens.
+	firstRingNotNormalised := func() *Desc {
+		return &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 40, 50}},
+				"Ing 2": {Addr: "addr2", Timestamp: now, State: JOINING, Tokens: []uint32{20, 10, 5, 10, 20, 100, 200, 100}},
+			},
+		}
+	}
+
 	secondRing := func() *Desc {
+		return &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT},
+			},
+		}
+	}
+
+	// Not normalised because it contains a LEFT ingester with tokens.
+	secondRingNotNormalised := func() *Desc {
 		return &Desc{
 			Ingesters: map[string]InstanceDesc{
 				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT, Tokens: []uint32{5, 10, 20, 100, 200}},
@@ -300,6 +319,17 @@ func TestMergeLeft(t *testing.T) {
 			},
 		}, ch)
 	}
+	{
+		// Should yield same result when RHS is not normalised.
+		our, ch := merge(firstRing(), secondRingNotNormalised())
+		assert.Equal(t, expectedFirstSecondMerge(), our)
+		assert.Equal(t, &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 2": {Addr: "addr2", Timestamp: now, State: LEFT},
+			},
+		}, ch)
+
+	}
 
 	{ // idempotency: (no change after applying same ring again)
 		our, ch := merge(expectedFirstSecondMerge(), secondRing())
@@ -316,6 +346,18 @@ func TestMergeLeft(t *testing.T) {
 				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
 			},
 		}, ch)
+	}
+	{
+		// Should yield same result when RHS is not normalised.
+		our, ch := merge(secondRing(), firstRingNotNormalised())
+		assert.Equal(t, expectedFirstSecondMerge(), our)
+		// when merging first into second ring, only "Ing 1" is new
+		assert.Equal(t, &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"Ing 1": {Addr: "addr1", Timestamp: now, State: ACTIVE, Tokens: []uint32{30, 40, 50}},
+			},
+		}, ch)
+
 	}
 
 	{ // associativity: Merge(Merge(first, second), third) == Merge(first, Merge(second, third))

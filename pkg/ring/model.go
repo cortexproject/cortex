@@ -4,11 +4,13 @@ import (
 	"container/heap"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/grafana/dskit/kv/codec"
-	"github.com/grafana/dskit/kv/memberlist"
+
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
 
 // ByAddr is a sortable list of InstanceDesc.
@@ -96,16 +98,15 @@ func (d *Desc) FindIngestersByState(state InstanceState) []InstanceDesc {
 	return result
 }
 
-// Ready returns no error when all ingesters are active and healthy.
-func (d *Desc) Ready(now time.Time, heartbeatTimeout time.Duration) error {
+// IsReady returns no error when all instance are ACTIVE and healthy,
+// and the ring has some tokens.
+func (d *Desc) IsReady(now time.Time, heartbeatTimeout time.Duration) error {
 	numTokens := 0
-	for id, ingester := range d.Ingesters {
-		if !ingester.IsHeartbeatHealthy(heartbeatTimeout, now) {
-			return fmt.Errorf("instance %s past heartbeat timeout", id)
-		} else if ingester.State != ACTIVE {
-			return fmt.Errorf("instance %s in state %v", id, ingester.State)
+	for _, instance := range d.Ingesters {
+		if err := instance.IsReady(now, heartbeatTimeout); err != nil {
+			return err
 		}
-		numTokens += len(ingester.Tokens)
+		numTokens += len(instance.Tokens)
 	}
 
 	if numTokens == 0 {
@@ -147,6 +148,17 @@ func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now ti
 	return now.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
+// IsReady returns no error if the instance is ACTIVE and healthy.
+func (i *InstanceDesc) IsReady(now time.Time, heartbeatTimeout time.Duration) error {
+	if !i.IsHeartbeatHealthy(heartbeatTimeout, now) {
+		return fmt.Errorf("instance %s past heartbeat timeout", i.Addr)
+	}
+	if i.State != ACTIVE {
+		return fmt.Errorf("instance %s in state %v", i.Addr, i.State)
+	}
+	return nil
+}
+
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
 // and can be sent out to other clients.
 //
@@ -162,6 +174,14 @@ func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now ti
 // (see resolveConflicts).
 //
 // This method is part of memberlist.Mergeable interface, and is only used by gossiping ring.
+//
+// The receiver must be normalised, that is, the token lists must sorted and not contain
+// duplicates. The function guarantees that the receiver will be left in this normalised state,
+// so multiple subsequent Merge calls are valid usage.
+//
+// The Mergeable passed as the parameter does not need to be normalised.
+//
+// Note: This method modifies d and mergeable to reduce allocations and copies.
 func (d *Desc) Merge(mergeable memberlist.Mergeable, localCAS bool) (memberlist.Mergeable, error) {
 	return d.mergeWithTime(mergeable, localCAS, time.Now())
 }
@@ -181,15 +201,21 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 		return nil, nil
 	}
 
-	thisIngesterMap := buildNormalizedIngestersMap(d)
-	otherIngesterMap := buildNormalizedIngestersMap(other)
+	normalizeIngestersMap(other)
+
+	thisIngesterMap := d.Ingesters
+	otherIngesterMap := other.Ingesters
 
 	var updated []string
+	tokensChanged := false
 
 	for name, oing := range otherIngesterMap {
 		ting := thisIngesterMap[name]
 		// ting.Timestamp will be 0, if there was no such ingester in our version
 		if oing.Timestamp > ting.Timestamp {
+			if !tokensEqual(ting.Tokens, oing.Tokens) {
+				tokensChanged = true
+			}
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
 			updated = append(updated, name)
@@ -224,7 +250,7 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 	}
 
 	// resolveConflicts allocates lot of memory, so if we can avoid it, do that.
-	if conflictingTokensExist(thisIngesterMap) {
+	if tokensChanged && conflictingTokensExist(thisIngesterMap) {
 		resolveConflicts(thisIngesterMap)
 	}
 
@@ -250,22 +276,18 @@ func (d *Desc) MergeContent() []string {
 	return result
 }
 
-// buildNormalizedIngestersMap will do the following:
+// normalizeIngestersMap will do the following:
 // - sorts tokens and removes duplicates (only within single ingester)
-// - it doesn't modify input ring
-func buildNormalizedIngestersMap(inputRing *Desc) map[string]InstanceDesc {
-	out := map[string]InstanceDesc{}
-
+// - modifies the input ring
+func normalizeIngestersMap(inputRing *Desc) {
 	// Make sure LEFT ingesters have no tokens
 	for n, ing := range inputRing.Ingesters {
 		if ing.State == LEFT {
 			ing.Tokens = nil
+			inputRing.Ingesters[n] = ing
 		}
-		out[n] = ing
-	}
 
-	// Sort tokens, and remove duplicates
-	for name, ing := range out {
+		// Sort tokens, and remove duplicates
 		if len(ing.Tokens) == 0 {
 			continue
 		}
@@ -286,25 +308,39 @@ func buildNormalizedIngestersMap(inputRing *Desc) map[string]InstanceDesc {
 		}
 
 		// write updated value back to map
-		out[name] = ing
+		inputRing.Ingesters[n] = ing
 	}
-
-	return out
 }
 
-func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
-	count := 0
-	for _, ing := range normalizedIngesters {
-		count += len(ing.Tokens)
+// tokensEqual checks for equality of two slices. Assumes the slices are sorted.
+func tokensEqual(lhs, rhs []uint32) bool {
+	if len(lhs) != len(rhs) {
+		return false
 	}
+	for i := 0; i < len(lhs); i++ {
+		if lhs[i] != rhs[i] {
+			return false
+		}
+	}
+	return true
+}
 
-	tokensMap := make(map[uint32]bool, count)
+var tokenMapPool = sync.Pool{New: func() interface{} { return make(map[uint32]struct{}) }}
+
+func conflictingTokensExist(normalizedIngesters map[string]InstanceDesc) bool {
+	tokensMap := tokenMapPool.Get().(map[uint32]struct{})
+	defer func() {
+		for k := range tokensMap {
+			delete(tokensMap, k)
+		}
+		tokenMapPool.Put(tokensMap)
+	}()
 	for _, ing := range normalizedIngesters {
 		for _, t := range ing.Tokens {
-			if tokensMap[t] {
+			if _, contains := tokensMap[t]; contains {
 				return true
 			}
-			tokensMap[t] = true
+			tokensMap[t] = struct{}{}
 		}
 	}
 	return false
@@ -423,7 +459,7 @@ func (d *Desc) getTokensInfo() map[uint32]instanceInfo {
 func (d *Desc) GetTokens() []uint32 {
 	instances := make([][]uint32, 0, len(d.Ingesters))
 	for _, instance := range d.Ingesters {
-		// Tokens may not be sorted for an older version of Cortex which, so we enforce sorting here.
+		// Tokens may not be sorted for an older version which, so we enforce sorting here.
 		tokens := instance.Tokens
 		if !sort.IsSorted(Tokens(tokens)) {
 			sort.Sort(Tokens(tokens))
@@ -440,7 +476,7 @@ func (d *Desc) GetTokens() []uint32 {
 func (d *Desc) getTokensByZone() map[string][]uint32 {
 	zones := map[string][][]uint32{}
 	for _, instance := range d.Ingesters {
-		// Tokens may not be sorted for an older version of Cortex which, so we enforce sorting here.
+		// Tokens may not be sorted for an older version which, so we enforce sorting here.
 		tokens := instance.Tokens
 		if !sort.IsSorted(Tokens(tokens)) {
 			sort.Sort(Tokens(tokens))
@@ -455,6 +491,7 @@ func (d *Desc) getTokensByZone() map[string][]uint32 {
 
 type CompareResult int
 
+// CompareResult responses
 const (
 	Equal                       CompareResult = iota // Both rings contain same exact instances.
 	EqualButStatesAndTimestamps                      // Both rings contain the same instances with the same data except states and timestamps (may differ).

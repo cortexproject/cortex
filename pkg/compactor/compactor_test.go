@@ -18,15 +18,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv/consul"
-	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -37,8 +33,12 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -420,11 +420,13 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	userID := "test-user"
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{userID}, nil)
-	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D"}, nil)
+	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D", userID + "/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
 	bucketClient.MockIter(userID+"/markers/", nil, nil)
 	bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 
@@ -466,12 +468,18 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockExists(path.Join("user-2", cortex_tsdb.TenantDeletionMarkPath), false, nil)
-	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
-	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
+	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ"}, nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -509,16 +517,16 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`component=compactor org_id=user-1 level=info msg="start sync of metas"`,
-		`component=compactor org_id=user-1 level=info msg="start of GC"`,
-		`component=compactor org_id=user-1 level=info msg="start of compactions"`,
-		`component=compactor org_id=user-1 level=info msg="compaction iterations done"`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
-		`component=compactor org_id=user-2 level=info msg="start sync of metas"`,
-		`component=compactor org_id=user-2 level=info msg="start of GC"`,
-		`component=compactor org_id=user-2 level=info msg="start of compactions"`,
-		`component=compactor org_id=user-2 level=info msg="compaction iterations done"`,
+		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-2 msg="start of GC"`,
+		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
@@ -625,18 +633,18 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
-		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
+		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
+		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
 		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`component=compactor org_id=user-1 level=info msg="start sync of metas"`,
-		`component=compactor org_id=user-1 level=info msg="start of GC"`,
-		`component=compactor org_id=user-1 level=info msg="start of compactions"`,
-		`component=compactor org_id=user-1 level=info msg="compaction iterations done"`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
@@ -733,8 +741,8 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="deleting blocks for tenant marked for deletion"`,
-		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
-		`component=cleaner org_id=user-1 level=debug msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
+		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/meta.json bucket=mock`,
+		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTVP434PA9VFXSW2JKB3392D/index bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block" block=01DTVP434PA9VFXSW2JKB3392D`,
 		`level=info component=cleaner org_id=user-1 msg="deleted blocks for tenant marked for deletion" deletedBlocks=1`,
 		`level=info component=cleaner org_id=user-1 msg="updating finished time in tenant deletion mark"`,
@@ -800,14 +808,18 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockExists(path.Join("user-2", cortex_tsdb.TenantDeletionMarkPath), false, nil)
-	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
-	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
+	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
@@ -854,16 +866,16 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`component=compactor org_id=user-1 level=info msg="start sync of metas"`,
-		`component=compactor org_id=user-1 level=info msg="start of GC"`,
-		`component=compactor org_id=user-1 level=info msg="start of compactions"`,
-		`component=compactor org_id=user-1 level=info msg="compaction iterations done"`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
-		`component=compactor org_id=user-2 level=info msg="start sync of metas"`,
-		`component=compactor org_id=user-2 level=info msg="start of GC"`,
-		`component=compactor org_id=user-2 level=info msg="start of compactions"`,
-		`component=compactor org_id=user-2 level=info msg="compaction iterations done"`,
+		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-2 msg="start of GC"`,
+		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
@@ -1060,12 +1072,33 @@ func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuff
 }
 
 func removeIgnoredLogs(input []string) []string {
+	ignoredLogStringsMap := map[string]struct{}{
+		// Since we moved to the component logger from the global logger for the ring these lines are now expected, but are just ring setup information.
+		`level=info component=compactor msg="ring doesn't exist in KV store yet"`:                                                                                 {},
+		`level=info component=compactor msg="not loading tokens from file, tokens file path is empty"`:                                                            {},
+		`level=info component=compactor msg="instance not found in ring, adding with no tokens" ring=compactor`:                                                   {},
+		`level=debug component=compactor msg="JoinAfter expired" ring=compactor`:                                                                                  {},
+		`level=info component=compactor msg="auto-joining cluster after timeout" ring=compactor`:                                                                  {},
+		`level=info component=compactor msg="lifecycler loop() exited gracefully" ring=compactor`:                                                                 {},
+		`level=info component=compactor msg="changing instance state from" old_state=ACTIVE new_state=LEAVING ring=compactor`:                                     {},
+		`level=error component=compactor msg="failed to set state to LEAVING" ring=compactor err="Changing instance state from LEAVING -> LEAVING is disallowed"`: {},
+		`level=error component=compactor msg="failed to set state to LEAVING" ring=compactor err="Changing instance state from JOINING -> LEAVING is disallowed"`: {},
+		`level=debug component=compactor msg="unregistering instance from ring" ring=compactor`:                                                                   {},
+		`level=info component=compactor msg="instance removed from the KV store" ring=compactor`:                                                                  {},
+		`level=info component=compactor msg="observing tokens before going ACTIVE" ring=compactor`:                                                                {},
+		`level=info component=compactor msg="lifecycler entering final sleep before shutdown" final_sleep=0s`:                                                     {},
+	}
+
 	out := make([]string, 0, len(input))
 	durationRe := regexp.MustCompile(`\s?duration=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]
 		if strings.Contains(log, "block.MetaFetcher") || strings.Contains(log, "block.BaseFetcher") {
+			continue
+		}
+
+		if _, exists := ignoredLogStringsMap[log]; exists {
 			continue
 		}
 

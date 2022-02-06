@@ -27,29 +27,43 @@ func (e *genericValidationError) Error() string {
 	return fmt.Sprintf(e.message, e.cause, formatLabelSet(e.series))
 }
 
-func newLabelNameTooLongError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
-	return &genericValidationError{
-		message: "label name too long: %.200q metric %.200q",
-		cause:   labelName,
-		series:  series,
+// labelNameTooLongError is a customized ValidationError, in that the cause and the series are
+// formatted in different order in Error.
+type labelNameTooLongError struct {
+	labelName string
+	series    []cortexpb.LabelAdapter
+	limit     int
+}
+
+func (e *labelNameTooLongError) Error() string {
+	return fmt.Sprintf("label name too long for metric (actual: %d, limit: %d) metric: %.200q label name: %.200q", len(e.labelName), e.limit, formatLabelSet(e.series), e.labelName)
+}
+
+func newLabelNameTooLongError(series []cortexpb.LabelAdapter, labelName string, limit int) ValidationError {
+	return &labelNameTooLongError{
+		labelName: labelName,
+		series:    series,
+		limit:     limit,
 	}
 }
 
 // labelValueTooLongError is a customized ValidationError, in that the cause and the series are
-// are formatted in different order in Error.
+// formatted in different order in Error.
 type labelValueTooLongError struct {
 	labelValue string
 	series     []cortexpb.LabelAdapter
+	limit      int
 }
 
 func (e *labelValueTooLongError) Error() string {
-	return fmt.Sprintf("label value too long for metric: %.200q label value: %.200q", formatLabelSet(e.series), e.labelValue)
+	return fmt.Sprintf("label value too long for metric (actual: %d, limit: %d) metric: %.200q label value: %.200q", len(e.labelValue), e.limit, formatLabelSet(e.series), e.labelValue)
 }
 
-func newLabelValueTooLongError(series []cortexpb.LabelAdapter, labelValue string) ValidationError {
+func newLabelValueTooLongError(series []cortexpb.LabelAdapter, labelValue string, limit int) ValidationError {
 	return &labelValueTooLongError{
 		labelValue: labelValue,
 		series:     series,
+		limit:      limit,
 	}
 }
 

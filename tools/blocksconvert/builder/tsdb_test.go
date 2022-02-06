@@ -14,7 +14,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
@@ -130,7 +130,7 @@ func TestTsdbBuilder(t *testing.T) {
 		allPostings, err := idx.Postings(index.AllPostingsKey())
 		require.NoError(t, err)
 
-		lastChunkRef := uint64(0)
+		lastChunkRef := chunks.ChunkRef(0)
 		// Postings must be sorted wrt. series. Here we check if chunks are sorted too.
 		for allPostings.Next() {
 			seriesID := allPostings.At()

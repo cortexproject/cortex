@@ -10,7 +10,8 @@ import (
 	"unsafe"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/grafana/dskit/flagext"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.
@@ -92,6 +93,10 @@ func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) 
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
 		defer cancel()
+	}
+
+	if len(keys) != len(values) {
+		return fmt.Errorf("MSet the length of keys and values not equal, len(keys)=%d, len(values)=%d", len(keys), len(values))
 	}
 
 	pipe := c.rdb.TxPipeline()

@@ -2,11 +2,34 @@
 
 ## master / unreleased
 
+* [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
+* [CHANGE] query-frontend: Do not print anything in the logs of `query-frontend` if a in-progress query has been canceled (context canceled). #4562
+* [CHANGE] Compactor block deletion mark migration, needed when upgrading from v1.7, is now disabled by default. #4597
+* [CHANGE] The `status_code` label on gRPC client metrics has changed from '200' and '500' to '2xx', '5xx', '4xx', 'cancel' or 'error'. 4601
+* [CHANGE] Memberlist: changed probe interval from `1s` to `5s` and probe timeout from `500ms` to `2s`. #4601
+* [CHANGE] The language regarding Alertmanager Discovery URLs for HA has been updated for clarity in the config reference and the respective error message for misconfiguration. #4450
+* [FEATURE] Add shuffle sharding grouper and planner within compactor to allow further work towards parallelizing compaction #4624
+* [ENHANCEMENT] Update Go version to 1.17.5. #4602 #4604
+* [ENHANCEMENT] Keep track of discarded samples due to relabel configuration in `cortex_discarded_samples_total`. #4503
+* [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
+* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
+* [ENHANCEMENT] Added new ring related config `-ingester.readiness-check-ring-health` when enabled the readiness probe will succeed only after all instances are ACTIVE and healthy in the ring, this is enabled by default. #4539
+* [ENHANCEMENT] Added new ring related config `-distributor.excluded-zones` when set this will exclude the comma-separated zones from the ring, default is "". #4539
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.14`. #4514
 * [ENHANCEMENT] Updated Prometheus to latest. Includes changes from prometheus#9239, adding 15 new functions. Multiple TSDB bugfixes prometheus#9438 & prometheus#9381. #4524
-* [CHANGE] The language regarding Alertmanager Discovery URLs for HA has been updated for clarity in the config reference and the respective error message for misconfiguration. #4450
+* [ENHANCEMENT] Query Frontend: Add setting `-frontend.forward-headers-list` in frontend  to configure the set of headers from the requests to be forwarded to downstream requests. #4486
+* [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
+* [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #4601
+* [ENHANCEMENT] Add length and limit to labelNameTooLongError and labelValueTooLongError #4595
+* [BUGFIX] AlertManager: remove stale template files. #4495
+* [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4582
+* [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
+* [BUGFIX] Set appropriate `Content-Type` header for /services endpoint, which previously hard-coded `text/plain`. #4596
+* [BUGFIX] Querier: Disable query scheduler SRV DNS lookup, which removes noisy log messages about "failed DNS SRV record lookup". #4601
+* [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
+* [BUGIX] Query Frontend: If 'LogQueriesLongerThan' is set to < 0, log all queries as described in the docs. #4633
 
-## 1.11.0-rc.0 in progress
+## 1.11.0 2021-11-25
 
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276
   - `-memberlist.stream-timeout`
@@ -45,11 +68,11 @@
 * [ENHANCEMENT] Memberlist: expose configuration of memberlist packet compression via `-memberlist.compression=enabled`. #4346
 * [ENHANCEMENT] Update Go version to 1.16.6. #4362
 * [ENHANCEMENT] Updated Prometheus to include changes from prometheus/prometheus#9083. Now whenever `/labels` API calls include matchers, blocks store is queried for `LabelNames` with matchers instead of `Series` calls which was inefficient. #4380
+* [ENHANCEMENT] Querier: performance improvements in socket and memory handling. #4429 #4377
 * [ENHANCEMENT] Exemplars are now emitted for all gRPC calls and many operations tracked by histograms. #4462
 * [ENHANCEMENT] New options `-server.http-listen-network` and `-server.grpc-listen-network` allow binding as 'tcp4' or 'tcp6'. #4462
 * [ENHANCEMENT] Rulers: Using shuffle sharding subring on GetRules API. #4466
 * [ENHANCEMENT] Support memcached auto-discovery via `auto-discovery` flag, introduced by thanos in https://github.com/thanos-io/thanos/pull/4487. Both AWS and Google Cloud memcached service support auto-discovery, which returns a list of nodes of the memcached cluster. #4412
-* [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502
 * [BUGFIX] Fixes a panic in the query-tee when comparing result. #4465
 * [BUGFIX] Frontend: Fixes @ modifier functions (start/end) when splitting queries by time. #4464
 * [BUGFIX] Compactor: compactor will no longer try to compact blocks that are already marked for deletion. Previously compactor would consider blocks marked for deletion within `-compactor.deletion-delay / 2` period as eligible for compaction. #4328
@@ -64,8 +87,7 @@
 * [BUGFIX] Querier: fixed panic when querying exemplars and using `-distributor.shard-by-all-labels=false`. #4473
 * [BUGFIX] Querier: honor querier minT,maxT if `nil` SelectHints are passed to Select(). #4413
 * [BUGFIX] Compactor: fixed panic while collecting Prometheus metrics. #4483
-* [BUGFIX] AlertManager: remove stale template files. #4495
-
+* [BUGFIX] Update go-kit package to fix spurious log messages #4544
 
 ## 1.10.0 / 2021-08-03
 

@@ -6,10 +6,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/kv"
+	"github.com/go-kit/log"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -71,8 +72,8 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the ruler
 // ring config.
-func (cfg *RingConfig) ToLifecyclerConfig() (ring.BasicLifecyclerConfig, error) {
-	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames)
+func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger)
 	if err != nil {
 		return ring.BasicLifecyclerConfig{}, err
 	}

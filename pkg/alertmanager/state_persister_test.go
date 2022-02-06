@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/services"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 type fakePersistableState struct {

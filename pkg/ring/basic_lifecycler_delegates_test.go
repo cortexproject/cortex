@@ -2,18 +2,17 @@ package ring
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -41,7 +40,7 @@ func TestLeaveOnStoppingDelegate(t *testing.T) {
 
 func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *testing.T) {
 	// Create a temporary file and immediately delete it.
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(tokensFile.Name()))
 
@@ -79,7 +78,7 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 }
 
 func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testing.T) {
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	defer os.Remove(tokensFile.Name()) //nolint:errcheck
 
@@ -146,7 +145,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+			tokensFile, err := os.CreateTemp("", "tokens-*")
 			require.NoError(t, err)
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
 
@@ -191,7 +190,7 @@ func TestDelegatesChain(t *testing.T) {
 	onStoppingCalled := false
 
 	// Create a temporary file and immediately delete it.
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(tokensFile.Name()))
 

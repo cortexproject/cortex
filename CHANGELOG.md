@@ -27,6 +27,7 @@
 * [BUGFIX] Querier: Disable query scheduler SRV DNS lookup, which removes noisy log messages about "failed DNS SRV record lookup". #4601
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
 * [BUGIX] Query Frontend: If 'LogQueriesLongerThan' is set to < 0, log all queries as described in the docs. #4633
+* [ENHACEMENT] Alertmanager: If `fallback_config_file` is set, alertmanager will now attempt to use the fallback config for the tenant rather than returning an error message without trying. #4646
 
 ## 1.11.0 2021-11-25
 

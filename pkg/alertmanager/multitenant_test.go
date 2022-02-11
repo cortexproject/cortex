@@ -40,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -983,6 +984,64 @@ receivers:
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestMultitenantAlertmanager_ServeHTTPWithFallbackConfigOnLocalStore(t *testing.T) {
+	ctx := context.Background()
+	amConfig := mockAlertmanagerConfig(t)
+
+	// Run this test using a real storage client.
+	store, _ := prepareLocalStore(t)
+
+	externalURL := flagext.URLValue{}
+	err := externalURL.Set("http://localhost:8080/alertmanager")
+	require.NoError(t, err)
+	amConfig.ExternalURL = externalURL
+
+	fallbackCfg := `
+global:
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'youraddress@example.org'
+route:
+  receiver: example-email
+receivers:
+  - name: example-email
+    email_configs:
+    - to: 'youraddress@example.org'
+`
+
+	// Create the Multitenant Alertmanager.
+	am, err := createMultitenantAlertmanager(amConfig, []byte(fallbackCfg), nil, store, nil, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
+
+	// Request when no user configuration is present.
+	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)
+	w := httptest.NewRecorder()
+
+	am.ServeHTTP(w, req.WithContext(user.InjectOrgID(req.Context(), "user1")))
+
+	resp := w.Result()
+
+	// It succeeds and the Alertmanager is started.
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Len(t, am.alertmanagers, 1)
+	_, exists := am.alertmanagers["user1"]
+	require.True(t, exists)
+
+	// Even after a poll...
+	err = am.loadAndSyncConfigs(ctx, reasonPeriodic)
+	require.NoError(t, err)
+
+	//  It does not remove the Alertmanager.
+	require.Len(t, am.alertmanagers, 1)
+	_, exists = am.alertmanagers["user1"]
+	require.True(t, exists)
+
+	// Removing alertmanager configurations are not yet supported
+	// Due to this, we do not need to verify the case where a user who's using the fallback configuration has their config deleted.
+}
+
 func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 	tc := []struct {
 		name          string
@@ -1898,6 +1957,23 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 // prepareInMemoryAlertStore builds and returns an in-memory alert store.
 func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
+}
+
+// prepareLocalStore builds and returns a local store
+func prepareLocalStore(t *testing.T) (*local.Store, string) {
+	var err error
+
+	// Create a temporarily directory for the storage.
+	storeDir, err := ioutil.TempDir(os.TempDir(), "local")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, os.RemoveAll(storeDir))
+	})
+
+	store, err := local.NewStore(local.StoreConfig{Path: storeDir})
+	require.NoError(t, err)
+
+	return store, storeDir
 }
 
 func TestSafeTemplateFilepath(t *testing.T) {

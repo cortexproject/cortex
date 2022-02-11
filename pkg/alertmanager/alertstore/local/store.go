@@ -93,7 +93,33 @@ func (f *Store) GetAlertConfig(_ context.Context, user string) (alertspb.AlertCo
 
 // SetAlertConfig implements alertstore.AlertStore.
 func (f *Store) SetAlertConfig(_ context.Context, cfg alertspb.AlertConfigDesc) error {
-	return errReadOnly
+	if cfg.RawConfig != "" {
+		return errReadOnly
+	}
+
+	_, err := cfg.Marshal()
+	if err != nil {
+		return err
+	}
+
+	var pathBuilder strings.Builder
+	pathBuilder.WriteString(f.cfg.Path)
+	pathBuilder.WriteString("/")
+	pathBuilder.WriteString(cfg.User)
+
+	dir := pathBuilder.String()
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		return errors.Wrapf(err, "unable to create Alertmanager configuration directory for user %s: %s", cfg.User, err)
+	}
+
+	// No matter if the file exists or not, just overwrite it
+	pathBuilder.WriteString(".yaml")
+	if err := ioutil.WriteFile(pathBuilder.String(), []byte(cfg.RawConfig), 0755); err != nil {
+		return errors.Wrapf(err, "unable to create Alertmanager configuration file for user %s: %s", cfg.User, err)
+	}
+
+	return nil
 }
 
 // DeleteAlertConfig implements alertstore.AlertStore.
@@ -134,10 +160,13 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 			return nil
 		}
 
-		// Ensure the file is a valid Alertmanager Config.
-		_, err = config.LoadFile(path)
-		if err != nil {
-			return errors.Wrapf(err, "unable to load alertmanager config %s", path)
+		// A config file can be empty and valid (ie. fallback configuration)
+		if info.Size() != 0 {
+			// Ensure the file is a valid Alertmanager Config.
+			_, err = config.LoadFile(path)
+			if err != nil {
+				return errors.Wrapf(err, "unable to load alertmanager config %s", path)
+			}
 		}
 
 		// Load the file to be returned by the store.

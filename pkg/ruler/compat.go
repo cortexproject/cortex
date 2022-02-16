@@ -253,6 +253,10 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	// Errors from PromQL are always "user" errors.
 	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
+	if cfg.QueryFuncFactory == nil {
+		cfg.QueryFuncFactory = DefaultQueryFuncFactory()
+	}
+
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		var queryTime prometheus.Counter = nil
 		if rulerQuerySeconds != nil {
@@ -262,7 +266,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
+			QueryFunc:       cfg.QueryFuncFactory(engine, q, overrides, userID, totalQueries, failedQueries, queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
@@ -273,6 +277,34 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			ResendDelay:     cfg.ResendDelay,
 		})
 	}
+}
+
+// QueryFuncFactory is a function that creates QueryFunc to be used byr rulerManager
+type QueryFuncFactory func(engine *promql.Engine,
+	q storage.Queryable,
+	overrides RulesLimits,
+	userID string,
+	totalQueries prometheus.Counter,
+	failedQueries prometheus.Counter,
+	queryTime prometheus.Counter,
+	logger log.Logger) rules.QueryFunc
+
+func DefaultQueryFuncFactory() QueryFuncFactory {
+	return func(engine *promql.Engine,
+		q storage.Queryable,
+		overrides RulesLimits,
+		userID string,
+		totalQueries prometheus.Counter,
+		failedQueries prometheus.Counter,
+		queryTime prometheus.Counter,
+		logger log.Logger) rules.QueryFunc {
+		return RecordAndReportRuleQueryMetrics(
+			MetricsQueryFunc(
+				EngineQueryFunc(engine, q, overrides, userID),
+				totalQueries, failedQueries),
+			queryTime, logger)
+	}
+
 }
 
 type QueryableError struct {

@@ -122,6 +122,8 @@ type Config struct {
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
+
+	QueryFuncFactory QueryFuncFactory `yaml:"-"`
 }
 
 // Validate config and returns error on failure

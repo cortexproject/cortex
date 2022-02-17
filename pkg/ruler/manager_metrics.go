@@ -74,7 +74,7 @@ func NewManagerMetrics(disableRuleGroupLabel bool) *ManagerMetrics {
 		GroupInterval: prometheus.NewDesc(
 			"cortex_prometheus_rule_group_interval_seconds",
 			"The interval of a rule group.",
-			commonLabels,``
+			commonLabels,
 			nil,
 		),
 		GroupLastEvalTime: prometheus.NewDesc(

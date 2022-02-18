@@ -68,14 +68,14 @@ func TestRingReplicationStrategy(t *testing.T) {
 			replicationFactor:  3,
 			liveIngesters:      3,
 			deadIngesters:      1,
-			expectedMaxFailure: 0,
+			expectedMaxFailure: 1,
 		},
 
 		{
-			replicationFactor: 3,
-			liveIngesters:     2,
-			deadIngesters:     2,
-			expectedError:     "at least 3 live replicas required, could only find 2 - unhealthy instances: dead1,dead2",
+			replicationFactor:  3,
+			liveIngesters:      2,
+			deadIngesters:      2,
+			expectedMaxFailure: 0,
 		},
 	} {
 		ingesters := []InstanceDesc{}

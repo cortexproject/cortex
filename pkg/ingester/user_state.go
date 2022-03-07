@@ -58,6 +58,7 @@ type userState struct {
 	discardedSamples      *prometheus.CounterVec
 	createdChunks         prometheus.Counter
 	activeSeriesGauge     prometheus.Gauge
+	maxActiveSeriesGauge  prometheus.Gauge
 }
 
 // DiscardedSamples metric labels
@@ -155,8 +156,9 @@ func (us *userStates) getOrCreate(userID string) *userState {
 			discardedSamples:      validation.DiscardedSamples.MustCurryWith(prometheus.Labels{"user": userID}),
 			createdChunks:         us.metrics.createdChunks,
 
-			activeSeries:      NewActiveSeries(),
-			activeSeriesGauge: us.metrics.activeSeriesPerUser.WithLabelValues(userID),
+			activeSeries:         NewActiveSeries(),
+			activeSeriesGauge:    us.metrics.activeSeriesPerUser.WithLabelValues(userID),
+			maxActiveSeriesGauge: us.metrics.maxActiveSeriesPerUser.WithLabelValues(userID),
 		}
 		state.mapper = newFPMapper(state.fpToSeries, logger)
 		stored, ok := us.states.LoadOrStore(userID, state)

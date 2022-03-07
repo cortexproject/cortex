@@ -710,6 +710,7 @@ func (i *Ingester) v2UpdateActiveSeries() {
 
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
+		i.metrics.maxActiveSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.limiter.maxSeriesPerUser(userID)))
 	}
 }
 

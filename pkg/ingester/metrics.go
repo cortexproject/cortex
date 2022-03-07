@@ -57,7 +57,8 @@ type ingesterMetrics struct {
 	droppedChunks                 prometheus.Counter
 	oldestUnflushedChunkTimestamp prometheus.Gauge
 
-	activeSeriesPerUser *prometheus.GaugeVec
+	activeSeriesPerUser    *prometheus.GaugeVec
+	maxActiveSeriesPerUser *prometheus.GaugeVec
 
 	// Global limit metrics
 	maxUsersGauge           prometheus.GaugeFunc
@@ -292,10 +293,16 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
+
+		maxActiveSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_max_active_series",
+			Help: "Maximum number of active series per user.",
+		}, []string{"user"}),
 	}
 
 	if activeSeriesEnabled && r != nil {
 		r.MustRegister(m.activeSeriesPerUser)
+		r.MustRegister(m.maxActiveSeriesPerUser)
 	}
 
 	if createMetricsConflictingWithTSDB {

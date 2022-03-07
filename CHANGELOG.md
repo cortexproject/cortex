@@ -3,6 +3,9 @@
 ## master / unreleased
 
 
+## 1.11.1 2022-03-08
+* [ENHANCEMENT] Build with Go 1.16.15 to address CVE-2022-24921 "stack exhaustion via a deeply nested expression" #4663
+
 ## 1.11.0 2021-11-25
 * [BUGFIX] Update go-kit package to fix spurious log messages #4544
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276

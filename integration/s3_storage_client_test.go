@@ -68,7 +68,7 @@ func TestS3Client(t *testing.T) {
 				BucketNames:      bucketName,
 				S3ForcePathStyle: true,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			},
 		},
 		{
@@ -91,7 +91,7 @@ func TestS3Client(t *testing.T) {
 				S3ForcePathStyle: true,
 				Insecure:         true,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 				SSEConfig: cortex_s3.SSEConfig{
 					Type: "SSE-S3",
 				},

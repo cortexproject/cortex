@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const simpleAlertmanagerConfig = `route:

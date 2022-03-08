@@ -422,7 +422,12 @@ func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAd
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	return rlrs.Instances[0].Addr == instanceAddr, nil
+	for _, instance := range rlrs.Instances {
+		if instance.Addr == instanceAddr {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -792,7 +797,26 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 		return nil
 	})
 
-	return merged, err
+	deDuped := make(map[string]*GroupStateDesc)
+
+	for _, rule := range merged {
+		key := rule.Group.Namespace + rule.Group.Name
+		if oldGroup, ok := deDuped[key]; ok {
+			if oldGroup.EvaluationTimestamp.After(rule.EvaluationTimestamp) {
+				deDuped[key] = rule
+			}
+		} else {
+			deDuped[key] = rule
+		}
+	}
+
+	result := make([]*GroupStateDesc, 0, len(deDuped))
+
+	for _, r := range deDuped {
+		result = append(result, r)
+	}
+
+	return result, err
 }
 
 // Rules implements the rules service

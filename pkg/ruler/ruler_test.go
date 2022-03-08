@@ -340,6 +340,7 @@ func TestGetRules(t *testing.T) {
 		sharding         bool
 		shardingStrategy string
 		shuffleShardSize int
+		replicationFactor int
 	}
 
 	expectedRules := expectedRulesMap{
@@ -375,15 +376,29 @@ func TestGetRules(t *testing.T) {
 	testCases := map[string]testCase{
 		"No Sharding": {
 			sharding: false,
+			replicationFactor: 1,
 		},
 		"Default Sharding": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
+			replicationFactor: 1,
+		},
+		"Default Sharding and replicationFactor = 3": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			replicationFactor: 3,
 		},
 		"Shuffle Sharding and ShardSize = 2": {
 			sharding:         true,
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
+			replicationFactor: 1,
+		},
+		"Shuffle Sharding and ShardSize = 3 and replicationFactor = 3": {
+			sharding:         true,
+			shuffleShardSize: 3,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			replicationFactor: 3,
 		},
 	}
 
@@ -409,6 +424,7 @@ func TestGetRules(t *testing.T) {
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
+					ReplicationFactor: tc.replicationFactor,
 				}
 
 				r, cleanUp := buildRuler(t, cfg, nil, rulerAddrMap)
@@ -489,8 +505,10 @@ func TestGetRules(t *testing.T) {
 				totalConfiguredRules += len(allRulesByRuler[rID])
 			})
 
-			if tc.sharding {
+			if tc.sharding && tc.replicationFactor <= 1 {
 				require.Equal(t, totalConfiguredRules, totalLoadedRules)
+			} else if tc.replicationFactor > 1 {
+				require.Equal(t, totalConfiguredRules*tc.replicationFactor, totalLoadedRules)
 			} else {
 				// Not sharding means that all rules will be loaded on all rulers
 				numberOfRulers := len(rulerAddrMap)
@@ -907,6 +925,7 @@ func TestSharding(t *testing.T) {
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
+						ReplicationFactor: 1,
 						HeartbeatTimeout: 1 * time.Minute,
 					},
 					FlushCheckPeriod: 0,

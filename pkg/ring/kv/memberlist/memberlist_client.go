@@ -909,6 +909,18 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		return
 	}
 
+	if len(pairData) > 65535 {
+		// Unfortunately, memberlist will happily let us send bigger messages via gossip,
+		// but then it will fail to parse them properly, because its own size field is 2-bytes only.
+		// (github.com/hashicorp/memberlist@v0.1.4/util.go:167, makeCompoundMessage function)
+		//
+		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
+		// when broadcasting result of push/pull update.
+		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "key", key, "version", version, "len", len(pairData))
+		m.numberOfBroadcastMessagesDropped.Inc()
+		return
+	}
+
 	m.addSentMessage(message{
 		Time:    time.Now(),
 		Size:    len(pairData),

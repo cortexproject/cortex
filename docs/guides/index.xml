@@ -342,32 +342,7 @@ __replica__: replica2
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
-&lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p>
-&lt;h2 id="remote-read">Remote Read&lt;/h2>
-&lt;p>If you plan to use remote_read, you can&amp;rsquo;t have the &lt;code>__replica__&lt;/code> label in the
-external section. Instead, you will need to add it only on the remote_write
-section of your prometheus.yml.&lt;/p>
-&lt;pre>&lt;code>global:
-external_labels:
-cluster: prom-team1
-remote_write:
-- url: https://cortex/api/v1/push
-write_relabel_configs:
-- target_label: __replica__
-replacement: 1
-&lt;/code>&lt;/pre>&lt;p>and&lt;/p>
-&lt;pre>&lt;code>global:
-external_labels:
-cluster: prom-team1
-remote_write:
-- url: https://cortex/api/v1/push
-write_relabel_configs:
-- target_label: __replica__
-replacement: replica2
-&lt;/code>&lt;/pre>&lt;p>When Prometheus is executing remote read queries, it will add the external
-labels to the query. In this case, if it asks for the &lt;code>__replica__&lt;/code> label,
-Cortex will not return any data.&lt;/p>
-&lt;p>Therefore, the &lt;code>__replica__&lt;/code> label should only be added for remote write.&lt;/p></description></item><item><title>Docs: Deleting Series</title><link>/docs/guides/deleting-series/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/deleting-series/</guid><description>
+&lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p></description></item><item><title>Docs: Deleting Series</title><link>/docs/guides/deleting-series/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/deleting-series/</guid><description>
 &lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage (deprecated).&lt;/em>&lt;/p>
 &lt;p>Cortex supports deletion of series using &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a>.
 It however does not support &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones">Prometheuses Clean Tombstones&lt;/a> API because Cortex uses a different mechanism to manage deletions.&lt;/p>

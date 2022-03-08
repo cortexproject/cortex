@@ -60,7 +60,6 @@ In this guide we&rsquo;re going to:
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsingesters-migration href=/docs/proposals/ingesters-migration/>Migrating ingesters from chunks to blocks and back.</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsparallel-compaction href=/docs/proposals/parallel-compaction/>Parallel Compaction by Time Interval</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalstenant-retention href=/docs/proposals/tenant-retention/>Retention of Tenant Data from Blocks Storage</a>
-<a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsruler-tenant-federation href=/docs/proposals/ruler-tenant-federation/>Ruler Tenant Federation</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsscalable-alertmanager href=/docs/proposals/scalable-alertmanager/>Scalable Alertmanager</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsscalable-query-frontend href=/docs/proposals/scalable-query-frontend/>Scalable Query Frontend</a>
 <a class="td-sidebar-link td-sidebar-link__page" id=m-docsproposalsshuffle-sharding-and-zone-awareness href=/docs/proposals/shuffle-sharding-and-zone-awareness/>Shuffle sharding and zone awareness</a>
@@ -143,7 +142,7 @@ storage:
     addresses: LOCALHOST # configure cassandra addresses here.
     keyspace: KEYSPACE   # configure desired keyspace here.
 </code></pre><p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is <code>v1.11.0</code>).</p><p>Run Cortex using the latest stable version:</p><pre><code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.11.0 -config.file=/etc/single-process-config.yaml
+to find the latest stable version tag and use it in the command below (currently it is <code>v1.11.1</code>).</p><p>Run Cortex using the latest stable version:</p><pre><code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009  quay.io/cortexproject/cortex:v1.11.1 -config.file=/etc/single-process-config.yaml
 </code></pre><p>In case you prefer to run the master version, please follow this <a href=/docs/chunks-storage/getting-started-chunks-storage/>documentation</a> on how to build Cortex from source.</p><h3 id=configure-the-index-and-chunk-table-options>Configure the index and chunk table options</h3><p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
 If you want to configure the table options, use the <code>storage.cassandra.table_options</code> property or <code>cassandra.table-options</code> flag.
 This configuration property is just <code>string</code> type and this value used as plain text on <code>WITH</code> option of table creation query.

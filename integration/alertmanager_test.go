@@ -195,7 +195,7 @@ func TestAlertmanagerClustering(t *testing.T) {
 				Insecure:         true,
 				BucketNames:      alertsBucketName,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			})
 			require.NoError(t, err)
 
@@ -261,7 +261,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				Insecure:         true,
 				BucketNames:      alertsBucketName,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			})
 			require.NoError(t, err)
 
@@ -624,7 +624,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 				Insecure:         true,
 				BucketNames:      alertsBucketName,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			})
 			require.NoError(t, err)
 

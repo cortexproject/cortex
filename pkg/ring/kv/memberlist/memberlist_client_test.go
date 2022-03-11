@@ -11,6 +11,7 @@ import (
 	"net"
 	"reflect"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -1085,6 +1086,53 @@ func TestMessageBuffer(t *testing.T) {
 	buf, size = addMessageToBuffer(buf, size, 100, message{Size: 25})
 	assert.Len(t, buf, 2)
 	assert.Equal(t, size, 75)
+}
+
+func TestBroadcastOfLargeMessages(t *testing.T) {
+	now := time.Now()
+	codec := dataCodec{}
+	cfg := KVConfig{}
+
+	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, codec)
+
+	// Do not enable the broadcast of large messages
+	cfg.EnableBroadcastOfLargeMessages = false
+
+	kv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), kv))
+	defer services.StopAndAwaitTerminated(context.Background(), kv) //nolint:errcheck
+
+	client, err := NewClient(kv, codec)
+	require.NoError(t, err)
+
+	require.NoError(t, client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+		d := getOrCreateData(in)
+		for i := 0; i < 5000; i++ { // generate a large message (>64KB)
+			d.Members["ingester"+strconv.Itoa(i)] = member{Timestamp: now.Unix(), State: JOINING}
+		}
+		return d, true, nil
+	}))
+
+	// Check that there is no broadcasted messages
+	assert.Equal(t, 0, len(kv.GetBroadcasts(0, math.MaxInt32)))
+
+	// Enable the broadcast of large messages
+	kv.cfg.EnableBroadcastOfLargeMessages = true
+
+	require.NoError(t, client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+		d := getOrCreateData(in)
+		for i := 0; i < 5000; i++ { // generate a large message (>64KB)
+			d.Members["new-ingester"+strconv.Itoa(i)] = member{Timestamp: now.Unix(), State: JOINING}
+		}
+		return d, true, nil
+	}))
+
+	// Check that there is broadcasted messages and that unmarshal works
+	bs := kv.GetBroadcasts(0, math.MaxInt32)
+	assert.Equal(t, 1, len(bs))
+	decodeDataFromMarshalledKeyValuePair(t, bs[0], key, codec)
 }
 
 func TestNotifyMsgResendsOnlyChanges(t *testing.T) {

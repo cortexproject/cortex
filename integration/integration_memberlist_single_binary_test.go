@@ -117,16 +117,17 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string)
 
 func newSingleBinary(name string, servername string, join string, testFlags map[string]string) *e2ecortex.CortexService {
 	flags := map[string]string{
-		"-ingester.final-sleep":              "0s",
-		"-ingester.join-after":               "0s", // join quickly
-		"-ingester.min-ready-duration":       "0s",
-		"-ingester.concurrent-flushes":       "10",
-		"-ingester.max-transfer-retries":     "0", // disable
-		"-ingester.num-tokens":               "512",
-		"-ingester.observe-period":           "5s", // to avoid conflicts in tokens
-		"-ring.store":                        "memberlist",
-		"-memberlist.bind-port":              "8000",
-		"-memberlist.left-ingesters-timeout": "600s", // effectively disable
+		"-ingester.final-sleep":                          "0s",
+		"-ingester.join-after":                           "0s", // join quickly
+		"-ingester.min-ready-duration":                   "0s",
+		"-ingester.concurrent-flushes":                   "10",
+		"-ingester.max-transfer-retries":                 "0", // disable
+		"-ingester.num-tokens":                           "512",
+		"-ingester.observe-period":                       "5s", // to avoid conflicts in tokens
+		"-ring.store":                                    "memberlist",
+		"-memberlist.bind-port":                          "8000",
+		"-memberlist.left-ingesters-timeout":             "600s", // effectively disable
+		"-memberlist.enable-broadcast-of-large-messages": "true",
 	}
 
 	if join != "" {

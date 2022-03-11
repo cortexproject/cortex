@@ -270,6 +270,8 @@ Flags for configuring KV store based on memberlist library:
 - `memberlist.dead-node-reclaim-time`
    How soon can dead's node name be reused by a new node (using different IP). Disabled by default, name reclaim is not allowed until `gossip-to-dead-nodes-time` expires. This can be useful to set to low numbers when reusing node names, eg. in stateful sets.
    If memberlist library detects that new node is trying to reuse the name of previous node, it will log message like this: `Conflicting address for ingester-6. Mine: 10.44.12.251:7946 Theirs: 10.44.12.54:7946 Old state: 2`. Node states are: "alive" = 0, "suspect" = 1 (doesn't respond, will be marked as dead if it doesn't respond), "dead" = 2.
+- `memberlist.enable-broadcast-of-large-messages`
+   Enables the broadcast of messages with more than 64KB. Defaults to false. It can be safely enabled after migration to 1.12.0.
 
 #### Multi KV
 

@@ -606,10 +606,12 @@ func (m *Memberlist) gossip() {
 				m.logger.Printf("[ERR] memberlist: Failed to send gossip to %s: %s", addr, err)
 			}
 		} else {
-			// Otherwise create and send a compound message
-			compound := makeCompoundMessage(msgs)
-			if err := m.rawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
-				m.logger.Printf("[ERR] memberlist: Failed to send gossip to %s: %s", addr, err)
+			// Otherwise create and send one or more compound messages
+			compounds := makeCompoundMessages(msgs)
+			for _, compound := range compounds {
+				if err := m.rawSendMsgPacket(node.FullAddress(), &node, compound.Bytes()); err != nil {
+					m.logger.Printf("[ERR] memberlist: Failed to send gossip to %s: %s", addr, err)
+				}
 			}
 		}
 	}

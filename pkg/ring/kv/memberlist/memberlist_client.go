@@ -164,6 +164,9 @@ type KVConfig struct {
 
 	// Codecs to register. Codecs need to be registered before joining other members.
 	Codecs []codec.Codec `yaml:"-"`
+
+	// Allow or not the broadcast of messages with more than 255 messages or bigger than 64KB.
+	EnableBroadcastOfLargeMessages bool `yaml:"enable_broadcast_of_large_messages"`
 }
 
 // RegisterFlagsWithPrefix registers flags.
@@ -192,6 +195,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
 	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
+	f.BoolVar(&cfg.EnableBroadcastOfLargeMessages, prefix+"memberlist.enable-broadcast-of-large-messages", false, "Enable or not the broadcast of messages with more than 64KB.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 }
@@ -909,7 +913,7 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		return
 	}
 
-	if len(pairData) > 65535 {
+	if len(pairData) > 65535 && !m.cfg.EnableBroadcastOfLargeMessages {
 		// Unfortunately, memberlist will happily let us send bigger messages via gossip,
 		// but then it will fail to parse them properly, because its own size field is 2-bytes only.
 		// (github.com/hashicorp/memberlist@v0.1.4/util.go:167, makeCompoundMessage function)

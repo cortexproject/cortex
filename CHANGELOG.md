@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
+* [FEATURE] Memberlist: Add `-memberlist.enable-broadcast-of-large-messages` option to enable broadcast of messages with more than 64KB.
 
 ## 1.12.0 in progress
 
@@ -29,6 +30,7 @@
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
 * [BUGFIX] Set appropriate `Content-Type` header for /services endpoint, which previously hard-coded `text/plain`. #4596
 * [BUGFIX] Querier: Disable query scheduler SRV DNS lookup, which removes noisy log messages about "failed DNS SRV record lookup". #4601
+* [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
 * [BUGFIX] Query Frontend: If 'LogQueriesLongerThan' is set to < 0, log all queries as described in the docs. #4633
 * [BUGFIX] Distributor: update defaultReplicationStrategy to not fail with extend-write when a single instance is unhealthy. #4636
 

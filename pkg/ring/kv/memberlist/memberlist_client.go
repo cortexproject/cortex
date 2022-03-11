@@ -195,7 +195,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
 	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
 	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
-	f.BoolVar(&cfg.EnableBroadcastOfLargeMessages, prefix+"memberlist.enable-broadcast-of-large-messages", false, "Enable or not the broadcast of messages with more than 64KB.")
+	f.BoolVar(&cfg.EnableBroadcastOfLargeMessages, prefix+"memberlist.enable-broadcast-of-large-messages", false, "Enable the broadcast of messages with more than 64KB. This can be safely enabled after migration to 1.12.0.")
 
 	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 }

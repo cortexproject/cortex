@@ -3965,11 +3965,6 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.message-history-buffer-bytes
 [message_history_buffer_bytes: <int> | default = 0]
 
-# Enable the broadcast of messages with more than 64KB. This can be safely
-# enabled after migration to 1.12.0.
-# CLI flag: -memberlist.enable-broadcast-of-large-messages
-[enable_broadcast_of_large_messages: <boolean> | default = false]
-
 # IP address to listen on for gossip messages. Multiple addresses may be
 # specified. Defaults to 0.0.0.0
 # CLI flag: -memberlist.bind-addr
@@ -4013,6 +4008,11 @@ The `memberlist_config` configures the Gossip memberlist.
 # Skip validating server certificate.
 # CLI flag: -memberlist.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
+
+# Enable the broadcast of messages with more than 64KB. This can be safely
+# enabled after migration to 1.12.0.
+# CLI flag: -memberlist.enable-broadcast-of-large-messages
+[enable_broadcast_of_large_messages: <boolean> | default = false]
 ```
 
 ### `limits_config`

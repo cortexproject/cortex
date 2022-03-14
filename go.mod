@@ -98,3 +98,6 @@ replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19
 // Pin aws-sdk to version prior to go-kit update, to reduce the bulk of change.
 // Un-pin once Cortex 1.11 is released.
 replace github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.40.37
+
+// Replace memberlist with Grafana's fork which includes some fixes that haven't been merged upstream yet
+replace github.com/hashicorp/memberlist v0.2.4 => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b

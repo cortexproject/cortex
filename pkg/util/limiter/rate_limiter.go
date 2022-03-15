@@ -1,6 +1,8 @@
 package limiter
 
 import (
+	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -45,6 +47,46 @@ func NewRateLimiter(strategy RateLimiterStrategy, recheckPeriod time.Duration) *
 // AllowN reports whether n tokens may be consumed happen at time now.
 func (l *RateLimiter) AllowN(now time.Time, tenantID string, n int) bool {
 	return l.getTenantLimiter(now, tenantID).AllowN(now, n)
+}
+
+// RateLimitError contains detailed information about the rate limit error.
+type RateLimitError struct {
+	Retryable  bool
+	Limit      int
+	Burst      int
+	RetryAfter string
+}
+
+// Error implements error.
+func (e RateLimitError) Error() string {
+	if e.Retryable {
+		return fmt.Sprintf("ratelimit: could be retried at %s", e.RetryAfter)
+	}
+	return fmt.Sprintf("ratelimit: exceed the burst %d", e.Burst)
+}
+
+// DetailedAllowN returns detailed rate limit error.
+func (l *RateLimiter) DetailedAllowN(now time.Time, tenantID string, n int) *RateLimitError {
+	limiter := l.getTenantLimiter(now, tenantID)
+	reservation := limiter.ReserveN(now, n)
+	if !reservation.OK() {
+		return &RateLimitError{
+			Retryable: false,
+			Limit:     int(limiter.Limit()),
+			Burst:     limiter.Burst(),
+		}
+	}
+
+	delay := reservation.DelayFrom(now)
+	if delay > 0 {
+		reservation.CancelAt(now)
+		return &RateLimitError{
+			Retryable:  true,
+			Limit:      int(limiter.Limit()),
+			RetryAfter: strconv.Itoa(int(delay / time.Second)),
+		}
+	}
+	return nil
 }
 
 // Limit returns the currently configured maximum overall tokens rate.

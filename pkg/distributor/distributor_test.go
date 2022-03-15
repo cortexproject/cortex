@@ -190,7 +190,7 @@ func TestDistributor_Push(t *testing.T) {
 			happyIngesters: 3,
 			samples:        samplesIn{num: 25, startTimestampMs: 123456789000},
 			metadata:       5,
-			expectedError:  httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (20) exceeded while adding 25 samples and 5 metadata"),
+			expectedError:  rateLimitedErrFrom(http.StatusRequestEntityTooLarge, "ingestion rate limit burst (20) exceeded while adding 25 samples and 5 metadata, please break this request into multiple small requests"),
 			metricNames:    []string{lastSeenTimestamp},
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
@@ -398,6 +398,21 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		`), metrics...))
 }
 
+func rateLimitedErrFrom(code int, body string) error {
+	headers := []*httpgrpc.Header(nil)
+	if code == http.StatusTooManyRequests {
+		headers = []*httpgrpc.Header{{
+			Key:    "Retry-After",
+			Values: []string{"0"},
+		}}
+	}
+	return httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+		Code:    int32(code),
+		Headers: headers,
+		Body:    []byte(body),
+	})
+}
+
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	type testPush struct {
 		samples       int
@@ -421,10 +436,23 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			pushes: []testPush{
 				{samples: 4, expectedError: nil},
 				{metadata: 1, expectedError: nil},
-				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples and 0 metadata")},
+				{samples: 6, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples and 0 metadata, your may retry this request later with Retry-After(0s)")},
 				{samples: 4, metadata: 1, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples and 0 metadata")},
-				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 0 samples and 1 metadata")},
+				{samples: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples and 0 metadata, your may retry this request later with Retry-After(0s)")},
+				{metadata: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 0 samples and 1 metadata, your may retry this request later with Retry-After(0s)")},
+			},
+		},
+		"burst exceeded when pushing samples to distributor": {
+			distributors:          1,
+			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRate:         20,
+			ingestionBurstSize:    20,
+			pushes: []testPush{
+				{samples: 8, expectedError: nil},
+				{samples: 21, expectedError: rateLimitedErrFrom(http.StatusRequestEntityTooLarge, "ingestion rate limit burst (20) exceeded while adding 21 samples and 0 metadata, please break this request into multiple small requests")},
+				{metadata: 8, expectedError: nil},
+				{metadata: 21, expectedError: rateLimitedErrFrom(http.StatusRequestEntityTooLarge, "ingestion rate limit burst (20) exceeded while adding 0 samples and 21 metadata, please break this request into multiple small requests")},
+				{metadata: 4, expectedError: nil},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
@@ -435,24 +463,24 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			pushes: []testPush{
 				{samples: 2, expectedError: nil},
 				{samples: 1, expectedError: nil},
-				{samples: 2, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 2 samples and 1 metadata")},
+				{samples: 2, metadata: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 2 samples and 1 metadata, your may retry this request later with Retry-After(0s)")},
 				{samples: 2, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
-				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
+				{samples: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata, your may retry this request later with Retry-After(0s)")},
+				{metadata: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata, your may retry this request later with Retry-After(0s)")},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
 			distributors:          2,
 			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
-			ingestionRate:         10,
+			ingestionRate:         20,
 			ingestionBurstSize:    20,
 			pushes: []testPush{
 				{samples: 10, expectedError: nil},
 				{samples: 5, expectedError: nil},
-				{samples: 5, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 5 samples and 1 metadata")},
+				{samples: 5, metadata: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 5 samples and 1 metadata, your may retry this request later with Retry-After(0s)")},
 				{samples: 5, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
-				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
+				{samples: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples and 0 metadata, your may retry this request later with Retry-After(0s)")},
+				{metadata: 1, expectedError: rateLimitedErrFrom(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 0 samples and 1 metadata, your may retry this request later with Retry-After(0s)")},
 			},
 		},
 	}

@@ -736,7 +736,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	totalN := validatedSamples + validatedExemplars + len(validatedMetadata)
-	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
+	if rateLimitErr := d.ingestionRateLimiter.DetailedAllowN(now, userID, totalN); rateLimitErr != nil {
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
 
@@ -746,7 +746,22 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Return a 429 here to tell the client it is going too fast.
 		// Client may discard the data or slow down and re-send.
 		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
+		if rateLimitErr.Retryable {
+			return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+				Code: http.StatusTooManyRequests,
+				Headers: []*httpgrpc.Header{{
+					Key:    "Retry-After",
+					Values: []string{rateLimitErr.RetryAfter},
+				}},
+				Body: []byte(fmt.Sprintf("ingestion rate limit (%v) exceeded while adding %d samples and %d metadata, your may retry this request later with Retry-After(%ss)",
+					rateLimitErr.Limit, validatedSamples, len(validatedMetadata), rateLimitErr.RetryAfter)),
+			})
+		}
+		return nil, httpgrpc.ErrorFromHTTPResponse(&httpgrpc.HTTPResponse{
+			Code: http.StatusRequestEntityTooLarge,
+			Body: []byte(fmt.Sprintf("ingestion rate limit burst (%v) exceeded while adding %d samples and %d metadata, please break this request into multiple small requests",
+				rateLimitErr.Burst, validatedSamples, len(validatedMetadata))),
+		})
 	}
 
 	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.

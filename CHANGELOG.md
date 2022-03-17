@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
+* [ENHANCEMENT] Ring: Add `cortex_ring_availability_zone` metric to display which availability zone an instance is configured to run in. #4681
 
 ## 1.12.0 in pgoress
 

@@ -9,9 +9,16 @@ type BasicLifecyclerMetrics struct {
 	heartbeats  prometheus.Counter
 	tokensOwned prometheus.Gauge
 	tokensToOwn prometheus.Gauge
+	zoneInfo    prometheus.GaugeVec
 }
 
-func NewBasicLifecyclerMetrics(ringName string, reg prometheus.Registerer) *BasicLifecyclerMetrics {
+func NewBasicLifecyclerMetrics(ringName string, zone string, reg prometheus.Registerer) *BasicLifecyclerMetrics {
+	zoneInfo := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ring_availability_zone",
+		Help: "The availability zone of the instance",
+	}, []string{"az"})
+	zoneInfo.WithLabelValues(zone).Set(1)
+
 	return &BasicLifecyclerMetrics{
 		heartbeats: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name:        "ring_member_heartbeats_total",
@@ -28,5 +35,6 @@ func NewBasicLifecyclerMetrics(ringName string, reg prometheus.Registerer) *Basi
 			Help:        "The number of tokens to own in the ring.",
 			ConstLabels: prometheus.Labels{"name": ringName},
 		}),
+		zoneInfo: *zoneInfo,
 	}
 }

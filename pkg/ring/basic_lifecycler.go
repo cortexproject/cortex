@@ -92,7 +92,7 @@ func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, sto
 		logger:    logger,
 		store:     store,
 		delegate:  delegate,
-		metrics:   NewBasicLifecyclerMetrics(ringName, reg),
+		metrics:   NewBasicLifecyclerMetrics(ringName, cfg.Zone, reg),
 		actorChan: make(chan func()),
 	}
 

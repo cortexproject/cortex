@@ -22,7 +22,6 @@
 * [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #4601
 * [ENHANCEMENT] Add length and limit to labelNameTooLongError and labelValueTooLongError #4595
-* [ENHANCEMENT] Add validation in chunks Redis client's MSet method to avoid panic. #4522
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4583
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
@@ -31,7 +30,6 @@
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
 * [BUGFIX] Query Frontend: If 'LogQueriesLongerThan' is set to < 0, log all queries as described in the docs. #4633
 * [BUGFIX] Distributor: update defaultReplicationStrategy to not fail with extend-write when a single instance is unhealthy. #4636
-* [BUGFIX] Fix data race when stopping chunks memcached client. #4511
 
 ## 1.11.0 2021-11-25
 

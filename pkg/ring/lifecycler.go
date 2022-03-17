@@ -585,18 +585,34 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
+		// If the ingester failed to clean its ring entry up it can leave its state in LEAVING
 		// OR unregister_on_shutdown=false
 		// Move it into ACTIVE to ensure the ingester joins the ring.
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
 			instanceDesc.State = ACTIVE
 		}
 
+		tokens, _ := ringDesc.TokensFor(i.ID)
+		// If the ingester token count is different than the count stated in
+		// the config file, the ingester has abruptly stopped and the config
+		// has changed before the ingester came back online. In order to
+		// restart with a correctly configured token count, we set it back to
+		// PENDING. Doing so will start the lifecycle from the beginning.
+		if len(tokens) != i.cfg.NumTokens {
+			level.Warn(i.logger).Log(
+				"msg", "number of tokens in ring is not as expected",
+				"state", i.GetState(),
+				"tokens", len(tokens),
+				"expected", i.cfg.NumTokens,
+				"ring", i.RingName,
+			)
+			instanceDesc.State = PENDING
+			return ringDesc, true, nil
+		}
+
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
 		i.setState(instanceDesc.State)
-		tokens, _ := ringDesc.TokensFor(i.ID)
 		i.setTokens(tokens)
-
 		level.Info(i.logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
 
 		// Update the ring if the instance has been changed and the heartbeat is disabled.

@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
+* [BUGFIX] Ingester: Restart initRing with unexpected token count to ensure configuration is always obeyed. #1876
 
 ## 1.12.0 in pgoress
 

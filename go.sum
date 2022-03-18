@@ -552,7 +552,6 @@ github.com/edsrzf/mmap-go v1.1.0 h1:6EUwBLQ/Mcr1EYLE4Tn1VdW1A4ckqCQWZBw8Hr0kjpQ=
 github.com/edsrzf/mmap-go v1.1.0/go.mod h1:19H/e8pUPLicwkyNgOykDXkJ9F0MHE+Z52B8EIth78Q=
 github.com/efficientgo/e2e v0.11.2-0.20211027134903-67d538984a47 h1:k0qDUhOU0KJqKztQYJL1qMBR9nCOntuIRWYwA56Z634=
 github.com/efficientgo/e2e v0.11.2-0.20211027134903-67d538984a47/go.mod h1:vDnF4AAEZmO0mvyFIATeDJPFaSRM7ywaOnKd61zaSoE=
-github.com/efficientgo/tools/core v0.0.0-20210129205121-421d0828c9a6/go.mod h1:OmVcnJopJL8d3X3sSXTiypGoUSgFq1aDGmlrdi9dn/M=
 github.com/efficientgo/tools/core v0.0.0-20210829154005-c7bad8450208 h1:jIALuFymwBqVsF32JhgzVsbCB6QsWvXqhetn8QgyrZ4=
 github.com/efficientgo/tools/core v0.0.0-20210829154005-c7bad8450208/go.mod h1:OmVcnJopJL8d3X3sSXTiypGoUSgFq1aDGmlrdi9dn/M=
 github.com/efficientgo/tools/extkingpin v0.0.0-20210609125236-d73259166f20 h1:kM/ALyvAnTrwSB+nlKqoKaDnZbInp1YImZvW+gtHwc8=

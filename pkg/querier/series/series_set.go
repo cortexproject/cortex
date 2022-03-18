@@ -197,11 +197,11 @@ func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j
 
 type DeletedSeriesSet struct {
 	seriesSet     storage.SeriesSet
-	tombstones    *purger.TombstonesSet
+	tombstones    purger.TombstonesSet
 	queryInterval model.Interval
 }
 
-func NewDeletedSeriesSet(seriesSet storage.SeriesSet, tombstones *purger.TombstonesSet, queryInterval model.Interval) storage.SeriesSet {
+func NewDeletedSeriesSet(seriesSet storage.SeriesSet, tombstones purger.TombstonesSet, queryInterval model.Interval) storage.SeriesSet {
 	return &DeletedSeriesSet{
 		seriesSet:     seriesSet,
 		tombstones:    tombstones,

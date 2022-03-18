@@ -1,3 +1,4 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
@@ -27,6 +28,7 @@ const (
 	cortexConfigFile       = "config.yaml"
 	cortexSchemaConfigFile = "schema.yaml"
 	blocksStorageEngine    = "blocks"
+	chunksStorageEngine    = "chunks"
 	clientCertFile         = "certs/client.crt"
 	clientKeyFile          = "certs/client.key"
 	caCertFile             = "certs/root.crt"
@@ -233,32 +235,13 @@ blocks_storage:
 
 	ChunksStorageFlags = func() map[string]string {
 		return map[string]string{
+			"-store.engine":                   chunksStorageEngine,
 			"-dynamodb.url":                   fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
 			"-table-manager.poll-interval":    "1m",
 			"-schema-config-file":             filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
 			"-table-manager.retention-period": "168h",
 		}
 	}
-
-	ChunksStorageConfig = buildConfigFromTemplate(`
-storage:
-  aws:
-    dynamodb:
-      dynamodb_url: {{.DynamoDBURL}}
-
-table_manager:
-  poll_interval:    1m
-  retention_period: 168h
-
-schema:
-{{.SchemaConfig}}
-`, struct {
-		DynamoDBURL  string
-		SchemaConfig string
-	}{
-		DynamoDBURL:  fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
-		SchemaConfig: indentConfig(cortexSchemaConfigYaml, 2),
-	})
 )
 
 func buildConfigFromTemplate(tmpl string, data interface{}) string {

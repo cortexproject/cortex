@@ -22,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/local"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/openstack"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -93,8 +92,6 @@ type Config struct {
 
 	IndexQueriesCacheConfig cache.Config `yaml:"index_queries_cache_config"`
 
-	DeleteStoreConfig purger.DeleteStoreConfig `yaml:"delete_store"`
-
 	GrpcConfig grpc.Config `yaml:"grpc_store"`
 }
 
@@ -107,19 +104,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
-	cfg.DeleteStoreConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
 
-	f.StringVar(&cfg.Engine, "store.engine", "chunks", "The storage engine to use: chunks (deprecated) or blocks.")
+	f.StringVar(&cfg.Engine, "store.engine", "blocks", "The storage engine to use: blocks is the only supported option today.")
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "Cache config for index entry reading. ", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
 }
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if cfg.Engine != StorageEngineChunks && cfg.Engine != StorageEngineBlocks {
-		return errors.New("unsupported storage engine")
+	if cfg.Engine != StorageEngineBlocks {
+		return errors.New("unsupported storage engine (only blocks is supported for ingest)")
 	}
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")

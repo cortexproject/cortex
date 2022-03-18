@@ -481,7 +481,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 }
 
 // NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
-func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
+func NewV2(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -489,11 +489,8 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 
 	i := &Ingester{
 		cfg:           cfg,
-		clientConfig:  clientConfig,
 		limits:        limits,
-		chunkStore:    nil,
 		usersMetadata: map[string]*userMetricsMetadata{},
-		wal:           &noopWAL{},
 		TSDBState:     newTSDBState(bucketClient, registerer),
 		logger:        logger,
 		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
@@ -553,7 +550,6 @@ func NewV2ForFlusher(cfg Config, limits *validation.Overrides, registerer promet
 	i := &Ingester{
 		cfg:       cfg,
 		limits:    limits,
-		wal:       &noopWAL{},
 		TSDBState: newTSDBState(bucketClient, registerer),
 		logger:    logger,
 	}
@@ -681,12 +677,12 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		case <-ingestionRateTicker.C:
 			i.ingestionRate.Tick()
 		case <-rateUpdateTicker.C:
-			i.userStatesMtx.RLock()
+			i.stoppedMtx.RLock()
 			for _, db := range i.TSDBState.dbs {
 				db.ingestedAPISamples.Tick()
 				db.ingestedRuleSamples.Tick()
 			}
-			i.userStatesMtx.RUnlock()
+			i.stoppedMtx.RUnlock()
 
 		case <-activeSeriesTickerChan:
 			i.v2UpdateActiveSeries()
@@ -745,12 +741,12 @@ func (i *Ingester) v2Push(ctx context.Context, req *cortexpb.WriteRequest) (*cor
 	}
 
 	// Ensure the ingester shutdown procedure hasn't started
-	i.userStatesMtx.RLock()
+	i.stoppedMtx.RLock()
 	if i.stopped {
-		i.userStatesMtx.RUnlock()
+		i.stoppedMtx.RUnlock()
 		return nil, errIngesterStopping
 	}
-	i.userStatesMtx.RUnlock()
+	i.stoppedMtx.RUnlock()
 
 	if err := db.acquireAppendLock(); err != nil {
 		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(err, userID).Error())
@@ -1266,8 +1262,8 @@ func (i *Ingester) v2AllUserStats(ctx context.Context, req *client.UserStatsRequ
 		return nil, err
 	}
 
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
 
 	users := i.TSDBState.dbs
 
@@ -1518,8 +1514,8 @@ func (i *Ingester) v2QueryStreamChunks(ctx context.Context, db *userTSDB, from, 
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
 	db := i.TSDBState.dbs[userID]
 	return db
 }
@@ -1527,8 +1523,8 @@ func (i *Ingester) getTSDB(userID string) *userTSDB {
 // List all users for which we have a TSDB. We do it here in order
 // to keep the mutex locked for the shortest time possible.
 func (i *Ingester) getTSDBUsers() []string {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
 
 	ids := make([]string, 0, len(i.TSDBState.dbs))
 	for userID := range i.TSDBState.dbs {
@@ -1544,8 +1540,8 @@ func (i *Ingester) getOrCreateTSDB(userID string, force bool) (*userTSDB, error)
 		return db, nil
 	}
 
-	i.userStatesMtx.Lock()
-	defer i.userStatesMtx.Unlock()
+	i.stoppedMtx.Lock()
+	defer i.stoppedMtx.Unlock()
 
 	// Check again for DB in the event it was created in-between locks
 	var ok bool
@@ -1688,7 +1684,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 }
 
 func (i *Ingester) closeAllTSDB() {
-	i.userStatesMtx.Lock()
+	i.stoppedMtx.Lock()
 
 	wg := &sync.WaitGroup{}
 	wg.Add(len(i.TSDBState.dbs))
@@ -1709,9 +1705,9 @@ func (i *Ingester) closeAllTSDB() {
 			// set of open ones. This lock acquisition doesn't deadlock with the
 			// outer one, because the outer one is released as soon as all go
 			// routines are started.
-			i.userStatesMtx.Lock()
+			i.stoppedMtx.Lock()
 			delete(i.TSDBState.dbs, userID)
-			i.userStatesMtx.Unlock()
+			i.stoppedMtx.Unlock()
 
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
@@ -1719,7 +1715,7 @@ func (i *Ingester) closeAllTSDB() {
 	}
 
 	// Wait until all Close() completed
-	i.userStatesMtx.Unlock()
+	i.stoppedMtx.Unlock()
 	wg.Wait()
 }
 
@@ -1744,9 +1740,9 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 				}
 
 				// Add the database to the map of user databases
-				i.userStatesMtx.Lock()
+				i.stoppedMtx.Lock()
 				i.TSDBState.dbs[userID] = db
-				i.userStatesMtx.Unlock()
+				i.stoppedMtx.Unlock()
 				i.metrics.memUsers.Inc()
 
 				i.TSDBState.walReplayTime.Observe(time.Since(startTime).Seconds())
@@ -1829,8 +1825,8 @@ func (i *Ingester) getMemorySeriesMetric() float64 {
 		return 0
 	}
 
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
 
 	count := uint64(0)
 	for _, db := range i.TSDBState.dbs {
@@ -1843,8 +1839,8 @@ func (i *Ingester) getMemorySeriesMetric() float64 {
 // getOldestUnshippedBlockMetric returns the unix timestamp of the oldest unshipped block or
 // 0 if all blocks have been shipped.
 func (i *Ingester) getOldestUnshippedBlockMetric() float64 {
-	i.userStatesMtx.RLock()
-	defer i.userStatesMtx.RUnlock()
+	i.stoppedMtx.RLock()
+	defer i.stoppedMtx.RUnlock()
 
 	oldest := uint64(0)
 	for _, db := range i.TSDBState.dbs {
@@ -2101,9 +2097,9 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	// If this happens now, the request will get reject as the push will not be able to acquire the lock as the tsdb will be
 	// in closed state
 	defer func() {
-		i.userStatesMtx.Lock()
+		i.stoppedMtx.Lock()
 		delete(i.TSDBState.dbs, userID)
-		i.userStatesMtx.Unlock()
+		i.stoppedMtx.Unlock()
 	}()
 
 	i.metrics.memUsers.Dec()

@@ -112,7 +112,6 @@ type Config struct {
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
-	PurgerConfig     purger.Config                   `yaml:"purger"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler               ruler.Config                               `yaml:"ruler"`
@@ -161,7 +160,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
-	c.PurgerConfig.RegisterFlags(f)
 	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
@@ -319,12 +317,9 @@ type Cortex struct {
 	Ingester                 *ingester.Ingester
 	Flusher                  *flusher.Flusher
 	Store                    chunk.Store
-	DeletesStore             *purger.DeleteStore
 	Frontend                 *frontendv1.Frontend
-	TableManager             *chunk.TableManager
 	RuntimeConfig            *runtimeconfig.Manager
-	Purger                   *purger.Purger
-	TombstonesLoader         *purger.TombstonesLoader
+	TombstonesLoader         purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	QuerierEngine            *promql.Engine

@@ -26,20 +26,18 @@ type Config struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WALDir, "flusher.wal-dir", "wal", "Directory to read WAL from (chunks storage engine only).")
-	f.IntVar(&cfg.ConcurrentFlushes, "flusher.concurrent-flushes", 50, "Number of concurrent goroutines flushing to storage (chunks storage engine only).")
-	f.DurationVar(&cfg.FlushOpTimeout, "flusher.flush-op-timeout", 2*time.Minute, "Timeout for individual flush operations (chunks storage engine only).")
+	f.StringVar(&cfg.WALDir, "flusher.wal-dir", "wal", "Has no effect: directory to read WAL from (chunks storage engine only).")
+	f.IntVar(&cfg.ConcurrentFlushes, "flusher.concurrent-flushes", 50, "Has no effect: number of concurrent goroutines flushing to storage (chunks storage engine only).")
+	f.DurationVar(&cfg.FlushOpTimeout, "flusher.flush-op-timeout", 2*time.Minute, "Has no effect: timeout for individual flush operations (chunks storage engine only).")
 	f.BoolVar(&cfg.ExitAfterFlush, "flusher.exit-after-flush", true, "Stop Cortex after flush has finished. If false, Cortex process will keep running, doing nothing.")
 }
 
-// Flusher is designed to be used as a job to flush the data from the WAL on disk.
-// Flusher works with both chunks-based and blocks-based ingesters.
+// Flusher is designed to be used as a job to flush the data from the TSDB/WALs on disk.
 type Flusher struct {
 	services.Service
 
 	cfg            Config
 	ingesterConfig ingester.Config
-	chunkStore     ingester.ChunkStore
 	limits         *validation.Overrides
 	registerer     prometheus.Registerer
 	logger         log.Logger
@@ -54,21 +52,14 @@ const (
 func New(
 	cfg Config,
 	ingesterConfig ingester.Config,
-	chunkStore ingester.ChunkStore,
 	limits *validation.Overrides,
 	registerer prometheus.Registerer,
 	logger log.Logger,
 ) (*Flusher, error) {
 
-	// These are ignored by blocks-ingester, but that's fine.
-	ingesterConfig.WALConfig.Dir = cfg.WALDir
-	ingesterConfig.ConcurrentFlushes = cfg.ConcurrentFlushes
-	ingesterConfig.FlushOpTimeout = cfg.FlushOpTimeout
-
 	f := &Flusher{
 		cfg:            cfg,
 		ingesterConfig: ingesterConfig,
-		chunkStore:     chunkStore,
 		limits:         limits,
 		registerer:     registerer,
 		logger:         logger,
@@ -78,7 +69,7 @@ func New(
 }
 
 func (f *Flusher) running(ctx context.Context) error {
-	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.chunkStore, f.limits, f.registerer, f.logger)
+	ing, err := ingester.NewForFlusher(f.ingesterConfig, f.limits, f.registerer, f.logger)
 	if err != nil {
 		return errors.Wrap(err, "create ingester")
 	}

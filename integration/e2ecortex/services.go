@@ -424,9 +424,14 @@ func NewRuler(name string, consulAddress string, flags map[string]string, image 
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "ruler",
 			"-log.level": "warn",
-			// Configure the ingesters ring backend
-			"-ring.store":      "consul",
-			"-consul.hostname": consulAddress,
+			// Configure the ring backend
+			"-ring.store":                                  "consul",
+			"-store-gateway.sharding-ring.store":           "consul",
+			"-consul.hostname":                             consulAddress,
+			"-store-gateway.sharding-ring.consul.hostname": consulAddress,
+			// Store-gateway ring backend.
+			"-store-gateway.sharding-enabled":                 "true",
+			"-store-gateway.sharding-ring.replication-factor": "1",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

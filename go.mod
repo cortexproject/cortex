@@ -95,3 +95,6 @@ replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19
 
 // Replace memberlist with Grafana's fork which includes some fixes that haven't been merged upstream yet
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b
+
+// This commit is now only accessible via SHA if you're not using the Go modules proxy.
+replace github.com/efficientgo/tools/core => github.com/efficientgo/tools/core v0.0.0-20210829154005-c7bad8450208

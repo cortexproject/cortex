@@ -853,20 +853,13 @@ func TestHashCollisionHandling(t *testing.T) {
 	defer s.Close()
 
 	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-	flags := ChunksStorageFlags()
+	flags := BlocksStorageFlags()
 
 	// Start dependencies.
-	dynamo := e2edb.NewDynamoDB()
+	minio := e2edb.NewMinio(9000, bucketName)
 
 	consul := e2edb.NewConsul()
-	require.NoError(t, s.StartAndWaitReady(consul, dynamo))
-
-	tableManager := e2ecortex.NewTableManager("table-manager", ChunksStorageFlags(), "")
-	require.NoError(t, s.StartAndWaitReady(tableManager))
-
-	// Wait until the first table-manager sync has completed, so that we're
-	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Start Cortex components for the write path.
 	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
@@ -922,11 +915,13 @@ func TestHashCollisionHandling(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(storeGateway))
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(querier))
 
 	// Wait until the querier has updated the ring.
-	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
 
 	// Query the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-0")

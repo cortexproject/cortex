@@ -11,7 +11,7 @@ import (
 )
 
 // middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
-func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.TombstonesLoader) middleware.Interface {
+func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader purger.TombstonesLoader) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			tenantIDs, err := tenant.TenantIDs(r.Context())

@@ -13,20 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.
-func StreamsToMatrix(from, through model.Time, responses []*client.QueryStreamResponse) (model.Matrix, error) {
-	result := model.Matrix{}
-	for _, response := range responses {
-		series, err := SeriesChunksToMatrix(from, through, response.Chunkseries)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, series...)
-	}
-	return result, nil
-}
-
 // SeriesChunksToMatrix converts slice of []client.TimeSeriesChunk to a model.Matrix.
 func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeriesChunk) (model.Matrix, error) {
 	if serieses == nil {

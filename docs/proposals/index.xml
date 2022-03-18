@@ -667,7 +667,7 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>
-&lt;li>Status: Proposed&lt;/li>
+&lt;li>Status: Accepted, Implemented in &lt;a href="https://github.com/cortexproject/cortex/pull/3879">PR #3879&lt;/a>.&lt;/li>
 &lt;/ul>
 &lt;h2 id="retention-of-tenant-data">Retention of tenant data&lt;/h2>
 &lt;h2 id="problem">Problem&lt;/h2>
@@ -689,7 +689,68 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;p>For each tenant, if a tenant-specific &lt;em>runtime_config&lt;/em> value exists, it will be used directly, otherwise, if a default &lt;em>limits_config&lt;/em> value exists, then the default value will be used; If neither exists, do nothing.&lt;/p>
 &lt;h3 id="implementation">Implementation&lt;/h3>
 &lt;p>A BlocksCleaner within the Compactor run periodically (which defaults to 15 minutes) and the retention logic will insert into it. The logic should compare retention value to block &lt;code>maxTime&lt;/code> and blocks that match &lt;code>maxTime &amp;lt; now - retention&lt;/code> will be marked for delete.&lt;/p>
-&lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Scalable Alertmanager</title><link>/docs/proposals/scalable-alertmanager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-alertmanager/</guid><description>
+&lt;p>Blocks deletion is not immediate, but follows a two steps process. See &lt;a href="https://cortexmetrics.io/docs/blocks-storage/compactor/#soft-and-hard-blocks-deletion">soft-and-hard-blocks-deletion&lt;/a>&lt;/p></description></item><item><title>Docs: Ruler Tenant Federation</title><link>/docs/proposals/ruler-tenant-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/ruler-tenant-federation/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/rdooley">Rees Dooley&lt;/a>&lt;/li>
+&lt;li>Date: November 2021&lt;/li>
+&lt;li>Status: Accepted&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>This document aims to describe how to implement the ability to allow rules to cover data from more than a single Cortex tenant, here after referred to as federated rules. Since currently rules are owned by, query data from and save resulting series in the same tenant, this document aims to provide clear delineation of who owns a federated rule, what tenants the federated rule queries data from and where the federated rule saves resulting series.&lt;/p>
+&lt;p>A federated rule is any rule which contains the &lt;code>src_tenants&lt;/code> field.&lt;/p>
+&lt;h2 id="reasoning">Reasoning&lt;/h2>
+&lt;p>The primary use case for allowing federated rules which query data from multiple tenants is the administration of cortex.&lt;/p>
+&lt;p>In the case of the administration of cortex, when running Cortex within a large organization, there may be metrics spanning across tenants which might be desired to be monitored e.g. administrative metrics of the cortex system like &lt;code>prometheus_rule_evaluation_failures_total&lt;/code> aggregated by &lt;code>__tenant_id__&lt;/code>. In this case, a team e.g. &lt;code>infra&lt;/code> may wish to be able to create a rule, owned by &lt;code>infra&lt;/code> which queries multiple tenants &lt;code>t0|t1|...|ti&lt;/code> and stores resulting series in &lt;code>infra&lt;/code>.&lt;/p>
+&lt;h2 id="challenges">Challenges&lt;/h2>
+&lt;h3 id="allow-federated-rules-behind-feature-flag">Allow federated rules behind feature flag&lt;/h3>
+&lt;h4 id="challenge">Challenge&lt;/h4>
+&lt;p>Federated tenant rules and alerts will not be a good fit for organization and should be behind a feature flag.&lt;/p>
+&lt;h4 id="proposal">Proposal&lt;/h4>
+&lt;p>For federated rules, creation of federated rules (those sourcing data from multiple tenants) should be blocked behind the feature flag &lt;code>ruler.enable-federated-rules&lt;/code>&lt;/p>
+&lt;p>If tenant federation is enabled, then ruler should use a &lt;code>mergeQueryable&lt;/code> to aggregate the results of querying multiple tenants.&lt;/p>
+&lt;h3 id="allow-federated-rules-only-for-select-tenants">Allow federated rules only for select tenants&lt;/h3>
+&lt;h4 id="challenge-1">Challenge&lt;/h4>
+&lt;p>For many organizations, the ability for any tenant to write a rule querying any other tenant is not acceptable and more fine grained control is required&lt;/p>
+&lt;h4 id="proposal-1">Proposal&lt;/h4>
+&lt;p>Since the current default is that a tenant should only be able to write rules against itself, we suggest a config option &lt;code>ruler.allowed-federated-tenants&lt;/code>, a string slice of OrgIDs like &lt;code>infra&lt;/code> or &lt;code>0|1|2|3|4&lt;/code> which are allowed to write rules against all tenants. If a tenant &lt;code>bar&lt;/code> attempts to create a federated rule, an error should be returned by the ruler api. Similarly an option &lt;code>ruler.disallowed-federated-tenants&lt;/code> explicitly states a list of tenants for which federated rules are not allowed. Combining these in a &lt;code>util.AllowedTenants&lt;/code> should allow one to quickly determine if federation is enabled or disabled for a given tenant at rule creation.&lt;/p>
+&lt;h3 id="where-to-store-resulting-series-of-federated-rule">Where to store resulting series of federated rule&lt;/h3>
+&lt;h4 id="challenge-2">Challenge&lt;/h4>
+&lt;p>A single tenant rule always stores produced series in the tenant where the rule exists. This 1 -&amp;gt; 1 mapping becomes a many -&amp;gt; 1 mapping for federated rules.&lt;/p>
+&lt;h4 id="proposal-2">Proposal&lt;/h4>
+&lt;p>Tenants owning a federated rule the resulting series is saved in the tenant which owns the rule.&lt;/p>
+&lt;h3 id="which-tenants-to-query-from-for-federated-rules">Which tenants to query from for federated rules&lt;/h3>
+&lt;h4 id="challenge-3">Challenge&lt;/h4>
+&lt;p>A single tenant rule always queries the tenant which owns the rule. This 1 -&amp;gt; 1 mapping becomes a 1 -&amp;gt; many mapping for federated rules.&lt;/p>
+&lt;h4 id="proposal-3">Proposal&lt;/h4>
+&lt;p>As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed.&lt;/p>
+&lt;p>To support this we suggest an additional field &lt;code>src_tenants&lt;/code> on the rule group containing an array of OrgIDs e.g. &lt;code>[t0,t1,...,ti]&lt;/code> which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.&lt;/p>
+&lt;h2 id="conclusion">Conclusion&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Challenge&lt;/th>
+&lt;th>Status&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Allow federated rules behind feature flag&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Allow federated rules only for select tenants&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Where to store resulting series of federated rules&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Which tenants to query from for federated rules&lt;/td>
+&lt;td>Planned but not yet implemented&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table></description></item><item><title>Docs: Scalable Alertmanager</title><link>/docs/proposals/scalable-alertmanager/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/scalable-alertmanager/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/gotjosh">Josh Abreu&lt;/a>&lt;/li>
 &lt;li>Date: December 2020&lt;/li>

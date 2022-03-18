@@ -55,6 +55,9 @@ Additionally, any maintainer may request that any change require a 2/3 majority 
 &lt;li>Install required Node modules with:
 &lt;pre>&lt;code>cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -
 &lt;/code>&lt;/pre>&lt;/li>
+&lt;li>Install &lt;a href="https://github.com/campoy/embedmd">embedmd&lt;/a> &lt;code>v1.0.0&lt;/code>:
+&lt;pre>&lt;code>go install github.com/campoy/embedmd@v1.0.0
+&lt;/code>&lt;/pre>&lt;/li>
 &lt;li>Run &lt;code>make BUILD_IN_CONTAINER=false web-build&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;h2 id="run-it">Run it&lt;/h2>
@@ -125,6 +128,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>Invite to &lt;a href="https://groups.google.com/forum/#!forum/cortex-team">&lt;code>cortex-team&lt;/code> group&lt;/a>&lt;/li>
 &lt;li>Invite to &lt;a href="https://quay.io/organization/cortexproject?tab=teams">Quay.io repository&lt;/a>&lt;/li>
 &lt;li>Invite to &lt;a href="https://hub.docker.com/u/cortexproject">Docker Hub organization&lt;/a>&lt;/li>
+&lt;li>Submit a PR to &lt;a href="http://maintainers.cncf.io">CNCF maintainer list for Cortex&lt;/a>&lt;/li>
 &lt;li>Invite to &lt;a href="https://lists.cncf.io/g/cncf-cortex-maintainers">CNCF &lt;code>cncf-cortex-maintainers&lt;/code> mailing list&lt;/a> (via &lt;a href="https://servicedesk.cncf.io">CNCF Service Desk&lt;/a>)&lt;/li>
 &lt;li>Add to the Google Analytics property used for the website statistics&lt;/li>
 &lt;/ol></description></item></channel></rss>

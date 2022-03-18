@@ -245,9 +245,9 @@ cassandra:
 addresses: LOCALHOST # configure cassandra addresses here.
 keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
-to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.11.1&lt;/code>).&lt;/p>
+to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.11.0&lt;/code>).&lt;/p>
 &lt;p>Run Cortex using the latest stable version:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.11.1 -config.file=/etc/single-process-config.yaml
+&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.11.0 -config.file=/etc/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/chunks-storage/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
 &lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
 &lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.

@@ -15,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs"
@@ -193,11 +192,6 @@ var (
 			name:       "store_gateway_config",
 			structType: reflect.TypeOf(storegateway.Config{}),
 			desc:       "The store_gateway_config configures the store-gateway service used by the blocks storage.",
-		},
-		{
-			name:       "purger_config",
-			structType: reflect.TypeOf(purger.Config{}),
-			desc:       "The purger_config configures the purger which takes care of delete requests.",
 		},
 		{
 			name:       "s3_sse_config",

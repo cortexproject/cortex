@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -79,7 +78,6 @@ const (
 	Compactor                string = "compactor"
 	StoreGateway             string = "store-gateway"
 	MemberlistKV             string = "memberlist-kv"
-	ChunksPurger             string = "chunks-purger"
 	TenantDeletion           string = "tenant-deletion"
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
@@ -426,7 +424,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 	t.Cfg.Ingester.InstanceLimitsFn = ingesterInstanceLimits(t.RuntimeConfig)
 	t.tsdbIngesterConfig()
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Overrides, t.Store, prometheus.DefaultRegisterer, util_log.Logger)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Overrides, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -446,7 +444,6 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 	t.Flusher, err = flusher.New(
 		t.Cfg.Flusher,
 		t.Cfg.Ingester,
-		t.Store,
 		t.Overrides,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
@@ -459,7 +456,10 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initChunkStore() (serv services.Service, err error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineChunks && t.Cfg.Querier.SecondStoreEngine != storage.StorageEngineChunks {
+	if t.Cfg.Storage.Engine == storage.StorageEngineChunks {
+		return nil, errors.New("should not get here: ingesting into chunks storage is no longer supported")
+	}
+	if t.Cfg.Querier.SecondStoreEngine != storage.StorageEngineChunks {
 		return nil, nil
 	}
 	err = t.Cfg.Schema.Load()
@@ -479,28 +479,8 @@ func (t *Cortex) initChunkStore() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineChunks || !t.Cfg.PurgerConfig.Enable {
-		// until we need to explicitly enable delete series support we need to do create TombstonesLoader without DeleteStore which acts as noop
-		t.TombstonesLoader = purger.NewTombstonesLoader(nil, nil)
-
-		return
-	}
-
-	var indexClient chunk.IndexClient
-	reg := prometheus.WrapRegistererWith(
-		prometheus.Labels{"component": DeleteRequestsStore}, prometheus.DefaultRegisterer)
-	indexClient, err = storage.NewIndexClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, t.Cfg.Schema, reg)
-	if err != nil {
-		return
-	}
-
-	t.DeletesStore, err = purger.NewDeleteStore(t.Cfg.Storage.DeleteStoreConfig, indexClient)
-	if err != nil {
-		return
-	}
-
-	t.TombstonesLoader = purger.NewTombstonesLoader(t.DeletesStore, prometheus.DefaultRegisterer)
-
+	// no-op while blocks store does not support series deletion
+	t.TombstonesLoader = purger.NewNoopTombstonesLoader()
 	return
 }
 
@@ -577,61 +557,6 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	}
 
 	return nil, nil
-}
-
-func (t *Cortex) initTableManager() (services.Service, error) {
-	if t.Cfg.Storage.Engine == storage.StorageEngineBlocks {
-		return nil, nil // table manager isn't used in v2
-	}
-
-	err := t.Cfg.Schema.Load()
-	if err != nil {
-		return nil, err
-	}
-
-	// Assume the newest config is the one to use
-	lastConfig := &t.Cfg.Schema.Configs[len(t.Cfg.Schema.Configs)-1]
-
-	if (t.Cfg.TableManager.ChunkTables.WriteScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.WriteScale.Enabled ||
-		t.Cfg.TableManager.ChunkTables.InactiveWriteScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.InactiveWriteScale.Enabled ||
-		t.Cfg.TableManager.ChunkTables.ReadScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.ReadScale.Enabled ||
-		t.Cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
-		t.Cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
-		t.Cfg.Storage.AWSStorageConfig.Metrics.URL == "" {
-		level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
-		os.Exit(1)
-	}
-
-	reg := prometheus.WrapRegistererWith(
-		prometheus.Labels{"component": "table-manager-store"}, prometheus.DefaultRegisterer)
-
-	tableClient, err := storage.NewTableClient(lastConfig.IndexType, t.Cfg.Storage, reg)
-	if err != nil {
-		return nil, err
-	}
-
-	bucketClient, err := storage.NewBucketClient(t.Cfg.Storage)
-	util_log.CheckFatal("initializing bucket client", err)
-
-	var extraTables []chunk.ExtraTables
-	if t.Cfg.PurgerConfig.Enable {
-		reg := prometheus.WrapRegistererWith(
-			prometheus.Labels{"component": "table-manager-" + DeleteRequestsStore}, prometheus.DefaultRegisterer)
-
-		deleteStoreTableClient, err := storage.NewTableClient(t.Cfg.Storage.DeleteStoreConfig.Store, t.Cfg.Storage, reg)
-		if err != nil {
-			return nil, err
-		}
-
-		extraTables = append(extraTables, chunk.ExtraTables{TableClient: deleteStoreTableClient, Tables: t.Cfg.Storage.DeleteStoreConfig.GetTables()})
-	}
-
-	t.TableManager, err = chunk.NewTableManager(t.Cfg.TableManager, t.Cfg.Schema, t.Cfg.Ingester.MaxChunkAge, tableClient,
-		bucketClient, extraTables, prometheus.DefaultRegisterer)
-	return t.TableManager, err
 }
 
 func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
@@ -791,26 +716,6 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	return t.MemberlistKV, nil
 }
 
-func (t *Cortex) initChunksPurger() (services.Service, error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineChunks || !t.Cfg.PurgerConfig.Enable {
-		return nil, nil
-	}
-
-	storageClient, err := storage.NewObjectClient(t.Cfg.PurgerConfig.ObjectStoreType, t.Cfg.Storage)
-	if err != nil {
-		return nil, err
-	}
-
-	t.Purger, err = purger.NewPurger(t.Cfg.PurgerConfig, t.DeletesStore, t.Store, storageClient, prometheus.DefaultRegisterer)
-	if err != nil {
-		return nil, err
-	}
-
-	t.API.RegisterChunksPurger(t.DeletesStore, t.Cfg.PurgerConfig.DeleteRequestCancelPeriod)
-
-	return t.Purger, nil
-}
-
 func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
 		return nil, nil
@@ -860,14 +765,12 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(StoreQueryable, t.initStoreQueryables, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontendTripperware, t.initQueryFrontendTripperware, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
-	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
-	mm.RegisterModule(ChunksPurger, t.initChunksPurger, modules.UserInvisibleModule)
 	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
@@ -894,18 +797,16 @@ func (t *Cortex) setupModuleManager() error {
 		QueryFrontendTripperware: {API, Overrides, DeleteRequestsStore},
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, Overrides},
-		TableManager:             {API},
 		Ruler:                    {DistributorService, Store, StoreQueryable, RulerStorage},
 		RulerStorage:             {Overrides},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
-		ChunksPurger:             {Store, DeleteRequestsStore, API},
 		TenantDeletion:           {Store, API, Overrides},
-		Purger:                   {ChunksPurger, TenantDeletion},
+		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, TableManager, Purger, StoreGateway, Ruler},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

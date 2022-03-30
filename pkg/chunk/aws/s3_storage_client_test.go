@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -31,7 +33,7 @@ func TestRequestMiddleware(t *testing.T) {
 		S3ForcePathStyle: true,
 		Insecure:         true,
 		AccessKeyID:      "key",
-		SecretAccessKey:  "secret",
+		SecretAccessKey:  flagext.Secret{Value: "secret"},
 	}
 
 	tests := []struct {

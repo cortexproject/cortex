@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const simpleAlertmanagerConfig = `route:
@@ -195,7 +196,7 @@ func TestAlertmanagerClustering(t *testing.T) {
 				Insecure:         true,
 				BucketNames:      alertsBucketName,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			})
 			require.NoError(t, err)
 
@@ -261,7 +262,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				Insecure:         true,
 				BucketNames:      alertsBucketName,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			})
 			require.NoError(t, err)
 
@@ -624,7 +625,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 				Insecure:         true,
 				BucketNames:      alertsBucketName,
 				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  e2edb.MinioSecretKey,
+				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
 			})
 			require.NoError(t, err)
 

@@ -1181,6 +1181,9 @@ The `ruler_config` configures the Cortex ruler.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
 
+# Labels to add to all alerts.
+[external_labels: <map of string to string> | default = ]
+
 ruler_client:
   # gRPC client max receive message size (bytes).
   # CLI flag: -ruler.client.grpc-max-recv-msg-size

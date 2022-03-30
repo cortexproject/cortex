@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+* [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
+
 ## 1.12.0 in progress
 
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539

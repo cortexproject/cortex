@@ -19,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -39,12 +40,12 @@ var (
 
 // Config to create a ConsulClient
 type Config struct {
-	Host              string        `yaml:"host"`
-	ACLToken          string        `yaml:"acl_token"`
-	HTTPClientTimeout time.Duration `yaml:"http_client_timeout"`
-	ConsistentReads   bool          `yaml:"consistent_reads"`
-	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
-	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+	Host              string         `yaml:"host"`
+	ACLToken          flagext.Secret `yaml:"acl_token"`
+	HTTPClientTimeout time.Duration  `yaml:"http_client_timeout"`
+	ConsistentReads   bool           `yaml:"consistent_reads"`
+	WatchKeyRateLimit float64        `yaml:"watch_rate_limit"` // Zero disables rate limit
+	WatchKeyBurstSize int            `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
 
 	// Used in tests only.
 	MaxCasRetries int           `yaml:"-"`
@@ -72,7 +73,7 @@ type Client struct {
 // If prefix is not an empty string it should end with a period.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	f.StringVar(&cfg.ACLToken, prefix+"consul.acl-token", "", "ACL Token used to interact with Consul.")
+	f.Var(&cfg.ACLToken, prefix+"consul.acl-token", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
 	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", false, "Enable consistent reads to Consul.")
 	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 1, "Rate limit when watching key or prefix in Consul, in requests per second. 0 disables the rate limit.")
@@ -83,7 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 func NewClient(cfg Config, codec codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
-		Token:   cfg.ACLToken,
+		Token:   cfg.ACLToken.Value,
 		Scheme:  "http",
 		HttpClient: &http.Client{
 			Transport: cleanhttp.DefaultPooledTransport(),

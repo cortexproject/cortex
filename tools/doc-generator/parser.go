@@ -257,6 +257,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "[]*relabel.Config":
 		return "relabel_config...", nil
+	case "labels.Labels":
+		return "map of string to string", nil
 	}
 
 	// Fallback to auto-detection of built-in data types

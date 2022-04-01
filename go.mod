@@ -93,9 +93,5 @@ replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-
 // is v0.19.1. We pin version from early December here. Feel free to remove when updating to later version.
 replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211208205607-d1acaea2a11a
 
-// Pin aws-sdk to version prior to go-kit update, to reduce the bulk of change.
-// Un-pin once Cortex 1.11 is released.
-replace github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.40.37
-
 // Replace memberlist with Grafana's fork which includes some fixes that haven't been merged upstream yet
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b

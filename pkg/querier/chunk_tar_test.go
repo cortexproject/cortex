@@ -67,7 +67,7 @@ func runRangeQuery(t testing.TB, query string, from, through time.Time, step tim
 		MaxSamples:         math.MaxInt32,
 		Timeout:            10 * time.Minute,
 	})
-	rangeQuery, err := engine.NewRangeQuery(queryable, query, from, through, step)
+	rangeQuery, err := engine.NewRangeQuery(queryable, nil, query, from, through, step)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "0")

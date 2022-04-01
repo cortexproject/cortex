@@ -240,7 +240,12 @@ func Serve(l net.Listener, server *http.Server, tlsConfigPath string, logger log
 	// Set the GetConfigForClient method of the HTTPS server so that the config
 	// and certs are reloaded on new connections.
 	server.TLSConfig.GetConfigForClient = func(*tls.ClientHelloInfo) (*tls.Config, error) {
-		return getTLSConfig(tlsConfigPath)
+		config, err := getTLSConfig(tlsConfigPath)
+		if err != nil {
+			return nil, err
+		}
+		config.NextProtos = server.TLSConfig.NextProtos
+		return config, nil
 	}
 	return server.ServeTLS(l, "", "")
 }

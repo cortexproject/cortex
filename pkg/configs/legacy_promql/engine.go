@@ -1008,7 +1008,7 @@ func (ev *evaluator) vectorSelectorSingle(it *storage.BufferedSeriesIterator, no
 	}
 
 	if ok {
-		t, v = it.Values()
+		t, v = it.At()
 	}
 
 	if !ok || t > refTime {
@@ -1113,7 +1113,7 @@ func (ev *evaluator) matrixIterSlice(it *storage.BufferedSeriesIterator, mint, m
 	}
 	// The seeked sample might also be in the range.
 	if ok {
-		t, v := it.Values()
+		t, v := it.At()
 		if t == maxt && !value.IsStaleNaN(v) {
 			out = append(out, Point{T: t, V: v})
 		}

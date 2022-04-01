@@ -19,14 +19,15 @@ import (
 	"fmt"
 	html_template "html/template"
 	"math"
+	"net"
 	"net/url"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	text_template "text/template"
 	"time"
 
+	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -108,6 +109,10 @@ func convertToFloat(i interface{}) (float64, error) {
 		return float64(v), nil
 	case uint:
 		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case uint64:
+		return float64(v), nil
 	default:
 		return 0, fmt.Errorf("can't convert %T to float", v)
 	}
@@ -174,7 +179,7 @@ func NewTemplateExpander(
 				return html_template.HTML(text)
 			},
 			"match":     regexp.MatchString,
-			"title":     strings.Title,
+			"title":     strings.Title, // nolint:staticcheck
 			"toUpper":   strings.ToUpper,
 			"toLower":   strings.ToLower,
 			"graphLink": strutil.GraphLinkForExpression,
@@ -183,6 +188,13 @@ func NewTemplateExpander(
 				sorter := queryResultByLabelSorter{v[:], label}
 				sort.Stable(sorter)
 				return v
+			},
+			"stripPort": func(hostPort string) string {
+				host, _, err := net.SplitHostPort(hostPort)
+				if err != nil {
+					return hostPort
+				}
+				return host
 			},
 			"humanize": func(i interface{}) (string, error) {
 				v, err := convertToFloat(i)

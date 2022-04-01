@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/route"
@@ -159,6 +159,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable) *route.Router {
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
 		prometheus.DefaultGatherer,
+		nil,
 		nil,
 	)
 

@@ -284,7 +284,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
 				ctx := user.InjectOrgID(context.Background(), "0")
@@ -373,7 +373,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 
 				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
 				queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
+				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 				require.NoError(t, err)
 
 				ctx := user.InjectOrgID(context.Background(), "0")
@@ -458,7 +458,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 				Timeout:            1 * time.Minute,
 			})
 
-			query, err := engine.NewRangeQuery(queryable, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+			query, err := engine.NewRangeQuery(queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
@@ -577,7 +577,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					require.NoError(t, err)
 
-					query, err := engine.NewRangeQuery(queryable, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+					query, err := engine.NewRangeQuery(queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 					require.NoError(t, err)
 
 					r := query.Exec(ctx)
@@ -743,7 +743,7 @@ func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,
 	})
-	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
+	query, err := engine.NewRangeQuery(queryable, nil, q.query, from, through, step)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
@@ -906,7 +906,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
 				ctx := user.InjectOrgID(context.Background(), "0")

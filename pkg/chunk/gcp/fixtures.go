@@ -10,6 +10,7 @@ import (
 	"github.com/fsouza/fake-gcs-server/fakestorage"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
@@ -47,7 +48,7 @@ func (f *fixture) Clients() (
 	f.gcssrv = fakestorage.NewServer(nil)
 	f.gcssrv.CreateBucket("chunks")
 
-	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithInsecure())
+	conn, err := grpc.Dial(f.btsrv.Addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return
 	}

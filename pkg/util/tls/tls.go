@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // ClientConfig is the config for client TLS.
@@ -75,7 +76,7 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 // GetGRPCDialOptions creates GRPC DialOptions for TLS
 func (cfg *ClientConfig) GetGRPCDialOptions(enabled bool) ([]grpc.DialOption, error) {
 	if !enabled {
-		return []grpc.DialOption{grpc.WithInsecure()}, nil
+		return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, nil
 	}
 
 	tlsConfig, err := cfg.GetTLSConfig()

@@ -99,9 +99,3 @@ replace github.com/aws/aws-sdk-go => github.com/aws/aws-sdk-go v1.40.37
 
 // Replace memberlist with Grafana's fork which includes some fixes that haven't been merged upstream yet
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b
-
-// Exclude grpc v1.30.0 because of breaking changes. See #7621.
-exclude (
-	github.com/grpc-ecosystem/grpc-gateway v1.14.7
-	google.golang.org/api v0.30.0
-)

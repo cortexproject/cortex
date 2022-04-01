@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/server"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
@@ -192,7 +193,7 @@ func TestGrpcAuthMiddleware(t *testing.T) {
 		}()
 	}
 
-	conn, err := grpc.Dial(net.JoinHostPort(cfg.Server.GRPCListenAddress, strconv.Itoa(cfg.Server.GRPCListenPort)), grpc.WithInsecure())
+	conn, err := grpc.Dial(net.JoinHostPort(cfg.Server.GRPCListenAddress, strconv.Itoa(cfg.Server.GRPCListenPort)), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, conn.Close())

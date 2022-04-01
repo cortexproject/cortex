@@ -18,6 +18,7 @@ import (
 	"github.com/uber/jaeger-client-go/config"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
@@ -57,7 +58,7 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer) (*Scheduler, schedu
 		_ = l.Close()
 	})
 
-	c, err := grpc.Dial(l.Addr().String(), grpc.WithInsecure())
+	c, err := grpc.Dial(l.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

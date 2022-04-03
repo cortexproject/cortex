@@ -38,14 +38,14 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 
 		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   "cortex",
-			Name:        "cache_fetched_keys",
+			Name:        "cache_fetched_keys_total",
 			Help:        "Total count of keys requested from cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),
 
 		hits: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace:   "cortex",
-			Name:        "cache_hits",
+			Name:        "cache_hits_total",
 			Help:        "Total count of keys found in cache.",
 			ConstLabels: prometheus.Labels{"name": name},
 		}),

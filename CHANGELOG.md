@@ -4,8 +4,9 @@
 
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
 * [ENHANCEMENT] Ring: Add `cortex_ring_availability_zone` metric to display which availability zone an instance is configured to run in. #4681
+* [CHANGE] Fix incorrectly named `cortex_cache_fetched_keys` and `cortex_cache_hits` metrics. Renamed to `cortex_cache_fetched_keys_total` and `cortex_cache_hits_total` respectively. #4686
 
-## 1.12.0 in pgoress
+## 1.12.0 in progress
 
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
 * [CHANGE] query-frontend: Do not print anything in the logs of `query-frontend` if a in-progress query has been canceled (context canceled) to avoid spam. #4562
@@ -13,7 +14,7 @@
 * [CHANGE] The `status_code` label on gRPC client metrics has changed from '200' and '500' to '2xx', '5xx', '4xx', 'cancel' or 'error'. 4601
 * [CHANGE] Memberlist: changed probe interval from `1s` to `5s` and probe timeout from `500ms` to `2s`. #4601
 * [FEATURE] Add shuffle sharding grouper and planner within compactor to allow further work towards parallelizing compaction #4624
-* [ENHANCEMENT] Update Go version to 1.17.5. #4602 #4604
+* [ENHANCEMENT] Update Go version to 1.17.8. #4602 #4604 #4658
 * [ENHANCEMENT] Keep track of discarded samples due to bad relabel configuration in `cortex_discarded_samples_total`. #4503
 * [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
 * [ENHANCEMENT] Query federation: improve performance in MergeQueryable by memoizing labels. #4502

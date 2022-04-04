@@ -58,7 +58,6 @@ const (
 
 var (
 	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
-	errShardingLegacyStorage               = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
 	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
 )
@@ -78,8 +77,7 @@ type MultitenantAlertmanagerConfig struct {
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store   alertstore.LegacyConfig `yaml:"storage" doc:"description=Deprecated. Use -alertmanager-storage.* CLI flags and their respective YAML config options instead."`
-	Cluster ClusterConfig           `yaml:"cluster"`
+	Cluster ClusterConfig `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
 
@@ -123,7 +121,6 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
 	cfg.ShardingRing.RegisterFlags(f)
-	cfg.Store.RegisterFlags(f)
 	cfg.Cluster.RegisterFlags(f)
 }
 
@@ -143,18 +140,11 @@ func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config)
 		return errInvalidExternalURL
 	}
 
-	if err := cfg.Store.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
-
 	if err := cfg.Persister.Validate(); err != nil {
 		return err
 	}
 
 	if cfg.ShardingEnabled {
-		if !cfg.Store.IsDefaults() {
-			return errShardingLegacyStorage
-		}
 		if !storageCfg.IsFullStateSupported() {
 			return errShardingUnsupportedStorage
 		}

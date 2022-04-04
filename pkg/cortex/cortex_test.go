@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"flag"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"io"
 	"net"
-	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,25 +22,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/cortexproject/cortex/pkg/chunk/aws"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
-	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestCortex(t *testing.T) {
-	rulerURL, err := url.Parse("inmemory:///rules")
-	require.NoError(t, err)
-
 	cfg := Config{
 		// Include the network names here explicitly. When CLI flags are registered
 		// these values are set as defaults but since we aren't registering them, we
@@ -85,14 +81,12 @@ func TestCortex(t *testing.T) {
 				},
 			},
 		},
-		Ruler: ruler.Config{
-			StoreConfig: ruler.RuleStoreConfig{
-				Type: "s3",
-				S3: aws.S3Config{
-					S3: flagext.URLValue{
-						URL: rulerURL,
-					},
-				},
+		RulerStorage: rulestore.Config{
+			Config: bucket.Config{
+				Backend: "local",
+			},
+			Local: local.Config{
+				Directory: os.TempDir(),
 			},
 		},
 

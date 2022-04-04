@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"net/http"
 	"strings"
 	"testing"
@@ -23,8 +24,6 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
-	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const simpleAlertmanagerConfig = `route:
@@ -93,7 +92,6 @@ func TestAlertmanagerStoreAPI(t *testing.T) {
 	tests := map[string]struct {
 		legacyAlertStore bool
 	}{
-		"legacy alertstore": {legacyAlertStore: true},
 		"bucket alertstore": {legacyAlertStore: false},
 	}
 
@@ -174,7 +172,6 @@ func TestAlertmanagerClustering(t *testing.T) {
 	tests := map[string]struct {
 		legacyAlertStore bool
 	}{
-		"legacy alertstore": {legacyAlertStore: true},
 		"bucket alertstore": {legacyAlertStore: false},
 	}
 
@@ -190,14 +187,13 @@ func TestAlertmanagerClustering(t *testing.T) {
 			minio := e2edb.NewMinio(9000, alertsBucketName)
 			require.NoError(t, s.StartAndWaitReady(minio))
 
-			client, err := s3.NewS3ObjectClient(s3.S3Config{
-				Endpoint:         minio.HTTPEndpoint(),
-				S3ForcePathStyle: true,
-				Insecure:         true,
-				BucketNames:      alertsBucketName,
-				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
-			})
+			client, err := s3.NewBucketWithConfig(nil, s3.Config{
+				Endpoint:  minio.HTTPEndpoint(),
+				Insecure:  true,
+				Bucket:    alertsBucketName,
+				AccessKey: e2edb.MinioAccessKey,
+				SecretKey: e2edb.MinioSecretKey,
+			}, "alertmanager-test")
 			require.NoError(t, err)
 
 			// Create and upload an Alertmanager configuration.
@@ -206,7 +202,7 @@ func TestAlertmanagerClustering(t *testing.T) {
 
 			d, err := desc.Marshal()
 			require.NoError(t, err)
-			err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+			err = client.Upload(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
 			require.NoError(t, err)
 
 			peers := strings.Join([]string{
@@ -256,14 +252,13 @@ func TestAlertmanagerSharding(t *testing.T) {
 			minio := e2edb.NewMinio(9000, alertsBucketName)
 			require.NoError(t, s.StartAndWaitReady(consul, minio))
 
-			client, err := s3.NewS3ObjectClient(s3.S3Config{
-				Endpoint:         minio.HTTPEndpoint(),
-				S3ForcePathStyle: true,
-				Insecure:         true,
-				BucketNames:      alertsBucketName,
-				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
-			})
+			client, err := s3.NewBucketWithConfig(nil, s3.Config{
+				Endpoint:  minio.HTTPEndpoint(),
+				Insecure:  true,
+				Bucket:    alertsBucketName,
+				AccessKey: e2edb.MinioAccessKey,
+				SecretKey: e2edb.MinioSecretKey,
+			}, "alertmanager-test")
 			require.NoError(t, err)
 
 			// Create and upload Alertmanager configurations.
@@ -277,7 +272,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 
 				d, err := desc.Marshal()
 				require.NoError(t, err)
-				err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+				err = client.Upload(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
 				require.NoError(t, err)
 			}
 
@@ -619,14 +614,13 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 			minio := e2edb.NewMinio(9000, alertsBucketName)
 			require.NoError(t, s.StartAndWaitReady(consul, minio))
 
-			client, err := s3.NewS3ObjectClient(s3.S3Config{
-				Endpoint:         minio.HTTPEndpoint(),
-				S3ForcePathStyle: true,
-				Insecure:         true,
-				BucketNames:      alertsBucketName,
-				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
-			})
+			client, err := s3.NewBucketWithConfig(nil, s3.Config{
+				Endpoint:  minio.HTTPEndpoint(),
+				Insecure:  true,
+				Bucket:    alertsBucketName,
+				AccessKey: e2edb.MinioAccessKey,
+				SecretKey: e2edb.MinioSecretKey,
+			}, "alertmanager-test")
 			require.NoError(t, err)
 
 			// Create and upload Alertmanager configurations.
@@ -641,7 +635,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 
 				d, err := desc.Marshal()
 				require.NoError(t, err)
-				err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+				err = client.Upload(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
 				require.NoError(t, err)
 			}
 

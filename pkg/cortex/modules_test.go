@@ -123,16 +123,6 @@ func TestCortex_InitRulerStorage(t *testing.T) {
 			}(),
 			expectedInit: false,
 		},
-		"should init the ruler storage on legacy ruler storage config with target=all": {
-			config: func() *Config {
-				cfg := newDefaultConfig()
-				cfg.Target = []string{"all"}
-				cfg.Ruler.StoreConfig.Type = "local"
-				cfg.Ruler.StoreConfig.Local.Directory = os.TempDir()
-				return cfg
-			}(),
-			expectedInit: true,
-		},
 		"should init the ruler storage on ruler storage config with target=all": {
 			config: func() *Config {
 				cfg := newDefaultConfig()

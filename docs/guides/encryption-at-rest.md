@@ -25,16 +25,16 @@ The `s3_sse_config` configures the S3 server-side encryption.
 ```yaml
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-  # CLI flag: -s3.sse.type
+  # CLI flag: -<prefix>.s3.sse.type
   [type: <string> | default = ""]
 
   # KMS Key ID used to encrypt objects in S3
-  # CLI flag: -s3.sse.kms-key-id
+  # CLI flag: -<prefix>.s3.sse.kms-key-id
   [kms_key_id: <string> | default = ""]
 
   # KMS Encryption Context used for object encryption. It expects JSON formatted
   # string.
-  # CLI flag: -s3.sse.kms-encryption-context
+  # CLI flag: -<prefix>.s3.sse.kms-encryption-context
   [kms_encryption_context: <string> | default = ""]
 ```
 

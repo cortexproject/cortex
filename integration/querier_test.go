@@ -852,7 +852,6 @@ func TestHashCollisionHandling(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	flags := BlocksStorageFlags()
 
 	// Start dependencies.

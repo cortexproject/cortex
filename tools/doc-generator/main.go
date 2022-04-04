@@ -13,7 +13,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
@@ -99,11 +98,6 @@ var (
 			desc:       "The alertmanager_storage_config configures the Cortex alertmanager storage backend.",
 		},
 		{
-			name:       "table_manager_config",
-			structType: reflect.TypeOf(chunk.TableManagerConfig{}),
-			desc:       "The table_manager_config configures the Cortex table-manager.",
-		},
-		{
 			name:       "storage_config",
 			structType: reflect.TypeOf(storage.Config{}),
 			desc:       "The storage_config configures where Cortex stores the data (chunks storage engine).",
@@ -112,11 +106,6 @@ var (
 			name:       "flusher_config",
 			structType: reflect.TypeOf(flusher.Config{}),
 			desc:       "The flusher_config configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.",
-		},
-		{
-			name:       "chunk_store_config",
-			structType: reflect.TypeOf(chunk.StoreConfig{}),
-			desc:       "The chunk_store_config configures how Cortex stores the data (chunks storage engine).",
 		},
 		{
 			name:       "ingester_client_config",

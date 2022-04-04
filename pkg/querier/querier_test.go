@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
+	"github.com/cortexproject/cortex/pkg/tenant"
+
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
@@ -68,9 +71,6 @@ var (
 		name string
 		e    promchunk.Encoding
 	}{
-		{"DoubleDelta", promchunk.DoubleDelta},
-		{"Varbit", promchunk.Varbit},
-		{"Bigchunk", promchunk.Bigchunk},
 		{"PrometheusXorChunk", promchunk.PrometheusXorChunk},
 	}
 
@@ -823,6 +823,70 @@ func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, th
 
 func (d *emptyDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
 	return nil, nil
+}
+
+// NewChunkStoreQueryable returns the storage.Queryable implementation against the chunks store.
+func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
+	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
+}
+
+func newChunkStoreQueryable(store chunkstore.ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
+	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return &chunkStoreQuerier{
+			store:             store,
+			chunkIteratorFunc: chunkIteratorFunc,
+			ctx:               ctx,
+			mint:              mint,
+			maxt:              maxt,
+		}, nil
+	})
+}
+
+type chunkStoreQuerier struct {
+	store             chunkstore.ChunkStore
+	chunkIteratorFunc chunkIteratorFunc
+	ctx               context.Context
+	mint, maxt        int64
+}
+
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	userID, err := tenant.TenantID(q.ctx)
+	if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
+	minT, maxT := q.mint, q.maxt
+	if sp != nil {
+		minT, maxT = sp.Start, sp.End
+	}
+
+	// We will hit this for /series lookup when -querier.query-store-for-labels-enabled is set.
+	// If we don't skip here, it'll make /series lookups extremely slow as all the chunks will be loaded.
+	// That flag is only to be set with blocks storage engine, and this is a protective measure.
+	if sp != nil && sp.Func == "series" {
+		return storage.EmptySeriesSet()
+	}
+
+	chunks, err := q.store.Get(q.ctx, userID, model.Time(minT), model.Time(maxT), matchers...)
+	if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
+	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
+}
+
+func (q *chunkStoreQuerier) LabelValues(name string, labels ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
+func (q *chunkStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
+func (q *chunkStoreQuerier) Close() error {
+	return nil
 }
 
 func TestShortTermQueryToLTS(t *testing.T) {

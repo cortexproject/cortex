@@ -107,10 +107,6 @@ api:
 # engine).
 [storage: <storage_config>]
 
-# The chunk_store_config configures how Cortex stores the data (chunks storage
-# engine).
-[chunk_store: <chunk_store_config>]
-
 # The limits_config configures default and per-tenant limits imposed by Cortex
 # services (ie. distributor, ingester, ...).
 [limits: <limits_config>]
@@ -126,9 +122,6 @@ api:
 # The query_range_config configures the query splitting and caching in the
 # Cortex query-frontend.
 [query_range: <query_range_config>]
-
-# The table_manager_config configures the Cortex table-manager.
-[table_manager: <table_manager_config>]
 
 # The blocks_storage_config configures the blocks storage.
 [blocks_storage: <blocks_storage_config>]
@@ -953,15 +946,6 @@ store_gateway_client:
   # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
-# Second store engine to use for querying. Empty = disabled.
-# CLI flag: -querier.second-store-engine
-[second_store_engine: <string> | default = ""]
-
-# If specified, second store is only used for queries before this timestamp.
-# Default value 0 means secondary store is always queried.
-# CLI flag: -querier.use-second-store-before-time
-[use_second_store_before_time: <time> | default = 0]
-
 # When distributor's sharding strategy is shuffle-sharding and this setting is >
 # 0, queriers fetch in-memory series from the minimum set of required ingesters,
 # selecting only ingesters which may have received series since 'now - lookback
@@ -1133,20 +1117,16 @@ results_cache:
 
     # The memcached_config block configures how data is stored in Memcached (ie.
     # expiration).
-    # The CLI flags prefix for this block config is: frontend
     [memcached: <memcached_config>]
 
     # The memcached_client_config configures the client used to connect to
     # Memcached.
-    # The CLI flags prefix for this block config is: frontend
     [memcached_client: <memcached_client_config>]
 
     # The redis_config configures the Redis backend cache.
-    # The CLI flags prefix for this block config is: frontend
     [redis: <redis_config>]
 
     # The fifo_cache_config configures the local in-memory cache.
-    # The CLI flags prefix for this block config is: frontend
     [fifocache: <fifo_cache_config>]
 
   # Use compression in results cache. Supported values are: 'snappy' and ''
@@ -1166,11 +1146,6 @@ results_cache:
 # error is returned.
 # CLI flag: -querier.max-retries-per-request
 [max_retries: <int> | default = 5]
-
-# Perform query parallelisations based on storage sharding configuration and
-# query ASTs. This feature is supported only by the chunks storage engine.
-# CLI flag: -querier.parallelise-shardable-queries
-[parallelise_shardable_queries: <boolean> | default = false]
 
 # List of headers forwarded by the query Frontend to downstream querier.
 # CLI flag: -frontend.forward-headers-list
@@ -2497,341 +2472,6 @@ local:
   [path: <string> | default = ""]
 ```
 
-### `table_manager_config`
-
-The `table_manager_config` configures the Cortex table-manager.
-
-```yaml
-# If true, disable all changes to DB capacity
-# CLI flag: -table-manager.throughput-updates-disabled
-[throughput_updates_disabled: <boolean> | default = false]
-
-# If true, enables retention deletes of DB tables
-# CLI flag: -table-manager.retention-deletes-enabled
-[retention_deletes_enabled: <boolean> | default = false]
-
-# Tables older than this retention period are deleted. Must be either 0
-# (disabled) or a multiple of 24h. When enabled, be aware this setting is
-# destructive to data!
-# CLI flag: -table-manager.retention-period
-[retention_period: <duration> | default = 0s]
-
-# How frequently to poll backend to learn our capacity.
-# CLI flag: -table-manager.poll-interval
-[poll_interval: <duration> | default = 2m]
-
-# Periodic tables grace period (duration which table will be created/deleted
-# before/after it's needed).
-# CLI flag: -table-manager.periodic-table.grace-period
-[creation_grace_period: <duration> | default = 10m]
-
-index_tables_provisioning:
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.index-table.enable-ondemand-throughput-mode
-  [enable_ondemand_throughput_mode: <boolean> | default = false]
-
-  # Table default write throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.write-throughput
-  [provisioned_write_throughput: <int> | default = 1000]
-
-  # Table default read throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.read-throughput
-  [provisioned_read_throughput: <int> | default = 300]
-
-  write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.index-table.inactive-enable-ondemand-throughput-mode
-  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
-
-  # Table write throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.inactive-write-throughput
-  [inactive_write_throughput: <int> | default = 1]
-
-  # Table read throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.index-table.inactive-read-throughput
-  [inactive_read_throughput: <int> | default = 300]
-
-  inactive_write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.inactive-write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  inactive_read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.index-table.inactive-read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -table-manager.index-table.inactive-write-throughput.scale-last-n
-  [inactive_write_scale_lastn: <int> | default = 4]
-
-  # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -table-manager.index-table.inactive-read-throughput.scale-last-n
-  [inactive_read_scale_lastn: <int> | default = 4]
-
-chunk_tables_provisioning:
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.chunk-table.enable-ondemand-throughput-mode
-  [enable_ondemand_throughput_mode: <boolean> | default = false]
-
-  # Table default write throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.write-throughput
-  [provisioned_write_throughput: <int> | default = 1000]
-
-  # Table default read throughput. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.read-throughput
-  [provisioned_read_throughput: <int> | default = 300]
-
-  write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Enables on demand throughput provisioning for the storage provider (if
-  # supported). Applies only to tables which are not autoscaled. Supported by
-  # DynamoDB
-  # CLI flag: -table-manager.chunk-table.inactive-enable-ondemand-throughput-mode
-  [enable_inactive_throughput_on_demand_mode: <boolean> | default = false]
-
-  # Table write throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.inactive-write-throughput
-  [inactive_write_throughput: <int> | default = 1]
-
-  # Table read throughput for inactive tables. Supported by DynamoDB
-  # CLI flag: -table-manager.chunk-table.inactive-read-throughput
-  [inactive_read_throughput: <int> | default = 300]
-
-  inactive_write_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  inactive_read_scale:
-    # Should we enable autoscale for the table.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.enabled
-    [enabled: <boolean> | default = false]
-
-    # AWS AutoScaling role ARN
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.role-arn
-    [role_arn: <string> | default = ""]
-
-    # DynamoDB minimum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.min-capacity
-    [min_capacity: <int> | default = 3000]
-
-    # DynamoDB maximum provision capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.max-capacity
-    [max_capacity: <int> | default = 6000]
-
-    # DynamoDB minimum seconds between each autoscale up.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.out-cooldown
-    [out_cooldown: <int> | default = 1800]
-
-    # DynamoDB minimum seconds between each autoscale down.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.in-cooldown
-    [in_cooldown: <int> | default = 1800]
-
-    # DynamoDB target ratio of consumed capacity to provisioned capacity.
-    # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale.target-value
-    [target: <float> | default = 80]
-
-  # Number of last inactive tables to enable write autoscale.
-  # CLI flag: -table-manager.chunk-table.inactive-write-throughput.scale-last-n
-  [inactive_write_scale_lastn: <int> | default = 4]
-
-  # Number of last inactive tables to enable read autoscale.
-  # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
-  [inactive_read_scale_lastn: <int> | default = 4]
-```
-
 ### `storage_config`
 
 The `storage_config` configures where Cortex stores the data (chunks storage engine).
@@ -2840,550 +2480,6 @@ The `storage_config` configures where Cortex stores the data (chunks storage eng
 # The storage engine to use: blocks is the only supported option today.
 # CLI flag: -store.engine
 [engine: <string> | default = "blocks"]
-
-aws:
-  dynamodb:
-    # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region
-    # is specified as a host, proper endpoint will be deduced. Use
-    # inmemory:///<table-name> to use a mock in-memory implementation.
-    # CLI flag: -dynamodb.url
-    [dynamodb_url: <url> | default = ]
-
-    # DynamoDB table management requests per second limit.
-    # CLI flag: -dynamodb.api-limit
-    [api_limit: <float> | default = 2]
-
-    # DynamoDB rate cap to back off when throttled.
-    # CLI flag: -dynamodb.throttle-limit
-    [throttle_limit: <float> | default = 10]
-
-    metrics:
-      # Use metrics-based autoscaling, via this query URL
-      # CLI flag: -metrics.url
-      [url: <string> | default = ""]
-
-      # Queue length above which we will scale up capacity
-      # CLI flag: -metrics.target-queue-length
-      [target_queue_length: <int> | default = 100000]
-
-      # Scale up capacity by this multiple
-      # CLI flag: -metrics.scale-up-factor
-      [scale_up_factor: <float> | default = 1.3]
-
-      # Ignore throttling below this level (rate per second)
-      # CLI flag: -metrics.ignore-throttle-below
-      [ignore_throttle_below: <float> | default = 1]
-
-      # query to fetch ingester queue length
-      # CLI flag: -metrics.queue-length-query
-      [queue_length_query: <string> | default = "sum(avg_over_time(cortex_ingester_flush_queue_length{job=\"cortex/ingester\"}[2m]))"]
-
-      # query to fetch throttle rates per table
-      # CLI flag: -metrics.write-throttle-query
-      [write_throttle_query: <string> | default = "sum(rate(cortex_dynamo_throttled_total{operation=\"DynamoDB.BatchWriteItem\"}[1m])) by (table) > 0"]
-
-      # query to fetch write capacity usage per table
-      # CLI flag: -metrics.usage-query
-      [write_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.BatchWriteItem\"}[15m])) by (table) > 0"]
-
-      # query to fetch read capacity usage per table
-      # CLI flag: -metrics.read-usage-query
-      [read_usage_query: <string> | default = "sum(rate(cortex_dynamo_consumed_capacity_total{operation=\"DynamoDB.QueryPages\"}[1h])) by (table) > 0"]
-
-      # query to fetch read errors per table
-      # CLI flag: -metrics.read-error-query
-      [read_error_query: <string> | default = "sum(increase(cortex_dynamo_failures_total{operation=\"DynamoDB.QueryPages\",error=\"ProvisionedThroughputExceededException\"}[1m])) by (table) > 0"]
-
-    # Number of chunks to group together to parallelise fetches (zero to
-    # disable)
-    # CLI flag: -dynamodb.chunk-gang-size
-    [chunk_gang_size: <int> | default = 10]
-
-    # Max number of chunk-get operations to start in parallel
-    # CLI flag: -dynamodb.chunk.get-max-parallelism
-    [chunk_get_max_parallelism: <int> | default = 32]
-
-    backoff_config:
-      # Minimum backoff time
-      # CLI flag: -dynamodb.min-backoff
-      [min_period: <duration> | default = 100ms]
-
-      # Maximum backoff time
-      # CLI flag: -dynamodb.max-backoff
-      [max_period: <duration> | default = 50s]
-
-      # Maximum number of times to retry an operation
-      # CLI flag: -dynamodb.max-retries
-      [max_retries: <int> | default = 20]
-
-  # S3 endpoint URL with escaped Key and Secret encoded. If only region is
-  # specified as a host, proper endpoint will be deduced. Use
-  # inmemory:///<bucket-name> to use a mock in-memory implementation.
-  # CLI flag: -s3.url
-  [s3: <url> | default = ]
-
-  # Set this to `true` to force the request to use path-style addressing.
-  # CLI flag: -s3.force-path-style
-  [s3forcepathstyle: <boolean> | default = false]
-
-  # Comma separated list of bucket names to evenly distribute chunks over.
-  # Overrides any buckets specified in s3.url flag
-  # CLI flag: -s3.buckets
-  [bucketnames: <string> | default = ""]
-
-  # S3 Endpoint to connect to.
-  # CLI flag: -s3.endpoint
-  [endpoint: <string> | default = ""]
-
-  # AWS region to use.
-  # CLI flag: -s3.region
-  [region: <string> | default = ""]
-
-  # AWS Access Key ID
-  # CLI flag: -s3.access-key-id
-  [access_key_id: <string> | default = ""]
-
-  # AWS Secret Access Key
-  # CLI flag: -s3.secret-access-key
-  [secret_access_key: <string> | default = ""]
-
-  # Disable https on s3 connection.
-  # CLI flag: -s3.insecure
-  [insecure: <boolean> | default = false]
-
-  # Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-  # s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-  # CLI flag: -s3.sse-encryption
-  [sse_encryption: <boolean> | default = false]
-
-  http_config:
-    # The maximum amount of time an idle connection will be held open.
-    # CLI flag: -s3.http.idle-conn-timeout
-    [idle_conn_timeout: <duration> | default = 1m30s]
-
-    # If non-zero, specifies the amount of time to wait for a server's response
-    # headers after fully writing the request.
-    # CLI flag: -s3.http.response-header-timeout
-    [response_header_timeout: <duration> | default = 0s]
-
-    # Set to false to skip verifying the certificate chain and hostname.
-    # CLI flag: -s3.http.insecure-skip-verify
-    [insecure_skip_verify: <boolean> | default = false]
-
-  # The signature version to use for authenticating against S3. Supported values
-  # are: v4, v2.
-  # CLI flag: -s3.signature-version
-  [signature_version: <string> | default = "v4"]
-
-  # The s3_sse_config configures the S3 server-side encryption.
-  [sse: <s3_sse_config>]
-
-azure:
-  # Azure Cloud environment. Supported values are: AzureGlobal, AzureChinaCloud,
-  # AzureGermanCloud, AzureUSGovernment.
-  # CLI flag: -azure.environment
-  [environment: <string> | default = "AzureGlobal"]
-
-  # Name of the blob container used to store chunks. This container must be
-  # created before running cortex.
-  # CLI flag: -azure.container-name
-  [container_name: <string> | default = "cortex"]
-
-  # The Microsoft Azure account name to be used
-  # CLI flag: -azure.account-name
-  [account_name: <string> | default = ""]
-
-  # The Microsoft Azure account key to use.
-  # CLI flag: -azure.account-key
-  [account_key: <string> | default = ""]
-
-  # Preallocated buffer size for downloads.
-  # CLI flag: -azure.download-buffer-size
-  [download_buffer_size: <int> | default = 512000]
-
-  # Preallocated buffer size for uploads.
-  # CLI flag: -azure.upload-buffer-size
-  [upload_buffer_size: <int> | default = 256000]
-
-  # Number of buffers used to used to upload a chunk.
-  # CLI flag: -azure.download-buffer-count
-  [upload_buffer_count: <int> | default = 1]
-
-  # Timeout for requests made against azure blob storage.
-  # CLI flag: -azure.request-timeout
-  [request_timeout: <duration> | default = 30s]
-
-  # Number of retries for a request which times out.
-  # CLI flag: -azure.max-retries
-  [max_retries: <int> | default = 5]
-
-  # Minimum time to wait before retrying a request.
-  # CLI flag: -azure.min-retry-delay
-  [min_retry_delay: <duration> | default = 10ms]
-
-  # Maximum time to wait before retrying a request.
-  # CLI flag: -azure.max-retry-delay
-  [max_retry_delay: <duration> | default = 500ms]
-
-bigtable:
-  # Bigtable project ID.
-  # CLI flag: -bigtable.project
-  [project: <string> | default = ""]
-
-  # Bigtable instance ID. Please refer to
-  # https://cloud.google.com/docs/authentication/production for more information
-  # about how to configure authentication.
-  # CLI flag: -bigtable.instance
-  [instance: <string> | default = ""]
-
-  grpc_client_config:
-    # gRPC client max receive message size (bytes).
-    # CLI flag: -bigtable.grpc-max-recv-msg-size
-    [max_recv_msg_size: <int> | default = 104857600]
-
-    # gRPC client max send message size (bytes).
-    # CLI flag: -bigtable.grpc-max-send-msg-size
-    [max_send_msg_size: <int> | default = 16777216]
-
-    # Use compression when sending messages. Supported values are: 'gzip',
-    # 'snappy' and '' (disable compression)
-    # CLI flag: -bigtable.grpc-compression
-    [grpc_compression: <string> | default = ""]
-
-    # Rate limit for gRPC client; 0 means disabled.
-    # CLI flag: -bigtable.grpc-client-rate-limit
-    [rate_limit: <float> | default = 0]
-
-    # Rate limit burst for gRPC client.
-    # CLI flag: -bigtable.grpc-client-rate-limit-burst
-    [rate_limit_burst: <int> | default = 0]
-
-    # Enable backoff and retry when we hit ratelimits.
-    # CLI flag: -bigtable.backoff-on-ratelimits
-    [backoff_on_ratelimits: <boolean> | default = false]
-
-    backoff_config:
-      # Minimum delay when backing off.
-      # CLI flag: -bigtable.backoff-min-period
-      [min_period: <duration> | default = 100ms]
-
-      # Maximum delay when backing off.
-      # CLI flag: -bigtable.backoff-max-period
-      [max_period: <duration> | default = 10s]
-
-      # Number of times to backoff and retry before failing.
-      # CLI flag: -bigtable.backoff-retries
-      [max_retries: <int> | default = 10]
-
-    # Enable TLS in the GRPC client. This flag needs to be enabled when any
-    # other TLS flag is set. If set to false, insecure connection to gRPC server
-    # will be used.
-    # CLI flag: -bigtable.tls-enabled
-    [tls_enabled: <boolean> | default = true]
-
-    # Path to the client certificate file, which will be used for authenticating
-    # with the server. Also requires the key path to be configured.
-    # CLI flag: -bigtable.tls-cert-path
-    [tls_cert_path: <string> | default = ""]
-
-    # Path to the key file for the client certificate. Also requires the client
-    # certificate to be configured.
-    # CLI flag: -bigtable.tls-key-path
-    [tls_key_path: <string> | default = ""]
-
-    # Path to the CA certificates file to validate server certificate against.
-    # If not set, the host's root CA certificates are used.
-    # CLI flag: -bigtable.tls-ca-path
-    [tls_ca_path: <string> | default = ""]
-
-    # Override the expected name on the server certificate.
-    # CLI flag: -bigtable.tls-server-name
-    [tls_server_name: <string> | default = ""]
-
-    # Skip validating server certificate.
-    # CLI flag: -bigtable.tls-insecure-skip-verify
-    [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # If enabled, once a tables info is fetched, it is cached.
-  # CLI flag: -bigtable.table-cache.enabled
-  [table_cache_enabled: <boolean> | default = true]
-
-  # Duration to cache tables before checking again.
-  # CLI flag: -bigtable.table-cache.expiration
-  [table_cache_expiration: <duration> | default = 30m]
-
-gcs:
-  # Name of GCS bucket. Please refer to
-  # https://cloud.google.com/docs/authentication/production for more information
-  # about how to configure authentication.
-  # CLI flag: -gcs.bucketname
-  [bucket_name: <string> | default = ""]
-
-  # The size of the buffer that GCS client for each PUT request. 0 to disable
-  # buffering.
-  # CLI flag: -gcs.chunk-buffer-size
-  [chunk_buffer_size: <int> | default = 0]
-
-  # The duration after which the requests to GCS should be timed out.
-  # CLI flag: -gcs.request-timeout
-  [request_timeout: <duration> | default = 0s]
-
-  # Enabled OpenCensus (OC) instrumentation for all requests.
-  # CLI flag: -gcs.enable-opencensus
-  [enable_opencensus: <boolean> | default = true]
-
-cassandra:
-  # Comma-separated hostnames or IPs of Cassandra instances.
-  # CLI flag: -cassandra.addresses
-  [addresses: <string> | default = ""]
-
-  # Port that Cassandra is running on
-  # CLI flag: -cassandra.port
-  [port: <int> | default = 9042]
-
-  # Keyspace to use in Cassandra.
-  # CLI flag: -cassandra.keyspace
-  [keyspace: <string> | default = ""]
-
-  # Consistency level for Cassandra.
-  # CLI flag: -cassandra.consistency
-  [consistency: <string> | default = "QUORUM"]
-
-  # Replication factor to use in Cassandra.
-  # CLI flag: -cassandra.replication-factor
-  [replication_factor: <int> | default = 3]
-
-  # Instruct the cassandra driver to not attempt to get host info from the
-  # system.peers table.
-  # CLI flag: -cassandra.disable-initial-host-lookup
-  [disable_initial_host_lookup: <boolean> | default = false]
-
-  # Use SSL when connecting to cassandra instances.
-  # CLI flag: -cassandra.ssl
-  [SSL: <boolean> | default = false]
-
-  # Require SSL certificate validation.
-  # CLI flag: -cassandra.host-verification
-  [host_verification: <boolean> | default = true]
-
-  # Policy for selecting Cassandra host. Supported values are: round-robin,
-  # token-aware.
-  # CLI flag: -cassandra.host-selection-policy
-  [host_selection_policy: <string> | default = "round-robin"]
-
-  # Path to certificate file to verify the peer.
-  # CLI flag: -cassandra.ca-path
-  [CA_path: <string> | default = ""]
-
-  # Path to certificate file used by TLS.
-  # CLI flag: -cassandra.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to private key file used by TLS.
-  # CLI flag: -cassandra.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Enable password authentication when connecting to cassandra.
-  # CLI flag: -cassandra.auth
-  [auth: <boolean> | default = false]
-
-  # Username to use when connecting to cassandra.
-  # CLI flag: -cassandra.username
-  [username: <string> | default = ""]
-
-  # Password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password
-  [password: <string> | default = ""]
-
-  # File containing password to use when connecting to cassandra.
-  # CLI flag: -cassandra.password-file
-  [password_file: <string> | default = ""]
-
-  # If set, when authenticating with cassandra a custom authenticator will be
-  # expected during the handshake. This flag can be set multiple times.
-  # CLI flag: -cassandra.custom-authenticator
-  [custom_authenticators: <list of string> | default = []]
-
-  # Timeout when connecting to cassandra.
-  # CLI flag: -cassandra.timeout
-  [timeout: <duration> | default = 2s]
-
-  # Initial connection timeout, used during initial dial to server.
-  # CLI flag: -cassandra.connect-timeout
-  [connect_timeout: <duration> | default = 5s]
-
-  # Interval to retry connecting to cassandra nodes marked as DOWN.
-  # CLI flag: -cassandra.reconnent-interval
-  [reconnect_interval: <duration> | default = 1s]
-
-  # Number of retries to perform on a request. Set to 0 to disable retries.
-  # CLI flag: -cassandra.max-retries
-  [max_retries: <int> | default = 0]
-
-  # Maximum time to wait before retrying a failed request.
-  # CLI flag: -cassandra.retry-max-backoff
-  [retry_max_backoff: <duration> | default = 10s]
-
-  # Minimum time to wait before retrying a failed request.
-  # CLI flag: -cassandra.retry-min-backoff
-  [retry_min_backoff: <duration> | default = 100ms]
-
-  # Limit number of concurrent queries to Cassandra. Set to 0 to disable the
-  # limit.
-  # CLI flag: -cassandra.query-concurrency
-  [query_concurrency: <int> | default = 0]
-
-  # Number of TCP connections per host.
-  # CLI flag: -cassandra.num-connections
-  [num_connections: <int> | default = 2]
-
-  # Convict hosts of being down on failure.
-  # CLI flag: -cassandra.convict-hosts-on-failure
-  [convict_hosts_on_failure: <boolean> | default = true]
-
-  # Table options used to create index or chunk tables. This value is used as
-  # plain text in the table `WITH` like this, "CREATE TABLE
-  # <generated_by_cortex> (...) WITH <cassandra.table-options>". For details,
-  # see https://cortexmetrics.io/docs/production/cassandra. By default it will
-  # use the default table options of your Cassandra cluster.
-  # CLI flag: -cassandra.table-options
-  [table_options: <string> | default = ""]
-
-boltdb:
-  # Location of BoltDB index files.
-  # CLI flag: -boltdb.dir
-  [directory: <string> | default = ""]
-
-filesystem:
-  # Directory to store chunks in.
-  # CLI flag: -local.chunk-directory
-  [directory: <string> | default = ""]
-
-swift:
-  # OpenStack Swift authentication API version. 0 to autodetect.
-  # CLI flag: -swift.auth-version
-  [auth_version: <int> | default = 0]
-
-  # OpenStack Swift authentication URL
-  # CLI flag: -swift.auth-url
-  [auth_url: <string> | default = ""]
-
-  # OpenStack Swift username.
-  # CLI flag: -swift.username
-  [username: <string> | default = ""]
-
-  # OpenStack Swift user's domain name.
-  # CLI flag: -swift.user-domain-name
-  [user_domain_name: <string> | default = ""]
-
-  # OpenStack Swift user's domain ID.
-  # CLI flag: -swift.user-domain-id
-  [user_domain_id: <string> | default = ""]
-
-  # OpenStack Swift user ID.
-  # CLI flag: -swift.user-id
-  [user_id: <string> | default = ""]
-
-  # OpenStack Swift API key.
-  # CLI flag: -swift.password
-  [password: <string> | default = ""]
-
-  # OpenStack Swift user's domain ID.
-  # CLI flag: -swift.domain-id
-  [domain_id: <string> | default = ""]
-
-  # OpenStack Swift user's domain name.
-  # CLI flag: -swift.domain-name
-  [domain_name: <string> | default = ""]
-
-  # OpenStack Swift project ID (v2,v3 auth only).
-  # CLI flag: -swift.project-id
-  [project_id: <string> | default = ""]
-
-  # OpenStack Swift project name (v2,v3 auth only).
-  # CLI flag: -swift.project-name
-  [project_name: <string> | default = ""]
-
-  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
-  # differs the from user domain.
-  # CLI flag: -swift.project-domain-id
-  [project_domain_id: <string> | default = ""]
-
-  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
-  # it differs from the user domain.
-  # CLI flag: -swift.project-domain-name
-  [project_domain_name: <string> | default = ""]
-
-  # OpenStack Swift Region to use (v2,v3 auth only).
-  # CLI flag: -swift.region-name
-  [region_name: <string> | default = ""]
-
-  # Name of the OpenStack Swift container to put chunks in.
-  # CLI flag: -swift.container-name
-  [container_name: <string> | default = ""]
-
-  # Max retries on requests error.
-  # CLI flag: -swift.max-retries
-  [max_retries: <int> | default = 3]
-
-  # Time after which a connection attempt is aborted.
-  # CLI flag: -swift.connect-timeout
-  [connect_timeout: <duration> | default = 10s]
-
-  # Time after which an idle request is aborted. The timeout watchdog is reset
-  # each time some data is received, so the timeout triggers after X time no
-  # data is received on a request.
-  # CLI flag: -swift.request-timeout
-  [request_timeout: <duration> | default = 5s]
-
-# Cache validity for active index entries. Should be no higher than
-# -ingester.max-chunk-idle.
-# CLI flag: -store.index-cache-validity
-[index_cache_validity: <duration> | default = 5m]
-
-index_queries_cache_config:
-  # Cache config for index entry reading. Enable in-memory cache.
-  # CLI flag: -store.index-cache-read.cache.enable-fifocache
-  [enable_fifocache: <boolean> | default = false]
-
-  # Cache config for index entry reading. The default validity of entries for
-  # caches unless overridden.
-  # CLI flag: -store.index-cache-read.default-validity
-  [default_validity: <duration> | default = 0s]
-
-  background:
-    # Cache config for index entry reading. At what concurrency to write back to
-    # cache.
-    # CLI flag: -store.index-cache-read.background.write-back-concurrency
-    [writeback_goroutines: <int> | default = 10]
-
-    # Cache config for index entry reading. How many key batches to buffer for
-    # background write-back.
-    # CLI flag: -store.index-cache-read.background.write-back-buffer
-    [writeback_buffer: <int> | default = 10000]
-
-  # The memcached_config block configures how data is stored in Memcached (ie.
-  # expiration).
-  # The CLI flags prefix for this block config is: store.index-cache-read
-  [memcached: <memcached_config>]
-
-  # The memcached_client_config configures the client used to connect to
-  # Memcached.
-  # The CLI flags prefix for this block config is: store.index-cache-read
-  [memcached_client: <memcached_client_config>]
-
-  # The redis_config configures the Redis backend cache.
-  # The CLI flags prefix for this block config is: store.index-cache-read
-  [redis: <redis_config>]
-
-  # The fifo_cache_config configures the local in-memory cache.
-  # The CLI flags prefix for this block config is: store.index-cache-read
-  [fifocache: <fifo_cache_config>]
-
-grpc_store:
-  # Hostname or IP of the gRPC store instance.
-  # CLI flag: -grpc-store.server-address
-  [server_address: <string> | default = ""]
 ```
 
 ### `flusher_config`
@@ -3409,93 +2505,6 @@ The `flusher_config` configures the WAL flusher target, used to manually run one
 # running, doing nothing.
 # CLI flag: -flusher.exit-after-flush
 [exit_after_flush: <boolean> | default = true]
-```
-
-### `chunk_store_config`
-
-The `chunk_store_config` configures how Cortex stores the data (chunks storage engine).
-
-```yaml
-chunk_cache_config:
-  # Cache config for chunks. Enable in-memory cache.
-  # CLI flag: -store.chunks-cache.cache.enable-fifocache
-  [enable_fifocache: <boolean> | default = false]
-
-  # Cache config for chunks. The default validity of entries for caches unless
-  # overridden.
-  # CLI flag: -store.chunks-cache.default-validity
-  [default_validity: <duration> | default = 0s]
-
-  background:
-    # Cache config for chunks. At what concurrency to write back to cache.
-    # CLI flag: -store.chunks-cache.background.write-back-concurrency
-    [writeback_goroutines: <int> | default = 10]
-
-    # Cache config for chunks. How many key batches to buffer for background
-    # write-back.
-    # CLI flag: -store.chunks-cache.background.write-back-buffer
-    [writeback_buffer: <int> | default = 10000]
-
-  # The memcached_config block configures how data is stored in Memcached (ie.
-  # expiration).
-  # The CLI flags prefix for this block config is: store.chunks-cache
-  [memcached: <memcached_config>]
-
-  # The memcached_client_config configures the client used to connect to
-  # Memcached.
-  # The CLI flags prefix for this block config is: store.chunks-cache
-  [memcached_client: <memcached_client_config>]
-
-  # The redis_config configures the Redis backend cache.
-  # The CLI flags prefix for this block config is: store.chunks-cache
-  [redis: <redis_config>]
-
-  # The fifo_cache_config configures the local in-memory cache.
-  # The CLI flags prefix for this block config is: store.chunks-cache
-  [fifocache: <fifo_cache_config>]
-
-write_dedupe_cache_config:
-  # Cache config for index entry writing. Enable in-memory cache.
-  # CLI flag: -store.index-cache-write.cache.enable-fifocache
-  [enable_fifocache: <boolean> | default = false]
-
-  # Cache config for index entry writing. The default validity of entries for
-  # caches unless overridden.
-  # CLI flag: -store.index-cache-write.default-validity
-  [default_validity: <duration> | default = 0s]
-
-  background:
-    # Cache config for index entry writing. At what concurrency to write back to
-    # cache.
-    # CLI flag: -store.index-cache-write.background.write-back-concurrency
-    [writeback_goroutines: <int> | default = 10]
-
-    # Cache config for index entry writing. How many key batches to buffer for
-    # background write-back.
-    # CLI flag: -store.index-cache-write.background.write-back-buffer
-    [writeback_buffer: <int> | default = 10000]
-
-  # The memcached_config block configures how data is stored in Memcached (ie.
-  # expiration).
-  # The CLI flags prefix for this block config is: store.index-cache-write
-  [memcached: <memcached_config>]
-
-  # The memcached_client_config configures the client used to connect to
-  # Memcached.
-  # The CLI flags prefix for this block config is: store.index-cache-write
-  [memcached_client: <memcached_client_config>]
-
-  # The redis_config configures the Redis backend cache.
-  # The CLI flags prefix for this block config is: store.index-cache-write
-  [redis: <redis_config>]
-
-  # The fifo_cache_config configures the local in-memory cache.
-  # The CLI flags prefix for this block config is: store.index-cache-write
-  [fifocache: <fifo_cache_config>]
-
-# Cache index entries older than this period. 0 to disable.
-# CLI flag: -store.cache-lookups-older-than
-[cache_lookups_older_than: <duration> | default = 0s]
 ```
 
 ### `ingester_client_config`
@@ -4262,179 +3271,151 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 ### `redis_config`
 
-The `redis_config` configures the Redis backend cache. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- `frontend`
-- `store.chunks-cache`
-- `store.index-cache-read`
-- `store.index-cache-write`
-
-&nbsp;
+The `redis_config` configures the Redis backend cache.
 
 ```yaml
 # Redis Server endpoint to use for caching. A comma-separated list of endpoints
 # for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
-# CLI flag: -<prefix>.redis.endpoint
+# CLI flag: -frontend.redis.endpoint
 [endpoint: <string> | default = ""]
 
 # Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
-# CLI flag: -<prefix>.redis.master-name
+# CLI flag: -frontend.redis.master-name
 [master_name: <string> | default = ""]
 
 # Maximum time to wait before giving up on redis requests.
-# CLI flag: -<prefix>.redis.timeout
+# CLI flag: -frontend.redis.timeout
 [timeout: <duration> | default = 500ms]
 
 # How long keys stay in the redis.
-# CLI flag: -<prefix>.redis.expiration
+# CLI flag: -frontend.redis.expiration
 [expiration: <duration> | default = 0s]
 
 # Database index.
-# CLI flag: -<prefix>.redis.db
+# CLI flag: -frontend.redis.db
 [db: <int> | default = 0]
 
 # Maximum number of connections in the pool.
-# CLI flag: -<prefix>.redis.pool-size
+# CLI flag: -frontend.redis.pool-size
 [pool_size: <int> | default = 0]
 
 # Password to use when connecting to redis.
-# CLI flag: -<prefix>.redis.password
+# CLI flag: -frontend.redis.password
 [password: <string> | default = ""]
 
 # Enable connecting to redis with TLS.
-# CLI flag: -<prefix>.redis.tls-enabled
+# CLI flag: -frontend.redis.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
 # Skip validating server certificate.
-# CLI flag: -<prefix>.redis.tls-insecure-skip-verify
+# CLI flag: -frontend.redis.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Close connections after remaining idle for this duration. If the value is
 # zero, then idle connections are not closed.
-# CLI flag: -<prefix>.redis.idle-timeout
+# CLI flag: -frontend.redis.idle-timeout
 [idle_timeout: <duration> | default = 0s]
 
 # Close connections older than this duration. If the value is zero, then the
 # pool does not close connections based on age.
-# CLI flag: -<prefix>.redis.max-connection-age
+# CLI flag: -frontend.redis.max-connection-age
 [max_connection_age: <duration> | default = 0s]
 ```
 
 ### `memcached_config`
 
-The `memcached_config` block configures how data is stored in Memcached (ie. expiration). The supported CLI flags `<prefix>` used to reference this config block are:
-
-- `frontend`
-- `store.chunks-cache`
-- `store.index-cache-read`
-- `store.index-cache-write`
-
-&nbsp;
+The `memcached_config` block configures how data is stored in Memcached (ie. expiration).
 
 ```yaml
 # How long keys stay in the memcache.
-# CLI flag: -<prefix>.memcached.expiration
+# CLI flag: -frontend.memcached.expiration
 [expiration: <duration> | default = 0s]
 
 # How many keys to fetch in each batch.
-# CLI flag: -<prefix>.memcached.batchsize
+# CLI flag: -frontend.memcached.batchsize
 [batch_size: <int> | default = 1024]
 
 # Maximum active requests to memcache.
-# CLI flag: -<prefix>.memcached.parallelism
+# CLI flag: -frontend.memcached.parallelism
 [parallelism: <int> | default = 100]
 ```
 
 ### `memcached_client_config`
 
-The `memcached_client_config` configures the client used to connect to Memcached. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- `frontend`
-- `store.chunks-cache`
-- `store.index-cache-read`
-- `store.index-cache-write`
-
-&nbsp;
+The `memcached_client_config` configures the client used to connect to Memcached.
 
 ```yaml
 # Hostname for memcached service to use. If empty and if addresses is unset, no
 # memcached will be used.
-# CLI flag: -<prefix>.memcached.hostname
+# CLI flag: -frontend.memcached.hostname
 [host: <string> | default = ""]
 
 # SRV service used to discover memcache servers.
-# CLI flag: -<prefix>.memcached.service
+# CLI flag: -frontend.memcached.service
 [service: <string> | default = "memcached"]
 
 # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
 # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
-# CLI flag: -<prefix>.memcached.addresses
+# CLI flag: -frontend.memcached.addresses
 [addresses: <string> | default = ""]
 
 # Maximum time to wait before giving up on memcached requests.
-# CLI flag: -<prefix>.memcached.timeout
+# CLI flag: -frontend.memcached.timeout
 [timeout: <duration> | default = 100ms]
 
 # Maximum number of idle connections in pool.
-# CLI flag: -<prefix>.memcached.max-idle-conns
+# CLI flag: -frontend.memcached.max-idle-conns
 [max_idle_conns: <int> | default = 16]
 
 # The maximum size of an item stored in memcached. Bigger items are not stored.
 # If set to 0, no maximum size is enforced.
-# CLI flag: -<prefix>.memcached.max-item-size
+# CLI flag: -frontend.memcached.max-item-size
 [max_item_size: <int> | default = 0]
 
 # Period with which to poll DNS for memcache servers.
-# CLI flag: -<prefix>.memcached.update-interval
+# CLI flag: -frontend.memcached.update-interval
 [update_interval: <duration> | default = 1m]
 
 # Use consistent hashing to distribute to memcache servers.
-# CLI flag: -<prefix>.memcached.consistent-hash
+# CLI flag: -frontend.memcached.consistent-hash
 [consistent_hash: <boolean> | default = true]
 
 # Trip circuit-breaker after this number of consecutive dial failures (if zero
 # then circuit-breaker is disabled).
-# CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
+# CLI flag: -frontend.memcached.circuit-breaker-consecutive-failures
 [circuit_breaker_consecutive_failures: <int> | default = 10]
 
 # Duration circuit-breaker remains open after tripping (if zero then 60 seconds
 # is used).
-# CLI flag: -<prefix>.memcached.circuit-breaker-timeout
+# CLI flag: -frontend.memcached.circuit-breaker-timeout
 [circuit_breaker_timeout: <duration> | default = 10s]
 
 # Reset circuit-breaker counts after this long (if zero then never reset).
-# CLI flag: -<prefix>.memcached.circuit-breaker-interval
+# CLI flag: -frontend.memcached.circuit-breaker-interval
 [circuit_breaker_interval: <duration> | default = 10s]
 ```
 
 ### `fifo_cache_config`
 
-The `fifo_cache_config` configures the local in-memory cache. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- `frontend`
-- `store.chunks-cache`
-- `store.index-cache-read`
-- `store.index-cache-write`
-
-&nbsp;
+The `fifo_cache_config` configures the local in-memory cache.
 
 ```yaml
 # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
 # applied.
-# CLI flag: -<prefix>.fifocache.max-size-bytes
+# CLI flag: -frontend.fifocache.max-size-bytes
 [max_size_bytes: <string> | default = ""]
 
 # Maximum number of entries in the cache.
-# CLI flag: -<prefix>.fifocache.max-size-items
+# CLI flag: -frontend.fifocache.max-size-items
 [max_size_items: <int> | default = 0]
 
 # The expiry duration for the cache.
-# CLI flag: -<prefix>.fifocache.duration
+# CLI flag: -frontend.fifocache.duration
 [validity: <duration> | default = 0s]
 
 # Deprecated (use max-size-items or max-size-bytes instead): The number of
 # entries to cache.
-# CLI flag: -<prefix>.fifocache.size
+# CLI flag: -frontend.fifocache.size
 [size: <int> | default = 0]
 ```
 
@@ -5421,7 +4402,6 @@ sharding_ring:
 
 The `s3_sse_config` configures the S3 server-side encryption. The supported CLI flags `<prefix>` used to reference this config block are:
 
-- _no prefix_
 - `alertmanager-storage`
 - `alertmanager.storage`
 - `blocks-storage`

@@ -203,15 +203,6 @@ querier:
     # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
 
-  # Second store engine to use for querying. Empty = disabled.
-  # CLI flag: -querier.second-store-engine
-  [second_store_engine: <string> | default = ""]
-
-  # If specified, second store is only used for queries before this timestamp.
-  # Default value 0 means secondary store is always queried.
-  # CLI flag: -querier.use-second-store-before-time
-  [use_second_store_before_time: <time> | default = 0]
-
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required
   # ingesters, selecting only ingesters which may have received series since

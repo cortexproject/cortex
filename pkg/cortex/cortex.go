@@ -24,11 +24,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
@@ -100,15 +97,11 @@ type Config struct {
 	Ingester         ingester.Config                 `yaml:"ingester"`
 	Flusher          flusher.Config                  `yaml:"flusher"`
 	Storage          storage.Config                  `yaml:"storage"`
-	ChunkStore       chunk.StoreConfig               `yaml:"chunk_store"`
-	Schema           chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig     validation.Limits               `yaml:"limits"`
 	Prealloc         cortexpb.PreallocConfig         `yaml:"prealloc" doc:"hidden"`
 	Worker           querier_worker.Config           `yaml:"frontend_worker"`
 	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
 	QueryRange       queryrange.Config               `yaml:"query_range"`
-	TableManager     chunk.TableManagerConfig        `yaml:"table_manager"`
-	Encoding         encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
@@ -148,15 +141,11 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ingester.RegisterFlags(f)
 	c.Flusher.RegisterFlags(f)
 	c.Storage.RegisterFlags(f)
-	c.ChunkStore.RegisterFlags(f)
-	c.Schema.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
 	c.Prealloc.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
-	c.TableManager.RegisterFlags(f)
-	c.Encoding.RegisterFlags(f)
 	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
@@ -170,9 +159,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
-
-	// These don't seem to have a home.
-	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
 }
 
 // Validate the cortex config and returns an error if the validation
@@ -186,17 +172,8 @@ func (c *Config) Validate(log log.Logger) error {
 		return errInvalidHTTPPrefix
 	}
 
-	if err := c.Schema.Validate(); err != nil {
-		return errors.Wrap(err, "invalid schema config")
-	}
-	if err := c.Encoding.Validate(); err != nil {
-		return errors.Wrap(err, "invalid encoding config")
-	}
 	if err := c.Storage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
-	}
-	if err := c.ChunkStore.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid chunk store config")
 	}
 	if err := c.RulerStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid rulestore config")
@@ -225,9 +202,6 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
-	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid table-manager config")
-	}
 	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
@@ -239,10 +213,6 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.Alertmanager.Validate(c.AlertmanagerStorage); err != nil {
 		return errors.Wrap(err, "invalid alertmanager config")
-	}
-
-	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
-		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")
 	}
 
 	return nil
@@ -316,7 +286,6 @@ type Cortex struct {
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Flusher                  *flusher.Flusher
-	Store                    chunk.Store
 	Frontend                 *frontendv1.Frontend
 	RuntimeConfig            *runtimeconfig.Manager
 	TombstonesLoader         purger.TombstonesLoader

@@ -26,32 +26,32 @@ func TestChunkMergeIterator(t *testing.T) {
 	}{
 		{
 			chunks: []chunk.Chunk{
-				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
+				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
 			},
 			maxt: 100,
 		},
 
 		{
 			chunks: []chunk.Chunk{
-				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
-				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
+				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
+				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
 			},
 			maxt: 100,
 		},
 
 		{
 			chunks: []chunk.Chunk{
-				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
-				mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.Varbit),
-				mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.Varbit),
+				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
+				mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.PrometheusXorChunk),
+				mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.PrometheusXorChunk),
 			},
 			maxt: 200,
 		},
 
 		{
 			chunks: []chunk.Chunk{
-				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
-				mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.Varbit),
+				mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
+				mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.PrometheusXorChunk),
 			},
 			maxt: 200,
 		},
@@ -72,9 +72,9 @@ func TestChunkMergeIterator(t *testing.T) {
 
 func TestChunkMergeIteratorSeek(t *testing.T) {
 	iter := NewChunkMergeIterator([]chunk.Chunk{
-		mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.Varbit),
-		mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.Varbit),
-		mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.Varbit),
+		mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
+		mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.PrometheusXorChunk),
+		mkChunk(t, 100, 200, 1*time.Millisecond, promchunk.PrometheusXorChunk),
 	}, 0, 0)
 
 	for i := int64(0); i < 10; i += 20 {

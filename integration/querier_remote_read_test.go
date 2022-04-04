@@ -28,7 +28,6 @@ func TestQuerierRemoteRead(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{})
 
 	// Start dependencies.

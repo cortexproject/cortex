@@ -2623,7 +2623,10 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			continue
 		}
 
-		c := encoding.New()
+		c, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
+		if err != nil {
+			return nil, err
+		}
 		chunks := []encoding.Chunk{c}
 		for _, sample := range ts.Samples {
 			newChunk, err := c.Add(model.SamplePair{

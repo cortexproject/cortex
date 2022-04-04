@@ -5,14 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -22,7 +20,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
@@ -348,28 +345,11 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
 	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
-	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer); err != nil {
+	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
 	} else {
 		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
 		if s, ok := q.(services.Service); ok {
-			servs = append(servs, s)
-		}
-	}
-
-	if t.Cfg.Querier.SecondStoreEngine != "" {
-		if t.Cfg.Querier.SecondStoreEngine == t.Cfg.Storage.Engine {
-			return nil, fmt.Errorf("second store engine used by querier '%s' must be different than primary engine '%s'", t.Cfg.Querier.SecondStoreEngine, t.Cfg.Storage.Engine)
-		}
-
-		sq, err := initQueryableForEngine(t.Cfg.Querier.SecondStoreEngine, t.Cfg, t.Store, t.Overrides, prometheus.DefaultRegisterer)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Querier.SecondStoreEngine, err)
-		}
-
-		t.StoreQueryables = append(t.StoreQueryables, querier.UseBeforeTimestampQueryable(sq, time.Time(t.Cfg.Querier.UseSecondStoreBeforeTime)))
-
-		if s, ok := sq.(services.Service); ok {
 			servs = append(servs, s)
 		}
 	}
@@ -381,21 +361,16 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	case 1:
 		return servs[0], nil
 	default:
-		// No need to support this case yet, since chunk store is not a service.
+		// TODO cleanup.
+		// No need to support this case yet.
 		// When we get there, we will need a wrapper service, that starts all subservices, and will also monitor them for failures.
 		// Not difficult, but also not necessary right now.
 		return nil, fmt.Errorf("too many services")
 	}
 }
 
-func initQueryableForEngine(engine string, cfg Config, chunkStore chunk.Store, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
+func initQueryableForEngine(engine string, cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
 	switch engine {
-	case storage.StorageEngineChunks:
-		if chunkStore == nil {
-			return nil, fmt.Errorf("chunk store not initialized")
-		}
-		return querier.NewChunkStoreQueryable(cfg.Querier, chunkStore), nil
-
 	case storage.StorageEngineBlocks:
 		// When running in single binary, if the blocks sharding is disabled and no custom
 		// store-gateway address has been configured, we can set it to the running process.
@@ -459,23 +434,7 @@ func (t *Cortex) initChunkStore() (serv services.Service, err error) {
 	if t.Cfg.Storage.Engine == storage.StorageEngineChunks {
 		return nil, errors.New("should not get here: ingesting into chunks storage is no longer supported")
 	}
-	if t.Cfg.Querier.SecondStoreEngine != storage.StorageEngineChunks {
-		return nil, nil
-	}
-	err = t.Cfg.Schema.Load()
-	if err != nil {
-		return
-	}
-
-	t.Store, err = storage.NewStore(t.Cfg.Storage, t.Cfg.ChunkStore, t.Cfg.Schema, t.Overrides, prometheus.DefaultRegisterer, t.TombstonesLoader, util_log.Logger)
-	if err != nil {
-		return
-	}
-
-	return services.NewIdleService(nil, func(_ error) error {
-		t.Store.Stop()
-		return nil
-	}), nil
+	return nil, nil
 }
 
 func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
@@ -487,33 +446,12 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	// Load the schema only if sharded queries is set.
-	if t.Cfg.QueryRange.ShardedQueries {
-		err := t.Cfg.Schema.Load()
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	tripperware, cache, err := queryrange.NewTripperware(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.Overrides,
 		queryrange.PrometheusCodec,
 		queryrange.PrometheusResponseExtractor{},
-		t.Cfg.Schema,
-		promql.EngineOpts{
-			Logger:             util_log.Logger,
-			Reg:                prometheus.DefaultRegisterer,
-			MaxSamples:         t.Cfg.Querier.MaxSamples,
-			Timeout:            t.Cfg.Querier.Timeout,
-			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
-			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
-			NoStepSubqueryIntervalFn: func(int64) int64 {
-				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
-			},
-		},
-		t.Cfg.Querier.QueryIngestersWithin,
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
 	)

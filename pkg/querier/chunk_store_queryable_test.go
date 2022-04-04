@@ -76,7 +76,7 @@ func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
 	const count = 10
 	// go down, to add series in reversed order
 	for i := count; i > 0; i-- {
-		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.Bigchunk)
+		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.PrometheusXorChunk)
 		// mkChunk uses `foo` as metric name, so we rename metric to be unique
 		ch.Metric[0].Value = fmt.Sprintf("%02d", i)
 

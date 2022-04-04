@@ -15,25 +15,19 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 )
 
-type storeConfig struct {
-	From, IndexStore string
-}
-
 const (
-	userID                 = "e2e-user"
-	defaultNetworkName     = "e2e-cortex-test"
-	bucketName             = "cortex"
-	rulestoreBucketName    = "cortex-rules"
-	alertsBucketName       = "cortex-alerts"
-	cortexConfigFile       = "config.yaml"
-	cortexSchemaConfigFile = "schema.yaml"
-	blocksStorageEngine    = "blocks"
-	chunksStorageEngine    = "chunks"
-	clientCertFile         = "certs/client.crt"
-	clientKeyFile          = "certs/client.key"
-	caCertFile             = "certs/root.crt"
-	serverCertFile         = "certs/server.crt"
-	serverKeyFile          = "certs/server.key"
+	userID              = "e2e-user"
+	defaultNetworkName  = "e2e-cortex-test"
+	bucketName          = "cortex"
+	rulestoreBucketName = "cortex-rules"
+	alertsBucketName    = "cortex-alerts"
+	cortexConfigFile    = "config.yaml"
+	blocksStorageEngine = "blocks"
+	clientCertFile      = "certs/client.crt"
+	clientKeyFile       = "certs/client.key"
+	caCertFile          = "certs/root.crt"
+	serverCertFile      = "certs/server.crt"
+	serverKeyFile       = "certs/server.key"
 )
 
 // GetNetworkName returns the docker network name to run tests within.
@@ -48,18 +42,7 @@ func GetNetworkName() string {
 }
 
 var (
-	networkName         = GetNetworkName()
-	storeConfigTemplate = `
-- from: {{.From}}
-  store: {{.IndexStore}}
-  schema: v9
-  index:
-    prefix: cortex_
-    period: 168h
-  chunks:
-    prefix: cortex_chunks_
-    period: 168h
-`
+	networkName = GetNetworkName()
 
 	cortexAlertmanagerUserConfigYaml = `route:
   receiver: "example_receiver"
@@ -90,8 +73,6 @@ receivers:
 )
 
 var (
-	cortexSchemaConfigYaml = buildSchemaConfigWith([]storeConfig{{From: "2019-03-20", IndexStore: "aws-dynamo"}})
-
 	AlertmanagerFlags = func() map[string]string {
 		return map[string]string{
 			"-alertmanager.configs.poll-interval": "1s",
@@ -232,16 +213,6 @@ blocks_storage:
 		MinioSecretKey: e2edb.MinioSecretKey,
 		MinioEndpoint:  fmt.Sprintf("%s-minio-9000:9000", networkName),
 	})
-
-	ChunksStorageFlags = func() map[string]string {
-		return map[string]string{
-			"-store.engine":                   chunksStorageEngine,
-			"-dynamodb.url":                   fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
-			"-table-manager.poll-interval":    "1m",
-			"-schema-config-file":             filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
-			"-table-manager.retention-period": "168h",
-		}
-	}
 )
 
 func buildConfigFromTemplate(tmpl string, data interface{}) string {
@@ -256,33 +227,4 @@ func buildConfigFromTemplate(tmpl string, data interface{}) string {
 	}
 
 	return w.String()
-}
-
-func indentConfig(config string, indentation int) string {
-	output := strings.Builder{}
-
-	for _, line := range strings.Split(config, "\n") {
-		if line == "" {
-			output.WriteString("\n")
-			continue
-		}
-
-		output.WriteString(strings.Repeat(" ", indentation))
-		output.WriteString(line)
-		output.WriteString("\n")
-	}
-
-	return output.String()
-}
-
-func buildSchemaConfigWith(configs []storeConfig) string {
-	configYamls := ""
-	for _, config := range configs {
-		configYamls += buildConfigFromTemplate(
-			storeConfigTemplate,
-			config,
-		)
-	}
-
-	return "configs:" + configYamls
 }

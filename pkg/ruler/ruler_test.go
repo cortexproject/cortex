@@ -101,22 +101,29 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
 }
 
-type emptyChunkStore struct {
-	sync.Mutex
-	called bool
+func newEmptyQueryable() storage.Queryable {
+	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+		return emptyQuerier{}, nil
+	})
 }
 
-func (c *emptyChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	c.Lock()
-	defer c.Unlock()
-	c.called = true
-	return nil, nil
+type emptyQuerier struct {
 }
 
-func (c *emptyChunkStore) IsCalled() bool {
-	c.Lock()
-	defer c.Unlock()
-	return c.called
+func (e emptyQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
+func (e emptyQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+	return nil, nil, nil
+}
+
+func (e emptyQuerier) Close() error {
+	return nil
+}
+
+func (e emptyQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	return storage.EmptySeriesSet()
 }
 
 func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Registerer, logger log.Logger) storage.QueryableFunc {
@@ -1246,7 +1253,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 
 	// set up an empty store
 	queryables := []querier.QueryableWithFilter{
-		querier.UseAlwaysQueryable(querier.NewChunkStoreQueryable(querierConfig, &emptyChunkStore{})),
+		querier.UseAlwaysQueryable(newEmptyQueryable()),
 	}
 
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.

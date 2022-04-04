@@ -296,12 +296,6 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	}
 	*c = tempMetadata
 
-	// Older chunks always used DoubleDelta and did not write Encoding
-	// to JSON, so override if it has the zero value (Delta)
-	if c.Encoding == prom_chunk.Delta {
-		c.Encoding = prom_chunk.DoubleDelta
-	}
-
 	// Finally, unmarshal the actual chunk data.
 	c.Data, err = prom_chunk.NewForEncoding(c.Encoding)
 	if err != nil {
@@ -332,28 +326,4 @@ func (c *Chunk) Samples(from, through model.Time) ([]model.SamplePair, error) {
 	it := c.Data.NewIterator(nil)
 	interval := metric.Interval{OldestInclusive: from, NewestInclusive: through}
 	return prom_chunk.RangeValues(it, interval)
-}
-
-// Slice builds a new smaller chunk with data only from given time range (inclusive)
-func (c *Chunk) Slice(from, through model.Time) (*Chunk, error) {
-	// there should be atleast some overlap between chunk interval and slice interval
-	if from > c.Through || through < c.From {
-		return nil, ErrSliceOutOfRange
-	}
-
-	pc, err := c.Data.Rebound(from, through)
-	if err != nil {
-		return nil, err
-	}
-
-	nc := NewChunk(c.UserID, c.Fingerprint, c.Metric, pc, from, through)
-	return &nc, nil
-}
-
-func intervalsOverlap(interval1, interval2 model.Interval) bool {
-	if interval1.Start > interval2.End || interval2.Start > interval1.End {
-		return false
-	}
-
-	return true
 }

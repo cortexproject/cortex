@@ -50,20 +50,6 @@ func TestBackwardCompatibilityWithBlocksStorage(t *testing.T) {
 	}
 }
 
-func TestBackwardCompatibilityWithChunksStorageAsSecondStore(t *testing.T) {
-	for previousImage, flagsFn := range previousVersionImages {
-		t.Run(fmt.Sprintf("Backward compatibility with data from %s", previousImage), func(t *testing.T) {
-			flags := ChunksStorageFlags()
-			flags["-ingester.max-transfer-retries"] = "0"
-			if flagsFn != nil {
-				flags = flagsFn(flags)
-			}
-
-			runBackwardCompatibilityTestWithChunksStorageAsSecondStore(t, previousImage, flags)
-		})
-	}
-}
-
 func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {
@@ -127,72 +113,6 @@ func runBackwardCompatibilityTestWithBlocksStorage(t *testing.T, previousImage s
 		expectedVector,
 		previousImage,
 		flagsForOldImage,
-		flagsForNewImage,
-		now,
-		s,
-		1,
-	)
-}
-
-func runBackwardCompatibilityTestWithChunksStorageAsSecondStore(t *testing.T, previousImage string, flagsForOldImage map[string]string) {
-	s, err := e2e.NewScenario(networkName)
-	require.NoError(t, err)
-	defer s.Close()
-
-	flagsForNewImage := mergeFlags(blocksStorageFlagsWithFlushOnShutdown(), ChunksStorageFlags())
-	flagsForNewImage = mergeFlags(flagsForNewImage, map[string]string{
-		"-querier.second-store-engine": chunksStorageEngine,
-		"-store.engine":                blocksStorageEngine,
-	})
-
-	// Start dependencies.
-	dynamo := e2edb.NewDynamoDB()
-	minio := e2edb.NewMinio(9000, flagsForNewImage["-blocks-storage.s3.bucket-name"])
-	consul := e2edb.NewConsul()
-	require.NoError(t, s.StartAndWaitReady(dynamo, minio, consul))
-
-	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
-
-	// Start Cortex table-manager (on old version since it's gone in current)
-	tableManager := e2ecortex.NewTableManager("table-manager", flagsForOldImage, previousImage)
-	require.NoError(t, s.StartAndWaitReady(tableManager))
-
-	// Wait until the first table-manager sync has completed, so that we're
-	// sure the tables have been created.
-	require.NoError(t, tableManager.WaitSumMetrics(e2e.Greater(0), "cortex_table_manager_sync_success_timestamp_seconds"))
-
-	// Start other Cortex components (ingester running on previous version).
-	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	distributor := e2ecortex.NewDistributor("distributor", "consul", consul.NetworkHTTPEndpoint(), flagsForOldImage, previousImage)
-	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
-
-	// Wait until the distributor has updated the ring.
-	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-
-	// Push some series to Cortex.
-	now := time.Now()
-	series, expectedVector := generateSeries("series_1", now)
-
-	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
-	require.NoError(t, err)
-
-	res, err := c.Push(series)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-
-	// Stop ingester-1. This function will return once the ingester-1 is successfully
-	// stopped, which has been configured to flush all data to the backing store.
-	require.NoError(t, s.Stop(ingester1))
-
-	ingester2 := e2ecortex.NewIngester("ingester-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flagsForNewImage, map[string]string{
-		"-ingester.join-after": "10s",
-	}), "")
-	require.NoError(t, s.Start(ingester2))
-
-	checkQueries(t, consul,
-		expectedVector,
-		"",
-		flagsForNewImage,
 		flagsForNewImage,
 		now,
 		s,

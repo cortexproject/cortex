@@ -20,7 +20,7 @@ import (
 const userID = "userID"
 
 func init() {
-	encoding.DefaultEncoding = encoding.Varbit
+	encoding.DefaultEncoding = encoding.PrometheusXorChunk
 }
 
 var labelsForDummyChunks = labels.Labels{
@@ -65,7 +65,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, enc encoding.En
 }
 
 func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
-	return dummyChunkForEncoding(now, metric, encoding.Varbit, 1)
+	return dummyChunkForEncoding(now, metric, encoding.PrometheusXorChunk, 1)
 }
 
 func TestChunkCodec(t *testing.T) {
@@ -126,47 +126,20 @@ func TestChunkCodec(t *testing.T) {
 			require.Equal(t, c.err, errors.Cause(err))
 
 			if c.err == nil {
-				require.Equal(t, have, c.chunk)
+				equals, err := have.Data.Equals(c.chunk.Data)
+				require.NoError(t, err)
+				require.True(t, equals, "chunk data should be equal")
+				require.Equal(t, have.Fingerprint, c.chunk.Fingerprint)
+				require.Equal(t, have.UserID, c.chunk.UserID)
+				require.Equal(t, have.From, c.chunk.From)
+				require.Equal(t, have.Through, c.chunk.Through)
+				require.Equal(t, have.Metric, c.chunk.Metric)
+				require.Equal(t, have.ChecksumSet, c.chunk.ChecksumSet)
+				require.Equal(t, have.Checksum, c.chunk.Checksum)
+				require.Equal(t, have.Encoding, c.chunk.Encoding)
 			}
 		})
 	}
-}
-
-const fixedTimestamp = model.Time(1557654321000)
-
-func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
-	// lets build a new chunk same as what was built using code at commit b1777a50ab19
-	c, _ := encoding.NewForEncoding(encoding.Bigchunk)
-	nc, err := c.Add(model.SamplePair{Timestamp: fixedTimestamp, Value: 0})
-	require.NoError(t, err)
-	require.Equal(t, nil, nc, "returned chunk should be nil")
-
-	chunk := NewChunk(
-		userID,
-		client.Fingerprint(labelsForDummyChunks),
-		labelsForDummyChunks,
-		c,
-		fixedTimestamp.Add(-time.Hour),
-		fixedTimestamp,
-	)
-	// Force checksum calculation.
-	require.NoError(t, chunk.Encode())
-
-	// Chunk encoded using code at commit b1777a50ab19
-	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\x04\xc7a\xba{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"bar\":\"baz\",\"toms\":\"code\",\"__name__\":\"foo\"},\"encoding\":3}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-	decodeContext := NewDecodeContext()
-	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:38eb373c")
-	require.NoError(t, err)
-	require.NoError(t, have.Decode(decodeContext, rawData))
-	want := chunk
-	// We can't just compare these two chunks, since the Bigchunk internals are different on construction and read-in.
-	// Compare the serialised version instead
-	require.NoError(t, have.Encode())
-	require.NoError(t, want.Encode())
-	haveEncoded, _ := have.Encoded()
-	wantEncoded, _ := want.Encoded()
-	require.Equal(t, haveEncoded, wantEncoded)
-	require.Equal(t, have.ExternalKey(), want.ExternalKey())
 }
 
 func TestParseExternalKey(t *testing.T) {
@@ -301,80 +274,5 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 			err := chunks[j].Decode(decodeContext, buf)
 			require.NoError(b, err)
 		}
-	}
-}
-
-func TestChunk_Slice(t *testing.T) {
-	chunkEndTime := model.Now()
-	chunkStartTime := chunkEndTime.Add(-time.Hour)
-
-	for _, tc := range []struct {
-		name       string
-		sliceRange model.Interval
-		err        error
-	}{
-		{
-			name:       "slice first 10 mins",
-			sliceRange: model.Interval{Start: chunkStartTime, End: chunkStartTime.Add(10 * time.Minute)},
-		},
-		{
-			name:       "slice last 10 mins",
-			sliceRange: model.Interval{Start: chunkEndTime.Add(-10 * time.Minute), End: chunkEndTime},
-		},
-		{
-			name:       "slice in the middle",
-			sliceRange: model.Interval{Start: chunkStartTime.Add(20 * time.Minute), End: chunkEndTime.Add(-20 * time.Minute)},
-		},
-		{
-			name:       "slice out of range",
-			sliceRange: model.Interval{Start: chunkEndTime.Add(20 * time.Minute), End: chunkEndTime.Add(30 * time.Minute)},
-			err:        ErrSliceOutOfRange,
-		},
-		{
-			name:       "slice no data in range",
-			sliceRange: model.Interval{Start: chunkStartTime.Add(time.Second), End: chunkStartTime.Add(10 * time.Second)},
-			err:        encoding.ErrSliceNoDataInRange,
-		},
-		{
-			name:       "slice interval not aligned with sample intervals",
-			sliceRange: model.Interval{Start: chunkStartTime.Add(time.Second), End: chunkStartTime.Add(10 * time.Minute).Add(10 * time.Second)},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			// dummy chunk is created with time range chunkEndTime-1hour to chunkEndTime
-			originalChunk := dummyChunkForEncoding(chunkEndTime, labelsForDummyChunks, encoding.DefaultEncoding, 241)
-
-			newChunk, err := originalChunk.Slice(tc.sliceRange.Start, tc.sliceRange.End)
-			if tc.err != nil {
-				require.Equal(t, tc.err, err)
-				return
-			}
-			require.NoError(t, err)
-
-			require.Equal(t, tc.sliceRange.Start, newChunk.From)
-			require.Equal(t, tc.sliceRange.End, newChunk.Through)
-
-			chunkItr := originalChunk.Data.NewIterator(nil)
-			chunkItr.FindAtOrAfter(tc.sliceRange.Start)
-
-			newChunkItr := newChunk.Data.NewIterator(nil)
-			newChunkItr.Scan()
-
-			for {
-				require.Equal(t, chunkItr.Value(), newChunkItr.Value())
-
-				originalChunksHasMoreSamples := chunkItr.Scan()
-				newChunkHasMoreSamples := newChunkItr.Scan()
-
-				// originalChunk and newChunk both should end at same time or newChunk should end before or at slice end time
-				if !originalChunksHasMoreSamples || chunkItr.Value().Timestamp > tc.sliceRange.End {
-					require.Equal(t, false, newChunkHasMoreSamples)
-					break
-				}
-
-				require.Equal(t, true, newChunkHasMoreSamples)
-			}
-
-		})
 	}
 }

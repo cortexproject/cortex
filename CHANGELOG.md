@@ -4,6 +4,7 @@
 
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
 * [CHANGE] Fix incorrectly named `cortex_cache_fetched_keys` and `cortex_cache_hits` metrics. Renamed to `cortex_cache_fetched_keys_total` and `cortex_cache_hits_total` respectively. #4686
+* [CHANGE] Enable Thanos series limiter in store-gateway. #4702
 
 ## 1.12.0 in progress
 

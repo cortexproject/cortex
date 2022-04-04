@@ -492,7 +492,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		fetcher,
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
-		store.NewSeriesLimiterFactory(0), // No series limiter.
+		newSeriesLimiterFactory(u.limits, userID),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
@@ -605,11 +605,11 @@ func (s spanSeriesServer) Context() context.Context {
 	return s.ctx
 }
 
-type chunkLimiter struct {
+type limiter struct {
 	limiter *store.Limiter
 }
 
-func (c *chunkLimiter) Reserve(num uint64) error {
+func (c *limiter) Reserve(num uint64) error {
 	err := c.limiter.Reserve(num)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusUnprocessableEntity, err.Error())
@@ -622,8 +622,18 @@ func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.
 	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
-		return &chunkLimiter{
+		return &limiter{
 			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
+		}
+	}
+}
+
+func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.SeriesLimiterFactory {
+	return func(failedCounter prometheus.Counter) store.SeriesLimiter {
+		// Since limit overrides could be live reloaded, we have to get the current user's limit
+		// each time a new limiter is instantiated.
+		return &limiter{
+			limiter: store.NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
 		}
 	}
 }

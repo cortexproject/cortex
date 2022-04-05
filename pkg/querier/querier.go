@@ -196,21 +196,6 @@ func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt i
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
-type NoOpQueryTracker struct {
-	promql.QueryTracker
-}
-
-func (qt *NoOpQueryTracker) GetMaxConcurrent() int {
-	return -1
-}
-
-func (qt *NoOpQueryTracker) Insert(_ context.Context, _ string) (int, error) {
-	return 0, nil
-}
-
-func (qt *NoOpQueryTracker) Delete(_ int) {
-}
-
 func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
@@ -218,7 +203,7 @@ func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker
 		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
 	}
 
-	return &NoOpQueryTracker{}
+	return nil
 }
 
 // QueryableWithFilter extends Queryable interface with `UseQueryable` filtering function.

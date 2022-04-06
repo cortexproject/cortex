@@ -100,7 +100,7 @@ var (
 		{
 			name:       "storage_config",
 			structType: reflect.TypeOf(storage.Config{}),
-			desc:       "The storage_config configures where Cortex stores the data (chunks storage engine).",
+			desc:       "The storage_config configures the storage type Cortex uses.",
 		},
 		{
 			name:       "flusher_config",

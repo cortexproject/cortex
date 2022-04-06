@@ -136,6 +136,10 @@ querier:
   # CLI flag: -querier.at-modifier-enabled
   [at_modifier_enabled: <boolean> | default = false]
 
+  # Enable returning samples stats per steps in PromQL.
+  # CLI flag: -querier.per-step-stats-enabled
+  [per_step_stats_enabled: <boolean> | default = false]
+
   # The time after which a metric should be queried from storage and not just
   # ingesters. 0 means all queries are sent to store. When running the blocks
   # storage, if this option is enabled, the time range of the query sent to the

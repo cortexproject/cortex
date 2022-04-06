@@ -25,6 +25,7 @@ message PrometheusRequest {
   string query = 6;
   CachingOptions cachingOptions = 7 [(gogoproto.nullable) = false];
   repeated PrometheusRequestHeader Headers = 8 [(gogoproto.jsontag) = "-"];
+  string stats = 9;
 }
 
 message PrometheusResponseHeader {
@@ -43,6 +44,21 @@ message PrometheusResponse {
 message PrometheusData {
   string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
   repeated SampleStream Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+  PrometheusResponseStats stats = 3 [(gogoproto.jsontag) = "stats,omitempty"];
+}
+
+message PrometheusResponseStats {
+    PrometheusResponseSamplesStats samples = 1 [(gogoproto.jsontag) = "samples"];
+}
+
+message PrometheusResponseSamplesStats {
+  int64 totalQueryableSamples = 1 [(gogoproto.jsontag) = "totalQueryableSamples"];
+  repeated PrometheusResponseQueryableSamplesStatsPerStep totalQueryableSamplesPerStep = 2 [(gogoproto.jsontag) = "totalQueryableSamplesPerStep"];
+}
+
+message PrometheusResponseQueryableSamplesStatsPerStep {
+  int64 value       = 1;
+  int64 timestamp_ms = 2;
 }
 
 message SampleStream {

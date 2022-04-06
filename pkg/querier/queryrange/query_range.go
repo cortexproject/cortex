@@ -395,6 +395,8 @@ func (s *SampleStream) MarshalJSON() ([]byte, error) {
 	return json.Marshal(stream)
 }
 
+// statsMerge merge the stats from 2 responses
+// this function is similar to matrixMerge
 func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 	output := map[int64]*PrometheusResponseQueryableSamplesStatsPerStep{}
 	hasStats := false

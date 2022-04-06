@@ -117,8 +117,7 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Respons
 	}
 }
 
-// ResponseWithoutStats is useful in caching data without headers since
-// we anyways do not need headers for sending back the response so this saves some space by reducing size of the objects.
+// ResponseWithoutStats is returns the response without the stats information
 func (PrometheusResponseExtractor) ResponseWithoutStats(resp Response) Response {
 	promRes := resp.(*PrometheusResponse)
 	return &PrometheusResponse{
@@ -654,6 +653,8 @@ func jaegerTraceID(ctx context.Context) string {
 	return spanContext.TraceID().String()
 }
 
+// extractStats returns the stats for a given time range
+// this function is similar to extractSampleStream
 func extractStats(start, end int64, stats *PrometheusResponseStats) *PrometheusResponseStats {
 	if stats == nil || stats.Samples == nil {
 		return stats

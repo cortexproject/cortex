@@ -526,7 +526,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
 
-	assert.Len(t, tsdbPlanner.noCompactMarkFilter.NoCompactMarkedBlocks(), 0)
+	assert.Len(t, tsdbPlanner.getNoCompactBlocks(), 0)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
@@ -765,7 +765,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, 30*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
 		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 	})
 
@@ -774,7 +774,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	// Planner still called for user with all blocks makred for skip compaction.
 	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
 
-	assert.Len(t, tsdbPlanner.noCompactMarkFilter.NoCompactMarkedBlocks(), 2)
+	assert.ElementsMatch(t, []string{"01DTVP434PA9VFXSW2JKB3392D", "01FN6CDF3PNEWWRY5MPGJPE3EX"}, tsdbPlanner.getNoCompactBlocks())
 
 	testedMetrics := []string{"cortex_compactor_blocks_marked_for_no_compaction_total"}
 
@@ -1297,7 +1297,9 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	})
 
 	tsdbCompactor := &tsdbCompactorMock{}
-	tsdbPlanner := &tsdbPlannerMock{}
+	tsdbPlanner := &tsdbPlannerMock{
+		noCompactMarkFilters: []*compact.GatherNoCompactionMarkFilter{},
+	}
 	logs := &concurrency.SyncBuffer{}
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
@@ -1314,7 +1316,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
 		return tsdbCompactor,
 			func(_ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Planner {
-				tsdbPlanner.noCompactMarkFilter = noCompactMarkFilter
+				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
 				return tsdbPlanner
 			},
 			nil
@@ -1347,12 +1349,25 @@ func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Blo
 
 type tsdbPlannerMock struct {
 	mock.Mock
-	noCompactMarkFilter *compact.GatherNoCompactionMarkFilter
+	noCompactMarkFilters []*compact.GatherNoCompactionMarkFilter
 }
 
 func (m *tsdbPlannerMock) Plan(ctx context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error) {
 	args := m.Called(ctx, metasByMinTime)
 	return args.Get(0).([]*metadata.Meta), args.Error(1)
+}
+
+func (m *tsdbPlannerMock) getNoCompactBlocks() []string {
+
+	result := []string{}
+
+	for _, noCompactMarkFilter := range m.noCompactMarkFilters {
+		for _, mark := range noCompactMarkFilter.NoCompactMarkedBlocks() {
+			result = append(result, mark.ID.String())
+		}
+	}
+
+	return result
 }
 
 func mockBlockMetaJSON(id string) string {

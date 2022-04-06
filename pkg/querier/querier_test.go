@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 	"github.com/cortexproject/cortex/pkg/tenant"
 
 	"github.com/go-kit/log"
@@ -158,7 +157,7 @@ func TestQuerier(t *testing.T) {
 						overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 						require.NoError(t, err)
 
-						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
+						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
 						queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
 						testRangeQuery(t, queryable, through, query)
 					})
@@ -271,7 +270,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
-				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
 				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
@@ -359,7 +358,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
-				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
+				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 				queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
 				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 				require.NoError(t, err)
@@ -435,7 +434,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			chunkStore := &emptyChunkStore{}
 			distributor := &emptyDistributor{}
 
-			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 			queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
 
 			// Create the PromQL engine to execute the query.
@@ -555,7 +554,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 				// We don't need to query any data for this test, so an empty store is fine.
 				chunkStore := &emptyChunkStore{}
-				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
+				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 
 				t.Run("query range", func(t *testing.T) {
 					distributor := &MockDistributor{}
@@ -825,14 +824,18 @@ func (d *emptyDistributor) MetricsMetadata(ctx context.Context) ([]scrape.Metric
 	return nil, nil
 }
 
-// NewChunkStoreQueryable returns the storage.Queryable implementation against the chunks store.
-func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storage.Queryable {
-	return newChunkStoreQueryable(chunkStore, getChunksIteratorFunction(cfg))
+type mockStore interface {
+	Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error)
 }
 
-func newChunkStoreQueryable(store chunkstore.ChunkStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
+// NewMockStoreQueryable returns the storage.Queryable implementation against the chunks store.
+func NewMockStoreQueryable(cfg Config, store mockStore) storage.Queryable {
+	return newMockStoreQueryable(store, getChunksIteratorFunction(cfg))
+}
+
+func newMockStoreQueryable(store mockStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
 	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		return &chunkStoreQuerier{
+		return &mockStoreQuerier{
 			store:             store,
 			chunkIteratorFunc: chunkIteratorFunc,
 			ctx:               ctx,
@@ -842,8 +845,8 @@ func newChunkStoreQueryable(store chunkstore.ChunkStore, chunkIteratorFunc chunk
 	})
 }
 
-type chunkStoreQuerier struct {
-	store             chunkstore.ChunkStore
+type mockStoreQuerier struct {
+	store             mockStore
 	chunkIteratorFunc chunkIteratorFunc
 	ctx               context.Context
 	mint, maxt        int64
@@ -851,7 +854,7 @@ type chunkStoreQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *mockStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	userID, err := tenant.TenantID(q.ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
@@ -877,15 +880,15 @@ func (q *chunkStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...
 	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
 }
 
-func (q *chunkStoreQuerier) LabelValues(name string, labels ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *mockStoreQuerier) LabelValues(name string, labels ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 
-func (q *chunkStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *mockStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 
-func (q *chunkStoreQuerier) Close() error {
+func (q *mockStoreQuerier) Close() error {
 	return nil
 }
 
@@ -951,7 +954,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
-				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
 				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 

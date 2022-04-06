@@ -24,7 +24,7 @@ func TestChunkQueryable(t *testing.T) {
 			for _, query := range queries {
 				t.Run(fmt.Sprintf("%s/%s/%s", testcase.name, encoding.name, query.query), func(t *testing.T) {
 					store, from := makeMockChunkStore(t, 24, encoding.e)
-					queryable := newChunkStoreQueryable(store, testcase.f)
+					queryable := newMockStoreQueryable(store, testcase.f)
 					testRangeQuery(t, queryable, from, query)
 				})
 			}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -945,6 +946,7 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 // MetricsForLabelMatchers gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -953,20 +955,29 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 	if err != nil {
 		return nil, err
 	}
+	mutex := sync.Mutex{}
+	metrics := map[model.Fingerprint]model.Metric{}
 
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-		return client.MetricsForLabelMatchers(ctx, req)
+	_, err = d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		resp, err := client.MetricsForLabelMatchers(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		ms := ingester_client.FromMetricsForLabelMatchersResponse(resp)
+		for _, m := range ms {
+			if err := queryLimiter.AddSeries(cortexpb.FromMetricsToLabelAdapters(m)); err != nil {
+				return nil, err
+			}
+			mutex.Lock()
+			metrics[m.Fingerprint()] = m
+			mutex.Unlock()
+		}
+
+		return resp, nil
 	})
+
 	if err != nil {
 		return nil, err
-	}
-
-	metrics := map[model.Fingerprint]model.Metric{}
-	for _, resp := range resps {
-		ms := ingester_client.FromMetricsForLabelMatchersResponse(resp.(*ingester_client.MetricsForLabelMatchersResponse))
-		for _, m := range ms {
-			metrics[m.Fingerprint()] = m
-		}
 	}
 
 	result := make([]metric.Metric, 0, len(metrics))

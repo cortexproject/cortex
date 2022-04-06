@@ -38,10 +38,6 @@ sse:
   [kms_encryption_context: <string> | default = ""]
 ```
 
-### Chunks storage (deprecated)
-
-The [chunks storage](../chunks-storage/_index.md) S3 server-side encryption can be configured similarly to the blocks storage, but **per-tenant overrides are not supported**.
-
 ### Ruler
 
 The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the `-ruler-storage.` flag prefix (or their respective YAML config options).

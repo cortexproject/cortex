@@ -11,17 +11,11 @@ The blocks storage is a Cortex storage engine based on Prometheus TSDB, which on
 
 For more information, please refer to the [Cortex blocks storage](../blocks-storage/_index.md) documentation.
 
-### Chunks storage (deprecated)
-
-The chunks storage is a Cortex storage engine which requires both an index store (eg. AWS DynamoDB, Google BigTable, Cassandra, ...) and an object store (eg. AWS S3, Google GCS, ...) as backend storage.
-
-The chunks storage is deprecated. You're encouraged to use the [blocks storage](#blocks-storage) instead.
-
 ### Chunk
 
 A chunk is an object containing compressed timestamp-value pairs.
 
-When running Cortex with the chunks storage, a single chunk object contains timestamp-value pairs for a single series, while when running Cortex with the [blocks storage](#blocks-storage) a single chunk contains timestamp-value pairs for several series.
+A single chunk contains timestamp-value pairs for several series.
 
 ### Churn
 
@@ -38,12 +32,6 @@ Series flushing is the operation run by ingesters to offload time series from me
 The HA Tracker is a feature of Cortex distributor which is used to deduplicate received series coming from two (or more) Prometheus servers configured in HA pairs.
 
 For more information, please refer to the guide "[Config for sending HA Pairs data to Cortex](../guides/ha-pair-handling.md)".
-
-### Hand-over
-
-Series hand-over is an operation supported by ingesters to transfer their state, on shutdown, to a new ingester in the `JOINING` state. Hand-over is typically used during [ingesters rollouts](./ingesters-rolling-updates.md) and is only supported by the Cortex chunks storage.
-
-For more information, please refer to the guide "[Ingesters rolling updates](./ingesters-rolling-updates.md)".
 
 ### Hash ring
 
@@ -73,12 +61,6 @@ For example, given the series `node_cpu_seconds_total{instance="10.0.0.1",mode="
 11819 @1603812179
 11834 @1603812194
 ```
-
-### Schema config
-
-The schema (or schema config) is a configuration file used by the Cortex chunks storage to configure the backend index and chunks store, and manage storage version upgrades. The schema config is **not** used by the Cortex [blocks storage](#blocks-storage).
-
-For more information, please refer to the [Schema config reference](../chunks-storage/schema-config.md).
 
 ### Series
 
@@ -112,9 +94,6 @@ _See [Tenant](#tenant)._
 
 ### WAL
 
-The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination. Despite the implementation is different, the WAL is supported both by Cortex chunks and blocks storage engines.
+The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination.
 
-For more information, please refer to:
-
-- [Ingesters with WAL](../chunks-storage/ingesters-with-wal.md) when running **chunks storage**.
-- [Ingesters with WAL](../blocks-storage/_index.md#the-write-path) when running **blocks storage**.
+For more information, please refer to [Ingesters with WAL](../blocks-storage/_index.md#the-write-path).

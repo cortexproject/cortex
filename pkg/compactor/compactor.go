@@ -678,6 +678,8 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		0,
 		c.compactorCfg.MetaSyncConcurrency)
 
+	// Filters out blocks with no compaction maker; blocks can be marked as no compaction for reasons like
+	// out of order chunks or index file too big.
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
 	fetcher, err := block.NewMetaFetcher(

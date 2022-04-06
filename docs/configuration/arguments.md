@@ -11,18 +11,12 @@ Cortex has evolved over several years, and the command-line options sometimes re
 
 Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
 
-**Warning: some of the following config options apply only to chunks storage, which has been deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
-
 ## Querier
 
 - `-querier.max-concurrent`
 
    The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
    If using the query frontend, this should be set to at least (`-querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.  Alternatively, consider using `-querier.worker-match-max-concurrent` to force worker parallelism to match `-querier.max-concurrent`.
-
-- `-querier.query-parallelism`
-
-   This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
 
 - `-querier.timeout`
 
@@ -351,11 +345,11 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 - `-ingester.join-after`
 
-   How long to wait in PENDING state during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the [chunks storage](../chunks-storage/_index.md)). (default 0s)
+   How long to wait in PENDING state during the hand-over process (supported only by the chunks storage). (default 0s)
 
 - `-ingester.max-transfer-retries`
 
-   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the [chunks storage](../chunks-storage/_index.md)). Negative value or zero disables hand-over process completely. (default 10)
+   How many times a LEAVING ingester tries to find a PENDING ingester during the hand-over process (supported only by the chunks storage). Negative value or zero disables hand-over process completely. (default 10)
 
 - `-ingester.normalise-tokens`
 
@@ -371,10 +365,6 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
   `Bigchunk` uses the Prometheus V2 code, and expands in memory to arbitrary length.
   `Varbit`, `Delta` and `DoubleDelta` use Prometheus V1 code, and are fixed at 1K per chunk.
   Defaults to `Bigchunk` starting version 0.7.0.
-
-- `-store.bigchunk-size-cap-bytes`
-
-   When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.
 
 - `-ingester-client.expected-timeseries`
 

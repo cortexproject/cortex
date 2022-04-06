@@ -33,8 +33,6 @@ The **[compactor](./compactor.md)** is responsible to merge and deduplicate smal
 
 The `alertmanager` and `ruler` components can also use object storage to store its configurations and rules uploaded by users.  In that case a separate bucket should be created to store alertmanager configurations and rules: using the same bucket between ruler/alertmanager and blocks will cause issue with the **[compactor](./compactor.md)**.
 
-Finally, the [**table-manager**](../chunks-storage/table-manager.md) and the [**schema config**](../chunks-storage/schema-config.md) are **not used** by the blocks storage.
-
 ### The write path
 
 **Ingesters** receive incoming samples from the distributors. Each push request belongs to a tenant, and the ingester appends the received samples to the specific per-tenant TSDB stored on the local disk. The received samples are both kept in-memory and written to a write-ahead log (WAL) and used to recover the in-memory series in case the ingester abruptly terminates. The per-tenant TSDB is lazily created in each ingester as soon as the first samples are received for that tenant.
@@ -47,7 +45,7 @@ In order to effectively use the **WAL** and being able to recover the in-memory 
 
 The series sharding and replication done by the distributor doesn't change based on the storage engine.
 
-It's important to note that - differently than the [chunks storage](../chunks-storage/_index.md) - due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more than the chunks storage. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples. After blocks compaction, the storage utilization is significantly smaller compared to the chunks storage for the same exact series and samples.
+It's important to note that due to the replication factor N (typically 3), each time series is stored by N ingesters. Since each ingester writes its own block to the long-term storage, this leads a storage utilization N times more. [Compactor](./compactor.md) solves this problem by merging blocks from multiple ingesters into a single block, and removing duplicated samples. After blocks compaction, the storage utilization is significantly smaller.
 
 For more information, please refer to the following dedicated sections:
 

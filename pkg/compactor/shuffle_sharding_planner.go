@@ -5,18 +5,21 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log"
+	"github.com/oklog/ulid"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
 type ShuffleShardingPlanner struct {
-	logger log.Logger
-	ranges []int64
+	logger           log.Logger
+	ranges           []int64
+	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark
 }
 
-func NewShuffleShardingPlanner(logger log.Logger, ranges []int64) *ShuffleShardingPlanner {
+func NewShuffleShardingPlanner(logger log.Logger, ranges []int64, noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark) *ShuffleShardingPlanner {
 	return &ShuffleShardingPlanner{
-		logger: logger,
-		ranges: ranges,
+		logger:           logger,
+		ranges:           ranges,
+		noCompBlocksFunc: noCompBlocksFunc,
 	}
 }
 
@@ -28,12 +31,20 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 	largestRange := p.ranges[len(p.ranges)-1]
 	rangeStart := getRangeStart(metasByMinTime[0], largestRange)
 	rangeEnd := rangeStart + largestRange
+	noCompactMarked := p.noCompBlocksFunc()
+	resultMetas := make([]*metadata.Meta, 0, len(metasByMinTime))
 
 	for _, b := range metasByMinTime {
+		if _, excluded := noCompactMarked[b.ULID]; excluded {
+			continue
+		}
+
 		if b.MinTime < rangeStart || b.MaxTime > rangeEnd {
 			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", b.ULID.String(), b.MinTime, b.MaxTime, rangeStart, rangeEnd)
 		}
+
+		resultMetas = append(resultMetas, b)
 	}
 
-	return metasByMinTime, nil
+	return resultMetas, nil
 }

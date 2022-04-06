@@ -941,9 +941,9 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	})
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
-        	            	# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
-        	            	# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
-        	            	cortex_compactor_blocks_marked_for_no_compaction_total 1
+			# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+			# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+			cortex_compactor_blocks_marked_for_no_compaction_total 1
 		`), "cortex_compactor_blocks_marked_for_no_compaction_total"))
 }
 

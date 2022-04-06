@@ -637,6 +637,7 @@ type downstreamHandler struct {
 func (h *downstreamHandler) Do(ctx context.Context, r Request) (Response, error) {
 	qry, err := h.engine.NewRangeQuery(
 		h.queryable,
+		nil,
 		r.GetQuery(),
 		util.TimeFromMillis(r.GetStart()),
 		util.TimeFromMillis(r.GetEnd()),

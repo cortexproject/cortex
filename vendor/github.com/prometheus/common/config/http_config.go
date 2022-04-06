@@ -11,8 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build go1.8
-
 package config
 
 import (
@@ -27,7 +25,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +39,7 @@ import (
 // DefaultHTTPClientConfig is the default HTTP client configuration.
 var DefaultHTTPClientConfig = HTTPClientConfig{
 	FollowRedirects: true,
+	EnableHTTP2:     true,
 }
 
 // defaultHTTPClientOptions holds the default HTTP client options.
@@ -160,6 +158,8 @@ type OAuth2 struct {
 	TokenURL         string            `yaml:"token_url" json:"token_url"`
 	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
 
+	// HTTP proxy server to use to connect to the targets.
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
 	// TLSConfig is used to connect to the token URL.
 	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
 }
@@ -195,6 +195,10 @@ type HTTPClientConfig struct {
 	// The omitempty flag is not set, because it would be hidden from the
 	// marshalled configuration when set to false.
 	FollowRedirects bool `yaml:"follow_redirects" json:"follow_redirects"`
+	// EnableHTTP2 specifies whether the client should configure HTTP2.
+	// The omitempty flag is not set, because it would be hidden from the
+	// marshalled configuration when set to false.
+	EnableHTTP2 bool `yaml:"enable_http2" json:"enable_http2"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -398,7 +402,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 			ExpectContinueTimeout: 1 * time.Second,
 			DialContext:           dialContext,
 		}
-		if opts.http2Enabled && os.Getenv("PROMETHEUS_COMMON_DISABLE_HTTP2") == "" {
+		if opts.http2Enabled && cfg.EnableHTTP2 {
 			// HTTP/2 support is golang had many problematic cornercases where
 			// dead connections would be kept and used in connection pools.
 			// https://github.com/golang/go/issues/32388
@@ -605,10 +609,16 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 
 		var t http.RoundTripper
 		if len(rt.config.TLSConfig.CAFile) == 0 {
-			t = &http.Transport{TLSClientConfig: tlsConfig}
+			t = &http.Transport{
+				TLSClientConfig: tlsConfig,
+				Proxy:           http.ProxyURL(rt.config.ProxyURL.URL),
+			}
 		} else {
 			t, err = NewTLSRoundTripper(tlsConfig, rt.config.TLSConfig.CAFile, func(tls *tls.Config) (http.RoundTripper, error) {
-				return &http.Transport{TLSClientConfig: tls}, nil
+				return &http.Transport{
+					TLSClientConfig: tls,
+					Proxy:           http.ProxyURL(rt.config.ProxyURL.URL),
+				}, nil
 			})
 			if err != nil {
 				return nil, err

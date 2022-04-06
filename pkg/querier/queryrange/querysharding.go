@@ -215,6 +215,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
+		nil,
 		r.GetQuery(),
 		util.TimeFromMillis(r.GetStart()),
 		util.TimeFromMillis(r.GetEnd()),

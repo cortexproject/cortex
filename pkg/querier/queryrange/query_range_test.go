@@ -34,7 +34,7 @@ func TestRequest(t *testing.T) {
 			expected: &parsedRequestWithHeaders,
 		},
 		{
-			url:         "api/v1/query_range?start=foo&stats=true",
+			url:         "api/v1/query_range?start=foo&stats=all",
 			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"start\"; cannot parse \"foo\" to a valid timestamp"),
 		},
 		{

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=true&step=120"
+	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
 	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
@@ -31,7 +31,7 @@ var (
 		End:   1536716898 * 1e3,
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
-		Stats: "true",
+		Stats: "all",
 	}
 	reqHeaders = []*PrometheusRequestHeader{
 		{
@@ -1027,6 +1027,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
+	cfg.CacheQueryableSamplesStats = true
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,

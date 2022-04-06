@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -30,16 +32,17 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/thanos/pkg/testutil"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	cortex_storage_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -798,6 +801,58 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
 		cortex_compactor_block_cleanup_failed_total 0
 	`), testedMetrics...))
+}
+
+func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
+	bucketClient, tmpDir := cortex_storage_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	err := testutil.PutOutOfOrderIndex(path.Join(tmpDir, "user-1", b1.String()), 10, 20)
+	require.NoError(t, err)
+
+	cfg := prepareConfig()
+	cfg.SkipBlocksWithOutOfOrderChunksEnabled = true
+	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient)
+
+	tsdbCompac.On("Compact", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(b1, nil)
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    b1,
+				MinTime: 10,
+				MaxTime: 20,
+			},
+		},
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    b2,
+				MinTime: 20,
+				MaxTime: 30,
+			},
+		},
+	}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
+
+	// Wait until a run has completed.
+	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
+		if _, err := os.Stat(path.Join(tmpDir, "user-1", b1.String(), "no-compact-mark.json")); err == nil {
+			return true
+		}
+		return false
+	})
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+        	            	# HELP cortex_compactor_blocks_marked_for_no_compact_total Total number of blocks marked for no compact.
+        	            	# TYPE cortex_compactor_blocks_marked_for_no_compact_total counter
+        	            	cortex_compactor_blocks_marked_for_no_compact_total 1
+		`), "cortex_compactor_blocks_marked_for_no_compact_total"))
 }
 
 func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunning(t *testing.T) {

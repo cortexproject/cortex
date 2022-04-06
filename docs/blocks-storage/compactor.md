@@ -147,6 +147,11 @@ compactor:
   # CLI flag: -compactor.tenant-cleanup-delay
   [tenant_cleanup_delay: <duration> | default = 6h]
 
+  # When enabled, mark blocks containing index with out-of-order chunks for no
+  # compact instead of halting the compaction.
+  # CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
+  [skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
+
   # When enabled, at compactor startup the bucket will be scanned and all found
   # deletion marks inside the block location will be copied to the markers
   # global location too. This option can (and should) be safely disabled as soon

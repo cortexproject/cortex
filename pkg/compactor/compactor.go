@@ -120,18 +120,19 @@ type BlocksCompactorFactory func(
 
 // Config holds the Compactor config.
 type Config struct {
-	BlockRanges           cortex_tsdb.DurationList `yaml:"block_ranges"`
-	BlockSyncConcurrency  int                      `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency   int                      `yaml:"meta_sync_concurrency"`
-	ConsistencyDelay      time.Duration            `yaml:"consistency_delay"`
-	DataDir               string                   `yaml:"data_dir"`
-	CompactionInterval    time.Duration            `yaml:"compaction_interval"`
-	CompactionRetries     int                      `yaml:"compaction_retries"`
-	CompactionConcurrency int                      `yaml:"compaction_concurrency"`
-	CleanupInterval       time.Duration            `yaml:"cleanup_interval"`
-	CleanupConcurrency    int                      `yaml:"cleanup_concurrency"`
-	DeletionDelay         time.Duration            `yaml:"deletion_delay"`
-	TenantCleanupDelay    time.Duration            `yaml:"tenant_cleanup_delay"`
+	BlockRanges                           cortex_tsdb.DurationList `yaml:"block_ranges"`
+	BlockSyncConcurrency                  int                      `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency                   int                      `yaml:"meta_sync_concurrency"`
+	ConsistencyDelay                      time.Duration            `yaml:"consistency_delay"`
+	DataDir                               string                   `yaml:"data_dir"`
+	CompactionInterval                    time.Duration            `yaml:"compaction_interval"`
+	CompactionRetries                     int                      `yaml:"compaction_retries"`
+	CompactionConcurrency                 int                      `yaml:"compaction_concurrency"`
+	CleanupInterval                       time.Duration            `yaml:"cleanup_interval"`
+	CleanupConcurrency                    int                      `yaml:"cleanup_concurrency"`
+	DeletionDelay                         time.Duration            `yaml:"deletion_delay"`
+	TenantCleanupDelay                    time.Duration            `yaml:"tenant_cleanup_delay"`
+	SkipBlocksWithOutOfOrderChunksEnabled bool                     `yaml:"skip_blocks_with_out_of_order_chunks_enabled"`
 
 	// Whether the migration of block deletion marks to the global markers location is enabled.
 	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
@@ -180,6 +181,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 		"If 0, blocks will be deleted straight away. Note that deleting blocks immediately can cause query failures.")
 	f.DurationVar(&cfg.TenantCleanupDelay, "compactor.tenant-cleanup-delay", 6*time.Hour, "For tenants marked for deletion, this is time between deleting of last block, and doing final cleanup (marker files, debug files) of the tenant.")
 	f.BoolVar(&cfg.BlockDeletionMarksMigrationEnabled, "compactor.block-deletion-marks-migration-enabled", false, "When enabled, at compactor startup the bucket will be scanned and all found deletion marks inside the block location will be copied to the markers global location too. This option can (and should) be safely disabled as soon as the compactor has successfully run at least once.")
+	f.BoolVar(&cfg.SkipBlocksWithOutOfOrderChunksEnabled, "compactor.skip-blocks-with-out-of-order-chunks-enabled", false, "When enabled, mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction.")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
@@ -702,7 +704,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
-		false,
+		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

@@ -2,10 +2,11 @@
 
 ## master / unreleased
 
-- [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
 - [CHANGE] Fix incorrectly named `cortex_cache_fetched_keys` and `cortex_cache_hits` metrics. Renamed to `cortex_cache_fetched_keys_total` and `cortex_cache_hits_total` respectively. #4686
-- [CHANGE] Enable Thanos series limiter in store-gateway. #4702<<<<<<< HEAD
+- [CHANGE] Enable Thanos series limiter in store-gateway. #4702
 - [CHANGE] Distributor: Apply `max_fetched_series_per_query` limit for `/series` API. #4683
+- [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
+- [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction
 
 ## 1.12.0 in progress
 

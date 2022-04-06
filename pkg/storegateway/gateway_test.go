@@ -933,7 +933,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 		t.Run(testName, func(t *testing.T) {
 			// Customise the limits.
 			limits := defaultLimitsConfig()
-			limits.MaxChunksPerQueryFromStore = testData.limit
+			limits.MaxChunksPerQuery = testData.limit
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 

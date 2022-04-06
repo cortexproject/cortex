@@ -103,8 +103,7 @@ api:
 # one-time flushes when scaling down ingesters.
 [flusher: <flusher_config>]
 
-# The storage_config configures where Cortex stores the data (chunks storage
-# engine).
+# The storage_config configures the storage type Cortex uses.
 [storage: <storage_config>]
 
 # The limits_config configures default and per-tenant limits imposed by Cortex
@@ -594,36 +593,6 @@ instance_limits:
 The `ingester_config` configures the Cortex ingester.
 
 ```yaml
-# Configures the Write-Ahead Log (WAL) for the removed Cortex chunks storage.
-# This config is now always ignored.
-walconfig:
-  # Enable writing of ingested data into WAL.
-  # CLI flag: -ingester.wal-enabled
-  [wal_enabled: <boolean> | default = false]
-
-  # Enable checkpointing of in-memory chunks. It should always be true when
-  # using normally. Set it to false iff you are doing some small tests as there
-  # is no mechanism to delete the old WAL yet if checkpoint is disabled.
-  # CLI flag: -ingester.checkpoint-enabled
-  [checkpoint_enabled: <boolean> | default = true]
-
-  # Recover data from existing WAL irrespective of WAL enabled/disabled.
-  # CLI flag: -ingester.recover-from-wal
-  [recover_from_wal: <boolean> | default = false]
-
-  # Directory to store the WAL and/or recover from WAL.
-  # CLI flag: -ingester.wal-dir
-  [wal_dir: <string> | default = "wal"]
-
-  # Interval at which checkpoints should be created.
-  # CLI flag: -ingester.checkpoint-duration
-  [checkpoint_duration: <duration> | default = 30m]
-
-  # When WAL is enabled, should chunks be flushed to long-term storage on
-  # shutdown. Useful eg. for migration to blocks engine.
-  # CLI flag: -ingester.flush-on-shutdown-with-wal-enabled
-  [flush_on_shutdown_with_wal_enabled: <boolean> | default = false]
-
 lifecycler:
   ring:
     kvstore:
@@ -734,12 +703,6 @@ lifecycler:
   # slowed down.
   # CLI flag: -ingester.readiness-check-ring-health
   [readiness_check_ring_health: <boolean> | default = true]
-
-# Number of times to try and transfer chunks before falling back to flushing.
-# Negative value or zero disables hand-over. This feature is supported only by
-# the chunks storage.
-# CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 10]
 
 # Period with which to attempt to flush chunks.
 # CLI flag: -ingester.flush-period
@@ -2099,7 +2062,7 @@ local:
 
 ### `storage_config`
 
-The `storage_config` configures where Cortex stores the data (chunks storage engine).
+The `storage_config` configures the storage type Cortex uses.
 
 ```yaml
 # The storage engine to use: blocks is the only supported option today.
@@ -2112,20 +2075,6 @@ The `storage_config` configures where Cortex stores the data (chunks storage eng
 The `flusher_config` configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.
 
 ```yaml
-# Has no effect: directory to read WAL from (chunks storage engine only).
-# CLI flag: -flusher.wal-dir
-[wal_dir: <string> | default = "wal"]
-
-# Has no effect: number of concurrent goroutines flushing to storage (chunks
-# storage engine only).
-# CLI flag: -flusher.concurrent-flushes
-[concurrent_flushes: <int> | default = 50]
-
-# Has no effect: timeout for individual flush operations (chunks storage engine
-# only).
-# CLI flag: -flusher.flush-op-timeout
-[flush_op_timeout: <duration> | default = 2m]
-
 # Stop Cortex after flush has finished. If false, Cortex process will keep
 # running, doing nothing.
 # CLI flag: -flusher.exit-after-flush
@@ -2664,11 +2613,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-series-per-query
 [max_series_per_query: <int> | default = 100000]
 
-# The maximum number of samples that a query can return. This limit only applies
-# when running the Cortex chunks storage with -querier.ingester-streaming=false.
-# CLI flag: -ingester.max-samples-per-query
-[max_samples_per_query: <int> | default = 1000000]
-
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
 [max_series_per_user: <int> | default = 5000000]
@@ -2689,12 +2633,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 
-# Minimum number of samples in an idle chunk to flush it to the store. Use with
-# care, if chunks are less than this size they will be discarded. This option is
-# ignored when running the Cortex blocks storage. 0 to disable.
-# CLI flag: -ingester.min-chunk-length
-[min_chunk_length: <int> | default = 0]
-
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
 # CLI flag: -ingester.max-metadata-per-user
@@ -2714,22 +2652,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its
-# respective YAML config option instead. Maximum number of chunks that can be
-# fetched in a single query. This limit is enforced when fetching chunks from
-# the long-term storage only. When running the Cortex chunks storage, this limit
-# is enforced in the querier and ruler, while when running the Cortex blocks
-# storage this limit is enforced in the querier, ruler and store-gateway. 0 to
-# disable.
-# CLI flag: -store.query-chunk-limit
-[max_chunks_per_query: <int> | default = 2000000]
-
 # Maximum number of chunks that can be fetched in a single query from ingesters
 # and long-term storage. This limit is enforced in the querier, ruler and
-# store-gateway. Takes precedence over the deprecated -store.query-chunk-limit.
-# 0 to disable.
+# store-gateway. 0 to disable.
 # CLI flag: -querier.max-fetched-chunks-per-query
-[max_fetched_chunks_per_query: <int> | default = 0]
+[max_fetched_chunks_per_query: <int> | default = 2000000]
 
 # The maximum number of unique series for which a query can fetch samples from
 # each ingesters and blocks storage. This limit is enforced in the querier only
@@ -2752,8 +2679,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_query_lookback: <duration> | default = 0s]
 
 # Limit the query time range (end - start time). This limit is enforced in the
-# query-frontend (on the received query), in the querier (on the query possibly
-# split by the query-frontend) and in the chunks storage. 0 to disable.
+# query-frontend (on the received query) and in the querier (on the query
+# possibly split by the query-frontend). 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 

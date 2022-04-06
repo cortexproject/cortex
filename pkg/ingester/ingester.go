@@ -46,11 +46,7 @@ var (
 
 // Config for an Ingester.
 type Config struct {
-	WALConfig        WALConfig             `yaml:"walconfig" doc:"description=Configures the Write-Ahead Log (WAL) for the removed Cortex chunks storage. This config is now always ignored."`
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
-
-	// Config for transferring chunks. Zero or negative = no retries.
-	MaxTransferRetries int `yaml:"max_transfer_retries"`
 
 	// Config for chunk flushing.
 	FlushCheckPeriod  time.Duration `yaml:"flush_period"`
@@ -96,9 +92,6 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
-	cfg.WALConfig.RegisterFlags(f)
-
-	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 10, "Number of times to try and transfer chunks before falling back to flushing. Negative value or zero disables hand-over. This feature is supported only by the chunks storage.")
 
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.retain-period", 5*time.Minute, "Period chunks will remain in memory after flushing.")

@@ -30,12 +30,15 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/thanos/pkg/testutil"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	cortex_storage_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -231,6 +234,10 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		cortex_compactor_blocks_marked_for_deletion_total{reason="compaction"} 0
 		cortex_compactor_blocks_marked_for_deletion_total{reason="retention"} 0
 
+		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+		cortex_compactor_blocks_marked_for_no_compaction_total 0
+
 		# TYPE cortex_compactor_block_cleanup_started_total counter
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
 		cortex_compactor_block_cleanup_started_total 1
@@ -262,6 +269,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 		"cortex_compactor_block_cleanup_failures_total",
 		"cortex_compactor_blocks_cleaned_total",
 		"cortex_compactor_blocks_marked_for_deletion_total",
+		"cortex_compactor_blocks_marked_for_no_compaction_total",
 		"cortex_compactor_block_cleanup_started_total",
 		"cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_block_cleanup_failed_total",
@@ -381,6 +389,10 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		# HELP cortex_compactor_block_cleanup_started_total Total number of blocks cleanup runs started.
 		cortex_compactor_block_cleanup_started_total 1
 
+		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+		cortex_compactor_blocks_marked_for_no_compaction_total 0
+
 		# TYPE cortex_compactor_block_cleanup_completed_total counter
 		# HELP cortex_compactor_block_cleanup_completed_total Total number of blocks cleanup runs successfully completed.
 		cortex_compactor_block_cleanup_completed_total 0
@@ -408,6 +420,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 		"cortex_compactor_block_cleanup_failures_total",
 		"cortex_compactor_blocks_cleaned_total",
 		"cortex_compactor_blocks_marked_for_deletion_total",
+		"cortex_compactor_blocks_marked_for_no_compaction_total",
 		"cortex_compactor_block_cleanup_started_total",
 		"cortex_compactor_block_cleanup_completed_total",
 		"cortex_compactor_block_cleanup_failed_total",
@@ -424,8 +437,10 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	bucketClient.MockIter(userID+"/markers/", nil, nil)
 	bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
@@ -474,12 +489,16 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -506,6 +525,8 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	// Ensure a plan has been executed for the blocks of each user.
 	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
+
+	assert.Len(t, tsdbPlanner.getNoCompactBlocks(), 0)
 
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
@@ -536,6 +557,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
 		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
+		"cortex_compactor_blocks_marked_for_no_compaction_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 		# TYPE cortex_compactor_runs_started_total counter
@@ -574,6 +596,10 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		# TYPE cortex_compactor_block_cleanup_failed_total counter
 		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
 		cortex_compactor_block_cleanup_failed_total 0
+
+		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+		cortex_compactor_blocks_marked_for_no_compaction_total 0
 	`), testedMetrics...))
 }
 
@@ -654,6 +680,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		"cortex_compactor_runs_started_total", "cortex_compactor_runs_completed_total", "cortex_compactor_runs_failed_total",
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
 		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
+		"cortex_compactor_blocks_marked_for_no_compaction_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 		# TYPE cortex_compactor_runs_started_total counter
@@ -692,6 +719,69 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		# TYPE cortex_compactor_block_cleanup_failed_total counter
 		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
 		cortex_compactor_block_cleanup_failed_total 0
+
+		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+		cortex_compactor_blocks_marked_for_no_compaction_total 0
+	`), testedMetrics...))
+}
+
+func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
+	t.Parallel()
+
+	// Mock the bucket to contain two users, each one with one block.
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
+	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucketClient.MockExists(path.Join("user-2", cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
+	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ"}, nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockIter("user-2/markers/", nil, nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", mockNoCompactBlockJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", mockNoCompactBlockJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
+
+	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
+	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockIter("user-2/markers/", nil, nil)
+	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
+	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
+
+	c, _, tsdbPlanner, _, registry := prepare(t, prepareConfig(), bucketClient)
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	// Planner still called for user with all blocks makred for skip compaction.
+	tsdbPlanner.AssertNumberOfCalls(t, "Plan", 2)
+
+	assert.ElementsMatch(t, []string{"01DTVP434PA9VFXSW2JKB3392D", "01FN6CDF3PNEWWRY5MPGJPE3EX"}, tsdbPlanner.getNoCompactBlocks())
+
+	testedMetrics := []string{"cortex_compactor_blocks_marked_for_no_compaction_total"}
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+		cortex_compactor_blocks_marked_for_no_compaction_total 0
 	`), testedMetrics...))
 }
 
@@ -759,6 +849,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 		"cortex_compactor_blocks_cleaned_total", "cortex_compactor_block_cleanup_failures_total", "cortex_compactor_blocks_marked_for_deletion_total",
 		"cortex_compactor_block_cleanup_started_total", "cortex_compactor_block_cleanup_completed_total", "cortex_compactor_block_cleanup_failed_total",
 		"cortex_bucket_blocks_count", "cortex_bucket_blocks_marked_for_deletion_count", "cortex_bucket_index_last_successful_update_timestamp_seconds",
+		"cortex_compactor_blocks_marked_for_no_compaction_total",
 	}
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 		# TYPE cortex_compactor_runs_started_total counter
@@ -797,7 +888,63 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 		# TYPE cortex_compactor_block_cleanup_failed_total counter
 		# HELP cortex_compactor_block_cleanup_failed_total Total number of blocks cleanup runs failed.
 		cortex_compactor_block_cleanup_failed_total 0
+
+		# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+		# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+		cortex_compactor_blocks_marked_for_no_compaction_total 0
 	`), testedMetrics...))
+}
+
+func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
+	bucketClient, tmpDir := cortex_storage_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	err := testutil.PutOutOfOrderIndex(path.Join(tmpDir, "user-1", b1.String()), 10, 20)
+	require.NoError(t, err)
+
+	cfg := prepareConfig()
+	cfg.SkipBlocksWithOutOfOrderChunksEnabled = true
+	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient)
+
+	tsdbCompac.On("Compact", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(b1, nil)
+
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    b1,
+				MinTime: 10,
+				MaxTime: 20,
+			},
+		},
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    b2,
+				MinTime: 20,
+				MaxTime: 30,
+			},
+		},
+	}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
+
+	// Wait until a run has completed.
+	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
+		if _, err := os.Stat(path.Join(tmpDir, "user-1", b1.String(), "no-compact-mark.json")); err == nil {
+			return true
+		}
+		return false
+	})
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+			# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
+			# TYPE cortex_compactor_blocks_marked_for_no_compaction_total counter
+			cortex_compactor_blocks_marked_for_no_compaction_total 1
+		`), "cortex_compactor_blocks_marked_for_no_compaction_total"))
 }
 
 func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunning(t *testing.T) {
@@ -814,12 +961,16 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
@@ -900,6 +1051,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 	}
@@ -1145,7 +1297,9 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 	})
 
 	tsdbCompactor := &tsdbCompactorMock{}
-	tsdbPlanner := &tsdbPlannerMock{}
+	tsdbPlanner := &tsdbPlannerMock{
+		noCompactMarkFilters: []*compact.GatherNoCompactionMarkFilter{},
+	}
 	logs := &concurrency.SyncBuffer{}
 	logger := log.NewLogfmtLogger(logs)
 	registry := prometheus.NewRegistry()
@@ -1159,8 +1313,13 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket) (*
 		return bucketClient, nil
 	}
 
-	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, compact.Planner, error) {
-		return tsdbCompactor, tsdbPlanner, nil
+	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
+		return tsdbCompactor,
+			func(_ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Planner {
+				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
+				return tsdbPlanner
+			},
+			nil
 	}
 
 	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, DefaultBlocksGrouperFactory, blocksCompactorFactory)
@@ -1190,11 +1349,25 @@ func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Blo
 
 type tsdbPlannerMock struct {
 	mock.Mock
+	noCompactMarkFilters []*compact.GatherNoCompactionMarkFilter
 }
 
 func (m *tsdbPlannerMock) Plan(ctx context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error) {
 	args := m.Called(ctx, metasByMinTime)
 	return args.Get(0).([]*metadata.Meta), args.Error(1)
+}
+
+func (m *tsdbPlannerMock) getNoCompactBlocks() []string {
+
+	result := []string{}
+
+	for _, noCompactMarkFilter := range m.noCompactMarkFilters {
+		for _, mark := range noCompactMarkFilter.NoCompactMarkedBlocks() {
+			result = append(result, mark.ID.String())
+		}
+	}
+
+	return result
 }
 
 func mockBlockMetaJSON(id string) string {
@@ -1217,6 +1390,23 @@ func mockBlockMetaJSON(id string) string {
 	return string(content)
 }
 
+func mockNoCompactBlockJSON(id string) string {
+	meta := metadata.NoCompactMark{
+		Version:       1,
+		ID:            ulid.MustParse(id),
+		NoCompactTime: time.Now().Unix(),
+		Details:       "yolo",
+		Reason:        "testing",
+	}
+
+	content, err := json.Marshal(meta)
+	if err != nil {
+		panic("failed to marshal mocked block no compact mark")
+	}
+
+	return string(content)
+}
+
 func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 	meta := metadata.DeletionMark{
 		Version:      metadata.DeletionMarkVersion1,
@@ -1226,7 +1416,7 @@ func mockDeletionMarkJSON(id string, deletionTime time.Time) string {
 
 	content, err := json.Marshal(meta)
 	if err != nil {
-		panic("failed to marshal mocked block meta")
+		panic("failed to marshal mocked block deletion mark")
 	}
 
 	return string(content)

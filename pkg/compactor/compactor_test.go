@@ -1181,6 +1181,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		for blockID, blockTimes := range blocks {
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
+			bucketClient.MockGet(userID+"/"+blockID+"/no-compact-mark.json", "", nil)
 			blockDirectory = append(blockDirectory, userID+"/"+blockID)
 
 			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted

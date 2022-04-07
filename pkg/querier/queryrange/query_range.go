@@ -415,6 +415,10 @@ func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 		}
 	}
 
+	if !hasStats {
+		return nil
+	}
+
 	keys := make([]int64, 0, len(output))
 	for key := range output {
 		keys = append(keys, key)
@@ -426,10 +430,6 @@ func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 	for _, key := range keys {
 		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, output[key])
 		result.Samples.TotalQueryableSamples += output[key].Value
-	}
-
-	if !hasStats {
-		return nil
 	}
 
 	return result

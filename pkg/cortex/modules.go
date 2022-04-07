@@ -523,11 +523,12 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryrange.PrometheusResponseExtractor{},
 		t.Cfg.Schema,
 		promql.EngineOpts{
-			Logger:           util_log.Logger,
-			Reg:              prometheus.DefaultRegisterer,
-			MaxSamples:       t.Cfg.Querier.MaxSamples,
-			Timeout:          t.Cfg.Querier.Timeout,
-			EnableAtModifier: t.Cfg.Querier.AtModifierEnabled,
+			Logger:             util_log.Logger,
+			Reg:                prometheus.DefaultRegisterer,
+			MaxSamples:         t.Cfg.Querier.MaxSamples,
+			Timeout:            t.Cfg.Querier.Timeout,
+			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
+			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
 			NoStepSubqueryIntervalFn: func(int64) int64 {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},

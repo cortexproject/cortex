@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&step=120"
+	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
 	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
@@ -31,6 +31,7 @@ var (
 		End:   1536716898 * 1e3,
 		Step:  120 * 1e3,
 		Query: "sum(container_memory_rss) by (namespace)",
+		Stats: "all",
 	}
 	reqHeaders = []*PrometheusRequestHeader{
 		{
@@ -43,6 +44,15 @@ var (
 		Start:          1536673680 * 1e3,
 		End:            1536716898 * 1e3,
 		Step:           120 * 1e3,
+		Query:          "sum(container_memory_rss) by (namespace)",
+		CachingOptions: CachingOptions{Disabled: true},
+	}
+	noCacheRequestWithStats = &PrometheusRequest{
+		Path:           "/api/v1/query_range",
+		Start:          1536673680 * 1e3,
+		End:            1536716898 * 1e3,
+		Step:           120 * 1e3,
+		Stats:          "all",
 		Query:          "sum(container_memory_rss) by (namespace)",
 		CachingOptions: CachingOptions{Disabled: true},
 	}
@@ -72,18 +82,36 @@ var (
 )
 
 func mkAPIResponse(start, end, step int64) *PrometheusResponse {
+	return mkAPIResponseWithStats(start, end, step, false)
+}
+
+func mkAPIResponseWithStats(start, end, step int64, withStats bool) *PrometheusResponse {
 	var samples []cortexpb.Sample
+	var stats *PrometheusResponseStats
+	if withStats {
+		stats = &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	}
 	for i := start; i <= end; i += step {
 		samples = append(samples, cortexpb.Sample{
 			TimestampMs: int64(i),
 			Value:       float64(i),
 		})
+
+		if withStats {
+			stats.Samples.TotalQueryableSamplesPerStep = append(stats.Samples.TotalQueryableSamplesPerStep, &PrometheusResponseQueryableSamplesStatsPerStep{
+				TimestampMs: i,
+				Value:       i,
+			})
+
+			stats.Samples.TotalQueryableSamples += i
+		}
 	}
 
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: matrix,
+			Stats:      stats,
 			Result: []SampleStream{
 				{
 					Labels: []cortexpb.LabelAdapter{
@@ -96,12 +124,20 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 	}
 }
 
+func mkExtentWithStats(start, end int64) Extent {
+	return mkExtentWithStepWithStats(start, end, 10, true)
+}
+
 func mkExtent(start, end int64) Extent {
-	return mkExtentWithStep(start, end, 10)
+	return mkExtentWithStepWithStats(start, end, 10, false)
 }
 
 func mkExtentWithStep(start, end, step int64) Extent {
-	res := mkAPIResponse(start, end, step)
+	return mkExtentWithStepWithStats(start, end, step, false)
+}
+
+func mkExtentWithStepWithStats(start, end, step int64, withStats bool) Extent {
+	res := mkAPIResponseWithStats(start, end, step, withStats)
 	any, err := types.MarshalAny(res)
 	if err != nil {
 		panic(err)
@@ -110,6 +146,87 @@ func mkExtentWithStep(start, end, step int64) Extent {
 		Start:    start,
 		End:      end,
 		Response: any,
+	}
+}
+
+func TestStatsCacheQuerySamples(t *testing.T) {
+
+	for _, tc := range []struct {
+		name                       string
+		cacheQueryableSamplesStats bool
+		err                        error
+		req                        Request
+		upstreamResponse           Response
+		expectedResponse           Response
+	}{
+		{
+			name:                       "should return error",
+			cacheQueryableSamplesStats: true,
+			req:                        noCacheRequest,
+			err:                        fmt.Errorf("error"),
+		},
+		{
+			name:                       "should return response with stats",
+			cacheQueryableSamplesStats: true,
+			req:                        noCacheRequestWithStats,
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, true),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, true),
+		},
+		{
+			name:                       "should return response strip stats if not requested",
+			cacheQueryableSamplesStats: true,
+			req:                        noCacheRequest,
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+		},
+		{
+			name:                       "should not ask stats is cacheQueryableSamplesStats is disabled",
+			cacheQueryableSamplesStats: false,
+			req:                        noCacheRequest,
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+		},
+		{
+			name:                       "should not forward stats when cacheQueryableSamplesStats is disabled",
+			cacheQueryableSamplesStats: false,
+			req:                        noCacheRequestWithStats,
+			upstreamResponse:           mkAPIResponseWithStats(0, 100, 10, true),
+			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					Cache: cache.NewMockCache(),
+				},
+				CacheQueryableSamplesStats: tc.cacheQueryableSamplesStats,
+			}
+			rcm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				constSplitter(day),
+				mockLimits{},
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+				if tc.cacheQueryableSamplesStats {
+					require.Equal(t, "all", req.GetStats())
+				} else {
+					require.Equal(t, "", req.GetStats())
+				}
+				return tc.upstreamResponse, tc.err
+			}))
+			ctx := user.InjectOrgID(context.Background(), "1")
+			r, err := rc.Do(ctx, tc.req)
+			require.Equal(t, tc.err, err)
+			require.Equal(t, tc.expectedResponse, r)
+		})
 	}
 }
 
@@ -522,6 +639,125 @@ func TestPartition(t *testing.T) {
 				mkAPIResponse(100, 105, 10),
 			},
 		},
+		{
+			name: "[Stats] Test a complete hit.",
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(0, 100),
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponseWithStats(0, 100, 10, true),
+			},
+		},
+
+		{
+			name: "[Stats] Test with a complete miss.",
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(110, 210),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 0,
+					End:   100,
+				}},
+		},
+		{
+			name: "[stats] Test a partial hit.",
+			input: &PrometheusRequest{
+				Start: 0,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(50, 100),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 0,
+					End:   50,
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponseWithStats(50, 100, 10, true),
+			},
+		},
+		{
+			name: "[stats] Test multiple partial hits.",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   200,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(50, 120),
+				mkExtentWithStats(160, 250),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 120,
+					End:   160,
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponseWithStats(100, 120, 10, true),
+				mkAPIResponseWithStats(160, 200, 10, true),
+			},
+		},
+		{
+			name: "[stats] Partial hits with tiny gap.",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   160,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(50, 120),
+				mkExtentWithStats(122, 130),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 120,
+					End:   160,
+				},
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponseWithStats(100, 120, 10, true),
+			},
+		},
+		{
+			name: "[stats] Extent is outside the range and the request has a single step (same start and end).",
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(50, 90),
+			},
+			expectedRequests: []Request{
+				&PrometheusRequest{
+					Start: 100,
+					End:   100,
+				},
+			},
+		},
+		{
+			name: "[stats] Test when hit has a large step and only a single sample extent.",
+			// If there is a only a single sample in the split interval, start and end will be the same.
+			input: &PrometheusRequest{
+				Start: 100,
+				End:   100,
+			},
+			prevCachedResponse: []Extent{
+				mkExtentWithStats(100, 100),
+			},
+			expectedCachedResponse: []Response{
+				mkAPIResponseWithStats(100, 105, 10, true),
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := resultsCache{
@@ -791,6 +1027,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
+	cfg.CacheQueryableSamplesStats = true
 	rcm, _, err := NewResultsCacheMiddleware(
 		log.NewNopLogger(),
 		cfg,

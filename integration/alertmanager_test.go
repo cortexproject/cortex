@@ -7,11 +7,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/thanos-io/thanos/pkg/objstore/s3"
 
 	amlabels "github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/types"

@@ -7,6 +7,7 @@
 * [CHANGE] Distributor: Apply `max_fetched_series_per_query` limit for `/series` API. #4683
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction
+* [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics
 * [FEATURE] Add shuffle sharding for the compactor #4433
 
 ## 1.12.0 in progress

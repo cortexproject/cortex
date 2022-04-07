@@ -889,6 +889,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.at-modifier-enabled
 [at_modifier_enabled: <boolean> | default = false]
 
+# Enable returning samples stats per steps in query response.
+# CLI flag: -querier.per-step-stats-enabled
+[per_step_stats_enabled: <boolean> | default = false]
+
 # The time after which a metric should be queried from storage and not just
 # ingesters. 0 means all queries are sent to store. When running the blocks
 # storage, if this option is enabled, the time range of the query sent to the
@@ -1152,6 +1156,10 @@ results_cache:
   # (disable compression).
   # CLI flag: -frontend.compression
   [compression: <string> | default = ""]
+
+  # Cache Statistics queryable samples on results cache.
+  # CLI flag: -frontend.cache-queryable-samples-stats
+  [cache_queryable_samples_stats: <boolean> | default = false]
 
 # Cache query results.
 # CLI flag: -querier.cache-results

@@ -337,9 +337,10 @@ func TestGetRules(t *testing.T) {
 	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
 
 	type testCase struct {
-		sharding         bool
-		shardingStrategy string
-		shuffleShardSize int
+		sharding          bool
+		shardingStrategy  string
+		shuffleShardSize  int
+		replicationFactor int
 	}
 
 	expectedRules := expectedRulesMap{
@@ -374,16 +375,30 @@ func TestGetRules(t *testing.T) {
 
 	testCases := map[string]testCase{
 		"No Sharding": {
-			sharding: false,
+			sharding:          false,
+			replicationFactor: 1,
 		},
 		"Default Sharding": {
-			sharding:         true,
-			shardingStrategy: util.ShardingStrategyDefault,
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 1,
+		},
+		"Default Sharding and replicationFactor = 3": {
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
 		},
 		"Shuffle Sharding and ShardSize = 2": {
-			sharding:         true,
-			shuffleShardSize: 2,
-			shardingStrategy: util.ShardingStrategyShuffle,
+			sharding:          true,
+			shuffleShardSize:  2,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			replicationFactor: 1,
+		},
+		"Shuffle Sharding and ShardSize = 3 and replicationFactor = 3": {
+			sharding:          true,
+			shuffleShardSize:  3,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			replicationFactor: 3,
 		},
 	}
 
@@ -409,6 +424,7 @@ func TestGetRules(t *testing.T) {
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
+					ReplicationFactor: tc.replicationFactor,
 				}
 
 				r, cleanUp := buildRuler(t, cfg, nil, rulerAddrMap)
@@ -460,13 +476,15 @@ func TestGetRules(t *testing.T) {
 
 			for u := range allRulesByUser {
 				ctx := user.InjectOrgID(context.Background(), u)
-				forEachRuler(func(_ string, r *Ruler) {
+				forEachRuler(func(id string, r *Ruler) {
+					mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 					rules, err := r.GetRules(ctx)
 					require.NoError(t, err)
 					require.Equal(t, len(allRulesByUser[u]), len(rules))
-					if tc.sharding {
-						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 
+					// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
+					// complete result
+					if tc.sharding && tc.replicationFactor <= 1 {
 						if tc.shardingStrategy == util.ShardingStrategyShuffle {
 							require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
 						} else {
@@ -489,8 +507,10 @@ func TestGetRules(t *testing.T) {
 				totalConfiguredRules += len(allRulesByRuler[rID])
 			})
 
-			if tc.sharding {
+			if tc.sharding && tc.replicationFactor <= 1 {
 				require.Equal(t, totalConfiguredRules, totalLoadedRules)
+			} else if tc.replicationFactor > 1 {
+				require.Equal(t, totalConfiguredRules*tc.replicationFactor, totalLoadedRules)
 			} else {
 				// Not sharding means that all rules will be loaded on all rulers
 				numberOfRulers := len(rulerAddrMap)

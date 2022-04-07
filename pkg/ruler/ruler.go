@@ -425,7 +425,12 @@ func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAd
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	return rlrs.Instances[0].Addr == instanceAddr, nil
+	for _, instance := range rlrs.Instances {
+		if instance.Addr == instanceAddr {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -751,13 +756,13 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 }
 
 func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
-	ring := ring.ReadRing(r.ring)
+	rulerRing := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		ring = r.ring.ShuffleShard(userID, shardSize)
+		rulerRing = r.ring.ShuffleShard(userID, shardSize)
 	}
 
-	rulers, err := ring.GetReplicationSetForOperation(RingOp)
+	rulers, err := rulerRing.GetReplicationSetForOperation(RingOp)
 	if err != nil {
 		return nil, err
 	}
@@ -767,35 +772,46 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	var (
-		mergedMx sync.Mutex
-		merged   []*GroupStateDesc
-	)
-
-	// Concurrently fetch rules from all rulers. Since rules are not replicated,
-	// we need all requests to succeed.
-	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
-		addr := job.(string)
-
-		rulerClient, err := r.clientsPool.GetClientFor(addr)
+	rulesResults, err := rulers.Do(ctx, time.Duration(0), func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+		grpcClient, err := r.clientsPool.GetClientFor(ing.Addr)
 		if err != nil {
-			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
+			return nil, errors.Wrapf(err, "unable to get client for ruler %s", ing.Addr)
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
+		newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
 		if err != nil {
-			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
+			return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", ing.Addr)
 		}
-
-		mergedMx.Lock()
-		merged = append(merged, newGrps.Groups...)
-		mergedMx.Unlock()
-
-		return nil
+		return newGrps.Groups, nil
 	})
 
-	return merged, err
+	if err != nil {
+		return nil, err
+	}
+
+	merged := make(map[string]*GroupStateDesc)
+
+	for _, result := range rulesResults {
+		rules := result.([]*GroupStateDesc)
+		for _, rule := range rules {
+			key := fmt.Sprintf("%s:%s", rule.Group.Namespace, rule.Group.Name)
+			if oldGroup, ok := merged[key]; ok {
+				if oldGroup.EvaluationTimestamp.Before(rule.EvaluationTimestamp) {
+					merged[key] = rule
+				}
+			} else {
+				merged[key] = rule
+			}
+		}
+	}
+
+	result := make([]*GroupStateDesc, 0, len(merged))
+
+	for _, r := range merged {
+		result = append(result, r)
+	}
+
+	return result, err
 }
 
 // Rules implements the rules service

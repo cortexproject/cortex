@@ -753,6 +753,7 @@ through the following config parameters:&lt;/p>
 &lt;li>&lt;a href="#query-frontend-and-query-scheduler-shuffle-sharding">Query-frontend / Query-scheduler&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#store-gateway-shuffle-sharding">Store-gateway&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#ruler-shuffle-sharding">Ruler&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#compactor-shuffle-sharding">Compactor&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;p>Shuffle sharding is &lt;strong>disabled by default&lt;/strong> and needs to be explicitly enabled in the configuration.&lt;/p>
 &lt;h3 id="guaranteed-properties">Guaranteed properties&lt;/h3>
@@ -828,6 +829,15 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-ruler.enable-sharding=true&lt;/code> and &lt;code>-ruler.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, rulers use the ring to distribute workload, but rule groups for each tenant can only be evaluated on limited number of rulers (&lt;code>-ruler.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>ruler_tenant_shard_size&lt;/code> in overrides).&lt;/li>
 &lt;/ol>
 &lt;p>Note that when using sharding strategy, each rule group is evaluated by single ruler only, there is no replication.&lt;/p>
+&lt;h3 id="compactor-shuffle-sharding">Compactor shuffle sharding&lt;/h3>
+&lt;p>Cortex compactor can run in three modes:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>No sharding at all.&lt;/strong> This is the most basic mode of the compactor. It is activated by using &lt;code>-compactor.sharding-enabled=false&lt;/code> (default). In this mode every compactor will run every compaction.&lt;/li>
+&lt;li>&lt;strong>Default sharding&lt;/strong>, activated by using &lt;code>-compactor.sharding-enabled=true&lt;/code> and &lt;code>-compactor.sharding-strategy=default&lt;/code> (default). In this mode compactors register themselves into the ring. One single tenant will belong to only 1 compactor.&lt;/li>
+&lt;li>&lt;strong>Shuffle sharding&lt;/strong>, activated by using &lt;code>-compactor.sharding-enabled=true&lt;/code> and &lt;code>-compactor.sharding-strategy=shuffle-sharding&lt;/code>. Similarly to default sharding, but compactions for each tenant can be carried out on multiple compactors (&lt;code>-compactor.tenant-shard-size&lt;/code>, can also be set per tenant as &lt;code>compactor_tenant_shard_size&lt;/code> in overrides).&lt;/li>
+&lt;/ol>
+&lt;p>With shuffle sharding selected as the sharding strategy, a subset of the compactors will be used to handle a user based on the shard size.&lt;/p>
+&lt;p>The idea behind using the shuffle sharding strategy for the compactor is to further enable horizontal scalability and build tolerance for compactions that may take longer than the compaction interval.&lt;/p>
 &lt;h2 id="faq">FAQ&lt;/h2>
 &lt;h3 id="does-shuffle-sharding-add-additional-overhead-to-the-kv-store">Does shuffle sharding add additional overhead to the KV store?&lt;/h3>
 &lt;p>No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.&lt;/p>

@@ -510,7 +510,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "[stats] Merging of samples where there is single overlap.",
 			input: []Response{
@@ -537,6 +536,46 @@ func TestMergeAPIResponses(t *testing.T) {
 							{Value: 5, TimestampMs: 1000},
 							{Value: 5, TimestampMs: 2000},
 							{Value: 15, TimestampMs: 3000},
+						},
+					}},
+				},
+			},
+		},
+		{
+			name: "[stats] Merging of multiple responses with some overlap.",
+			input: []Response{
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[3,"3"],[4,"4"],[5,"5"]]}],"stats":{"samples":{"totalQueryableSamples":12,"totalQueryableSamplesPerStep":[[3,3],[4,4],[5,5]]}}}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"],[3,"3"],[4,"4"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3],[4,4]]}}}}`),
+				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[5,"5"],[6,"6"],[7,"7"]]}],"stats":{"samples":{"totalQueryableSamples":18,"totalQueryableSamplesPerStep":[[5,5],[6,6],[7,7]]}}}}`),
+			},
+			expected: &PrometheusResponse{
+				Status: StatusSuccess,
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result: []SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
+								{Value: 1, TimestampMs: 1000},
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+								{Value: 4, TimestampMs: 4000},
+								{Value: 5, TimestampMs: 5000},
+								{Value: 6, TimestampMs: 6000},
+								{Value: 7, TimestampMs: 7000},
+							},
+						},
+					},
+					Stats: &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{
+						TotalQueryableSamples: 28,
+						TotalQueryableSamplesPerStep: []*PrometheusResponseQueryableSamplesStatsPerStep{
+							{Value: 1, TimestampMs: 1000},
+							{Value: 2, TimestampMs: 2000},
+							{Value: 3, TimestampMs: 3000},
+							{Value: 4, TimestampMs: 4000},
+							{Value: 5, TimestampMs: 5000},
+							{Value: 6, TimestampMs: 6000},
+							{Value: 7, TimestampMs: 7000},
 						},
 					}},
 				},

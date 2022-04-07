@@ -18,7 +18,7 @@ import (
 
 // Config for an Ingester.
 type Config struct {
-	ExitAfterFlush    bool          `yaml:"exit_after_flush"`
+	ExitAfterFlush bool `yaml:"exit_after_flush"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet

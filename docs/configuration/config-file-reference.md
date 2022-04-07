@@ -4267,6 +4267,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -compactor.blocks-retention-period
 [compactor_blocks_retention_period: <duration> | default = 0s]
 
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# the compactor. When this setting is specified in the per-tenant overrides, a
+# value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -compactor.tenant-shard-size
+[compactor_tenant_shard_size: <int> | default = 0]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.

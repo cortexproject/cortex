@@ -17,24 +17,32 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/objstore"
+
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 type ShuffleShardingGrouper struct {
-	logger                   log.Logger
-	bkt                      objstore.Bucket
-	acceptMalformedIndex     bool
-	enableVerticalCompaction bool
-	reg                      prometheus.Registerer
-	blocksMarkedForDeletion  prometheus.Counter
-	blocksMarkedForNoCompact prometheus.Counter
-	garbageCollectedBlocks   prometheus.Counter
-	hashFunc                 metadata.HashFunc
-	compactions              *prometheus.CounterVec
-	compactionRunsStarted    *prometheus.CounterVec
-	compactionRunsCompleted  *prometheus.CounterVec
-	compactionFailures       *prometheus.CounterVec
-	verticalCompactions      *prometheus.CounterVec
-	compactorCfg             Config
+	logger                      log.Logger
+	bkt                         objstore.Bucket
+	acceptMalformedIndex        bool
+	enableVerticalCompaction    bool
+	reg                         prometheus.Registerer
+	blocksMarkedForDeletion     prometheus.Counter
+	blocksMarkedForNoCompact    prometheus.Counter
+	garbageCollectedBlocks      prometheus.Counter
+	remainingPlannedCompactions prometheus.Gauge
+	hashFunc                    metadata.HashFunc
+	compactions                 *prometheus.CounterVec
+	compactionRunsStarted       *prometheus.CounterVec
+	compactionRunsCompleted     *prometheus.CounterVec
+	compactionFailures          *prometheus.CounterVec
+	verticalCompactions         *prometheus.CounterVec
+	compactorCfg                Config
+	limits                      Limits
+	userID                      string
+
+	ring               ring.ReadRing
+	ringLifecyclerAddr string
 }
 
 func NewShuffleShardingGrouper(
@@ -46,23 +54,29 @@ func NewShuffleShardingGrouper(
 	blocksMarkedForDeletion prometheus.Counter,
 	blocksMarkedForNoCompact prometheus.Counter,
 	garbageCollectedBlocks prometheus.Counter,
+	remainingPlannedCompactions prometheus.Gauge,
 	hashFunc metadata.HashFunc,
 	compactorCfg Config,
+	ring ring.ReadRing,
+	ringLifecyclerAddr string,
+	limits Limits,
+	userID string,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
 	return &ShuffleShardingGrouper{
-		logger:                   logger,
-		bkt:                      bkt,
-		acceptMalformedIndex:     acceptMalformedIndex,
-		enableVerticalCompaction: enableVerticalCompaction,
-		reg:                      reg,
-		blocksMarkedForDeletion:  blocksMarkedForDeletion,
-		blocksMarkedForNoCompact: blocksMarkedForNoCompact,
-		garbageCollectedBlocks:   garbageCollectedBlocks,
-		hashFunc:                 hashFunc,
+		logger:                      logger,
+		bkt:                         bkt,
+		acceptMalformedIndex:        acceptMalformedIndex,
+		enableVerticalCompaction:    enableVerticalCompaction,
+		reg:                         reg,
+		blocksMarkedForDeletion:     blocksMarkedForDeletion,
+		blocksMarkedForNoCompact:    blocksMarkedForNoCompact,
+		garbageCollectedBlocks:      garbageCollectedBlocks,
+		remainingPlannedCompactions: remainingPlannedCompactions,
+		hashFunc:                    hashFunc,
 		// Metrics are copied from Thanos DefaultGrouper constructor
 		compactions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "thanos_compact_group_compactions_total",
@@ -84,7 +98,11 @@ func NewShuffleShardingGrouper(
 			Name: "thanos_compact_group_vertical_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 		}, []string{"group"}),
-		compactorCfg: compactorCfg,
+		compactorCfg:       compactorCfg,
+		ring:               ring,
+		ringLifecyclerAddr: ringLifecyclerAddr,
+		limits:             limits,
+		userID:             userID,
 	}
 }
 
@@ -102,7 +120,22 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	// which we can parallelly compact.
 	var outGroups []*compact.Group
 
-	i := 0
+	// Check if this compactor is on the subring.
+	// If the compactor is not on the subring when using the userID as a identifier
+	// no plans generated below will be owned by the compactor so we can just return an empty array
+	// as there will be no planned groups
+	onSubring, err := g.checkSubringForCompactor()
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to check sub-ring for compactor ownership")
+	}
+	if !onSubring {
+		level.Debug(g.logger).Log("msg", "compactor is not on the current sub-ring skipping user", "user", g.userID)
+		return outGroups, nil
+	}
+	// Metrics for the remaining planned compactions
+	var remainingCompactions = 0.
+	defer g.remainingPlannedCompactions.Set(remainingCompactions)
+
 	for _, mainBlocks := range mainGroups {
 		for _, group := range groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds()) {
 			// Nothing to do if we don't have at least 2 blocks.
@@ -110,13 +143,20 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 				continue
 			}
 
-			// TODO: Use the group's hash to determine whether a compactor should be responsible for compacting that group
-			groupHash := hashGroup(group.blocks[0].Thanos.Labels["__org_id__"], group.rangeStart, group.rangeEnd)
+			groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
 
-			groupKey := fmt.Sprintf("%v%d", groupHash, i)
-			i++
+			if owned, err := g.ownGroup(groupHash); err != nil {
+				level.Warn(g.logger).Log("msg", "unable to check if user is owned by this shard", "group hash", groupHash, "err", err, "group", group.String())
+				continue
+			} else if !owned {
+				level.Info(g.logger).Log("msg", "skipping group because it is not owned by this shard", "group_hash", groupHash)
+				continue
+			}
 
-			level.Debug(g.logger).Log("msg", "found compactable group for user", "user", group.blocks[0].Thanos.Labels["__org_id__"], "plan", group.String())
+			remainingCompactions++
+			groupKey := fmt.Sprintf("%v%s", groupHash, compact.DefaultGroupKey(group.blocks[0].Thanos))
+
+			level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
 
 			// All the blocks within the same group have the same downsample
 			// resolution and external labels.
@@ -175,6 +215,34 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	})
 
 	return outGroups, nil
+}
+
+// Check whether this compactor instance owns the group.
+func (g *ShuffleShardingGrouper) ownGroup(groupHash uint32) (bool, error) {
+	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
+
+	rs, err := subRing.Get(groupHash, RingOp, nil, nil, nil)
+	if err != nil {
+		return false, err
+	}
+
+	if len(rs.Instances) != 1 {
+		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Instances))
+	}
+
+	return rs.Instances[0].Addr == g.ringLifecyclerAddr, nil
+}
+
+// Check whether this compactor exists on the subring based on user ID
+func (g *ShuffleShardingGrouper) checkSubringForCompactor() (bool, error) {
+	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
+
+	rs, err := subRing.GetAllHealthy(RingOp)
+	if err != nil {
+		return false, err
+	}
+
+	return rs.Includes(g.ringLifecyclerAddr), nil
 }
 
 // Get the hash of a group based on the UserID, and the starting and ending time of the group's range.

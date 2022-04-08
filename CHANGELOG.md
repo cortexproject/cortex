@@ -9,6 +9,7 @@
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics
 * [FEATURE] Add shuffle sharding for the compactor #4433
+* [ENHANCEMENT] Ruler: enable ruler HA by having replication factore more than 3. We will also use the prometheus RuleGroupPostProcessFunc to sync for state before each rule group evaluation
 
 ## 1.12.0 in progress
 

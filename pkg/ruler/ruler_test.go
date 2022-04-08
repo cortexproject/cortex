@@ -328,11 +328,12 @@ func TestGetRules(t *testing.T) {
 	type rulesMap map[string][]*rulespb.RuleDesc
 
 	type testCase struct {
-		sharding         bool
-		shardingStrategy string
-		shuffleShardSize int
-		rulesRequest     RulesRequest
-		expectedCount    map[string]int
+		sharding          bool
+		shardingStrategy  string
+		shuffleShardSize  int
+		replicationFactor int
+		rulesRequest      RulesRequest
+		expectedCount     map[string]int
 	}
 
 	ruleMap := rulesMap{
@@ -462,6 +463,7 @@ func TestGetRules(t *testing.T) {
 	testCases := map[string]testCase{
 		"No Sharding with Rule Type Filter": {
 			sharding: false,
+			replicationFactor: 1,
 			rulesRequest: RulesRequest{
 				Type: alertingRuleFilter,
 			},
@@ -472,8 +474,19 @@ func TestGetRules(t *testing.T) {
 			},
 		},
 		"Default Sharding with No Filter": {
-			sharding:         true,
-			shardingStrategy: util.ShardingStrategyDefault,
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 1,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+		},
+		"Default Sharding and replicationFactor = 3 with No Filter": {
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
 			expectedCount: map[string]int{
 				"user1": 5,
 				"user2": 9,
@@ -481,9 +494,10 @@ func TestGetRules(t *testing.T) {
 			},
 		},
 		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter": {
-			sharding:         true,
-			shuffleShardSize: 2,
-			shardingStrategy: util.ShardingStrategyShuffle,
+			sharding:          true,
+			shuffleShardSize:  2,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			replicationFactor: 1,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -534,6 +548,17 @@ func TestGetRules(t *testing.T) {
 				"user3": 1,
 			},
 		},
+		"Shuffle Sharding and ShardSize = 3 and replicationFactor = 3 with No Filter": {
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  3,
+			replicationFactor: 3,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -558,6 +583,7 @@ func TestGetRules(t *testing.T) {
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
+					ReplicationFactor: tc.replicationFactor,
 				}
 
 				r := buildRuler(t, cfg, nil, store, rulerAddrMap)
@@ -615,7 +641,9 @@ func TestGetRules(t *testing.T) {
 						rct += len(ruleStateDesc.ActiveRules)
 					}
 					require.Equal(t, tc.expectedCount[u], rct)
-					if tc.sharding {
+					// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
+					// complete result
+					if tc.sharding && tc.replicationFactor <= 1 {
 						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 
 						if tc.shardingStrategy == util.ShardingStrategyShuffle {
@@ -640,8 +668,10 @@ func TestGetRules(t *testing.T) {
 				totalConfiguredRules += len(allRulesByRuler[rID])
 			})
 
-			if tc.sharding {
+			if tc.sharding && tc.replicationFactor <= 1 {
 				require.Equal(t, totalConfiguredRules, totalLoadedRules)
+			} else if tc.replicationFactor > 1 {
+				require.Equal(t, totalConfiguredRules*tc.replicationFactor, totalLoadedRules)
 			} else {
 				// Not sharding means that all rules will be loaded on all rulers
 				numberOfRulers := len(rulerAddrMap)

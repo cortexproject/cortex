@@ -5,6 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -94,6 +98,93 @@ func TestSyncRuleGroups(t *testing.T) {
 	test.Poll(t, 1*time.Second, false, func() interface{} {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
+}
+
+func TestForStateSync(t *testing.T) {
+	suite, err := promql.NewTest(t, `
+		load 1m
+			metric{} 1
+			metric{} 1
+	`)
+	require.NoError(t, err)
+	defer suite.Close()
+
+	require.NoError(t, suite.Run())
+
+	expr, err := parser.ParseExpr(`metric > 0`)
+	require.NoError(t, err)
+
+	type testInput struct {
+		alertForStateValue float64
+		expectedActiveAt   time.Time
+	}
+
+	tests := []testInput{
+		// activeAt should NOT be updated to epoch time 0 since (activeAt < alertForStateValue)
+		{
+			alertForStateValue: 300,
+			expectedActiveAt:   time.Unix(0, 0),
+		},
+		// activeAt should be updated to epoch time 0 since (alertForStateValue < activeAt)
+		{
+			alertForStateValue: 0,
+			expectedActiveAt:   time.Unix(0, 0),
+		},
+		// activeAt should be epoch time 0 since (alertForStateValue = activeAt = 0)
+		{
+			alertForStateValue: 0,
+			expectedActiveAt:   time.Unix(0, 0),
+		},
+	}
+
+	testFunc := func(tst testInput) {
+		labelSet := []string{"__name__", "ALERTS_FOR_STATE", "alertname", "HTTPRequestRateLow"}
+
+		selectMockFunction := func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+			return storage.TestSeriesSet(storage.MockSeries([]int64{0, 1}, []float64{tst.alertForStateValue, tst.alertForStateValue}, labelSet))
+		}
+		mockQueryable := storage.MockQueryable{
+			MockQuerier: &storage.MockQuerier{
+				SelectMockFunction: selectMockFunction,
+			},
+		}
+
+		opts := &promRules.ManagerOptions{
+			Queryable:       &mockQueryable,
+			Context:         context.Background(),
+			Logger:          log.NewNopLogger(),
+			NotifyFunc:      func(ctx context.Context, expr string, alerts ...*promRules.Alert) {},
+			OutageTolerance: 30 * time.Minute,
+			ForGracePeriod:  10 * time.Minute,
+		}
+
+		rule := promRules.NewAlertingRule(
+			"HTTPRequestRateLow",
+			expr,
+			25*time.Minute,
+			nil,
+			nil, nil, "", true, nil,
+		)
+		evalTime := time.Unix(0, 0)
+		_, err := rule.Eval(suite.Context(), evalTime, promRules.EngineQueryFunc(suite.QueryEngine(), suite.Storage()), nil, 0)
+		require.NoError(t, err)
+
+		group := promRules.NewGroup(promRules.GroupOptions{
+			Name:          "default",
+			Interval:      time.Second,
+			Rules:         []promRules.Rule{rule},
+			ShouldRestore: true,
+			Opts:          opts,
+		})
+
+		err = syncAlertsActiveAt(group, evalTime, log.NewNopLogger())
+		require.NoError(t, err)
+		require.Equal(t, tst.expectedActiveAt.UTC(), rule.ActiveAlerts()[0].ActiveAt.UTC())
+	}
+
+	for _, tst := range tests {
+		testFunc(tst)
+	}
 }
 
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {

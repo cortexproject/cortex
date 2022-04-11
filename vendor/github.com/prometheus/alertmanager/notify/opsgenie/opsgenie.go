@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -44,7 +45,7 @@ type Notifier struct {
 
 // New returns a new OpsGenie notifier.
 func New(c *config.OpsGenieConfig, t *template.Template, l log.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "opsgenie", append(httpOpts, commoncfg.WithHTTP2Disabled())...)
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "opsgenie", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +68,8 @@ type opsGenieCreateMessage struct {
 	Tags        []string                         `json:"tags,omitempty"`
 	Note        string                           `json:"note,omitempty"`
 	Priority    string                           `json:"priority,omitempty"`
+	Entity      string                           `json:"entity,omitempty"`
+	Actions     []string                         `json:"actions,omitempty"`
 }
 
 type opsGenieCreateMessageResponder struct {
@@ -96,6 +99,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	}
 
 	for _, req := range requests {
+		req.Header.Set("User-Agent", notify.UserAgentHeader)
 		resp, err := n.client.Do(req)
 		if err != nil {
 			return true, err
@@ -190,6 +194,18 @@ func (n *Notifier) createRequests(ctx context.Context, as ...*types.Alert) ([]*h
 				continue
 			}
 
+			if responder.Type == "teams" {
+				teams := safeSplit(responder.Name, ",")
+				for _, team := range teams {
+					newResponder := opsGenieCreateMessageResponder{
+						Name: tmpl(team),
+						Type: tmpl("team"),
+					}
+					responders = append(responders, newResponder)
+				}
+				continue
+			}
+
 			responders = append(responders, responder)
 		}
 
@@ -200,9 +216,11 @@ func (n *Notifier) createRequests(ctx context.Context, as ...*types.Alert) ([]*h
 			Details:     details,
 			Source:      tmpl(n.conf.Source),
 			Responders:  responders,
-			Tags:        safeSplit(string(tmpl(n.conf.Tags)), ","),
+			Tags:        safeSplit(tmpl(n.conf.Tags), ","),
 			Note:        tmpl(n.conf.Note),
 			Priority:    tmpl(n.conf.Priority),
+			Entity:      tmpl(n.conf.Entity),
+			Actions:     safeSplit(tmpl(n.conf.Actions), ","),
 		}
 		var buf bytes.Buffer
 		if err := json.NewEncoder(&buf).Encode(msg); err != nil {
@@ -254,7 +272,16 @@ func (n *Notifier) createRequests(ctx context.Context, as ...*types.Alert) ([]*h
 		}
 	}
 
-	apiKey := tmpl(string(n.conf.APIKey))
+	var apiKey string
+	if n.conf.APIKey != "" {
+		apiKey = tmpl(string(n.conf.APIKey))
+	} else {
+		content, err := ioutil.ReadFile(n.conf.APIKeyFile)
+		if err != nil {
+			return nil, false, errors.Wrap(err, "read key_file error")
+		}
+		apiKey = tmpl(string(content))
+	}
 
 	if err != nil {
 		return nil, false, errors.Wrap(err, "templating error")

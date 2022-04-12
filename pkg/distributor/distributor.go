@@ -980,8 +980,8 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 		return nil, err
 	}
 
-	result := make([]metric.Metric, 0, len(metrics))
 	mutex.Lock()
+	result := make([]metric.Metric, 0, len(metrics))
 	for _, m := range metrics {
 		result = append(result, metric.Metric{
 			Metric: m,

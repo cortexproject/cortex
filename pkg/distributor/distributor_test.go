@@ -1842,7 +1842,6 @@ func TestSlowQueries(t *testing.T) {
 }
 
 func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
-
 	// Create distributor
 	ds, ing, _, _ := prepare(t, prepConfig{
 		numIngesters:        3,

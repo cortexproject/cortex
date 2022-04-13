@@ -10,6 +10,7 @@
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics
 * [FEATURE] Add shuffle sharding for the compactor #4433
 * [ENHANCEMENT] Ruler: enable ruler HA by having replication factore more than 3. We will also use the prometheus RuleGroupPostProcessFunc to sync for state before each rule group evaluation
+* [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
 
 ## 1.12.0 in progress
 

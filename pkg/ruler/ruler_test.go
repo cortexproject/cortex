@@ -921,9 +921,10 @@ func TestSharding(t *testing.T) {
 					EnableSharding:   tc.sharding,
 					ShardingStrategy: tc.shardingStrategy,
 					Ring: RingConfig{
-						InstanceID:   id,
-						InstanceAddr: host,
-						InstancePort: port,
+						ReplicationFactor: 1,
+						InstanceID:        id,
+						InstanceAddr:      host,
+						InstancePort:      port,
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},

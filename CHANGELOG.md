@@ -9,6 +9,7 @@
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics
 * [FEATURE] Add shuffle sharding for the compactor #4433
+* [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
 
 ## 1.12.0 in progress
 

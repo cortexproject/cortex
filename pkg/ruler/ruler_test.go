@@ -274,7 +274,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	defer rcleanup()
 	defer manager.Stop()
 
-	n, err := manager.getOrCreateNotifier("1")
+	n, err := manager.getOrCreateNotifier("1", manager.registry)
 	require.NoError(t, err)
 
 	// Loop until notifier discovery syncs up

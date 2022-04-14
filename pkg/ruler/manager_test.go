@@ -50,11 +50,13 @@ func TestSyncRuleGroups(t *testing.T) {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
-	// Verify that user rule groups are now cached locally.
+	// Verify that user rule groups are now cached locally, and notifiers are created
 	{
 		users, err := m.mapper.users()
+		_, ok := m.notifiers[user]
 		require.NoError(t, err)
 		require.Equal(t, []string{user}, users)
+		require.True(t, ok)
 	}
 
 	// Passing empty map / nil stops all managers.
@@ -69,8 +71,10 @@ func TestSyncRuleGroups(t *testing.T) {
 	// Verify that local rule groups were removed.
 	{
 		users, err := m.mapper.users()
+		_, ok := m.notifiers[user]
 		require.NoError(t, err)
 		require.Equal(t, []string(nil), users)
+		require.False(t, ok)
 	}
 
 	// Resync same rules as before. Previously this didn't restart the manager.

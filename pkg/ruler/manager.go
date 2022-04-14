@@ -107,6 +107,9 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			go mngr.Stop()
 			delete(r.userManagers, userID)
 
+			if n := r.removeNotifier(userID); n != nil {
+				n.stop()
+			}
 			r.mapper.cleanupUser(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
@@ -174,6 +177,18 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
 	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
+}
+
+func (r *DefaultMultiTenantManager) removeNotifier(userID string) *rulerNotifier {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+
+	n, ok := r.notifiers[userID]
+	if !ok {
+		return nil
+	}
+	delete(r.notifiers, userID)
+	return n
 }
 
 func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {

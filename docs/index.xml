@@ -7329,6 +7329,7 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;li>Querier picks up the query, and executes it.&lt;/li>
 &lt;li>Querier sends result back to query-frontend, which then forwards it to the client.&lt;/li>
 &lt;/ol>
+&lt;p>Query frontend can also be used with any Prometheus-API compatible service. In this mode Cortex can be used as an query accelerator with it&amp;rsquo;s caching and splitting features on other prometheus query engines like Thanos Querier or your own Prometheus server. Query frontend needs to be configured with downstream url address(via the &lt;code>-frontend.downstream-url&lt;/code> CLI flag), which is the endpoint of the prometheus server intended to be connected with Cortex.&lt;/p>
 &lt;h4 id="queueing">Queueing&lt;/h4>
 &lt;p>The query frontend queuing mechanism is used to:&lt;/p>
 &lt;ul>
@@ -9288,7 +9289,7 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">log_queries_longer_than&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>1s&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">compress_responses&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The Prometheus URL to which the query-frontend should connect to.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The query endpoint URL of a Prometheus-API compatible service to which the query-frontend should connect to.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">downstream_url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//prometheus.mydomain.com&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Query Tee (service)</title><link>/docs/operations/query-tee/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-tee/</guid><description>
 &lt;p>The &lt;code>query-tee&lt;/code> is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series.&lt;/p>

@@ -214,6 +214,8 @@ Flow of the query in the system when using query-frontend:
 3) Querier picks up the query, and executes it.
 4) Querier sends result back to query-frontend, which then forwards it to the client.
 
+Query frontend can also be used with any Prometheus-API compatible service. In this mode Cortex can be used as an query accelerator with it's caching and splitting features on other prometheus query engines like Thanos Querier or your own Prometheus server.  Query frontend needs to be configured with downstream url address(via the `-frontend.downstream-url` CLI flag), which is the endpoint of the prometheus server intended to be connected with Cortex.
+
 #### Queueing
 
 The query frontend queuing mechanism is used to:

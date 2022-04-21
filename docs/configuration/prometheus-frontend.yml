@@ -22,7 +22,6 @@ query_range:
 
   results_cache:
     cache:
-
       # We're going to use the in-process "FIFO" cache, but you can enable
       # memcached below.
       enable_fifocache: true
@@ -32,7 +31,7 @@ query_range:
 
       # If you want to use a memcached cluster, you can either configure a
       # headless service in Kubernetes and Cortex will discover the individual
-      # instances using a SRV DNS query (host) or list comma separated 
+      # instances using a SRV DNS query (host) or list comma separated
       # memcached addresses.
       # host + service: this is the config you should set when you use the
       # SRV DNS (this is considered stable)
@@ -54,5 +53,5 @@ frontend:
   log_queries_longer_than: 1s
   compress_responses: true
 
-  # The Prometheus URL to which the query-frontend should connect to.
+  # The query endpoint URL of a Prometheus-API compatible service to which the query-frontend should connect to.
   downstream_url: http://prometheus.mydomain.com

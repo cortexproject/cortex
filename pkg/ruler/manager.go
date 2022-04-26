@@ -177,7 +177,7 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
-func (r *DefaultMultiTenantManager) removeNotifier(userID string) error {
+func (r *DefaultMultiTenantManager) removeNotifier(userID string) {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 
@@ -185,7 +185,6 @@ func (r *DefaultMultiTenantManager) removeNotifier(userID string) error {
 		n.stop()
 	}
 	delete(r.notifiers, userID)
-	return nil
 }
 
 func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {

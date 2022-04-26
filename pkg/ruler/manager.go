@@ -107,9 +107,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			go mngr.Stop()
 			delete(r.userManagers, userID)
 
-			if n := r.removeNotifier(userID); n != nil {
-				n.stop()
-			}
+			r.removeNotifier(userID)
 			r.mapper.cleanupUser(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
@@ -171,7 +169,7 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	reg := prometheus.NewRegistry()
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
-	notifier, err := r.getOrCreateNotifier(userID, reg)
+	notifier, err := r.getOrCreateNotifier(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -179,19 +177,18 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
-func (r *DefaultMultiTenantManager) removeNotifier(userID string) *rulerNotifier {
+func (r *DefaultMultiTenantManager) removeNotifier(userID string) error {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 
-	n, ok := r.notifiers[userID]
-	if !ok {
-		return nil
+	if n, ok := r.notifiers[userID]; ok {
+		n.stop()
 	}
 	delete(r.notifiers, userID)
-	return n
+	return nil
 }
 
-func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManagerRegistry prometheus.Registerer) (*notifier.Manager, error) {
+func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 
@@ -200,7 +197,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 		return n.notifier, nil
 	}
 
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, userManagerRegistry)
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,

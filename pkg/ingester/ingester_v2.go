@@ -1136,6 +1136,30 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 	}, nil
 }
 
+func (i *Ingester) v2LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+	resp, err := i.v2LabelValues(stream.Context(), req)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(resp.LabelValues); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(resp.LabelValues) {
+			j = len(resp.LabelValues)
+		}
+		resp := &client.LabelValuesStreamResponse{
+			LabelValues: resp.LabelValues[i:j],
+		}
+		err := client.SendLabelValuesStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if err := i.checkRunning(); err != nil {
 		return nil, err
@@ -1170,6 +1194,30 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 	return &client.LabelNamesResponse{
 		LabelNames: names,
 	}, nil
+}
+
+func (i *Ingester) v2LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+	resp, err := i.v2LabelNames(stream.Context(), req)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(resp.LabelNames); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(resp.LabelNames) {
+			j = len(resp.LabelNames)
+		}
+		resp := &client.LabelNamesStreamResponse{
+			LabelNames: resp.LabelNames[i:j],
+		}
+		err := client.SendLabelNamesStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
@@ -1241,6 +1289,29 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	return result, nil
+}
+
+func (i *Ingester) v2MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
+	result, err := i.v2MetricsForLabelMatchers(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(result.Metric); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(result.Metric) {
+			j = len(result.Metric)
+		}
+		resp := &client.MetricsForLabelMatchersStreamResponse{
+			Metric: result.Metric[i:j],
+		}
+		err := client.SendMetricsForLabelMatchersStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {

@@ -14,6 +14,7 @@
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction. #4707
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics. #4708
 * [FEATURE] Add shuffle sharding for the compactor #4433
+* [FEATURE] Querier: Use streaming for ingester metdata APIs. #4725
 * [ENHANCEMENT] Update Go version to 1.17.8. #4602 #4604 #4658
 * [ENHANCEMENT] Keep track of discarded samples due to bad relabel configuration in `cortex_discarded_samples_total`. #4503
 * [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571

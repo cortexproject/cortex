@@ -50,7 +50,7 @@ func TestSyncRuleGroups(t *testing.T) {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
-	// Verify that user rule groups are now cached locally, and notifiers are created
+	// Verify that user rule groups are now cached locally and notifiers are created.
 	{
 		users, err := m.mapper.users()
 		_, ok := m.notifiers[user]

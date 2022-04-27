@@ -169,7 +169,7 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	reg := prometheus.NewRegistry()
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
-	notifier, err := r.getOrCreateNotifier(userID)
+	notifier, err := r.getOrCreateNotifier(userID, r.registry)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func (r *DefaultMultiTenantManager) removeNotifier(userID string) {
 	delete(r.notifiers, userID)
 }
 
-func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
+func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManagerRegistry prometheus.Registerer) (*notifier.Manager, error) {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 
@@ -196,7 +196,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifie
 		return n.notifier, nil
 	}
 
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, userManagerRegistry)
 	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,

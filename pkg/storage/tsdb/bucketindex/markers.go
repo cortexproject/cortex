@@ -76,6 +76,11 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 	bucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 	userBucket := bucket.WithExpectedErrs(bucket.IsObjNotFoundErr)
 
+	marks := map[string]func(ulid.ULID) string{
+		metadata.DeletionMarkFilename:  BlockDeletionMarkFilepath,
+		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
+	}
+
 	// Find all blocks in the storage.
 	var blocks []ulid.ULID
 	err := userBucket.Iter(ctx, "", func(name string) error {
@@ -91,22 +96,24 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 	errs := tsdb_errors.NewMulti()
 
 	for _, blockID := range blocks {
-		// Look up the deletion mark (if any).
-		reader, err := userBucket.Get(ctx, path.Join(blockID.String(), metadata.DeletionMarkFilename))
-		if userBucket.IsObjNotFoundErr(err) {
-			continue
-		} else if err != nil {
-			errs.Add(err)
-			continue
-		}
+		for mark, globalFilePath := range marks {
+			// Look up mark (if any).
+			reader, err := userBucket.Get(ctx, path.Join(blockID.String(), mark))
+			if userBucket.IsObjNotFoundErr(err) {
+				continue
+			} else if err != nil {
+				errs.Add(err)
+				continue
+			}
 
-		// Upload it to the global markers location.
-		uploadErr := userBucket.Upload(ctx, BlockDeletionMarkFilepath(blockID), reader)
-		if closeErr := reader.Close(); closeErr != nil {
-			errs.Add(closeErr)
-		}
-		if uploadErr != nil {
-			errs.Add(uploadErr)
+			// Upload it to the global markers location.
+			uploadErr := userBucket.Upload(ctx, globalFilePath(blockID), reader)
+			if closeErr := reader.Close(); closeErr != nil {
+				errs.Add(closeErr)
+			}
+			if uploadErr != nil {
+				errs.Add(uploadErr)
+			}
 		}
 	}
 

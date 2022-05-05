@@ -132,14 +132,14 @@ func (b *globalMarkersBucket) isMark(name string) (string, bool) {
 		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
 	}
 
-	for mark, f := range marks {
+	for mark, globalFilePath := range marks {
 		if path.Base(name) == mark {
 			// Parse the block ID in the path. If there's not block ID, then it's not the per-block
 			// deletion mark.
 			id, ok := block.IsBlockDir(path.Dir(name))
 
 			if ok {
-				return path.Clean(path.Join(path.Dir(name), "../", f(id))), ok
+				return path.Clean(path.Join(path.Dir(name), "../", globalFilePath(id))), ok
 			}
 
 			return "", ok

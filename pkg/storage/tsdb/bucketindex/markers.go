@@ -27,6 +27,12 @@ func BlockDeletionMarkFilepath(blockID ulid.ULID) string {
 	return fmt.Sprintf("%s/%s-%s", MarkersPathname, blockID.String(), metadata.DeletionMarkFilename)
 }
 
+// NoCompactMarkFilenameMarkFilepath returns the path, relative to the tenant's bucket location,
+// of a block no compact mark in the bucket markers location.
+func NoCompactMarkFilenameMarkFilepath(blockID ulid.ULID) string {
+	return fmt.Sprintf("%s/%s-%s", MarkersPathname, blockID.String(), metadata.NoCompactMarkFilename)
+}
+
 // IsBlockDeletionMarkFilename returns whether the input filename matches the expected pattern
 // of block deletion markers stored in the markers location.
 func IsBlockDeletionMarkFilename(name string) (ulid.ULID, bool) {

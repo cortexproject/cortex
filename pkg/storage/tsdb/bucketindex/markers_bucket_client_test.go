@@ -43,7 +43,8 @@ func TestGlobalMarker_ShouldUploadGlobalLocation(t *testing.T) {
 			ctx := context.Background()
 			bkt = BucketWithGlobalMarkers(bkt)
 
-			bkt.Upload(ctx, originalPath, strings.NewReader("{}"))
+			err := bkt.Upload(ctx, originalPath, strings.NewReader("{}"))
+			require.NoError(t, err)
 
 			// Ensure it exists on originalPath
 			ok, err := bkt.Exists(ctx, originalPath)
@@ -55,7 +56,8 @@ func TestGlobalMarker_ShouldUploadGlobalLocation(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, ok)
 
-			bkt.Delete(ctx, originalPath)
+			err = bkt.Delete(ctx, originalPath)
+			require.NoError(t, err)
 
 			// Ensure it deleted on originalPath
 			ok, err = bkt.Exists(ctx, originalPath)

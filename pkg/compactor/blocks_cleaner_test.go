@@ -421,7 +421,7 @@ func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 	id3 := createTSDBBlock(t, bucketClient, "user-1", 7000, 8000, nil)
 
 	w := bucketindex.NewUpdater(bucketClient, "user-1", nil, logger)
-	idx, _, err := w.UpdateIndex(ctx, nil)
+	idx, _, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 
 	assert.ElementsMatch(t, []ulid.ULID{id1, id2, id3}, idx.Blocks.GetULIDs())

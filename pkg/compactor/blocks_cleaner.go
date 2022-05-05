@@ -336,8 +336,8 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 
 	// Generate an updated in-memory version of the bucket index.
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
-	idx, partials, err := w.UpdateIndex(ctx, idx)
-	c.blocksMarkedForNoCompactionOnStorage.WithLabelValues(userID).Set(float64(idx.TotalBlocksBlocksMarkedForNoCompaction))
+	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
+	c.blocksMarkedForNoCompactionOnStorage.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
 	if err != nil {
 		return err
 	}

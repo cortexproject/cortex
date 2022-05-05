@@ -148,13 +148,3 @@ func (b *globalMarkersBucket) isMark(name string) (string, bool) {
 
 	return "", false
 }
-
-func (b *globalMarkersBucket) isBlockDeletionMark(name string) (ulid.ULID, bool) {
-	if path.Base(name) != metadata.DeletionMarkFilename {
-		return ulid.ULID{}, false
-	}
-
-	// Parse the block ID in the path. If there's not block ID, then it's not the per-block
-	// deletion mark.
-	return block.IsBlockDir(path.Dir(name))
-}

@@ -45,17 +45,18 @@ type BlocksCleaner struct {
 	lastOwnedUsers []string
 
 	// Metrics.
-	runsStarted                 prometheus.Counter
-	runsCompleted               prometheus.Counter
-	runsFailed                  prometheus.Counter
-	runsLastSuccess             prometheus.Gauge
-	blocksCleanedTotal          prometheus.Counter
-	blocksFailedTotal           prometheus.Counter
-	blocksMarkedForDeletion     prometheus.Counter
-	tenantBlocks                *prometheus.GaugeVec
-	tenantMarkedBlocks          *prometheus.GaugeVec
-	tenantPartialBlocks         *prometheus.GaugeVec
-	tenantBucketIndexLastUpdate *prometheus.GaugeVec
+	runsStarted                          prometheus.Counter
+	runsCompleted                        prometheus.Counter
+	runsFailed                           prometheus.Counter
+	runsLastSuccess                      prometheus.Gauge
+	blocksCleanedTotal                   prometheus.Counter
+	blocksFailedTotal                    prometheus.Counter
+	blocksMarkedForDeletion              prometheus.Counter
+	tenantBlocks                         *prometheus.GaugeVec
+	tenantMarkedBlocks                   *prometheus.GaugeVec
+	tenantPartialBlocks                  *prometheus.GaugeVec
+	tenantBucketIndexLastUpdate          *prometheus.GaugeVec
+	blocksMarkedForNoCompactionOnStorage *prometheus.GaugeVec
 }
 
 func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
@@ -69,6 +70,10 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, use
 			Name: "cortex_compactor_block_cleanup_started_total",
 			Help: "Total number of blocks cleanup runs started.",
 		}),
+		blocksMarkedForNoCompactionOnStorage: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_compactor_blocks_marked_for_no_compaction_on_storage_total",
+			Help: "Total number of blocks marked for on storage.",
+		}, []string{"user"}),
 		runsCompleted: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_block_cleanup_completed_total",
 			Help: "Total number of blocks cleanup runs successfully completed.",
@@ -241,6 +246,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	c.tenantBlocks.DeleteLabelValues(userID)
 	c.tenantMarkedBlocks.DeleteLabelValues(userID)
 	c.tenantPartialBlocks.DeleteLabelValues(userID)
+	c.blocksMarkedForNoCompactionOnStorage.DeleteLabelValues(userID)
 
 	if deletedBlocks > 0 {
 		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks)
@@ -331,6 +337,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	// Generate an updated in-memory version of the bucket index.
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 	idx, partials, err := w.UpdateIndex(ctx, idx)
+	c.blocksMarkedForNoCompactionOnStorage.WithLabelValues(userID).Set(float64(idx.TotalBlocksBlocksMarkedForNoCompaction))
 	if err != nil {
 		return err
 	}

@@ -41,6 +41,9 @@ type Index struct {
 	// UpdatedAt is a unix timestamp (seconds precision) of when the index has been updated
 	// (written in the storage) the last time.
 	UpdatedAt int64 `json:"updated_at"`
+
+	// TotalBlocksBlocksMarkedForNoCompaction is then number of blocks marked for no compaction
+	TotalBlocksBlocksMarkedForNoCompaction int64 `json:"total_blocks_marked_for_no_compaction"`
 }
 
 func (idx *Index) GetUpdatedAt() time.Time {

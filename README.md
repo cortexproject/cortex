@@ -134,7 +134,11 @@ For security issues see https://github.com/cortexproject/cortex/security/policy
 
 The Cortex community call happens every two weeks on Thursday, alternating at 1200 UTC and 1700 UTC. Meeting notes are held [here](https://docs.google.com/document/d/1shtXSAqp3t7fiC-9uZcKkq3mgwsItAJlH6YW6x1joZo/edit).
 
- To get a calendar invite join the [google groups](https://groups.google.com/forum/#!forum/cortex-monitoring) to ask for one.
+To see meeting calendar:
+
+- See the calendar [in your browser (time zone will be UTC)](https://calendar.google.com/calendar/u/0/embed?src=cncf-cortex-maintainers@lists.cncf.io&ctz=UTC).
+- If you use Google Calendar, [add the Cortex's calendar to your own Google Calendar](https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw).
+- You can also just [download the .ics file](https://calendar.google.com/calendar/ical/cncf-cortex-maintainers%40lists.cncf.io/public/basic.ics).
 
 ## Hosted Cortex (Prometheus as a service)
 

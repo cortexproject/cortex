@@ -98,6 +98,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	user4DebugMetaFile := path.Join("user-4", block.DebugMetas, "meta.json")
 	require.NoError(t, bucketClient.Upload(context.Background(), user4DebugMetaFile, strings.NewReader("some random content here")))
 
+	// No Compact blocks marker
+	createTSDBBlock(t, bucketClient, "user-5", 10, 30, nil)
+	block12 := createTSDBBlock(t, bucketClient, "user-5", 30, 50, nil)
+	createNoCompactionMark(t, bucketClient, "user-5", block12)
+
 	// The fixtures have been created. If the bucket client wasn't wrapped to write
 	// deletion marks to the global location too, then this is the right time to do it.
 	if options.markersMigrationEnabled {
@@ -202,17 +207,26 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		# TYPE cortex_bucket_blocks_count gauge
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
+		cortex_bucket_blocks_count{user="user-5"} 2
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-5"} 0
+		# HELP cortex_bucket_blocks_marked_for_no_compaction_count Total number of blocks marked for no compaction in the bucket.
+		# TYPE cortex_bucket_blocks_marked_for_no_compaction_count gauge
+		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-1"} 0
+		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-2"} 0
+		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-5"} 1
 		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
 		# TYPE cortex_bucket_blocks_partials_count gauge
 		cortex_bucket_blocks_partials_count{user="user-1"} 2
 		cortex_bucket_blocks_partials_count{user="user-2"} 0
+		cortex_bucket_blocks_partials_count{user="user-5"} 0
 	`),
 		"cortex_bucket_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
+		"cortex_bucket_blocks_marked_for_no_compaction_count",
 		"cortex_bucket_blocks_partials_count",
 	))
 }

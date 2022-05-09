@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	"bytes"
 	"context"
 	"math/rand"
 	"strconv"
@@ -9,23 +10,19 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
-const userID = "1"
-
-func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
+func fillCache(t *testing.T, cache cache.Cache) ([]string, []prom_chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
 	keys := []string{}
 	bufs := [][]byte{}
-	chunks := []chunk.Chunk{}
+	chunks := []prom_chunk.Chunk{}
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
 		promChunk, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
@@ -36,40 +33,22 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 		})
 		require.NoError(t, err)
 		require.Nil(t, nc)
-		c := chunk.NewChunk(
-			userID,
-			model.Fingerprint(1),
-			labels.Labels{
-				{Name: model.MetricNameLabel, Value: "foo"},
-				{Name: "bar", Value: "baz"},
-			},
-			promChunk,
-			ts,
-			ts.Add(chunkLen),
-		)
 
-		err = c.Encode()
-		require.NoError(t, err)
-		buf, err := c.Encoded()
+		buf := bytes.NewBuffer(nil)
+		err = promChunk.Marshal(buf)
 		require.NoError(t, err)
 
 		// In order to be able to compare the expected chunk (this one) with the
 		// actual one (the one that will be fetched from the cache) we need to
 		// cleanup the chunk to avoid any internal references mismatch (ie. appender
 		// pointer).
-		cleanChunk := chunk.Chunk{
-			UserID:      c.UserID,
-			Fingerprint: c.Fingerprint,
-			From:        c.From,
-			Through:     c.Through,
-			Checksum:    c.Checksum,
-			ChecksumSet: c.ChecksumSet,
-		}
-		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
+		cleanChunk, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
+		require.NoError(t, err)
+		err = cleanChunk.UnmarshalFromBuf(buf.Bytes())
 		require.NoError(t, err)
 
-		keys = append(keys, c.ExternalKey())
-		bufs = append(bufs, buf)
+		keys = append(keys, strconv.Itoa(i))
+		bufs = append(bufs, buf.Bytes())
 		chunks = append(chunks, cleanChunk)
 	}
 
@@ -77,7 +56,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunk.Chunk) {
 	return keys, chunks
 }
 
-func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
+func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []prom_chunk.Chunk) {
 	for i := 0; i < 100; i++ {
 		index := rand.Intn(len(keys))
 		key := keys[index]
@@ -87,26 +66,26 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []ch
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
 
-		c, err := chunk.ParseExternalKey(userID, found[0])
+		c, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
 		require.NoError(t, err)
-		err = c.Decode(chunk.NewDecodeContext(), bufs[0])
+		err = c.UnmarshalFromBuf(bufs[0])
 		require.NoError(t, err)
 		require.Equal(t, chunks[index], c)
 	}
 }
 
-func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []chunk.Chunk) {
+func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []prom_chunk.Chunk) {
 	// test getting them all
 	found, bufs, missingKeys := cache.Fetch(context.Background(), keys)
 	require.Len(t, found, len(keys))
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
 
-	result := []chunk.Chunk{}
+	result := []prom_chunk.Chunk{}
 	for i := range found {
-		c, err := chunk.ParseExternalKey(userID, found[i])
+		c, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
 		require.NoError(t, err)
-		err = c.Decode(chunk.NewDecodeContext(), bufs[i])
+		err = c.UnmarshalFromBuf(bufs[i])
 		require.NoError(t, err)
 		result = append(result, c)
 	}

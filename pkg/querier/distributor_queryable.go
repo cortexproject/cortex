@@ -16,7 +16,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/math"
@@ -136,11 +135,6 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 }
 
 func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
-	}
-
 	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
@@ -161,7 +155,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int
 		ls := cortexpb.FromLabelAdaptersToLabels(result.Labels)
 		sort.Sort(ls)
 
-		chunks, err := chunkcompat.FromChunks(userID, ls, result.Chunks)
+		chunks, err := chunkcompat.FromChunks(ls, result.Chunks)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}

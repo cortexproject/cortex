@@ -67,7 +67,7 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 		require.NoError(t, err)
 		require.Nil(t, nc)
 	}
-	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
+	return chunk.NewChunk(metric, pc, mint, maxt)
 }
 
 func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {

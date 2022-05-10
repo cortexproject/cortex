@@ -13,7 +13,31 @@
 
 **This release removes support for chunks storage. See below for more.**
 
-* [CHANGE] Remove support for chunks storage entirely. If you are using chunks storage on a previous version, you must [migrate your data](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md) on version 1.12 or earlier. Before upgrading to this release, you should also remove any deprecated chunks-related configuration, as this release will no longer accept that.
+* [CHANGE] Remove support for chunks storage entirely. If you are using chunks storage on a previous version, you must [migrate your data](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md) on version 1.12 or earlier. Before upgrading to this release, you should also remove any deprecated chunks-related configuration, as this release will no longer accept that. The following flags are gone:
+  - `-dynamodb.*`
+  - `-metrics.*`
+  - `-s3.*`
+  - `-azure.*`
+  - `-bigtable.*`
+  - `-gcs.*`
+  - `-cassandra.*`
+  - `-boltdb.*`
+  - `-local.*`
+  - some `-ingester` flags:
+    - `-ingester.wal-enabled`
+    - `-ingester.checkpoint-enabled`
+    - `-ingester.recover-from-wal`
+    - `-ingester.wal-dir`
+    - `-ingester.checkpoint-duration`
+    - `-ingester.flush-on-shutdown-with-wal-enabled`
+    - `-ingester.max-transfer-retries`
+    - `-ingester.max-samples-per-query`
+    - `-ingester.min-chunk-length`
+  - `-store.*` except `-store.engine` and `-store.max-query-length`
+    - `-store.query-chunk-limit` was deprecated and replaced by `-querier.max-fetched-chunks-per-query`
+  - `-deletes.*`
+  - `-grpc-store.*`
+  - `-flusher.wal-dir`, `-flusher.concurrent-flushes`, `-flusher.flush-op-timeout`
 * [CHANGE] Remove support for alertmanager and ruler legacy store configuration. Before upgrading, you need to convert your configuration to use the `alertmanager-storage` and `ruler-storage` configuration on the version that you're already running, then upgrade.
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
 * [CHANGE] query-frontend: Do not print anything in the logs of `query-frontend` if a in-progress query has been canceled (context canceled) to avoid spam. #4562

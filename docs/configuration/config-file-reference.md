@@ -2688,11 +2688,6 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 14]
 
-# Cardinality limit for index queries. This limit is ignored when running the
-# Cortex blocks storage. 0 to disable.
-# CLI flag: -store.cardinality-limit
-[cardinality_limit: <int> | default = 100000]
-
 # Most recent allowed cacheable result per-tenant, to prevent caching very
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness

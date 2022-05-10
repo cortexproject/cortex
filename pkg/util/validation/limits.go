@@ -75,7 +75,6 @@ type Limits struct {
 	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	CardinalityLimit             int            `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 
@@ -152,7 +151,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query) and in the querier (on the query possibly split by the query-frontend). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
-	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
@@ -434,11 +432,6 @@ func (o *Overrides) EnforceMetricName(userID string) bool {
 // EnforceMetadataMetricName whether to enforce the presence of a metric name on metadata.
 func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
 	return o.getOverridesForUser(userID).EnforceMetadataMetricName
-}
-
-// CardinalityLimit returns the maximum number of timeseries allowed in a query.
-func (o *Overrides) CardinalityLimit(userID string) int {
-	return o.getOverridesForUser(userID).CardinalityLimit
 }
 
 // MaxLocalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store in a single ingester.

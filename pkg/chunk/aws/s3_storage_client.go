@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +23,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -66,6 +70,7 @@ type S3Config struct {
 
 	BucketNames      string
 	Endpoint         string              `yaml:"endpoint"`
+	STSEndpoint      string              `yaml:"sts_endpoint"`
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
@@ -73,6 +78,7 @@ type S3Config struct {
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
+	SessionToken     string              `yaml:"session_token"`
 	SSEConfig        cortex_s3.SSEConfig `yaml:"sse"`
 
 	Inject InjectRequestMiddleware `yaml:"-"`
@@ -97,10 +103,12 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.S3ForcePathStyle, prefix+"s3.force-path-style", false, "Set this to `true` to force the request to use path-style addressing.")
 	f.StringVar(&cfg.BucketNames, prefix+"s3.buckets", "", "Comma separated list of bucket names to evenly distribute chunks over. Overrides any buckets specified in s3.url flag")
 
+	f.StringVar(&cfg.STSEndpoint, prefix+"sts.endpoint", "", "STS Endpoint to connect to for AssumeRoleWithWebIdentity")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "S3 Endpoint to connect to.")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
+	f.StringVar(&cfg.SessionToken, prefix+"s3.session-token", "", "AWS Session Name to be used for AssumeRoleWithWebIdentity Session")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
 	// TODO Remove in Cortex 1.10.0
@@ -231,8 +239,55 @@ func buildS3Config(cfg S3Config) (*aws.Config, []string, error) {
 		return nil, nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
 	}
 
+	role := os.Getenv("AWS_ROLE_ARN")
+	webIdentityTokenFile := os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE")
+	if cfg.AccessKeyID == "" && cfg.SecretAccessKey.Value == "" &&
+		role != "" && webIdentityTokenFile != "" {
+
+		s3Config = s3Config.WithEndpoint(cfg.STSEndpoint)
+		webIdentityReadToken, err := ioutil.ReadFile(webIdentityTokenFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		token := string(webIdentityReadToken)
+
+		sess, err := session.NewSession(s3Config)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "failed to create new s3 session")
+		}
+
+		awsSTS := sts.New(sess)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		sessName := cfg.SessionToken
+		if sessName == "" {
+			sessName = strconv.FormatInt(time.Now().UnixNano(), 10)
+			cfg.SessionToken = sessName
+		}
+
+		req, sessCred := awsSTS.AssumeRoleWithWebIdentityRequest(
+			&sts.AssumeRoleWithWebIdentityInput{
+				RoleSessionName:  &sessName,
+				WebIdentityToken: &token,
+				RoleArn:          &role,
+			},
+		)
+
+		err = req.Send()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		cfg.AccessKeyID = aws.StringValue(sessCred.Credentials.AccessKeyId)
+		cfg.SecretAccessKey = flagext.Secret{Value: *sessCred.Credentials.SecretAccessKey}
+		cfg.SessionToken = aws.StringValue(sessCred.Credentials.SessionToken)
+		s3Config = s3Config.WithEndpoint(cfg.Endpoint)
+	}
+
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.Value != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.Value, "")
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.Value, cfg.SessionToken)
 		s3Config = s3Config.WithCredentials(creds)
 	}
 

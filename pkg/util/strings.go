@@ -1,5 +1,7 @@
 package util
 
+import "unsafe"
+
 // StringsContain returns true if the search value is within the list of input values.
 func StringsContain(values []string, search string) bool {
 	for _, v := range values {
@@ -18,4 +20,12 @@ func StringsMap(values []string) map[string]bool {
 		out[v] = true
 	}
 	return out
+}
+
+// StringsClone returns a copy input s
+// see: https://github.com/golang/go/blob/master/src/strings/clone.go
+func StringsClone(s string) string {
+	b := make([]byte, len(s))
+	copy(b, s)
+	return *(*string)(unsafe.Pointer(&b))
 }

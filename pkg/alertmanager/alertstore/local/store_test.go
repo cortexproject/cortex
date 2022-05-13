@@ -107,11 +107,7 @@ func prepareLocalStore(t *testing.T) (store *Store, storeDir string) {
 	var err error
 
 	// Create a temporarily directory for the storage.
-	storeDir, err = ioutil.TempDir(os.TempDir(), "local")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(storeDir))
-	})
+	storeDir = t.TempDir()
 
 	store, err = NewStore(StoreConfig{Path: storeDir})
 	require.NoError(t, err)

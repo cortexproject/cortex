@@ -20,6 +20,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 	"golang.org/x/sync/errgroup"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
@@ -45,6 +46,8 @@ type Config struct {
 	SeriesBatchSize    int
 	TimestampTolerance time.Duration
 
+	TenantIDMapFileName string
+
 	PlanProcessorConfig planprocessor.Config
 }
 
@@ -58,12 +61,28 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DeleteLocalBlock, "builder.delete-local-blocks", true, "Delete local files after uploading block.")
 	f.IntVar(&cfg.SeriesBatchSize, "builder.series-batch-size", defaultSeriesBatchSize, "Number of series to keep in memory before batch-write to temp file. Lower to decrease memory usage during the block building.")
 	f.DurationVar(&cfg.TimestampTolerance, "builder.timestamp-tolerance", 0, "Adjust sample timestamps by up to this to align them to an exact number of seconds apart.")
+	f.StringVar(&cfg.TenantIDMapFileName, "builder.tenant-id-map", "", "Path to file listing mapping of chunk tenant IDs to block tenant IDs")
 }
 
 func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg prometheus.Registerer) (services.Service, error) {
 	err := scfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load schema")
+	}
+
+	var tenantIDMap map[string]string
+	if cfg.TenantIDMapFileName != "" {
+		f, err := os.Open(cfg.TenantIDMapFileName)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to open mapping file %q", cfg.TenantIDMapFileName)
+		}
+
+		decoder := yaml.NewDecoder(f)
+		decoder.SetStrict(true)
+		err = decoder.Decode(&tenantIDMap)
+		if err != nil {
+			return nil, errors.Wrapf(err, "reading mapping file")
+		}
 	}
 
 	bucketClient, err := scfg.GetBucket(l, reg)
@@ -84,6 +103,7 @@ func NewBuilder(cfg Config, scfg blocksconvert.SharedConfig, l log.Logger, reg p
 		bucketClient:  bucketClient,
 		schemaConfig:  scfg.SchemaConfig,
 		storageConfig: scfg.StorageConfig,
+		tenantIDMap:   tenantIDMap,
 
 		fetchedChunks: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_blocksconvert_builder_fetched_chunks_total",
@@ -128,6 +148,8 @@ type Builder struct {
 	bucketClient  objstore.Bucket
 	schemaConfig  chunk.SchemaConfig
 	storageConfig storage.Config
+
+	tenantIDMap map[string]string
 
 	fetchedChunks     prometheus.Counter
 	fetchedChunksSize prometheus.Counter
@@ -198,6 +220,14 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 		return "", errors.Wrap(err, "failed to create chunk fetcher")
 	}
 
+	tenantID := p.userID
+	if p.builder.tenantIDMap != nil {
+		tenantID = p.builder.tenantIDMap[tenantID]
+		if tenantID == "" {
+			return "", errors.Errorf("tenant ID %q had no mapping", p.userID)
+		}
+	}
+
 	tsdbBuilder, err := newTsdbBuilder(p.builder.cfg.OutputDirectory, p.dayStart, p.dayEnd, p.builder.cfg.TimestampTolerance, p.builder.cfg.SeriesBatchSize, p.log,
 		p.builder.processedSeries, p.builder.writtenSamples, p.builder.seriesInMemory)
 	if err != nil {
@@ -217,7 +247,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 
 	// Finish block.
 	ulid, err := tsdbBuilder.finishBlock("blocksconvert", map[string]string{
-		cortex_tsdb.TenantIDExternalLabel: p.userID,
+		cortex_tsdb.TenantIDExternalLabel: tenantID,
 	})
 	if err != nil {
 		return "", errors.Wrap(err, "failed to finish block building")
@@ -234,7 +264,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 
 	if p.builder.cfg.UploadBlock {
 		// No per-tenant config provider because the blocksconvert tool doesn't support it.
-		userBucket := bucket.NewUserBucketClient(p.userID, p.builder.bucketClient, nil)
+		userBucket := bucket.NewUserBucketClient(tenantID, p.builder.bucketClient, nil)
 
 		err := uploadBlock(ctx, p.log, userBucket, blockDir)
 		if err != nil {

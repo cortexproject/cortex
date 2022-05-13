@@ -29,6 +29,8 @@ Tools are:
 All tools start HTTP server (see `-server.http*` options) exposing the `/metrics` endpoint.
 All tools also start gRPC server (`-server.grpc*` options), but only Scheduler exposes services on it.
 
+If you need to use different tenant IDs for blocks than you had for chunks, e.g. because you are moving data to a hosted provider, map them with `-builder.tenant-id-map`.
+
 ### Scanner
 
 Scanner is started by running `blocksconvert -target=scanner`. Scanner requires configuration for accessing Cortex Index:
@@ -82,6 +84,7 @@ Builder is started by `blocksconvert -target=builder`. It needs to be configured
 - `-gcs.bucketname` – when using GCS as chunks store (other chunks backend storages, like S3, are supported as well)
 - `-blocks-storage.*` - blocks storage configuration
 - `-builder.output-dir` - Local directory where Builder keeps the block while it is being built. Once block is uploaded to blocks storage, it is deleted from local directory.
+- `-builder.tenant-id-map` - Path to file listing mapping of chunk tenant IDs to block tenant IDs. YAML map format. Note that an ID which is not mapped is an error; use `-scheduler.allowed-users` if you need to exclude some IDs from the transfer.
 
 Multiple builders may run at the same time, each builder will receive different plan to work on from scheduler.
 Builders are CPU intensive (decoding and merging chunks), and require fast disk IO for writing blocks.

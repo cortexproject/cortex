@@ -37,6 +37,10 @@
 * [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
 
+## Blocksconvert
+
+* [ENHANCEMENT] Add a mapping for tenant IDs from chunks to blocks. #4740
+
 ## 1.11.0 2021-11-25
 
 * [CHANGE] Memberlist: Expose default configuration values to the command line options. Note that setting these explicitly to zero will no longer cause the default to be used. If the default is desired, then do set the option. The following are affected: #4276

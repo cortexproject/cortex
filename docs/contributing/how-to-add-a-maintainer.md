@@ -14,4 +14,7 @@ New maintainers are proposed by an existing maintainer and are elected by [major
 1. Invite to [Docker Hub organization](https://hub.docker.com/u/cortexproject)
 1. Submit a PR to [CNCF maintainer list for Cortex](http://maintainers.cncf.io)
 1. Invite to [CNCF `cncf-cortex-maintainers` mailing list](https://lists.cncf.io/g/cncf-cortex-maintainers) (via [CNCF Service Desk](https://servicedesk.cncf.io))
+1. Invite to [Cortex Project Public Calendar](https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw)
+1. Invite to [maintainer's Google Docs](https://drive.google.com/drive/folders/1aT7-rx4hvYoB3EjvOeX1LHJhgH0Sawzb)
 1. Add to the Google Analytics property used for the website statistics
+1. Invite to credentials vault

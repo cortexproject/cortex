@@ -2168,24 +2168,10 @@ func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, register
 func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
 	// Create a data dir if none has been provided.
 	if dataDir == "" {
-		var err error
-		if dataDir, err = ioutil.TempDir("", "ingester"); err != nil {
-			return nil, err
-		}
-
-		t.Cleanup(func() {
-			require.NoError(t, os.RemoveAll(dataDir))
-		})
+		dataDir = t.TempDir()
 	}
 
-	bucketDir, err := ioutil.TempDir("", "bucket")
-	if err != nil {
-		return nil, err
-	}
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(bucketDir))
-	})
+	bucketDir := t.TempDir()
 
 	clientCfg := defaultClientTestConfig()
 
@@ -2330,9 +2316,7 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create a temporary directory for TSDB
-			tempDir, err := ioutil.TempDir("", "tsdb")
-			require.NoError(t, err)
-			defer os.RemoveAll(tempDir)
+			tempDir := t.TempDir()
 
 			ingesterCfg := defaultIngesterTestConfig(t)
 			ingesterCfg.BlocksStorageEnabled = true
@@ -3297,11 +3281,7 @@ func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
 
 func TestHeadCompactionOnStartup(t *testing.T) {
 	// Create a temporary directory for TSDB
-	tempDir, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
+	tempDir := t.TempDir()
 
 	// Build TSDB for user, with data covering 24 hours.
 	{

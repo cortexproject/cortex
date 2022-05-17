@@ -2,9 +2,7 @@ package builder
 
 import (
 	"bytes"
-	"io/ioutil"
 	"math/rand"
-	"os"
 	"sort"
 	"testing"
 	"time"
@@ -22,12 +20,6 @@ type testSeries struct {
 }
 
 func TestSeries(t *testing.T) {
-	dir, err := ioutil.TempDir("", "series")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
-
 	series := map[string]testSeries{}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -44,7 +36,7 @@ func TestSeries(t *testing.T) {
 		}
 	}
 
-	sl := newSeriesList(seriesCount/7, dir)
+	sl := newSeriesList(seriesCount/7, t.TempDir())
 
 	symbolsMap := map[string]bool{}
 

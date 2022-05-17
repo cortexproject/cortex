@@ -442,11 +442,7 @@ func TestTLSServerWithLocalhostCertWithClientCertificateEnforcementUsingClientCA
 }
 
 func setupCertificates(t *testing.T) keyMaterial {
-	testCADir, err := ioutil.TempDir("", "cortex-ca")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(testCADir))
-	})
+	testCADir := t.TempDir()
 
 	// create server side CA
 

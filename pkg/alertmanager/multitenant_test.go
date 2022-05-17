@@ -72,19 +72,11 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 	err := externalURL.Set("http://localhost/api/prom")
 	require.NoError(t, err)
 
-	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		err := os.RemoveAll(tempDir)
-		require.NoError(t, err)
-	})
-
 	cfg := &MultitenantAlertmanagerConfig{}
 	flagext.DefaultValues(cfg)
 
 	cfg.ExternalURL = externalURL
-	cfg.DataDir = tempDir
+	cfg.DataDir = t.TempDir()
 	cfg.ShardingRing.InstanceID = "test"
 	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
 	cfg.PollInterval = time.Minute
@@ -1929,14 +1921,7 @@ func TestSafeTemplateFilepath(t *testing.T) {
 }
 
 func TestStoreTemplateFile(t *testing.T) {
-	tempDir, err := ioutil.TempDir(os.TempDir(), "alertmanager")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(tempDir))
-	})
-
-	testTemplateDir := filepath.Join(tempDir, templatesDir)
+	testTemplateDir := filepath.Join(t.TempDir(), templatesDir)
 
 	changed, err := storeTemplateFile(filepath.Join(testTemplateDir, "some-template"), "content")
 	require.NoError(t, err)

@@ -471,7 +471,9 @@ func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdap
 			replica = pair.Value
 		}
 		if pair.Name == clusterLabel {
-			cluster = pair.Value
+			// cluster label is unmarshalled into yoloString, which retains original remote write request body in memory.
+			// Hence, we clone the yoloString to allow the request body to be garbage collected.
+			cluster = util.StringsClone(pair.Value)
 		}
 	}
 

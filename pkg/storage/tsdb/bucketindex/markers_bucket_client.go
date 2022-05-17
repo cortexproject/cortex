@@ -7,9 +7,7 @@ import (
 	"io/ioutil"
 	"path"
 
-	"github.com/oklog/ulid"
 	"github.com/thanos-io/thanos/pkg/block"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
@@ -127,12 +125,8 @@ func (b *globalMarkersBucket) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpe
 }
 
 func (b *globalMarkersBucket) isMark(name string) (string, bool) {
-	marks := map[string]func(ulid.ULID) string{
-		metadata.DeletionMarkFilename:  BlockDeletionMarkFilepath,
-		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
-	}
 
-	for mark, globalFilePath := range marks {
+	for mark, globalFilePath := range MarkersMap {
 		if path.Base(name) == mark {
 			// Parse the block ID in the path. If there's not block ID, then it's not the per-block
 			// deletion mark.

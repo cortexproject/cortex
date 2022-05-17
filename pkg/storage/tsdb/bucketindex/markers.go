@@ -21,6 +21,13 @@ const (
 	MarkersPathname = "markers"
 )
 
+var (
+	MarkersMap = map[string]func(ulid.ULID) string{
+		metadata.DeletionMarkFilename:  BlockDeletionMarkFilepath,
+		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
+	}
+)
+
 // BlockDeletionMarkFilepath returns the path, relative to the tenant's bucket location,
 // of a block deletion mark in the bucket markers location.
 func BlockDeletionMarkFilepath(blockID ulid.ULID) string {
@@ -76,11 +83,6 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 	bucket := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 	userBucket := bucket.WithExpectedErrs(bucket.IsObjNotFoundErr)
 
-	marks := map[string]func(ulid.ULID) string{
-		metadata.DeletionMarkFilename:  BlockDeletionMarkFilepath,
-		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
-	}
-
 	// Find all blocks in the storage.
 	var blocks []ulid.ULID
 	err := userBucket.Iter(ctx, "", func(name string) error {
@@ -96,7 +98,7 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 	errs := tsdb_errors.NewMulti()
 
 	for _, blockID := range blocks {
-		for mark, globalFilePath := range marks {
+		for mark, globalFilePath := range MarkersMap {
 			// Look up mark (if any).
 			reader, err := userBucket.Get(ctx, path.Join(blockID.String(), mark))
 			if userBucket.IsObjNotFoundErr(err) {

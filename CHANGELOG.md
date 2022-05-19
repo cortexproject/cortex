@@ -10,6 +10,7 @@
 * [CHANGE] Fix incorrectly named `cortex_cache_fetched_keys` and `cortex_cache_hits` metrics. Renamed to `cortex_cache_fetched_keys_total` and `cortex_cache_hits_total` respectively. #4686
 * [CHANGE] Enable Thanos series limiter in store-gateway. #4702
 * [CHANGE] Distributor: Apply `max_fetched_series_per_query` limit for `/series` API. #4683
+* [CHANGE] Re-enable the `proxy_url` option for receiver configuration. #4741
 * [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels. #4499
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction. #4707
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics. #4708

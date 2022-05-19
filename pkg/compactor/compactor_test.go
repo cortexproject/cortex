@@ -1378,6 +1378,14 @@ func createDeletionMark(t *testing.T, bkt objstore.Bucket, userID string, blockI
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
 
+func createNoCompactionMark(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
+	content := mockNoCompactBlockJSON(blockID.String())
+	blockPath := path.Join(userID, blockID.String())
+	markPath := path.Join(blockPath, metadata.NoCompactMarkFilename)
+
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
+}
+
 func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {
 	var compactor *Compactor
 	var log *concurrency.SyncBuffer

@@ -36,6 +36,8 @@
 * [BUGFIX] Distributor: update defaultReplicationStrategy to not fail with extend-write when a single instance is unhealthy. #4636
 * [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
+* [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
+  * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
 
 ## 1.11.0 2021-11-25
 

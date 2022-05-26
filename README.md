@@ -19,6 +19,13 @@ Prometheus sources in a single cluster, allowing untrusted parties to share the 
 Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
 Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
 
+
+## Chunk Storage Deprecation Notice
+
+The chunks storage is deprecated since v1.10.0. You're encouraged to use the [blocks storage](docs/blocks-storage/_index.md).
+
+Chunks storage is scheduled to be removed in release 1.14.0
+
 ## Documentation
 
 Read the [getting started guide](https://cortexmetrics.io/docs/getting-started) if you're new to the

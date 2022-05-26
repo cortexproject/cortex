@@ -36,16 +36,17 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent        int           `yaml:"max_concurrent"`
-	Timeout              time.Duration `yaml:"timeout"`
-	Iterators            bool          `yaml:"iterators"`
-	BatchIterators       bool          `yaml:"batch_iterators"`
-	IngesterStreaming    bool          `yaml:"ingester_streaming"`
-	MaxSamples           int           `yaml:"max_samples"`
-	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
-	QueryStoreForLabels  bool          `yaml:"query_store_for_labels_enabled"`
-	AtModifierEnabled    bool          `yaml:"at_modifier_enabled"`
-	EnablePerStepStats   bool          `yaml:"per_step_stats_enabled"`
+	MaxConcurrent             int           `yaml:"max_concurrent"`
+	Timeout                   time.Duration `yaml:"timeout"`
+	Iterators                 bool          `yaml:"iterators"`
+	BatchIterators            bool          `yaml:"batch_iterators"`
+	IngesterStreaming         bool          `yaml:"ingester_streaming"`
+	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
+	MaxSamples                int           `yaml:"max_samples"`
+	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
+	QueryStoreForLabels       bool          `yaml:"query_store_for_labels_enabled"`
+	AtModifierEnabled         bool          `yaml:"at_modifier_enabled"`
+	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -89,6 +90,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
+	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
@@ -149,7 +151,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {

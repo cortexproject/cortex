@@ -118,6 +118,10 @@ querier:
   # CLI flag: -querier.ingester-streaming
   [ingester_streaming: <boolean> | default = true]
 
+  # Use streaming RPCs for metadata APIs from ingester.
+  # CLI flag: -querier.ingester-metadata-streaming
+  [ingester_metadata_streaming: <boolean> | default = false]
+
   # Maximum number of samples a single query can load into memory.
   # CLI flag: -querier.max-samples
   [max_samples: <int> | default = 50000000]

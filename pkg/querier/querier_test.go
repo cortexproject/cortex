@@ -540,6 +540,15 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 	})
 
 	for _, ingesterStreaming := range []bool{true, false} {
+		expectedMethodForLabelMatchers := "MetricsForLabelMatchers"
+		expectedMethodForLabelNames := "LabelNames"
+		expectedMethodForLabelValues := "LabelValuesForLabelName"
+		if ingesterStreaming {
+			expectedMethodForLabelMatchers = "MetricsForLabelMatchersStream"
+			expectedMethodForLabelNames = "LabelNamesStream"
+			expectedMethodForLabelValues = "LabelValuesForLabelNameStream"
+		}
+
 		for testName, testData := range tests {
 			t.Run(testName, func(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -547,6 +556,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				var cfg Config
 				flagext.DefaultValues(&cfg)
 				cfg.IngesterStreaming = ingesterStreaming
+				cfg.IngesterMetadataStreaming = ingesterStreaming
 
 				limits := DefaultLimitsConfig()
 				limits.MaxQueryLookback = testData.maxQueryLookback
@@ -589,6 +599,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				t.Run("series", func(t *testing.T) {
 					distributor := &MockDistributor{}
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
+					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -609,7 +620,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "MetricsForLabelMatchers", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelMatchers, distributor.Calls[0].Method)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
@@ -621,6 +632,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				t.Run("label names", func(t *testing.T) {
 					distributor := &MockDistributor{}
 					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -633,7 +645,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "LabelNames", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelNames, distributor.Calls[0].Method)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
@@ -648,6 +660,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					}
 					distributor := &MockDistributor{}
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
+					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -660,7 +673,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "MetricsForLabelMatchers", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelMatchers, distributor.Calls[0].Method)
 						args := distributor.Calls[0].Arguments
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(args.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(args.Get(2).(model.Time)), delta)
@@ -674,6 +687,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				t.Run("label values", func(t *testing.T) {
 					distributor := &MockDistributor{}
 					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -686,7 +700,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "LabelValuesForLabelName", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelValues, distributor.Calls[0].Method)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
@@ -766,10 +780,19 @@ func (m *errDistributor) QueryExemplars(ctx context.Context, from, to model.Time
 func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
+func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
+	return nil, errDistributorError
+}
 func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, errDistributorError
 }
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error) {
+	return nil, errDistributorError
+}
 func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, errDistributorError
+}
+func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, errDistributorError
 }
 
@@ -813,11 +836,23 @@ func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, 
 	return nil, nil
 }
 
+func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+
 func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, nil
 }
 
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error) {
+	return nil, nil
+}
+
 func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, nil
+}
+
+func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, nil
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018 The etcd Authors
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clientv3
+package transport
 
 import (
-	"math/rand"
+	"net"
 	"time"
 )
 
-// jitterUp adds random jitter to the duration.
-//
-// This adds or subtracts time from the duration within a given jitter fraction.
-// For example for 10s and jitter 0.1, it will return a time within [9s, 11s])
-//
-// Reference: https://godoc.org/github.com/grpc-ecosystem/go-grpc-middleware/util/backoffutils
-func jitterUp(duration time.Duration, jitter float64) time.Duration {
-	multiplier := jitter * (rand.Float64()*2 - 1)
-	return time.Duration(float64(duration) * (1 + multiplier))
+type timeoutConn struct {
+	net.Conn
+	writeTimeout time.Duration
+	readTimeout  time.Duration
+}
+
+func (c timeoutConn) Write(b []byte) (n int, err error) {
+	if c.writeTimeout > 0 {
+		if err := c.SetWriteDeadline(time.Now().Add(c.writeTimeout)); err != nil {
+			return 0, err
+		}
+	}
+	return c.Conn.Write(b)
+}
+
+func (c timeoutConn) Read(b []byte) (n int, err error) {
+	if c.readTimeout > 0 {
+		if err := c.SetReadDeadline(time.Now().Add(c.readTimeout)); err != nil {
+			return 0, err
+		}
+	}
+	return c.Conn.Read(b)
 }

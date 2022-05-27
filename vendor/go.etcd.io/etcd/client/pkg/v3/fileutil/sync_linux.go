@@ -1,4 +1,4 @@
-// Copyright 2018 The etcd Authors
+// Copyright 2016 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clientv3
+//go:build linux
+// +build linux
+
+package fileutil
 
 import (
-	"math/rand"
-	"time"
+	"os"
+	"syscall"
 )
 
-// jitterUp adds random jitter to the duration.
-//
-// This adds or subtracts time from the duration within a given jitter fraction.
-// For example for 10s and jitter 0.1, it will return a time within [9s, 11s])
-//
-// Reference: https://godoc.org/github.com/grpc-ecosystem/go-grpc-middleware/util/backoffutils
-func jitterUp(duration time.Duration, jitter float64) time.Duration {
-	multiplier := jitter * (rand.Float64()*2 - 1)
-	return time.Duration(float64(duration) * (1 + multiplier))
+// Fsync is a wrapper around file.Sync(). Special handling is needed on darwin platform.
+func Fsync(f *os.File) error {
+	return f.Sync()
+}
+
+// Fdatasync is similar to fsync(), but does not flush modified metadata
+// unless that metadata is needed in order to allow a subsequent data retrieval
+// to be correctly handled.
+func Fdatasync(f *os.File) error {
+	return syscall.Fdatasync(int(f.Fd()))
 }

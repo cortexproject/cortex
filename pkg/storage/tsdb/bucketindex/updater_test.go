@@ -36,7 +36,7 @@ func TestUpdater_UpdateIndex(t *testing.T) {
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
 
 	w := NewUpdater(bkt, userID, nil, logger)
-	returnedIdx, _, err := w.UpdateIndex(ctx, nil)
+	returnedIdx, _, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
@@ -47,7 +47,7 @@ func TestUpdater_UpdateIndex(t *testing.T) {
 	block4 := testutil.MockStorageBlock(t, bkt, userID, 40, 50)
 	block4Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block4)
 
-	returnedIdx, _, err = w.UpdateIndex(ctx, returnedIdx)
+	returnedIdx, _, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2, block3, block4},
@@ -56,7 +56,7 @@ func TestUpdater_UpdateIndex(t *testing.T) {
 	// Hard delete a block and update the index.
 	require.NoError(t, block.Delete(ctx, log.NewNopLogger(), bucket.NewUserBucketClient(userID, bkt, nil), block2.ULID))
 
-	returnedIdx, _, err = w.UpdateIndex(ctx, returnedIdx)
+	returnedIdx, _, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
@@ -82,7 +82,7 @@ func TestUpdater_UpdateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 	require.NoError(t, bkt.Delete(ctx, path.Join(userID, block3.ULID.String(), metadata.MetaFilename)))
 
 	w := NewUpdater(bkt, userID, nil, logger)
-	idx, partials, err := w.UpdateIndex(ctx, nil)
+	idx, partials, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, idx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
@@ -105,20 +105,23 @@ func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
+	block4 := testutil.MockStorageBlock(t, bkt, userID, 50, 50)
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
+	testutil.MockStorageNonCompactionMark(t, bkt, userID, block4)
 
 	// Overwrite a block's meta.json with invalid data.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, block3.ULID.String(), metadata.MetaFilename), bytes.NewReader([]byte("invalid!}"))))
 
 	w := NewUpdater(bkt, userID, nil, logger)
-	idx, partials, err := w.UpdateIndex(ctx, nil)
+	idx, partials, nonCompactBlocks, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, idx, bkt, userID,
-		[]tsdb.BlockMeta{block1, block2},
+		[]tsdb.BlockMeta{block1, block2, block4},
 		[]*metadata.DeletionMark{block2Mark})
 
 	assert.Len(t, partials, 1)
 	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaCorrupted))
+	assert.Equal(t, nonCompactBlocks, int64(1))
 }
 
 func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
@@ -134,18 +137,22 @@ func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
+	block4 := testutil.MockStorageBlock(t, bkt, userID, 40, 50)
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
+	block4Mark := testutil.MockStorageNonCompactionMark(t, bkt, userID, block4)
 
 	// Overwrite a block's deletion-mark.json with invalid data.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, block2Mark.ID.String(), metadata.DeletionMarkFilename), bytes.NewReader([]byte("invalid!}"))))
+	require.NoError(t, bkt.Upload(ctx, path.Join(userID, block4Mark.ID.String(), metadata.NoCompactMarkFilename), bytes.NewReader([]byte("invalid!}"))))
 
 	w := NewUpdater(bkt, userID, nil, logger)
-	idx, partials, err := w.UpdateIndex(ctx, nil)
+	idx, partials, nonCompactBlocks, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assertBucketIndexEqual(t, idx, bkt, userID,
-		[]tsdb.BlockMeta{block1, block2, block3},
+		[]tsdb.BlockMeta{block1, block2, block3, block4},
 		[]*metadata.DeletionMark{})
 	assert.Empty(t, partials)
+	assert.Equal(t, nonCompactBlocks, int64(1))
 }
 
 func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
@@ -156,7 +163,7 @@ func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 
 	for _, oldIdx := range []*Index{nil, {}} {
 		w := NewUpdater(bkt, userID, nil, log.NewNopLogger())
-		idx, partials, err := w.UpdateIndex(ctx, oldIdx)
+		idx, partials, _, err := w.UpdateIndex(ctx, oldIdx)
 
 		require.NoError(t, err)
 		assert.Equal(t, IndexVersion1, idx.Version)

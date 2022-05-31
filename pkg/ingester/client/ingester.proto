@@ -18,10 +18,13 @@ service Ingester {
   rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {};
 
   rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
+  rpc LabelValuesStream(LabelValuesRequest) returns (stream LabelValuesStreamResponse) {};
   rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
+  rpc LabelNamesStream(LabelNamesRequest) returns (stream LabelNamesStreamResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
+  rpc MetricsForLabelMatchersStream(MetricsForLabelMatchersRequest) returns (stream MetricsForLabelMatchersStreamResponse) {};
   rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
 
   // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
@@ -73,12 +76,20 @@ message LabelValuesResponse {
   repeated string label_values = 1;
 }
 
+message LabelValuesStreamResponse {
+  repeated string label_values = 1;
+}
+
 message LabelNamesRequest {
   int64 start_timestamp_ms = 1;
   int64 end_timestamp_ms = 2;
 }
 
 message LabelNamesResponse {
+  repeated string label_names = 1;
+}
+
+message LabelNamesStreamResponse {
   repeated string label_names = 1;
 }
 
@@ -107,6 +118,10 @@ message MetricsForLabelMatchersRequest {
 }
 
 message MetricsForLabelMatchersResponse {
+  repeated cortexpb.Metric metric = 1;
+}
+
+message MetricsForLabelMatchersStreamResponse {
   repeated cortexpb.Metric metric = 1;
 }
 

@@ -42,7 +42,7 @@ func NewUpdater(bkt objstore.Bucket, userID string, cfgProvider bucket.TenantCon
 
 // UpdateIndex generates the bucket index and returns it, without storing it to the storage.
 // If the old index is not passed in input, then the bucket index will be generated from scratch.
-func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid.ULID]error, error) {
+func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid.ULID]error, int64, error) {
 	var oldBlocks []*Block
 	var oldBlockDeletionMarks []*BlockDeletionMark
 
@@ -54,12 +54,12 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 
 	blocks, partials, err := w.updateBlocks(ctx, oldBlocks)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
-	blockDeletionMarks, err := w.updateBlockDeletionMarks(ctx, oldBlockDeletionMarks)
+	blockDeletionMarks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	return &Index{
@@ -67,7 +67,7 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		Blocks:             blocks,
 		BlockDeletionMarks: blockDeletionMarks,
 		UpdatedAt:          time.Now().Unix(),
-	}, partials, nil
+	}, partials, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
 func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
@@ -163,19 +163,25 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	return block, nil
 }
 
-func (w *Updater) updateBlockDeletionMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, error) {
+func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, int64, error) {
 	out := make([]*BlockDeletionMark, 0, len(old))
 	discovered := map[ulid.ULID]struct{}{}
+	totalBlocksBlocksMarkedForNoCompaction := int64(0)
 
 	// Find all markers in the storage.
 	err := w.bkt.Iter(ctx, MarkersPathname+"/", func(name string) error {
 		if blockID, ok := IsBlockDeletionMarkFilename(path.Base(name)); ok {
 			discovered[blockID] = struct{}{}
 		}
+
+		if _, ok := IsBlockNoCompactMarkFilename(path.Base(name)); ok {
+			totalBlocksBlocksMarkedForNoCompaction++
+		}
+
 		return nil
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "list block deletion marks")
+		return nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
 	}
 
 	// Since deletion marks are immutable, all markers already existing in the index can just be copied.
@@ -199,13 +205,13 @@ func (w *Updater) updateBlockDeletionMarks(ctx context.Context, old []*BlockDele
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, totalBlocksBlocksMarkedForNoCompaction, err
 		}
 
 		out = append(out, m)
 	}
 
-	return out, nil
+	return out, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
 func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {

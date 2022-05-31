@@ -3,8 +3,6 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"testing"
 	"time"
 
@@ -189,15 +187,9 @@ func TestFlushReasonString(t *testing.T) {
 // When flush of "immediate" chunk fails (eg. due to storage error), it is put back onto the queue, but behind Idle chunk.
 // When handling Idle chunks, they are then compared against user limit (MinChunkLength), which panics -- because we were not setting limits.
 func TestIssue3139(t *testing.T) {
-	dir, err := ioutil.TempDir("", "wal")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
-
 	cfg := emptyIngesterConfig()
 	cfg.WALConfig.FlushOnShutdown = false
-	cfg.WALConfig.Dir = dir
+	cfg.WALConfig.Dir = t.TempDir()
 	cfg.WALConfig.WALEnabled = true
 
 	cfg.FlushCheckPeriod = 10 * time.Millisecond
@@ -223,7 +215,7 @@ func TestIssue3139(t *testing.T) {
 	require.Equal(t, int64(1), st.errorsToGenerate.Load()) // no error was "consumed"
 
 	// Start new ingester, for flushing only
-	ing, err = NewForFlusher(cfg, st, nil, nil, log.NewNopLogger())
+	ing, err := NewForFlusher(cfg, st, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	t.Cleanup(func() {

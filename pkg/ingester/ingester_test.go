@@ -3,7 +3,6 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net/http"
@@ -518,11 +517,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerUser = 1
 	limits.MaxLocalMetricsWithMetadataPerUser = 1
 
-	dir, err := ioutil.TempDir("", "limits")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(dir))
-	}()
+	dir := t.TempDir()
 
 	chunksDir := filepath.Join(dir, "chunks")
 	blocksDir := filepath.Join(dir, "blocks")
@@ -579,7 +574,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func() {
@@ -641,11 +636,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	limits.MaxLocalSeriesPerMetric = 1
 	limits.MaxLocalMetadataPerMetric = 1
 
-	dir, err := ioutil.TempDir("", "limits")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(dir))
-	}()
+	dir := t.TempDir()
 
 	chunksDir := filepath.Join(dir, "chunks")
 	blocksDir := filepath.Join(dir, "blocks")
@@ -702,7 +693,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func() {

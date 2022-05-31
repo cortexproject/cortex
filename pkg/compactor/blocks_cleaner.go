@@ -45,17 +45,18 @@ type BlocksCleaner struct {
 	lastOwnedUsers []string
 
 	// Metrics.
-	runsStarted                 prometheus.Counter
-	runsCompleted               prometheus.Counter
-	runsFailed                  prometheus.Counter
-	runsLastSuccess             prometheus.Gauge
-	blocksCleanedTotal          prometheus.Counter
-	blocksFailedTotal           prometheus.Counter
-	blocksMarkedForDeletion     prometheus.Counter
-	tenantBlocks                *prometheus.GaugeVec
-	tenantMarkedBlocks          *prometheus.GaugeVec
-	tenantPartialBlocks         *prometheus.GaugeVec
-	tenantBucketIndexLastUpdate *prometheus.GaugeVec
+	runsStarted                       prometheus.Counter
+	runsCompleted                     prometheus.Counter
+	runsFailed                        prometheus.Counter
+	runsLastSuccess                   prometheus.Gauge
+	blocksCleanedTotal                prometheus.Counter
+	blocksFailedTotal                 prometheus.Counter
+	blocksMarkedForDeletion           prometheus.Counter
+	tenantBlocks                      *prometheus.GaugeVec
+	tenantBlocksMarkedForDelete       *prometheus.GaugeVec
+	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
+	tenantPartialBlocks               *prometheus.GaugeVec
+	tenantBucketIndexLastUpdate       *prometheus.GaugeVec
 }
 
 func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
@@ -102,9 +103,13 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, use
 			Name: "cortex_bucket_blocks_count",
 			Help: "Total number of blocks in the bucket. Includes blocks marked for deletion, but not partial blocks.",
 		}, []string{"user"}),
-		tenantMarkedBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		tenantBlocksMarkedForDelete: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_marked_for_deletion_count",
 			Help: "Total number of blocks marked for deletion in the bucket.",
+		}, []string{"user"}),
+		tenantBlocksMarkedForNoCompaction: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_bucket_blocks_marked_for_no_compaction_count",
+			Help: "Total number of blocks marked for no compaction in the bucket.",
 		}, []string{"user"}),
 		tenantPartialBlocks: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_bucket_blocks_partials_count",
@@ -168,7 +173,8 @@ func (c *BlocksCleaner) cleanUsers(ctx context.Context, firstRun bool) error {
 	for _, userID := range c.lastOwnedUsers {
 		if !isActive[userID] && !isDeleted[userID] {
 			c.tenantBlocks.DeleteLabelValues(userID)
-			c.tenantMarkedBlocks.DeleteLabelValues(userID)
+			c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
+			c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
 			c.tenantPartialBlocks.DeleteLabelValues(userID)
 			c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 		}
@@ -231,7 +237,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 		// to delete. We also consider them all marked for deletion given the next run will try
 		// to delete them again.
 		c.tenantBlocks.WithLabelValues(userID).Set(float64(failed))
-		c.tenantMarkedBlocks.WithLabelValues(userID).Set(float64(failed))
+		c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(failed))
 		c.tenantPartialBlocks.WithLabelValues(userID).Set(0)
 
 		return errors.Errorf("failed to delete %d blocks", failed)
@@ -239,7 +245,8 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 
 	// Given all blocks have been deleted, we can also remove the metrics.
 	c.tenantBlocks.DeleteLabelValues(userID)
-	c.tenantMarkedBlocks.DeleteLabelValues(userID)
+	c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
+	c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
 	c.tenantPartialBlocks.DeleteLabelValues(userID)
 
 	if deletedBlocks > 0 {
@@ -330,7 +337,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 
 	// Generate an updated in-memory version of the bucket index.
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
-	idx, partials, err := w.UpdateIndex(ctx, idx)
+	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
 		return err
 	}
@@ -367,9 +374,10 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	}
 
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
-	c.tenantMarkedBlocks.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
-	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
+	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
+	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
 	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
+	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 
 	return nil
 }

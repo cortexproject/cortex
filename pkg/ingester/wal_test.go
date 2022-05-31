@@ -22,11 +22,7 @@ import (
 )
 
 func TestWAL(t *testing.T) {
-	dirname, err := ioutil.TempDir("", "cortex-wal")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(dirname))
-	}()
+	dirname := t.TempDir()
 
 	cfg := defaultIngesterTestConfig(t)
 	cfg.WALConfig.WALEnabled = true
@@ -89,7 +85,7 @@ func TestWAL(t *testing.T) {
 	inOrderSample := cortexpb.Sample{TimestampMs: int64(lastSample.Timestamp + 10), Value: 999}
 
 	ctx := user.InjectOrgID(context.Background(), userID)
-	_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
+	_, err := ing.Push(ctx, cortexpb.ToWriteRequest(
 		[]labels.Labels{metric, metric},
 		[]cortexpb.Sample{outOfOrderSample, inOrderSample}, nil, cortexpb.API))
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(makeMetricValidationError(sampleOutOfOrder, metric,
@@ -117,12 +113,7 @@ func TestCheckpointRepair(t *testing.T) {
 	numSeries := 100
 	numSamplesPerSeriesPerPush := 10
 	for _, numCheckpoints := range []int{0, 1, 2, 3} {
-		dirname, err := ioutil.TempDir("", "cortex-wal")
-		require.NoError(t, err)
-		defer func() {
-			require.NoError(t, os.RemoveAll(dirname))
-		}()
-		cfg.WALConfig.Dir = dirname
+		cfg.WALConfig.Dir = t.TempDir()
 
 		// Build an ingester, add some samples, then shut it down.
 		_, ing := newTestStore(t, cfg, defaultClientTestConfig(), defaultLimitsTestConfig(), nil)
@@ -284,17 +275,11 @@ func TestCheckpointIndex(t *testing.T) {
 }
 
 func BenchmarkWALReplay(b *testing.B) {
-	dirname, err := ioutil.TempDir("", "cortex-wal")
-	require.NoError(b, err)
-	defer func() {
-		require.NoError(b, os.RemoveAll(dirname))
-	}()
-
 	cfg := defaultIngesterTestConfig(b)
 	cfg.WALConfig.WALEnabled = true
 	cfg.WALConfig.CheckpointEnabled = true
 	cfg.WALConfig.Recover = true
-	cfg.WALConfig.Dir = dirname
+	cfg.WALConfig.Dir = b.TempDir()
 	cfg.WALConfig.CheckpointDuration = 100 * time.Minute
 	cfg.WALConfig.checkpointDuringShutdown = false
 

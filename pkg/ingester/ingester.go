@@ -40,7 +40,8 @@ import (
 
 const (
 	// Number of timeseries to return in each batch of a QueryStream.
-	queryStreamBatchSize = 128
+	queryStreamBatchSize    = 128
+	metadataStreamBatchSize = 128
 
 	// Discarded Metadata metric labels.
 	perUserMetadataLimit   = "per_user_metadata_limit"
@@ -956,6 +957,24 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 	return resp, nil
 }
 
+func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2LabelValuesStream(req, stream)
+	}
+
+	resp, err := i.LabelValues(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return client.SendAsBatchToStream(len(resp.LabelValues), metadataStreamBatchSize, func(i, j int) error {
+		resp := &client.LabelValuesStreamResponse{
+			LabelValues: resp.LabelValues[i:j],
+		}
+		return client.SendLabelValuesStream(stream, resp)
+	})
+}
+
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
@@ -979,6 +998,25 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 	resp.LabelNames = append(resp.LabelNames, state.index.LabelNames()...)
 
 	return resp, nil
+}
+
+// LabelNames return all the label names.
+func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2LabelNamesStream(req, stream)
+	}
+
+	resp, err := i.LabelNames(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return client.SendAsBatchToStream(len(resp.LabelNames), metadataStreamBatchSize, func(i, j int) error {
+		resp := &client.LabelNamesStreamResponse{
+			LabelNames: resp.LabelNames[i:j],
+		}
+		return client.SendLabelNamesStream(stream, resp)
+	})
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
@@ -1026,6 +1064,25 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	return result, nil
+}
+
+func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2MetricsForLabelMatchersStream(req, stream)
+	}
+
+	resp, err := i.MetricsForLabelMatchers(stream.Context(), req)
+
+	if err != nil {
+		return err
+	}
+
+	return client.SendAsBatchToStream(len(resp.Metric), metadataStreamBatchSize, func(i, j int) error {
+		resp := &client.MetricsForLabelMatchersStreamResponse{
+			Metric: resp.Metric[i:j],
+		}
+		return client.SendMetricsForLabelMatchersStream(stream, resp)
+	})
 }
 
 // MetricsMetadata returns all the metric metadata of a user.

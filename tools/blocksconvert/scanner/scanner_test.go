@@ -73,11 +73,7 @@ func TestVerifyPlanFile(t *testing.T) {
 }
 
 func TestVerifyPlansDir(t *testing.T) {
-	dir, err := ioutil.TempDir("", "plans")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
+	dir := t.TempDir()
 
 	of := newOpenFiles(prometheus.NewGauge(prometheus.GaugeOpts{}))
 	// This file is checked first, and no error is reported for it.
@@ -91,18 +87,14 @@ func TestVerifyPlansDir(t *testing.T) {
 
 	require.NoError(t, of.closeAllFiles(nil))
 
-	err = verifyPlanFiles(context.Background(), dir, util_log.Logger)
+	err := verifyPlanFiles(context.Background(), dir, util_log.Logger)
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "456.plan"))
 	require.True(t, strings.Contains(err.Error(), "multiple entries for series s1 found in plan"))
 }
 
 func TestUploadPlans(t *testing.T) {
-	dir, err := ioutil.TempDir("", "upload")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
+	dir := t.TempDir()
 
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "user1"), 0700))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "user2"), 0700))

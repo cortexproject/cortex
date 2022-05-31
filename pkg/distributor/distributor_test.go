@@ -2017,21 +2017,36 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+			{
+				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
 
-			if testData.expectedErr != nil {
-				assert.EqualError(t, err, testData.expectedErr.Error())
-				return
+				if testData.expectedErr != nil {
+					assert.EqualError(t, err, testData.expectedErr.Error())
+					return
+				}
+
+				require.NoError(t, err)
+				assert.ElementsMatch(t, testData.expectedResult, metrics)
+
+				// Check how many ingesters have been queried.
+				// Due to the quorum the distributor could cancel the last request towards ingesters
+				// if all other ones are successful, so we're good either has been queried X or X-1
+				// ingesters.
+				assert.Contains(t, []int{testData.expectedIngesters, testData.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "MetricsForLabelMatchers"))
 			}
 
-			require.NoError(t, err)
-			assert.ElementsMatch(t, testData.expectedResult, metrics)
+			{
+				metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
+				if testData.expectedErr != nil {
+					assert.EqualError(t, err, testData.expectedErr.Error())
+					return
+				}
 
-			// Check how many ingesters have been queried.
-			// Due to the quorum the distributor could cancel the last request towards ingesters
-			// if all other ones are successful, so we're good either has been queried X or X-1
-			// ingesters.
-			assert.Contains(t, []int{testData.expectedIngesters, testData.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "MetricsForLabelMatchers"))
+				require.NoError(t, err)
+				assert.ElementsMatch(t, testData.expectedResult, metrics)
+
+				assert.Contains(t, []int{testData.expectedIngesters, testData.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "MetricsForLabelMatchersStream"))
+			}
 		})
 	}
 }
@@ -2661,7 +2676,39 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			},
 		})
 	}
-	return &stream{
+	return &queryStream{
+		results: results,
+	}, nil
+}
+
+func (i *mockIngester) MetricsForLabelMatchersStream(ctx context.Context, req *client.MetricsForLabelMatchersRequest, opts ...grpc.CallOption) (client.Ingester_MetricsForLabelMatchersStreamClient, error) {
+	time.Sleep(i.queryDelay)
+	i.Lock()
+	defer i.Unlock()
+
+	i.trackCall("MetricsForLabelMatchersStream")
+
+	if !i.happy.Load() {
+		return nil, errFail
+	}
+
+	_, _, multiMatchers, err := client.FromMetricsForLabelMatchersRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	results := []*client.MetricsForLabelMatchersStreamResponse{}
+	for _, matchers := range multiMatchers {
+		for _, ts := range i.timeseries {
+			if match(ts.Labels, matchers) {
+				results = append(results, &client.MetricsForLabelMatchersStreamResponse{
+					Metric: []*cortexpb.Metric{{Labels: ts.Labels}},
+				})
+			}
+		}
+	}
+
+	return &metricsForLabelMatchersStream{
 		results: results,
 	}, nil
 }
@@ -2742,17 +2789,36 @@ func (i *noopIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 	return nil, nil
 }
 
-type stream struct {
+type queryStream struct {
 	grpc.ClientStream
 	i       int
 	results []*client.QueryStreamResponse
 }
 
-func (*stream) CloseSend() error {
+func (*queryStream) CloseSend() error {
 	return nil
 }
 
-func (s *stream) Recv() (*client.QueryStreamResponse, error) {
+func (s *queryStream) Recv() (*client.QueryStreamResponse, error) {
+	if s.i >= len(s.results) {
+		return nil, io.EOF
+	}
+	result := s.results[s.i]
+	s.i++
+	return result, nil
+}
+
+type metricsForLabelMatchersStream struct {
+	grpc.ClientStream
+	i       int
+	results []*client.MetricsForLabelMatchersStreamResponse
+}
+
+func (*metricsForLabelMatchersStream) CloseSend() error {
+	return nil
+}
+
+func (s *metricsForLabelMatchersStream) Recv() (*client.MetricsForLabelMatchersStreamResponse, error) {
 	if s.i >= len(s.results) {
 		return nil, io.EOF
 	}

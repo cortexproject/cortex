@@ -199,11 +199,9 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 		return n.notifier, nil
 	}
 
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, userManagerRegistry)
-	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
-		Registerer:    reg,
+		Registerer:    userManagerRegistry,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 			// Note: The passed-in context comes from the Prometheus notifier
 			// and does *not* contain the userID. So it needs to be added to the context

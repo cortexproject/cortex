@@ -112,7 +112,7 @@ func NewManagerMetrics(disableRuleGroupLabel bool) *ManagerMetrics {
 
 		// Prometheus' ruler's notification metrics
 		NotificationLatency: prometheus.NewDesc(
-			"q",
+			"cortex_prometheus_notifications_latency_seconds",
 			"Latency quantiles for sending alert notifications.",
 			[]string{"user"},
 			nil,

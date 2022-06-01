@@ -34,6 +34,14 @@ cortex_prometheus_last_evaluation_samples{rule_group="group_one",user="user3"} 1
 cortex_prometheus_last_evaluation_samples{rule_group="group_two",user="user1"} 1000
 cortex_prometheus_last_evaluation_samples{rule_group="group_two",user="user2"} 10000
 cortex_prometheus_last_evaluation_samples{rule_group="group_two",user="user3"} 100000
+# HELP cortex_prometheus_notifications_latency_seconds Latency quantiles for sending alert notifications.
+# TYPE cortex_prometheus_notifications_latency_seconds summary
+cortex_prometheus_notifications_latency_seconds_sum{user="user1"} 0
+cortex_prometheus_notifications_latency_seconds_count{user="user1"} 0
+cortex_prometheus_notifications_latency_seconds_sum{user="user2"} 0
+cortex_prometheus_notifications_latency_seconds_count{user="user2"} 0
+cortex_prometheus_notifications_latency_seconds_sum{user="user3"} 0
+cortex_prometheus_notifications_latency_seconds_count{user="user3"} 0
 # HELP cortex_prometheus_rule_evaluation_duration_seconds The duration for a rule to execute.
 # TYPE cortex_prometheus_rule_evaluation_duration_seconds summary
 cortex_prometheus_rule_evaluation_duration_seconds{user="user1",quantile="0.5"} 1
@@ -153,6 +161,14 @@ func TestManagerMetricsWithoutRuleGroupLabel(t *testing.T) {
 cortex_prometheus_last_evaluation_samples{user="user1"} 2000
 cortex_prometheus_last_evaluation_samples{user="user2"} 20000
 cortex_prometheus_last_evaluation_samples{user="user3"} 200000
+# HELP cortex_prometheus_notifications_latency_seconds Latency quantiles for sending alert notifications.
+# TYPE cortex_prometheus_notifications_latency_seconds summary
+cortex_prometheus_notifications_latency_seconds_sum{user="user1"} 0
+cortex_prometheus_notifications_latency_seconds_count{user="user1"} 0
+cortex_prometheus_notifications_latency_seconds_sum{user="user2"} 0
+cortex_prometheus_notifications_latency_seconds_count{user="user2"} 0
+cortex_prometheus_notifications_latency_seconds_sum{user="user3"} 0
+cortex_prometheus_notifications_latency_seconds_count{user="user3"} 0
 # HELP cortex_prometheus_rule_evaluation_duration_seconds The duration for a rule to execute.
 # TYPE cortex_prometheus_rule_evaluation_duration_seconds summary
 cortex_prometheus_rule_evaluation_duration_seconds{user="user1",quantile="0.5"} 1

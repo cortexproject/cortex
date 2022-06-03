@@ -1058,7 +1058,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 				}
 
 				for _, metric := range resp.Metric {
-					m := cortexpb.FromLabelAdaptersToMetric(metric.Labels)
+					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
 
 					if err := queryLimiter.AddSeries(cortexpb.FromMetricsToLabelAdapters(m)); err != nil {
 						return nil, err

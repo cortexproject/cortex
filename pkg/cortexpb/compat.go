@@ -102,6 +102,12 @@ func FromLabelAdaptersToMetric(ls []LabelAdapter) model.Metric {
 	return util.LabelsToMetric(FromLabelAdaptersToLabels(ls))
 }
 
+// FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric with copy.
+// Don't do this on any performance sensitive paths.
+func FromLabelAdaptersToMetricWithCopy(ls []LabelAdapter) model.Metric {
+	return util.LabelsToMetric(FromLabelAdaptersToLabelsWithCopy(ls))
+}
+
 // FromMetricsToLabelAdapters converts model.Metric to []LabelAdapter.
 // Don't do this on any performance sensitive paths.
 // The result is sorted.

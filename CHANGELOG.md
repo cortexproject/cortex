@@ -40,6 +40,7 @@
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
 * [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
   * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
+* [ENHANCEMENT] Querier: Reduce the number of series that are kept in memory while streaming from ingesters. #4745
 
 ## 1.11.0 2021-11-25
 

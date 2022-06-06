@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	mathrand "math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -462,6 +463,12 @@ func (m *KV) running(ctx context.Context) error {
 	var tickerChan <-chan time.Time
 	if m.cfg.RejoinInterval > 0 && len(m.cfg.JoinMembers) > 0 {
 		t := time.NewTicker(m.cfg.RejoinInterval)
+		t.Stop()
+		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(m.cfg.RejoinInterval)), func() {
+			m.rejoinMemberlist(ctx)
+
+			t.Reset(m.cfg.RejoinInterval)
+		})
 		defer t.Stop()
 
 		tickerChan = t.C
@@ -470,19 +477,22 @@ func (m *KV) running(ctx context.Context) error {
 	for {
 		select {
 		case <-tickerChan:
-			members := m.discoverMembers(ctx, m.cfg.JoinMembers)
-
-			reached, err := m.memberlist.Join(members)
-			if err == nil {
-				level.Info(m.logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
-			} else {
-				// Don't report error from rejoin, otherwise KV service would be stopped completely.
-				level.Warn(m.logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
-			}
-
+			m.rejoinMemberlist(ctx)
 		case <-ctx.Done():
 			return nil
 		}
+	}
+}
+
+func (m *KV) rejoinMemberlist(ctx context.Context) {
+	members := m.discoverMembers(ctx, m.cfg.JoinMembers)
+
+	reached, err := m.memberlist.Join(members)
+	if err == nil {
+		level.Info(m.logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
+	} else {
+		// Don't report error from rejoin, otherwise KV service would be stopped completely.
+		level.Warn(m.logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
 	}
 }
 

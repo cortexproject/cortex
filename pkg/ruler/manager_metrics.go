@@ -217,7 +217,7 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfSummariesPerUser(out, m.NotificationLatency, "prometheus_notifications_latency_seconds")
 	data.SendSumOfCountersPerUserWithLabels(out, m.NotificationErrors, "prometheus_notifications_errors_total", "alertmanager")
 	data.SendSumOfCountersPerUserWithLabels(out, m.NotificationSent, "prometheus_notifications_sent_total", "alertmanager")
-	data.SendSumOfGaugesPerUser(out, m.NotificationDropped, "prometheus_notifications_dropped_total")
+	data.SendSumOfCountersPerUser(out, m.NotificationDropped, "prometheus_notifications_dropped_total")
 	data.SendSumOfGaugesPerUser(out, m.NotificationQueueLength, "prometheus_notifications_queue_length")
 	data.SendSumOfGaugesPerUser(out, m.NotificationQueueCapacity, "prometheus_notifications_queue_capacity")
 	data.SendSumOfGaugesPerUser(out, m.AlertmanagersDiscovered, "prometheus_notifications_alertmanagers_discovered")

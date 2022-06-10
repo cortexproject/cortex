@@ -817,7 +817,6 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 	enough := false
 	quorum := (rulerRing.ReplicationFactor() / 2) + 1
 	numSucceeded := 0
-	maxSucceeded := len(rulers.Instances)
 	numErrors := 0
 	maxErrors := len(rulers.Instances)
 	if quorumType == Strong {
@@ -829,14 +828,8 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 		case res := <-ch:
 			if res.err != nil {
 				numErrors++
-				if numErrors > maxErrors {
-					enough = true
-				}
 			} else {
 				numSucceeded++
-				if numSucceeded >= maxSucceeded {
-					enough = true
-				}
 				for _, groupStateDesc := range res.res {
 					key := fmt.Sprintf("%s:%s", groupStateDesc.Group.Namespace, groupStateDesc.Group.Name)
 					if oldGroupCounters, ok := groupCounterMap[key]; ok {
@@ -885,6 +878,10 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 			}
 		case <-ctx.Done():
 			return nil, ctx.Err()
+		}
+
+		if numErrors >= maxErrors || (numErrors+numSucceeded) >= len(rulers.Instances) {
+			enough = true
 		}
 	}
 

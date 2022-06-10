@@ -816,7 +816,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 
 	enough := false
 	quorum := (rulerRing.ReplicationFactor() / 2) + 1
-	instanceErrors := 0
+	numSucceeded := 0
+	maxSucceeded := len(rulers.Instances)
+	numErrors := 0
 	maxErrors := len(rulers.Instances)
 	if quorumType == Strong {
 		maxErrors -= quorum - 1
@@ -826,11 +828,15 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 		select {
 		case res := <-ch:
 			if res.err != nil {
-				instanceErrors++
-				if instanceErrors > maxErrors {
+				numErrors++
+				if numErrors > maxErrors {
 					enough = true
 				}
 			} else {
+				numSucceeded++
+				if numSucceeded >= maxSucceeded {
+					enough = true
+				}
 				for _, groupStateDesc := range res.res {
 					key := fmt.Sprintf("%s:%s", groupStateDesc.Group.Namespace, groupStateDesc.Group.Name)
 					if oldGroupCounters, ok := groupCounterMap[key]; ok {
@@ -850,7 +856,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 							groupCounterMap[key] = &newGroupCounters
 						}
 					} else {
-						groupCounters := make([]groupCounter, 0, 1)
+						groupCounters := make([]groupCounter, 1, rulerRing.ReplicationFactor())
 						groupCounters[0] = groupCounter{
 							group: groupStateDesc,
 							count: 1,
@@ -859,27 +865,30 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 					}
 				}
 
-				quorum := true
-				for _, groupCounters := range groupCounterMap {
-					maxCount := 0
-					for _, groupCounter := range *groupCounters {
-						if groupCounter.count > maxCount {
-							maxCount = groupCounter.count
+				// only do early loop termination if rf>1
+				if rulerRing.ReplicationFactor() > 1 {
+					foundQuorum := true
+					for _, groupCounters := range groupCounterMap {
+						maxCount := 0
+						for _, groupCounter := range *groupCounters {
+							if groupCounter.count > maxCount {
+								maxCount = groupCounter.count
+							}
+						}
+						if maxCount < quorum {
+							foundQuorum = false
+							break
 						}
 					}
-					if maxCount < 2 {
-						quorum = false
-						break
-					}
+					enough = enough || foundQuorum
 				}
-				enough = quorum
 			}
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
 	}
 
-	if instanceErrors >= maxErrors {
+	if numErrors >= maxErrors {
 		return nil, errors.New("unable to retrieve rules from rulers")
 	}
 

@@ -68,6 +68,13 @@ const (
 	errListAllUser = "unable to list the ruler users"
 )
 
+type QuorumType uint8
+
+const (
+	Weak QuorumType = iota
+	Strong
+)
+
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
@@ -655,14 +662,14 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, quorumType QuorumType) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, userID, quorumType)
 	}
 
 	return r.getLocalRules(userID)
@@ -755,7 +762,18 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType QuorumType) ([]*GroupStateDesc, error) {
+	type instanceResult struct {
+		res      []*GroupStateDesc
+		err      error
+		instance *ring.InstanceDesc
+	}
+
+	type groupCounter struct {
+		group *GroupStateDesc
+		count int
+	}
+
 	rulerRing := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -767,40 +785,123 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 		return nil, err
 	}
 
+	if rulerRing.ReplicationFactor() <= 2 {
+		// strong quorums are only supported for RF >= 3
+		quorumType = Weak
+	}
+
+	ch := make(chan instanceResult, len(rulers.Instances))
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	ctx, err = user.InjectIntoGRPCRequest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	rulesResults, err := rulers.Do(ctx, time.Duration(0), func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
-		grpcClient, err := r.clientsPool.GetClientFor(ing.Addr)
-		if err != nil {
-			return nil, errors.Wrapf(err, "unable to get client for ruler %s", ing.Addr)
-		}
+	// Spawn a goroutine for each instance.
+	for i := range rulers.Instances {
+		go func(ruler *ring.InstanceDesc) {
+			result, err := r.getDelegateRules(ctx, ruler)
+			ch <- instanceResult{
+				res:      result,
+				err:      err,
+				instance: ruler,
+			}
+		}(&rulers.Instances[i])
+	}
 
-		newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
-		if err != nil {
-			return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", ing.Addr)
-		}
-		return newGrps.Groups, nil
-	})
+	groupCounterMap := make(map[string]*[]groupCounter)
 
-	if err != nil {
-		return nil, err
+	enough := false
+	quorum := (rulerRing.ReplicationFactor() / 2) + 1
+	instanceErrors := 0
+	maxErrors := len(rulers.Instances)
+	if quorumType == Strong {
+		maxErrors -= quorum - 1
+	}
+
+	for !enough {
+		select {
+		case res := <-ch:
+			if res.err != nil {
+				instanceErrors++
+				if instanceErrors > maxErrors {
+					enough = true
+				}
+			} else {
+				for _, groupStateDesc := range res.res {
+					key := fmt.Sprintf("%s:%s", groupStateDesc.Group.Namespace, groupStateDesc.Group.Name)
+					if oldGroupCounters, ok := groupCounterMap[key]; ok {
+						wasGroupCounted := false
+						for _, oldGroupCounter := range *oldGroupCounters {
+							if oldGroupCounter.group.Group.Equal(groupStateDesc.Group) {
+								oldGroupCounter.count++
+								wasGroupCounted = true
+								break
+							}
+						}
+						if !wasGroupCounted {
+							newGroupCounters := append(*oldGroupCounters, groupCounter{
+								group: groupStateDesc,
+								count: 1,
+							})
+							groupCounterMap[key] = &newGroupCounters
+						}
+					} else {
+						groupCounters := make([]groupCounter, 0, 1)
+						groupCounters[0] = groupCounter{
+							group: groupStateDesc,
+							count: 1,
+						}
+						groupCounterMap[key] = &groupCounters
+					}
+				}
+
+				quorum := true
+				for _, groupCounters := range groupCounterMap {
+					maxCount := 0
+					for _, groupCounter := range *groupCounters {
+						if groupCounter.count > maxCount {
+							maxCount = groupCounter.count
+						}
+					}
+					if maxCount < 2 {
+						quorum = false
+						break
+					}
+				}
+				enough = quorum
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	if instanceErrors >= maxErrors {
+		return nil, errors.New("unable to retrieve rules from rulers")
 	}
 
 	merged := make(map[string]*GroupStateDesc)
-
-	for _, result := range rulesResults {
-		rules := result.([]*GroupStateDesc)
-		for _, rule := range rules {
-			key := fmt.Sprintf("%s:%s", rule.Group.Namespace, rule.Group.Name)
-			if oldGroup, ok := merged[key]; ok {
-				if oldGroup.EvaluationTimestamp.Before(rule.EvaluationTimestamp) {
-					merged[key] = rule
-				}
+	for groupName, groupCounters := range groupCounterMap {
+		quorumFound := false
+		var mostRecentlyEvaluated *groupCounter = nil
+		for _, groupCounter := range *groupCounters {
+			if mostRecentlyEvaluated == nil || mostRecentlyEvaluated.group.EvaluationTimestamp.Before(groupCounter.group.EvaluationTimestamp) {
+				mostRecentlyEvaluated = &groupCounter
+			}
+			if groupCounter.count >= quorum {
+				merged[groupName] = groupCounter.group
+				quorumFound = true
+				break
+			}
+		}
+		if !quorumFound {
+			if quorumType == Strong {
+				return nil, errors.Errorf("unable to obtain quorum result for group %s", groupName)
 			} else {
-				merged[key] = rule
+				merged[groupName] = mostRecentlyEvaluated.group
 			}
 		}
 	}
@@ -812,6 +913,19 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 	}
 
 	return result, err
+}
+
+func (r *Ruler) getDelegateRules(ctx context.Context, ing *ring.InstanceDesc) ([]*GroupStateDesc, error) {
+	grpcClient, err := r.clientsPool.GetClientFor(ing.Addr)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to get client for ruler %s", ing.Addr)
+	}
+
+	newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", ing.Addr)
+	}
+	return newGrps.Groups, nil
 }
 
 // Rules implements the rules service

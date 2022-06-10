@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"encoding/json"
+	"github.com/weaveworks/common/httpgrpc"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -145,8 +146,14 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	quorumType, err := parseQuorumType(req.FormValue("quorum"))
+	if err != nil {
+		respondError(logger, w, err.Error())
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context())
+	rgs, err := a.ruler.GetRules(req.Context(), quorumType)
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -237,8 +244,14 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	quorumType, err := parseQuorumType(req.FormValue("quorum"))
+	if err != nil {
+		respondError(logger, w, err.Error())
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context())
+	rgs, err := a.ruler.GetRules(req.Context(), quorumType)
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -550,4 +563,14 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	respondAccepted(w, logger)
+}
+
+func parseQuorumType(s string) (QuorumType, error) {
+	if s == "" || s == "weak" {
+		return Weak, nil
+	} else if s == "strong" {
+		return Strong, nil
+	} else {
+		return Weak, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid quorum type", s)
+	}
 }

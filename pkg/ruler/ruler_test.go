@@ -478,7 +478,7 @@ func TestGetRules(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), u)
 				forEachRuler(func(id string, r *Ruler) {
 					mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
-					rules, err := r.GetRules(ctx)
+					rules, err := r.GetRules(ctx, Weak)
 					require.NoError(t, err)
 					require.Equal(t, len(allRulesByUser[u]), len(rules))
 

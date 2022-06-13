@@ -1,4 +1,4 @@
-// Copyright 2018 The etcd Authors
+// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package clientv3
+//go:build !windows && !plan9 && !solaris && !linux
+// +build !windows,!plan9,!solaris,!linux
+
+package fileutil
 
 import (
-	"math/rand"
-	"time"
+	"os"
 )
 
-// jitterUp adds random jitter to the duration.
-//
-// This adds or subtracts time from the duration within a given jitter fraction.
-// For example for 10s and jitter 0.1, it will return a time within [9s, 11s])
-//
-// Reference: https://godoc.org/github.com/grpc-ecosystem/go-grpc-middleware/util/backoffutils
-func jitterUp(duration time.Duration, jitter float64) time.Duration {
-	multiplier := jitter * (rand.Float64()*2 - 1)
-	return time.Duration(float64(duration) * (1 + multiplier))
+func TryLockFile(path string, flag int, perm os.FileMode) (*LockedFile, error) {
+	return flockTryLockFile(path, flag, perm)
+}
+
+func LockFile(path string, flag int, perm os.FileMode) (*LockedFile, error) {
+	return flockLockFile(path, flag, perm)
 }

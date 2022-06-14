@@ -209,7 +209,12 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 	var updated []string
 	tokensChanged := false
 
+	maxFutureLimit := now.Add(30 * time.Minute).Unix()
 	for name, oing := range otherIngesterMap {
+		if oing.Timestamp > maxFutureLimit {
+			return nil, fmt.Errorf("ingester %s timestamp in the future, expected max of %d, got %d", name, maxFutureLimit, oing.Timestamp)
+		}
+
 		ting := thisIngesterMap[name]
 		// ting.Timestamp will be 0, if there was no such ingester in our version
 		if oing.Timestamp > ting.Timestamp {

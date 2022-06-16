@@ -23,6 +23,14 @@ type ManagerMetrics struct {
 	GroupLastDuration    *prometheus.Desc
 	GroupRules           *prometheus.Desc
 	GroupLastEvalSamples *prometheus.Desc
+
+	NotificationLatency       *prometheus.Desc
+	NotificationErrors        *prometheus.Desc
+	NotificationSent          *prometheus.Desc
+	NotificationDropped       *prometheus.Desc
+	NotificationQueueLength   *prometheus.Desc
+	NotificationQueueCapacity *prometheus.Desc
+	AlertmanagersDiscovered   *prometheus.Desc
 }
 
 // NewManagerMetrics returns a ManagerMetrics struct
@@ -101,6 +109,51 @@ func NewManagerMetrics(disableRuleGroupLabel bool) *ManagerMetrics {
 			commonLabels,
 			nil,
 		),
+
+		// Prometheus' ruler's notification metrics
+		NotificationLatency: prometheus.NewDesc(
+			"cortex_prometheus_notifications_latency_seconds",
+			"Latency quantiles for sending alert notifications.",
+			[]string{"user"},
+			nil,
+		),
+
+		NotificationErrors: prometheus.NewDesc(
+			"cortex_prometheus_notifications_errors_total",
+			"Total number of errors sending alert notifications.",
+			[]string{"user", "alertmanager"},
+			nil,
+		),
+		NotificationSent: prometheus.NewDesc(
+			"cortex_prometheus_notifications_sent_total",
+			"Total number of alerts sent.",
+			[]string{"user", "alertmanager"},
+			nil,
+		),
+		NotificationDropped: prometheus.NewDesc(
+			"cortex_prometheus_notifications_dropped_total",
+			"Total number of alerts dropped due to errors when sending to Alertmanager.",
+			[]string{"user"},
+			nil,
+		),
+		NotificationQueueLength: prometheus.NewDesc(
+			"cortex_prometheus_notifications_queue_length",
+			"The number of alert notifications in the queue.",
+			[]string{"user"},
+			nil,
+		),
+		NotificationQueueCapacity: prometheus.NewDesc(
+			"cortex_prometheus_notifications_queue_capacity",
+			"The capacity of the alert notifications queue.",
+			[]string{"user"},
+			nil,
+		),
+		AlertmanagersDiscovered: prometheus.NewDesc(
+			"cortex_prometheus_notifications_alertmanagers_discovered",
+			"The number of alertmanagers discovered and active.",
+			[]string{"user"},
+			nil,
+		),
 	}
 }
 
@@ -127,6 +180,14 @@ func (m *ManagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.GroupLastDuration
 	out <- m.GroupRules
 	out <- m.GroupLastEvalSamples
+
+	out <- m.NotificationLatency
+	out <- m.NotificationErrors
+	out <- m.NotificationSent
+	out <- m.NotificationDropped
+	out <- m.NotificationQueueLength
+	out <- m.NotificationQueueCapacity
+	out <- m.AlertmanagersDiscovered
 }
 
 // Collect implements the Collector interface
@@ -152,4 +213,12 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastDuration, "prometheus_rule_group_last_duration_seconds", labels...)
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupRules, "prometheus_rule_group_rules", labels...)
 	data.SendSumOfGaugesPerUserWithLabels(out, m.GroupLastEvalSamples, "prometheus_rule_group_last_evaluation_samples", labels...)
+
+	data.SendSumOfSummariesPerUser(out, m.NotificationLatency, "prometheus_notifications_latency_seconds")
+	data.SendSumOfCountersPerUserWithLabels(out, m.NotificationErrors, "prometheus_notifications_errors_total", "alertmanager")
+	data.SendSumOfCountersPerUserWithLabels(out, m.NotificationSent, "prometheus_notifications_sent_total", "alertmanager")
+	data.SendSumOfCountersPerUser(out, m.NotificationDropped, "prometheus_notifications_dropped_total")
+	data.SendSumOfGaugesPerUser(out, m.NotificationQueueLength, "prometheus_notifications_queue_length")
+	data.SendSumOfGaugesPerUser(out, m.NotificationQueueCapacity, "prometheus_notifications_queue_capacity")
+	data.SendSumOfGaugesPerUser(out, m.AlertmanagersDiscovered, "prometheus_notifications_alertmanagers_discovered")
 }

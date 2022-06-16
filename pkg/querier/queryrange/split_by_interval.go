@@ -74,13 +74,15 @@ func splitQuery(r Request, interval time.Duration) ([]Request, error) {
 		return nil, err
 	}
 	var reqs []Request
-	for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
-		end := nextIntervalBoundary(start, r.GetStep(), interval)
+	for start, startWithStep := r.GetStart(), r.GetStart(); start < r.GetEnd(); {
+		end := nextIntervalBoundary(startWithStep, r.GetStep(), interval)
 		if end+r.GetStep() >= r.GetEnd() {
 			end = r.GetEnd()
 		}
 
 		reqs = append(reqs, r.WithQuery(query).WithStartEnd(start, end))
+		start = end
+		startWithStep = end + r.GetStep()
 	}
 	return reqs, nil
 }

@@ -148,7 +148,7 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo @ 0.000",
 				},
 				&PrometheusRequest{
-					Start: 24 * 3600 * seconds,
+					Start: (24 * 3600 * seconds) - (15 * seconds),
 					End:   2 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
 					Query: "foo @ 0.000",
@@ -171,7 +171,7 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 				&PrometheusRequest{
-					Start: 3 * 3600 * seconds,
+					Start: (3 * 3600 * seconds) - (15 * seconds),
 					End:   2 * 3 * 3600 * seconds,
 					Step:  15 * seconds,
 					Query: "foo",
@@ -194,13 +194,13 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 				&PrometheusRequest{
-					Start: 24 * 3600 * seconds,
+					Start: (24 * 3600 * seconds) - (15 * seconds),
 					End:   (2 * 24 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
 				&PrometheusRequest{
-					Start: 2 * 24 * 3600 * seconds,
+					Start: (2 * 24 * 3600 * seconds) - (15 * seconds),
 					End:   3 * 24 * 3600 * seconds,
 					Step:  15 * seconds,
 					Query: "foo",
@@ -223,13 +223,13 @@ func TestSplitQuery(t *testing.T) {
 					Query: "foo",
 				},
 				&PrometheusRequest{
-					Start: 3 * 3600 * seconds,
+					Start: (3 * 3600 * seconds) - (15 * seconds),
 					End:   (2 * 3 * 3600 * seconds) - (15 * seconds),
 					Step:  15 * seconds,
 					Query: "foo",
 				},
 				&PrometheusRequest{
-					Start: 2 * 3 * 3600 * seconds,
+					Start: (2 * 3 * 3600 * seconds) - (15 * seconds),
 					End:   3 * 3 * 3600 * seconds,
 					Step:  15 * seconds,
 					Query: "foo",

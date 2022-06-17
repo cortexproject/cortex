@@ -40,6 +40,7 @@
 * [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
 * [BUGFIX] Ruler: Fixed leaking notifiers after users are removed #4718
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
+* [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #
 * [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
   * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
 * [ENHANCEMENT] Querier: Reduce the number of series that are kept in memory while streaming from ingesters. #4745

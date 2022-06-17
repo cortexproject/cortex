@@ -98,4 +98,4 @@ replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-
 
 // Replace grpc as weaveworks common needs to update this first
 // vendor/github.com/weaveworks/common/httpgrpc/server/server.go:137:3: undefined: grpc.WithBalancerName
-replace	google.golang.org/grpc => google.golang.org/grpc v1.45.0
+replace google.golang.org/grpc => google.golang.org/grpc v1.45.0

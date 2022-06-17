@@ -14,7 +14,7 @@
 
 // Code generated from semantic convention specification. DO NOT EDIT.
 
-package semconv // import "go.opentelemetry.io/otel/semconv/v1.7.0"
+package semconv // import "go.opentelemetry.io/otel/semconv/v1.10.0"
 
 import "go.opentelemetry.io/otel/attribute"
 
@@ -30,6 +30,71 @@ const (
 	// Examples: 'arn:aws:lambda:us-east-1:123456:function:myfunction:myalias'
 	// Note: This may be different from `faas.id` if an alias is involved.
 	AWSLambdaInvokedARNKey = attribute.Key("aws.lambda.invoked_arn")
+)
+
+// This document defines attributes for CloudEvents. CloudEvents is a specification on how to define event data in a standard way. These attributes can be attached to spans when performing operations with CloudEvents, regardless of the protocol being used.
+const (
+	// The [event_id](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec
+	// .md#id) uniquely identifies the event.
+	//
+	// Type: string
+	// Required: Always
+	// Stability: stable
+	// Examples: '123e4567-e89b-12d3-a456-426614174000', '0001'
+	CloudeventsEventIDKey = attribute.Key("cloudevents.event_id")
+	// The [source](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.m
+	// d#source-1) identifies the context in which an event happened.
+	//
+	// Type: string
+	// Required: Always
+	// Stability: stable
+	// Examples: 'https://github.com/cloudevents', '/cloudevents/spec/pull/123', 'my-
+	// service'
+	CloudeventsEventSourceKey = attribute.Key("cloudevents.event_source")
+	// The [version of the CloudEvents specification](https://github.com/cloudevents/s
+	// pec/blob/v1.0.2/cloudevents/spec.md#specversion) which the event uses.
+	//
+	// Type: string
+	// Required: Always
+	// Stability: stable
+	// Examples: '1.0'
+	CloudeventsEventSpecVersionKey = attribute.Key("cloudevents.event_spec_version")
+	// The [event_type](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/sp
+	// ec.md#type) contains a value describing the type of event related to the
+	// originating occurrence.
+	//
+	// Type: string
+	// Required: Always
+	// Stability: stable
+	// Examples: 'com.github.pull_request.opened', 'com.example.object.deleted.v2'
+	CloudeventsEventTypeKey = attribute.Key("cloudevents.event_type")
+	// The [subject](https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.
+	// md#subject) of the event in the context of the event producer (identified by
+	// source).
+	//
+	// Type: string
+	// Required: No
+	// Stability: stable
+	// Examples: 'mynewfile.jpg'
+	CloudeventsEventSubjectKey = attribute.Key("cloudevents.event_subject")
+)
+
+// This document defines semantic conventions for the OpenTracing Shim
+const (
+	// Parent-child Reference type
+	//
+	// Type: Enum
+	// Required: No
+	// Stability: stable
+	// Note: The causal relationship between a child Span and a parent Span.
+	OpentracingRefTypeKey = attribute.Key("opentracing.ref_type")
+)
+
+var (
+	// The parent Span depends on the child Span in some capacity
+	OpentracingRefTypeChildOf = OpentracingRefTypeKey.String("child_of")
+	// The parent Span does not depend in any way on the result of the child Span
+	OpentracingRefTypeFollowsFrom = OpentracingRefTypeKey.String("follows_from")
 )
 
 // This document defines the attributes used to perform database client calls.
@@ -66,17 +131,18 @@ const (
 	// Examples: 'org.postgresql.Driver',
 	// 'com.microsoft.sqlserver.jdbc.SQLServerDriver'
 	DBJDBCDriverClassnameKey = attribute.Key("db.jdbc.driver_classname")
-	// If no [tech-specific attribute](#call-level-attributes-for-specific-
-	// technologies) is defined, this attribute is used to report the name of the
-	// database being accessed. For commands that switch the database, this should be
-	// set to the target database (even if the command fails).
+	// This attribute is used to report the name of the database being accessed. For
+	// commands that switch the database, this should be set to the target database
+	// (even if the command fails).
 	//
 	// Type: string
-	// Required: Required, if applicable and no more-specific attribute is defined.
+	// Required: Required, if applicable.
 	// Stability: stable
 	// Examples: 'customers', 'main'
 	// Note: In some SQL databases, the database name to be used is called "schema
-	// name".
+	// name". In case there are multiple layers that could be considered for database
+	// name (e.g. Oracle instance name and schema name), the database name to be used
+	// is the more specific layer (e.g. Oracle schema name).
 	DBNameKey = attribute.Key("db.name")
 	// The database statement being executed.
 	//
@@ -217,14 +283,6 @@ const (
 
 // Call-level attributes for Cassandra
 const (
-	// The name of the keyspace being accessed. To be used instead of the generic
-	// `db.name` attribute.
-	//
-	// Type: string
-	// Required: Always
-	// Stability: stable
-	// Examples: 'mykeyspace'
-	DBCassandraKeyspaceKey = attribute.Key("db.cassandra.keyspace")
 	// The fetch size used for paging, i.e. how many rows will be returned at once.
 	//
 	// Type: int
@@ -241,7 +299,7 @@ const (
 	// Stability: stable
 	DBCassandraConsistencyLevelKey = attribute.Key("db.cassandra.consistency_level")
 	// The name of the primary table that the operation is acting upon, including the
-	// schema name (if applicable).
+	// keyspace name (if applicable).
 	//
 	// Type: string
 	// Required: Recommended if available.
@@ -308,18 +366,6 @@ var (
 	DBCassandraConsistencyLevelLocalSerial = DBCassandraConsistencyLevelKey.String("local_serial")
 )
 
-// Call-level attributes for Apache HBase
-const (
-	// The [HBase namespace](https://hbase.apache.org/book.html#_namespace) being
-	// accessed. To be used instead of the generic `db.name` attribute.
-	//
-	// Type: string
-	// Required: Always
-	// Stability: stable
-	// Examples: 'default'
-	DBHBaseNamespaceKey = attribute.Key("db.hbase.namespace")
-)
-
 // Call-level attributes for Redis
 const (
 	// The index of the database being accessed as used in the [`SELECT`
@@ -344,10 +390,10 @@ const (
 	DBMongoDBCollectionKey = attribute.Key("db.mongodb.collection")
 )
 
-// Call-level attrbiutes for SQL databases
+// Call-level attributes for SQL databases
 const (
 	// The name of the primary table that the operation is acting upon, including the
-	// schema name (if applicable).
+	// database name (if applicable).
 	//
 	// Type: string
 	// Required: Recommended if available.
@@ -408,7 +454,7 @@ const (
 	// whether it will escape the scope of a span.
 	// However, it is trivial to know that an exception
 	// will escape, if one checks for an active exception just before ending the span,
-	// as done in the [example above](#exception-end-example).
+	// as done in the [example above](#recording-an-exception).
 
 	// It follows that an exception may still escape the scope of the span
 	// even if the `exception.escaped` attribute was not set or set to false,
@@ -419,15 +465,20 @@ const (
 
 // This semantic convention describes an instance of a function that runs without provisioning or managing of servers (also known as serverless functions or Function as a Service (FaaS)) with spans.
 const (
-	// Type of the trigger on which the function is executed.
+	// Type of the trigger which caused this function execution.
 	//
 	// Type: Enum
-	// Required: On FaaS instances, faas.trigger MUST be set on incoming invocations.
-	// Clients invoking FaaS instances MUST set `faas.trigger` on outgoing
-	// invocations, if it is known to the client. This is, for example, not the case,
-	// when the transport layer is abstracted in a FaaS client framework without
-	// access to its configuration.
+	// Required: No
 	// Stability: stable
+	// Note: For the server/consumer span on the incoming side,
+	// `faas.trigger` MUST be set.
+
+	// Clients invoking FaaS instances usually cannot set `faas.trigger`,
+	// since they would typically need to look in the payload to determine
+	// the event type. If clients set it, it should be the same as the
+	// trigger that corresponding incoming would have (i.e., this has
+	// nothing to do with the underlying transport used to make the API
+	// call to invoke the lambda, which is often HTTP).
 	FaaSTriggerKey = attribute.Key("faas.trigger")
 	// The execution ID of the current function execution.
 	//
@@ -572,6 +623,8 @@ var (
 	FaaSInvokedProviderAzure = FaaSInvokedProviderKey.String("azure")
 	// Google Cloud Platform
 	FaaSInvokedProviderGCP = FaaSInvokedProviderKey.String("gcp")
+	// Tencent Cloud
+	FaaSInvokedProviderTencentCloud = FaaSInvokedProviderKey.String("tencent_cloud")
 )
 
 // These attributes may be used for any network related operation.
@@ -957,6 +1010,13 @@ const (
 	// Stability: stable
 	// Examples: 5493
 	HTTPResponseContentLengthUncompressedKey = attribute.Key("http.response_content_length_uncompressed")
+	// The ordinal number of request re-sending attempt.
+	//
+	// Type: int
+	// Required: If and only if a request was retried.
+	// Stability: stable
+	// Examples: 3
+	HTTPRetryCountKey = attribute.Key("http.retry_count")
 )
 
 var (
@@ -1224,7 +1284,7 @@ const (
 	// Type: string
 	// Required: Always
 	// Stability: stable
-	// Examples: 'kafka', 'rabbitmq', 'activemq', 'AmazonSQS'
+	// Examples: 'kafka', 'rabbitmq', 'rocketmq', 'activemq', 'AmazonSQS'
 	MessagingSystemKey = attribute.Key("messaging.system")
 	// The message destination name. This might be equal to the span name but is
 	// required nevertheless.
@@ -1396,14 +1456,85 @@ const (
 	MessagingKafkaTombstoneKey = attribute.Key("messaging.kafka.tombstone")
 )
 
-// This document defines semantic conventions for remote procedure calls.
+// Attributes for Apache RocketMQ
 const (
-	// A string identifying the remoting system.
+	// Namespace of RocketMQ resources, resources in different namespaces are
+	// individual.
 	//
 	// Type: string
 	// Required: Always
 	// Stability: stable
-	// Examples: 'grpc', 'java_rmi', 'wcf'
+	// Examples: 'myNamespace'
+	MessagingRocketmqNamespaceKey = attribute.Key("messaging.rocketmq.namespace")
+	// Name of the RocketMQ producer/consumer group that is handling the message. The
+	// client type is identified by the SpanKind.
+	//
+	// Type: string
+	// Required: Always
+	// Stability: stable
+	// Examples: 'myConsumerGroup'
+	MessagingRocketmqClientGroupKey = attribute.Key("messaging.rocketmq.client_group")
+	// The unique identifier for each client.
+	//
+	// Type: string
+	// Required: Always
+	// Stability: stable
+	// Examples: 'myhost@8742@s8083jm'
+	MessagingRocketmqClientIDKey = attribute.Key("messaging.rocketmq.client_id")
+	// Type of message.
+	//
+	// Type: Enum
+	// Required: No
+	// Stability: stable
+	MessagingRocketmqMessageTypeKey = attribute.Key("messaging.rocketmq.message_type")
+	// The secondary classifier of message besides topic.
+	//
+	// Type: string
+	// Required: No
+	// Stability: stable
+	// Examples: 'tagA'
+	MessagingRocketmqMessageTagKey = attribute.Key("messaging.rocketmq.message_tag")
+	// Key(s) of message, another way to mark message besides message id.
+	//
+	// Type: string[]
+	// Required: No
+	// Stability: stable
+	// Examples: 'keyA', 'keyB'
+	MessagingRocketmqMessageKeysKey = attribute.Key("messaging.rocketmq.message_keys")
+	// Model of message consumption. This only applies to consumer spans.
+	//
+	// Type: Enum
+	// Required: No
+	// Stability: stable
+	MessagingRocketmqConsumptionModelKey = attribute.Key("messaging.rocketmq.consumption_model")
+)
+
+var (
+	// Normal message
+	MessagingRocketmqMessageTypeNormal = MessagingRocketmqMessageTypeKey.String("normal")
+	// FIFO message
+	MessagingRocketmqMessageTypeFifo = MessagingRocketmqMessageTypeKey.String("fifo")
+	// Delay message
+	MessagingRocketmqMessageTypeDelay = MessagingRocketmqMessageTypeKey.String("delay")
+	// Transaction message
+	MessagingRocketmqMessageTypeTransaction = MessagingRocketmqMessageTypeKey.String("transaction")
+)
+
+var (
+	// Clustering consumption model
+	MessagingRocketmqConsumptionModelClustering = MessagingRocketmqConsumptionModelKey.String("clustering")
+	// Broadcasting consumption model
+	MessagingRocketmqConsumptionModelBroadcasting = MessagingRocketmqConsumptionModelKey.String("broadcasting")
+)
+
+// This document defines semantic conventions for remote procedure calls.
+const (
+	// A string identifying the remoting system. See below for a list of well-known
+	// identifiers.
+	//
+	// Type: Enum
+	// Required: Always
+	// Stability: stable
 	RPCSystemKey = attribute.Key("rpc.system")
 	// The full (logical) name of the service being called, including its package
 	// name, if applicable.
@@ -1432,6 +1563,17 @@ const (
 	// (e.g., method actually executing the call on the server side, RPC client stub
 	// method on the client side).
 	RPCMethodKey = attribute.Key("rpc.method")
+)
+
+var (
+	// gRPC
+	RPCSystemGRPC = RPCSystemKey.String("grpc")
+	// Java RMI
+	RPCSystemJavaRmi = RPCSystemKey.String("java_rmi")
+	// .NET WCF
+	RPCSystemDotnetWcf = RPCSystemKey.String("dotnet_wcf")
+	// Apache Dubbo
+	RPCSystemApacheDubbo = RPCSystemKey.String("apache_dubbo")
 )
 
 // Tech-specific attributes for gRPC.

@@ -29,6 +29,9 @@
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #4601
 * [ENHANCEMENT] Add length and limit to labelNameTooLongError and labelValueTooLongError #4595
 * [ENHANCEMENT] Add jitter to rejoinInterval. #4747
+* [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
+  * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
+* [ENHANCEMENT] Querier: Reduce the number of series that are kept in memory while streaming from ingesters. #4745
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4583
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
@@ -40,10 +43,8 @@
 * [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
 * [BUGFIX] Ruler: Fixed leaking notifiers after users are removed #4718
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
-* [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #
-* [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
-  * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
-* [ENHANCEMENT] Querier: Reduce the number of series that are kept in memory while streaming from ingesters. #4745
+* [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #4750
+
 
 ## 1.11.0 2021-11-25
 

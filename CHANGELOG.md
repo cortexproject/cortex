@@ -44,7 +44,7 @@
 * [BUGFIX] Ruler: Fixed leaking notifiers after users are removed #4718
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
 * [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #4750
-
+* [BUGFIX] Compactor: skip compaction if there is only 1 block available for shuffle-sharding compactor. #4756
 
 ## 1.11.0 2021-11-25
 

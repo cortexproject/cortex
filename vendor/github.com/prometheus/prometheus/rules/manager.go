@@ -368,6 +368,8 @@ func (g *Group) run(ctx context.Context) {
 		g.metrics.IterationDuration.Observe(timeSinceStart.Seconds())
 		g.setEvaluationTime(timeSinceStart)
 		g.setLastEvaluation(start)
+		
+		level.Info(g.logger).Log("msg", "Called setLastEvaluation", "group", g.name, "ts", g.GetLastEvaluation().String())
 	}
 
 	// The assumption here is that since the ticker was started after having
@@ -966,6 +968,8 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
+	level.Info(m.logger).Log("msg", "LoadGroups")
+	
 	groups, errs := m.LoadGroups(interval, externalLabels, externalURL, ruleGroupPostProcessFunc, files...)
 
 	if errs != nil {
@@ -975,6 +979,8 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 		return errors.New("error loading rules, previous rule set restored")
 	}
 	m.restored = true
+
+	level.Info(m.logger).Log("msg", "run groups")
 
 	var wg sync.WaitGroup
 	for _, newg := range groups {
@@ -990,6 +996,8 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 			groups[gn] = oldg
 			continue
 		}
+
+		level.Info(m.logger).Log("msg", "Running group", "group", newg.name)
 
 		wg.Add(1)
 		go func(newg *Group) {

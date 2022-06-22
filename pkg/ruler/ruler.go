@@ -499,7 +499,7 @@ func (r *Ruler) run(ctx context.Context) error {
 }
 
 func (r *Ruler) syncRules(ctx context.Context, reason string) {
-	level.Debug(r.logger).Log("msg", "syncing rules", "reason", reason)
+	level.Info(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
 
 	configs, err := r.listRules(ctx)
@@ -515,6 +515,7 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	}
 
 	// This will also delete local group files for users that are no longer in 'configs' map.
+	level.Info(r.logger).Log("msg", "calling SyncRuleGroups")
 	r.manager.SyncRuleGroups(ctx, configs)
 }
 
@@ -800,6 +801,10 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
+	for i := range rulers.Instances {
+		level.Info(r.logger).Log("rulerIndex", i, "rulerInstance", rulers.Instances[i].String())
+	}
+
 	// Spawn a goroutine for each instance.
 	for i := range rulers.Instances {
 		go func(ruler *ring.InstanceDesc) {
@@ -831,6 +836,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 			} else {
 				numSucceeded++
 				for _, groupStateDesc := range res.res {
+					level.Info(r.logger).Log("msg", fmt.Sprintf("Received group %s, EvaluationTimestamp=%s", groupStateDesc.Group.Name, groupStateDesc.EvaluationTimestamp.String()), "user", userID)
 					key := fmt.Sprintf("%s:%s", groupStateDesc.Group.Namespace, groupStateDesc.Group.Name)
 					if oldGroupCounters, ok := groupCounterMap[key]; ok {
 						wasGroupCounted := false
@@ -921,17 +927,17 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 	return result, err
 }
 
-func (r *Ruler) getDelegateRules(ctx context.Context, ing *ring.InstanceDesc) ([]*GroupStateDesc, error) {
-	grpcClient, err := r.clientsPool.GetClientFor(ing.Addr)
+func (r *Ruler) getDelegateRules(ctx context.Context, instance *ring.InstanceDesc) ([]*GroupStateDesc, error) {
+	grpcClient, err := r.clientsPool.GetClientFor(instance.Addr)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to get client for ruler %s", ing.Addr)
+		return nil, errors.Wrapf(err, "unable to get client for ruler %s", instance.Addr)
 	}
 
-	newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
+	groupStates, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", ing.Addr)
+		return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", instance.Addr)
 	}
-	return newGrps.Groups, nil
+	return groupStates.Groups, nil
 }
 
 // Rules implements the rules service

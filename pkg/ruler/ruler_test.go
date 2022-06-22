@@ -3,6 +3,8 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -18,7 +20,6 @@ import (
 	"unsafe"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
@@ -46,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -162,7 +162,7 @@ func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Eng
 	pusher.MockPush(&cortexpb.WriteResponse{}, nil)
 
 	l := log.NewLogfmtLogger(os.Stdout)
-	l = level.NewFilter(l, level.AllowInfo())
+	//l = level.NewFilter(l, level.AllowInfo())
 
 	reg := prometheus.NewRegistry()
 	queryable := testQueryableFunc(querierTestConfig, reg, l)
@@ -218,11 +218,11 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 
 func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, rulerAddrMap map[string]*Ruler) (*Ruler, func()) {
 	engine, queryable, pusher, logger, overrides, reg, cleanup := testSetup(t, querierTestConfig)
-	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, promRules.FileLoader{}, log.NewNopLogger())
+	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, promRules.FileLoader{}, logger)
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, logger)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -334,76 +334,302 @@ func compareRuleGroupDescToStateDesc(t *testing.T, expected *rulespb.RuleGroupDe
 
 func TestGetRules(t *testing.T) {
 	// ruler ID -> (user ID -> list of groups).
-	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
+	type singleRulerConfig map[string]rulespb.RuleGroupList
+	type multiRulerConfig map[string]singleRulerConfig
+
+	// We coerce rules to have categories of evaluation timestamps by assigning progressively larger
+	// group evaluation intervals, and waiting long enough for evaluations to trigger in the desired order.
+	newestEval := 1 * time.Second
+	newEval := 5 * time.Second
+	oldEval := time.Hour
+
+	encodeExpectedGroup := func(rg *rulespb.RuleGroupDesc) (string, error) {
+		if rg.Interval == oldEval {
+			return rg.Name, nil
+		} else if rg.Interval == newEval {
+			return rg.Name + "+", nil
+		} else if rg.Interval == newestEval {
+			return rg.Name + "++", nil
+		} else {
+			return "", errors.Errorf("Unexpected interval: %s", rg.Interval.String())
+		}
+	}
+	decodeExpectedGroup := func(user string, rgstr string) *rulespb.RuleGroupDesc {
+		interval = oldEval
+		if rgstr[1:] == "++" {
+			interval = newestEval
+		} else if rgstr[1:] == "+" {
+			interval = newEval
+		}
+		return &rulespb.RuleGroupDesc{
+			User:      user,
+			Namespace: "namespace",
+			Name:      string(rgstr[0]),
+			Interval:  interval,
+			Rules: []*rulespb.RuleDesc{
+				{
+					Alert: "UP_ALERT",
+					Expr:  "1",
+					For:   time.Hour,
+				},
+			},
+		}
+	}
+
+	newRuleGroups := func(user string, encodedRuleGroups []string) rulespb.RuleGroupList {
+		rulegroups := make(rulespb.RuleGroupList, len(encodedRuleGroups))
+		for i, encodedRuleGroup := range encodedRuleGroups {
+			rulegroups[i] = decodeExpectedGroup(user, encodedRuleGroup)
+		}
+		return rulegroups
+	}
+	addRuleGroup := func(expectedRules multiRulerConfig, rulerId string, user string, encodedRuleGroups []string) {
+		_, ok := expectedRules[rulerId]
+		if !ok {
+			expectedRules[rulerId] = make(singleRulerConfig)
+		}
+		expectedRules[rulerId][user] = newRuleGroups(user, encodedRuleGroups)
+	}
 
 	type testCase struct {
 		sharding          bool
 		shardingStrategy  string
 		shuffleShardSize  int
 		replicationFactor int
+		user              string
+		expectedGroups    []string
+		expectedCalls     int
 	}
 
-	expectedRules := expectedRulesMap{
-		"ruler1": map[string]rulespb.RuleGroupList{
-			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
-			},
-			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
-			},
-		},
-		"ruler2": map[string]rulespb.RuleGroupList{
-			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
-			},
-			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
-			},
-		},
-		"ruler3": map[string]rulespb.RuleGroupList{
-			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
-			},
-			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second},
-			},
-		},
-	}
+	t.Logf("Building expectedRules")
+	expectedRules := make(multiRulerConfig)
+	rulerId := "ruler1"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"A"})
+	addRuleGroup(expectedRules, rulerId, "user2", []string{"A"})
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"A", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user4", []string{"A", "B", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"A+", "F+"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"A", "F", "E"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"A", "B", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"A+", "F+", "E+"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"A+", "F+", "E+"})
+	rulerId = "ruler2"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"B"})
+	// user2 has no rules in ruler 2
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"B", "A"})
+	//addRuleGroup(expectedRules, rulerId, "user4", []string{"A", "B", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"B+", "A+"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"B", "A", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"A", "B", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"B+", "A+", "F+"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"B+", "A+", "F++"})
+	rulerId = "ruler3"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"C"})
+	addRuleGroup(expectedRules, rulerId, "user2", []string{"B"})
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"C", "B"})
+	//// user4 has no rules in ruler3
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"C+", "B+"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"C", "B", "A"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"A", "B", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"C+", "B+", "A+"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"C+", "B+", "A+"})
+	rulerId = "ruler4"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"D"})
+	// user2 has no rules in ruler 4
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"D", "C"})
+	//// user4 has no rules in ruler4
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"D", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"D", "C", "B"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"D", "E", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"D", "C", "B"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"D", "C", "B"})
+	rulerId = "ruler5"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"E"})
+	addRuleGroup(expectedRules, rulerId, "user2", []string{"C"})
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"E", "D"})
+	//addRuleGroup(expectedRules, rulerId, "user4", []string{"D", "E", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"E", "D"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"E", "D", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"D", "E", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"E", "D", "C"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"E", "D", "C"})
+	rulerId = "ruler6"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"F"})
+	// user2 has no rules in ruler 6
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"F", "E"})
+	//addRuleGroup(expectedRules, rulerId, "user4", []string{"D", "E", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"F", "E"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"F", "E", "D"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"D", "E", "F"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"F", "E", "D"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"F", "E", "D"})
+	rulerId = "ruler7"
+	addRuleGroup(expectedRules, rulerId, "user1", []string{"Z"})
+	addRuleGroup(expectedRules, rulerId, "user2", []string{"Y"})
+	//addRuleGroup(expectedRules, rulerId, "user3", []string{"X"})
+	//addRuleGroup(expectedRules, rulerId, "user4", []string{"W"})
+	//addRuleGroup(expectedRules, rulerId, "user5", []string{"V"})
+	//addRuleGroup(expectedRules, rulerId, "user6", []string{"U"})
+	//addRuleGroup(expectedRules, rulerId, "user7", []string{"T"})
+	//addRuleGroup(expectedRules, rulerId, "user8", []string{"S"})
+	//addRuleGroup(expectedRules, rulerId, "user9", []string{"R"})
 
+	t.Logf("Building testCases")
 	testCases := map[string]testCase{
-		"No Sharding": {
+		"No Sharding, non-sparse": {
 			sharding:          false,
 			replicationFactor: 1,
+			user:              "user1",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
 		},
-		"Default Sharding": {
+		"No Sharding, sparse": {
+			sharding:          false,
+			replicationFactor: 1,
+			user:              "user2",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		"Default Sharding, non-sparse": {
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 1,
+			user:              "user1",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
 		},
-		"Default Sharding and replicationFactor = 3": {
+		"Default Sharding, sparse": {
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
-			replicationFactor: 3,
-		},
-		"Shuffle Sharding and ShardSize = 2": {
-			sharding:          true,
-			shuffleShardSize:  2,
-			shardingStrategy:  util.ShardingStrategyShuffle,
 			replicationFactor: 1,
+			user:              "user2",
+			expectedGroups:    []string{"A", "B", "C"},
 		},
-		"Shuffle Sharding and ShardSize = 3 and replicationFactor = 3": {
-			sharding:          true,
-			shuffleShardSize:  3,
-			shardingStrategy:  util.ShardingStrategyShuffle,
-			replicationFactor: 3,
-		},
+		//"Default Sharding, replicationFactor = 2, non-sparse": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 2,
+		//	user:              "user3",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Default Sharding, replicationFactor = 2, sparse": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 2,
+		//	user:              "user4",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Default Sharding, replicationFactor = 2, disagreement": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 2,
+		//	user:              "user5",
+		//	expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
+		//},
+		//"Default Sharding, replicationFactor = 3, weak quorum, non-sparse": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 3,
+		//	user:              "user6",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Default Sharding, replicationFactor = 3, weak quorum, sparse": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 3,
+		//	user:              "user7",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Default Sharding, replicationFactor = 3, weak quorum, disagreement with quorum": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 3,
+		//	user:              "user8",
+		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
+		//},
+		//"Default Sharding, replicationFactor = 3, weak quorum, disagreement no quorum": {
+		//	sharding:          true,
+		//	shardingStrategy:  util.ShardingStrategyDefault,
+		//	replicationFactor: 3,
+		//	user:              "user9",
+		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, non-sparse": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 1,
+		//	user:              "user1",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, sparse": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 1,
+		//	user:              "user2",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, non-sparse": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 2,
+		//	user:              "user3",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, sparse": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 2,
+		//	user:              "user4",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, disagreement": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 2,
+		//	user:              "user5",
+		//	expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, non-sparse": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 3,
+		//	user:              "user6",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, sparse": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 3,
+		//	user:              "user7",
+		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, disagreement with quorum": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 3,
+		//	user:              "user8",
+		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
+		//},
+		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, disagreement no quorum": {
+		//	sharding:          true,
+		//	shuffleShardSize:  6,
+		//	shardingStrategy:  util.ShardingStrategyShuffle,
+		//	replicationFactor: 3,
+		//	user:              "user9",
+		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
+		//},
 	}
 
+	t.Logf("Running tests")
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Logf("Running test:  %s", name)
+
 			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
 			allRulesByUser := map[string]rulespb.RuleGroupList{}
@@ -411,6 +637,7 @@ func TestGetRules(t *testing.T) {
 			allTokensByRuler := map[string][]uint32{}
 			rulerAddrMap := map[string]*Ruler{}
 
+			t.Logf("Creating rulers")
 			createRuler := func(id string) *Ruler {
 				cfg, cleanUp := defaultRulerConfig(t, newMockRuleStore(allRulesByUser))
 				t.Cleanup(cleanUp)
@@ -439,6 +666,7 @@ func TestGetRules(t *testing.T) {
 			}
 
 			for rID, r := range expectedRules {
+				t.Logf("Creating ruler %s", rID)
 				createRuler(rID)
 				for user, rules := range r {
 					allRulesByUser[user] = append(allRulesByUser[user], rules...)
@@ -447,6 +675,7 @@ func TestGetRules(t *testing.T) {
 				}
 			}
 
+			t.Logf("Adding ingesters")
 			if tc.sharding {
 				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
@@ -463,6 +692,7 @@ func TestGetRules(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 
+			t.Logf("Mapping addresses?")
 			forEachRuler := func(f func(rID string, r *Ruler)) {
 				for rID, r := range rulerAddrMap {
 					f(rID, r)
@@ -470,52 +700,94 @@ func TestGetRules(t *testing.T) {
 			}
 
 			// Sync Rules
+			t.Logf("Syncing rules")
 			forEachRuler(func(_ string, r *Ruler) {
 				r.syncRules(context.Background(), rulerSyncReasonInitial)
 			})
 
-			for u := range allRulesByUser {
-				ctx := user.InjectOrgID(context.Background(), u)
-				forEachRuler(func(id string, r *Ruler) {
-					mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
-					rules, err := r.GetRules(ctx, Weak)
-					require.NoError(t, err)
-					require.Equal(t, len(allRulesByUser[u]), len(rules))
+			t.Logf("%s:  Sleeping for 60 seconds", time.Now().String())
+			time.Sleep(60 * time.Second)
 
-					// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
-					// complete result
-					if tc.sharding && tc.replicationFactor <= 1 {
-						if tc.shardingStrategy == util.ShardingStrategyShuffle {
-							require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
-						} else {
-							require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
-						}
-						mockPoolClient.numberOfCalls.Store(0)
+			forEachRuler(func(_ string, r *Ruler) {
+				for u := range allRulesByUser {
+					groups := r.manager.GetRules(u)
+					for _, g := range groups {
+						t.Logf("GetRules:  u=%s, g=%s, lastEvaluationTime=%s", u, g.Name(), g.GetLastEvaluation().String())
 					}
-				})
-			}
-
-			totalLoadedRules := 0
-			totalConfiguredRules := 0
-
-			forEachRuler(func(rID string, r *Ruler) {
-				localRules, err := r.listRules(context.Background())
-				require.NoError(t, err)
-				for _, rules := range localRules {
-					totalLoadedRules += len(rules)
 				}
-				totalConfiguredRules += len(allRulesByRuler[rID])
 			})
 
-			if tc.sharding && tc.replicationFactor <= 1 {
-				require.Equal(t, totalConfiguredRules, totalLoadedRules)
-			} else if tc.replicationFactor > 1 {
-				require.Equal(t, totalConfiguredRules*tc.replicationFactor, totalLoadedRules)
-			} else {
-				// Not sharding means that all rules will be loaded on all rulers
-				numberOfRulers := len(rulerAddrMap)
-				require.Equal(t, totalConfiguredRules*numberOfRulers, totalLoadedRules)
-			}
+			ctx := user.InjectOrgID(context.Background(), tc.user)
+			forEachRuler(func(id string, r *Ruler) {
+				mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
+				mockPoolClient.numberOfCalls.Store(0)
+
+				rulegroups, err := r.GetRules(ctx, Weak)
+				require.NoError(t, err)
+
+				encodedRuleGroups := make([]string, len(rulegroups))
+				for i, rg := range rulegroups {
+					encodedRg, err := encodeExpectedGroup(rg.Group)
+					require.NoError(t, err)
+					encodedRuleGroups[i] = encodedRg
+				}
+				sort.Strings(encodedRuleGroups)
+				require.Equal(t, tc.expectedGroups, encodedRuleGroups)
+
+				// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
+				// complete result
+				//if tc.sharding && tc.replicationFactor <= 1 {
+				//	if tc.shardingStrategy == util.ShardingStrategyShuffle {
+				//		require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
+				//	} else {
+				//		require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
+				//	}
+				//	mockPoolClient.numberOfCalls.Store(0)
+				//}
+			})
+
+			//for u := range allRulesByUser {
+			//	ctx := user.InjectOrgID(context.Background(), u)
+			//	forEachRuler(func(id string, r *Ruler) {
+			//		mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
+			//		rules, err := r.GetRules(ctx, Weak)
+			//		require.NoError(t, err)
+			//		require.Equal(t, len(allRulesByUser[u]), len(rules))
+			//
+			//		// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
+			//		// complete result
+			//		if tc.sharding && tc.replicationFactor <= 1 {
+			//			if tc.shardingStrategy == util.ShardingStrategyShuffle {
+			//				require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
+			//			} else {
+			//				require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
+			//			}
+			//			mockPoolClient.numberOfCalls.Store(0)
+			//		}
+			//	})
+			//}
+			//
+			//totalLoadedRules := 0
+			//totalConfiguredRules := 0
+
+			//forEachRuler(func(rID string, r *Ruler) {
+			//	localRules, err := r.listRules(context.Background())
+			//	require.NoError(t, err)
+			//	for _, rules := range localRules {
+			//		totalLoadedRules += len(rules)
+			//	}
+			//	totalConfiguredRules += len(allRulesByRuler[rID])
+			//})
+			//
+			//if tc.sharding && tc.replicationFactor <= 1 {
+			//	require.Equal(t, totalConfiguredRules, totalLoadedRules)
+			//} else if tc.replicationFactor > 1 {
+			//	require.Equal(t, totalConfiguredRules*tc.replicationFactor, totalLoadedRules)
+			//} else {
+			//	// Not sharding means that all rules will be loaded on all rulers
+			//	numberOfRulers := len(rulerAddrMap)
+			//	require.Equal(t, totalConfiguredRules*numberOfRulers, totalLoadedRules)
+			//}
 		})
 	}
 }
@@ -1302,6 +1574,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, time.Time{}, ruleGroup.GetLastEvaluation())
 	require.Equal(t, "group1", ruleGroup.Name())
 	require.Equal(t, 1, len(ruleGroup.Rules()))
+	t.Logf("LastEvaluation=%s", ruleGroup.GetLastEvaluation().String())
 
 	// assert initial state of rule within rule group
 	alertRule := ruleGroup.Rules()[0]

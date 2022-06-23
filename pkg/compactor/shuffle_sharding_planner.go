@@ -46,5 +46,9 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 		resultMetas = append(resultMetas, b)
 	}
 
+	if len(resultMetas) < 2 {
+		return nil, nil
+	}
+
 	return resultMetas, nil
 }

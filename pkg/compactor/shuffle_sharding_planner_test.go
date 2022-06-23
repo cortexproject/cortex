@@ -16,6 +16,7 @@ import (
 func TestShuffleShardingPlanner_Plan(t *testing.T) {
 	block1ulid := ulid.MustNew(1, nil)
 	block2ulid := ulid.MustNew(2, nil)
+	block3ulid := ulid.MustNew(3, nil)
 
 	tests := map[string]struct {
 		ranges          []int64
@@ -137,6 +138,13 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 						MaxTime: 2 * time.Hour.Milliseconds(),
 					},
 				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block3ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
 			},
 			expected: []*metadata.Meta{
 				{
@@ -146,7 +154,35 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 						MaxTime: 2 * time.Hour.Milliseconds(),
 					},
 				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block3ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
 			},
+		},
+		"test should not compact if there is only 1 compactable block": {
+			ranges:          []int64{2 * time.Hour.Milliseconds()},
+			noCompactBlocks: map[ulid.ULID]*metadata.NoCompactMark{block1ulid: {}},
+			blocks: []*metadata.Meta{
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block1ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block2ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+			},
+			expected: []*metadata.Meta{},
 		},
 	}
 

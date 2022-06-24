@@ -6107,9 +6107,4 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>&lt;code>-store-gateway.sharding-ring.heartbeat-period=0&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>Compactor shuffle sharding
-&lt;ul>
-&lt;li>Enabled via &lt;code>-compactor.sharding-enabled=true&lt;/code>, &lt;code>-compactor.sharding-strategy=shuffle-sharding&lt;/code>, and &lt;code>-compactor.tenant-shard-size&lt;/code> set to a value larger than 0.&lt;/li>
-&lt;/ul>
-&lt;/li>
 &lt;/ul></description></item></channel></rss>

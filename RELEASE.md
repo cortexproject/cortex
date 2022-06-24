@@ -28,7 +28,7 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.10.0        | 2021-06-25                                 | Bryan Boreham (@bboreham)                   |
 | v1.11.0        | 2021-08-06                                 | Marco Pracucci (@pracucci)                  |
 | v1.12.0        | 2022-02-17                                 | _Abandoned_                                 |
-| v1.13.0        | TBD                                        | Alvin Lin (@alvinlin123)                    |
+| v1.13.0        | 2022-06-23                                 | Alvin Lin (@alvinlin123)                    |
 
 ## Release shepherd responsibilities
 

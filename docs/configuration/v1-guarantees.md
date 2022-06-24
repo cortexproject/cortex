@@ -95,3 +95,5 @@ Currently experimental features are:
   - `-alertmanager.sharding-ring.heartbeat-period=0`
   - `-compactor.ring.heartbeat-period=0`
   - `-store-gateway.sharding-ring.heartbeat-period=0`
+- Compactor shuffle sharding
+  - Enabled via `-compactor.sharding-enabled=true`, `-compactor.sharding-strategy=shuffle-sharding`, and `-compactor.tenant-shard-size` set to a value larger than 0.

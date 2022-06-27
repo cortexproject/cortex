@@ -65,7 +65,8 @@ const (
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
 
 	// errors
-	errListAllUser = "unable to list the ruler users"
+	errListAllUser          = "unable to list the ruler users"
+	errUnableToObtainQuorum = "unable to obtain quorum result for rule group"
 )
 
 type QuorumType uint8
@@ -941,7 +942,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 		}
 		if !quorumFound {
 			if quorumType == Strong {
-				return nil, errors.Errorf("unable to obtain quorum result for group %s", groupName)
+				return nil, errors.Errorf(errUnableToObtainQuorum+" %s", groupName)
 			} else {
 				level.Info(r.logger).Log("msg", "using mostRecentlyEvaluatedGroup", "groupName", mostRecentlyEvaluated.group.Group.Name, "interval", mostRecentlyEvaluated.group.Group.Interval.String(), "evaluationTimestamp", mostRecentlyEvaluated.group.EvaluationTimestamp.String(), "groupCount", mostRecentlyEvaluated.count)
 				merged[groupName] = mostRecentlyEvaluated.group
@@ -1040,7 +1041,7 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 
 	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
 	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 

@@ -415,20 +415,6 @@ func TestGetRules(t *testing.T) {
 		expectedRules[rulerId][user] = newRuleGroups(rulerId, user, encodedRuleGroups)
 	}
 
-	type testCase struct {
-		sharding          bool
-		shardingStrategy  string
-		shuffleShardSize  int
-		replicationFactor int
-		quorum            QuorumType
-		rulerId           string
-		user              string
-		unavailableRulers []string
-		expectedGroups    []string
-		expectedError     string
-		expectedCalls     int
-	}
-
 	t.Logf("Building expectedRules")
 	expectedRules := make(multiRulerConfig)
 	rulerId := "ruler1"
@@ -557,234 +543,311 @@ func TestGetRules(t *testing.T) {
 	addRuleGroup(expectedRules, rulerId, "user18", []string{"S"})
 	addRuleGroup(expectedRules, rulerId, "user19", []string{"R"})
 
-	t.Logf("Building testCases")
-	testCases := map[string]testCase{
-		//"No Sharding, weak quorum": {
-		//	sharding:          false,
-		//	replicationFactor: 1,
-		//	rulerId:           "ruler1",
-		//	user:              "user0",
-		//	expectedGroups:    []string{"A", "B", "C"},
-		//},
-		//"Default Sharding, weak quorum, non-sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 1,
-		//	user:              "user1",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, weak quorum, sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 1,
-		//	user:              "user2",
-		//	expectedGroups:    []string{"A", "B", "C"},
-		//},
-		//"Default Sharding, replicationFactor = 2, weak quorum, non-sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 2,
-		//	user:              "user3",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 2, weak quorum, sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 2,
-		//	user:              "user4",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 2, weak quorum, disagreement": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 2,
-		//	user:              "user5",
-		//	expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
-		//},
-		//"Default Sharding, replicationFactor = 2, weak quorum, disagreement due to unavailability": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 2,
-		//	user:              "user3",
-		//	unavailableRulers: []string{"ruler3"},
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 3, weak quorum, non-sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	user:              "user6",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 3, weak quorum, sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	user:              "user7",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 3, weak quorum, disagreement with quorum": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	user:              "user8",
-		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
-		//},
-		//"Default Sharding, replicationFactor = 3, weak quorum, unavailibility with quorum": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	user:              "user6",
-		//	unavailableRulers: []string{"ruler3"},
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 3, weak quorum, disagreement no quorum": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	user:              "user9",
-		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
-		//},
-		//"Default Sharding, replicationFactor = 3, weak quorum, unavailibility no quorum": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	user:              "user6",
-		//	unavailableRulers: []string{"ruler3", "ruler4"},
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, non-sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 1,
-		//	user:              "user11",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 1,
-		//	user:              "user12",
-		//	expectedGroups:    []string{"A", "B", "C"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, non-sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 2,
-		//	user:              "user13",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 2,
-		//	user:              "user14",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, disagreement": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 2,
-		//	user:              "user15",
-		//	expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, non-sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	user:              "user16",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, split": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	user:              "user17",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, disagreement with quorum": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	user:              "user18",
-		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailibility with quorum": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	user:              "user16",
-		//	unavailableRulers: []string{"ruler3"},
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, disagreement no quorum": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	user:              "user19",
-		//	expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailibility no quorum": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	user:              "user16",
-		//	unavailableRulers: []string{"ruler3", "ruler4"},
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
+	type testCase struct {
+		name string
 
-		//"No Sharding, strong quorum": {
-		//	sharding:          false,
-		//	replicationFactor: 1,
-		//	quorum:            Strong,
-		//	rulerId:           "ruler1",
-		//	user:              "user0",
-		//	expectedGroups:    []string{"A", "B", "C"},
-		//},
-		//"Default Sharding, strong quorum, non-sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 1,
-		//	quorum:            Strong,
-		//	user:              "user1",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, strong quorum, sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 1,
-		//	quorum:            Strong,
-		//	user:              "user2",
-		//	expectedGroups:    []string{"A", "B", "C"},
-		//},
-		//"Default Sharding, replicationFactor = 2, strong quorum, non-sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 2,
-		//	quorum:            Strong,
-		//	user:              "user3",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 2, strong quorum, sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 2,
-		//	quorum:            Strong,
-		//	user:              "user4",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		"Default Sharding, replicationFactor = 2, strong quorum, disagreement": {
+		// ruler setup parameters
+		sharding          bool
+		shardingStrategy  string
+		shuffleShardSize  int
+		replicationFactor int
+		unavailableRulers []string
+
+		// request and test parameters
+		quorum         QuorumType
+		rulerId        string
+		user           string
+		expectedGroups []string
+		expectedError  string
+		expectedCalls  int
+	}
+
+	testCaseConfigEqual := func(a testCase, b testCase) bool {
+		return a.sharding == b.sharding &&
+			a.shardingStrategy == b.shardingStrategy &&
+			a.shuffleShardSize == b.shuffleShardSize &&
+			a.replicationFactor == b.replicationFactor &&
+			strings.Join(a.unavailableRulers, ",") == strings.Join(b.unavailableRulers, ",")
+	}
+
+	testCaseConfigLess := func(a testCase, b testCase) bool {
+		if a.sharding == b.sharding {
+			if a.shardingStrategy == b.shardingStrategy {
+				if a.shuffleShardSize == b.shuffleShardSize {
+					if a.replicationFactor == b.replicationFactor {
+						return strings.Join(a.unavailableRulers, ",") < strings.Join(b.unavailableRulers, ",")
+					} else {
+						return a.replicationFactor < b.replicationFactor
+					}
+				} else {
+					return a.shuffleShardSize < b.shuffleShardSize
+				}
+			} else {
+				return a.shardingStrategy < b.shardingStrategy
+			}
+		} else {
+			return a.sharding == false
+		}
+	}
+
+	t.Logf("Building testCases")
+	testCases := []testCase{
+		{
+			name:              "No Sharding, weak quorum",
+			sharding:          false,
+			replicationFactor: 1,
+			rulerId:           "ruler1",
+			user:              "user0",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		{
+			name:              "Default Sharding, weak quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 1,
+			user:              "user1",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, weak quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 1,
+			user:              "user2",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, weak quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 2,
+			user:              "user3",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, weak quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 2,
+			user:              "user4",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, weak quorum, disagreement",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 2,
+			user:              "user5",
+			expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, weak quorum, disagreement due to unavailability",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 2,
+			user:              "user3",
+			unavailableRulers: []string{"ruler3"},
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			user:              "user6",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			user:              "user7",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, disagreement with quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			user:              "user8",
+			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, unavailibility with quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			user:              "user6",
+			unavailableRulers: []string{"ruler3"},
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, disagreement no quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			user:              "user9",
+			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, unavailibility no quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			user:              "user6",
+			unavailableRulers: []string{"ruler3", "ruler4"},
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 1,
+			user:              "user11",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 1,
+			user:              "user12",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 2, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 2,
+			user:              "user13",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 2, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 2,
+			user:              "user14",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 2, disagreement",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 2,
+			user:              "user15",
+			expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			user:              "user16",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, split",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			user:              "user17",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, disagreement with quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			user:              "user18",
+			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailibility with quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			user:              "user16",
+			unavailableRulers: []string{"ruler3"},
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, disagreement no quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			user:              "user19",
+			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailibility no quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			user:              "user16",
+			unavailableRulers: []string{"ruler3", "ruler4"},
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+
+		{
+			name:              "No Sharding, strong quorum",
+			sharding:          false,
+			replicationFactor: 1,
+			quorum:            Strong,
+			rulerId:           "ruler1",
+			user:              "user0",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		{
+			name:              "Default Sharding, strong quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 1,
+			quorum:            Strong,
+			user:              "user1",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, strong quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 1,
+			quorum:            Strong,
+			user:              "user2",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, strong quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 2,
+			quorum:            Strong,
+			user:              "user3",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, strong quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 2,
+			quorum:            Strong,
+			user:              "user4",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 2, strong quorum, disagreement",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 2,
@@ -792,7 +855,8 @@ func TestGetRules(t *testing.T) {
 			user:              "user5",
 			expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
 		},
-		"Default Sharding, replicationFactor = 2, strong quorum, disagreement due to unavailability": {
+		{
+			name:              "Default Sharding, replicationFactor = 2, strong quorum, disagreement due to unavailability",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 2,
@@ -801,23 +865,26 @@ func TestGetRules(t *testing.T) {
 			unavailableRulers: []string{"ruler3"},
 			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
 		},
-		//"Default Sharding, replicationFactor = 3, strong quorum, non-sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	quorum:            Strong,
-		//	user:              "user6",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Default Sharding, replicationFactor = 3, strongweak quorum, sparse": {
-		//	sharding:          true,
-		//	shardingStrategy:  util.ShardingStrategyDefault,
-		//	replicationFactor: 3,
-		//	quorum:            Strong,
-		//	user:              "user7",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		"Default Sharding, replicationFactor = 3, strong quorum, disagreement with quorum": {
+		{
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			quorum:            Strong,
+			user:              "user6",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, strongweak quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyDefault,
+			replicationFactor: 3,
+			quorum:            Strong,
+			user:              "user7",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, disagreement with quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -825,7 +892,8 @@ func TestGetRules(t *testing.T) {
 			user:              "user8",
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
 		},
-		"Default Sharding, replicationFactor = 3, strong quorum, unavailibility with quorum": {
+		{
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, unavailibility with quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -834,125 +902,143 @@ func TestGetRules(t *testing.T) {
 			unavailableRulers: []string{"ruler3"},
 			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
 		},
-		"Default Sharding, replicationFactor = 3, strong quorum, disagreement no quorum": {
+		{
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, disagreement no quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
 			quorum:            Strong,
 			user:              "user9",
-			expectedError:     "unable to obtain quorum",
+			expectedError:     errUnableToObtainQuorum,
 		},
-		"Default Sharding, replicationFactor = 3, weak quorum, unavailibility no quorum": {
+		{
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, unavailibility no quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
 			quorum:            Strong,
 			user:              "user6",
 			unavailableRulers: []string{"ruler3", "ruler4"},
-			expectedError:     "unable to obtain quorum",
+			expectedError:     errUnableToObtainQuorum,
 		},
-		//"Shuffle Sharding, ShardSize = 6, strong quorum, non-sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 1,
-		//	quorum:            Strong,
-		//	user:              "user11",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, strong quorum, sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 1,
-		//	quorum:            Strong,
-		//	user:              "user12",
-		//	expectedGroups:    []string{"A", "B", "C"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, strong quorum, non-sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 2,
-		//	quorum:            Strong,
-		//	user:              "user13",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, strong quorum, sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 2,
-		//	quorum:            Strong,
-		//	user:              "user14",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 2, strong quorum, disagreement": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 2,
-		//	quorum:            Strong,
-		//	user:              "user15",
-		//	expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, non-sparse": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	quorum:            Strong,
-		//	user:              "user16",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		//"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, split": {
-		//	sharding:          true,
-		//	shuffleShardSize:  6,
-		//	shardingStrategy:  util.ShardingStrategyShuffle,
-		//	replicationFactor: 3,
-		//	quorum:            Strong,
-		//	user:              "user17",
-		//	expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
-		//},
-		"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, disagreement with quorum": {
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, strong quorum, non-sparse",
 			sharding:          true,
-			shuffleShardSize:  6,
 			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 1,
+			quorum:            Strong,
+			user:              "user11",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, strong quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 1,
+			quorum:            Strong,
+			user:              "user12",
+			expectedGroups:    []string{"A", "B", "C"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 2, strong quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 2,
+			quorum:            Strong,
+			user:              "user13",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 2, strong quorum, sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 2,
+			quorum:            Strong,
+			user:              "user14",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 2, strong quorum, disagreement",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 2,
+			quorum:            Strong,
+			user:              "user15",
+			expectedGroups:    []string{"A+", "B+", "C+", "D", "E", "F+"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, non-sparse",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			quorum:            Strong,
+			user:              "user16",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, split",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
+			replicationFactor: 3,
+			quorum:            Strong,
+			user:              "user17",
+			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
+		},
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, disagreement with quorum",
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
 			replicationFactor: 3,
 			quorum:            Strong,
 			user:              "user18",
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
 		},
-		"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailibility with quorum": {
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailibility with quorum",
 			sharding:          true,
-			shuffleShardSize:  6,
 			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
 			replicationFactor: 3,
 			quorum:            Strong,
 			user:              "user16",
 			unavailableRulers: []string{"ruler3"},
 			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
 		},
-		"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, disagreement no quorum": {
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, disagreement no quorum",
 			sharding:          true,
-			shuffleShardSize:  6,
 			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
 			replicationFactor: 3,
 			quorum:            Strong,
 			user:              "user19",
-			expectedError:     "unable to obtain quorum",
+			expectedError:     errUnableToObtainQuorum,
 		},
-		"Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailibility no quorum": {
+		{
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailibility no quorum",
 			sharding:          true,
-			shuffleShardSize:  6,
 			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  6,
 			replicationFactor: 3,
 			quorum:            Strong,
 			user:              "user16",
 			unavailableRulers: []string{"ruler3", "ruler4"},
-			expectedError:     "unable to obtain quorum",
+			expectedError:     errUnableToObtainQuorum,
 		},
 	}
+
+	// sort test cases by configuration 	 so that similar test configurations are grouped together
+	sort.Slice(testCases, func(i int, j int) bool {
+		return testCaseConfigLess(testCases[i], testCases[j])
+	})
 
 	rulersCount := len(expectedRules)
 	allUsers := map[string]bool{}
@@ -1014,135 +1100,150 @@ func TestGetRules(t *testing.T) {
 	//}
 
 	t.Logf("Running tests")
-	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Logf("Running test:  %s", name)
+	for tcIndex, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("Running test:  %s", tc.name)
 
-			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
-			rulerAddrMap := map[string]*Ruler{}
-			rulerAddrMapForClients := map[string]*Ruler{}
-
-			t.Logf("Creating rulers")
-			createRuler := func(id string) *Ruler {
-				cfg, cleanUp := defaultRulerConfig(t, newMockRuleStore(expectedRules[id]))
-				t.Cleanup(cleanUp)
-
-				cfg.ShardingStrategy = tc.shardingStrategy
-				cfg.EnableSharding = tc.sharding
-
-				cfg.Ring = RingConfig{
-					InstanceID:   id,
-					InstanceAddr: id,
-					KVStore: kv.Config{
-						Mock: kvStore,
-					},
-					ReplicationFactor: tc.replicationFactor,
-				}
-
-				testRuleGroupHash := func(g *rulespb.RuleGroupDesc) uint32 {
-					return binary.LittleEndian.Uint32(g.Options[0].Value)
-				}
-				r, cleanUp := buildRulerWithCustomGroupHash(t, cfg, nil, rulerAddrMapForClients, testRuleGroupHash)
-				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
-
-				rulerAddrMap[id] = r
-				if tc.unavailableRulers == nil || !sliceContains(t, id, tc.unavailableRulers) {
-					rulerAddrMapForClients[id] = r
-				}
-
-				t.Cleanup(cleanUp)
-				if r.ring != nil {
-					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
-					t.Cleanup(r.ring.StopAsync)
-				}
-				return r
-			}
-
-			for rID, _ := range expectedRules {
-				t.Logf("Creating ruler %s", rID)
-				createRuler(rID)
-			}
-
-			t.Logf("Adding ingesters")
-			if tc.sharding {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
-					d, _ := in.(*ring.Desc)
-					if d == nil {
-						d = ring.NewDesc()
-					}
-					for rID, token := range rulerTokens {
-						d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", token, ring.ACTIVE, time.Now())
-					}
-					return d, true, nil
-				})
-				require.NoError(t, err)
-				// Wait a bit to make sure ruler's ring is updated.
-				time.Sleep(100 * time.Millisecond)
-			}
-
+			var (
+				rulerAddrMap map[string]*Ruler
+			)
 			forEachRuler := func(f func(rID string, r *Ruler)) {
 				for rID, r := range rulerAddrMap {
 					f(rID, r)
 				}
 			}
 
-			forEachRuler(func(rID string, r *Ruler) {
-				for u := range allUsers {
-					groups := r.manager.GetRules(u)
-					for _, g := range groups {
-						t.Logf("GetRules:  r=%s, u=%s, g=%s, lastEvaluationTime=%s", rID, u, g.Name(), g.GetLastEvaluation().String())
+			if tcIndex > 0 && testCaseConfigEqual(testCases[tcIndex-1], testCases[tcIndex]) {
+				t.Logf("We can re-use the previous test setup")
+			} else {
+				t.Logf("Setting up rulers")
+
+				kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+				t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
+				rulerAddrMap = map[string]*Ruler{}
+				rulerAddrMapForClients := map[string]*Ruler{}
+
+				t.Logf("Creating rulers")
+				createRuler := func(id string) *Ruler {
+					cfg, cleanUp := defaultRulerConfig(t, newMockRuleStore(expectedRules[id]))
+					t.Cleanup(cleanUp)
+
+					cfg.ShardingStrategy = tc.shardingStrategy
+					cfg.EnableSharding = tc.sharding
+
+					cfg.Ring = RingConfig{
+						InstanceID:   id,
+						InstanceAddr: id,
+						KVStore: kv.Config{
+							Mock: kvStore,
+						},
+						ReplicationFactor: tc.replicationFactor,
+					}
+
+					testRuleGroupHash := func(g *rulespb.RuleGroupDesc) uint32 {
+						return binary.LittleEndian.Uint32(g.Options[0].Value)
+					}
+					r, cleanUp := buildRulerWithCustomGroupHash(t, cfg, nil, rulerAddrMapForClients, testRuleGroupHash)
+					r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
+
+					rulerAddrMap[id] = r
+					if tc.unavailableRulers == nil || !sliceContains(t, id, tc.unavailableRulers) {
+						rulerAddrMapForClients[id] = r
+					}
+
+					t.Cleanup(cleanUp)
+					if r.ring != nil {
+						require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
+						t.Cleanup(r.ring.StopAsync)
+					}
+					return r
+				}
+
+				for rID, _ := range expectedRules {
+					t.Logf("Creating ruler %s", rID)
+					createRuler(rID)
+				}
+
+				t.Logf("Adding ingesters")
+				if tc.sharding {
+					err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+						d, _ := in.(*ring.Desc)
+						if d == nil {
+							d = ring.NewDesc()
+						}
+						for rID, token := range rulerTokens {
+							d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", token, ring.ACTIVE, time.Now())
+						}
+						return d, true, nil
+					})
+					require.NoError(t, err)
+					// Wait a bit to make sure ruler's ring is updated.
+					time.Sleep(100 * time.Millisecond)
+				}
+
+				forEachRuler := func(f func(rID string, r *Ruler)) {
+					for rID, r := range rulerAddrMap {
+						f(rID, r)
 					}
 				}
-			})
 
-			// Sync Rules
-			forEachRuler(func(rID string, r *Ruler) {
-				t.Logf("Syncing ruler %s", rID)
-				r.syncRules(context.Background(), rulerSyncReasonInitial)
-			})
-
-			//time.Sleep(50 * time.Second)
-
-			// sleep until rules are evaluated
-			for i := 0; i < 6; i++ {
-				t.Logf("%s:  Sleeping for 10 seconds", time.Now().String())
-				time.Sleep(10 * time.Second)
-
-				counter := 0
-				for _, r := range rulerAddrMap {
-					groups := r.manager.GetRules("user1")
-					if len(groups) > 0 && !groups[0].GetLastEvaluation().IsZero() && groups[0].GetLastEvaluation().Add(newEval+newestEval).Before(time.Now()) {
-						counter++
+				forEachRuler(func(rID string, r *Ruler) {
+					for u := range allUsers {
+						groups := r.manager.GetRules(u)
+						for _, g := range groups {
+							t.Logf("GetRules:  r=%s, u=%s, g=%s, lastEvaluationTime=%s", rID, u, g.Name(), g.GetLastEvaluation().String())
+						}
 					}
-				}
-				if counter >= len(rulerTokens) {
-					break
+				})
+
+				// Sync Rules
+				forEachRuler(func(rID string, r *Ruler) {
+					t.Logf("Syncing ruler %s", rID)
+					r.syncRules(context.Background(), rulerSyncReasonInitial)
+				})
+
+				//time.Sleep(50 * time.Second)
+
+				// sleep until rules are evaluated
+				for i := 0; i < 6; i++ {
+					t.Logf("%s:  Sleeping for 10 seconds", time.Now().String())
+					time.Sleep(10 * time.Second)
+
+					counter := 0
+					for _, r := range rulerAddrMap {
+						groups := r.manager.GetRules("user1")
+						if len(groups) > 0 && !groups[0].GetLastEvaluation().IsZero() && groups[0].GetLastEvaluation().Add(newEval+newestEval).Before(time.Now()) {
+							counter++
+						}
+					}
+					if counter >= len(rulerTokens) {
+						break
+					}
+
+					//counter := 0
+					//forEachRuler(func(rulerId string, r *Ruler) {
+					//	t.Logf("Calling manager.GetRules:  ruler=%s, user=user1", rulerId)
+					//	groups := r.manager.GetRules("user0")
+					//	if len(groups) > 0 {
+					//		for _, g := range groups {
+					//			t.Logf("Received %d rulegroups from %s:  group %s", len(groups), rulerId, g.Name())
+					//		}
+					//	} else {
+					//		t.Logf("Received %d rulegroups from %s", len(groups), rulerId)
+					//	}
+					//	counter += len(groups)
+					//})
+					//if counter >= len(allRulesByRuler) {
+					//	break
+					//}
 				}
 
-				//counter := 0
-				//forEachRuler(func(rulerId string, r *Ruler) {
-				//	t.Logf("Calling manager.GetRules:  ruler=%s, user=user1", rulerId)
-				//	groups := r.manager.GetRules("user0")
-				//	if len(groups) > 0 {
-				//		for _, g := range groups {
-				//			t.Logf("Received %d rulegroups from %s:  group %s", len(groups), rulerId, g.Name())
-				//		}
-				//	} else {
-				//		t.Logf("Received %d rulegroups from %s", len(groups), rulerId)
-				//	}
-				//	counter += len(groups)
-				//})
-				//if counter >= len(allRulesByRuler) {
-				//	break
-				//}
+				// Stop evaluation to freeze ruler state
+				forEachRuler(func(rID string, r *Ruler) {
+					t.Logf("Stopping ruler %s", rID)
+					r.manager.Stop()
+				})
 			}
-
-			// Stop evaluation to freeze ruler state
-			forEachRuler(func(rID string, r *Ruler) {
-				t.Logf("Stopping ruler %s", rID)
-				r.manager.Stop()
-			})
 
 			ctx := user.InjectOrgID(context.Background(), tc.user)
 			forEachRuler(func(id string, r *Ruler) {

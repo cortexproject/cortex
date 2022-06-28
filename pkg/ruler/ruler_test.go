@@ -351,11 +351,15 @@ func TestGetRules(t *testing.T) {
 	newEval := 7 * time.Second
 	oldEval := 41 * time.Second
 
+	// overriding the ruler token gives us control over which rulers own which rulegroups
 	getRulerToken := func(rulerId string) uint32 {
 		index, _ := strconv.ParseUint(rulerId[5:], 10, 8)
 		return uint32(index * 1000)
 	}
 
+	// we encode rule groups as X, X+, X++ to denote the same rule group with old, newer,
+	// and newest evaluation timestamps, respectively.  Encoding it like this enables us to express lists
+	// of rule groups in a compact form.
 	encodeExpectedGroup := func(rg *rulespb.RuleGroupDesc) (string, error) {
 		if rg.Interval == oldEval {
 			return rg.Name, nil
@@ -383,13 +387,6 @@ func TestGetRules(t *testing.T) {
 			Namespace: "namespace",
 			Name:      string(rgstr[0]),
 			Interval:  interval,
-			//Rules: []*rulespb.RuleDesc{
-			//	{
-			//		Alert: "UP_ALERT",
-			//		Expr:  "1",
-			//		For:   time.Hour,
-			//	},
-			//},
 			Options: []*types.Any{
 				&types.Any{
 					TypeUrl: "dummy",
@@ -532,6 +529,7 @@ func TestGetRules(t *testing.T) {
 	addRuleGroup(expectedRules, rulerId, "user17", []string{"D", "E", "F"})
 	addRuleGroup(expectedRules, rulerId, "user18", []string{"F", "E", "D"})
 	addRuleGroup(expectedRules, rulerId, "user19", []string{"F", "E", "D"})
+	// ruler7 is used tp confirm that shardSize=6 does not return rules from outside the shard
 	rulerId = "ruler7"
 	addRuleGroup(expectedRules, rulerId, "user11", []string{"Z"})
 	addRuleGroup(expectedRules, rulerId, "user12", []string{"Y"})
@@ -546,7 +544,7 @@ func TestGetRules(t *testing.T) {
 	type testCase struct {
 		name string
 
-		// ruler setup parameters
+		// ruler configuration parameters
 		sharding          bool
 		shardingStrategy  string
 		shuffleShardSize  int
@@ -559,9 +557,9 @@ func TestGetRules(t *testing.T) {
 		user           string
 		expectedGroups []string
 		expectedError  string
-		expectedCalls  int
 	}
 
+	// testCase helper functions for sorting, to minimize ruler reconfigurations
 	testCaseConfigEqual := func(a testCase, b testCase) bool {
 		return a.sharding == b.sharding &&
 			a.shardingStrategy == b.shardingStrategy &&
@@ -569,7 +567,6 @@ func TestGetRules(t *testing.T) {
 			a.replicationFactor == b.replicationFactor &&
 			strings.Join(a.unavailableRulers, ",") == strings.Join(b.unavailableRulers, ",")
 	}
-
 	testCaseConfigLess := func(a testCase, b testCase) bool {
 		if a.sharding == b.sharding {
 			if a.shardingStrategy == b.shardingStrategy {
@@ -1035,78 +1032,29 @@ func TestGetRules(t *testing.T) {
 		},
 	}
 
-	// sort test cases by configuration 	 so that similar test configurations are grouped together
+	// sort test cases by configuration so that similar test configurations are grouped together
 	sort.Slice(testCases, func(i int, j int) bool {
 		return testCaseConfigLess(testCases[i], testCases[j])
 	})
 
-	rulersCount := len(expectedRules)
 	allUsers := map[string]bool{}
-	//allRulesByUser := map[string]rulespb.RuleGroupList{}
 	allRulesByRuler := map[string]rulespb.RuleGroupList{}
-	//allTokensByRuler := map[string][]uint32{}
 	rulerTokens := map[string][]uint32{}
 
-	tokenBucketLowerBound := uint32(0)
-	tokenBucketUpperBound := uint32(0)
-	for rulerIndex := 1; rulerIndex <= rulersCount; rulerIndex++ {
-		rulerId := fmt.Sprintf("ruler%d", rulerIndex)
-		tokenBucketUpperBound = uint32(rulerIndex) * (^uint32(0) / uint32(rulersCount))
-		//rulerTokens[rulerId] = []uint32{tokenBucketUpperBound}
-		rulerTokens[rulerId] = []uint32{getRulerToken(rulerId)}
+	for rID := range expectedRules {
+		rulerTokens[rID] = []uint32{getRulerToken(rID)}
 
-		t.Logf("%s: Token lowerbound=%d upperbound=%d", rulerId, tokenBucketLowerBound, tokenBucketUpperBound)
-		for user, rules := range expectedRules[rulerId] {
+		for user, rules := range expectedRules[rID] {
 			allUsers[user] = true
-			//allRulesByUser[user] = append(allRulesByUser[user], rules...)
-			allRulesByRuler[rulerId] = append(allRulesByRuler[rulerId], rules...)
-			//allTokensByRuler[rulerId] = generateTokenForGroups(rules, 1)
-
-			//for _, rule := range rules {
-			//	//t.Logf("token for ruler=%s, user=%s, name=%s, token=%d", rulerId, user, rule.Name, tokenForGroup(rule))
-			//	//err := fitRuleGroupDescIntoHashBucket(rule, tokenBucketLowerBound, tokenBucketUpperBound)
-			//	//if err != nil {
-			//	//	t.Logf("Failed to fit rule:  %s", err.Error())
-			//	//}
-			//	//t.Logf("Fitted rule:  ruler=%s, user=%s, name=%s", rulerId, rule.User, rule.Name)
-			//}
+			allRulesByRuler[rID] = append(allRulesByRuler[rID], rules...)
 		}
-
-		tokenBucketLowerBound = tokenBucketUpperBound
 	}
-
-	//groupNames := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-	//for userIndex := 1; userIndex <= 20; userIndex++ {
-	//	userId := fmt.Sprintf("user%d", rand.Intn(9000000)+1000000)
-	//
-	//	for i := 0; i < len(groupNames); i++ {
-	//		groupName := string(groupNames[i])
-	//		group := &rulespb.RuleGroupDesc{
-	//			User:      userId,
-	//			Namespace: "namespace",
-	//			Name:      groupName,
-	//		}
-	//		t.Logf("%010d\t%s\t%s, ", tokenForGroup(group), group.User, group.Name)
-	//	}
-	//}
-
-	//for rID, r := range expectedRules {
-	//	for user, rules := range r {
-	//		allUsers[user] = true
-	//		//allRulesByUser[user] = append(allRulesByUser[user], rules...)
-	//		allRulesByRuler[rID] = append(allRulesByRuler[rID], rules...)
-	//		allTokensByRuler[rID] = generateTokenForGroups(rules, 1)
-	//	}
-	//}
 
 	t.Logf("Running tests")
 	for tcIndex, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Logf("Running test:  %s", tc.name)
+			var rulerAddrMap map[string]*Ruler
 
-			var (
-				rulerAddrMap map[string]*Ruler
-			)
 			forEachRuler := func(f func(rID string, r *Ruler)) {
 				for rID, r := range rulerAddrMap {
 					f(rID, r)
@@ -1114,9 +1062,9 @@ func TestGetRules(t *testing.T) {
 			}
 
 			if tcIndex > 0 && testCaseConfigEqual(testCases[tcIndex-1], testCases[tcIndex]) {
-				t.Logf("We can re-use the previous test setup")
+				t.Logf("We can re-use the previous ruler configuration")
 			} else {
-				t.Logf("Setting up rulers")
+				t.Logf("Configuring rulers")
 
 				kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 				t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
@@ -1124,16 +1072,17 @@ func TestGetRules(t *testing.T) {
 				rulerAddrMapForClients := map[string]*Ruler{}
 
 				t.Logf("Creating rulers")
-				createRuler := func(id string) *Ruler {
-					cfg, cleanUp := defaultRulerConfig(t, newMockRuleStore(expectedRules[id]))
+				for rID, _ := range expectedRules {
+					t.Logf("Creating ruler %s", rID)
+					cfg, cleanUp := defaultRulerConfig(t, newMockRuleStore(expectedRules[rID]))
 					t.Cleanup(cleanUp)
 
 					cfg.ShardingStrategy = tc.shardingStrategy
 					cfg.EnableSharding = tc.sharding
 
 					cfg.Ring = RingConfig{
-						InstanceID:   id,
-						InstanceAddr: id,
+						InstanceID:   rID,
+						InstanceAddr: rID,
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
@@ -1146,9 +1095,9 @@ func TestGetRules(t *testing.T) {
 					r, cleanUp := buildRulerWithCustomGroupHash(t, cfg, nil, rulerAddrMapForClients, testRuleGroupHash)
 					r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 
-					rulerAddrMap[id] = r
-					if tc.unavailableRulers == nil || !sliceContains(t, id, tc.unavailableRulers) {
-						rulerAddrMapForClients[id] = r
+					rulerAddrMap[rID] = r
+					if tc.unavailableRulers == nil || !sliceContains(t, rID, tc.unavailableRulers) {
+						rulerAddrMapForClients[rID] = r
 					}
 
 					t.Cleanup(cleanUp)
@@ -1156,15 +1105,9 @@ func TestGetRules(t *testing.T) {
 						require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
 						t.Cleanup(r.ring.StopAsync)
 					}
-					return r
 				}
 
-				for rID, _ := range expectedRules {
-					t.Logf("Creating ruler %s", rID)
-					createRuler(rID)
-				}
-
-				t.Logf("Adding ingesters")
+				t.Logf("Mapping ruler addresses")
 				if tc.sharding {
 					err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
 						d, _ := in.(*ring.Desc)
@@ -1181,28 +1124,11 @@ func TestGetRules(t *testing.T) {
 					time.Sleep(100 * time.Millisecond)
 				}
 
-				forEachRuler := func(f func(rID string, r *Ruler)) {
-					for rID, r := range rulerAddrMap {
-						f(rID, r)
-					}
-				}
-
-				forEachRuler(func(rID string, r *Ruler) {
-					for u := range allUsers {
-						groups := r.manager.GetRules(u)
-						for _, g := range groups {
-							t.Logf("GetRules:  r=%s, u=%s, g=%s, lastEvaluationTime=%s", rID, u, g.Name(), g.GetLastEvaluation().String())
-						}
-					}
-				})
-
 				// Sync Rules
 				forEachRuler(func(rID string, r *Ruler) {
 					t.Logf("Syncing ruler %s", rID)
 					r.syncRules(context.Background(), rulerSyncReasonInitial)
 				})
-
-				//time.Sleep(50 * time.Second)
 
 				// sleep until rules are evaluated
 				for i := 0; i < 6; i++ {
@@ -1219,23 +1145,6 @@ func TestGetRules(t *testing.T) {
 					if counter >= len(rulerTokens) {
 						break
 					}
-
-					//counter := 0
-					//forEachRuler(func(rulerId string, r *Ruler) {
-					//	t.Logf("Calling manager.GetRules:  ruler=%s, user=user1", rulerId)
-					//	groups := r.manager.GetRules("user0")
-					//	if len(groups) > 0 {
-					//		for _, g := range groups {
-					//			t.Logf("Received %d rulegroups from %s:  group %s", len(groups), rulerId, g.Name())
-					//		}
-					//	} else {
-					//		t.Logf("Received %d rulegroups from %s", len(groups), rulerId)
-					//	}
-					//	counter += len(groups)
-					//})
-					//if counter >= len(allRulesByRuler) {
-					//	break
-					//}
 				}
 
 				// Stop evaluation to freeze ruler state
@@ -1260,7 +1169,6 @@ func TestGetRules(t *testing.T) {
 
 				if tc.expectedError == "" {
 					require.NoError(t, err)
-					t.Logf("Received %d rulegroups", len(rulegroups))
 
 					encodedRuleGroups := make([]string, len(rulegroups))
 					for i, rg := range rulegroups {
@@ -1273,61 +1181,7 @@ func TestGetRules(t *testing.T) {
 				} else {
 					require.Contains(t, err.Error(), tc.expectedError)
 				}
-
-				// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
-				// complete result
-				//if tc.sharding && tc.replicationFactor <= 1 {
-				//	if tc.shardingStrategy == util.ShardingStrategyShuffle {
-				//		require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
-				//	} else {
-				//		require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
-				//	}
-				//	mockPoolClient.numberOfCalls.Store(0)
-				//}
 			})
-
-			//for u := range allRulesByUser {
-			//	ctx := user.InjectOrgID(context.Background(), u)
-			//	forEachRuler(func(id string, r *Ruler) {
-			//		mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
-			//		rules, err := r.GetRules(ctx, Weak)
-			//		require.NoError(t, err)
-			//		require.Equal(t, len(allRulesByUser[u]), len(rules))
-			//
-			//		// If replication factor larger than 1, we don't necessary need to wait for all ruler's call to complete to get the
-			//		// complete result
-			//		if tc.sharding && tc.replicationFactor <= 1 {
-			//			if tc.shardingStrategy == util.ShardingStrategyShuffle {
-			//				require.Equal(t, int32(tc.shuffleShardSize), mockPoolClient.numberOfCalls.Load())
-			//			} else {
-			//				require.Equal(t, int32(len(rulerAddrMap)), mockPoolClient.numberOfCalls.Load())
-			//			}
-			//			mockPoolClient.numberOfCalls.Store(0)
-			//		}
-			//	})
-			//}
-			//
-			//totalLoadedRules := 0
-			//totalConfiguredRules := 0
-
-			//forEachRuler(func(rID string, r *Ruler) {
-			//	localRules, err := r.listRules(context.Background())
-			//	require.NoError(t, err)
-			//	for _, rules := range localRules {
-			//		totalLoadedRules += len(rules)
-			//	}
-			//	totalConfiguredRules += len(allRulesByRuler[rID])
-			//})
-			//
-			//if tc.sharding && tc.replicationFactor <= 1 {
-			//	require.Equal(t, totalConfiguredRules, totalLoadedRules)
-			//} else if tc.replicationFactor > 1 {
-			//	require.Equal(t, totalConfiguredRules*tc.replicationFactor, totalLoadedRules)
-			//} else {
-			//	// Not sharding means that all rules will be loaded on all rulers
-			//	numberOfRulers := len(rulerAddrMap)
-			//	require.Equal(t, totalConfiguredRules*numberOfRulers, totalLoadedRules)
-			//}
 		})
 	}
 }
@@ -2114,7 +1968,6 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, time.Time{}, ruleGroup.GetLastEvaluation())
 	require.Equal(t, "group1", ruleGroup.Name())
 	require.Equal(t, 1, len(ruleGroup.Rules()))
-	t.Logf("LastEvaluation=%s", ruleGroup.GetLastEvaluation().String())
 
 	// assert initial state of rule within rule group
 	alertRule := ruleGroup.Rules()[0]
@@ -2158,19 +2011,4 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, firedAtTime, currentTime)
 
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
-}
-
-func fitRuleGroupDescIntoHashBucket(g *rulespb.RuleGroupDesc, lowerBoundInc uint32, upperBoundExc uint32) error {
-	newGroup := *g
-	token := tokenForGroup(&newGroup)
-	for i := 0; i < 1000; i++ {
-		if token >= lowerBoundInc && token < upperBoundExc {
-			g.Name = newGroup.Name
-			return nil
-		}
-		salt := rand.Uint32()
-		newGroup.Name = fmt.Sprintf("%s-%d", g.Name, salt)
-		token = tokenForGroup(&newGroup)
-	}
-	return errors.Errorf("Unable to fit token %s-%s-%s", g.User, g.Namespace, g.Name)
 }

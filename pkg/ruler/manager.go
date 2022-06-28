@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -104,7 +103,6 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 	r.userManagerMtx.Lock()
 	defer r.userManagerMtx.Unlock()
 
-	level.Info(r.logger).Log("msg", "calling syncRulesToManager")
 	for userID, ruleGroup := range ruleGroups {
 		r.syncRulesToManager(ctx, userID, ruleGroup)
 	}
@@ -132,8 +130,6 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
-	level.Info(r.logger).Log("msg", "syncing rules??", "user", user)
-
 	update, files, err := r.mapper.MapRules(user, groups.Formatted())
 	if err != nil {
 		r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -141,14 +137,12 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 
-	level.Info(r.logger).Log("msg", "updating rules??", "user", user)
-
 	manager, exists := r.userManagers[user]
 	if !exists || update {
-		level.Info(r.logger).Log("msg", "updating rules", "user", user)
+		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
 		if !exists {
-			level.Info(r.logger).Log("msg", "creating rule manager for user", "user", user)
+			level.Debug(r.logger).Log("msg", "creating rule manager for user", "user", user)
 			manager, err = r.newManager(ctx, user)
 			if err != nil {
 				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -160,7 +154,6 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
-		level.Info(r.logger).Log("msg", "updating rules!!", "user", user, "files", strings.Join(files, ", "))
 		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), syncAlertsActiveAt)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)

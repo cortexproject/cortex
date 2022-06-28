@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields #4767
 
 ## 1.13.0 in progress
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539

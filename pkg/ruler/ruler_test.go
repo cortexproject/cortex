@@ -34,7 +34,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -1115,6 +1115,13 @@ func TestRuler_ListAllRules(t *testing.T) {
 	for userID := range mockRules {
 		gs[userID] = mockRules[userID].Formatted()
 	}
+
+	// check for unnecessary fields
+	unnecessaryFields := []string{"kind", "style", "tag", "value", "anchor", "alias", "content", "headcomment", "linecomment", "footcomment", "line", "column"}
+	for _, word := range unnecessaryFields {
+		require.NotContains(t, string(body), word)
+	}
+
 	expectedResponse, err := yaml.Marshal(gs)
 	require.NoError(t, err)
 	require.YAMLEq(t, string(expectedResponse), string(body))

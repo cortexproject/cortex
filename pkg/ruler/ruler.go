@@ -879,7 +879,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	iter := make(chan interface{})
 
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter, logger)
+		util.StreamWriteYAMLV3Response(w, iter, logger)
 		close(done)
 	}()
 

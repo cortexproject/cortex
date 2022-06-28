@@ -348,8 +348,8 @@ func TestGetRules(t *testing.T) {
 	// We coerce rules to have categories of evaluation timestamps by assigning progressively larger
 	// group evaluation intervals, and waiting long enough for evaluations to trigger in the desired order.
 	newestEval := 1 * time.Second
-	newEval := 7 * time.Second
-	oldEval := 41 * time.Second
+	newEval := 5 * time.Second
+	oldEval := 30 * time.Second
 
 	// overriding the ruler token gives us control over which rulers own which rulegroups
 	getRulerToken := func(rulerId string) uint32 {
@@ -1131,18 +1131,21 @@ func TestGetRules(t *testing.T) {
 				})
 
 				// sleep until rules are evaluated
-				for i := 0; i < 6; i++ {
+				for i := 0; i < 40; i++ {
 					t.Logf("%s:  Sleeping for 10 seconds", time.Now().String())
-					time.Sleep(10 * time.Second)
+					time.Sleep(3 * time.Second)
 
 					counter := 0
-					for _, r := range rulerAddrMap {
+					for rid, r := range rulerAddrMap {
+						if rid == "ruler7" {
+							continue
+						}
 						groups := r.manager.GetRules("user1")
 						if len(groups) > 0 && !groups[0].GetLastEvaluation().IsZero() && groups[0].GetLastEvaluation().Add(newEval+newestEval).Before(time.Now()) {
 							counter++
 						}
 					}
-					if counter >= len(rulerTokens) {
+					if counter >= (len(rulerTokens) - 1) {
 						break
 					}
 				}

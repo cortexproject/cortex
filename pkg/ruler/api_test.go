@@ -22,6 +22,35 @@ import (
 )
 
 func TestRuler_rules(t *testing.T) {
+	type testCase struct {
+		name               string
+		url                string
+		expectedStatusCode int
+	}
+
+	testCases := []testCase{
+		{
+			name:               "Default args",
+			url:                "https://localhost:8080/api/prom/api/v1/rules",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "quorum=weak",
+			url:                "https://localhost:8080/api/prom/api/v1/rules?quorum=weak",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "quorum=strong",
+			url:                "https://localhost:8080/api/prom/api/v1/rules?quorum=strong",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "invalid quorum",
+			url:                "https://localhost:8080/api/prom/api/v1/rules?quorum=weird",
+			expectedStatusCode: http.StatusBadRequest,
+		},
+	}
+
 	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
 	defer cleanup()
 
@@ -31,51 +60,58 @@ func TestRuler_rules(t *testing.T) {
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
 
-	req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
-	w := httptest.NewRecorder()
-	a.PrometheusRules(w, req)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := requestFor(t, "GET", tc.url, nil, "user1")
+			w := httptest.NewRecorder()
+			a.PrometheusRules(w, req)
 
-	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+			resp := w.Result()
+			require.Equal(t, tc.expectedStatusCode, resp.StatusCode)
+			if tc.expectedStatusCode >= http.StatusBadRequest {
+				return
+			}
 
-	// Check status code and status response
-	responseJSON := response{}
-	err := json.Unmarshal(body, &responseJSON)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, responseJSON.Status, "success")
+			// Check status code and status response
+			responseJSON := response{}
+			body, _ := ioutil.ReadAll(resp.Body)
+			err := json.Unmarshal(body, &responseJSON)
+			require.NoError(t, err)
+			require.Equal(t, responseJSON.Status, "success")
 
-	// Testing the running rules for user1 in the mock store
-	expectedResponse, _ := json.Marshal(response{
-		Status: "success",
-		Data: &RuleDiscovery{
-			RuleGroups: []*RuleGroup{
-				{
-					Name: "group1",
-					File: "namespace1",
-					Rules: []rule{
-						&recordingRule{
-							Name:   "UP_RULE",
-							Query:  "up",
-							Health: "unknown",
-							Type:   "recording",
-						},
-						&alertingRule{
-							Name:   "UP_ALERT",
-							Query:  "up < 1",
-							State:  "inactive",
-							Health: "unknown",
-							Type:   "alerting",
-							Alerts: []*Alert{},
+			// Testing the running rules for user1 in the mock store
+			expectedResponse, _ := json.Marshal(response{
+				Status: "success",
+				Data: &RuleDiscovery{
+					RuleGroups: []*RuleGroup{
+						{
+							Name: "group1",
+							File: "namespace1",
+							Rules: []rule{
+								&recordingRule{
+									Name:   "UP_RULE",
+									Query:  "up",
+									Health: "unknown",
+									Type:   "recording",
+								},
+								&alertingRule{
+									Name:   "UP_ALERT",
+									Query:  "up < 1",
+									State:  "inactive",
+									Health: "unknown",
+									Type:   "alerting",
+									Alerts: []*Alert{},
+								},
+							},
+							Interval: 60,
 						},
 					},
-					Interval: 60,
 				},
-			},
-		},
-	})
+			})
 
-	require.Equal(t, string(expectedResponse), string(body))
+			require.Equal(t, string(expectedResponse), string(body))
+		})
+	}
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {

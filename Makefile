@@ -38,7 +38,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # declared.
 %/$(UPTODATE): %/Dockerfile
 	@echo
-	$(SUDO) docker build --network host --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG) $(@D)/
+	$(SUDO) docker build --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG) $(@D)/
 	@echo
 	@echo Please use push-multiarch-build-image to build and push build image for all supported architectures.
 	touch $@
@@ -52,11 +52,11 @@ fetch-build-image:
 push-multiarch-build-image:
 	@echo
 	# Build image for each platform separately... it tends to generate fewer errors.
-	$(SUDO) docker buildx build --network host --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) build-image/
-	$(SUDO) docker buildx build --network host --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) build-image/
+	$(SUDO) docker buildx build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) build-image/
+	$(SUDO) docker buildx build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) build-image/
 	# This command will run the same build as above, but it will reuse existing platform-specific images,
 	# put them together and push to registry.
-	$(SUDO) docker buildx build --network host -o type=registry --platform linux/amd64,linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)build-image:$(IMAGE_TAG) build-image/
+	$(SUDO) docker buildx build -o type=registry --platform linux/amd64,linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)build-image:$(IMAGE_TAG) build-image/
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/go/src/github.com/cortexproject/cortex' phase.
@@ -138,7 +138,7 @@ exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos we
 	@mkdir -p $(shell pwd)/.cache
 	@echo
 	@echo ">>>> Entering build container: $@"
-	@$(SUDO) time docker run --network host --rm $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
+	@$(SUDO) time docker run --rm $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
 
 configs-integration-test: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
@@ -147,7 +147,6 @@ configs-integration-test: build-image/$(UPTODATE)
 	echo ; \
 	echo ">>>> Entering build container: $@"; \
 	$(SUDO) docker run --rm $(TTY) -i $(GOVOLUMES) \
-        --network host \
 		-v $(shell pwd)/cmd/cortex/migrations:/migrations:z \
 		--workdir /go/src/github.com/cortexproject/cortex \
 		--link "$$DB_CONTAINER":configs-db.cortex.local \
@@ -215,8 +214,7 @@ lint:
 		./pkg/ruler/...
 
 test:
-	go test -v -tags netgo -timeout 30m -race -count 1 -run TestGetRules ./...
-	# go test -v -tags netgo -timeout 30m -race -count 1 -run TestRecoverAlertsPostOutage ./...
+	go test -tags netgo -timeout 30m -race -count 1 ./...
 
 cover:
 	$(eval COVERDIR := $(shell mktemp -d coverage.XXXXXXXXXX))
@@ -339,7 +337,7 @@ packages: dist packaging/fpm/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo ">>>> Entering build container: $@"
-	@$(SUDO) time docker run --network host --rm $(TTY) \
+	@$(SUDO) time docker run --rm $(TTY) \
 		-v  $(shell pwd):/src/github.com/cortexproject/cortex:delegated,z \
 		-i $(PACKAGE_IMAGE) $@;
 
@@ -383,13 +381,13 @@ endif
 
 # Build both arm64 and amd64 images, so that we can test deb/rpm packages for both architectures.
 packaging/rpm/centos-systemd/$(UPTODATE): packaging/rpm/centos-systemd/Dockerfile
-	$(SUDO) docker build --network host --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
-	$(SUDO) docker build --network host --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
 	touch $@
 
 packaging/deb/debian-systemd/$(UPTODATE): packaging/deb/debian-systemd/Dockerfile
-	$(SUDO) docker build --network host --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
-	$(SUDO) docker build --network host --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
+	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
 	touch $@
 
 .PHONY: test-packages

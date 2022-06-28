@@ -21,14 +21,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func TestRuler_rules(t *testing.T) {
-	type testCase struct {
-		name               string
-		url                string
-		expectedStatusCode int
-	}
+type simpleApiTestCase struct {
+	name               string
+	url                string
+	expectedStatusCode int
+}
 
-	testCases := []testCase{
+func TestRuler_rules(t *testing.T) {
+	testCases := []simpleApiTestCase{
 		{
 			name:               "Default args",
 			url:                "https://localhost:8080/api/prom/api/v1/rules",
@@ -73,8 +73,8 @@ func TestRuler_rules(t *testing.T) {
 			}
 
 			// Check status code and status response
-			responseJSON := response{}
 			body, _ := ioutil.ReadAll(resp.Body)
+			responseJSON := response{}
 			err := json.Unmarshal(body, &responseJSON)
 			require.NoError(t, err)
 			require.Equal(t, responseJSON.Status, "success")
@@ -172,39 +172,70 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_alerts(t *testing.T) {
-	cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
-	defer cleanup()
-
-	r, rcleanup := newTestRuler(t, cfg, nil)
-	defer rcleanup()
-	defer r.StopAsync()
-
-	a := NewAPI(r, r.store, log.NewNopLogger())
-
-	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/alerts", nil, "user1")
-	w := httptest.NewRecorder()
-	a.PrometheusAlerts(w, req)
-
-	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
-
-	// Check status code and status response
-	responseJSON := response{}
-	err := json.Unmarshal(body, &responseJSON)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, responseJSON.Status, "success")
-
-	// Currently there is not an easy way to mock firing alerts. The empty
-	// response case is tested instead.
-	expectedResponse, _ := json.Marshal(response{
-		Status: "success",
-		Data: &AlertDiscovery{
-			Alerts: []*Alert{},
+	testCases := []simpleApiTestCase{
+		{
+			name:               "Default args",
+			url:                "https://localhost:8080/api/prom/api/v1/alerts",
+			expectedStatusCode: http.StatusOK,
 		},
-	})
+		{
+			name:               "quorum=weak",
+			url:                "https://localhost:8080/api/prom/api/v1/alerts?quorum=weak",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "quorum=strong",
+			url:                "https://localhost:8080/api/prom/api/v1/alerts?quorum=strong",
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "invalid quorum",
+			url:                "https://localhost:8080/api/prom/api/v1/alerts?quorum=weird",
+			expectedStatusCode: http.StatusBadRequest,
+		},
+	}
 
-	require.Equal(t, string(expectedResponse), string(body))
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, cleanup := defaultRulerConfig(t, newMockRuleStore(mockRules))
+			defer cleanup()
+
+			r, rcleanup := newTestRuler(t, cfg, nil)
+			defer rcleanup()
+			defer r.StopAsync()
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			req := requestFor(t, http.MethodGet, tc.url, nil, "user1")
+			w := httptest.NewRecorder()
+			a.PrometheusAlerts(w, req)
+
+			resp := w.Result()
+			require.Equal(t, tc.expectedStatusCode, resp.StatusCode)
+			if tc.expectedStatusCode >= http.StatusBadRequest {
+				return
+			}
+
+			// Check status code and status response
+			body, _ := ioutil.ReadAll(resp.Body)
+			responseJSON := response{}
+			err := json.Unmarshal(body, &responseJSON)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, responseJSON.Status, "success")
+
+			// Currently there is not an easy way to mock firing alerts. The empty
+			// response case is tested instead.
+			expectedResponse, _ := json.Marshal(response{
+				Status: "success",
+				Data: &AlertDiscovery{
+					Alerts: []*Alert{},
+				},
+			})
+
+			require.Equal(t, string(expectedResponse), string(body))
+		})
+	}
 }
 
 func TestRuler_Create(t *testing.T) {

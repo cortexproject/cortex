@@ -254,7 +254,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 
 	quorumType, err := parseQuorumType(req.FormValue("quorum"))
 	if err != nil {
-		respondInternalServerError(logger, w, err.Error())
+		respondError(logger, w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -262,7 +262,11 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := a.ruler.GetRules(req.Context(), quorumType)
 
 	if err != nil {
-		respondInternalServerError(logger, w, err.Error())
+		if strings.Contains(err.Error(), errUnableToObtainQuorum) {
+			respondError(logger, w, http.StatusServiceUnavailable, err.Error())
+		} else {
+			respondInternalServerError(logger, w, err.Error())
+		}
 		return
 	}
 

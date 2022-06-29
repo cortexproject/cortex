@@ -45,9 +45,31 @@ func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) 
 	)
 
 	var (
-		series1 = labels.FromMap(map[string]string{
-			labels.MetricName: metricName + "_1",
+		series1 = []cortexpb.LabelAdapter{
+			{
+				Name:  labels.MetricName,
+				Value: metricName + "_1",
+			},
+			{
+				Name:  "series1",
+				Value: "1",
+			},
+		}
+
+		series1OtherOrderLabels = []cortexpb.LabelAdapter{
+			{
+				Name:  "series1",
+				Value: "1",
+			},
+			{
+				Name:  labels.MetricName,
+				Value: metricName + "_1",
+			},
+		}
+
+		series1FromMap = labels.FromMap(map[string]string{
 			"series1":         "1",
+			labels.MetricName: metricName + "_1",
 		})
 		series2 = labels.FromMap(map[string]string{
 			labels.MetricName: metricName + "_2",
@@ -55,7 +77,11 @@ func TestQueryLimiter_AddSeriers_ShouldReturnErrorOnLimitExceeded(t *testing.T) 
 		})
 		limiter = NewQueryLimiter(1, 0, 0)
 	)
-	err := limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1))
+	err := limiter.AddSeries(series1)
+	require.NoError(t, err)
+	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series1FromMap))
+	require.NoError(t, err)
+	err = limiter.AddSeries(series1OtherOrderLabels)
 	require.NoError(t, err)
 	err = limiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(series2))
 	require.Error(t, err)

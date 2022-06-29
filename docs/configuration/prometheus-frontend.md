@@ -66,6 +66,6 @@ frontend:
   log_queries_longer_than: 1s
   compress_responses: true
 
-  # The Prometheus URL to which the query-frontend should connect to.
+  # The query endpoint URL of a Prometheus-API compatible service to which the query-frontend should connect to.
   downstream_url: http://prometheus.mydomain.com
 ```

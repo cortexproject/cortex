@@ -3,9 +3,7 @@ package builder
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -31,11 +29,7 @@ import (
 )
 
 func TestTsdbBuilder(t *testing.T) {
-	dir, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
+	dir := t.TempDir()
 
 	yesterdayStart := time.Now().Add(-24 * time.Hour).Truncate(24 * time.Hour)
 	yesterdayEnd := yesterdayStart.Add(24 * time.Hour)

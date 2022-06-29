@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -79,16 +78,12 @@ func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
-	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
-	require.NoError(t, err)
-	defer os.RemoveAll(cacheDir) //nolint: errcheck
-
 	ctx := context.Background()
 	bucket := &bucket.ClientMock{}
 	reg := prometheus.NewPedanticRegistry()
 
 	cfg := prepareBucketScanBlocksFinderConfig()
-	cfg.CacheDir = cacheDir
+	cfg.CacheDir = t.TempDir()
 
 	s := NewBucketScanBlocksFinder(cfg, bucket, nil, log.NewNopLogger(), reg)
 	defer func() {
@@ -147,12 +142,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 		bucket.MockExists(path.Join(tenantID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	}
 
-	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
-	require.NoError(t, err)
-	defer os.RemoveAll(cacheDir)
-
 	cfg := prepareBucketScanBlocksFinderConfig()
-	cfg.CacheDir = cacheDir
+	cfg.CacheDir = t.TempDir()
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
@@ -185,12 +176,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 		time.Sleep(time.Second)
 	})
 
-	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
-	require.NoError(t, err)
-	defer os.RemoveAll(cacheDir)
-
 	cfg := prepareBucketScanBlocksFinderConfig()
-	cfg.CacheDir = cacheDir
+	cfg.CacheDir = t.TempDir()
 	cfg.MetasConcurrency = 1
 	cfg.TenantsConcurrency = 1
 
@@ -481,16 +468,10 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 }
 
 func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfig) (*BucketScanBlocksFinder, objstore.Bucket, string, *prometheus.Registry) {
-	cacheDir, err := ioutil.TempDir(os.TempDir(), "blocks-scanner-test-cache")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(cacheDir))
-	})
-
 	bkt, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	reg := prometheus.NewPedanticRegistry()
-	cfg.CacheDir = cacheDir
+	cfg.CacheDir = t.TempDir()
 	s := NewBucketScanBlocksFinder(cfg, bkt, nil, log.NewNopLogger(), reg)
 
 	t.Cleanup(func() {

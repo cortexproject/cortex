@@ -1295,14 +1295,10 @@ func checkLogsForCompaction(compactors []*Compactor, logs []*concurrency.SyncBuf
 
 func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, maxT int64, externalLabels map[string]string) ulid.ULID {
 	// Create a temporary dir for TSDB.
-	tempDir, err := ioutil.TempDir(os.TempDir(), "tsdb")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir) //nolint:errcheck
+	tempDir := t.TempDir()
 
 	// Create a temporary dir for the snapshot.
-	snapshotDir, err := ioutil.TempDir(os.TempDir(), "snapshot")
-	require.NoError(t, err)
-	defer os.RemoveAll(snapshotDir) //nolint:errcheck
+	snapshotDir := t.TempDir()
 
 	// Create a new TSDB.
 	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
@@ -1378,6 +1374,14 @@ func createDeletionMark(t *testing.T, bkt objstore.Bucket, userID string, blockI
 	content := mockDeletionMarkJSON(blockID.String(), deletionTime)
 	blockPath := path.Join(userID, blockID.String())
 	markPath := path.Join(blockPath, metadata.DeletionMarkFilename)
+
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
+}
+
+func createNoCompactionMark(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
+	content := mockNoCompactBlockJSON(blockID.String())
+	blockPath := path.Join(userID, blockID.String())
+	markPath := path.Join(blockPath, metadata.NoCompactMarkFilename)
 
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
@@ -1475,13 +1479,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 	flagext.DefaultValues(&storageCfg)
 
 	// Create a temporary directory for compactor data.
-	dataDir, err := ioutil.TempDir(os.TempDir(), "compactor-test")
-	require.NoError(t, err)
-
-	compactorCfg.DataDir = dataDir
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(dataDir))
-	})
+	compactorCfg.DataDir = t.TempDir()
 
 	tsdbCompactor := &tsdbCompactorMock{}
 	tsdbPlanner := &tsdbPlannerMock{

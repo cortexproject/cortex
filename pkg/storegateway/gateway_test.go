@@ -796,9 +796,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 	logger := log.NewNopLogger()
 	userID := "user-1"
 
-	storageDir, err := ioutil.TempDir(os.TempDir(), "")
-	require.NoError(t, err)
-	defer os.RemoveAll(storageDir) //nolint:errcheck
+	storageDir := t.TempDir()
 
 	// Generate 2 TSDB blocks with the same exact series (and data points).
 	numSeries := 2
@@ -910,9 +908,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 	logger := log.NewNopLogger()
 	userID := "user-1"
 
-	storageDir, err := ioutil.TempDir(os.TempDir(), "")
-	require.NoError(t, err)
-	defer os.RemoveAll(storageDir) //nolint:errcheck
+	storageDir := t.TempDir()
 
 	// Generate 1 TSDB block with chunksQueried series. Since each mocked series contains only 1 sample,
 	// it will also only have 1 chunk.
@@ -1075,17 +1071,11 @@ func mockGatewayConfig() Config {
 }
 
 func mockStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "store-gateway-test-*")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(tmpDir))
-	})
-
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
 
 	cfg.BucketStore.ConsistencyDelay = 0
-	cfg.BucketStore.SyncDir = tmpDir
+	cfg.BucketStore.SyncDir = t.TempDir()
 
 	return cfg
 }
@@ -1097,9 +1087,7 @@ func mockStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int64) {
 	// Create a new TSDB on a temporary directory. The blocks
 	// will be then snapshotted to the input dir.
-	tempDir, err := ioutil.TempDir(os.TempDir(), "tsdb")
-	require.NoError(t, err)
-	defer os.RemoveAll(tempDir) //nolint:errcheck
+	tempDir := t.TempDir()
 
 	db, err := tsdb.Open(tempDir, nil, nil, &tsdb.Options{
 		MinBlockDuration:  2 * time.Hour.Milliseconds(),
@@ -1213,7 +1201,7 @@ func (m *mockShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 
 func createBucketIndex(t *testing.T, bkt objstore.Bucket, userID string) *bucketindex.Index {
 	updater := bucketindex.NewUpdater(bkt, userID, nil, log.NewNopLogger())
-	idx, _, err := updater.UpdateIndex(context.Background(), nil)
+	idx, _, _, err := updater.UpdateIndex(context.Background(), nil)
 	require.NoError(t, err)
 	require.NoError(t, bucketindex.WriteIndex(context.Background(), bkt, userID, nil, idx))
 

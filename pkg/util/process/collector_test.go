@@ -17,11 +17,7 @@ func TestProcessCollector(t *testing.T) {
 	const pid = 1
 
 	// Create a mocked proc FS.
-	procDir, err := ioutil.TempDir("", "proc")
-	require.NoError(t, err)
-	defer func() {
-		require.NoError(t, os.RemoveAll(procDir))
-	}()
+	procDir := t.TempDir()
 
 	mapsPath := processMapsPath(procDir, pid)
 	mapsLimitPath := vmMapsLimitPath(procDir)

@@ -2,22 +2,24 @@
 
 ## master / unreleased
 
-* [CHANGE] Fix incorrectly named `cortex_cache_fetched_keys` and `cortex_cache_hits` metrics. Renamed to `cortex_cache_fetched_keys_total` and `cortex_cache_hits_total` respectively. #4686
-* [CHANGE] Enable Thanos series limiter in store-gateway. #4702
-* [CHANGE] Distributor: Apply `max_fetched_series_per_query` limit for `/series` API. #4683
-* [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels.
-* [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction
-* [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics
-* [FEATURE] Add shuffle sharding for the compactor #4433
 * [ENHANCEMENT] Ruler: enable ruler HA by having replication factor more than 3. We will also use the prometheus RuleGroupPostProcessFunc to sync for state before each rule group evaluation. Optional quorum parameter added to Prometheus-compatible ListRules and ListAlerts APIs to control how replicated ruler data is returned.
 
-## 1.12.0 in progress
+## 1.13.0 in progress
 
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
 * [CHANGE] query-frontend: Do not print anything in the logs of `query-frontend` if a in-progress query has been canceled (context canceled) to avoid spam. #4562
 * [CHANGE] Compactor block deletion mark migration, needed when upgrading from v1.7, is now disabled by default. #4597
-* [CHANGE] The `status_code` label on gRPC client metrics has changed from '200' and '500' to '2xx', '5xx', '4xx', 'cancel' or 'error'. 4601
+* [CHANGE] The `status_code` label on gRPC client metrics has changed from '200' and '500' to '2xx', '5xx', '4xx', 'cancel' or 'error'. #4601
 * [CHANGE] Memberlist: changed probe interval from `1s` to `5s` and probe timeout from `500ms` to `2s`. #4601
+* [CHANGE] Fix incorrectly named `cortex_cache_fetched_keys` and `cortex_cache_hits` metrics. Renamed to `cortex_cache_fetched_keys_total` and `cortex_cache_hits_total` respectively. #4686
+* [CHANGE] Enable Thanos series limiter in store-gateway. #4702
+* [CHANGE] Distributor: Apply `max_fetched_series_per_query` limit for `/series` API. #4683
+* [CHANGE] Re-enable the `proxy_url` option for receiver configuration. #4741
+* [FEATURE] Ruler: Add `external_labels` option to tag all alerts with a given set of labels. #4499
+* [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction. #4707
+* [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics. #4708
+* [FEATURE] Add shuffle sharding for the compactor #4433
+* [FEATURE] Querier: Use streaming for ingester metdata APIs. #4725
 * [ENHANCEMENT] Update Go version to 1.17.8. #4602 #4604 #4658
 * [ENHANCEMENT] Keep track of discarded samples due to bad relabel configuration in `cortex_discarded_samples_total`. #4503
 * [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
@@ -30,6 +32,10 @@
 * [ENHANCEMENT] Blocks storage: Add `-blocks-storage.azure.http.*`, `-alertmanager-storage.azure.http.*`, and `-ruler-storage.azure.http.*` to configure the Azure storage client. #4581
 * [ENHANCEMENT] Optimise memberlist receive path when used as a backing store for rings with a large number of members. #4601
 * [ENHANCEMENT] Add length and limit to labelNameTooLongError and labelValueTooLongError #4595
+* [ENHANCEMENT] Add jitter to rejoinInterval. #4747
+* [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
+  * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
+* [ENHANCEMENT] Querier: Reduce the number of series that are kept in memory while streaming from ingesters. #4745
 * [BUGFIX] AlertManager: remove stale template files. #4495
 * [BUGFIX] Distributor: fix bug in query-exemplar where some results would get dropped. #4583
 * [BUGFIX] Update Thanos dependency: compactor tracing support, azure blocks storage memory fix. #4585
@@ -38,6 +44,11 @@
 * [BUGFIX] Memberlist: fixed corrupted packets when sending compound messages with more than 255 messages or messages bigger than 64KB. #4601
 * [BUGFIX] Query Frontend: If 'LogQueriesLongerThan' is set to < 0, log all queries as described in the docs. #4633
 * [BUGFIX] Distributor: update defaultReplicationStrategy to not fail with extend-write when a single instance is unhealthy. #4636
+* [BUGFIX] Distributor: Fix race condition on `/series` introduced by #4683. #4716
+* [BUGFIX] Ruler: Fixed leaking notifiers after users are removed #4718
+* [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
+* [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #4750
+* [BUGFIX] Compactor: skip compaction if there is only 1 block available for shuffle-sharding compactor. #4756
 
 ## 1.11.0 2021-11-25
 

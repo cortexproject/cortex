@@ -137,6 +137,15 @@ var (
 		Subject: `{{ template "sns.default.subject" . }}`,
 		Message: `{{ template "sns.default.message" . }}`,
 	}
+
+	DefaultTelegramConfig = TelegramConfig{
+		NotifierConfig: NotifierConfig{
+			VSendResolved: true,
+		},
+		DisableNotifications: false,
+		Message:              `{{ template "telegram.default.message" . }}`,
+		ParseMode:            "MarkdownV2",
+	}
 )
 
 // NotifierConfig contains base options common across all notifier configurations.
@@ -456,19 +465,22 @@ type OpsGenieConfig struct {
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
 	APIKey       Secret                    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
+	APIKeyFile   string                    `yaml:"api_key_file,omitempty" json:"api_key_file,omitempty"`
 	APIURL       *URL                      `yaml:"api_url,omitempty" json:"api_url,omitempty"`
 	Message      string                    `yaml:"message,omitempty" json:"message,omitempty"`
 	Description  string                    `yaml:"description,omitempty" json:"description,omitempty"`
 	Source       string                    `yaml:"source,omitempty" json:"source,omitempty"`
 	Details      map[string]string         `yaml:"details,omitempty" json:"details,omitempty"`
+	Entity       string                    `yaml:"entity,omitempty" json:"entity,omitempty"`
 	Responders   []OpsGenieConfigResponder `yaml:"responders,omitempty" json:"responders,omitempty"`
+	Actions      string                    `yaml:"actions,omitempty" json:"actions,omitempty"`
 	Tags         string                    `yaml:"tags,omitempty" json:"tags,omitempty"`
 	Note         string                    `yaml:"note,omitempty" json:"note,omitempty"`
 	Priority     string                    `yaml:"priority,omitempty" json:"priority,omitempty"`
 	UpdateAlerts bool                      `yaml:"update_alerts,omitempty" json:"update_alerts,omitempty"`
 }
 
-const opsgenieValidTypesRe = `^(team|user|escalation|schedule)$`
+const opsgenieValidTypesRe = `^(team|teams|user|escalation|schedule)$`
 
 var opsgenieTypeMatcher = regexp.MustCompile(opsgenieValidTypesRe)
 
@@ -478,6 +490,10 @@ func (c *OpsGenieConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 	type plain OpsGenieConfig
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
+	}
+
+	if c.APIURL != nil && len(c.APIKeyFile) > 0 {
+		return fmt.Errorf("at most one of api_key & api_key_file must be configured")
 	}
 
 	for _, r := range c.Responders {
@@ -616,8 +632,44 @@ func (c *SNSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if (c.TargetARN == "") != (c.TopicARN == "") != (c.PhoneNumber == "") {
 		return fmt.Errorf("must provide either a Target ARN, Topic ARN, or Phone Number for SNS config")
 	}
-	if (c.Sigv4.AccessKey == "") != (c.Sigv4.SecretKey == "") {
-		return fmt.Errorf("must provide a AWS SigV4 Access key and Secret Key if credentials are specified in the SNS config")
+	return nil
+}
+
+// TelegramConfig configures notifications via Telegram.
+type TelegramConfig struct {
+	NotifierConfig `yaml:",inline" json:",inline"`
+
+	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
+
+	APIUrl               *URL   `yaml:"api_url" json:"api_url,omitempty"`
+	BotToken             Secret `yaml:"bot_token,omitempty" json:"token,omitempty"`
+	ChatID               int64  `yaml:"chat_id,omitempty" json:"chat,omitempty"`
+	Message              string `yaml:"message,omitempty" json:"message,omitempty"`
+	DisableNotifications bool   `yaml:"disable_notifications,omitempty" json:"disable_notifications,omitempty"`
+	ParseMode            string `yaml:"parse_mode,omitempty" json:"parse_mode,omitempty"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *TelegramConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	*c = DefaultTelegramConfig
+	type plain TelegramConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	if c.BotToken == "" {
+		return fmt.Errorf("missing bot_token on telegram_config")
+	}
+	if c.ChatID == 0 {
+		return fmt.Errorf("missing chat_id on telegram_config")
+	}
+	if c.APIUrl == nil {
+		return fmt.Errorf("missing api_url on telegram_config")
+	}
+	if c.ParseMode != "" &&
+		c.ParseMode != "Markdown" &&
+		c.ParseMode != "MarkdownV2" &&
+		c.ParseMode != "HTML" {
+		return fmt.Errorf("unknown parse_mode on telegram_config, must be Markdown, MarkdownV2, HTML or empty string")
 	}
 	return nil
 }

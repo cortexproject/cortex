@@ -834,14 +834,14 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
     [max_chunk_pool_bytes: <int> | default = 2147483648]
 
-    # If enabled, store-gateway will lazy load an index-header only once
+    # If enabled, store-gateway will lazily memory-map an index-header only once
     # required by a query.
     # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
     [index_header_lazy_loading_enabled: <boolean> | default = false]
 
     # If index-header lazy loading is enabled and this setting is > 0, the
-    # store-gateway will offload unused index-headers after 'idle timeout'
-    # inactivity.
+    # store-gateway will release memory-mapped index-headers after 'idle
+    # timeout' inactivity.
     # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
     [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
 

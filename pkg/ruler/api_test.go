@@ -195,8 +195,10 @@ func TestRuler_alerts(t *testing.T) {
 	r := newTestRuler(t, cfg, nil)
 	defer r.StopAsync()
 
-			a := NewAPI(r, r.store, log.NewNopLogger())
+	a := NewAPI(r, r.store, log.NewNopLogger())
 
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
 			req := requestFor(t, http.MethodGet, tc.url, nil, "user1")
 			w := httptest.NewRecorder()
 			a.PrometheusAlerts(w, req)

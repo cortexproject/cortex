@@ -1632,7 +1632,7 @@ ring:
   # ring. 0 = never (timeout disabled).
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
- 
+
   # The replication factor to use when evaluating rules.
   # CLI flag: -ruler.ring.replication-factor
   [replication_factor: <int> | default = 1]

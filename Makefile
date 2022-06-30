@@ -227,7 +227,7 @@ shell:
 	bash
 
 configs-integration-test:
-	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 30s ./pkg/configs/... ./pkg/ruler/..."
+	/bin/bash -c "go test -v -tags 'netgo integration' -timeout 900s ./pkg/configs/... ./pkg/ruler/..."
 
 mod-check:
 	GO111MODULE=on go mod download

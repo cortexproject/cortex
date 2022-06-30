@@ -58,7 +58,7 @@ ListRules/ListAlerts will return inconsistent responses while a new configuratio
 - quorum=strong
   - Biased towards consistency, ListRules will query at least $i = tenantShardSize - \lfloor{replicationFactor / 2}\rfloor + 1$ instances. If any rulegroup does not satisfy a quorum of $q = \lfloor{replicationFactor / 2}\rfloor + 1$ copies, a 503 error will be returned.
 
-PR pending
+[PR #4768](https://github.com/cortexproject/cortex/pull/4768) [open]
 
 #### Alternatives to a quorum API parameter
 

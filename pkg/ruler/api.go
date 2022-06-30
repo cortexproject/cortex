@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"encoding/json"
-	"github.com/weaveworks/common/httpgrpc"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -10,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

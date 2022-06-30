@@ -20,14 +20,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-type simpleApiTestCase struct {
+type simpleAPITestCase struct {
 	name               string
 	url                string
 	expectedStatusCode int
 }
 
 func TestRuler_rules(t *testing.T) {
-	testCases := []simpleApiTestCase{
+	testCases := []simpleAPITestCase{
 		{
 			name:               "Default args",
 			url:                "https://localhost:8080/api/prom/api/v1/rules",
@@ -167,7 +167,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_alerts(t *testing.T) {
-	testCases := []simpleApiTestCase{
+	testCases := []simpleAPITestCase{
 		{
 			name:               "Default args",
 			url:                "https://localhost:8080/api/prom/api/v1/alerts",

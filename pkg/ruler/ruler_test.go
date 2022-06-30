@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
-	"github.com/gogo/protobuf/types"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"math/rand"
 	"net/http"
@@ -20,6 +17,11 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/gogo/protobuf/types"
+	"github.com/pkg/errors"
+
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -373,7 +375,7 @@ func TestGetRules(t *testing.T) {
 			Name:      string(rgstr[0]),
 			Interval:  interval,
 			Options: []*types.Any{
-				&types.Any{
+				{
 					TypeUrl: "dummy",
 					Value:   tokenBytes,
 				},
@@ -383,7 +385,7 @@ func TestGetRules(t *testing.T) {
 
 	newRuleGroups := func(rulerId string, user string, encodedRuleGroups []string) rulespb.RuleGroupList {
 		rulegroups := make(rulespb.RuleGroupList, len(encodedRuleGroups))
-		ruleToken := getRulerToken(rulerId) - 1 // this ensures this rule will be owned by ruler rulerId
+		ruleToken := getRulerToken(rulerId) - 1 // this ensures this rule will be owned by ruler rulerID
 		for i, encodedRuleGroup := range encodedRuleGroups {
 			rulegroups[i] = decodeExpectedGroup(user, encodedRuleGroup, ruleToken)
 		}
@@ -399,132 +401,132 @@ func TestGetRules(t *testing.T) {
 
 	t.Logf("Building expectedRules")
 	expectedRules := make(multiRulerConfig)
-	rulerId := "ruler1"
-	addRuleGroup(expectedRules, rulerId, "user0", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user1", []string{"A"})
-	addRuleGroup(expectedRules, rulerId, "user2", []string{"A"})
-	addRuleGroup(expectedRules, rulerId, "user3", []string{"A", "F"})
-	addRuleGroup(expectedRules, rulerId, "user4", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user5", []string{"A+", "F+"})
-	addRuleGroup(expectedRules, rulerId, "user6", []string{"A", "F", "E"})
-	addRuleGroup(expectedRules, rulerId, "user7", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user8", []string{"A+", "F+", "E+"})
-	addRuleGroup(expectedRules, rulerId, "user9", []string{"A+", "F+", "E+"})
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"A"})
-	addRuleGroup(expectedRules, rulerId, "user12", []string{"A"})
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"A", "F"})
-	addRuleGroup(expectedRules, rulerId, "user14", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"A+", "F+"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"A", "F", "E"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"A+", "F+", "E+"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"A+", "F+", "E+"})
-	rulerId = "ruler2"
-	addRuleGroup(expectedRules, rulerId, "user1", []string{"A", "B", "C", "D", "E", "F"})
+	rulerID := "ruler1"
+	addRuleGroup(expectedRules, rulerID, "user0", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user1", []string{"A"})
+	addRuleGroup(expectedRules, rulerID, "user2", []string{"A"})
+	addRuleGroup(expectedRules, rulerID, "user3", []string{"A", "F"})
+	addRuleGroup(expectedRules, rulerID, "user4", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user5", []string{"A+", "F+"})
+	addRuleGroup(expectedRules, rulerID, "user6", []string{"A", "F", "E"})
+	addRuleGroup(expectedRules, rulerID, "user7", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user8", []string{"A+", "F+", "E+"})
+	addRuleGroup(expectedRules, rulerID, "user9", []string{"A+", "F+", "E+"})
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"A"})
+	addRuleGroup(expectedRules, rulerID, "user12", []string{"A"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"A", "F"})
+	addRuleGroup(expectedRules, rulerID, "user14", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"A+", "F+"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"A", "F", "E"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"A+", "F+", "E+"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"A+", "F+", "E+"})
+	rulerID = "ruler2"
+	addRuleGroup(expectedRules, rulerID, "user1", []string{"A", "B", "C", "D", "E", "F"})
 	// user2 has no rules in ruler 2
-	addRuleGroup(expectedRules, rulerId, "user3", []string{"B", "A"})
-	addRuleGroup(expectedRules, rulerId, "user4", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user5", []string{"B+", "A+"})
-	addRuleGroup(expectedRules, rulerId, "user6", []string{"B", "A", "F"})
-	addRuleGroup(expectedRules, rulerId, "user7", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user8", []string{"B+", "A+", "F+"})
-	addRuleGroup(expectedRules, rulerId, "user9", []string{"B+", "A+", "F++"})
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"A", "B", "C", "D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user3", []string{"B", "A"})
+	addRuleGroup(expectedRules, rulerID, "user4", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user5", []string{"B+", "A+"})
+	addRuleGroup(expectedRules, rulerID, "user6", []string{"B", "A", "F"})
+	addRuleGroup(expectedRules, rulerID, "user7", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user8", []string{"B+", "A+", "F+"})
+	addRuleGroup(expectedRules, rulerID, "user9", []string{"B+", "A+", "F++"})
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"A", "B", "C", "D", "E", "F"})
 	// user12 has no rules in ruler 2
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"B", "A"})
-	addRuleGroup(expectedRules, rulerId, "user14", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"B+", "A+"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"B", "A", "F"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"B+", "A+", "F+"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"B+", "A+", "F++"})
-	rulerId = "ruler3"
-	addRuleGroup(expectedRules, rulerId, "user1", []string{"C"})
-	addRuleGroup(expectedRules, rulerId, "user2", []string{"B"})
-	addRuleGroup(expectedRules, rulerId, "user3", []string{"C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"B", "A"})
+	addRuleGroup(expectedRules, rulerID, "user14", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"B+", "A+"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"B", "A", "F"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"B+", "A+", "F+"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"B+", "A+", "F++"})
+	rulerID = "ruler3"
+	addRuleGroup(expectedRules, rulerID, "user1", []string{"C"})
+	addRuleGroup(expectedRules, rulerID, "user2", []string{"B"})
+	addRuleGroup(expectedRules, rulerID, "user3", []string{"C", "B"})
 	//// user4 has no rules in ruler3
-	addRuleGroup(expectedRules, rulerId, "user5", []string{"C+", "B+"})
-	addRuleGroup(expectedRules, rulerId, "user6", []string{"C", "B", "A"})
-	addRuleGroup(expectedRules, rulerId, "user7", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user8", []string{"C+", "B+", "A+"})
-	addRuleGroup(expectedRules, rulerId, "user9", []string{"C+", "B+", "A+"})
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"C"})
-	addRuleGroup(expectedRules, rulerId, "user12", []string{"B"})
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user5", []string{"C+", "B+"})
+	addRuleGroup(expectedRules, rulerID, "user6", []string{"C", "B", "A"})
+	addRuleGroup(expectedRules, rulerID, "user7", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user8", []string{"C+", "B+", "A+"})
+	addRuleGroup(expectedRules, rulerID, "user9", []string{"C+", "B+", "A+"})
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"C"})
+	addRuleGroup(expectedRules, rulerID, "user12", []string{"B"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"C", "B"})
 	//// user14 has no rules in ruler3
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"C+", "B+"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"C", "B", "A"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"A", "B", "C"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"C+", "B+", "A+"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"C+", "B+", "A+"})
-	rulerId = "ruler4"
-	addRuleGroup(expectedRules, rulerId, "user1", []string{"D"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"C+", "B+"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"C", "B", "A"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"A", "B", "C"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"C+", "B+", "A+"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"C+", "B+", "A+"})
+	rulerID = "ruler4"
+	addRuleGroup(expectedRules, rulerID, "user1", []string{"D"})
 	// user2 has no rules in ruler 4
-	addRuleGroup(expectedRules, rulerId, "user3", []string{"D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user3", []string{"D", "C"})
 	//// user4 has no rules in ruler4
-	addRuleGroup(expectedRules, rulerId, "user5", []string{"D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user6", []string{"D", "C", "B"})
-	addRuleGroup(expectedRules, rulerId, "user7", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user8", []string{"D", "C", "B"})
-	addRuleGroup(expectedRules, rulerId, "user9", []string{"D", "C", "B"})
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"D"})
+	addRuleGroup(expectedRules, rulerID, "user5", []string{"D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user6", []string{"D", "C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user7", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user8", []string{"D", "C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user9", []string{"D", "C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"D"})
 	// user12 has no rules in ruler 4
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"D", "C"})
 	//// user14 has no rules in ruler4
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"D", "C", "B"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"D", "C", "B"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"D", "C", "B"})
-	rulerId = "ruler5"
-	addRuleGroup(expectedRules, rulerId, "user1", []string{"E"})
-	addRuleGroup(expectedRules, rulerId, "user2", []string{"C"})
-	addRuleGroup(expectedRules, rulerId, "user3", []string{"E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user4", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user5", []string{"E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user6", []string{"E", "D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user7", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user8", []string{"E", "D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user9", []string{"E", "D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"E"})
-	addRuleGroup(expectedRules, rulerId, "user12", []string{"C"})
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user14", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"E", "D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"E", "D", "C"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"E", "D", "C"})
-	rulerId = "ruler6"
-	addRuleGroup(expectedRules, rulerId, "user1", []string{"F"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"D", "C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"D", "C", "B"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"D", "C", "B"})
+	rulerID = "ruler5"
+	addRuleGroup(expectedRules, rulerID, "user1", []string{"E"})
+	addRuleGroup(expectedRules, rulerID, "user2", []string{"C"})
+	addRuleGroup(expectedRules, rulerID, "user3", []string{"E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user4", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user5", []string{"E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user6", []string{"E", "D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user7", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user8", []string{"E", "D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user9", []string{"E", "D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"E"})
+	addRuleGroup(expectedRules, rulerID, "user12", []string{"C"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user14", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"E", "D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"E", "D", "C"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"E", "D", "C"})
+	rulerID = "ruler6"
+	addRuleGroup(expectedRules, rulerID, "user1", []string{"F"})
 	// user2 has no rules in ruler 6
-	addRuleGroup(expectedRules, rulerId, "user3", []string{"F", "E"})
-	addRuleGroup(expectedRules, rulerId, "user4", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user5", []string{"F", "E"})
-	addRuleGroup(expectedRules, rulerId, "user6", []string{"F", "E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user7", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user8", []string{"F", "E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user9", []string{"F", "E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"F"})
+	addRuleGroup(expectedRules, rulerID, "user3", []string{"F", "E"})
+	addRuleGroup(expectedRules, rulerID, "user4", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user5", []string{"F", "E"})
+	addRuleGroup(expectedRules, rulerID, "user6", []string{"F", "E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user7", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user8", []string{"F", "E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user9", []string{"F", "E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"F"})
 	// user12 has no rules in ruler 6
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"F", "E"})
-	addRuleGroup(expectedRules, rulerId, "user14", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"F", "E"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"F", "E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"D", "E", "F"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"F", "E", "D"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"F", "E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"F", "E"})
+	addRuleGroup(expectedRules, rulerID, "user14", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"F", "E"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"F", "E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"D", "E", "F"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"F", "E", "D"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"F", "E", "D"})
 	// ruler7 is used tp confirm that shardSize=6 does not return rules from outside the shard
-	rulerId = "ruler7"
-	addRuleGroup(expectedRules, rulerId, "user11", []string{"Z"})
-	addRuleGroup(expectedRules, rulerId, "user12", []string{"Y"})
-	addRuleGroup(expectedRules, rulerId, "user13", []string{"X"})
-	addRuleGroup(expectedRules, rulerId, "user14", []string{"W"})
-	addRuleGroup(expectedRules, rulerId, "user15", []string{"V"})
-	addRuleGroup(expectedRules, rulerId, "user16", []string{"U"})
-	addRuleGroup(expectedRules, rulerId, "user17", []string{"T"})
-	addRuleGroup(expectedRules, rulerId, "user18", []string{"S"})
-	addRuleGroup(expectedRules, rulerId, "user19", []string{"R"})
+	rulerID = "ruler7"
+	addRuleGroup(expectedRules, rulerID, "user11", []string{"Z"})
+	addRuleGroup(expectedRules, rulerID, "user12", []string{"Y"})
+	addRuleGroup(expectedRules, rulerID, "user13", []string{"X"})
+	addRuleGroup(expectedRules, rulerID, "user14", []string{"W"})
+	addRuleGroup(expectedRules, rulerID, "user15", []string{"V"})
+	addRuleGroup(expectedRules, rulerID, "user16", []string{"U"})
+	addRuleGroup(expectedRules, rulerID, "user17", []string{"T"})
+	addRuleGroup(expectedRules, rulerID, "user18", []string{"S"})
+	addRuleGroup(expectedRules, rulerID, "user19", []string{"R"})
 
 	type testCase struct {
 		name string
@@ -538,7 +540,7 @@ func TestGetRules(t *testing.T) {
 
 		// request and test parameters
 		quorum         QuorumType
-		rulerId        string
+		rulerID        string
 		user           string
 		expectedGroups []string
 		expectedError  string
@@ -558,18 +560,14 @@ func TestGetRules(t *testing.T) {
 				if a.shuffleShardSize == b.shuffleShardSize {
 					if a.replicationFactor == b.replicationFactor {
 						return strings.Join(a.unavailableRulers, ",") < strings.Join(b.unavailableRulers, ",")
-					} else {
-						return a.replicationFactor < b.replicationFactor
 					}
-				} else {
-					return a.shuffleShardSize < b.shuffleShardSize
+					return a.replicationFactor < b.replicationFactor
 				}
-			} else {
-				return a.shardingStrategy < b.shardingStrategy
+				return a.shuffleShardSize < b.shuffleShardSize
 			}
-		} else {
-			return a.sharding == false
+			return a.shardingStrategy < b.shardingStrategy
 		}
+		return a.sharding == false
 	}
 
 	t.Logf("Building testCases")
@@ -578,7 +576,7 @@ func TestGetRules(t *testing.T) {
 			name:              "No Sharding, weak quorum",
 			sharding:          false,
 			replicationFactor: 1,
-			rulerId:           "ruler1",
+			rulerID:           "ruler1",
 			user:              "user0",
 			expectedGroups:    []string{"A", "B", "C"},
 		},
@@ -788,7 +786,7 @@ func TestGetRules(t *testing.T) {
 			sharding:          false,
 			replicationFactor: 1,
 			quorum:            Strong,
-			rulerId:           "ruler1",
+			rulerID:           "ruler1",
 			user:              "user0",
 			expectedGroups:    []string{"A", "B", "C"},
 		},
@@ -1057,7 +1055,7 @@ func TestGetRules(t *testing.T) {
 				rulerAddrMapForClients := map[string]*Ruler{}
 
 				t.Logf("Creating rulers")
-				for rID, _ := range expectedRules {
+				for rID := range expectedRules {
 					t.Logf("Creating ruler %s", rID)
 					cfg := defaultRulerConfig(t, newMockRuleStore(expectedRules[rID]))
 
@@ -1142,8 +1140,8 @@ func TestGetRules(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), tc.user)
 			forEachRuler(func(id string, r *Ruler) {
-				// if rulerId is specified for this testcase and doesn't match, then skip
-				if tc.rulerId != "" && tc.rulerId != id {
+				// if rulerID is specified for this testcase and doesn't match, then skip
+				if tc.rulerID != "" && tc.rulerID != id {
 					return
 				}
 
@@ -1732,16 +1730,6 @@ func TestDeleteTenantRuleGroups(t *testing.T) {
 		verifyExpectedDeletedRuleGroupsForUser(t, api, "userA", true)                    // Deleted previously
 		verifyExpectedDeletedRuleGroupsForUser(t, api, "userB", true)                    // Just deleted
 	}
-}
-
-func generateTokenForGroups(groups []*rulespb.RuleGroupDesc, offset uint32) []uint32 {
-	var tokens []uint32
-
-	for _, g := range groups {
-		tokens = append(tokens, tokenForGroup(g)+offset)
-	}
-
-	return tokens
 }
 
 func callDeleteTenantAPI(t *testing.T, api *Ruler, userID string) {

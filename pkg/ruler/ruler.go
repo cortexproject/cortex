@@ -929,10 +929,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 			if quorumType == Strong {
 				debugLogger.Log("msg", "quorum not found -- returning error", "quorumType", quorumType, "group", groupName)
 				return nil, errors.Errorf(errUnableToObtainQuorum+" %s", groupName)
-			} else {
-				debugLogger.Log("msg", "quorum not found -- using last evaluated", "quorumType", quorumType, "group", groupName, "lastEvaluationTime", mostRecentlyEvaluated.group.EvaluationTimestamp.String())
-				merged[groupName] = mostRecentlyEvaluated.group
 			}
+			debugLogger.Log("msg", "quorum not found -- using last evaluated", "quorumType", quorumType, "group", groupName, "lastEvaluationTime", mostRecentlyEvaluated.group.EvaluationTimestamp.String())
+			merged[groupName] = mostRecentlyEvaluated.group
 		}
 	}
 

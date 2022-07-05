@@ -27,19 +27,23 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 	block0to1hExt3Ulid := ulid.MustNew(7, nil)
 	block4hto6hExt2Ulid := ulid.MustNew(8, nil)
 	block6hto8hExt2Ulid := ulid.MustNew(9, nil)
-	block1hto2hExt_1_ulid := ulid.MustNew(10, nil)
+	block1hto2hExt1UlidCopy := ulid.MustNew(10, nil)
 	block0hto20hExt1Ulid := ulid.MustNew(11, nil)
 	block21hto40hExt1Ulid := ulid.MustNew(12, nil)
-	block21hto40hExt1Ulid_copy := ulid.MustNew(13, nil)
+	block21hto40hExt1UlidCopy := ulid.MustNew(13, nil)
 	block0hto45mExt1Ulid := ulid.MustNew(14, nil)
 	block0hto1h30mExt1Ulid := ulid.MustNew(15, nil)
 	blocklast1hExt1Ulid := ulid.MustNew(16, nil)
-	blocklast1hExt1Ulid_copy := ulid.MustNew(17, nil)
+	blocklast1hExt1UlidCopy := ulid.MustNew(17, nil)
 
 	blocks :=
 		map[ulid.ULID]*metadata.Meta{
 			block1hto2hExt1Ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt1Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block1hto2hExt1UlidCopy: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt1UlidCopy, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block3hto4hExt1Ulid: {
@@ -74,10 +78,6 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				BlockMeta: tsdb.BlockMeta{ULID: block6hto8hExt2Ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block1hto2hExt_1_ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt_1_ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
-			},
 			block0hto20hExt1Ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block0hto20hExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 20 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
@@ -86,8 +86,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1Ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block21hto40hExt1Ulid_copy: {
-				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1Ulid_copy, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
+			block21hto40hExt1UlidCopy: {
+				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1UlidCopy, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 			block0hto45mExt1Ulid: {
@@ -102,8 +102,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1Ulid, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			blocklast1hExt1Ulid_copy: {
-				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1Ulid_copy, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
+			blocklast1hExt1UlidCopy: {
+				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1UlidCopy, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 		}
@@ -138,17 +138,17 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		},
 		"test oldest min time first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt_1_ulid: blocks[block1hto2hExt_1_ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt1UlidCopy: blocks[block1hto2hExt1UlidCopy]},
 			expected: [][]ulid.ULID{
-				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt_1_ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt1UlidCopy},
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 		},
 		"test overlapping blocks": {
 			ranges: []time.Duration{20 * time.Hour, 40 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block0hto20hExt1Ulid: blocks[block0hto20hExt1Ulid], block21hto40hExt1Ulid: blocks[block21hto40hExt1Ulid], block21hto40hExt1Ulid_copy: blocks[block21hto40hExt1Ulid_copy]},
+			blocks: map[ulid.ULID]*metadata.Meta{block0hto20hExt1Ulid: blocks[block0hto20hExt1Ulid], block21hto40hExt1Ulid: blocks[block21hto40hExt1Ulid], block21hto40hExt1UlidCopy: blocks[block21hto40hExt1UlidCopy]},
 			expected: [][]ulid.ULID{
-				{block21hto40hExt1Ulid, block21hto40hExt1Ulid_copy},
+				{block21hto40hExt1Ulid, block21hto40hExt1UlidCopy},
 			},
 		},
 		"test imperfect maxTime blocks": {
@@ -160,7 +160,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		},
 		"test prematurely created blocks": {
 			ranges:   []time.Duration{2 * time.Hour},
-			blocks:   map[ulid.ULID]*metadata.Meta{blocklast1hExt1Ulid_copy: blocks[blocklast1hExt1Ulid_copy], blocklast1hExt1Ulid: blocks[blocklast1hExt1Ulid]},
+			blocks:   map[ulid.ULID]*metadata.Meta{blocklast1hExt1UlidCopy: blocks[blocklast1hExt1UlidCopy], blocklast1hExt1Ulid: blocks[blocklast1hExt1Ulid]},
 			expected: [][]ulid.ULID{},
 		},
 	}

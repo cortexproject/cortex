@@ -21,20 +21,20 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 	block1hto2hExt1Ulid := ulid.MustNew(1, nil)
 	block3hto4hExt1Ulid := ulid.MustNew(2, nil)
 	block0hto1hExt1Ulid := ulid.MustNew(3, nil)
-	block_2hto3hExt1Ulid := ulid.MustNew(4, nil)
-	block_1hto2hExt2Ulid := ulid.MustNew(5, nil)
-	block_0hto1hExt2Ulid := ulid.MustNew(6, nil)
+	block2hto3hExt1Ulid := ulid.MustNew(4, nil)
+	block1hto2hExt2Ulid := ulid.MustNew(5, nil)
+	block0hto1hExt2Ulid := ulid.MustNew(6, nil)
 	block0to1hExt3Ulid := ulid.MustNew(7, nil)
-	block_4hto6hExt2Ulid := ulid.MustNew(8, nil)
-	block_6hto8hExt2Ulid := ulid.MustNew(9, nil)
-	block_1hto2hExt_1_ulid := ulid.MustNew(10, nil)
-	block_0hto20hExt1Ulid := ulid.MustNew(11, nil)
-	block_21hto40hExt1Ulid := ulid.MustNew(12, nil)
-	block_21hto40hExt1Ulid_copy := ulid.MustNew(13, nil)
-	block_0hto45mExt1Ulid := ulid.MustNew(14, nil)
-	block_0hto1h30mExt1Ulid := ulid.MustNew(15, nil)
-	block_last1hExt1Ulid := ulid.MustNew(16, nil)
-	block_last1hExt1Ulid_copy := ulid.MustNew(17, nil)
+	block4hto6hExt2Ulid := ulid.MustNew(8, nil)
+	block6hto8hExt2Ulid := ulid.MustNew(9, nil)
+	block1hto2hExt_1_ulid := ulid.MustNew(10, nil)
+	block0hto20hExt1Ulid := ulid.MustNew(11, nil)
+	block21hto40hExt1Ulid := ulid.MustNew(12, nil)
+	block21hto40hExt1Ulid_copy := ulid.MustNew(13, nil)
+	block0hto45mExt1Ulid := ulid.MustNew(14, nil)
+	block0hto1h30mExt1Ulid := ulid.MustNew(15, nil)
+	blocklast1hExt1Ulid := ulid.MustNew(16, nil)
+	blocklast1hExt1Ulid_copy := ulid.MustNew(17, nil)
 
 	blocks :=
 		map[ulid.ULID]*metadata.Meta{
@@ -50,60 +50,60 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				BlockMeta: tsdb.BlockMeta{ULID: block0hto1hExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_2hto3hExt1Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_2hto3hExt1Ulid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
+			block2hto3hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block2hto3hExt1Ulid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_1hto2hExt2Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_1hto2hExt2Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			block1hto2hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt2Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block_0hto1hExt2Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_0hto1hExt2Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+			block0hto1hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto1hExt2Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
 			block0to1hExt3Ulid: {
 				BlockMeta: tsdb.BlockMeta{ULID: block0to1hExt3Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "3"}},
 			},
-			block_4hto6hExt2Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_4hto6hExt2Ulid, MinTime: 4 * time.Hour.Milliseconds(), MaxTime: 6 * time.Hour.Milliseconds()},
+			block4hto6hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block4hto6hExt2Ulid, MinTime: 4 * time.Hour.Milliseconds(), MaxTime: 6 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block_6hto8hExt2Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_6hto8hExt2Ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
+			block6hto8hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block6hto8hExt2Ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block_1hto2hExt_1_ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_1hto2hExt_1_ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			block1hto2hExt_1_ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt_1_ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_0hto20hExt1Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_0hto20hExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 20 * time.Hour.Milliseconds()},
+			block0hto20hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto20hExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 20 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_21hto40hExt1Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_21hto40hExt1Ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
+			block21hto40hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1Ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_21hto40hExt1Ulid_copy: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_21hto40hExt1Ulid_copy, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
+			block21hto40hExt1Ulid_copy: {
+				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1Ulid_copy, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_0hto45mExt1Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_0hto45mExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 45 * time.Minute.Milliseconds()},
+			block0hto45mExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto45mExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 45 * time.Minute.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_0hto1h30mExt1Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_0hto1h30mExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()},
+			block0hto1h30mExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto1h30mExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_last1hExt1Ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_last1hExt1Ulid, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
+			blocklast1hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1Ulid, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block_last1hExt1Ulid_copy: {
-				BlockMeta: tsdb.BlockMeta{ULID: block_last1hExt1Ulid_copy, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
+			blocklast1hExt1Ulid_copy: {
+				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1Ulid_copy, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 		}
@@ -115,52 +115,52 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 	}{
 		"test basic grouping": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block_2hto3hExt1Ulid: blocks[block_2hto3hExt1Ulid], block_1hto2hExt2Ulid: blocks[block_1hto2hExt2Ulid], block_0hto1hExt2Ulid: blocks[block_0hto1hExt2Ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
-				{block_1hto2hExt2Ulid, block_0hto1hExt2Ulid},
+				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
-				{block3hto4hExt1Ulid, block_2hto3hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 		},
 		"test no compaction": {
 			ranges:   []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks:   map[ulid.ULID]*metadata.Meta{block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block_0hto1hExt2Ulid: blocks[block_0hto1hExt2Ulid], block0to1hExt3Ulid: blocks[block0to1hExt3Ulid]},
+			blocks:   map[ulid.ULID]*metadata.Meta{block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid], block0to1hExt3Ulid: blocks[block0to1hExt3Ulid]},
 			expected: [][]ulid.ULID{},
 		},
 		"test smallest range first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block_2hto3hExt1Ulid: blocks[block_2hto3hExt1Ulid], block_4hto6hExt2Ulid: blocks[block_4hto6hExt2Ulid], block_6hto8hExt2Ulid: blocks[block_6hto8hExt2Ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block4hto6hExt2Ulid: blocks[block4hto6hExt2Ulid], block6hto8hExt2Ulid: blocks[block6hto8hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
-				{block3hto4hExt1Ulid, block_2hto3hExt1Ulid},
-				{block_4hto6hExt2Ulid, block_6hto8hExt2Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
+				{block4hto6hExt2Ulid, block6hto8hExt2Ulid},
 			},
 		},
 		"test oldest min time first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block_2hto3hExt1Ulid: blocks[block_2hto3hExt1Ulid], block_1hto2hExt_1_ulid: blocks[block_1hto2hExt_1_ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt_1_ulid: blocks[block1hto2hExt_1_ulid]},
 			expected: [][]ulid.ULID{
-				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block_1hto2hExt_1_ulid},
-				{block3hto4hExt1Ulid, block_2hto3hExt1Ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt_1_ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 		},
 		"test overlapping blocks": {
 			ranges: []time.Duration{20 * time.Hour, 40 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block_0hto20hExt1Ulid: blocks[block_0hto20hExt1Ulid], block_21hto40hExt1Ulid: blocks[block_21hto40hExt1Ulid], block_21hto40hExt1Ulid_copy: blocks[block_21hto40hExt1Ulid_copy]},
+			blocks: map[ulid.ULID]*metadata.Meta{block0hto20hExt1Ulid: blocks[block0hto20hExt1Ulid], block21hto40hExt1Ulid: blocks[block21hto40hExt1Ulid], block21hto40hExt1Ulid_copy: blocks[block21hto40hExt1Ulid_copy]},
 			expected: [][]ulid.ULID{
-				{block_21hto40hExt1Ulid, block_21hto40hExt1Ulid_copy},
+				{block21hto40hExt1Ulid, block21hto40hExt1Ulid_copy},
 			},
 		},
 		"test imperfect maxTime blocks": {
 			ranges: []time.Duration{2 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block_0hto1h30mExt1Ulid: blocks[block_0hto1h30mExt1Ulid], block_0hto45mExt1Ulid: blocks[block_0hto45mExt1Ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block0hto1h30mExt1Ulid: blocks[block0hto1h30mExt1Ulid], block0hto45mExt1Ulid: blocks[block0hto45mExt1Ulid]},
 			expected: [][]ulid.ULID{
-				{block_0hto45mExt1Ulid, block_0hto1h30mExt1Ulid},
+				{block0hto45mExt1Ulid, block0hto1h30mExt1Ulid},
 			},
 		},
 		"test prematurely created blocks": {
 			ranges:   []time.Duration{2 * time.Hour},
-			blocks:   map[ulid.ULID]*metadata.Meta{block_last1hExt1Ulid_copy: blocks[block_last1hExt1Ulid_copy], block_last1hExt1Ulid: blocks[block_last1hExt1Ulid]},
+			blocks:   map[ulid.ULID]*metadata.Meta{blocklast1hExt1Ulid_copy: blocks[blocklast1hExt1Ulid_copy], blocklast1hExt1Ulid: blocks[blocklast1hExt1Ulid]},
 			expected: [][]ulid.ULID{},
 		},
 	}

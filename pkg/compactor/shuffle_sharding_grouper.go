@@ -134,7 +134,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	}
 	// Metrics for the remaining planned compactions
 	var remainingCompactions = 0.
-	defer g.remainingPlannedCompactions.Set(remainingCompactions)
+	defer func() { g.remainingPlannedCompactions.Set(remainingCompactions) }()
 
 	for _, mainBlocks := range mainGroups {
 		for _, group := range groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds()) {

@@ -1,8 +1,11 @@
 package compactor
 
 import (
+	"bytes"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -112,6 +115,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		ranges   []time.Duration
 		blocks   map[ulid.ULID]*metadata.Meta
 		expected [][]ulid.ULID
+		metrics  string
 	}{
 		"test basic grouping": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
@@ -121,11 +125,19 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 3
+`,
 		},
 		"test no compaction": {
 			ranges:   []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:   map[ulid.ULID]*metadata.Meta{block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid], block0to1hExt3Ulid: blocks[block0to1hExt3Ulid]},
 			expected: [][]ulid.ULID{},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 0
+`,
 		},
 		"test smallest range first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
@@ -135,6 +147,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 				{block4hto6hExt2Ulid, block6hto8hExt2Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 3
+`,
 		},
 		"test oldest min time first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
@@ -143,6 +159,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt1UlidCopy},
 				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 2
+`,
 		},
 		"test overlapping blocks": {
 			ranges: []time.Duration{20 * time.Hour, 40 * time.Hour},
@@ -150,6 +170,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			expected: [][]ulid.ULID{
 				{block21hto40hExt1Ulid, block21hto40hExt1UlidCopy},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
 		},
 		"test imperfect maxTime blocks": {
 			ranges: []time.Duration{2 * time.Hour},
@@ -157,11 +181,19 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			expected: [][]ulid.ULID{
 				{block0hto45mExt1Ulid, block0hto1h30mExt1Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
 		},
 		"test prematurely created blocks": {
 			ranges:   []time.Duration{2 * time.Hour},
 			blocks:   map[ulid.ULID]*metadata.Meta{blocklast1hExt1UlidCopy: blocks[blocklast1hExt1UlidCopy], blocklast1hExt1Ulid: blocks[blocklast1hExt1Ulid]},
 			expected: [][]ulid.ULID{},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 0
+`,
 		},
 	}
 
@@ -188,7 +220,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			ring := &RingMock{}
 			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
 
-			registerer := prometheus.NewRegistry()
+			registerer := prometheus.NewPedanticRegistry()
 			remainingPlannedCompactions := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 				Name: "cortex_compactor_remaining_planned_compactions",
 				Help: "Total number of plans that remain to be compacted.",
@@ -216,6 +248,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			for idx, expectedIDs := range testData.expected {
 				assert.Equal(t, expectedIDs, actual[idx].IDs())
 			}
+
+			err = testutil.GatherAndCompare(registerer, bytes.NewBufferString(testData.metrics), "cortex_compactor_remaining_planned_compactions")
+			require.NoError(t, err)
 		})
 	}
 }

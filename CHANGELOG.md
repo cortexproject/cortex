@@ -47,6 +47,8 @@
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
 * [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #4750
 * [BUGFIX] Compactor: skip compaction if there is only 1 block available for shuffle-sharding compactor. #4756
+* [BUGFIX] Compactor: Fixes #4770 - an edge case in compactor with shulffle sharding where compaction stops when a tenant stops ingesting samples. #4771
+* [BUGFIX] Compactor: fix cortex_compactor_remaining_planned_compactions not set after plan generation for shuffle sharding compactor. #4772
 
 ## 1.11.0 2021-11-25
 

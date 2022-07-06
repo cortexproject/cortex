@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+[BUGFIX] Compactor: Fixes #4770 - an edge case in compactor where compaction stops when a tenant stops ingesting samples. #4771
 
 ## 1.13.0 in progress
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539

@@ -361,7 +361,6 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 	// the same size still fits in the range. To do it, we consider valid a group only
 	// if it's before the most recent block or if it fully covers the range.
 	highestMinTime := blocks[len(blocks)-1].MinTime
-
 	for idx := 0; idx < len(groups); {
 		group := groups[idx]
 
@@ -373,6 +372,13 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 
 		// If the group covers the full range, it's fine.
 		if group.maxTime()-group.minTime() == group.rangeLength() {
+			idx++
+			continue
+		}
+
+		// If the group's maxTime is after 1 block range, we can compact assuming that
+		// all the required blocks have already been uploaded.
+		if int64(ulid.Now()) > group.maxTime()+group.rangeLength() {
 			idx++
 			continue
 		}

@@ -1,7 +1,6 @@
 # Changelog
 
 ## master / unreleased
-[BUGFIX] Compactor: Fixes #4770 - an edge case in compactor where compaction stops when a tenant stops ingesting samples. #4771
 
 ## 1.13.0 in progress
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
@@ -47,6 +46,7 @@
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
 * [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #4750
 * [BUGFIX] Compactor: skip compaction if there is only 1 block available for shuffle-sharding compactor. #4756
+* [BUGFIX] Compactor: Fixes #4770 - an edge case in compactor with shulffle sharding where compaction stops when a tenant stops ingesting samples. #4771
 
 ## 1.11.0 2021-11-25
 

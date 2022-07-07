@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package semconv // import "go.opentelemetry.io/otel/semconv/v1.7.0"
+package internal // import "go.opentelemetry.io/otel/semconv/internal"
 
 import (
 	"fmt"
@@ -21,47 +21,70 @@ import (
 	"strconv"
 	"strings"
 
-	"go.opentelemetry.io/otel/trace"
-
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
-// HTTP scheme attributes.
-var (
-	HTTPSchemeHTTP  = HTTPSchemeKey.String("http")
-	HTTPSchemeHTTPS = HTTPSchemeKey.String("https")
-)
+// SemanticConventions are the semantic convention values defined for a
+// version of the OpenTelemetry specification.
+type SemanticConventions struct {
+	EnduserIDKey                attribute.Key
+	HTTPClientIPKey             attribute.Key
+	HTTPFlavorKey               attribute.Key
+	HTTPHostKey                 attribute.Key
+	HTTPMethodKey               attribute.Key
+	HTTPRequestContentLengthKey attribute.Key
+	HTTPRouteKey                attribute.Key
+	HTTPSchemeHTTP              attribute.KeyValue
+	HTTPSchemeHTTPS             attribute.KeyValue
+	HTTPServerNameKey           attribute.Key
+	HTTPStatusCodeKey           attribute.Key
+	HTTPTargetKey               attribute.Key
+	HTTPURLKey                  attribute.Key
+	HTTPUserAgentKey            attribute.Key
+	NetHostIPKey                attribute.Key
+	NetHostNameKey              attribute.Key
+	NetHostPortKey              attribute.Key
+	NetPeerIPKey                attribute.Key
+	NetPeerNameKey              attribute.Key
+	NetPeerPortKey              attribute.Key
+	NetTransportIP              attribute.KeyValue
+	NetTransportOther           attribute.KeyValue
+	NetTransportTCP             attribute.KeyValue
+	NetTransportUDP             attribute.KeyValue
+	NetTransportUnix            attribute.KeyValue
+}
 
 // NetAttributesFromHTTPRequest generates attributes of the net
 // namespace as specified by the OpenTelemetry specification for a
 // span.  The network parameter is a string that net.Dial function
 // from standard library can understand.
-func NetAttributesFromHTTPRequest(network string, request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) NetAttributesFromHTTPRequest(network string, request *http.Request) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{}
 
 	switch network {
 	case "tcp", "tcp4", "tcp6":
-		attrs = append(attrs, NetTransportTCP)
+		attrs = append(attrs, sc.NetTransportTCP)
 	case "udp", "udp4", "udp6":
-		attrs = append(attrs, NetTransportUDP)
+		attrs = append(attrs, sc.NetTransportUDP)
 	case "ip", "ip4", "ip6":
-		attrs = append(attrs, NetTransportIP)
+		attrs = append(attrs, sc.NetTransportIP)
 	case "unix", "unixgram", "unixpacket":
-		attrs = append(attrs, NetTransportUnix)
+		attrs = append(attrs, sc.NetTransportUnix)
 	default:
-		attrs = append(attrs, NetTransportOther)
+		attrs = append(attrs, sc.NetTransportOther)
 	}
 
 	peerIP, peerName, peerPort := hostIPNamePort(request.RemoteAddr)
 	if peerIP != "" {
-		attrs = append(attrs, NetPeerIPKey.String(peerIP))
+		attrs = append(attrs, sc.NetPeerIPKey.String(peerIP))
 	}
 	if peerName != "" {
-		attrs = append(attrs, NetPeerNameKey.String(peerName))
+		attrs = append(attrs, sc.NetPeerNameKey.String(peerName))
 	}
 	if peerPort != 0 {
-		attrs = append(attrs, NetPeerPortKey.Int(peerPort))
+		attrs = append(attrs, sc.NetPeerPortKey.Int(peerPort))
 	}
 
 	hostIP, hostName, hostPort := "", "", 0
@@ -72,13 +95,13 @@ func NetAttributesFromHTTPRequest(network string, request *http.Request) []attri
 		}
 	}
 	if hostIP != "" {
-		attrs = append(attrs, NetHostIPKey.String(hostIP))
+		attrs = append(attrs, sc.NetHostIPKey.String(hostIP))
 	}
 	if hostName != "" {
-		attrs = append(attrs, NetHostNameKey.String(hostName))
+		attrs = append(attrs, sc.NetHostNameKey.String(hostName))
 	}
 	if hostPort != 0 {
-		attrs = append(attrs, NetHostPortKey.Int(hostPort))
+		attrs = append(attrs, sc.NetHostPortKey.Int(hostPort))
 	}
 
 	return attrs
@@ -111,9 +134,9 @@ func hostIPNamePort(hostWithPort string) (ip string, name string, port int) {
 // EndUserAttributesFromHTTPRequest generates attributes of the
 // enduser namespace as specified by the OpenTelemetry specification
 // for a span.
-func EndUserAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) EndUserAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
 	if username, _, ok := request.BasicAuth(); ok {
-		return []attribute.KeyValue{EnduserIDKey.String(username)}
+		return []attribute.KeyValue{sc.EnduserIDKey.String(username)}
 	}
 	return nil
 }
@@ -121,13 +144,13 @@ func EndUserAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValu
 // HTTPClientAttributesFromHTTPRequest generates attributes of the
 // http namespace as specified by the OpenTelemetry specification for
 // a span on the client side.
-func HTTPClientAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) HTTPClientAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{}
 
 	if request.Method != "" {
-		attrs = append(attrs, HTTPMethodKey.String(request.Method))
+		attrs = append(attrs, sc.HTTPMethodKey.String(request.Method))
 	} else {
-		attrs = append(attrs, HTTPMethodKey.String(http.MethodGet))
+		attrs = append(attrs, sc.HTTPMethodKey.String(http.MethodGet))
 	}
 
 	// remove any username/password info that may be in the URL
@@ -135,40 +158,40 @@ func HTTPClientAttributesFromHTTPRequest(request *http.Request) []attribute.KeyV
 	userinfo := request.URL.User
 	request.URL.User = nil
 
-	attrs = append(attrs, HTTPURLKey.String(request.URL.String()))
+	attrs = append(attrs, sc.HTTPURLKey.String(request.URL.String()))
 
 	// restore any username/password info that was removed
 	request.URL.User = userinfo
 
-	return append(attrs, httpCommonAttributesFromHTTPRequest(request)...)
+	return append(attrs, sc.httpCommonAttributesFromHTTPRequest(request)...)
 }
 
-func httpCommonAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) httpCommonAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{}
 	if ua := request.UserAgent(); ua != "" {
-		attrs = append(attrs, HTTPUserAgentKey.String(ua))
+		attrs = append(attrs, sc.HTTPUserAgentKey.String(ua))
 	}
 	if request.ContentLength > 0 {
-		attrs = append(attrs, HTTPRequestContentLengthKey.Int64(request.ContentLength))
+		attrs = append(attrs, sc.HTTPRequestContentLengthKey.Int64(request.ContentLength))
 	}
 
-	return append(attrs, httpBasicAttributesFromHTTPRequest(request)...)
+	return append(attrs, sc.httpBasicAttributesFromHTTPRequest(request)...)
 }
 
-func httpBasicAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) httpBasicAttributesFromHTTPRequest(request *http.Request) []attribute.KeyValue {
 	// as these attributes are used by HTTPServerMetricAttributesFromHTTPRequest, they should be low-cardinality
 	attrs := []attribute.KeyValue{}
 
 	if request.TLS != nil {
-		attrs = append(attrs, HTTPSchemeHTTPS)
+		attrs = append(attrs, sc.HTTPSchemeHTTPS)
 	} else {
-		attrs = append(attrs, HTTPSchemeHTTP)
+		attrs = append(attrs, sc.HTTPSchemeHTTP)
 	}
 
 	if request.Host != "" {
-		attrs = append(attrs, HTTPHostKey.String(request.Host))
+		attrs = append(attrs, sc.HTTPHostKey.String(request.Host))
 	} else if request.URL != nil && request.URL.Host != "" {
-		attrs = append(attrs, HTTPHostKey.String(request.URL.Host))
+		attrs = append(attrs, sc.HTTPHostKey.String(request.URL.Host))
 	}
 
 	flavor := ""
@@ -178,7 +201,7 @@ func httpBasicAttributesFromHTTPRequest(request *http.Request) []attribute.KeyVa
 		flavor = "2"
 	}
 	if flavor != "" {
-		attrs = append(attrs, HTTPFlavorKey.String(flavor))
+		attrs = append(attrs, sc.HTTPFlavorKey.String(flavor))
 	}
 
 	return attrs
@@ -186,45 +209,45 @@ func httpBasicAttributesFromHTTPRequest(request *http.Request) []attribute.KeyVa
 
 // HTTPServerMetricAttributesFromHTTPRequest generates low-cardinality attributes
 // to be used with server-side HTTP metrics.
-func HTTPServerMetricAttributesFromHTTPRequest(serverName string, request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) HTTPServerMetricAttributesFromHTTPRequest(serverName string, request *http.Request) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{}
 	if serverName != "" {
-		attrs = append(attrs, HTTPServerNameKey.String(serverName))
+		attrs = append(attrs, sc.HTTPServerNameKey.String(serverName))
 	}
-	return append(attrs, httpBasicAttributesFromHTTPRequest(request)...)
+	return append(attrs, sc.httpBasicAttributesFromHTTPRequest(request)...)
 }
 
 // HTTPServerAttributesFromHTTPRequest generates attributes of the
 // http namespace as specified by the OpenTelemetry specification for
 // a span on the server side. Currently, only basic authentication is
 // supported.
-func HTTPServerAttributesFromHTTPRequest(serverName, route string, request *http.Request) []attribute.KeyValue {
+func (sc *SemanticConventions) HTTPServerAttributesFromHTTPRequest(serverName, route string, request *http.Request) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
-		HTTPMethodKey.String(request.Method),
-		HTTPTargetKey.String(request.RequestURI),
+		sc.HTTPMethodKey.String(request.Method),
+		sc.HTTPTargetKey.String(request.RequestURI),
 	}
 
 	if serverName != "" {
-		attrs = append(attrs, HTTPServerNameKey.String(serverName))
+		attrs = append(attrs, sc.HTTPServerNameKey.String(serverName))
 	}
 	if route != "" {
-		attrs = append(attrs, HTTPRouteKey.String(route))
+		attrs = append(attrs, sc.HTTPRouteKey.String(route))
 	}
 	if values, ok := request.Header["X-Forwarded-For"]; ok && len(values) > 0 {
 		if addresses := strings.SplitN(values[0], ",", 2); len(addresses) > 0 {
-			attrs = append(attrs, HTTPClientIPKey.String(addresses[0]))
+			attrs = append(attrs, sc.HTTPClientIPKey.String(addresses[0]))
 		}
 	}
 
-	return append(attrs, httpCommonAttributesFromHTTPRequest(request)...)
+	return append(attrs, sc.httpCommonAttributesFromHTTPRequest(request)...)
 }
 
 // HTTPAttributesFromHTTPStatusCode generates attributes of the http
 // namespace as specified by the OpenTelemetry specification for a
 // span.
-func HTTPAttributesFromHTTPStatusCode(code int) []attribute.KeyValue {
+func (sc *SemanticConventions) HTTPAttributesFromHTTPStatusCode(code int) []attribute.KeyValue {
 	attrs := []attribute.KeyValue{
-		HTTPStatusCodeKey.Int(code),
+		sc.HTTPStatusCodeKey.Int(code),
 	}
 	return attrs
 }
@@ -288,9 +311,9 @@ func SpanStatusFromHTTPStatusCodeAndSpanKind(code int, spanKind trace.SpanKind) 
 	return spanCode, ""
 }
 
-// Validates the HTTP status code and returns corresponding span status code.
-// If the `code` is not a valid HTTP status code, returns span status Error
-// and false.
+// validateHTTPStatusCode validates the HTTP status code and returns
+// corresponding span status code. If the `code` is not a valid HTTP status
+// code, returns span status Error and false.
 func validateHTTPStatusCode(code int) (codes.Code, bool) {
 	category := code / 100
 	ranges, ok := validRangesPerCategory[category]

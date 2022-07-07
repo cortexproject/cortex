@@ -14,7 +14,7 @@
 
 // Code generated from semantic convention specification. DO NOT EDIT.
 
-package semconv // import "go.opentelemetry.io/otel/semconv/v1.7.0"
+package semconv // import "go.opentelemetry.io/otel/semconv/v1.10.0"
 
 import "go.opentelemetry.io/otel/attribute"
 
@@ -33,18 +33,19 @@ const (
 	// Stability: stable
 	// Examples: '111111111111', 'opentelemetry'
 	CloudAccountIDKey = attribute.Key("cloud.account.id")
-	// The geographical region the resource is running. Refer to your provider's docs
-	// to see the available regions, for example [Alibaba Cloud
-	// regions](https://www.alibabacloud.com/help/doc-detail/40654.htm), [AWS
-	// regions](https://aws.amazon.com/about-aws/global-infrastructure/regions_az/),
-	// [Azure regions](https://azure.microsoft.com/en-us/global-
-	// infrastructure/geographies/), or [Google Cloud
-	// regions](https://cloud.google.com/about/locations).
+	// The geographical region the resource is running.
 	//
 	// Type: string
 	// Required: No
 	// Stability: stable
 	// Examples: 'us-central1', 'us-east-1'
+	// Note: Refer to your provider's docs to see the available regions, for example
+	// [Alibaba Cloud regions](https://www.alibabacloud.com/help/doc-
+	// detail/40654.htm), [AWS regions](https://aws.amazon.com/about-aws/global-
+	// infrastructure/regions_az/), [Azure regions](https://azure.microsoft.com/en-
+	// us/global-infrastructure/geographies/), [Google Cloud
+	// regions](https://cloud.google.com/about/locations), or [Tencent Cloud
+	// regions](https://intl.cloud.tencent.com/document/product/213/6091).
 	CloudRegionKey = attribute.Key("cloud.region")
 	// Cloud regions often have multiple, isolated locations known as zones to
 	// increase availability. Availability zone represents the zone where the resource
@@ -75,6 +76,8 @@ var (
 	CloudProviderAzure = CloudProviderKey.String("azure")
 	// Google Cloud Platform
 	CloudProviderGCP = CloudProviderKey.String("gcp")
+	// Tencent Cloud
+	CloudProviderTencentCloud = CloudProviderKey.String("tencent_cloud")
 )
 
 var (
@@ -92,6 +95,8 @@ var (
 	CloudPlatformAWSLambda = CloudPlatformKey.String("aws_lambda")
 	// AWS Elastic Beanstalk
 	CloudPlatformAWSElasticBeanstalk = CloudPlatformKey.String("aws_elastic_beanstalk")
+	// AWS App Runner
+	CloudPlatformAWSAppRunner = CloudPlatformKey.String("aws_app_runner")
 	// Azure Virtual Machines
 	CloudPlatformAzureVM = CloudPlatformKey.String("azure_vm")
 	// Azure Container Instances
@@ -112,6 +117,12 @@ var (
 	CloudPlatformGCPCloudFunctions = CloudPlatformKey.String("gcp_cloud_functions")
 	// Google Cloud App Engine (GAE)
 	CloudPlatformGCPAppEngine = CloudPlatformKey.String("gcp_app_engine")
+	// Tencent Cloud Cloud Virtual Machine (CVM)
+	CloudPlatformTencentCloudCvm = CloudPlatformKey.String("tencent_cloud_cvm")
+	// Tencent Cloud Elastic Kubernetes Service (EKS)
+	CloudPlatformTencentCloudEKS = CloudPlatformKey.String("tencent_cloud_eks")
+	// Tencent Cloud Serverless Cloud Function (SCF)
+	CloudPlatformTencentCloudScf = CloudPlatformKey.String("tencent_cloud_scf")
 )
 
 // Resources used by AWS Elastic Container Service (ECS).
@@ -229,7 +240,7 @@ const (
 
 // A container instance.
 const (
-	// Container name.
+	// Container name used by container runtime.
 	//
 	// Type: string
 	// Required: No
@@ -320,6 +331,16 @@ const (
 	// Note: It's recommended this value represents a human readable version of the
 	// device model rather than a machine readable alternative.
 	DeviceModelNameKey = attribute.Key("device.model.name")
+	// The name of the device manufacturer
+	//
+	// Type: string
+	// Required: No
+	// Stability: stable
+	// Examples: 'Apple', 'Samsung'
+	// Note: The Android OS provides this field via
+	// [Build](https://developer.android.com/reference/android/os/Build#MANUFACTURER).
+	// iOS apps SHOULD hardcode the value `Apple`.
+	DeviceManufacturerKey = attribute.Key("device.manufacturer")
 )
 
 // A serverless instance.
@@ -476,6 +497,8 @@ var (
 	HostArchPPC32 = HostArchKey.String("ppc32")
 	// 64-bit PowerPC
 	HostArchPPC64 = HostArchKey.String("ppc64")
+	// IBM z/Architecture
+	HostArchS390x = HostArchKey.String("s390x")
 	// 32-bit x86
 	HostArchX86 = HostArchKey.String("x86")
 )
@@ -540,13 +563,23 @@ const (
 
 // A container in a [PodTemplate](https://kubernetes.io/docs/concepts/workloads/pods/#pod-templates).
 const (
-	// The name of the Container in a Pod template.
+	// The name of the Container from Pod specification, must be unique within a Pod.
+	// Container runtime usually uses different globally unique name
+	// (`container.name`).
 	//
 	// Type: string
 	// Required: No
 	// Stability: stable
 	// Examples: 'redis'
 	K8SContainerNameKey = attribute.Key("k8s.container.name")
+	// Number of times the container was restarted. This attribute can be used to
+	// identify a particular container (running or stopped) within a container spec.
+	//
+	// Type: int
+	// Required: No
+	// Stability: stable
+	// Examples: 0, 2
+	K8SContainerRestartCountKey = attribute.Key("k8s.container.restart_count")
 )
 
 // A Kubernetes ReplicaSet object.
@@ -917,6 +950,8 @@ var (
 	TelemetrySDKLanguageRuby = TelemetrySDKLanguageKey.String("ruby")
 	// webjs
 	TelemetrySDKLanguageWebjs = TelemetrySDKLanguageKey.String("webjs")
+	// swift
+	TelemetrySDKLanguageSwift = TelemetrySDKLanguageKey.String("swift")
 )
 
 // Resource describing the packaged software running the application code. Web engines are typically executed using process.runtime.

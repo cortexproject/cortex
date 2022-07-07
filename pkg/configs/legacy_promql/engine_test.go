@@ -276,8 +276,7 @@ load 10s
 		{
 			Query: "1",
 			Result: Matrix{Series{
-				Points: []Point{{V: 1, T: 0}, {V: 1, T: 1000}, {V: 1, T: 2000}},
-				Metric: labels.FromStrings()},
+				Points: []Point{{V: 1, T: 0}, {V: 1, T: 1000}, {V: 1, T: 2000}}},
 			},
 			Start:    time.Unix(0, 0),
 			End:      time.Unix(2, 0),

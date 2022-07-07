@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/types"
@@ -419,6 +422,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
 		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
+
 			return nil, err
 		}
 
@@ -598,8 +602,11 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
-				level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
-				return nil
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+					return nil
+				}
+				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
 			mySeries := []*storepb.Series(nil)
@@ -618,8 +625,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					break
 				}
 				if err != nil {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress()))
-					return nil
+					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
 
 				// Response may either contain series, warning or hints.
@@ -655,14 +661,12 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if h := resp.GetHints(); h != nil {
 					hints := hintspb.SeriesResponseHints{}
 					if err := types.UnmarshalAny(h, &hints); err != nil {
-						level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to unmarshal series hints from %s", c.RemoteAddress()))
-						return nil
+						return errors.Wrapf(err, "failed to unmarshal series hints from %s", c.RemoteAddress())
 					}
 
 					ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 					if err != nil {
-						level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to parse queried block IDs from received hints"))
-						return nil
+						return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
 					}
 
 					myQueriedBlocks = append(myQueriedBlocks, ids...)
@@ -732,22 +736,23 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
-				level.Warn(spanLog).Log("err", "failed to fetch series from %s", c.RemoteAddress())
-				return nil
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+					return nil
+				}
+				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
 			if namesResp.Hints != nil {
 				hints := hintspb.LabelNamesResponseHints{}
 				if err := types.UnmarshalAny(namesResp.Hints, &hints); err != nil {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to unmarshal label names hints from %s", c.RemoteAddress()))
-					return nil
+					return errors.Wrapf(err, "failed to unmarshal label names hints from %s", c.RemoteAddress())
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 				if err != nil {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to parse queried block IDs from received hints"))
-					return nil
+					return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
 				}
 
 				myQueriedBlocks = ids
@@ -812,22 +817,23 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
-				level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
-				return nil
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+					return nil
+				}
+				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
 			if valuesResp.Hints != nil {
 				hints := hintspb.LabelValuesResponseHints{}
 				if err := types.UnmarshalAny(valuesResp.Hints, &hints); err != nil {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to unmarshal label values hints from %s", c.RemoteAddress()))
-					return nil
+					return errors.Wrapf(err, "failed to unmarshal label values hints from %s", c.RemoteAddress())
 				}
 
 				ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 				if err != nil {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to parse queried block IDs from received hints"))
-					return nil
+					return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
 				}
 
 				myQueriedBlocks = ids
@@ -979,4 +985,14 @@ func countChunkBytes(series ...*storepb.Series) (count int) {
 	}
 
 	return count
+}
+
+// only retry connection issues
+func isRetryableError(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable:
+		return true
+	default:
+		return false
+	}
 }

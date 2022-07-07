@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
@@ -592,7 +595,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{
 						remoteAddr:      "1.1.1.1",
-						mockedSeriesErr: errors.New("failed to receive from store-gateway"),
+						mockedSeriesErr: status.Error(codes.Unavailable, "unavailable"),
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{
@@ -1101,7 +1104,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 							Warnings: []string{},
 							Hints:    mockNamesHints(block1),
 						},
-						mockedLabelValuesErr: errors.New("failed to receive from store-gateway"),
+						mockedLabelValuesErr: status.Error(codes.Unavailable, "unavailable"),
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{

@@ -150,7 +150,7 @@ func TestTsdbBuilder(t *testing.T) {
 	otherID := ulid.MustNew(ulid.Now(), nil)
 
 	// Make sure that deduplicate filter doesn't remove this block (thanks to correct sources).
-	df := block.NewDeduplicateFilter()
+	df := block.NewDeduplicateFilter(10)
 	inp := map[ulid.ULID]*metadata.Meta{
 		otherID: {
 			BlockMeta: tsdb.BlockMeta{
@@ -167,7 +167,7 @@ func TestTsdbBuilder(t *testing.T) {
 		id: m,
 	}
 
-	err = df.Filter(context.Background(), inp, extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"}))
+	err = df.Filter(context.Background(), inp, extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"}), extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"modified"}))
 	require.NoError(t, err)
 	require.NotNil(t, inp[id])
 }

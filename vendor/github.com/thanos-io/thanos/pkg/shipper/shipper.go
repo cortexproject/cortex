@@ -290,14 +290,10 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			continue
 		}
 
-		if m.Compaction.Level > 1 {
+		// Skip overlap check if out of order uploads is enabled.
+		if m.Compaction.Level > 1 && !s.allowOutOfOrderUploads {
 			if err := checker.IsOverlapping(ctx, m.BlockMeta); err != nil {
-				if !s.allowOutOfOrderUploads {
-					return 0, errors.Errorf("Found overlap or error during sync, cannot upload compacted block, details: %v", err)
-				}
-				level.Error(s.logger).Log("msg", "found overlap or error during sync, cannot upload compacted block", "err", err)
-				uploadErrs++
-				continue
+				return 0, errors.Errorf("Found overlap or error during sync, cannot upload compacted block, details: %v", err)
 			}
 		}
 
@@ -474,14 +470,15 @@ func WriteMetaFile(logger log.Logger, dir string, meta *Meta) error {
 
 // ReadMetaFile reads the given meta from <dir>/thanos.shipper.json.
 func ReadMetaFile(dir string) (*Meta, error) {
-	b, err := ioutil.ReadFile(filepath.Join(dir, filepath.Clean(MetaFilename)))
+	fpath := filepath.Join(dir, filepath.Clean(MetaFilename))
+	b, err := os.ReadFile(fpath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to read %s", fpath)
 	}
-	var m Meta
 
+	var m Meta
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to parse %s as JSON: %q", fpath, string(b))
 	}
 	if m.Version != MetaVersion1 {
 		return nil, errors.Errorf("unexpected meta file version %d", m.Version)

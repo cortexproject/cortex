@@ -18,7 +18,7 @@ require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
-	github.com/felixge/fgprof v0.9.1
+	github.com/felixge/fgprof v0.9.2
 	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-openapi/strfmt v0.21.2
@@ -39,7 +39,7 @@ require (
 	github.com/hashicorp/memberlist v0.3.1
 	github.com/json-iterator/go v1.1.12
 	github.com/lib/pq v1.3.0
-	github.com/minio/minio-go/v7 v7.0.10
+	github.com/minio/minio-go/v7 v7.0.30
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/ncw/swift v1.0.52
 	github.com/oklog/ulid v1.3.1
@@ -56,8 +56,8 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.6.0
 	github.com/stretchr/testify v1.7.2
-	github.com/thanos-io/thanos v0.22.0
-	github.com/uber/jaeger-client-go v2.29.1+incompatible
+	github.com/thanos-io/thanos v0.27.0-rc.0.0.20220707121322-5f31fc5ad310
+	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6
 	go.etcd.io/etcd/api/v3 v3.5.4
@@ -87,15 +87,12 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 // Using a 3rd-party branch for custom dialer - see https://github.com/bradfitz/gomemcache/pull/86
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 
-// We only pin this version to avoid problems with running go get: github.com/thanos-io/thanos@main. That
-// currently fails because Thanos isn't merging release branches to main branch, and Go modules system is then
-// confused about which version is the latest one. v0.22.0 was released in July, but latest tag reachable from main
-// is v0.19.1. We pin version from early December here. Feel free to remove when updating to later version.
-replace github.com/thanos-io/thanos v0.22.0 => github.com/thanos-io/thanos v0.19.1-0.20211208205607-d1acaea2a11a
-
 // Replace memberlist with Grafana's fork which includes some fixes that haven't been merged upstream yet
 replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b
 
 // Replace grpc as weaveworks common needs to update this first
 // vendor/github.com/weaveworks/common/httpgrpc/server/server.go:137:3: undefined: grpc.WithBalancerName
 replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
+
+// Same version being used by thanos
+replace github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e

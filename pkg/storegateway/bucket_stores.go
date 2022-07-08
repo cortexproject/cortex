@@ -429,16 +429,13 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// the consistency check done on the querier. The duplicate filter removes redundant blocks
 		// but if the store-gateway removes redundant blocks before the querier discovers them, the
 		// consistency check on the querier will fail.
-	}...)
-
-	modifiers := []block.MetadataModifier{
-		// Remove Cortex external labels so that they're not injected when querying blocks.
 		NewReplicaLabelRemover(userLogger, []string{
 			tsdb.TenantIDExternalLabel,
 			tsdb.IngesterIDExternalLabel,
 			tsdb.ShardIDExternalLabel,
 		}),
-	}
+		// Remove Cortex external labels so that they're not injected when querying blocks.
+	}...)
 
 	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
 	var fetcher block.MetadataFetcher
@@ -450,8 +447,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			u.limits,
 			u.logger,
 			fetcherReg,
-			filters,
-			modifiers)
+			filters)
 	} else {
 		// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
 		// belong to the store-gateway shard. We need to run the BucketStore synching anyway
@@ -468,7 +464,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			u.syncDirForUser(userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 			fetcherReg,
 			filters,
-			modifiers,
 		)
 		if err != nil {
 			return nil, err
@@ -581,7 +576,7 @@ func NewReplicaLabelRemover(logger log.Logger, replicaLabels []string) *ReplicaL
 }
 
 // Modify modifies external labels of existing blocks, it removes given replica labels from the metadata of blocks that have it.
-func (r *ReplicaLabelRemover) Modify(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, modified *extprom.TxGaugeVec) error {
+func (r *ReplicaLabelRemover) Filter(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, _ *extprom.TxGaugeVec, _ *extprom.TxGaugeVec) error {
 	for u, meta := range metas {
 		l := meta.Thanos.Labels
 		for _, replicaLabel := range r.replicaLabels {

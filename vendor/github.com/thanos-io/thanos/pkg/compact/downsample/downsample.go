@@ -4,6 +4,7 @@
 package downsample
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -35,8 +37,8 @@ const (
 
 // Downsampling ranges i.e. minimum block size after which we start to downsample blocks (in seconds).
 const (
-	DownsampleRange0 = 40 * 60 * 60 * 1000      // 40 hours.
-	DownsampleRange1 = 10 * 24 * 60 * 60 * 1000 // 10 days.
+	ResLevel1DownsampleRange = 40 * 60 * 60 * 1000      // 40 hours.
+	ResLevel2DownsampleRange = 10 * 24 * 60 * 60 * 1000 // 10 days.
 )
 
 // Downsample downsamples the given block. It writes a new block into dir and returns its ID.
@@ -153,7 +155,13 @@ func Downsample(
 			for _, c := range chks {
 				ac, ok := c.Chunk.(*AggrChunk)
 				if !ok {
-					return id, errors.Errorf("expected downsampled chunk (*downsample.AggrChunk) got %T instead for series: %d", c.Chunk, postings.At())
+					if c.Chunk.NumSamples() == 0 {
+						// Downsampled block can erroneously contain empty XOR chunks, skip those
+						// https://github.com/thanos-io/thanos/issues/5272
+						level.Warn(logger).Log("msg", fmt.Sprintf("expected downsampled chunk (*downsample.AggrChunk) got an empty %T instead for series: %d", c.Chunk, postings.At()))
+						continue
+					}
+					return id, errors.Errorf("expected downsampled chunk (*downsample.AggrChunk) got a non-empty %T instead for series: %d", c.Chunk, postings.At())
 				}
 				aggrChunks = append(aggrChunks, ac)
 			}

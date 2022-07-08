@@ -203,7 +203,7 @@ func NewShardingMetadataFilterAdapter(userID string, strategy ShardingStrategy) 
 
 // Filter implements block.MetadataFilter.
 // This function is NOT safe for use by multiple goroutines concurrently.
-func (a *shardingMetadataFilterAdapter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
+func (a *shardingMetadataFilterAdapter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec, _ *extprom.TxGaugeVec) error {
 	if err := a.strategy.FilterBlocks(ctx, a.userID, metas, a.lastBlocks, synced); err != nil {
 		return err
 	}

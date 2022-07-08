@@ -45,7 +45,7 @@ func TestLabelRemoverFilter(t *testing.T) {
 			}
 
 			f := NewLabelRemoverFilter(testData.labels)
-			err := f.Filter(context.Background(), metas, nil)
+			err := f.Filter(context.Background(), metas, nil, nil)
 			require.NoError(t, err)
 			assert.Len(t, metas, len(testData.expected))
 

@@ -10,8 +10,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
@@ -55,7 +55,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/grpc/healthcheck"
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/process"
@@ -120,7 +120,7 @@ type Config struct {
 	Configs             configs.Config                             `yaml:"configs"`
 	Alertmanager        alertmanager.MultitenantAlertmanagerConfig `yaml:"alertmanager"`
 	AlertmanagerStorage alertstore.Config                          `yaml:"alertmanager_storage"`
-	RuntimeConfig       runtimeconfig.ManagerConfig                `yaml:"runtime_config"`
+	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
 }
@@ -224,7 +224,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Worker.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid frontend_worker config")
 	}
-	if err := c.QueryRange.Validate(); err != nil {
+	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
 	if err := c.TableManager.Validate(); err != nil {
@@ -233,7 +233,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
-	if err := c.Compactor.Validate(); err != nil {
+	if err := c.Compactor.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid compactor config")
 	}
 	if err := c.AlertmanagerStorage.Validate(); err != nil {
@@ -430,7 +430,7 @@ func (t *Cortex) Run() error {
 	// before starting servers, register /ready handler and gRPC health check service.
 	// It should reflect entire Cortex.
 	t.Server.HTTP.Path("/ready").Handler(t.readyHandler(sm))
-	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, healthcheck.New(sm))
+	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
 	// Let's listen for events from this manager, and log them.
 	healthy := func() { level.Info(util_log.Logger).Log("msg", "Cortex started") }
@@ -442,7 +442,7 @@ func (t *Cortex) Run() error {
 		// let's find out which module failed
 		for m, s := range t.ServiceMap {
 			if s == service {
-				if service.FailureCase() == util.ErrStopProcess {
+				if service.FailureCase() == modules.ErrStopProcess {
 					level.Info(util_log.Logger).Log("msg", "received stop signal via return error", "module", m, "err", service.FailureCase())
 				} else {
 					level.Error(util_log.Logger).Log("msg", "module failed", "module", m, "err", service.FailureCase())
@@ -478,7 +478,7 @@ func (t *Cortex) Run() error {
 	if err == nil {
 		if failed := sm.ServicesByState()[services.Failed]; len(failed) > 0 {
 			for _, f := range failed {
-				if f.FailureCase() != util.ErrStopProcess {
+				if f.FailureCase() != modules.ErrStopProcess {
 					// Details were reported via failure listener before
 					err = errors.New("failed services")
 					break

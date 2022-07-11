@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
@@ -326,6 +326,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 			cluster.DefaultTcpTimeout,
 			cluster.DefaultProbeTimeout,
 			cluster.DefaultProbeInterval,
+			nil,
+			false,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to initialize gossip mesh")
@@ -344,7 +346,8 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 		ringStore, err = kv.NewClient(
 			cfg.ShardingRing.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(registerer, "alertmanager"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", registerer), "alertmanager"),
+			logger,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
@@ -396,7 +399,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 	}
 
 	if cfg.ShardingEnabled {
-		lifecyclerCfg, err := am.cfg.ShardingRing.ToLifecyclerConfig()
+		lifecyclerCfg, err := am.cfg.ShardingRing.ToLifecyclerConfig(am.logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize Alertmanager's lifecycler config")
 		}
@@ -407,18 +410,14 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		delegate = ring.NewLeaveOnStoppingDelegate(delegate, am.logger)
 		delegate = ring.NewAutoForgetDelegate(am.cfg.ShardingRing.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, am.logger)
 
-		am.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, am.logger, am.registry)
+		am.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, RingNameForServer, RingKey, ringStore, delegate, am.logger, prometheus.WrapRegistererWithPrefix("cortex_", am.registry))
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize Alertmanager's lifecycler")
 		}
 
-		am.ring, err = ring.NewWithStoreClientAndStrategy(am.cfg.ShardingRing.ToRingConfig(), RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+		am.ring, err = ring.NewWithStoreClientAndStrategy(am.cfg.ShardingRing.ToRingConfig(), RingNameForServer, RingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", am.registry), am.logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to initialize Alertmanager's ring")
-		}
-
-		if am.registry != nil {
-			am.registry.MustRegister(am.ring)
 		}
 
 		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
@@ -823,14 +822,25 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var userAmConfig *amconfig.Config
 	var err error
 	var hasTemplateChanges bool
+	var userTemplateDir = filepath.Join(am.getTenantDirectory(cfg.User), templatesDir)
+	var pathsToRemove = make(map[string]struct{})
+
+	// List existing files to keep track the ones to be removed
+	if oldTemplateFiles, err := ioutil.ReadDir(userTemplateDir); err == nil {
+		for _, file := range oldTemplateFiles {
+			pathsToRemove[filepath.Join(userTemplateDir, file.Name())] = struct{}{}
+		}
+	}
 
 	for _, tmpl := range cfg.Templates {
-		templateFilepath, err := safeTemplateFilepath(filepath.Join(am.getTenantDirectory(cfg.User), templatesDir), tmpl.Filename)
+		templateFilePath, err := safeTemplateFilepath(userTemplateDir, tmpl.Filename)
 		if err != nil {
 			return err
 		}
 
-		hasChanged, err := storeTemplateFile(templateFilepath, tmpl.Body)
+		// Removing from pathsToRemove map the files that still exists in the config
+		delete(pathsToRemove, templateFilePath)
+		hasChanged, err := storeTemplateFile(templateFilePath, tmpl.Body)
 		if err != nil {
 			return err
 		}
@@ -838,6 +848,14 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 		if hasChanged {
 			hasTemplateChanges = true
 		}
+	}
+
+	for pathToRemove := range pathsToRemove {
+		err := os.Remove(pathToRemove)
+		if err != nil {
+			level.Warn(am.logger).Log("msg", "failed to remove file", "file", pathToRemove, "err", err)
+		}
+		hasTemplateChanges = true
 	}
 
 	level.Debug(am.logger).Log("msg", "setting config", "user", cfg.User)

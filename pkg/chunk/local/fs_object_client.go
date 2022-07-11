@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
-	"github.com/thanos-io/thanos/pkg/runutil"
+	"github.com/go-kit/log/level"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
 // FSConfig is the config for a FSObjectClient.

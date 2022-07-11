@@ -79,7 +79,7 @@ func TestGenerateTokens(t *testing.T) {
 	}
 }
 
-func TestGenerateTokensIgnoresOldTokens(t *testing.T) {
+func TestGenerateTokens_IgnoresOldTokens(t *testing.T) {
 	first := GenerateTokens(1000000, nil)
 	second := GenerateTokens(1000000, first)
 
@@ -96,14 +96,7 @@ func TestGenerateTokensIgnoresOldTokens(t *testing.T) {
 	}
 }
 
-func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t *testing.T) {
-	t.Parallel()
-
-	const (
-		minStability = 2 * time.Second
-		maxWaiting   = 10 * time.Second
-	)
-
+func createStartingRing() *Ring {
 	// Init the ring.
 	ringDesc := &Desc{Ingesters: map[string]InstanceDesc{
 		"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: time.Now().Unix()},
@@ -123,14 +116,63 @@ func TestWaitRingStabilityShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t
 		strategy:            NewDefaultReplicationStrategy(),
 	}
 
+	return ring
+}
+
+func TestWaitRingStability_ShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t *testing.T) {
+	t.Parallel()
+
+	const (
+		minStability = 2 * time.Second
+		maxWaiting   = 10 * time.Second
+	)
+
+	ring := createStartingRing()
+
 	startTime := time.Now()
 	require.NoError(t, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.InDelta(t, minStability, elapsedTime, float64(2*time.Second))
+	assert.GreaterOrEqual(t, elapsedTime, minStability)
+	assert.Less(t, elapsedTime, 2*minStability)
 }
 
-func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.T) {
+func TestWaitRingTokensStability_ShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t *testing.T) {
+	t.Parallel()
+
+	const (
+		minStability = 2 * time.Second
+		maxWaiting   = 10 * time.Second
+	)
+
+	ring := createStartingRing()
+
+	startTime := time.Now()
+	require.NoError(t, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	elapsedTime := time.Since(startTime)
+
+	assert.GreaterOrEqual(t, elapsedTime, minStability)
+	assert.Less(t, elapsedTime, 2*minStability)
+}
+
+func addInstanceAfterSomeTime(ring *Ring, addInstanceAfter time.Duration) {
+	go func() {
+		time.Sleep(addInstanceAfter)
+
+		ring.mtx.Lock()
+		defer ring.mtx.Unlock()
+		ringDesc := ring.ringDesc
+		instanceID := fmt.Sprintf("127.0.0.%d", len(ringDesc.Ingesters)+1)
+		ringDesc.Ingesters[instanceID] = InstanceDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
+		ring.ringDesc = ringDesc
+		ring.ringTokens = ringDesc.GetTokens()
+		ring.ringTokensByZone = ringDesc.getTokensByZone()
+		ring.ringInstanceByToken = ringDesc.getTokensInfo()
+		ring.ringZones = getZones(ringDesc.getTokensByZone())
+	}()
+}
+
+func TestWaitRingStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReached(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -139,79 +181,45 @@ func TestWaitRingStabilityShouldReturnOnceMinStabilityHasBeenReached(t *testing.
 		maxWaiting       = 15 * time.Second
 	)
 
-	// Init the ring.
-	ringDesc := &Desc{Ingesters: map[string]InstanceDesc{
-		"instance-1": {Addr: "instance-1", State: ACTIVE, Timestamp: time.Now().Unix()},
-		"instance-2": {Addr: "instance-2", State: PENDING, Timestamp: time.Now().Unix()},
-		"instance-3": {Addr: "instance-3", State: JOINING, Timestamp: time.Now().Unix()},
-		"instance-4": {Addr: "instance-4", State: LEAVING, Timestamp: time.Now().Unix()},
-		"instance-5": {Addr: "instance-5", State: ACTIVE, Timestamp: time.Now().Unix()},
-	}}
-
-	ring := &Ring{
-		cfg:                 Config{HeartbeatTimeout: time.Minute},
-		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.GetTokens(),
-		ringTokensByZone:    ringDesc.getTokensByZone(),
-		ringInstanceByToken: ringDesc.getTokensInfo(),
-		ringZones:           getZones(ringDesc.getTokensByZone()),
-		strategy:            NewDefaultReplicationStrategy(),
-	}
+	ring := createStartingRing()
 
 	// Add 1 new instance after some time.
-	go func() {
-		time.Sleep(addInstanceAfter)
-
-		ring.mtx.Lock()
-		defer ring.mtx.Unlock()
-
-		instanceID := fmt.Sprintf("instance-%d", len(ringDesc.Ingesters)+1)
-		ringDesc.Ingesters[instanceID] = InstanceDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
-		ring.ringDesc = ringDesc
-		ring.ringTokens = ringDesc.GetTokens()
-		ring.ringTokensByZone = ringDesc.getTokensByZone()
-		ring.ringInstanceByToken = ringDesc.getTokensInfo()
-		ring.ringZones = getZones(ringDesc.getTokensByZone())
-	}()
+	addInstanceAfterSomeTime(ring, addInstanceAfter)
 
 	startTime := time.Now()
 	require.NoError(t, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.GreaterOrEqual(t, elapsedTime.Milliseconds(), (minStability + addInstanceAfter).Milliseconds())
-	assert.LessOrEqual(t, elapsedTime.Milliseconds(), (minStability + addInstanceAfter + 3*time.Second).Milliseconds())
+	assert.GreaterOrEqual(t, elapsedTime, minStability+addInstanceAfter)
+	assert.LessOrEqual(t, elapsedTime, minStability+addInstanceAfter+3*time.Second)
 }
 
-func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
+func TestWaitRingTokensStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReached(t *testing.T) {
 	t.Parallel()
 
 	const (
-		minStability = 2 * time.Second
-		maxWaiting   = 7 * time.Second
+		minStability     = 3 * time.Second
+		addInstanceAfter = 2 * time.Second
+		maxWaiting       = 15 * time.Second
 	)
 
-	// Init the ring.
-	ringDesc := &Desc{Ingesters: map[string]InstanceDesc{
-		"instance-1": {Addr: "instance-1", State: ACTIVE, Timestamp: time.Now().Unix()},
-		"instance-2": {Addr: "instance-2", State: PENDING, Timestamp: time.Now().Unix()},
-		"instance-3": {Addr: "instance-3", State: JOINING, Timestamp: time.Now().Unix()},
-		"instance-4": {Addr: "instance-4", State: LEAVING, Timestamp: time.Now().Unix()},
-		"instance-5": {Addr: "instance-5", State: ACTIVE, Timestamp: time.Now().Unix()},
-	}}
+	ring := createStartingRing()
 
-	ring := &Ring{
-		cfg:                 Config{HeartbeatTimeout: time.Minute},
-		ringDesc:            ringDesc,
-		ringTokens:          ringDesc.GetTokens(),
-		ringTokensByZone:    ringDesc.getTokensByZone(),
-		ringInstanceByToken: ringDesc.getTokensInfo(),
-		ringZones:           getZones(ringDesc.getTokensByZone()),
-		strategy:            NewDefaultReplicationStrategy(),
-	}
+	// Add 1 new instance after some time.
+	addInstanceAfterSomeTime(ring, addInstanceAfter)
 
+	startTime := time.Now()
+	require.NoError(t, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	elapsedTime := time.Since(startTime)
+
+	assert.GreaterOrEqual(t, elapsedTime, minStability+addInstanceAfter)
+	assert.LessOrEqual(t, elapsedTime, minStability+addInstanceAfter+3*time.Second)
+}
+
+func addInstancesPeriodically(ring *Ring) chan struct{} {
 	// Keep changing the ring.
 	done := make(chan struct{})
-	defer close(done)
+
 	go func() {
 		for {
 			select {
@@ -219,8 +227,8 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 				return
 			case <-time.After(time.Second):
 				ring.mtx.Lock()
-
-				instanceID := fmt.Sprintf("instance-%d", len(ringDesc.Ingesters)+1)
+				ringDesc := ring.ringDesc
+				instanceID := fmt.Sprintf("127.0.0.%d", len(ringDesc.Ingesters)+1)
 				ringDesc.Ingesters[instanceID] = InstanceDesc{Addr: instanceID, State: ACTIVE, Timestamp: time.Now().Unix()}
 				ring.ringDesc = ringDesc
 				ring.ringTokens = ringDesc.GetTokens()
@@ -232,15 +240,123 @@ func TestWaitRingStabilityShouldReturnErrorIfMaxWaitingIsReached(t *testing.T) {
 			}
 		}
 	}()
+	return done
+}
+
+func TestWaitRingStability_ShouldReturnErrorIfInstancesAddedAndMaxWaitingIsReached(t *testing.T) {
+	t.Parallel()
+
+	const (
+		minStability = 2 * time.Second
+		maxWaiting   = 7 * time.Second
+	)
+
+	ring := createStartingRing()
+
+	done := addInstancesPeriodically(ring)
+	defer close(done)
 
 	startTime := time.Now()
 	require.Equal(t, context.DeadlineExceeded, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
-	assert.InDelta(t, maxWaiting, elapsedTime, float64(2*time.Second))
+	assert.GreaterOrEqual(t, elapsedTime, maxWaiting)
 }
 
-func TestWaitInstanceStateTimeout(t *testing.T) {
+func TestWaitRingTokensStability_ShouldReturnErrorIfInstancesAddedAndMaxWaitingIsReached(t *testing.T) {
+	t.Parallel()
+
+	const (
+		minStability = 2 * time.Second
+		maxWaiting   = 7 * time.Second
+	)
+
+	ring := createStartingRing()
+
+	done := addInstancesPeriodically(ring)
+	defer close(done)
+
+	startTime := time.Now()
+	require.Equal(t, context.DeadlineExceeded, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	elapsedTime := time.Since(startTime)
+
+	assert.GreaterOrEqual(t, elapsedTime, maxWaiting)
+}
+
+// Keep changing the ring in a way to avoid repeating the same set of states for at least 2 sec
+func changeStatePeriodically(ring *Ring) chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		instanceToMutate := "instance-1"
+		states := []InstanceState{PENDING, JOINING, ACTIVE, LEAVING}
+		stateIdx := 0
+
+		for states[stateIdx] != ring.ringDesc.Ingesters[instanceToMutate].State {
+			stateIdx++
+		}
+
+		for {
+			select {
+			case <-done:
+				return
+			case <-time.After(time.Second):
+				stateIdx++
+				ring.mtx.Lock()
+				ringDesc := ring.ringDesc
+				desc := InstanceDesc{Addr: "127.0.0.1", State: states[stateIdx%len(states)], Timestamp: time.Now().Unix()}
+				ringDesc.Ingesters[instanceToMutate] = desc
+				ring.mtx.Unlock()
+			}
+		}
+	}()
+
+	return done
+}
+
+func TestWaitRingStability_ShouldReturnErrorIfInstanceStateIsChangingAndMaxWaitingIsReached(t *testing.T) {
+	t.Parallel()
+
+	const (
+		minStability = 2 * time.Second
+		maxWaiting   = 7 * time.Second
+	)
+
+	ring := createStartingRing()
+
+	// Keep changing the ring.
+	done := changeStatePeriodically(ring)
+	defer close(done)
+
+	startTime := time.Now()
+	require.Equal(t, context.DeadlineExceeded, WaitRingStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	elapsedTime := time.Since(startTime)
+
+	assert.GreaterOrEqual(t, elapsedTime, maxWaiting)
+}
+
+func TestWaitRingTokensStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReachedWhileStateCanChange(t *testing.T) {
+	t.Parallel()
+
+	const (
+		minStability = 2 * time.Second
+		maxWaiting   = 7 * time.Second
+	)
+
+	ring := createStartingRing()
+
+	// Keep changing the ring.
+	done := changeStatePeriodically(ring)
+	defer close(done)
+
+	startTime := time.Now()
+	require.NoError(t, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	elapsedTime := time.Since(startTime)
+
+	assert.GreaterOrEqual(t, elapsedTime, minStability)
+	assert.Less(t, elapsedTime, 2*minStability)
+}
+
+func TestWaitInstanceState_Timeout(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -260,7 +376,7 @@ func TestWaitInstanceStateTimeout(t *testing.T) {
 	ring.AssertCalled(t, "GetInstanceState", instanceID)
 }
 
-func TestWaitInstanceStateTimeoutOnError(t *testing.T) {
+func TestWaitInstanceState_TimeoutOnError(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -280,7 +396,7 @@ func TestWaitInstanceStateTimeoutOnError(t *testing.T) {
 	ring.AssertCalled(t, "GetInstanceState", instanceID)
 }
 
-func TestWaitInstanceStateExitsAfterActualStateEqualsState(t *testing.T) {
+func TestWaitInstanceState_ExitsAfterActualStateEqualsState(t *testing.T) {
 	t.Parallel()
 
 	const (

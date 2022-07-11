@@ -73,10 +73,14 @@ The Cortex services are:
 - [Distributor](#distributor)
 - [Ingester](#ingester)
 - [Querier](#querier)
-- [Query frontend](#query-frontend) (optional)
-- [Ruler](#ruler) (optional)
+- [Compactor](./blocks-storage/compactor.md) (required for blocks storage)
+- [Store gateway](./blocks-storage/store-gateway.md) (required for blocks storage)
 - [Alertmanager](#alertmanager) (optional)
 - [Configs API](#configs-api) (optional)
+- [Overrides exporter](./guides/overrides-exporter.md) (optional)
+- [Query frontend](#query-frontend) (optional)
+- [Query scheduler](./operations/scalable-query-frontend.md#query-scheduler) (optional)
+- [Ruler](#ruler) (optional)
 
 ### Distributor
 
@@ -173,7 +177,7 @@ If an ingester process crashes or exits abruptly, all the in-memory series that 
 1. Replication
 2. Write-ahead log (WAL)
 
-The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster looses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
+The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster loses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
 
 The **write-ahead log** (WAL) is used to write to a persistent disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
 
@@ -209,6 +213,8 @@ Flow of the query in the system when using query-frontend:
 2) Query frontend stores the query into in-memory queue, where it waits for some querier to pick it up.
 3) Querier picks up the query, and executes it.
 4) Querier sends result back to query-frontend, which then forwards it to the client.
+
+Query frontend can also be used with any Prometheus-API compatible service. In this mode Cortex can be used as an query accelerator with it's caching and splitting features on other prometheus query engines like Thanos Querier or your own Prometheus server.  Query frontend needs to be configured with downstream url address(via the `-frontend.downstream-url` CLI flag), which is the endpoint of the prometheus server intended to be connected with Cortex.
 
 #### Queueing
 

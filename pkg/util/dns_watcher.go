@@ -7,7 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/cortexproject/cortex/pkg/util/grpc/naming"
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -21,18 +22,18 @@ type DNSNotifications interface {
 }
 
 type dnsWatcher struct {
-	watcher       naming.Watcher
+	watcher       grpcutil.Watcher
 	notifications DNSNotifications
 }
 
 // NewDNSWatcher creates a new DNS watcher and returns a service that is wrapping it.
 func NewDNSWatcher(address string, dnsLookupPeriod time.Duration, notifications DNSNotifications) (services.Service, error) {
-	resolver, err := naming.NewDNSResolverWithFreq(dnsLookupPeriod)
+	resolver, err := grpcutil.NewDNSResolverWithFreq(dnsLookupPeriod, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
 
-	watcher, err := resolver.Resolve(address)
+	watcher, err := resolver.Resolve(address, "")
 	if err != nil {
 		return nil, err
 	}
@@ -68,10 +69,10 @@ func (w *dnsWatcher) watchDNSLoop(servCtx context.Context) error {
 
 		for _, update := range updates {
 			switch update.Op {
-			case naming.Add:
+			case grpcutil.Add:
 				w.notifications.AddressAdded(update.Addr)
 
-			case naming.Delete:
+			case grpcutil.Delete:
 				w.notifications.AddressRemoved(update.Addr)
 
 			default:

@@ -5,8 +5,8 @@ import (
 	fmt "fmt"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -215,6 +215,7 @@ func (qs *queryShard) Do(ctx context.Context, r Request) (Response, error) {
 
 	qry, err := qs.engine.NewRangeQuery(
 		queryable,
+		nil,
 		r.GetQuery(),
 		util.TimeFromMillis(r.GetStart()),
 		util.TimeFromMillis(r.GetEnd()),

@@ -9,15 +9,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	consul "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -30,7 +32,7 @@ var (
 	// ErrNotFound is returned by ConsulClient.Get.
 	ErrNotFound = fmt.Errorf("Not found")
 
-	backoffConfig = util.BackoffConfig{
+	backoffConfig = backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
 	}
@@ -38,12 +40,12 @@ var (
 
 // Config to create a ConsulClient
 type Config struct {
-	Host              string        `yaml:"host"`
-	ACLToken          string        `yaml:"acl_token"`
-	HTTPClientTimeout time.Duration `yaml:"http_client_timeout"`
-	ConsistentReads   bool          `yaml:"consistent_reads"`
-	WatchKeyRateLimit float64       `yaml:"watch_rate_limit"` // Zero disables rate limit
-	WatchKeyBurstSize int           `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
+	Host              string         `yaml:"host"`
+	ACLToken          flagext.Secret `yaml:"acl_token"`
+	HTTPClientTimeout time.Duration  `yaml:"http_client_timeout"`
+	ConsistentReads   bool           `yaml:"consistent_reads"`
+	WatchKeyRateLimit float64        `yaml:"watch_rate_limit"` // Zero disables rate limit
+	WatchKeyBurstSize int            `yaml:"watch_burst_size"` // Burst when doing rate-limit, defaults to 1
 
 	// Used in tests only.
 	MaxCasRetries int           `yaml:"-"`
@@ -58,18 +60,20 @@ type kv interface {
 	Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error)
 }
 
-// Client is a KV.Client for Consul.
+// Client is a kv.Client for Consul.
 type Client struct {
 	kv
-	codec codec.Codec
-	cfg   Config
+	codec         codec.Codec
+	cfg           Config
+	logger        log.Logger
+	consulMetrics *consulMetrics
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 // If prefix is not an empty string it should end with a period.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Host, prefix+"consul.hostname", "localhost:8500", "Hostname and port of Consul.")
-	f.StringVar(&cfg.ACLToken, prefix+"consul.acl-token", "", "ACL Token used to interact with Consul.")
+	f.Var(&cfg.ACLToken, prefix+"consul.acl-token", "ACL Token used to interact with Consul.")
 	f.DurationVar(&cfg.HTTPClientTimeout, prefix+"consul.client-timeout", 2*longPollDuration, "HTTP timeout when talking to Consul")
 	f.BoolVar(&cfg.ConsistentReads, prefix+"consul.consistent-reads", false, "Enable consistent reads to Consul.")
 	f.Float64Var(&cfg.WatchKeyRateLimit, prefix+"consul.watch-rate-limit", 1, "Rate limit when watching key or prefix in Consul, in requests per second. 0 disables the rate limit.")
@@ -77,10 +81,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 }
 
 // NewClient returns a new Client.
-func NewClient(cfg Config, codec codec.Codec) (*Client, error) {
+func NewClient(cfg Config, codec codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
 	client, err := consul.NewClient(&consul.Config{
 		Address: cfg.Host,
-		Token:   cfg.ACLToken,
+		Token:   cfg.ACLToken.Value,
 		Scheme:  "http",
 		HttpClient: &http.Client{
 			Transport: cleanhttp.DefaultPooledTransport(),
@@ -91,10 +95,14 @@ func NewClient(cfg Config, codec codec.Codec) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	consulMetrics := newConsulMetrics(registerer)
+
 	c := &Client{
-		kv:    consulMetrics{client.KV()},
-		codec: codec,
-		cfg:   cfg,
+		kv:            consulInstrumentation{client.KV(), consulMetrics},
+		codec:         codec,
+		cfg:           cfg,
+		logger:        logger,
+		consulMetrics: consulMetrics,
 	}
 	return c, nil
 }
@@ -106,7 +114,7 @@ func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
 		return err
 	}
 
-	return instrument.CollectedRequest(ctx, "Put", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "Put", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		_, err := c.kv.Put(&consul.KVPair{
 			Key:   key,
 			Value: bytes,
@@ -118,7 +126,7 @@ func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	return instrument.CollectedRequest(ctx, "CAS loop", consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return instrument.CollectedRequest(ctx, "CAS loop", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return c.cas(ctx, key, f)
 	})
 }
@@ -144,14 +152,14 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 		options := &consul.QueryOptions{}
 		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error getting key", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "error getting key", "key", key, "err", err)
 			continue
 		}
 		var intermediate interface{}
 		if kvp != nil {
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+				level.Error(c.logger).Log("msg", "error decoding key", "key", key, "err", err)
 				continue
 			}
 			// If key doesn't exist, index will be 0.
@@ -175,7 +183,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 
 		bytes, err := c.codec.Encode(intermediate)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error serialising value", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "error serialising value", "key", key, "err", err)
 			continue
 		}
 		ok, _, err := c.kv.CAS(&consul.KVPair{
@@ -184,11 +192,11 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 			ModifyIndex: index,
 		}, writeOptions.WithContext(ctx))
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error CASing", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "error CASing", "key", key, "err", err)
 			continue
 		}
 		if !ok {
-			level.Debug(util_log.Logger).Log("msg", "error CASing, trying again", "key", key, "index", index)
+			level.Debug(c.logger).Log("msg", "error CASing, trying again", "key", key, "index", index)
 			continue
 		}
 		return nil
@@ -203,7 +211,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 // into. This function blocks until the context is cancelled or f returns false.
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(ctx, backoffConfig)
+		backoff = backoff.New(ctx, backoffConfig)
 		index   = uint64(0)
 		limiter = c.createRateLimiter()
 	)
@@ -214,7 +222,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 			if errors.Is(err, context.Canceled) {
 				break
 			}
-			level.Error(util_log.Logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "error while rate-limiting", "key", key, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -231,7 +239,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		// Don't backoff if value is not found (kvp == nil). In that case, Consul still returns index value,
 		// and next call to Get will block as expected. We handle missing value below.
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error getting path", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "error getting path", "key", key, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -244,13 +252,13 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		}
 
 		if kvp == nil {
-			level.Info(util_log.Logger).Log("msg", "value is nil", "key", key, "index", index)
+			level.Info(c.logger).Log("msg", "value is nil", "key", key, "index", index)
 			continue
 		}
 
 		out, err := c.codec.Decode(kvp.Value)
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error decoding key", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "error decoding key", "key", key, "err", err)
 			continue
 		}
 		if !f(out) {
@@ -264,7 +272,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 // Values in Consul are assumed to be JSON. This function blocks until the context is cancelled.
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
 	var (
-		backoff = util.NewBackoff(ctx, backoffConfig)
+		backoff = backoff.New(ctx, backoffConfig)
 		index   = uint64(0)
 		limiter = c.createRateLimiter()
 	)
@@ -274,7 +282,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 			if errors.Is(err, context.Canceled) {
 				break
 			}
-			level.Error(util_log.Logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
+			level.Error(c.logger).Log("msg", "error while rate-limiting", "prefix", prefix, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -290,7 +298,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		// kvps being nil here is not an error -- quite the opposite. Consul returns index,
 		// which makes next query blocking, so there is no need to detect this and act on it.
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
+			level.Error(c.logger).Log("msg", "error getting path", "prefix", prefix, "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -310,7 +318,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "error decoding list of values for prefix:key", "prefix", prefix, "key", kvp.Key, "err", err)
+				level.Error(c.logger).Log("msg", "error decoding list of values for prefix:key", "prefix", prefix, "key", kvp.Key, "err", err)
 				continue
 			}
 			if !f(kvp.Key, out) {

@@ -10,12 +10,30 @@ const (
 	// Indicates that the user has been denied access to the requested resource.
 	ErrCodeAuthorizationErrorException = "AuthorizationError"
 
+	// ErrCodeBatchEntryIdsNotDistinctException for service response error code
+	// "BatchEntryIdsNotDistinct".
+	//
+	// Two or more batch entries in the request have the same Id.
+	ErrCodeBatchEntryIdsNotDistinctException = "BatchEntryIdsNotDistinct"
+
+	// ErrCodeBatchRequestTooLongException for service response error code
+	// "BatchRequestTooLong".
+	//
+	// The length of all the batch messages put together is more than the limit.
+	ErrCodeBatchRequestTooLongException = "BatchRequestTooLong"
+
 	// ErrCodeConcurrentAccessException for service response error code
 	// "ConcurrentAccess".
 	//
 	// Can't perform multiple operations on a tag simultaneously. Perform the operations
 	// sequentially.
 	ErrCodeConcurrentAccessException = "ConcurrentAccess"
+
+	// ErrCodeEmptyBatchRequestException for service response error code
+	// "EmptyBatchRequest".
+	//
+	// The batch request doesn't contain any entries.
+	ErrCodeEmptyBatchRequestException = "EmptyBatchRequest"
 
 	// ErrCodeEndpointDisabledException for service response error code
 	// "EndpointDisabled".
@@ -26,9 +44,9 @@ const (
 	// ErrCodeFilterPolicyLimitExceededException for service response error code
 	// "FilterPolicyLimitExceeded".
 	//
-	// Indicates that the number of filter polices in your AWS account exceeds the
-	// limit. To add more filter polices, submit an SNS Limit Increase case in the
-	// AWS Support Center.
+	// Indicates that the number of filter polices in your Amazon Web Services account
+	// exceeds the limit. To add more filter polices, submit an Amazon SNS Limit
+	// Increase case in the Amazon Web Services Support Center.
 	ErrCodeFilterPolicyLimitExceededException = "FilterPolicyLimitExceeded"
 
 	// ErrCodeInternalErrorException for service response error code
@@ -36,6 +54,12 @@ const (
 	//
 	// Indicates an internal service error.
 	ErrCodeInternalErrorException = "InternalError"
+
+	// ErrCodeInvalidBatchEntryIdException for service response error code
+	// "InvalidBatchEntryId".
+	//
+	// The Id of a batch entry in a batch request doesn't abide by the specification.
+	ErrCodeInvalidBatchEntryIdException = "InvalidBatchEntryId"
 
 	// ErrCodeInvalidParameterException for service response error code
 	// "InvalidParameter".
@@ -76,7 +100,7 @@ const (
 	// The request was rejected because the state of the specified resource isn't
 	// valid for this request. For more information, see How Key State Affects Use
 	// of a Customer Master Key (https://docs.aws.amazon.com/kms/latest/developerguide/key-state.html)
-	// in the AWS Key Management Service Developer Guide.
+	// in the Key Management Service Developer Guide.
 	ErrCodeKMSInvalidStateException = "KMSInvalidState"
 
 	// ErrCodeKMSNotFoundException for service response error code
@@ -89,7 +113,7 @@ const (
 	// ErrCodeKMSOptInRequired for service response error code
 	// "KMSOptInRequired".
 	//
-	// The AWS access key ID needs a subscription for the service.
+	// The Amazon Web Services access key ID needs a subscription for the service.
 	ErrCodeKMSOptInRequired = "KMSOptInRequired"
 
 	// ErrCodeKMSThrottlingException for service response error code
@@ -97,7 +121,7 @@ const (
 	//
 	// The request was denied due to request throttling. For more information about
 	// throttling, see Limits (https://docs.aws.amazon.com/kms/latest/developerguide/limits.html#requests-per-second)
-	// in the AWS Key Management Service Developer Guide.
+	// in the Key Management Service Developer Guide.
 	ErrCodeKMSThrottlingException = "KMSThrottling"
 
 	// ErrCodeNotFoundException for service response error code
@@ -110,8 +134,8 @@ const (
 	// "OptedOut".
 	//
 	// Indicates that the specified phone number opted out of receiving SMS messages
-	// from your AWS account. You can't send SMS messages to phone numbers that
-	// opt out.
+	// from your Amazon Web Services account. You can't send SMS messages to phone
+	// numbers that opt out.
 	ErrCodeOptedOutException = "OptedOut"
 
 	// ErrCodePlatformApplicationDisabledException for service response error code
@@ -157,8 +181,14 @@ const (
 	// "Throttled".
 	//
 	// Indicates that the rate at which requests have been submitted for this action
-	// exceeds the limit for your account.
+	// exceeds the limit for your Amazon Web Services account.
 	ErrCodeThrottledException = "Throttled"
+
+	// ErrCodeTooManyEntriesInBatchRequestException for service response error code
+	// "TooManyEntriesInBatchRequest".
+	//
+	// The batch request contains more entries than permissible.
+	ErrCodeTooManyEntriesInBatchRequestException = "TooManyEntriesInBatchRequest"
 
 	// ErrCodeTopicLimitExceededException for service response error code
 	// "TopicLimitExceeded".

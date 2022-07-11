@@ -13,14 +13,15 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"gopkg.in/yaml.v2"
 
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
+	memcacheDiscovery "github.com/thanos-io/thanos/pkg/discovery/memcache"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/model"
@@ -28,6 +29,7 @@ import (
 
 const (
 	opSet                 = "set"
+	opSetMulti            = "setmulti"
 	opGetMulti            = "getmulti"
 	reasonMaxItemSize     = "max-item-size"
 	reasonAsyncBufferFull = "async-buffer-full"
@@ -53,12 +55,18 @@ var (
 		MaxGetMultiConcurrency:    100,
 		MaxGetMultiBatchSize:      0,
 		DNSProviderUpdateInterval: 10 * time.Second,
+		AutoDiscovery:             false,
 	}
 )
 
-// MemcachedClient is a high level client to interact with memcached.
-type MemcachedClient interface {
-	// GetMulti fetches multiple keys at once from memcached. In case of error,
+var (
+	_ RemoteCacheClient = (*memcachedClient)(nil)
+	_ RemoteCacheClient = (*RedisClient)(nil)
+)
+
+// RemoteCacheClient is a high level client to interact with remote cache.
+type RemoteCacheClient interface {
+	// GetMulti fetches multiple keys at once from remoteCache. In case of error,
 	// an empty map is returned and the error tracked/logged.
 	GetMulti(ctx context.Context, keys []string) map[string][]byte
 
@@ -71,13 +79,16 @@ type MemcachedClient interface {
 	Stop()
 }
 
+// MemcachedClient for compatible.
+type MemcachedClient = RemoteCacheClient
+
 // memcachedClientBackend is an interface used to mock the underlying client in tests.
 type memcachedClientBackend interface {
 	GetMulti(keys []string) (map[string]*memcache.Item, error)
 	Set(item *memcache.Item) error
 }
 
-// MemcachedClientConfig is the config accepted by MemcachedClient.
+// MemcachedClientConfig is the config accepted by RemoteCacheClient.
 type MemcachedClientConfig struct {
 	// Addresses specifies the list of memcached addresses. The addresses get
 	// resolved with the DNS provider.
@@ -114,6 +125,9 @@ type MemcachedClientConfig struct {
 
 	// DNSProviderUpdateInterval specifies the DNS discovery update interval.
 	DNSProviderUpdateInterval time.Duration `yaml:"dns_provider_update_interval"`
+
+	// AutoDiscovery configures memached client to perform auto-discovery instead of DNS resolution
+	AutoDiscovery bool `yaml:"auto_discovery"`
 }
 
 func (c *MemcachedClientConfig) validate() error {
@@ -153,8 +167,8 @@ type memcachedClient struct {
 	// Name provides an identifier for the instantiated Client
 	name string
 
-	// DNS provider used to keep the memcached servers list updated.
-	dnsProvider *dns.Provider
+	// Address provider used to keep the memcached servers list updated.
+	addressProvider AddressProvider
 
 	// Channel used to notify internal goroutines when they should quit.
 	stop chan struct{}
@@ -177,12 +191,21 @@ type memcachedClient struct {
 	dataSize   *prometheus.HistogramVec
 }
 
+// AddressProvider performs node address resolution given a list of clusters.
+type AddressProvider interface {
+	// Resolves the provided list of memcached cluster to the actual nodes
+	Resolve(context.Context, []string) error
+
+	// Returns the nodes
+	Addresses() []string
+}
+
 type memcachedGetMultiResult struct {
 	items map[string]*memcache.Item
 	err   error
 }
 
-// NewMemcachedClient makes a new MemcachedClient.
+// NewMemcachedClient makes a new RemoteCacheClient.
 func NewMemcachedClient(logger log.Logger, name string, conf []byte, reg prometheus.Registerer) (*memcachedClient, error) {
 	config, err := parseMemcachedClientConfig(conf)
 	if err != nil {
@@ -192,7 +215,7 @@ func NewMemcachedClient(logger log.Logger, name string, conf []byte, reg prometh
 	return NewMemcachedClientWithConfig(logger, name, config, reg)
 }
 
-// NewMemcachedClientWithConfig makes a new MemcachedClient.
+// NewMemcachedClientWithConfig makes a new RemoteCacheClient.
 func NewMemcachedClientWithConfig(logger log.Logger, name string, config MemcachedClientConfig, reg prometheus.Registerer) (*memcachedClient, error) {
 	if err := config.validate(); err != nil {
 		return nil, err
@@ -220,20 +243,31 @@ func newMemcachedClient(
 	reg prometheus.Registerer,
 	name string,
 ) (*memcachedClient, error) {
-	dnsProvider := dns.NewProvider(
-		logger,
-		extprom.WrapRegistererWithPrefix("thanos_memcached_", reg),
-		dns.GolangResolverType,
-	)
+	promRegisterer := extprom.WrapRegistererWithPrefix("thanos_memcached_", reg)
+
+	var addressProvider AddressProvider
+	if config.AutoDiscovery {
+		addressProvider = memcacheDiscovery.NewProvider(
+			logger,
+			promRegisterer,
+			config.Timeout,
+		)
+	} else {
+		addressProvider = dns.NewProvider(
+			logger,
+			extprom.WrapRegistererWithPrefix("thanos_memcached_", reg),
+			dns.MiekgdnsResolverType,
+		)
+	}
 
 	c := &memcachedClient{
-		logger:      log.With(logger, "name", name),
-		config:      config,
-		client:      client,
-		selector:    selector,
-		dnsProvider: dnsProvider,
-		asyncQueue:  make(chan func(), config.MaxAsyncBufferSize),
-		stop:        make(chan struct{}, 1),
+		logger:          log.With(logger, "name", name),
+		config:          config,
+		client:          client,
+		selector:        selector,
+		addressProvider: addressProvider,
+		asyncQueue:      make(chan func(), config.MaxAsyncBufferSize),
+		stop:            make(chan struct{}, 1),
 		getMultiGate: gate.New(
 			extprom.WrapRegistererWithPrefix("thanos_memcached_getmulti_", reg),
 			config.MaxGetMultiConcurrency,
@@ -561,11 +595,11 @@ func (c *memcachedClient) resolveAddrs() error {
 	defer cancel()
 
 	// If some of the dns resolution fails, log the error.
-	if err := c.dnsProvider.Resolve(ctx, c.config.Addresses); err != nil {
+	if err := c.addressProvider.Resolve(ctx, c.config.Addresses); err != nil {
 		level.Error(c.logger).Log("msg", "failed to resolve addresses for memcached", "addresses", strings.Join(c.config.Addresses, ","), "err", err)
 	}
 	// Fail in case no server address is resolved.
-	servers := c.dnsProvider.Addresses()
+	servers := c.addressProvider.Addresses()
 	if len(servers) == 0 {
 		return fmt.Errorf("no server address resolved for %s", c.name)
 	}

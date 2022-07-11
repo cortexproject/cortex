@@ -11,8 +11,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build go1.8
-
 package config
 
 import (
@@ -38,22 +36,85 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// DefaultHTTPClientConfig is the default HTTP client configuration.
-var DefaultHTTPClientConfig = HTTPClientConfig{
-	FollowRedirects: true,
-}
+var (
+	// DefaultHTTPClientConfig is the default HTTP client configuration.
+	DefaultHTTPClientConfig = HTTPClientConfig{
+		FollowRedirects: true,
+		EnableHTTP2:     true,
+	}
 
-// defaultHTTPClientOptions holds the default HTTP client options.
-var defaultHTTPClientOptions = httpClientOptions{
-	keepAlivesEnabled: true,
-	http2Enabled:      true,
-	// 5 minutes is typically above the maximum sane scrape interval. So we can
-	// use keepalive for all configurations.
-	idleConnTimeout: 5 * time.Minute,
-}
+	// defaultHTTPClientOptions holds the default HTTP client options.
+	defaultHTTPClientOptions = httpClientOptions{
+		keepAlivesEnabled: true,
+		http2Enabled:      true,
+		// 5 minutes is typically above the maximum sane scrape interval. So we can
+		// use keepalive for all configurations.
+		idleConnTimeout: 5 * time.Minute,
+	}
+)
 
 type closeIdler interface {
 	CloseIdleConnections()
+}
+
+type TLSVersion uint16
+
+var TLSVersions = map[string]TLSVersion{
+	"TLS13": (TLSVersion)(tls.VersionTLS13),
+	"TLS12": (TLSVersion)(tls.VersionTLS12),
+	"TLS11": (TLSVersion)(tls.VersionTLS11),
+	"TLS10": (TLSVersion)(tls.VersionTLS10),
+}
+
+func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	err := unmarshal((*string)(&s))
+	if err != nil {
+		return err
+	}
+	if v, ok := TLSVersions[s]; ok {
+		*tv = v
+		return nil
+	}
+	return fmt.Errorf("unknown TLS version: %s", s)
+}
+
+func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
+	if tv != nil || *tv == 0 {
+		return []byte("null"), nil
+	}
+	for s, v := range TLSVersions {
+		if *tv == v {
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("unknown TLS version: %d", tv)
+}
+
+// MarshalJSON implements the json.Unmarshaler interface for TLSVersion.
+func (tv *TLSVersion) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	if v, ok := TLSVersions[s]; ok {
+		*tv = v
+		return nil
+	}
+	return fmt.Errorf("unknown TLS version: %s", s)
+}
+
+// MarshalJSON implements the json.Marshaler interface for TLSVersion.
+func (tv *TLSVersion) MarshalJSON() ([]byte, error) {
+	if tv != nil || *tv == 0 {
+		return []byte("null"), nil
+	}
+	for s, v := range TLSVersions {
+		if *tv == v {
+			return []byte(s), nil
+		}
+	}
+	return nil, fmt.Errorf("unknown TLS version: %d", tv)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
@@ -109,9 +170,23 @@ func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // MarshalYAML implements the yaml.Marshaler interface for URLs.
 func (u URL) MarshalYAML() (interface{}, error) {
 	if u.URL != nil {
-		return u.String(), nil
+		return u.Redacted(), nil
 	}
 	return nil, nil
+}
+
+// Redacted returns the URL but replaces any password with "xxxxx".
+func (u URL) Redacted() string {
+	if u.URL == nil {
+		return ""
+	}
+
+	ru := *u.URL
+	if _, ok := ru.User.Password(); ok {
+		// We can not use secretToken because it would be escaped.
+		ru.User = url.UserPassword(ru.User.Username(), "xxxxx")
+	}
+	return ru.String()
 }
 
 // UnmarshalJSON implements the json.Marshaler interface for URL.
@@ -144,6 +219,11 @@ type OAuth2 struct {
 	Scopes           []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
 	TokenURL         string            `yaml:"token_url" json:"token_url"`
 	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+
+	// HTTP proxy server to use to connect to the targets.
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
+	// TLSConfig is used to connect to the token URL.
+	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -152,6 +232,7 @@ func (a *OAuth2) SetDirectory(dir string) {
 		return
 	}
 	a.ClientSecretFile = JoinDir(dir, a.ClientSecretFile)
+	a.TLSConfig.SetDirectory(dir)
 }
 
 // HTTPClientConfig configures an HTTP client.
@@ -176,6 +257,10 @@ type HTTPClientConfig struct {
 	// The omitempty flag is not set, because it would be hidden from the
 	// marshalled configuration when set to false.
 	FollowRedirects bool `yaml:"follow_redirects" json:"follow_redirects"`
+	// EnableHTTP2 specifies whether the client should configure HTTP2.
+	// The omitempty flag is not set, because it would be hidden from the
+	// marshalled configuration when set to false.
+	EnableHTTP2 bool `yaml:"enable_http2" json:"enable_http2"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -379,18 +464,18 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 			ExpectContinueTimeout: 1 * time.Second,
 			DialContext:           dialContext,
 		}
-		if opts.http2Enabled {
-			// HTTP/2 support is golang has many problematic cornercases where
+		if opts.http2Enabled && cfg.EnableHTTP2 {
+			// HTTP/2 support is golang had many problematic cornercases where
 			// dead connections would be kept and used in connection pools.
 			// https://github.com/golang/go/issues/32388
 			// https://github.com/golang/go/issues/39337
 			// https://github.com/golang/go/issues/39750
-			// TODO: Re-Enable HTTP/2 once upstream issue is fixed.
-			// TODO: use ForceAttemptHTTP2 when we move to Go 1.13+.
-			err := http2.ConfigureTransport(rt.(*http.Transport))
+
+			http2t, err := http2.ConfigureTransports(rt.(*http.Transport))
 			if err != nil {
 				return nil, err
 			}
+			http2t.ReadIdleTimeout = time.Minute
 		}
 
 		// If a authorization_credentials is provided, create a round tripper that will set the
@@ -573,7 +658,31 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 			EndpointParams: mapToValues(rt.config.EndpointParams),
 		}
 
-		tokenSource := config.TokenSource(context.Background())
+		tlsConfig, err := NewTLSConfig(&rt.config.TLSConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		var t http.RoundTripper
+		if len(rt.config.TLSConfig.CAFile) == 0 {
+			t = &http.Transport{
+				TLSClientConfig: tlsConfig,
+				Proxy:           http.ProxyURL(rt.config.ProxyURL.URL),
+			}
+		} else {
+			t, err = NewTLSRoundTripper(tlsConfig, rt.config.TLSConfig.CAFile, func(tls *tls.Config) (http.RoundTripper, error) {
+				return &http.Transport{
+					TLSClientConfig: tls,
+					Proxy:           http.ProxyURL(rt.config.ProxyURL.URL),
+				}, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: t})
+		tokenSource := config.TokenSource(ctx)
 
 		rt.mtx.Lock()
 		rt.secret = secret
@@ -622,7 +731,10 @@ func cloneRequest(r *http.Request) *http.Request {
 
 // NewTLSConfig creates a new tls.Config from the given TLSConfig.
 func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
-	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+		MinVersion:         uint16(cfg.MinVersion),
+	}
 
 	// If a CA cert is provided then let's read it in so we can validate the
 	// scrape target's certificate properly.
@@ -667,6 +779,8 @@ type TLSConfig struct {
 	ServerName string `yaml:"server_name,omitempty" json:"server_name,omitempty"`
 	// Disable target certificate validation.
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
+	// Minimum TLS version.
+	MinVersion TLSVersion `yaml:"min_version,omitempty" json:"min_version,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -677,12 +791,6 @@ func (c *TLSConfig) SetDirectory(dir string) {
 	c.CAFile = JoinDir(dir, c.CAFile)
 	c.CertFile = JoinDir(dir, c.CertFile)
 	c.KeyFile = JoinDir(dir, c.KeyFile)
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *TLSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	type plain TLSConfig
-	return unmarshal((*plain)(c))
 }
 
 // getClientCertificate reads the pair of client cert and key from disk and returns a tls.Certificate.
@@ -742,7 +850,6 @@ func NewTLSRoundTripper(
 		return nil, err
 	}
 	t.rt = rt
-
 	_, t.hashCAFile, err = t.getCAWithHash()
 	if err != nil {
 		return nil, err

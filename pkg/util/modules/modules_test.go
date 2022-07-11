@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +37,7 @@ func TestDependencies(t *testing.T) {
 		},
 	}
 
-	mm := NewManager()
+	mm := NewManager(log.NewNopLogger())
 	for name, mod := range testModules {
 		mm.RegisterModule(name, mod.initFn)
 	}
@@ -75,7 +76,7 @@ func TestDependencies(t *testing.T) {
 }
 
 func TestRegisterModuleDefaultsToUserVisible(t *testing.T) {
-	sut := NewManager()
+	sut := NewManager(log.NewNopLogger())
 	sut.RegisterModule("module1", mockInitFunc)
 
 	m := sut.modules["module1"]
@@ -88,7 +89,7 @@ func TestFunctionalOptAtTheEndWins(t *testing.T) {
 	userVisibleMod := func(option *module) {
 		option.userVisible = true
 	}
-	sut := NewManager()
+	sut := NewManager(log.NewNopLogger())
 	sut.RegisterModule("mod1", mockInitFunc, UserInvisibleModule, userVisibleMod, UserInvisibleModule)
 
 	m := sut.modules["mod1"]
@@ -98,7 +99,7 @@ func TestFunctionalOptAtTheEndWins(t *testing.T) {
 }
 
 func TestGetAllUserVisibleModulesNames(t *testing.T) {
-	sut := NewManager()
+	sut := NewManager(log.NewNopLogger())
 	sut.RegisterModule("userVisible3", mockInitFunc)
 	sut.RegisterModule("userVisible2", mockInitFunc)
 	sut.RegisterModule("userVisible1", mockInitFunc)
@@ -111,7 +112,7 @@ func TestGetAllUserVisibleModulesNames(t *testing.T) {
 }
 
 func TestGetAllUserVisibleModulesNamesHasNoDupWithDependency(t *testing.T) {
-	sut := NewManager()
+	sut := NewManager(log.NewNopLogger())
 	sut.RegisterModule("userVisible1", mockInitFunc)
 	sut.RegisterModule("userVisible2", mockInitFunc)
 	sut.RegisterModule("userVisible3", mockInitFunc)
@@ -125,7 +126,7 @@ func TestGetAllUserVisibleModulesNamesHasNoDupWithDependency(t *testing.T) {
 }
 
 func TestGetEmptyListWhenThereIsNoUserVisibleModule(t *testing.T) {
-	sut := NewManager()
+	sut := NewManager(log.NewNopLogger())
 	sut.RegisterModule("internal1", mockInitFunc, UserInvisibleModule)
 	sut.RegisterModule("internal2", mockInitFunc, UserInvisibleModule)
 	sut.RegisterModule("internal3", mockInitFunc, UserInvisibleModule)
@@ -139,7 +140,7 @@ func TestGetEmptyListWhenThereIsNoUserVisibleModule(t *testing.T) {
 func TestIsUserVisibleModule(t *testing.T) {
 	userVisibleModName := "userVisible"
 	internalModName := "internal"
-	sut := NewManager()
+	sut := NewManager(log.NewNopLogger())
 	sut.RegisterModule(userVisibleModName, mockInitFunc)
 	sut.RegisterModule(internalModName, mockInitFunc, UserInvisibleModule)
 
@@ -157,7 +158,7 @@ func TestIsModuleRegistered(t *testing.T) {
 	successModule := "successModule"
 	failureModule := "failureModule"
 
-	m := NewManager()
+	m := NewManager(log.NewNopLogger())
 	m.RegisterModule(successModule, mockInitFunc)
 
 	var result = m.IsModuleRegistered(successModule)
@@ -168,7 +169,7 @@ func TestIsModuleRegistered(t *testing.T) {
 }
 
 func TestDependenciesForModule(t *testing.T) {
-	m := NewManager()
+	m := NewManager(log.NewNopLogger())
 	m.RegisterModule("test", nil)
 	m.RegisterModule("dep1", nil)
 	m.RegisterModule("dep2", nil)
@@ -206,7 +207,7 @@ func TestModuleWaitsForAllDependencies(t *testing.T) {
 		}, nil), nil
 	}
 
-	m := NewManager()
+	m := NewManager(log.NewNopLogger())
 	m.RegisterModule("A", initA)
 	m.RegisterModule("B", nil)
 	m.RegisterModule("C", initC)

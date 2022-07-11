@@ -8,13 +8,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
 // Object Alert Storage Schema

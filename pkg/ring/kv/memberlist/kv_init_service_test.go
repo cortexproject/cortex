@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/memberlist"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -56,6 +57,6 @@ func TestPage(t *testing.T) {
 func TestStop(t *testing.T) {
 	var cfg KVConfig
 	flagext.DefaultValues(&cfg)
-	kvinit := NewKVInitService(&cfg, nil)
+	kvinit := NewKVInitService(&cfg, nil, &dnsProviderMock{}, prometheus.NewPedanticRegistry())
 	require.NoError(t, kvinit.stopping(nil))
 }

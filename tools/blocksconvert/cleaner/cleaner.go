@@ -5,8 +5,8 @@ import (
 	"flag"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -16,7 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/planprocessor"
@@ -172,7 +172,7 @@ func (cp *cleanerProcessor) deleteChunksForSeries(ctx context.Context, tableName
 	var c *chunk.Chunk
 	var err error
 
-	b := util.NewBackoff(ctx, util.BackoffConfig{
+	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
 		MaxRetries: 5,

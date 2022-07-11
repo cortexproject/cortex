@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 func TestSingleBinaryWithMemberlist(t *testing.T) {
@@ -145,7 +145,7 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 		8000,
 	)
 
-	backOff := util.BackoffConfig{
+	backOff := backoff.Config{
 		MinBackoff: 200 * time.Millisecond,
 		MaxBackoff: 500 * time.Millisecond, // Bump max backoff... things take little longer with memberlist.
 		MaxRetries: 100,
@@ -167,7 +167,7 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 	// Scale up instances. These numbers seem enough to reliably reproduce some unwanted
 	// consequences of slow propagation, such as missing tombstones.
 
-	maxCortex := 20
+	maxCortex := 30
 	minCortex := 3
 	instances := make([]*e2ecortex.CortexService, 0)
 
@@ -187,6 +187,7 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 	for _, c := range instances {
 		require.NoError(t, c.WaitSumMetrics(e2e.Equals(float64(maxCortex)), "cortex_ring_members"))
 		require.NoError(t, c.WaitSumMetrics(e2e.Equals(0), "memberlist_client_kv_store_value_tombstones"))
+		require.NoError(t, c.WaitSumMetrics(e2e.Equals(0), "memberlist_client_received_broadcasts_invalid_total"))
 	}
 
 	// Scale down as fast as possible but cleanly, in order to send out tombstones.

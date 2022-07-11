@@ -7,20 +7,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
 	consul "github.com/hashicorp/consul/api"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
-func writeValuesToKV(client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
+func writeValuesToKV(t *testing.T, client *Client, key string, start, end int, sleep time.Duration) <-chan struct{} {
+	t.Helper()
+
 	ch := make(chan struct{})
 	go func() {
 		defer close(ch)
 		for i := start; i <= end; i++ {
-			level.Debug(util_log.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
+			t.Log("ts", time.Now(), "msg", "writing value", "val", i)
 			_, _ = client.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			time.Sleep(sleep)
 		}
@@ -29,17 +31,20 @@ func writeValuesToKV(client *Client, key string, start, end int, sleep time.Dura
 }
 
 func TestWatchKeyWithRateLimit(t *testing.T) {
-	c := NewInMemoryClientWithConfig(codec.String{}, Config{
+	c, closer := NewInMemoryClientWithConfig(codec.String{}, Config{
 		WatchKeyRateLimit: 5.0,
 		WatchKeyBurstSize: 1,
+	}, testLogger{}, prometheus.NewPedanticRegistry())
+	t.Cleanup(func() {
+		assert.NoError(t, closer.Close())
 	})
 
 	const key = "test"
 	const max = 100
 
-	ch := writeValuesToKV(c, key, 0, max, 10*time.Millisecond)
+	ch := writeValuesToKV(t, c, key, 0, max, 10*time.Millisecond)
 
-	observed := observeValueForSomeTime(c, key, 1200*time.Millisecond) // little over 1 second
+	observed := observeValueForSomeTime(t, c, key, 1200*time.Millisecond) // little over 1 second
 
 	// wait until updater finishes
 	<-ch
@@ -61,15 +66,18 @@ func TestWatchKeyWithRateLimit(t *testing.T) {
 }
 
 func TestWatchKeyNoRateLimit(t *testing.T) {
-	c := NewInMemoryClientWithConfig(codec.String{}, Config{
+	c, closer := NewInMemoryClientWithConfig(codec.String{}, Config{
 		WatchKeyRateLimit: 0,
+	}, testLogger{}, prometheus.NewPedanticRegistry())
+	t.Cleanup(func() {
+		assert.NoError(t, closer.Close())
 	})
 
 	const key = "test"
 	const max = 100
 
-	ch := writeValuesToKV(c, key, 0, max, time.Millisecond)
-	observed := observeValueForSomeTime(c, key, 500*time.Millisecond)
+	ch := writeValuesToKV(t, c, key, 0, max, time.Millisecond)
+	observed := observeValueForSomeTime(t, c, key, 500*time.Millisecond)
 
 	// wait until updater finishes
 	<-ch
@@ -82,7 +90,10 @@ func TestWatchKeyNoRateLimit(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	c := NewInMemoryClient(codec.String{})
+	c, closer := NewInMemoryClient(codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	t.Cleanup(func() {
+		assert.NoError(t, closer.Close())
+	})
 
 	const key = "test"
 	const max = 5
@@ -91,7 +102,7 @@ func TestReset(t *testing.T) {
 	go func() {
 		defer close(ch)
 		for i := 0; i <= max; i++ {
-			level.Debug(util_log.Logger).Log("ts", time.Now(), "msg", "writing value", "val", i)
+			t.Log("ts", time.Now(), "msg", "writing value", "val", i)
 			_, _ = c.kv.Put(&consul.KVPair{Key: key, Value: []byte(fmt.Sprintf("%d", i))}, nil)
 			if i == 1 {
 				c.kv.(*mockKV).ResetIndex()
@@ -103,7 +114,7 @@ func TestReset(t *testing.T) {
 		}
 	}()
 
-	observed := observeValueForSomeTime(c, key, 25*max*time.Millisecond)
+	observed := observeValueForSomeTime(t, c, key, 25*max*time.Millisecond)
 
 	// wait until updater finishes
 	<-ch
@@ -119,7 +130,9 @@ func TestReset(t *testing.T) {
 	}
 }
 
-func observeValueForSomeTime(client *Client, key string, timeout time.Duration) []string {
+func observeValueForSomeTime(t *testing.T, client *Client, key string, timeout time.Duration) []string {
+	t.Helper()
+
 	observed := []string(nil)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -128,7 +141,7 @@ func observeValueForSomeTime(client *Client, key string, timeout time.Duration) 
 		if !ok {
 			return false
 		}
-		level.Debug(util_log.Logger).Log("ts", time.Now(), "msg", "observed value", "val", s)
+		t.Log("ts", time.Now(), "msg", "observed value", "val", s)
 		observed = append(observed, s)
 		return true
 	})
@@ -136,7 +149,10 @@ func observeValueForSomeTime(client *Client, key string, timeout time.Duration) 
 }
 
 func TestWatchKeyWithNoStartValue(t *testing.T) {
-	c := NewInMemoryClient(codec.String{})
+	c, closer := NewInMemoryClient(codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	t.Cleanup(func() {
+		assert.NoError(t, closer.Close())
+	})
 
 	const key = "test"
 
@@ -161,4 +177,11 @@ func TestWatchKeyWithNoStartValue(t *testing.T) {
 
 	// we should see both start and end values.
 	require.Equal(t, 2, reported)
+}
+
+type testLogger struct {
+}
+
+func (l testLogger) Log(keyvals ...interface{}) error {
+	return nil
 }

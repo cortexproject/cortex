@@ -32,7 +32,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/route"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 )
 
 // API represents all APIs of Alertmanager.
@@ -188,7 +188,7 @@ func (api *API) Register(r *route.Router, routePrefix string) *http.ServeMux {
 	// limitHandler below).
 	mux.Handle(
 		apiPrefix+"/api/v2/",
-		api.limitHandler(http.StripPrefix(apiPrefix+"/api/v2", api.v2.Handler)),
+		api.limitHandler(http.StripPrefix(apiPrefix, api.v2.Handler)),
 	)
 
 	return mux

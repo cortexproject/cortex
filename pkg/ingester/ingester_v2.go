@@ -11,15 +11,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -45,6 +45,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+const (
+	// RingKey is the key under which we store the ingesters ring in the KVStore.
+	RingKey = "ring"
 )
 
 const (
@@ -511,7 +516,7 @@ func NewV2(cfg Config, clientConfig client.Config, limits *validation.Overrides,
 		}, i.getOldestUnshippedBlockMetric)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -1131,6 +1136,30 @@ func (i *Ingester) v2LabelValues(ctx context.Context, req *client.LabelValuesReq
 	}, nil
 }
 
+func (i *Ingester) v2LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+	resp, err := i.v2LabelValues(stream.Context(), req)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(resp.LabelValues); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(resp.LabelValues) {
+			j = len(resp.LabelValues)
+		}
+		resp := &client.LabelValuesStreamResponse{
+			LabelValues: resp.LabelValues[i:j],
+		}
+		err := client.SendLabelValuesStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if err := i.checkRunning(); err != nil {
 		return nil, err
@@ -1165,6 +1194,30 @@ func (i *Ingester) v2LabelNames(ctx context.Context, req *client.LabelNamesReque
 	return &client.LabelNamesResponse{
 		LabelNames: names,
 	}, nil
+}
+
+func (i *Ingester) v2LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+	resp, err := i.v2LabelNames(stream.Context(), req)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(resp.LabelNames); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(resp.LabelNames) {
+			j = len(resp.LabelNames)
+		}
+		resp := &client.LabelNamesStreamResponse{
+			LabelNames: resp.LabelNames[i:j],
+		}
+		err := client.SendLabelNamesStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
@@ -1236,6 +1289,29 @@ func (i *Ingester) v2MetricsForLabelMatchers(ctx context.Context, req *client.Me
 	}
 
 	return result, nil
+}
+
+func (i *Ingester) v2MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
+	result, err := i.v2MetricsForLabelMatchers(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(result.Metric); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(result.Metric) {
+			j = len(result.Metric)
+		}
+		resp := &client.MetricsForLabelMatchersStreamResponse{
+			Metric: result.Metric[i:j],
+		}
+		err := client.SendMetricsForLabelMatchersStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (i *Ingester) v2UserStats(ctx context.Context, req *client.UserStatsRequest) (*client.UserStatsResponse, error) {

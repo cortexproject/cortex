@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
@@ -155,4 +155,40 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 			require.True(t, ok, "key missing %s", key)
 		}
 	}
+}
+
+func TestMemcacheStop(t *testing.T) {
+	t.Run("unbatched", func(t *testing.T) {
+		client := newMockMemcacheFailing()
+		memcache := cache.NewMemcached(cache.MemcachedConfig{}, client,
+			"test", nil, log.NewNopLogger())
+
+		testMemcachedStopping(t, memcache)
+	})
+
+	t.Run("batched", func(t *testing.T) {
+		client := newMockMemcacheFailing()
+		memcache := cache.NewMemcached(cache.MemcachedConfig{
+			BatchSize:   10,
+			Parallelism: 5,
+		}, client, "test", nil, log.NewNopLogger())
+
+		testMemcachedStopping(t, memcache)
+	})
+}
+
+func testMemcachedStopping(t *testing.T, memcache *cache.Memcached) {
+	numKeys := 1000
+	ctx := context.Background()
+	keys := make([]string, 0, numKeys)
+	bufs := make([][]byte, 0, numKeys)
+	for i := 0; i < numKeys; i++ {
+		keys = append(keys, fmt.Sprint(i))
+		bufs = append(bufs, []byte(fmt.Sprint(i)))
+	}
+
+	memcache.Store(ctx, keys, bufs)
+
+	go memcache.Fetch(ctx, keys)
+	memcache.Stop()
 }

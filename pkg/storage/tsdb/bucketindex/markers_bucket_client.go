@@ -7,9 +7,7 @@ import (
 	"io/ioutil"
 	"path"
 
-	"github.com/oklog/ulid"
 	"github.com/thanos-io/thanos/pkg/block"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
@@ -29,7 +27,7 @@ func BucketWithGlobalMarkers(b objstore.Bucket) objstore.Bucket {
 
 // Upload implements objstore.Bucket.
 func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	blockID, ok := b.isBlockDeletionMark(name)
+	globalMarkPath, ok := b.isMark(name)
 	if !ok {
 		return b.parent.Upload(ctx, name, r)
 	}
@@ -46,7 +44,6 @@ func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Read
 	}
 
 	// Upload it to the global markers location too.
-	globalMarkPath := path.Clean(path.Join(path.Dir(name), "../", BlockDeletionMarkFilepath(blockID)))
 	return b.parent.Upload(ctx, globalMarkPath, bytes.NewBuffer(body))
 }
 
@@ -58,8 +55,7 @@ func (b *globalMarkersBucket) Delete(ctx context.Context, name string) error {
 	}
 
 	// Delete the marker in the global markers location too.
-	if blockID, ok := b.isBlockDeletionMark(name); ok {
-		globalMarkPath := path.Clean(path.Join(path.Dir(name), "../", BlockDeletionMarkFilepath(blockID)))
+	if globalMarkPath, ok := b.isMark(name); ok {
 		if err := b.parent.Delete(ctx, globalMarkPath); err != nil {
 			if !b.parent.IsObjNotFoundErr(err) {
 				return err
@@ -128,12 +124,21 @@ func (b *globalMarkersBucket) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpe
 	return b
 }
 
-func (b *globalMarkersBucket) isBlockDeletionMark(name string) (ulid.ULID, bool) {
-	if path.Base(name) != metadata.DeletionMarkFilename {
-		return ulid.ULID{}, false
+func (b *globalMarkersBucket) isMark(name string) (string, bool) {
+
+	for mark, globalFilePath := range MarkersMap {
+		if path.Base(name) == mark {
+			// Parse the block ID in the path. If there's not block ID, then it's not the per-block
+			// deletion mark.
+			id, ok := block.IsBlockDir(path.Dir(name))
+
+			if ok {
+				return path.Clean(path.Join(path.Dir(name), "../", globalFilePath(id))), ok
+			}
+
+			return "", ok
+		}
 	}
 
-	// Parse the block ID in the path. If there's not block ID, then it's not the per-block
-	// deletion mark.
-	return block.IsBlockDir(path.Dir(name))
+	return "", false
 }

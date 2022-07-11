@@ -2,12 +2,11 @@ package ring
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +30,7 @@ func TestLeaveOnStoppingDelegate(t *testing.T) {
 	}
 
 	leaveDelegate := NewLeaveOnStoppingDelegate(testDelegate, log.NewNopLogger())
-	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, leaveDelegate)
+	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(t, cfg, leaveDelegate)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
 
@@ -41,7 +40,7 @@ func TestLeaveOnStoppingDelegate(t *testing.T) {
 
 func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *testing.T) {
 	// Create a temporary file and immediately delete it.
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(tokensFile.Name()))
 
@@ -58,7 +57,7 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, persistencyDelegate)
+	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(t, cfg, persistencyDelegate)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -79,7 +78,7 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 }
 
 func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testing.T) {
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	defer os.Remove(tokensFile.Name()) //nolint:errcheck
 
@@ -102,7 +101,7 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, persistencyDelegate)
+	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(t, cfg, persistencyDelegate)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, lifecycler))
@@ -146,7 +145,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+			tokensFile, err := os.CreateTemp("", "tokens-*")
 			require.NoError(t, err)
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
 
@@ -166,7 +165,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 
 			ctx := context.Background()
 			cfg := prepareBasicLifecyclerConfig()
-			lifecycler, store, err := prepareBasicLifecyclerWithDelegate(cfg, persistencyDelegate)
+			lifecycler, store, err := prepareBasicLifecyclerWithDelegate(t, cfg, persistencyDelegate)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -191,7 +190,7 @@ func TestDelegatesChain(t *testing.T) {
 	onStoppingCalled := false
 
 	// Create a temporary file and immediately delete it.
-	tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(tokensFile.Name()))
 
@@ -214,7 +213,7 @@ func TestDelegatesChain(t *testing.T) {
 
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
-	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(cfg, chain)
+	lifecycler, _, err := prepareBasicLifecyclerWithDelegate(t, cfg, chain)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, lifecycler) //nolint:errcheck
 
@@ -273,7 +272,7 @@ func TestAutoForgetDelegate(t *testing.T) {
 			testDelegate := &mockDelegate{}
 
 			autoForgetDelegate := NewAutoForgetDelegate(forgetPeriod, testDelegate, log.NewNopLogger())
-			lifecycler, store, err := prepareBasicLifecyclerWithDelegate(cfg, autoForgetDelegate)
+			lifecycler, store, err := prepareBasicLifecyclerWithDelegate(t, cfg, autoForgetDelegate)
 			require.NoError(t, err)
 
 			// Setup the initial state of the ring.

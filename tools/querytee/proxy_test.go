@@ -10,15 +10,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var testRoutes = []Route{
-	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: nil},
+	{Path: "/api/v1/query", RouteName: "api_v1_query", Methods: []string{"GET"}, ResponseComparator: &testComparator{}},
 }
+
+type testComparator struct{}
+
+func (testComparator) Compare(expected, actual []byte) error { return nil }
 
 func Test_NewProxy(t *testing.T) {
 	cfg := ProxyConfig{}
@@ -154,6 +158,10 @@ func Test_Proxy_RequestsForwarding(t *testing.T) {
 				PreferredBackend:   strconv.Itoa(testData.preferredBackendIdx),
 				ServerServicePort:  0,
 				BackendReadTimeout: time.Second,
+			}
+
+			if len(backendURLs) == 2 {
+				cfg.CompareResponses = true
 			}
 
 			p, err := NewProxy(cfg, log.NewNopLogger(), testRoutes, nil)

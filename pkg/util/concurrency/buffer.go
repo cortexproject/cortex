@@ -5,6 +5,7 @@ import (
 	"sync"
 )
 
+// SyncBuffer is a io.writer implementation with atomic writes. It only keeps data in memory.
 type SyncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer

@@ -3,7 +3,6 @@ package ring
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"os"
 	"sort"
 )
@@ -72,14 +71,14 @@ func (t Tokens) StoreToFile(tokenFilePath string) error {
 
 // LoadTokensFromFile loads tokens from given file path.
 func LoadTokensFromFile(tokenFilePath string) (Tokens, error) {
-	b, err := ioutil.ReadFile(tokenFilePath)
+	b, err := os.ReadFile(tokenFilePath)
 	if err != nil {
 		return nil, err
 	}
 	var t Tokens
 	err = t.Unmarshal(b)
 
-	// Tokens may have been written to file by an older version of Cortex which
+	// Tokens may have been written to file by an older version which
 	// doesn't guarantee sorted tokens, so we enforce sorting here.
 	if !sort.IsSorted(t) {
 		sort.Sort(t)

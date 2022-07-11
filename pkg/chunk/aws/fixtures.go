@@ -10,7 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/objectclient"
 	"github.com/cortexproject/cortex/pkg/chunk/testutils"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 type fixture struct {
@@ -73,7 +73,7 @@ func dynamoDBFixture(provisionedErr, gangsize, maxParallelism int) testutils.Fix
 				cfg: DynamoDBConfig{
 					ChunkGangSize:          gangsize,
 					ChunkGetMaxParallelism: maxParallelism,
-					BackoffConfig: util.BackoffConfig{
+					BackoffConfig: backoff.Config{
 						MinBackoff: 1 * time.Millisecond,
 						MaxBackoff: 5 * time.Millisecond,
 						MaxRetries: 20,

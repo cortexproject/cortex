@@ -3,14 +3,12 @@ package querier
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/mock"
@@ -20,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
@@ -157,7 +155,7 @@ func TestQuerier(t *testing.T) {
 						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
 						distributor := mockDistibutorFor(t, chunkStore, through)
 
-						overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+						overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 						require.NoError(t, err)
 
 						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
@@ -171,15 +169,8 @@ func TestQuerier(t *testing.T) {
 }
 
 func mockTSDB(t *testing.T, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) storage.Queryable {
-	dir, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
-
 	opts := tsdb.DefaultHeadOptions()
-	opts.ChunkDirRoot = dir
+	opts.ChunkDirRoot = t.TempDir()
 	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
 	head, err := tsdb.NewHead(nil, nil, nil, opts, nil)
 	require.NoError(t, err)
@@ -260,10 +251,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		},
 	}
 
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
+	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             log.NewNopLogger(),
@@ -280,11 +268,11 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 				distributor := &errDistributor{}
 
-				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
 				ctx := user.InjectOrgID(context.Background(), "0")
@@ -364,16 +352,16 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 			t.Run(fmt.Sprintf("%s (ingester streaming enabled = %t)", name, cfg.IngesterStreaming), func(t *testing.T) {
 				// We don't need to query any data for this test, so an empty store is fine.
 				chunkStore := &emptyChunkStore{}
-				distributor := &mockDistributor{}
+				distributor := &MockDistributor{}
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
 				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
 				queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
+				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 				require.NoError(t, err)
 
 				ctx := user.InjectOrgID(context.Background(), "0")
@@ -438,7 +426,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			var cfg Config
 			flagext.DefaultValues(&cfg)
 
-			limits := defaultLimitsConfig()
+			limits := DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
@@ -458,7 +446,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 				Timeout:            1 * time.Minute,
 			})
 
-			query, err := engine.NewRangeQuery(queryable, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+			query, err := engine.NewRangeQuery(queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
@@ -552,6 +540,15 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 	})
 
 	for _, ingesterStreaming := range []bool{true, false} {
+		expectedMethodForLabelMatchers := "MetricsForLabelMatchers"
+		expectedMethodForLabelNames := "LabelNames"
+		expectedMethodForLabelValues := "LabelValuesForLabelName"
+		if ingesterStreaming {
+			expectedMethodForLabelMatchers = "MetricsForLabelMatchersStream"
+			expectedMethodForLabelNames = "LabelNamesStream"
+			expectedMethodForLabelValues = "LabelValuesForLabelNameStream"
+		}
+
 		for testName, testData := range tests {
 			t.Run(testName, func(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -559,8 +556,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				var cfg Config
 				flagext.DefaultValues(&cfg)
 				cfg.IngesterStreaming = ingesterStreaming
+				cfg.IngesterMetadataStreaming = ingesterStreaming
 
-				limits := defaultLimitsConfig()
+				limits := DefaultLimitsConfig()
 				limits.MaxQueryLookback = testData.maxQueryLookback
 				overrides, err := validation.NewOverrides(limits, nil)
 				require.NoError(t, err)
@@ -570,14 +568,14 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}
 
 				t.Run("query range", func(t *testing.T) {
-					distributor := &mockDistributor{}
+					distributor := &MockDistributor{}
 					distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 					distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					require.NoError(t, err)
 
-					query, err := engine.NewRangeQuery(queryable, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+					query, err := engine.NewRangeQuery(queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 					require.NoError(t, err)
 
 					r := query.Exec(ctx)
@@ -599,8 +597,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				})
 
 				t.Run("series", func(t *testing.T) {
-					distributor := &mockDistributor{}
+					distributor := &MockDistributor{}
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
+					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -621,7 +620,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "MetricsForLabelMatchers", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelMatchers, distributor.Calls[0].Method)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
@@ -631,8 +630,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				})
 
 				t.Run("label names", func(t *testing.T) {
-					distributor := &mockDistributor{}
+					distributor := &MockDistributor{}
 					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -645,7 +645,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "LabelNames", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelNames, distributor.Calls[0].Method)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
@@ -658,8 +658,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					matchers := []*labels.Matcher{
 						labels.MustNewMatcher(labels.MatchNotEqual, "route", "get_user"),
 					}
-					distributor := &mockDistributor{}
+					distributor := &MockDistributor{}
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
+					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -672,7 +673,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "MetricsForLabelMatchers", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelMatchers, distributor.Calls[0].Method)
 						args := distributor.Calls[0].Arguments
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(args.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(args.Get(2).(model.Time)), delta)
@@ -684,8 +685,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				})
 
 				t.Run("label values", func(t *testing.T) {
-					distributor := &mockDistributor{}
+					distributor := &MockDistributor{}
 					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+					distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
@@ -698,7 +700,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						// Assert on the time range of the actual executed query (5s delta).
 						delta := float64(5000)
 						require.Len(t, distributor.Calls, 1)
-						assert.Equal(t, "LabelValuesForLabelName", distributor.Calls[0].Method)
+						assert.Equal(t, expectedMethodForLabelValues, distributor.Calls[0].Method)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
@@ -713,7 +715,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 // mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
 // so we can test everything is dedupe correctly.
-func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *mockDistributor {
+func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *MockDistributor {
 	chunks, err := chunkcompat.ToChunks(cs.chunks)
 	require.NoError(t, err)
 
@@ -724,17 +726,14 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *moc
 	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
 	require.NoError(t, err)
 
-	result := &mockDistributor{}
+	result := &MockDistributor{}
 	result.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(matrix, nil)
 	result.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{Chunkseries: []client.TimeSeriesChunk{tsc}}, nil)
 	return result
 }
 
 func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q query) *promql.Result {
-	dir, err := ioutil.TempDir("", "test_query")
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
+	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
 
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	engine := promql.NewEngine(promql.EngineOpts{
@@ -743,7 +742,7 @@ func testRangeQuery(t testing.TB, queryable storage.Queryable, end model.Time, q
 		MaxSamples:         1e6,
 		Timeout:            1 * time.Minute,
 	})
-	query, err := engine.NewRangeQuery(queryable, q.query, from, through, step)
+	query, err := engine.NewRangeQuery(queryable, nil, q.query, from, through, step)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
@@ -781,10 +780,19 @@ func (m *errDistributor) QueryExemplars(ctx context.Context, from, to model.Time
 func (m *errDistributor) LabelValuesForLabelName(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
 	return nil, errDistributorError
 }
+func (m *errDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
+	return nil, errDistributorError
+}
 func (m *errDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, errDistributorError
 }
+func (m *errDistributor) LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error) {
+	return nil, errDistributorError
+}
 func (m *errDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, errDistributorError
+}
+func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, errDistributorError
 }
 
@@ -828,11 +836,23 @@ func (d *emptyDistributor) LabelValuesForLabelName(context.Context, model.Time, 
 	return nil, nil
 }
 
+func (d *emptyDistributor) LabelValuesForLabelNameStream(context.Context, model.Time, model.Time, model.LabelName, ...*labels.Matcher) ([]string, error) {
+	return nil, nil
+}
+
 func (d *emptyDistributor) LabelNames(context.Context, model.Time, model.Time) ([]string, error) {
 	return nil, nil
 }
 
+func (d *emptyDistributor) LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error) {
+	return nil, nil
+}
+
 func (d *emptyDistributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	return nil, nil
+}
+
+func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return nil, nil
 }
 
@@ -878,10 +898,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 		},
 	}
 
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 10, log.NewNopLogger())
+	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             log.NewNopLogger(),
@@ -902,11 +919,11 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
-				overrides, err := validation.NewOverrides(defaultLimitsConfig(), nil)
+				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewChunkStoreQueryable(cfg, chunkStore))}, purger.NewTombstonesLoader(nil, nil), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, "dummy", c.mint, c.maxt, 1*time.Minute)
+				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
 				ctx := user.InjectOrgID(context.Background(), "0")
@@ -1019,10 +1036,4 @@ func (m *mockQueryableWithFilter) Querier(_ context.Context, _, _ int64) (storag
 func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
-}
-
-func defaultLimitsConfig() validation.Limits {
-	limits := validation.Limits{}
-	flagext.DefaultValues(&limits)
-	return limits
 }

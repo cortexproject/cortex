@@ -16,7 +16,6 @@ package wal
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -30,7 +29,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/tsdb/record"
 )
 
@@ -45,10 +44,17 @@ const (
 // from the WAL on to somewhere else. Functions will be called concurrently
 // and it is left to the implementer to make sure they are safe.
 type WriteTo interface {
+	// Append and AppendExemplar should block until the samples are fully accepted,
+	// whether enqueued in memory or successfully written to it's final destination.
+	// Once returned, the WAL Watcher will not attempt to pass that data again.
 	Append([]record.RefSample) bool
 	AppendExemplars([]record.RefExemplar) bool
 	StoreSeries([]record.RefSeries, int)
-	// SeriesReset is called after reading a checkpoint to allow the deletion
+
+	// Next two methods are intended for garbage-collection: first we call
+	// UpdateSeriesSegment on all current series
+	UpdateSeriesSegment([]record.RefSeries, int)
+	// Then SeriesReset is called to allow the deletion
 	// of all series created in a segment lower than the argument.
 	SeriesReset(int)
 }
@@ -138,7 +144,7 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 }
 
 // NewWatcher creates a new WAL watcher for a given WriteTo.
-func NewWatcher(metrics *WatcherMetrics, readerMetrics *LiveReaderMetrics, logger log.Logger, name string, writer WriteTo, walDir string, sendExemplars bool) *Watcher {
+func NewWatcher(metrics *WatcherMetrics, readerMetrics *LiveReaderMetrics, logger log.Logger, name string, writer WriteTo, dir string, sendExemplars bool) *Watcher {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -147,7 +153,7 @@ func NewWatcher(metrics *WatcherMetrics, readerMetrics *LiveReaderMetrics, logge
 		writer:        writer,
 		metrics:       metrics,
 		readerMetrics: readerMetrics,
-		walDir:        path.Join(walDir, "wal"),
+		walDir:        path.Join(dir, "wal"),
 		name:          name,
 		sendExemplars: sendExemplars,
 
@@ -234,7 +240,7 @@ func (w *Watcher) Run() error {
 	}
 
 	if err == nil {
-		if err = w.readCheckpoint(lastCheckpoint); err != nil {
+		if err = w.readCheckpoint(lastCheckpoint, (*Watcher).readSegment); err != nil {
 			return errors.Wrap(err, "readCheckpoint")
 		}
 	}
@@ -298,7 +304,7 @@ func (w *Watcher) firstAndLast() (int, int, error) {
 // Copied from tsdb/wal/wal.go so we do not have to open a WAL.
 // Plan is to move WAL watcher to TSDB and dedupe these implementations.
 func (w *Watcher) segments(dir string) ([]int, error) {
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -454,7 +460,7 @@ func (w *Watcher) garbageCollectSeries(segmentNum int) error {
 
 	level.Debug(w.logger).Log("msg", "New checkpoint detected", "new", dir, "currentSegment", segmentNum)
 
-	if err = w.readCheckpoint(dir); err != nil {
+	if err = w.readCheckpoint(dir, (*Watcher).readSegmentForGC); err != nil {
 		return errors.Wrap(err, "readCheckpoint")
 	}
 
@@ -463,6 +469,8 @@ func (w *Watcher) garbageCollectSeries(segmentNum int) error {
 	return nil
 }
 
+// Read from a segment and pass the details to w.writer.
+// Also used with readCheckpoint - implements segmentReadFn.
 func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 	var (
 		dec       record.Decoder
@@ -506,7 +514,6 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 				}
 			}
 			if len(send) > 0 {
-				// Blocks  until the sample is sent to all remote write endpoints or closed (because enqueue blocks).
 				w.writer.Append(send)
 				send = send[:0]
 			}
@@ -538,6 +545,39 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 	return errors.Wrapf(r.Err(), "segment %d: %v", segmentNum, r.Err())
 }
 
+// Go through all series in a segment updating the segmentNum, so we can delete older series.
+// Used with readCheckpoint - implements segmentReadFn.
+func (w *Watcher) readSegmentForGC(r *LiveReader, segmentNum int, _ bool) error {
+	var (
+		dec    record.Decoder
+		series []record.RefSeries
+	)
+	for r.Next() && !isClosed(w.quit) {
+		rec := r.Record()
+		w.recordsReadMetric.WithLabelValues(recordType(dec.Type(rec))).Inc()
+
+		switch dec.Type(rec) {
+		case record.Series:
+			series, err := dec.Series(rec, series[:0])
+			if err != nil {
+				w.recordDecodeFailsMetric.Inc()
+				return err
+			}
+			w.writer.UpdateSeriesSegment(series, segmentNum)
+
+		// Ignore these; we're only interested in series.
+		case record.Samples:
+		case record.Exemplars:
+		case record.Tombstones:
+
+		default:
+			// Could be corruption, or reading from a WAL from a newer Prometheus.
+			w.recordDecodeFailsMetric.Inc()
+		}
+	}
+	return errors.Wrapf(r.Err(), "segment %d: %v", segmentNum, r.Err())
+}
+
 func (w *Watcher) SetStartTime(t time.Time) {
 	w.startTime = t
 	w.startTimestamp = timestamp.FromTime(t)
@@ -556,8 +596,10 @@ func recordType(rt record.Type) string {
 	}
 }
 
+type segmentReadFn func(w *Watcher, r *LiveReader, segmentNum int, tail bool) error
+
 // Read all the series records from a Checkpoint directory.
-func (w *Watcher) readCheckpoint(checkpointDir string) error {
+func (w *Watcher) readCheckpoint(checkpointDir string, readFn segmentReadFn) error {
 	level.Debug(w.logger).Log("msg", "Reading checkpoint", "dir", checkpointDir)
 	index, err := checkpointNum(checkpointDir)
 	if err != nil {
@@ -582,7 +624,7 @@ func (w *Watcher) readCheckpoint(checkpointDir string) error {
 		defer sr.Close()
 
 		r := NewLiveReader(w.logger, w.readerMetrics, sr)
-		if err := w.readSegment(r, index, false); errors.Cause(err) != io.EOF && err != nil {
+		if err := readFn(w, r, index, false); errors.Cause(err) != io.EOF && err != nil {
 			return errors.Wrap(err, "readSegment")
 		}
 

@@ -18,21 +18,27 @@ import (
 )
 
 func withFixtures(t *testing.T, f func(*testing.T, Client)) {
+	t.Helper()
+
 	for _, fixture := range []struct {
 		name    string
 		factory func() (Client, io.Closer, error)
 	}{
 		{"consul", func() (Client, io.Closer, error) {
-			return consul.NewInMemoryClient(codec.String{}), etcd.NopCloser, nil
+			client, closer := consul.NewInMemoryClient(codec.String{}, testLogger{}, nil)
+			return client, closer, nil
 		}},
 		{"etcd", func() (Client, io.Closer, error) {
-			return etcd.Mock(codec.String{})
+			client, closer := etcd.NewInMemoryClient(codec.String{}, testLogger{})
+			return client, closer, nil
 		}},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			client, closer, err := fixture.factory()
 			require.NoError(t, err)
-			defer closer.Close()
+			t.Cleanup(func() {
+				_ = closer.Close()
+			})
 			f(t, client)
 		})
 	}
@@ -106,6 +112,7 @@ func TestWatchKey(t *testing.T) {
 		go func() {
 			// Start watching before we even start generating values.
 			// Values will be buffered in the channel.
+			t.Log("Watching in background", "key", key)
 			client.WatchKey(ctx, key, func(value interface{}) bool {
 				observedValuesCh <- value.(string)
 				return true

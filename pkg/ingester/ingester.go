@@ -10,13 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
@@ -39,7 +40,8 @@ import (
 
 const (
 	// Number of timeseries to return in each batch of a QueryStream.
-	queryStreamBatchSize = 128
+	queryStreamBatchSize    = 128
+	metadataStreamBatchSize = 128
 
 	// Discarded Metadata metric labels.
 	perUserMetadataLimit   = "per_user_metadata_limit"
@@ -266,7 +268,7 @@ func New(cfg Config, clientConfig client.Config, limits *validation.Overrides, c
 	// During WAL recovery, it will create new user states which requires the limiter.
 	// Hence initialise the limiter before creating the WAL.
 	// The '!cfg.WALConfig.WALEnabled' argument says don't flush on shutdown if the WAL is enabled.
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", ring.IngesterRingKey, !cfg.WALConfig.WALEnabled || cfg.WALConfig.FlushOnShutdown, registerer)
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, !cfg.WALConfig.WALEnabled || cfg.WALConfig.FlushOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -642,7 +644,7 @@ func (i *Ingester) append(ctx context.Context, userID string, labels labelPairs,
 
 	if record != nil {
 		record.Samples = append(record.Samples, tsdb_record.RefSample{
-			Ref: uint64(fp),
+			Ref: chunks.HeadSeriesRef(fp),
 			T:   int64(timestamp),
 			V:   float64(value),
 		})
@@ -955,6 +957,24 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 	return resp, nil
 }
 
+func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2LabelValuesStream(req, stream)
+	}
+
+	resp, err := i.LabelValues(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return client.SendAsBatchToStream(len(resp.LabelValues), metadataStreamBatchSize, func(i, j int) error {
+		resp := &client.LabelValuesStreamResponse{
+			LabelValues: resp.LabelValues[i:j],
+		}
+		return client.SendLabelValuesStream(stream, resp)
+	})
+}
+
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
 	if i.cfg.BlocksStorageEnabled {
@@ -978,6 +998,25 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 	resp.LabelNames = append(resp.LabelNames, state.index.LabelNames()...)
 
 	return resp, nil
+}
+
+// LabelNames return all the label names.
+func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2LabelNamesStream(req, stream)
+	}
+
+	resp, err := i.LabelNames(stream.Context(), req)
+	if err != nil {
+		return err
+	}
+
+	return client.SendAsBatchToStream(len(resp.LabelNames), metadataStreamBatchSize, func(i, j int) error {
+		resp := &client.LabelNamesStreamResponse{
+			LabelNames: resp.LabelNames[i:j],
+		}
+		return client.SendLabelNamesStream(stream, resp)
+	})
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
@@ -1025,6 +1064,25 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	return result, nil
+}
+
+func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
+	if i.cfg.BlocksStorageEnabled {
+		return i.v2MetricsForLabelMatchersStream(req, stream)
+	}
+
+	resp, err := i.MetricsForLabelMatchers(stream.Context(), req)
+
+	if err != nil {
+		return err
+	}
+
+	return client.SendAsBatchToStream(len(resp.Metric), metadataStreamBatchSize, func(i, j int) error {
+		resp := &client.MetricsForLabelMatchersStreamResponse{
+			Metric: resp.Metric[i:j],
+		}
+		return client.SendMetricsForLabelMatchersStream(stream, resp)
+	})
 }
 
 // MetricsMetadata returns all the metric metadata of a user.

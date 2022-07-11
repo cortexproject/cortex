@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
@@ -637,6 +637,7 @@ type downstreamHandler struct {
 func (h *downstreamHandler) Do(ctx context.Context, r Request) (Response, error) {
 	qry, err := h.engine.NewRangeQuery(
 		h.queryable,
+		nil,
 		r.GetQuery(),
 		util.TimeFromMillis(r.GetStart()),
 		util.TimeFromMillis(r.GetEnd()),

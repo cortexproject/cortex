@@ -5,11 +5,11 @@ import (
 	"html/template"
 	"net/http"
 	"path"
-	"regexp"
 	"sync"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -209,12 +209,14 @@ func NewQuerierHandler(
 		logger,
 		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
+		false,
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
+		nil,
 	)
 
 	router := mux.NewRouter()

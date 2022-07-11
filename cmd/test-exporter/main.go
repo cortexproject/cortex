@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/tracing"

@@ -20,8 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
@@ -447,6 +447,7 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 			ctx = notify.WithReceiverName(ctx, ag.opts.Receiver)
 			ctx = notify.WithRepeatInterval(ctx, ag.opts.RepeatInterval)
 			ctx = notify.WithMuteTimeIntervals(ctx, ag.opts.MuteTimeIntervals)
+			ctx = notify.WithActiveTimeIntervals(ctx, ag.opts.ActiveTimeIntervals)
 
 			// Wait the configured interval before calling flush again.
 			ag.mtx.Lock()

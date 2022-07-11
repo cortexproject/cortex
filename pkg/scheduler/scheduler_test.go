@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
@@ -18,11 +18,12 @@ import (
 	"github.com/uber/jaeger-client-go/config"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	chunk "github.com/cortexproject/cortex/pkg/util/grpcutil"
+	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -57,7 +58,7 @@ func setupScheduler(t *testing.T, reg prometheus.Registerer) (*Scheduler, schedu
 		_ = l.Close()
 	})
 
-	c, err := grpc.Dial(l.Addr().String(), grpc.WithInsecure())
+	c, err := grpc.Dial(l.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
@@ -247,7 +248,7 @@ func TestTracingContext(t *testing.T) {
 	}
 
 	sp, _ := opentracing.StartSpanFromContext(context.Background(), "client")
-	opentracing.GlobalTracer().Inject(sp.Context(), opentracing.HTTPHeaders, (*chunk.HttpgrpcHeadersCarrier)(req.HttpRequest))
+	opentracing.GlobalTracer().Inject(sp.Context(), opentracing.HTTPHeaders, (*httpgrpcutil.HttpgrpcHeadersCarrier)(req.HttpRequest))
 
 	frontendToScheduler(t, frontendLoop, req)
 

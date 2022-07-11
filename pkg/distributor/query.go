@@ -8,7 +8,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/instrument"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
-	grpc_util "github.com/cortexproject/cortex/pkg/util/grpc"
+	"github.com/cortexproject/cortex/pkg/util/grpcutil"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -59,7 +59,7 @@ func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, m
 		}
 
 		// We ask for all ingesters without passing matchers because exemplar queries take in an array of array of label matchers.
-		replicationSet, err := d.GetIngestersForQuery(ctx, nil)
+		replicationSet, err := d.GetIngestersForQuery(ctx)
 		if err != nil {
 			return err
 		}
@@ -251,7 +251,10 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 		return nil, err
 	}
 
-	// Merge results from replication set.
+	return mergeExemplarQueryResponses(results), nil
+}
+
+func mergeExemplarQueryResponses(results []interface{}) *ingester_client.ExemplarQueryResponse {
 	var keys []string
 	exemplarResults := make(map[string]cortexpb.TimeSeries)
 	for _, result := range results {
@@ -262,9 +265,11 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 			if !ok {
 				exemplarResults[lbls] = ts
 				keys = append(keys, lbls)
+			} else {
+				// Merge in any missing values from another ingesters exemplars for this series.
+				e.Exemplars = mergeExemplarSets(e.Exemplars, ts.Exemplars)
+				exemplarResults[lbls] = e
 			}
-			// Merge in any missing values from another ingesters exemplars for this series.
-			e.Exemplars = mergeExemplarSets(e.Exemplars, ts.Exemplars)
 		}
 	}
 
@@ -276,7 +281,7 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 		result[i] = exemplarResults[k]
 	}
 
-	return &ingester_client.ExemplarQueryResponse{Timeseries: result}, nil
+	return &ingester_client.ExemplarQueryResponse{Timeseries: result}
 }
 
 // queryIngesterStream queries the ingesters using the new streaming API.
@@ -308,7 +313,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				break
 			} else if err != nil {
 				// Do not track a failure if the context was canceled.
-				if !grpc_util.IsGRPCContextCanceled(err) {
+				if !grpcutil.IsGRPCContextCanceled(err) {
 					d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
 				}
 

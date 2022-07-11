@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	"github.com/alecthomas/units"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
@@ -49,7 +49,7 @@ type Notifier struct {
 
 // New returns a new PagerDuty notifier.
 func New(c *config.PagerdutyConfig, t *template.Template, l log.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "pagerduty", append(httpOpts, commoncfg.WithHTTP2Disabled())...)
+	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "pagerduty", httpOpts...)
 	if err != nil {
 		return nil, err
 	}

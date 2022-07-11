@@ -9,21 +9,19 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	mathrand "math/rand"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/discovery/dns"
-	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -138,6 +136,10 @@ type KVConfig struct {
 	DeadNodeReclaimTime time.Duration `yaml:"dead_node_reclaim_time"`
 	EnableCompression   bool          `yaml:"compression_enabled"`
 
+	// ip:port to advertise other cluster members. Used for NAT traversal
+	AdvertiseAddr string `yaml:"advertise_addr"`
+	AdvertisePort int    `yaml:"advertise_port"`
+
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
 	MinJoinBackoff   time.Duration       `yaml:"min_join_backoff"`
@@ -165,7 +167,7 @@ type KVConfig struct {
 	Codecs []codec.Codec `yaml:"-"`
 }
 
-// RegisterFlags registers flags.
+// RegisterFlagsWithPrefix registers flags.
 func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	mlDefaults := defaultMemberlistConfig()
 
@@ -174,7 +176,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.RandomizeNodeName, prefix+"memberlist.randomize-node-name", true, "Add random suffix to the node name.")
 	f.DurationVar(&cfg.StreamTimeout, prefix+"memberlist.stream-timeout", mlDefaults.TCPTimeout, "The timeout for establishing a connection with a remote node, and for read/write operations.")
 	f.IntVar(&cfg.RetransmitMult, prefix+"memberlist.retransmit-factor", mlDefaults.RetransmitMult, "Multiplication factor used when sending out messages (factor * log(N+1)).")
-	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format (see https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery for more details).")
+	f.Var(&cfg.JoinMembers, prefix+"memberlist.join", "Other cluster members to join. Can be specified multiple times. It can be an IP, hostname or an entry specified in the DNS Service Discovery format.")
 	f.DurationVar(&cfg.MinJoinBackoff, prefix+"memberlist.min-join-backoff", 1*time.Second, "Min backoff duration to join other cluster members.")
 	f.DurationVar(&cfg.MaxJoinBackoff, prefix+"memberlist.max-join-backoff", 1*time.Minute, "Max backoff duration to join other cluster members.")
 	f.IntVar(&cfg.MaxJoinRetries, prefix+"memberlist.max-join-retries", 10, "Max number of retries to join other cluster members.")
@@ -189,19 +191,21 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.DeadNodeReclaimTime, prefix+"memberlist.dead-node-reclaim-time", mlDefaults.DeadNodeReclaimTime, "How soon can dead node's name be reclaimed with new address. 0 to disable.")
 	f.IntVar(&cfg.MessageHistoryBufferBytes, prefix+"memberlist.message-history-buffer-bytes", 0, "How much space to use for keeping received and sent messages in memory for troubleshooting (two buffers). 0 to disable.")
 	f.BoolVar(&cfg.EnableCompression, prefix+"memberlist.compression-enabled", mlDefaults.EnableCompression, "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.")
+	f.StringVar(&cfg.AdvertiseAddr, prefix+"memberlist.advertise-addr", mlDefaults.AdvertiseAddr, "Gossip address to advertise to other members in the cluster. Used for NAT traversal.")
+	f.IntVar(&cfg.AdvertisePort, prefix+"memberlist.advertise-port", mlDefaults.AdvertisePort, "Gossip port to advertise to other members in the cluster. Used for NAT traversal.")
 
-	cfg.TCPTransport.RegisterFlags(f, prefix)
+	cfg.TCPTransport.RegisterFlagsWithPrefix(f, prefix)
 }
 
 func (cfg *KVConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(f, "")
 }
 
-func generateRandomSuffix() string {
+func generateRandomSuffix(logger log.Logger) string {
 	suffix := make([]byte, 4)
 	_, err := rand.Read(suffix)
 	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "failed to generate random suffix", "err", err)
+		level.Error(logger).Log("msg", "failed to generate random suffix", "err", err)
 		return "error"
 	}
 	return fmt.Sprintf("%2x", suffix)
@@ -215,11 +219,12 @@ func generateRandomSuffix() string {
 type KV struct {
 	services.Service
 
-	cfg    KVConfig
-	logger log.Logger
+	cfg        KVConfig
+	logger     log.Logger
+	registerer prometheus.Registerer
 
 	// dns discovery provider
-	provider *dns.Provider
+	provider DNSProvider
 
 	// Protects access to memberlist and broadcasts fields.
 	initWG     sync.WaitGroup
@@ -329,21 +334,16 @@ var (
 // gossiping part. Only after service is in Running state, it is really gossiping. Starting the service will also
 // trigger connecting to the existing memberlist cluster. If that fails and AbortIfJoinFails is true, error is returned
 // and service enters Failed state.
-func NewKV(cfg KVConfig, logger log.Logger) *KV {
+func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer prometheus.Registerer) *KV {
 	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
-	mr := extprom.WrapRegistererWithPrefix("cortex_",
-		extprom.WrapRegistererWith(
-			prometheus.Labels{"name": "memberlist"},
-			cfg.MetricsRegisterer,
-		),
-	)
-
 	mlkv := &KV{
-		cfg:            cfg,
-		logger:         logger,
-		provider:       dns.NewProvider(logger, mr, dns.GolangResolverType),
+		cfg:        cfg,
+		logger:     logger,
+		registerer: registerer,
+		provider:   dnsProvider,
+
 		store:          make(map[string]valueDesc),
 		codecs:         make(map[string]codec.Codec),
 		watchers:       make(map[string][]chan string),
@@ -384,11 +384,14 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	mlCfg.DeadNodeReclaimTime = m.cfg.DeadNodeReclaimTime
 	mlCfg.EnableCompression = m.cfg.EnableCompression
 
+	mlCfg.AdvertiseAddr = m.cfg.AdvertiseAddr
+	mlCfg.AdvertisePort = m.cfg.AdvertisePort
+
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName
 	}
 	if m.cfg.RandomizeNodeName {
-		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix()
+		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix(m.logger)
 		level.Info(m.logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
 	}
 
@@ -398,6 +401,13 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// Memberlist uses UDPBufferSize to figure out how many messages it can put into single "packet".
 	// As we don't use UDP for sending packets, we can use higher value here.
 	mlCfg.UDPBufferSize = 10 * 1024 * 1024
+
+	// For our use cases, we don't need a very fast detection of dead nodes. Since we use a TCP transport
+	// and we open a new TCP connection for each packet, we prefer to reduce the probe frequency and increase
+	// the timeout compared to defaults.
+	mlCfg.ProbeInterval = 5 * time.Second // Probe a random node every this interval. This setting is also the total timeout for the direct + indirect probes.
+	mlCfg.ProbeTimeout = 2 * time.Second  // Timeout for the direct probe.
+
 	return mlCfg, nil
 }
 
@@ -450,9 +460,15 @@ func (m *KV) running(ctx context.Context) error {
 		}
 	}
 
-	var tickerChan <-chan time.Time = nil
+	var tickerChan <-chan time.Time
 	if m.cfg.RejoinInterval > 0 && len(m.cfg.JoinMembers) > 0 {
 		t := time.NewTicker(m.cfg.RejoinInterval)
+		t.Stop()
+		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(m.cfg.RejoinInterval)), func() {
+			m.rejoinMemberlist(ctx)
+
+			t.Reset(m.cfg.RejoinInterval)
+		})
 		defer t.Stop()
 
 		tickerChan = t.C
@@ -461,19 +477,22 @@ func (m *KV) running(ctx context.Context) error {
 	for {
 		select {
 		case <-tickerChan:
-			members := m.discoverMembers(ctx, m.cfg.JoinMembers)
-
-			reached, err := m.memberlist.Join(members)
-			if err == nil {
-				level.Info(m.logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
-			} else {
-				// Don't report error from rejoin, otherwise KV service would be stopped completely.
-				level.Warn(m.logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
-			}
-
+			m.rejoinMemberlist(ctx)
 		case <-ctx.Done():
 			return nil
 		}
+	}
+}
+
+func (m *KV) rejoinMemberlist(ctx context.Context) {
+	members := m.discoverMembers(ctx, m.cfg.JoinMembers)
+
+	reached, err := m.memberlist.Join(members)
+	if err == nil {
+		level.Info(m.logger).Log("msg", "re-joined memberlist cluster", "reached_nodes", reached)
+	} else {
+		// Don't report error from rejoin, otherwise KV service would be stopped completely.
+		level.Warn(m.logger).Log("msg", "re-joining memberlist cluster failed", "err", err)
 	}
 }
 
@@ -512,13 +531,13 @@ func (m *KV) joinMembersOnStartup(ctx context.Context, members []string) error {
 	level.Debug(m.logger).Log("msg", "attempt to join memberlist cluster failed", "retries", 0, "err", err)
 	lastErr := err
 
-	cfg := util.BackoffConfig{
+	cfg := backoff.Config{
 		MinBackoff: m.cfg.MinJoinBackoff,
 		MaxBackoff: m.cfg.MaxJoinBackoff,
 		MaxRetries: m.cfg.MaxJoinRetries,
 	}
 
-	backoff := util.NewBackoff(ctx, cfg)
+	backoff := backoff.New(ctx, cfg)
 
 	for backoff.Ongoing() {
 		backoff.Wait()
@@ -787,7 +806,7 @@ func (m *KV) notifyWatchers(key string) {
 // detect removals. If Merge doesn't result in any change (returns nil), then operation fails and is retried again.
 // After too many failed retries, this method returns error.
 func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	var lastError error = nil
+	var lastError error
 
 outer:
 	for retries := m.maxCasRetries; retries > 0; retries-- {
@@ -900,18 +919,6 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		return
 	}
 
-	if len(pairData) > 65535 {
-		// Unfortunately, memberlist will happily let us send bigger messages via gossip,
-		// but then it will fail to parse them properly, because its own size field is 2-bytes only.
-		// (github.com/hashicorp/memberlist@v0.1.4/util.go:167, makeCompoundMessage function)
-		//
-		// Typically messages are smaller (when dealing with couple of updates only), but can get bigger
-		// when broadcasting result of push/pull update.
-		level.Debug(m.logger).Log("msg", "broadcast message too big, not broadcasting", "key", key, "version", version, "len", len(pairData))
-		m.numberOfBroadcastMessagesDropped.Inc()
-		return
-	}
-
 	m.addSentMessage(message{
 		Time:    time.Now(),
 		Size:    len(pairData),
@@ -996,6 +1003,7 @@ func (m *KV) queueBroadcast(key string, content []string, version uint, message 
 		finished: func(b ringBroadcast) {
 			m.totalSizeOfBroadcastMessagesInQueue.Sub(float64(l))
 		},
+		logger: m.logger,
 	}
 
 	m.totalSizeOfBroadcastMessagesInQueue.Add(float64(l))
@@ -1181,7 +1189,10 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
-	curr := m.store[key].Clone()
+	// Note that we do not take a deep copy of curr.value here, it is modified in-place.
+	// This is safe because the entire function runs under the store lock; we do not return
+	// the full state anywhere as is done elsewhere (i.e. Get/WatchKey/CAS).
+	curr := m.store[key]
 	// if casVersion is 0, then there was no previous value, so we will just do normal merge, without localCAS flag set.
 	if casVersion > 0 && curr.version != casVersion {
 		return nil, 0, errVersionMismatch
@@ -1203,7 +1214,7 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		m.storeRemovedTombstones.WithLabelValues(key).Add(float64(removed))
 
 		// Remove tombstones from change too. If change turns out to be empty after this,
-		// we don't need to change local value either!
+		// we don't need to gossip the change. However, the local value will be always be updated.
 		//
 		// Note that "result" and "change" may actually be the same Mergeable. That is why we
 		// call RemoveTombstones on "result" first, so that we get the correct metrics. Calling
@@ -1220,6 +1231,10 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		version: newVersion,
 		codecID: codec.CodecID(),
 	}
+
+	// The "changes" returned by Merge() can contain references to the "result"
+	// state. Therefore, make sure we clone it before releasing the lock.
+	change = change.Clone()
 
 	return change, newVersion, nil
 }

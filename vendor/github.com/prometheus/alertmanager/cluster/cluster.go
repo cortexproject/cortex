@@ -24,12 +24,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/hashicorp/memberlist"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
-
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -141,6 +140,8 @@ func Create(
 	tcpTimeout time.Duration,
 	probeTimeout time.Duration,
 	probeInterval time.Duration,
+	tlsTransportConfig *TLSTransportConfig,
+	allowInsecureAdvertise bool,
 ) (*Peer, error) {
 	bindHost, bindPortStr, err := net.SplitHostPort(bindAddr)
 	if err != nil {
@@ -172,7 +173,7 @@ func Create(
 	level.Debug(l).Log("msg", "resolved peers to following addresses", "peers", strings.Join(resolvedPeers, ","))
 
 	// Initial validation of user-specified advertise address.
-	addr, err := calculateAdvertiseAddress(bindHost, advertiseHost)
+	addr, err := calculateAdvertiseAddress(bindHost, advertiseHost, allowInsecureAdvertise)
 	if err != nil {
 		level.Warn(l).Log("err", "couldn't deduce an advertise address: "+err.Error())
 	} else if hasNonlocal(resolvedPeers) && isUnroutable(addr.String()) {
@@ -233,6 +234,14 @@ func Create(
 		p.setInitialFailed(resolvedPeers, fmt.Sprintf("%s:%d", advertiseHost, advertisePort))
 	} else {
 		p.setInitialFailed(resolvedPeers, bindAddr)
+	}
+
+	if tlsTransportConfig != nil {
+		level.Info(l).Log("msg", "using TLS for gossip")
+		cfg.Transport, err = NewTLSTransport(context.Background(), l, reg, cfg.BindAddr, cfg.BindPort, tlsTransportConfig)
+		if err != nil {
+			return nil, errors.Wrap(err, "tls transport")
+		}
 	}
 
 	ml, err := memberlist.Create(cfg)

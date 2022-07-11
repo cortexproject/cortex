@@ -20,13 +20,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -508,7 +508,7 @@ func TestIngester_v2Push(t *testing.T) {
 			validation.DiscardedSamples.Reset()
 
 			// Create a mocked ingester
-			cfg := defaultIngesterTestConfig()
+			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
 			cfg.BlocksStorageConfig.TSDB.MaxExemplars = testData.maxExemplars
@@ -602,7 +602,7 @@ func TestIngester_v2Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *tes
 	registry := prometheus.NewRegistry()
 
 	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
@@ -683,7 +683,7 @@ func TestIngester_v2Push_DecreaseInactiveSeries(t *testing.T) {
 	registry := prometheus.NewRegistry()
 
 	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.ActiveSeriesMetricsIdleTimeout = 100 * time.Millisecond
 	cfg.LifecyclerConfig.JoinAfter = 0
 
@@ -754,7 +754,7 @@ func benchmarkIngesterV2Push(b *testing.B, limits validation.Limits, errorsExpec
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(b)
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	ingester, err := prepareIngesterWithBlocksStorage(b, cfg, registry)
@@ -1039,7 +1039,7 @@ func Benchmark_Ingester_v2PushOnError(b *testing.B) {
 					}
 
 					// Create a mocked ingester
-					cfg := defaultIngesterTestConfig()
+					cfg := defaultIngesterTestConfig(b)
 					cfg.LifecyclerConfig.JoinAfter = 0
 
 					limits := defaultLimitsTestConfig()
@@ -1111,7 +1111,7 @@ func Test_Ingester_v2LabelNames(t *testing.T) {
 	expected := []string{"__name__", "status", "route"}
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1155,7 +1155,7 @@ func Test_Ingester_v2LabelValues(t *testing.T) {
 	}
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1274,7 +1274,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 	}
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1309,7 +1309,7 @@ func Test_Ingester_v2Query(t *testing.T) {
 	}
 }
 func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1329,7 +1329,7 @@ func TestIngester_v2Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 }
 
 func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1349,7 +1349,7 @@ func TestIngester_v2LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T)
 }
 
 func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1371,7 +1371,7 @@ func TestIngester_v2LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) 
 func TestIngester_v2Push_ShouldNotCreateTSDBIfNotInActiveState(t *testing.T) {
 	// Configure the lifecycler to not immediately join the ring, to make sure
 	// the ingester will NOT be in the ACTIVE state when we'll push samples.
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 10 * time.Second
 
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
@@ -1419,7 +1419,7 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			cfg := defaultIngesterTestConfig()
+			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 60 * time.Second
 
 			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
@@ -1568,7 +1568,7 @@ func Test_Ingester_v2MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1673,7 +1673,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 	const maxBatchSize = 1000
 
 	// Create ingester.
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	t.Cleanup(func() {
@@ -1719,7 +1719,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 
 func TestIngester_v2QueryStream(t *testing.T) {
 	// Create ingester.
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 
 	// change stream type in runtime.
 	var streamType QueryStreamType
@@ -1823,7 +1823,7 @@ func TestIngester_v2QueryStream(t *testing.T) {
 
 func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 	// Create ingester.
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1917,7 +1917,7 @@ func TestIngester_v2QueryStreamManySamples(t *testing.T) {
 
 func TestIngester_v2QueryStreamManySamplesChunks(t *testing.T) {
 	// Create ingester.
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.StreamChunksWhenUsingBlocks = true
 
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
@@ -2053,7 +2053,7 @@ func BenchmarkIngester_v2QueryStream_Chunks(b *testing.B) {
 }
 
 func benchmarkV2QueryStream(b *testing.B, streamChunks bool) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(b)
 	cfg.StreamChunksWhenUsingBlocks = streamChunks
 
 	// Create ingester.
@@ -2168,24 +2168,10 @@ func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, register
 func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
 	// Create a data dir if none has been provided.
 	if dataDir == "" {
-		var err error
-		if dataDir, err = ioutil.TempDir("", "ingester"); err != nil {
-			return nil, err
-		}
-
-		t.Cleanup(func() {
-			require.NoError(t, os.RemoveAll(dataDir))
-		})
+		dataDir = t.TempDir()
 	}
 
-	bucketDir, err := ioutil.TempDir("", "bucket")
-	if err != nil {
-		return nil, err
-	}
-
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(bucketDir))
-	})
+	bucketDir := t.TempDir()
 
 	clientCfg := defaultClientTestConfig()
 
@@ -2330,11 +2316,9 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create a temporary directory for TSDB
-			tempDir, err := ioutil.TempDir("", "tsdb")
-			require.NoError(t, err)
-			defer os.RemoveAll(tempDir)
+			tempDir := t.TempDir()
 
-			ingesterCfg := defaultIngesterTestConfig()
+			ingesterCfg := defaultIngesterTestConfig(t)
 			ingesterCfg.BlocksStorageEnabled = true
 			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
 			ingesterCfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup = testData.concurrency
@@ -2362,7 +2346,7 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 }
 
 func TestIngester_shipBlocks(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
 
@@ -2400,7 +2384,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 }
 
 func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
 
@@ -2449,7 +2433,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 }
 
 func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
 
@@ -2493,7 +2477,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 
 func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInProgress(t *testing.T) {
 	ctx := context.Background()
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
 
@@ -2536,7 +2520,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 
 func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 	ctx := context.Background()
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
 
 	// Create ingester
@@ -2587,7 +2571,7 @@ func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 
 func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	ctx := context.Background()
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Minute
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Minute
 	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
@@ -2636,7 +2620,7 @@ func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 }
 
 func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	// Create ingester
@@ -2864,7 +2848,7 @@ func TestIngester_flushing(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			cfg := defaultIngesterTestConfig()
+			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
 			cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Minute // Long enough to not be reached during the test.
@@ -2895,7 +2879,7 @@ func TestIngester_flushing(t *testing.T) {
 }
 
 func TestIngester_ForFlush(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
 	cfg.BlocksStorageConfig.TSDB.ShipInterval = 10 * time.Minute // Long enough to not be reached during the test.
@@ -2973,7 +2957,7 @@ func Test_Ingester_v2UserStats(t *testing.T) {
 	}
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -3021,7 +3005,7 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 	}
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -3071,7 +3055,7 @@ func Test_Ingester_v2AllUserStats(t *testing.T) {
 }
 
 func TestIngesterCompactIdleBlock(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Hour      // Long enough to not be reached during the test.
@@ -3150,7 +3134,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 }
 
 func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second // Required to enable shipping.
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
@@ -3297,11 +3281,7 @@ func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
 
 func TestHeadCompactionOnStartup(t *testing.T) {
 	// Create a temporary directory for TSDB
-	tempDir, err := ioutil.TempDir("", "tsdb")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
+	tempDir := t.TempDir()
 
 	// Build TSDB for user, with data covering 24 hours.
 	{
@@ -3346,7 +3326,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	ingesterCfg := defaultIngesterTestConfig()
+	ingesterCfg := defaultIngesterTestConfig(t)
 	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
@@ -3370,7 +3350,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 }
 
 func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 
 	// Create ingester
@@ -3404,7 +3384,7 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	chunkRange := 2 * time.Hour
 	chunkRangeMilliSec := chunkRange.Milliseconds()
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{chunkRange}
 	cfg.BlocksStorageConfig.TSDB.Retention = time.Millisecond // Which means delete all but first block.
 	cfg.LifecyclerConfig.JoinAfter = 0
@@ -3512,7 +3492,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 }
 
 func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), nil)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -3546,7 +3526,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 
 func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	registry := prometheus.NewRegistry()
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(), registry)
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), registry)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -3696,7 +3676,7 @@ func TestIngester_v2PushInstanceLimits(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Create a mocked ingester
-			cfg := defaultIngesterTestConfig()
+			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.InstanceLimitsFn = func() *InstanceLimits {
 				return &testData.limits
@@ -3762,7 +3742,7 @@ func TestIngester_instanceLimitsMetrics(t *testing.T) {
 		MaxInMemorySeries:  30,
 	}
 
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.InstanceLimitsFn = func() *InstanceLimits {
 		return &l
 	}
@@ -3797,7 +3777,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 	limits := InstanceLimits{MaxInflightPushRequests: 1}
 
 	// Create a mocked ingester
-	cfg := defaultIngesterTestConfig()
+	cfg := defaultIngesterTestConfig(t)
 	cfg.InstanceLimitsFn = func() *InstanceLimits { return &limits }
 	cfg.LifecyclerConfig.JoinAfter = 0
 

@@ -16,7 +16,6 @@ package remote
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"sort"
 	"strings"
@@ -26,8 +25,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/textparse"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -51,7 +51,7 @@ func (e HTTPError) Status() int {
 
 // DecodeReadRequest reads a remote.Request from a http.Request.
 func DecodeReadRequest(r *http.Request) (*prompb.ReadRequest, error) {
-	compressed, err := ioutil.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
+	compressed, err := io.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
 	if err != nil {
 		return nil, err
 	}
@@ -356,8 +356,19 @@ func newConcreteSeriersIterator(series *concreteSeries) chunkenc.Iterator {
 
 // Seek implements storage.SeriesIterator.
 func (c *concreteSeriesIterator) Seek(t int64) bool {
-	c.cur = sort.Search(len(c.series.samples), func(n int) bool {
-		return c.series.samples[n].Timestamp >= t
+	if c.cur == -1 {
+		c.cur = 0
+	}
+	if c.cur >= len(c.series.samples) {
+		return false
+	}
+	// No-op check.
+	if s := c.series.samples[c.cur]; s.Timestamp >= t {
+		return true
+	}
+	// Do binary search between current position and end.
+	c.cur += sort.Search(len(c.series.samples)-c.cur, func(n int) bool {
+		return c.series.samples[n+c.cur].Timestamp >= t
 	})
 	return c.cur < len(c.series.samples)
 }
@@ -450,6 +461,17 @@ func FromLabelMatchers(matchers []*prompb.LabelMatcher) ([]*labels.Matcher, erro
 	return result, nil
 }
 
+func exemplarProtoToExemplar(ep prompb.Exemplar) exemplar.Exemplar {
+	timestamp := ep.Timestamp
+
+	return exemplar.Exemplar{
+		Labels: labelProtosToLabels(ep.Labels),
+		Value:  ep.Value,
+		Ts:     timestamp,
+		HasTs:  timestamp != 0,
+	}
+}
+
 // LabelProtosToMetric unpack a []*prompb.Label to a model.Metric
 func LabelProtosToMetric(labelPairs []*prompb.Label) model.Metric {
 	metric := make(model.Metric, len(labelPairs))
@@ -501,7 +523,7 @@ func metricTypeToMetricTypeProto(t textparse.MetricType) prompb.MetricMetadata_M
 // DecodeWriteRequest from an io.Reader into a prompb.WriteRequest, handling
 // snappy decompression.
 func DecodeWriteRequest(r io.Reader) (*prompb.WriteRequest, error) {
-	compressed, err := ioutil.ReadAll(r)
+	compressed, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

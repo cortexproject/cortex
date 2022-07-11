@@ -28,6 +28,10 @@ query_range:
   align_queries_with_step: true
   cache_results: true
 
+  # list of request headers  forwarded by query frontend to downstream queriers.
+  forward_headers_list:
+    - Authorization
+
   results_cache:
     cache:
 
@@ -62,6 +66,6 @@ frontend:
   log_queries_longer_than: 1s
   compress_responses: true
 
-  # The Prometheus URL to which the query-frontend should connect to.
+  # The query endpoint URL of a Prometheus-API compatible service to which the query-frontend should connect to.
   downstream_url: http://prometheus.mydomain.com
 ```

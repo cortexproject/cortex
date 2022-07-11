@@ -4,12 +4,117 @@ import (
 	"encoding/base64"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v2"
 
+	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
+
+// defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
+var defaultConfig = Config{
+	SignatureVersion: SignatureVersionV4,
+	HTTP: HTTPConfig{
+		Config: bucket_http.Config{
+			IdleConnTimeout:       90 * time.Second,
+			ResponseHeaderTimeout: 2 * time.Minute,
+			InsecureSkipVerify:    false,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   100,
+			MaxConnsPerHost:       0,
+		},
+	},
+}
+
+func TestConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		config         string
+		expectedConfig Config
+		expectedErr    error
+	}{
+		"default config": {
+			config:         "",
+			expectedConfig: defaultConfig,
+			expectedErr:    nil,
+		},
+		"custom config": {
+			config: `
+endpoint: test-endpoint
+region: test-region
+bucket_name: test-bucket-name
+secret_access_key: test-secret-access-key
+access_key_id: test-access-key-id
+insecure: true
+signature_version: test-signature-version
+sse:
+  type: test-type
+  kms_key_id: test-kms-key-id
+  kms_encryption_context: test-kms-encryption-context
+http:
+  idle_conn_timeout: 2s
+  response_header_timeout: 3s
+  insecure_skip_verify: true
+  tls_handshake_timeout: 4s
+  expect_continue_timeout: 5s
+  max_idle_connections: 6
+  max_idle_connections_per_host: 7
+  max_connections_per_host: 8
+`,
+			expectedConfig: Config{
+				Endpoint:         "test-endpoint",
+				Region:           "test-region",
+				BucketName:       "test-bucket-name",
+				SecretAccessKey:  flagext.Secret{Value: "test-secret-access-key"},
+				AccessKeyID:      "test-access-key-id",
+				Insecure:         true,
+				SignatureVersion: "test-signature-version",
+				SSE: SSEConfig{
+					Type:                 "test-type",
+					KMSKeyID:             "test-kms-key-id",
+					KMSEncryptionContext: "test-kms-encryption-context",
+				},
+				HTTP: HTTPConfig{
+					Config: bucket_http.Config{
+						IdleConnTimeout:       2 * time.Second,
+						ResponseHeaderTimeout: 3 * time.Second,
+						InsecureSkipVerify:    true,
+						TLSHandshakeTimeout:   4 * time.Second,
+						ExpectContinueTimeout: 5 * time.Second,
+						MaxIdleConns:          6,
+						MaxIdleConnsPerHost:   7,
+						MaxConnsPerHost:       8,
+					},
+				},
+			},
+			expectedErr: nil,
+		},
+		"invalid type": {
+			config:         `insecure: foo`,
+			expectedConfig: defaultConfig,
+			expectedErr:    &yaml.TypeError{Errors: []string{"line 1: cannot unmarshal !!str `foo` into bool"}},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			cfg := Config{}
+			flagext.DefaultValues(&cfg)
+
+			err := yaml.Unmarshal([]byte(testData.config), &cfg)
+			require.Equal(t, testData.expectedErr, err)
+			require.Equal(t, testData.expectedConfig, cfg)
+		})
+	}
+}
 
 func TestSSEConfig_Validate(t *testing.T) {
 	tests := map[string]struct {

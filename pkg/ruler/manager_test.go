@@ -2,15 +2,13 @@ package ruler
 
 import (
 	"context"
-	"io/ioutil"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/labels"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -20,11 +18,7 @@ import (
 )
 
 func TestSyncRuleGroups(t *testing.T) {
-	dir, err := ioutil.TempDir("", "rules")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = os.RemoveAll(dir)
-	})
+	dir := t.TempDir()
 
 	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger())
 	require.NoError(t, err)
@@ -50,11 +44,13 @@ func TestSyncRuleGroups(t *testing.T) {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
-	// Verify that user rule groups are now cached locally.
+	// Verify that user rule groups are now cached locally and notifiers are created.
 	{
 		users, err := m.mapper.users()
+		_, ok := m.notifiers[user]
 		require.NoError(t, err)
 		require.Equal(t, []string{user}, users)
+		require.True(t, ok)
 	}
 
 	// Passing empty map / nil stops all managers.
@@ -69,8 +65,10 @@ func TestSyncRuleGroups(t *testing.T) {
 	// Verify that local rule groups were removed.
 	{
 		users, err := m.mapper.users()
+		_, ok := m.notifiers[user]
 		require.NoError(t, err)
 		require.Equal(t, []string(nil), users)
+		require.False(t, ok)
 	}
 
 	// Resync same rules as before. Previously this didn't restart the manager.
@@ -124,7 +122,7 @@ func (m *mockRulesManager) Stop() {
 	close(m.done)
 }
 
-func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string) error {
+func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, _ promRules.RuleGroupPostProcessFunc) error {
 	return nil
 }
 

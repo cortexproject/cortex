@@ -9,8 +9,7 @@ import (
 )
 
 func TestDayValueYAML(t *testing.T) {
-	// Test embedding of DayValue.
-	{
+	t.Run("embedding DayValue", func(t *testing.T) {
 		type TestStruct struct {
 			Day DayValue `yaml:"day"`
 		}
@@ -28,10 +27,9 @@ func TestDayValueYAML(t *testing.T) {
 		err = yaml.Unmarshal(expected, &actualStruct)
 		require.NoError(t, err)
 		assert.Equal(t, testStruct, actualStruct)
-	}
+	})
 
-	// Test pointers of DayValue.
-	{
+	t.Run("pointer of DayValue", func(t *testing.T) {
 		type TestStruct struct {
 			Day *DayValue `yaml:"day"`
 		}
@@ -50,5 +48,5 @@ func TestDayValueYAML(t *testing.T) {
 		err = yaml.Unmarshal(expected, &actualStruct)
 		require.NoError(t, err)
 		assert.Equal(t, testStruct, actualStruct)
-	}
+	})
 }

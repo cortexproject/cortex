@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -11,12 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/ring/shard"
+	"github.com/cortexproject/cortex/pkg/ring/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -76,6 +81,72 @@ func benchmarkBatch(b *testing.B, numInstances, numKeys int) {
 func generateKeys(r *rand.Rand, numTokens int, dest []uint32) {
 	for i := 0; i < numTokens; i++ {
 		dest[i] = r.Uint32()
+	}
+}
+
+func BenchmarkUpdateRingState(b *testing.B) {
+	for _, numInstances := range []int{50, 100, 500} {
+		for _, numZones := range []int{1, 3} {
+			for _, numTokens := range []int{128, 256, 512} {
+				for _, updateTokens := range []bool{false, true} {
+					b.Run(fmt.Sprintf("num instances = %d, num zones = %d, num tokens = %d, update tokens = %t", numInstances, numZones, numTokens, updateTokens), func(b *testing.B) {
+						benchmarkUpdateRingState(b, numInstances, numZones, numTokens, updateTokens)
+					})
+				}
+			}
+		}
+	}
+}
+
+func benchmarkUpdateRingState(b *testing.B, numInstances, numZones, numTokens int, updateTokens bool) {
+	cfg := Config{
+		KVStore:              kv.Config{},
+		HeartbeatTimeout:     0, // get healthy stats
+		ReplicationFactor:    3,
+		ZoneAwarenessEnabled: true,
+	}
+
+	// create the ring to set up metrics, but do not start
+	registry := prometheus.NewRegistry()
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, nil, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(b, err)
+
+	// Make a random ring with N instances, and M tokens per ingests
+	// Also make a copy with different timestamps and one with different tokens
+	desc := NewDesc()
+	otherDesc := NewDesc()
+	takenTokens := []uint32{}
+	otherTakenTokens := []uint32{}
+	for i := 0; i < numInstances; i++ {
+		tokens := GenerateTokens(numTokens, takenTokens)
+		takenTokens = append(takenTokens, tokens...)
+		now := time.Now()
+		id := fmt.Sprintf("%d", i)
+		desc.AddIngester(id, fmt.Sprintf("instance-%d", i), strconv.Itoa(i), tokens, ACTIVE, now)
+		if updateTokens {
+			otherTokens := GenerateTokens(numTokens, otherTakenTokens)
+			otherTakenTokens = append(otherTakenTokens, otherTokens...)
+			otherDesc.AddIngester(id, fmt.Sprintf("instance-%d", i), strconv.Itoa(i), otherTokens, ACTIVE, now)
+		} else {
+			otherDesc.AddIngester(id, fmt.Sprintf("instance-%d", i), strconv.Itoa(i), tokens, JOINING, now)
+		}
+	}
+
+	if updateTokens {
+		require.Equal(b, Different, desc.RingCompare(otherDesc))
+	} else {
+		require.Equal(b, EqualButStatesAndTimestamps, desc.RingCompare(otherDesc))
+	}
+
+	flipFlop := true
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		if flipFlop {
+			ring.updateRingState(desc)
+		} else {
+			ring.updateRingState(otherDesc)
+		}
+		flipFlop = !flipFlop
 	}
 }
 
@@ -1926,64 +1997,84 @@ func compareReplicationSets(first, second ReplicationSet) (added, removed []stri
 
 // This test verifies that ring is getting updates, even after extending check in the loop method.
 func TestRingUpdates(t *testing.T) {
-	inmem := consul.NewInMemoryClient(GetCodec())
+	const (
+		numInstances = 3
+		numZones     = 3
+	)
 
-	cfg := Config{
-		KVStore:           kv.Config{Mock: inmem},
-		HeartbeatTimeout:  1 * time.Minute,
-		ReplicationFactor: 3,
+	tests := map[string]struct {
+		excludedZones     []string
+		expectedInstances int
+	}{
+		"without excluded zones": {
+			expectedInstances: 3,
+		},
+		"with excluded zones": {
+			excludedZones:     []string{"zone-0"},
+			expectedInstances: 2,
+		},
 	}
 
-	ring, err := New(cfg, "test", "test", nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
-	t.Cleanup(func() {
-		_ = services.StopAndAwaitTerminated(context.Background(), ring)
-	})
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			inmem, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-	require.Equal(t, 0, ring.InstancesCount())
+			cfg := Config{
+				KVStore:           kv.Config{Mock: inmem},
+				HeartbeatTimeout:  1 * time.Minute,
+				ReplicationFactor: 3,
+				ExcludedZones:     flagext.StringSliceCSV(testData.excludedZones),
+			}
 
-	lc1 := startLifecycler(t, cfg, 100*time.Millisecond, 1, 3)
-	test.Poll(t, 1*time.Second, 1, func() interface{} {
-		return ring.InstancesCount()
-	})
+			ring, err := New(cfg, "test", "test", log.NewNopLogger(), nil)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
+			t.Cleanup(func() {
+				_ = services.StopAndAwaitTerminated(context.Background(), ring)
+			})
 
-	lc2 := startLifecycler(t, cfg, 100*time.Millisecond, 2, 3)
-	test.Poll(t, 1*time.Second, 2, func() interface{} {
-		return ring.InstancesCount()
-	})
+			require.Equal(t, 0, ring.InstancesCount())
 
-	lc3 := startLifecycler(t, cfg, 100*time.Millisecond, 3, 3)
-	test.Poll(t, 1*time.Second, 3, func() interface{} {
-		return ring.InstancesCount()
-	})
+			// Start 1 lifecycler for each instance we want to register in the ring.
+			var lifecyclers []*Lifecycler
+			for instanceID := 1; instanceID <= numInstances; instanceID++ {
+				lifecyclers = append(lifecyclers, startLifecycler(t, cfg, 100*time.Millisecond, instanceID, numZones))
+			}
 
-	// Sleep for a few seconds (ring timestamp resolution is 1 second, so to verify that ring is updated in the background,
-	// sleep for 2 seconds)
-	time.Sleep(2 * time.Second)
+			// Ensure the ring client got updated.
+			test.Poll(t, 1*time.Second, testData.expectedInstances, func() interface{} {
+				return ring.InstancesCount()
+			})
 
-	rs, err := ring.GetAllHealthy(Read)
-	require.NoError(t, err)
+			// Sleep for a few seconds (ring timestamp resolution is 1 second, so to verify that ring is updated in the background,
+			// sleep for 2 seconds)
+			time.Sleep(2 * time.Second)
 
-	now := time.Now()
-	for _, ing := range rs.Instances {
-		require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
+			rs, err := ring.GetAllHealthy(Read)
+			require.NoError(t, err)
+
+			now := time.Now()
+			for _, ing := range rs.Instances {
+				require.InDelta(t, now.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(1500*time.Millisecond.Nanoseconds()))
+
+				// Ensure there's no instance in an excluded zone.
+				if len(testData.excludedZones) > 0 {
+					assert.False(t, util.StringsContain(testData.excludedZones, ing.Zone))
+				}
+			}
+
+			// Stop all lifecyclers.
+			for _, lc := range lifecyclers {
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc))
+			}
+
+			// Ensure the ring client got updated.
+			test.Poll(t, 1*time.Second, 0, func() interface{} {
+				return ring.InstancesCount()
+			})
+		})
 	}
-
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc2))
-	test.Poll(t, 1*time.Second, 2, func() interface{} {
-		return ring.InstancesCount()
-	})
-
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc1))
-	test.Poll(t, 1*time.Second, 1, func() interface{} {
-		return ring.InstancesCount()
-	})
-
-	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lc3))
-	test.Poll(t, 1*time.Second, 0, func() interface{} {
-		return ring.InstancesCount()
-	})
 }
 
 func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
@@ -1999,7 +2090,7 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 		UnregisterOnShutdown: true,
 	}
 
-	lc, err := NewLifecycler(lcCfg, &noopFlushTransferer{}, "test", "test", false, nil)
+	lc, err := NewLifecycler(lcCfg, &noopFlushTransferer{}, "test", "test", false, log.NewNopLogger(), nil)
 	require.NoError(t, err)
 
 	lc.AddListener(services.NewListener(nil, nil, nil, nil, func(from services.State, failure error) {
@@ -2019,10 +2110,11 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
-	inmem := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+	inmem, closer := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
 		MaxCasRetries: 20,
 		CasRetryDelay: 500 * time.Millisecond,
-	})
+	}, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	cfg := Config{
 		KVStore:              kv.Config{Mock: inmem},
@@ -2031,7 +2123,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		ZoneAwarenessEnabled: true,
 	}
 
-	ring, err := New(cfg, "test", "test", nil)
+	ring, err := New(cfg, "test", "test", log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
 	t.Cleanup(func() {
@@ -2124,10 +2216,148 @@ func TestShuffleShardWithCaching(t *testing.T) {
 
 // User shuffle shard token.
 func userToken(user, zone string, skip int) uint32 {
-	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user, zone)))
+	r := rand.New(rand.NewSource(shard.ShuffleShardSeed(user, zone)))
 
 	for ; skip > 0; skip-- {
 		_ = r.Uint32()
 	}
 	return r.Uint32()
+}
+
+func TestUpdateMetrics(t *testing.T) {
+	cfg := Config{
+		KVStore:              kv.Config{},
+		HeartbeatTimeout:     0, // get healthy stats
+		ReplicationFactor:    3,
+		ZoneAwarenessEnabled: true,
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// create the ring to set up metrics, but do not start
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, nil, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ringDesc := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+			"B": {Addr: "127.0.0.2", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
+		},
+	}
+	ring.updateRingState(&ringDesc)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 0.500000000349246
+		ring_member_ownership_percent{member="B",name="test"} 0.49999999965075403
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE"} 2
+		ring_members{name="test",state="JOINING"} 0
+		ring_members{name="test",state="LEAVING"} 0
+		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		ring_tokens_owned{member="B",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 4
+	`))
+	assert.NoError(t, err)
+}
+
+func TestUpdateMetricsWithRemoval(t *testing.T) {
+	cfg := Config{
+		KVStore:              kv.Config{},
+		HeartbeatTimeout:     0, // get healthy stats
+		ReplicationFactor:    3,
+		ZoneAwarenessEnabled: true,
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// create the ring to set up metrics, but do not start
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, nil, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ringDesc := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+			"B": {Addr: "127.0.0.2", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
+		},
+	}
+	ring.updateRingState(&ringDesc)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 0.500000000349246
+		ring_member_ownership_percent{member="B",name="test"} 0.49999999965075403
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE"} 2
+		ring_members{name="test",state="JOINING"} 0
+		ring_members{name="test",state="LEAVING"} 0
+		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		ring_tokens_owned{member="B",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 4
+	`))
+	require.NoError(t, err)
+
+	ringDescNew := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+		},
+	}
+	ring.updateRingState(&ringDescNew)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 1
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE"} 1
+		ring_members{name="test",state="JOINING"} 0
+		ring_members{name="test",state="LEAVING"} 0
+		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 22
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 2
+	`))
+	assert.NoError(t, err)
 }

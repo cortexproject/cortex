@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"golang.org/x/sync/errgroup"
 
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 // ForEachUser runs the provided userFunc for each userIDs up to concurrency concurrent workers.
@@ -26,11 +26,11 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 	close(ch)
 
 	// Keep track of all errors occurred.
-	errs := tsdb_errors.NewMulti()
+	errs := multierror.MultiError{}
 	errsMx := sync.Mutex{}
 
 	wg := sync.WaitGroup{}
-	for ix := 0; ix < util_math.Min(concurrency, len(userIDs)); ix++ {
+	for ix := 0; ix < math.Min(concurrency, len(userIDs)); ix++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -57,8 +57,6 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 		return ctx.Err()
 	}
 
-	errsMx.Lock()
-	defer errsMx.Unlock()
 	return errs.Err()
 }
 
@@ -78,7 +76,7 @@ func ForEach(ctx context.Context, jobs []interface{}, concurrency int, jobFunc f
 
 	// Start workers to process jobs.
 	g, ctx := errgroup.WithContext(ctx)
-	for ix := 0; ix < util_math.Min(concurrency, len(jobs)); ix++ {
+	for ix := 0; ix < math.Min(concurrency, len(jobs)); ix++ {
 		g.Go(func() error {
 			for job := range ch {
 				if err := ctx.Err(); err != nil {

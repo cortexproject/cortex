@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -36,15 +36,17 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent        int           `yaml:"max_concurrent"`
-	Timeout              time.Duration `yaml:"timeout"`
-	Iterators            bool          `yaml:"iterators"`
-	BatchIterators       bool          `yaml:"batch_iterators"`
-	IngesterStreaming    bool          `yaml:"ingester_streaming"`
-	MaxSamples           int           `yaml:"max_samples"`
-	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
-	QueryStoreForLabels  bool          `yaml:"query_store_for_labels_enabled"`
-	AtModifierEnabled    bool          `yaml:"at_modifier_enabled"`
+	MaxConcurrent             int           `yaml:"max_concurrent"`
+	Timeout                   time.Duration `yaml:"timeout"`
+	Iterators                 bool          `yaml:"iterators"`
+	BatchIterators            bool          `yaml:"batch_iterators"`
+	IngesterStreaming         bool          `yaml:"ingester_streaming"`
+	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
+	MaxSamples                int           `yaml:"max_samples"`
+	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
+	QueryStoreForLabels       bool          `yaml:"query_store_for_labels_enabled"`
+	AtModifierEnabled         bool          `yaml:"at_modifier_enabled"`
+	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -88,10 +90,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
 	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
+	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
 	f.BoolVar(&cfg.AtModifierEnabled, "querier.at-modifier-enabled", false, "Enable the @ modifier in PromQL.")
+	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
@@ -147,7 +151,7 @@ func NewChunkStoreQueryable(cfg Config, chunkStore chunkstore.ChunkStore) storag
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader *purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, *promql.Engine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, iteratorFunc, cfg.QueryIngestersWithin)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {
@@ -174,6 +178,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		MaxSamples:         cfg.MaxSamples,
 		Timeout:            cfg.Timeout,
 		LookbackDelta:      cfg.LookbackDelta,
+		EnablePerStepStats: cfg.EnablePerStepStats,
 		EnableAtModifier:   cfg.AtModifierEnabled,
 		NoStepSubqueryIntervalFn: func(int64) int64 {
 			return cfg.DefaultEvaluationInterval.Milliseconds()
@@ -196,7 +201,7 @@ func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt i
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
-func createActiveQueryTracker(cfg Config, logger log.Logger) *promql.ActiveQueryTracker {
+func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
@@ -300,13 +305,15 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step, "matchers", matchers)
 	}
 
-	// Kludge: Prometheus passes nil SelectHints if it is doing a 'series' operation,
-	// which needs only metadata. Here we expect that metadataQuerier querier will handle that.
-	// In Cortex it is not feasible to query entire history (with no mint/maxt), so we only ask ingesters and skip
-	// querying the long-term storage.
-	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
-	// See: https://github.com/prometheus/prometheus/pull/8050
-	if (sp == nil || sp.Func == "series") && !q.queryStoreForLabels {
+	if sp == nil {
+		// if SelectHints is null, rely on minT, maxT of querier to scope in range for Select stmt
+		sp = &storage.SelectHints{Start: q.mint, End: q.maxt}
+	} else if sp.Func == "series" && !q.queryStoreForLabels {
+		// Else if the querier receives a 'series' query, it means only metadata is needed.
+		// Here we expect that metadataQuerier querier will handle that.
+		// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
+		// See: https://github.com/prometheus/prometheus/pull/8050
+
 		// In this case, the query time range has already been validated when the querier has been
 		// created.
 		return q.metadataQuerier.Select(true, sp, matchers...)

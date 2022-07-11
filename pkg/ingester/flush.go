@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/chunk"

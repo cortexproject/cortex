@@ -268,6 +268,10 @@ query_scheduler:
 The `server_config` configures the HTTP and gRPC server of the launched service(s).
 
 ```yaml
+# HTTP server listen network, default tcp
+# CLI flag: -server.http-listen-network
+[http_listen_network: <string> | default = "tcp"]
+
 # HTTP server listen address.
 # CLI flag: -server.http-listen-address
 [http_listen_address: <string> | default = ""]
@@ -279,6 +283,10 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Maximum number of simultaneous http connections, <=0 to disable
 # CLI flag: -server.http-conn-limit
 [http_listen_conn_limit: <int> | default = 0]
+
+# gRPC server listen network
+# CLI flag: -server.grpc-listen-network
+[grpc_listen_network: <string> | default = "tcp"]
 
 # gRPC server listen address.
 # CLI flag: -server.grpc-listen-address
@@ -675,6 +683,11 @@ lifecycler:
     # CLI flag: -distributor.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # Comma-separated list of zones to exclude from the ring. Instances in
+    # excluded zones will be filtered out from the ring.
+    # CLI flag: -distributor.excluded-zones
+    [excluded_zones: <string> | default = ""]
+
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
@@ -693,10 +706,13 @@ lifecycler:
   # CLI flag: -ingester.join-after
   [join_after: <duration> | default = 0s]
 
-  # Minimum duration to wait before becoming ready. This is to work around race
-  # conditions with ingesters exiting and updating the ring.
+  # Minimum duration to wait after the internal readiness checks have passed but
+  # before succeeding the readiness endpoint. This is used to slowdown
+  # deployment controllers (eg. Kubernetes) after an instance is ready and
+  # before they proceed with a rolling update, to give the rest of the cluster
+  # instances enough time to receive ring updates.
   # CLI flag: -ingester.min-ready-duration
-  [min_ready_duration: <duration> | default = 1m]
+  [min_ready_duration: <duration> | default = 15s]
 
   # Name of network interface to read address from.
   # CLI flag: -ingester.lifecycler.interface
@@ -720,6 +736,14 @@ lifecycler:
   # -distributor.extend-writes=false.
   # CLI flag: -ingester.unregister-on-shutdown
   [unregister_on_shutdown: <boolean> | default = true]
+
+  # When enabled the readiness probe succeeds only after all instances are
+  # ACTIVE and healthy in the ring, otherwise only the instance itself is
+  # checked. This option should be disabled if in your cluster multiple
+  # instances can be rolled out simultaneously, otherwise rolling updates may be
+  # slowed down.
+  # CLI flag: -ingester.readiness-check-ring-health
+  [readiness_check_ring_health: <boolean> | default = true]
 
 # Number of times to try and transfer chunks before falling back to flushing.
 # Negative value or zero disables hand-over. This feature is supported only by
@@ -847,6 +871,10 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.ingester-streaming
 [ingester_streaming: <boolean> | default = true]
 
+# Use streaming RPCs for metadata APIs from ingester.
+# CLI flag: -querier.ingester-metadata-streaming
+[ingester_metadata_streaming: <boolean> | default = false]
+
 # Maximum number of samples a single query can load into memory.
 # CLI flag: -querier.max-samples
 [max_samples: <int> | default = 50000000]
@@ -864,6 +892,10 @@ The `querier_config` configures the Cortex querier.
 # Enable the @ modifier in PromQL.
 # CLI flag: -querier.at-modifier-enabled
 [at_modifier_enabled: <boolean> | default = false]
+
+# Enable returning samples stats per steps in query response.
+# CLI flag: -querier.per-step-stats-enabled
+[per_step_stats_enabled: <boolean> | default = false]
 
 # The time after which a metric should be queried from storage and not just
 # ingesters. 0 means all queries are sent to store. When running the blocks
@@ -1129,6 +1161,10 @@ results_cache:
   # CLI flag: -frontend.compression
   [compression: <string> | default = ""]
 
+  # Cache Statistics queryable samples on results cache.
+  # CLI flag: -frontend.cache-queryable-samples-stats
+  [cache_queryable_samples_stats: <boolean> | default = false]
+
 # Cache query results.
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
@@ -1142,6 +1178,10 @@ results_cache:
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = false]
+
+# List of headers forwarded by the query Frontend to downstream querier.
+# CLI flag: -frontend.forward-headers-list
+[forward_headers_list: <list of string> | default = []]
 ```
 
 ### `ruler_config`
@@ -1152,6 +1192,9 @@ The `ruler_config` configures the Cortex ruler.
 # URL of alerts return path.
 # CLI flag: -ruler.external.url
 [external_url: <url> | default = ]
+
+# Labels to add to all alerts.
+[external_labels: <map of string to string> | default = ]
 
 ruler_client:
   # gRPC client max receive message size (bytes).
@@ -1622,6 +1665,10 @@ ring:
 # an info level log message.
 # CLI flag: -ruler.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
+
+# Disable the rule_group label on exported metrics
+# CLI flag: -ruler.disable-rule-group-label
+[disable_rule_group_label: <boolean> | default = false]
 ```
 
 ### `ruler_storage_config`
@@ -1682,8 +1729,8 @@ s3:
     # CLI flag: -ruler-storage.s3.http.response-header-timeout
     [response_header_timeout: <duration> | default = 2m]
 
-    # If the client connects to S3 via HTTPS and this option is enabled, the
-    # client will accept any certificate and hostname.
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
     # CLI flag: -ruler-storage.s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
 
@@ -1743,6 +1790,44 @@ azure:
   # Number of retries for recoverable errors
   # CLI flag: -ruler-storage.azure.max-retries
   [max_retries: <int> | default = 20]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -ruler-storage.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -ruler-storage.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -ruler-storage.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -ruler-storage.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -ruler-storage.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -ruler-storage.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -ruler-storage.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -ruler-storage.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
 
 swift:
   # OpenStack Swift authentication API version. 0 to autodetect.
@@ -2226,8 +2311,8 @@ s3:
     # CLI flag: -alertmanager-storage.s3.http.response-header-timeout
     [response_header_timeout: <duration> | default = 2m]
 
-    # If the client connects to S3 via HTTPS and this option is enabled, the
-    # client will accept any certificate and hostname.
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
     # CLI flag: -alertmanager-storage.s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
 
@@ -2287,6 +2372,44 @@ azure:
   # Number of retries for recoverable errors
   # CLI flag: -alertmanager-storage.azure.max-retries
   [max_retries: <int> | default = 20]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -alertmanager-storage.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -alertmanager-storage.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -alertmanager-storage.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -alertmanager-storage.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -alertmanager-storage.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -alertmanager-storage.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -alertmanager-storage.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -alertmanager-storage.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
 
 swift:
   # OpenStack Swift authentication API version. 0 to autodetect.
@@ -3801,10 +3924,18 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.compression-enabled
 [compression_enabled: <boolean> | default = true]
 
+# Gossip address to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-addr
+[advertise_addr: <string> | default = ""]
+
+# Gossip port to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-port
+[advertise_port: <int> | default = 7946]
+
 # Other cluster members to join. Can be specified multiple times. It can be an
-# IP, hostname or an entry specified in the DNS Service Discovery format (see
-# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
-# for more details).
+# IP, hostname or an entry specified in the DNS Service Discovery format.
 # CLI flag: -memberlist.join
 [join_members: <list of string> | default = []]
 
@@ -4139,6 +4270,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # to disable.
 # CLI flag: -compactor.blocks-retention-period
 [compactor_blocks_retention_period: <duration> | default = 0s]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# the compactor. When this setting is specified in the per-tenant overrides, a
+# value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -compactor.tenant-shard-size
+[compactor_tenant_shard_size: <int> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -4525,8 +4662,8 @@ s3:
     # CLI flag: -blocks-storage.s3.http.response-header-timeout
     [response_header_timeout: <duration> | default = 2m]
 
-    # If the client connects to S3 via HTTPS and this option is enabled, the
-    # client will accept any certificate and hostname.
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
     # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
 
@@ -4586,6 +4723,44 @@ azure:
   # Number of retries for recoverable errors
   # CLI flag: -blocks-storage.azure.max-retries
   [max_retries: <int> | default = 20]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -blocks-storage.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -blocks-storage.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -blocks-storage.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -blocks-storage.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -blocks-storage.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -blocks-storage.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -blocks-storage.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -blocks-storage.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
 
 swift:
   # OpenStack Swift authentication API version. 0 to autodetect.
@@ -4759,6 +4934,11 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
 
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
@@ -4805,6 +4985,11 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
 
     # Size of each subrange that bucket object is split into for better caching.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
@@ -4870,6 +5055,11 @@ bucket_store:
       # stored. If set to 0, no maximum size is enforced.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
       [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
 
     # How long to cache list of tenants in the bucket.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
@@ -4963,13 +5153,13 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
   [max_chunk_pool_bytes: <int> | default = 2147483648]
 
-  # If enabled, store-gateway will lazy load an index-header only once required
-  # by a query.
+  # If enabled, store-gateway will lazily memory-map an index-header only once
+  # required by a query.
   # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
   [index_header_lazy_loading_enabled: <boolean> | default = false]
 
   # If index-header lazy loading is enabled and this setting is > 0, the
-  # store-gateway will offload unused index-headers after 'idle timeout'
+  # store-gateway will release memory-mapped index-headers after 'idle timeout'
   # inactivity.
   # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
   [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
@@ -5122,12 +5312,17 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.tenant-cleanup-delay
 [tenant_cleanup_delay: <duration> | default = 6h]
 
+# When enabled, mark blocks containing index with out-of-order chunks for no
+# compact instead of halting the compaction.
+# CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
+[skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
+
 # When enabled, at compactor startup the bucket will be scanned and all found
 # deletion marks inside the block location will be copied to the markers global
 # location too. This option can (and should) be safely disabled as soon as the
 # compactor has successfully run at least once.
 # CLI flag: -compactor.block-deletion-marks-migration-enabled
-[block_deletion_marks_migration_enabled: <boolean> | default = true]
+[block_deletion_marks_migration_enabled: <boolean> | default = false]
 
 # Comma separated list of tenants that can be compacted. If specified, only
 # these tenants will be compacted by compactor, otherwise all tenants can be
@@ -5147,6 +5342,10 @@ The `compactor_config` configures the compactor for the blocks storage.
 # different instances.
 # CLI flag: -compactor.sharding-enabled
 [sharding_enabled: <boolean> | default = false]
+
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -compactor.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
 
 sharding_ring:
   kvstore:

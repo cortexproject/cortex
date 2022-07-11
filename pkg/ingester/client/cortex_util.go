@@ -20,6 +20,38 @@ func SendTimeSeriesChunk(s Ingester_TransferChunksClient, m *TimeSeriesChunk) er
 	})
 }
 
+func SendMetricsForLabelMatchersStream(s Ingester_MetricsForLabelMatchersStreamServer, m *MetricsForLabelMatchersStreamResponse) error {
+	return sendWithContextErrChecking(s.Context(), func() error {
+		return s.Send(m)
+	})
+}
+
+func SendLabelValuesStream(s Ingester_LabelValuesStreamServer, l *LabelValuesStreamResponse) error {
+	return sendWithContextErrChecking(s.Context(), func() error {
+		return s.Send(l)
+	})
+}
+
+func SendLabelNamesStream(s Ingester_LabelNamesStreamServer, l *LabelNamesStreamResponse) error {
+	return sendWithContextErrChecking(s.Context(), func() error {
+		return s.Send(l)
+	})
+}
+
+func SendAsBatchToStream(totalItems int, streamBatchSize int, fn func(start, end int) error) error {
+	for i := 0; i < totalItems; i += streamBatchSize {
+		j := i + streamBatchSize
+		if j > totalItems {
+			j = totalItems
+		}
+		if err := fn(i, j); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func sendWithContextErrChecking(ctx context.Context, send func() error) error {
 	// If the context has been canceled or its deadline exceeded, we should return it
 	// instead of the cryptic error the Send() will return.

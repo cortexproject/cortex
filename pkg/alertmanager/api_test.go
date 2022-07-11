@@ -9,26 +9,23 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/yaml.v2"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/client_golang/prometheus"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
-
-	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/weaveworks/common/user"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
-
-	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 )
 
 func TestAMConfigValidationAPI(t *testing.T) {
@@ -373,22 +370,6 @@ alertmanager_config: |
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errOAuth2SecretFileNotAllowed, "error validating Alertmanager config"),
-		},
-		{
-			name: "Should return error if receiver's HTTP proxy_url is set",
-			cfg: `
-alertmanager_config: |
-  receivers:
-    - name: default-receiver
-      webhook_configs:
-        - url: http://localhost
-          http_config:
-            proxy_url: http://localhost
-
-  route:
-    receiver: 'default-receiver'
-`,
-			err: errors.Wrap(errProxyURLNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if global slack_api_url_file is set",

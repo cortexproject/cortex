@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/server"
 
@@ -30,7 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
-	frontend "github.com/cortexproject/cortex/pkg/frontend"
+	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -137,11 +138,10 @@ func (t *Cortex) initServer() (services.Service, error) {
 
 func (t *Cortex) initRing() (serv services.Service, err error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.RuntimeConfig)
-	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ring.IngesterRingKey, prometheus.DefaultRegisterer)
+	t.Ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
 	if err != nil {
 		return nil, err
 	}
-	prometheus.MustRegister(t.Ring)
 
 	t.API.RegisterRing(t.Ring)
 
@@ -158,7 +158,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
-	serv, err := runtimeconfig.NewRuntimeConfigManager(t.Cfg.RuntimeConfig, prometheus.DefaultRegisterer)
+	serv, err := runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer), util_log.Logger)
 	if err == nil {
 		// TenantLimits just delegates to RuntimeConfig and doesn't have any state or need to do
 		// anything in the start/stopping phase. Thus we can create it as part of runtime config
@@ -524,11 +524,12 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryrange.PrometheusResponseExtractor{},
 		t.Cfg.Schema,
 		promql.EngineOpts{
-			Logger:           util_log.Logger,
-			Reg:              prometheus.DefaultRegisterer,
-			MaxSamples:       t.Cfg.Querier.MaxSamples,
-			Timeout:          t.Cfg.Querier.Timeout,
-			EnableAtModifier: t.Cfg.Querier.AtModifierEnabled,
+			Logger:             util_log.Logger,
+			Reg:                prometheus.DefaultRegisterer,
+			MaxSamples:         t.Cfg.Querier.MaxSamples,
+			Timeout:            t.Cfg.Querier.Timeout,
+			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
+			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
 			NoStepSubqueryIntervalFn: func(int64) int64 {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},
@@ -732,7 +733,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
+	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
 	if err != nil {
 		return
 	}
@@ -764,11 +765,20 @@ func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initMemberlistKV() (services.Service, error) {
-	t.Cfg.MemberlistKV.MetricsRegisterer = prometheus.DefaultRegisterer
+	reg := prometheus.DefaultRegisterer
+	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
 	}
-	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger)
+	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
+		"cortex_",
+		prometheus.WrapRegistererWith(
+			prometheus.Labels{"name": "memberlist"},
+			reg,
+		),
+	)
+	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
+	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, reg)
 	t.API.RegisterMemberlistKV(t.MemberlistKV)
 
 	// Update the config.
@@ -843,7 +853,7 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 }
 
 func (t *Cortex) setupModuleManager() error {
-	mm := modules.NewManager()
+	mm := modules.NewManager(util_log.Logger)
 
 	// Register all modules here.
 	// RegisterModule(name string, initFn func()(services.Service, error))

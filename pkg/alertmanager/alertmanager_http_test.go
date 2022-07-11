@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
@@ -32,6 +32,8 @@ func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
 				cluster.DefaultTcpTimeout,
 				cluster.DefaultProbeTimeout,
 				cluster.DefaultProbeInterval,
+				nil,
+				false,
 			)
 		}
 

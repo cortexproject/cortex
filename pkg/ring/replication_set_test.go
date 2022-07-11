@@ -241,3 +241,71 @@ func TestReplicationSet_Do(t *testing.T) {
 		})
 	}
 }
+
+var (
+	replicationSetChangesInitialState = ReplicationSet{
+		Instances: []InstanceDesc{
+			{Addr: "127.0.0.1"},
+			{Addr: "127.0.0.2"},
+			{Addr: "127.0.0.3"},
+		},
+	}
+	replicationSetChangesTestCases = map[string]struct {
+		nextState                                  ReplicationSet
+		expectHasReplicationSetChanged             bool
+		expectHasReplicationSetChangedWithoutState bool
+	}{
+		"timestamp changed": {
+			ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1", Timestamp: time.Hour.Microseconds()},
+					{Addr: "127.0.0.2"},
+					{Addr: "127.0.0.3"},
+				},
+			},
+			false,
+			false,
+		},
+		"state changed": {
+			ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1", State: PENDING},
+					{Addr: "127.0.0.2"},
+					{Addr: "127.0.0.3"},
+				},
+			},
+			true,
+			false,
+		},
+		"more instances": {
+			ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1"},
+					{Addr: "127.0.0.2"},
+					{Addr: "127.0.0.3"},
+					{Addr: "127.0.0.4"},
+				},
+			},
+			true,
+			true,
+		},
+	}
+)
+
+func TestHasReplicationSetChanged_IgnoresTimeStamp(t *testing.T) {
+	// Only testing difference to underlying Equal function
+	for testName, testData := range replicationSetChangesTestCases {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expectHasReplicationSetChanged, HasReplicationSetChanged(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChanged wrong result")
+		})
+	}
+}
+
+func TestHasReplicationSetChangedWithoutState_IgnoresTimeStampAndState(t *testing.T) {
+	// Only testing difference to underlying Equal function
+	for testName, testData := range replicationSetChangesTestCases {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.expectHasReplicationSetChangedWithoutState, HasReplicationSetChangedWithoutState(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChangedWithoutState wrong result")
+		})
+	}
+}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestNilServiceFailureWatcher(t *testing.T) {
-	var w *FailureWatcher = nil
+	var w *FailureWatcher
 
 	// prove it doesn't fail, but returns nil channel.
 	require.Nil(t, w.Chan())

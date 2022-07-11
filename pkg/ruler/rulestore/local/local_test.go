@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
@@ -24,9 +24,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 	namespace1 := "ns"
 	namespace2 := "z-another" // This test relies on the fact that ioutil.ReadDir() returns files sorted by name.
 
-	dir, err := ioutil.TempDir("", "")
-	require.NoError(t, err)
-	defer os.RemoveAll(dir)
+	dir := t.TempDir()
 
 	ruleGroups := rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{

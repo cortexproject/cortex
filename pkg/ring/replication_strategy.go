@@ -2,9 +2,8 @@ package ring
 
 import (
 	"fmt"
+	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 type ReplicationStrategy interface {
@@ -27,36 +26,40 @@ func NewDefaultReplicationStrategy() ReplicationStrategy {
 // - Checks there are enough instances for an operation to succeed.
 // The instances argument may be overwritten.
 func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]InstanceDesc, int, error) {
+	now := time.Now()
+
+	// Skip those that have not heartbeated in a while.
+	var unhealthy []string
+	for i := 0; i < len(instances); {
+		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
+			i++
+		} else {
+			unhealthy = append(unhealthy, instances[i].Addr)
+			instances = append(instances[:i], instances[i+1:]...)
+		}
+	}
+
 	// We need a response from a quorum of instances, which is n/2 + 1.  In the
-	// case of a node joining/leaving, the actual replica set might be bigger
-	// than the replication factor, so use the bigger or the two.
+	// case of a node joining/leaving with extend-writes enabled, the actual replica
+	// set will be bigger than the replication factor, so use the bigger or the two.
 	if len(instances) > replicationFactor {
 		replicationFactor = len(instances)
 	}
 
 	minSuccess := (replicationFactor / 2) + 1
-	now := time.Now()
-
-	// Skip those that have not heartbeated in a while. NB these are still
-	// included in the calculation of minSuccess, so if too many failed instances
-	// will cause the whole write to fail.
-	for i := 0; i < len(instances); {
-		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
-			i++
-		} else {
-			instances = append(instances[:i], instances[i+1:]...)
-		}
-	}
-
 	// This is just a shortcut - if there are not minSuccess available instances,
 	// after filtering out dead ones, don't even bother trying.
 	if len(instances) < minSuccess {
 		var err error
+		var unhealthyStr string
+		if len(unhealthy) > 0 {
+			unhealthyStr = fmt.Sprintf(" - unhealthy instances: %s", strings.Join(unhealthy, ","))
+		}
 
 		if zoneAwarenessEnabled {
-			err = fmt.Errorf("at least %d live replicas required across different availability zones, could only find %d", minSuccess, len(instances))
+			err = fmt.Errorf("at least %d live replicas required across different availability zones, could only find %d%s", minSuccess, len(instances), unhealthyStr)
 		} else {
-			err = fmt.Errorf("at least %d live replicas required, could only find %d", minSuccess, len(instances))
+			err = fmt.Errorf("at least %d live replicas required, could only find %d%s", minSuccess, len(instances), unhealthyStr)
 		}
 
 		return nil, 0, err
@@ -74,17 +77,23 @@ func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
 func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []InstanceDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []InstanceDesc, maxFailures int, err error) {
 	now := time.Now()
 	// Filter out unhealthy instances.
+	var unhealthy []string
 	for i := 0; i < len(instances); {
 		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
 			i++
 		} else {
+			unhealthy = append(unhealthy, instances[i].Addr)
 			instances = append(instances[:i], instances[i+1:]...)
 		}
 	}
 
 	// We need at least 1 healthy instance no matter what is the replication factor set to.
 	if len(instances) == 0 {
-		return nil, 0, errors.New("at least 1 healthy replica required, could only find 0")
+		var unhealthyStr string
+		if len(unhealthy) > 0 {
+			unhealthyStr = fmt.Sprintf(" - unhealthy instances: %s", strings.Join(unhealthy, ","))
+		}
+		return nil, 0, fmt.Errorf("at least 1 healthy replica required, could only find 0%s", unhealthyStr)
 	}
 
 	return instances, len(instances) - 1, nil

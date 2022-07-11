@@ -3,23 +3,22 @@ package flagext
 import (
 	"flag"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // DeprecatedFlagsUsed is the metric that counts deprecated flags set.
 var DeprecatedFlagsUsed = promauto.NewCounter(
 	prometheus.CounterOpts{
-		Namespace: "cortex",
-		Name:      "deprecated_flags_inuse_total",
-		Help:      "The number of deprecated flags currently set.",
+		Name: "deprecated_flags_inuse_total",
+		Help: "The number of deprecated flags currently set.",
 	})
 
 type deprecatedFlag struct {
-	name string
+	name   string
+	logger log.Logger
 }
 
 func (deprecatedFlag) String() string {
@@ -27,12 +26,12 @@ func (deprecatedFlag) String() string {
 }
 
 func (d deprecatedFlag) Set(string) error {
-	level.Warn(util_log.Logger).Log("msg", "flag disabled", "flag", d.name)
+	level.Warn(d.logger).Log("msg", "flag disabled", "flag", d.name)
 	DeprecatedFlagsUsed.Inc()
 	return nil
 }
 
 // DeprecatedFlag logs a warning when you try to use it.
-func DeprecatedFlag(f *flag.FlagSet, name, message string) {
-	f.Var(deprecatedFlag{name}, name, message)
+func DeprecatedFlag(f *flag.FlagSet, name, message string, logger log.Logger) {
+	f.Var(deprecatedFlag{name: name, logger: logger}, name, message)
 }

@@ -13,6 +13,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -21,13 +30,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func TestDistributor_DistributeRequest(t *testing.T) {
@@ -335,7 +337,9 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBod
 		amByAddr[a.myAddr] = ams[i]
 	}
 
-	kvStore := consul.NewInMemoryClient(ring.GetCodec())
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	err := kvStore.CAS(context.Background(), RingKey,
 		func(_ interface{}) (interface{}, bool, error) {
 			return &ring.Desc{
@@ -351,7 +355,7 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBod
 		},
 		HeartbeatTimeout:  60 * time.Minute,
 		ReplicationFactor: replicationFactor,
-	}, RingNameForServer, RingKey, nil)
+	}, RingNameForServer, RingKey, nil, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), amRing))
 	test.Poll(t, time.Second, numAM, func() interface{} {

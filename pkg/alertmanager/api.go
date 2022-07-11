@@ -10,19 +10,19 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/template"
 	commoncfg "github.com/prometheus/common/config"
 	"gopkg.in/yaml.v2"
+
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -43,7 +43,6 @@ const (
 var (
 	errPasswordFileNotAllowed        = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
 	errOAuth2SecretFileNotAllowed    = errors.New("setting OAuth2 client_secret_file is not allowed")
-	errProxyURLNotAllowed            = errors.New("setting proxy_url is not allowed")
 	errTLSFileNotAllowed             = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
 	errSlackAPIURLFileNotAllowed     = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
 	errVictorOpsAPIKeyFileNotAllowed = errors.New("setting VictorOps api_key_file is not allowed")
@@ -409,9 +408,6 @@ func validateReceiverHTTPConfig(cfg commoncfg.HTTPClientConfig) error {
 	}
 	if cfg.BearerTokenFile != "" {
 		return errPasswordFileNotAllowed
-	}
-	if cfg.ProxyURL.URL != nil {
-		return errProxyURLNotAllowed
 	}
 	if cfg.OAuth2 != nil && cfg.OAuth2.ClientSecretFile != "" {
 		return errOAuth2SecretFileNotAllowed

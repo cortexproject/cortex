@@ -147,12 +147,17 @@ compactor:
   # CLI flag: -compactor.tenant-cleanup-delay
   [tenant_cleanup_delay: <duration> | default = 6h]
 
+  # When enabled, mark blocks containing index with out-of-order chunks for no
+  # compact instead of halting the compaction.
+  # CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
+  [skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
+
   # When enabled, at compactor startup the bucket will be scanned and all found
   # deletion marks inside the block location will be copied to the markers
   # global location too. This option can (and should) be safely disabled as soon
   # as the compactor has successfully run at least once.
   # CLI flag: -compactor.block-deletion-marks-migration-enabled
-  [block_deletion_marks_migration_enabled: <boolean> | default = true]
+  [block_deletion_marks_migration_enabled: <boolean> | default = false]
 
   # Comma separated list of tenants that can be compacted. If specified, only
   # these tenants will be compacted by compactor, otherwise all tenants can be
@@ -172,6 +177,11 @@ compactor:
   # compacted by different instances.
   # CLI flag: -compactor.sharding-enabled
   [sharding_enabled: <boolean> | default = false]
+
+  # The sharding strategy to use. Supported values are: default,
+  # shuffle-sharding.
+  # CLI flag: -compactor.sharding-strategy
+  [sharding_strategy: <string> | default = "default"]
 
   sharding_ring:
     kvstore:

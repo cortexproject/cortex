@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -177,7 +177,8 @@ func newHATracker(cfg HATrackerConfig, limits haTrackerLimits, reg prometheus.Re
 		client, err := kv.NewClient(
 			cfg.KVStore,
 			GetReplicaDescCodec(),
-			kv.RegistererWithKVName(reg, "distributor-hatracker"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker"),
+			logger,
 		)
 		if err != nil {
 			return nil, err
@@ -470,7 +471,9 @@ func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdap
 			replica = pair.Value
 		}
 		if pair.Name == clusterLabel {
-			cluster = pair.Value
+			// cluster label is unmarshalled into yoloString, which retains original remote write request body in memory.
+			// Hence, we clone the yoloString to allow the request body to be garbage collected.
+			cluster = util.StringsClone(pair.Value)
 		}
 	}
 

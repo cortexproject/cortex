@@ -5,17 +5,15 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -52,10 +50,7 @@ func getTarDataFromEnv(t testing.TB) (query string, from, through time.Time, ste
 }
 
 func runRangeQuery(t testing.TB, query string, from, through time.Time, step time.Duration, store chunkstore.ChunkStore) {
-	dir, err := ioutil.TempDir("", t.Name())
-	assert.NoError(t, err)
-	defer os.RemoveAll(dir)
-	queryTracker := promql.NewActiveQueryTracker(dir, 1, log.NewNopLogger())
+	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 1, log.NewNopLogger())
 
 	if len(query) == 0 || store == nil {
 		return
@@ -67,7 +62,7 @@ func runRangeQuery(t testing.TB, query string, from, through time.Time, step tim
 		MaxSamples:         math.MaxInt32,
 		Timeout:            10 * time.Minute,
 	})
-	rangeQuery, err := engine.NewRangeQuery(queryable, query, from, through, step)
+	rangeQuery, err := engine.NewRangeQuery(queryable, nil, query, from, through, step)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "0")

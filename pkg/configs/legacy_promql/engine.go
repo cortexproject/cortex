@@ -25,13 +25,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/prometheus/prometheus/pkg/value"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/prometheus/prometheus/util/stats"
@@ -1008,7 +1008,7 @@ func (ev *evaluator) vectorSelectorSingle(it *storage.BufferedSeriesIterator, no
 	}
 
 	if ok {
-		t, v = it.Values()
+		t, v = it.At()
 	}
 
 	if !ok || t > refTime {
@@ -1113,7 +1113,7 @@ func (ev *evaluator) matrixIterSlice(it *storage.BufferedSeriesIterator, mint, m
 	}
 	// The seeked sample might also be in the range.
 	if ok {
-		t, v := it.Values()
+		t, v := it.At()
 		if t == maxt && !value.IsStaleNaN(v) {
 			out = append(out, Point{T: t, V: v})
 		}

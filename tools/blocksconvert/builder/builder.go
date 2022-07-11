@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
@@ -26,7 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/tools/blocksconvert"
 	"github.com/cortexproject/cortex/tools/blocksconvert/planprocessor"
@@ -255,7 +255,7 @@ func (p *builderProcessor) ProcessPlanEntries(ctx context.Context, planEntryCh c
 }
 
 func uploadBlock(ctx context.Context, planLog log.Logger, userBucket objstore.Bucket, blockDir string) error {
-	boff := util.NewBackoff(ctx, util.BackoffConfig{
+	boff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
 		MaxRetries: 5,
@@ -297,7 +297,7 @@ func getBlockSize(dir string) (int64, error) {
 }
 
 func fetchAndBuild(ctx context.Context, f *Fetcher, input chan blocksconvert.PlanEntry, tb *tsdbBuilder, log log.Logger, chunksNotFound prometheus.Counter) error {
-	b := util.NewBackoff(ctx, util.BackoffConfig{
+	b := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 5 * time.Second,
 		MaxRetries: 5,

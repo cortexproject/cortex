@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/opentracing/opentracing-go"
@@ -18,7 +18,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
@@ -26,8 +26,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -46,8 +48,9 @@ type CacheGenNumberLoader interface {
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
-	CacheConfig cache.Config `yaml:"cache"`
-	Compression string       `yaml:"compression"`
+	CacheConfig                cache.Config `yaml:"cache"`
+	Compression                string       `yaml:"compression"`
+	CacheQueryableSamplesStats bool         `yaml:"cache_queryable_samples_stats"`
 }
 
 // RegisterFlags registers flags.
@@ -55,15 +58,21 @@ func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 
 	f.StringVar(&cfg.Compression, "frontend.compression", "", "Use compression in results cache. Supported values are: 'snappy' and '' (disable compression).")
-	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.")
+	f.BoolVar(&cfg.CacheQueryableSamplesStats, "frontend.cache-queryable-samples-stats", false, "Cache Statistics queryable samples on results cache.")
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
 }
 
-func (cfg *ResultsCacheConfig) Validate() error {
+func (cfg *ResultsCacheConfig) Validate(qCfg querier.Config) error {
 	switch cfg.Compression {
 	case "snappy", "":
 		// valid
 	default:
 		return errors.Errorf("unsupported compression type: %s", cfg.Compression)
+	}
+
+	if cfg.CacheQueryableSamplesStats && !qCfg.EnablePerStepStats {
+		return errors.New("frontend.cache-queryable-samples-stats may only be enabled in conjunction with querier.per-step-stats-enabled. Please set the latter")
 	}
 
 	return cfg.CacheConfig.Validate()
@@ -74,6 +83,7 @@ type Extractor interface {
 	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
 	Extract(start, end int64, from Response) Response
 	ResponseWithoutHeaders(resp Response) Response
+	ResponseWithoutStats(resp Response) Response
 }
 
 // PrometheusResponseExtractor helps extracting specific info from Query Response.
@@ -87,6 +97,7 @@ func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Resp
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     extractMatrix(start, end, promRes.Data.Result),
+			Stats:      extractStats(start, end, promRes.Data.Stats),
 		},
 		Headers: promRes.Headers,
 	}
@@ -101,7 +112,21 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Respons
 		Data: PrometheusData{
 			ResultType: promRes.Data.ResultType,
 			Result:     promRes.Data.Result,
+			Stats:      promRes.Data.Stats,
 		},
+	}
+}
+
+// ResponseWithoutStats is returns the response without the stats information
+func (PrometheusResponseExtractor) ResponseWithoutStats(resp Response) Response {
+	promRes := resp.(*PrometheusResponse)
+	return &PrometheusResponse{
+		Status: StatusSuccess,
+		Data: PrometheusData{
+			ResultType: promRes.Data.ResultType,
+			Result:     promRes.Data.Result,
+		},
+		Headers: promRes.Headers,
 	}
 }
 
@@ -132,11 +157,12 @@ type resultsCache struct {
 	limits   Limits
 	splitter CacheSplitter
 
-	extractor            Extractor
-	minCacheExtent       int64 // discard any cache extent smaller than this
-	merger               Merger
-	cacheGenNumberLoader CacheGenNumberLoader
-	shouldCache          ShouldCacheFn
+	extractor                  Extractor
+	minCacheExtent             int64 // discard any cache extent smaller than this
+	merger                     Merger
+	cacheGenNumberLoader       CacheGenNumberLoader
+	shouldCache                ShouldCacheFn
+	cacheQueryableSamplesStats bool
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -170,25 +196,34 @@ func NewResultsCacheMiddleware(
 
 	return MiddlewareFunc(func(next Handler) Handler {
 		return &resultsCache{
-			logger:               logger,
-			cfg:                  cfg,
-			next:                 next,
-			cache:                c,
-			limits:               limits,
-			merger:               merger,
-			extractor:            extractor,
-			minCacheExtent:       (5 * time.Minute).Milliseconds(),
-			splitter:             splitter,
-			cacheGenNumberLoader: cacheGenNumberLoader,
-			shouldCache:          shouldCache,
+			logger:                     logger,
+			cfg:                        cfg,
+			next:                       next,
+			cache:                      c,
+			limits:                     limits,
+			merger:                     merger,
+			extractor:                  extractor,
+			minCacheExtent:             (5 * time.Minute).Milliseconds(),
+			splitter:                   splitter,
+			cacheGenNumberLoader:       cacheGenNumberLoader,
+			shouldCache:                shouldCache,
+			cacheQueryableSamplesStats: cfg.CacheQueryableSamplesStats,
 		}
 	}), c, nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
+	respWithStats := r.GetStats() != "" && s.cacheQueryableSamplesStats
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+
+	// If cache_queryable_samples_stats is enabled we always need request the status upstream
+	if s.cacheQueryableSamplesStats {
+		r = r.WithStats("all")
+	} else {
+		r = r.WithStats("")
 	}
 
 	if s.shouldCache != nil && !s.shouldCache(r) {
@@ -226,6 +261,9 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		s.put(ctx, key, extents)
 	}
 
+	if err == nil && !respWithStats {
+		response = s.extractor.ResponseWithoutStats(response)
+	}
 	return response, err
 }
 
@@ -613,6 +651,23 @@ func jaegerTraceID(ctx context.Context) string {
 	}
 
 	return spanContext.TraceID().String()
+}
+
+// extractStats returns the stats for a given time range
+// this function is similar to extractSampleStream
+func extractStats(start, end int64, stats *PrometheusResponseStats) *PrometheusResponseStats {
+	if stats == nil || stats.Samples == nil {
+		return stats
+	}
+
+	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	for _, s := range stats.Samples.TotalQueryableSamplesPerStep {
+		if start <= s.TimestampMs && s.TimestampMs <= end {
+			result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, s)
+			result.Samples.TotalQueryableSamples += s.Value
+		}
+	}
+	return result
 }
 
 func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {

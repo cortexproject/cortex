@@ -66,3 +66,23 @@ func MockStorageDeletionMark(t testing.TB, bucket objstore.Bucket, userID string
 
 	return &mark
 }
+
+func MockStorageNonCompactionMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *metadata.NoCompactMark {
+	mark := metadata.NoCompactMark{
+		ID:            meta.ULID,
+		Version:       metadata.NoCompactMarkVersion1,
+		NoCompactTime: time.Now().Unix(),
+		Reason:        metadata.OutOfOrderChunksNoCompactReason,
+	}
+
+	markContent, err := json.Marshal(mark)
+	if err != nil {
+		panic("failed to marshal mocked block meta")
+	}
+
+	markContentReader := strings.NewReader(string(markContent))
+	markPath := fmt.Sprintf("%s/%s/%s", userID, meta.ULID.String(), metadata.NoCompactMarkFilename)
+	require.NoError(t, bucket.Upload(context.Background(), markPath, markContentReader))
+
+	return &mark
+}

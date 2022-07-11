@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -328,7 +328,9 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			ctx := context.Background()
 
 			// Setup the ring state.
-			ringStore := consul.NewInMemoryClient(ring.GetCodec())
+			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 			require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
 				d := ring.NewDesc()
 				testData.setup(d)
@@ -339,7 +341,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			flagext.DefaultValues(&ringCfg)
 			ringCfg.ReplicationFactor = testData.replicationFactor
 
-			r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+			r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 			require.NoError(t, err)
 
 			limits := &blocksStoreLimitsMock{
@@ -386,7 +388,9 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancin
 	block1 := ulid.MustNew(1, nil)
 
 	// Create a ring.
-	ringStore := consul.NewInMemoryClient(ring.GetCodec())
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
 	require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
 		d := ring.NewDesc()
 		for n := 1; n <= numInstances; n++ {
@@ -400,7 +404,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancin
 	flagext.DefaultValues(&ringCfg)
 	ringCfg.ReplicationFactor = numInstances
 
-	r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 	require.NoError(t, err)
 
 	limits := &blocksStoreLimitsMock{}

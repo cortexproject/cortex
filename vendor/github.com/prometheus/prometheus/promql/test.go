@@ -15,20 +15,21 @@ package promql
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"math"
-	"regexp"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
+	"github.com/grafana/regexp"
 	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
 
-	"github.com/prometheus/prometheus/pkg/exemplar"
-	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/pkg/timestamp"
+	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -77,7 +78,7 @@ func NewTest(t testutil.T, input string) (*Test, error) {
 }
 
 func newTestFromFile(t testutil.T, filename string) (*Test, error) {
-	content, err := ioutil.ReadFile(filename)
+	content, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +122,7 @@ func (t *Test) ExemplarQueryable() storage.ExemplarQueryable {
 func raise(line int, format string, v ...interface{}) error {
 	return &parser.ParseErr{
 		LineOffset: line,
-		Err:        errors.Errorf(format, v...),
+		Err:        fmt.Errorf(format, v...),
 	}
 }
 
@@ -145,7 +146,8 @@ func parseLoad(lines []string, i int) (int, *loadCmd, error) {
 		}
 		metric, vals, err := parser.ParseSeriesDesc(defLine)
 		if err != nil {
-			if perr, ok := err.(*parser.ParseErr); ok {
+			var perr *parser.ParseErr
+			if errors.As(err, &perr) {
 				perr.LineOffset = i
 			}
 			return i, nil, err
@@ -167,7 +169,8 @@ func (t *Test) parseEval(lines []string, i int) (int, *evalCmd, error) {
 	)
 	_, err := parser.ParseExpr(expr)
 	if err != nil {
-		if perr, ok := err.(*parser.ParseErr); ok {
+		var perr *parser.ParseErr
+		if errors.As(err, &perr) {
 			perr.LineOffset = i
 			posOffset := parser.Pos(strings.Index(lines[i], expr))
 			perr.PositionRange.Start += posOffset
@@ -204,7 +207,8 @@ func (t *Test) parseEval(lines []string, i int) (int, *evalCmd, error) {
 		}
 		metric, vals, err := parser.ParseSeriesDesc(defLine)
 		if err != nil {
-			if perr, ok := err.(*parser.ParseErr); ok {
+			var perr *parser.ParseErr
+			if errors.As(err, &perr) {
 				perr.LineOffset = i
 			}
 			return i, nil, err
@@ -387,14 +391,14 @@ func (ev *evalCmd) compareResult(result parser.Value) error {
 		for pos, v := range val {
 			fp := v.Metric.Hash()
 			if _, ok := ev.metrics[fp]; !ok {
-				return errors.Errorf("unexpected metric %s in result", v.Metric)
+				return fmt.Errorf("unexpected metric %s in result", v.Metric)
 			}
 			exp := ev.expected[fp]
 			if ev.ordered && exp.pos != pos+1 {
-				return errors.Errorf("expected metric %s with %v at position %d but was at %d", v.Metric, exp.vals, exp.pos, pos+1)
+				return fmt.Errorf("expected metric %s with %v at position %d but was at %d", v.Metric, exp.vals, exp.pos, pos+1)
 			}
 			if !almostEqual(exp.vals[0].Value, v.V) {
-				return errors.Errorf("expected %v for %s but got %v", exp.vals[0].Value, v.Metric, v.V)
+				return fmt.Errorf("expected %v for %s but got %v", exp.vals[0].Value, v.Metric, v.V)
 			}
 
 			seen[fp] = true
@@ -405,17 +409,17 @@ func (ev *evalCmd) compareResult(result parser.Value) error {
 				for _, ss := range val {
 					fmt.Println("    ", ss.Metric, ss.Point)
 				}
-				return errors.Errorf("expected metric %s with %v not found", ev.metrics[fp], expVals)
+				return fmt.Errorf("expected metric %s with %v not found", ev.metrics[fp], expVals)
 			}
 		}
 
 	case Scalar:
 		if !almostEqual(ev.expected[0].vals[0].Value, val.V) {
-			return errors.Errorf("expected Scalar %v but got %v", val.V, ev.expected[0].vals[0].Value)
+			return fmt.Errorf("expected Scalar %v but got %v", val.V, ev.expected[0].vals[0].Value)
 		}
 
 	default:
-		panic(errors.Errorf("promql.Test.compareResult: unexpected result type %T", result))
+		panic(fmt.Errorf("promql.Test.compareResult: unexpected result type %T", result))
 	}
 	return nil
 }
@@ -532,7 +536,7 @@ func (t *Test) exec(tc testCommand) error {
 		}
 		queries = append([]atModifierTestCase{{expr: cmd.expr, evalTime: cmd.start}}, queries...)
 		for _, iq := range queries {
-			q, err := t.QueryEngine().NewInstantQuery(t.storage, iq.expr, iq.evalTime)
+			q, err := t.QueryEngine().NewInstantQuery(t.storage, nil, iq.expr, iq.evalTime)
 			if err != nil {
 				return err
 			}
@@ -542,25 +546,25 @@ func (t *Test) exec(tc testCommand) error {
 				if cmd.fail {
 					continue
 				}
-				return errors.Wrapf(res.Err, "error evaluating query %q (line %d)", iq.expr, cmd.line)
+				return fmt.Errorf("error evaluating query %q (line %d): %w", iq.expr, cmd.line, res.Err)
 			}
 			if res.Err == nil && cmd.fail {
-				return errors.Errorf("expected error evaluating query %q (line %d) but got none", iq.expr, cmd.line)
+				return fmt.Errorf("expected error evaluating query %q (line %d) but got none", iq.expr, cmd.line)
 			}
 			err = cmd.compareResult(res.Value)
 			if err != nil {
-				return errors.Wrapf(err, "error in %s %s", cmd, iq.expr)
+				return fmt.Errorf("error in %s %s: %w", cmd, iq.expr, err)
 			}
 
 			// Check query returns same result in range mode,
 			// by checking against the middle step.
-			q, err = t.queryEngine.NewRangeQuery(t.storage, iq.expr, iq.evalTime.Add(-time.Minute), iq.evalTime.Add(time.Minute), time.Minute)
+			q, err = t.queryEngine.NewRangeQuery(t.storage, nil, iq.expr, iq.evalTime.Add(-time.Minute), iq.evalTime.Add(time.Minute), time.Minute)
 			if err != nil {
 				return err
 			}
 			rangeRes := q.Exec(t.context)
 			if rangeRes.Err != nil {
-				return errors.Wrapf(rangeRes.Err, "error evaluating query %q (line %d) in range mode", iq.expr, cmd.line)
+				return fmt.Errorf("error evaluating query %q (line %d) in range mode: %w", iq.expr, cmd.line, rangeRes.Err)
 			}
 			defer q.Close()
 			if cmd.ordered {
@@ -583,7 +587,7 @@ func (t *Test) exec(tc testCommand) error {
 				err = cmd.compareResult(vec)
 			}
 			if err != nil {
-				return errors.Wrapf(err, "error in %s %s (line %d) rande mode", cmd, iq.expr, cmd.line)
+				return fmt.Errorf("error in %s %s (line %d) range mode: %w", cmd, iq.expr, cmd.line, err)
 			}
 
 		}
@@ -597,9 +601,8 @@ func (t *Test) exec(tc testCommand) error {
 // clear the current test storage of all inserted samples.
 func (t *Test) clear() {
 	if t.storage != nil {
-		if err := t.storage.Close(); err != nil {
-			t.T.Fatalf("closing test storage: %s", err)
-		}
+		err := t.storage.Close()
+		require.NoError(t.T, err, "Unexpected error while closing test storage.")
 	}
 	if t.cancelCtx != nil {
 		t.cancelCtx()
@@ -613,6 +616,8 @@ func (t *Test) clear() {
 		Timeout:                  100 * time.Second,
 		NoStepSubqueryIntervalFn: func(int64) int64 { return durationMilliseconds(1 * time.Minute) },
 		EnableAtModifier:         true,
+		EnableNegativeOffset:     true,
+		EnablePerStepStats:       true,
 	}
 
 	t.queryEngine = NewEngine(opts)
@@ -623,9 +628,8 @@ func (t *Test) clear() {
 func (t *Test) Close() {
 	t.cancelCtx()
 
-	if err := t.storage.Close(); err != nil {
-		t.T.Fatalf("closing test storage: %s", err)
-	}
+	err := t.storage.Close()
+	require.NoError(t.T, err, "Unexpected error while closing test storage.")
 }
 
 // samplesAlmostEqual returns true if the two sample lines only differ by a
@@ -657,7 +661,7 @@ func parseNumber(s string) (float64, error) {
 		f, err = strconv.ParseFloat(s, 64)
 	}
 	if err != nil {
-		return 0, errors.Wrap(err, "error parsing number")
+		return 0, fmt.Errorf("error parsing number: %w", err)
 	}
 	return f, nil
 }
@@ -681,7 +685,9 @@ type LazyLoader struct {
 
 // LazyLoaderOpts are options for the lazy loader.
 type LazyLoaderOpts struct {
-	// Disabled PromQL engine features.
+	// Both of these must be set to true for regular PromQL (as of
+	// Prometheus v2.33). They can still be disabled here for legacy and
+	// other uses.
 	EnableAtModifier, EnableNegativeOffset bool
 }
 
@@ -722,9 +728,8 @@ func (ll *LazyLoader) parse(input string) error {
 // clear the current test storage of all inserted samples.
 func (ll *LazyLoader) clear() {
 	if ll.storage != nil {
-		if err := ll.storage.Close(); err != nil {
-			ll.T.Fatalf("closing test storage: %s", err)
-		}
+		err := ll.storage.Close()
+		require.NoError(ll.T, err, "Unexpected error while closing test storage.")
 	}
 	if ll.cancelCtx != nil {
 		ll.cancelCtx()
@@ -798,8 +803,6 @@ func (ll *LazyLoader) Storage() storage.Storage {
 // Close closes resources associated with the LazyLoader.
 func (ll *LazyLoader) Close() {
 	ll.cancelCtx()
-
-	if err := ll.storage.Close(); err != nil {
-		ll.T.Fatalf("closing test storage: %s", err)
-	}
+	err := ll.storage.Close()
+	require.NoError(ll.T, err, "Unexpected error while closing test storage.")
 }

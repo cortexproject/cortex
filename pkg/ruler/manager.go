@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
@@ -53,7 +53,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		return nil, err
 	}
 
-	userManagerMetrics := NewManagerMetrics()
+	userManagerMetrics := NewManagerMetrics(cfg.DisableRuleGroupLabel)
 	if reg != nil {
 		reg.MustRegister(userManagerMetrics)
 	}
@@ -107,6 +107,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			go mngr.Stop()
 			delete(r.userManagers, userID)
 
+			r.removeNotifier(userID)
 			r.mapper.cleanupUser(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
@@ -148,7 +149,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, nil, r.cfg.ExternalURL.String())
+		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
@@ -163,33 +164,44 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 // newManager creates a prometheus rule manager wrapped with a user id
 // configured storage, appendable, notifier, and instrumentation
 func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID string) (RulesManager, error) {
-	notifier, err := r.getOrCreateNotifier(userID)
+	// Create a new Prometheus registry and register it within
+	// our metrics struct for the provided user if it doesn't already exist.
+	reg := prometheus.NewRegistry()
+	r.userManagerMetrics.AddUserRegistry(userID, reg)
+
+	notifier, err := r.getOrCreateNotifier(userID, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create a new Prometheus registry and register it within
-	// our metrics struct for the provided user.
-	reg := prometheus.NewRegistry()
-	r.userManagerMetrics.AddUserRegistry(userID, reg)
-
 	return r.managerFactory(ctx, userID, notifier, r.logger, reg), nil
 }
 
-func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string) (*notifier.Manager, error) {
+func (r *DefaultMultiTenantManager) removeNotifier(userID string) {
+	r.notifiersMtx.Lock()
+	defer r.notifiersMtx.Unlock()
+
+	if n, ok := r.notifiers[userID]; ok {
+		n.stop()
+	}
+
+	delete(r.notifiers, userID)
+}
+
+func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManagerRegistry prometheus.Registerer) (*notifier.Manager, error) {
 	r.notifiersMtx.Lock()
 	defer r.notifiersMtx.Unlock()
 
 	n, ok := r.notifiers[userID]
 	if ok {
+		// When there is a stale user, we stop the notifier but do not remove it
+		n.run()
 		return n.notifier, nil
 	}
 
-	reg := prometheus.WrapRegistererWith(prometheus.Labels{"user": userID}, r.registry)
-	reg = prometheus.WrapRegistererWithPrefix("cortex_", reg)
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
-		Registerer:    reg,
+		Registerer:    userManagerRegistry,
 		Do: func(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
 			// Note: The passed-in context comes from the Prometheus notifier
 			// and does *not* contain the userID. So it needs to be added to the context

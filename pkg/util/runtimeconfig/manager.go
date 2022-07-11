@@ -7,25 +7,25 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Loader loads the configuration from file.
 type Loader func(r io.Reader) (interface{}, error)
 
-// ManagerConfig holds the config for an Manager instance.
+// Config holds the config for an Manager instance.
 // It holds config related to loading per-tenant config.
-type ManagerConfig struct {
+type Config struct {
 	ReloadPeriod time.Duration `yaml:"period"`
 	// LoadPath contains the path to the runtime config file, requires an
 	// non-empty value
@@ -34,7 +34,7 @@ type ManagerConfig struct {
 }
 
 // RegisterFlags registers flags.
-func (mc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
+func (mc *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
 	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
 }
@@ -44,7 +44,8 @@ func (mc *ManagerConfig) RegisterFlags(f *flag.FlagSet) {
 type Manager struct {
 	services.Service
 
-	cfg ManagerConfig
+	cfg    Config
+	logger log.Logger
 
 	listenersMtx sync.Mutex
 	listeners    []chan interface{}
@@ -56,8 +57,8 @@ type Manager struct {
 	configHash        *prometheus.GaugeVec
 }
 
-// NewRuntimeConfigManager creates an instance of Manager and starts reload config loop based on config
-func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer) (*Manager, error) {
+// New creates an instance of Manager and starts reload config loop based on config
+func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
 	if cfg.LoadPath == "" {
 		return nil, errors.New("LoadPath is empty")
 	}
@@ -65,13 +66,14 @@ func NewRuntimeConfigManager(cfg ManagerConfig, registerer prometheus.Registerer
 	mgr := Manager{
 		cfg: cfg,
 		configLoadSuccess: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_runtime_config_last_reload_successful",
+			Name: "runtime_config_last_reload_successful",
 			Help: "Whether the last runtime-config reload attempt was successful.",
 		}),
 		configHash: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_runtime_config_hash",
+			Name: "runtime_config_hash",
 			Help: "Hash of the currently active runtime config file.",
 		}, []string{"sha256"}),
+		logger: logger,
 	}
 
 	mgr.Service = services.NewBasicService(mgr.starting, mgr.loop, mgr.stopping)
@@ -118,7 +120,7 @@ func (om *Manager) CloseListenerChannel(listener <-chan interface{}) {
 
 func (om *Manager) loop(ctx context.Context) error {
 	if om.cfg.LoadPath == "" {
-		level.Info(util_log.Logger).Log("msg", "runtime config disabled: file not specified")
+		level.Info(om.logger).Log("msg", "runtime config disabled: file not specified")
 		<-ctx.Done()
 		return nil
 	}
@@ -132,7 +134,7 @@ func (om *Manager) loop(ctx context.Context) error {
 			err := om.loadConfig()
 			if err != nil {
 				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
-				level.Error(util_log.Logger).Log("msg", "failed to load config", "err", err)
+				level.Error(om.logger).Log("msg", "failed to load config", "err", err)
 			}
 		case <-ctx.Done():
 			return nil
@@ -143,7 +145,7 @@ func (om *Manager) loop(ctx context.Context) error {
 // loadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
 func (om *Manager) loadConfig() error {
-	buf, err := ioutil.ReadFile(om.cfg.LoadPath)
+	buf, err := os.ReadFile(om.cfg.LoadPath)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
 		return errors.Wrap(err, "read file")

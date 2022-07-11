@@ -12,13 +12,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
-	"github.com/prometheus/prometheus/pkg/rulefmt"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ring"
-	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
@@ -49,6 +49,9 @@ var (
 )
 
 const (
+	// ringKey is the key under which we store the rulers ring in the KVStore.
+	ringKey = "ring"
+
 	// Number of concurrent group list and group loads operations.
 	loadRulesConcurrency  = 10
 	fetchRulesConcurrency = 16
@@ -69,6 +72,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// Labels to add to all alerts
+	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"nocli|description=Labels to add to all alerts."`
 	// GRPC Client configuration.
 	ClientTLSConfig grpcclient.Config `yaml:"ruler_client"`
 	// How frequently to evaluate rules by default.
@@ -81,6 +86,8 @@ type Config struct {
 	RulePath string `yaml:"rule_path"`
 
 	// URL of the Alertmanager to send notifications to.
+	// If your are configuring the ruler to send to a Cortex Alertmanager,
+	// ensure this includes any path set in the Alertmanager external URL.
 	AlertmanagerURL string `yaml:"alertmanager_url"`
 	// Whether to use DNS SRV records to discover Alertmanager.
 	AlertmanagerDiscovery bool `yaml:"enable_alertmanager_discovery"`
@@ -116,7 +123,8 @@ type Config struct {
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 
-	EnableQueryStats bool `yaml:"query_stats_enabled"`
+	EnableQueryStats      bool `yaml:"query_stats_enabled"`
+	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
 }
 
 // Validate config and returns error on failure
@@ -146,9 +154,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Notifier.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
-	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout")
-	flagext.DeprecatedFlag(f, "ruler.group-timeout", "This flag is no longer functional.")
-	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended")
+
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "ruler.client-timeout", "This flag has been renamed to ruler.configs.client-timeout", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "ruler.group-timeout", "This flag is no longer functional.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
@@ -176,6 +188,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
+	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -233,7 +246,7 @@ type Ruler struct {
 	subservicesWatcher *services.FailureWatcher
 
 	// Pool of clients used to connect to other ruler replicas.
-	clientsPool *ring_client.Pool
+	clientsPool ClientsPool
 
 	ringCheckErrors prometheus.Counter
 	rulerSync       *prometheus.CounterVec
@@ -246,6 +259,10 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg))
+}
+
+func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
 	ruler := &Ruler{
 		cfg:            cfg,
 		store:          ruleStore,
@@ -253,7 +270,7 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		registry:       reg,
 		logger:         logger,
 		limits:         limits,
-		clientsPool:    newRulerClientPool(cfg.ClientTLSConfig, logger, reg),
+		clientsPool:    clientPool,
 		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -278,7 +295,8 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		ringStore, err := kv.NewClient(
 			cfg.Ring.KVStore,
 			ring.GetCodec(),
-			kv.RegistererWithKVName(reg, "ruler"),
+			kv.RegistererWithKVName(prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler"),
+			logger,
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "create KV store client")
@@ -287,10 +305,6 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		if err = enableSharding(ruler, ringStore); err != nil {
 			return nil, errors.Wrap(err, "setup ruler sharding ring")
 		}
-
-		if reg != nil {
-			reg.MustRegister(ruler.ring)
-		}
 	}
 
 	ruler.Service = services.NewBasicService(ruler.starting, ruler.run, ruler.stopping)
@@ -298,7 +312,7 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 }
 
 func enableSharding(r *Ruler, ringStore kv.Client) error {
-	lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig()
+	lifecyclerCfg, err := r.cfg.Ring.ToLifecyclerConfig(r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler config")
 	}
@@ -310,12 +324,12 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	rulerRingName := "ruler"
-	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ring.RulerRingKey, ringStore, delegate, r.logger, r.registry)
+	r.lifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, rulerRingName, ringKey, ringStore, delegate, r.logger, prometheus.WrapRegistererWithPrefix("cortex_", r.registry))
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's lifecycler")
 	}
 
-	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ring.RulerRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy())
+	r.ring, err = ring.NewWithStoreClientAndStrategy(r.cfg.Ring.ToRingConfig(), rulerRingName, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("cortex_", r.registry), r.logger)
 	if err != nil {
 		return errors.Wrap(err, "failed to initialize ruler's ring")
 	}
@@ -643,7 +657,7 @@ func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx)
+		return r.getShardedRules(ctx, userID)
 	}
 
 	return r.getLocalRules(userID)
@@ -736,8 +750,14 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) {
-	rulers, err := r.ring.GetReplicationSetForOperation(RingOp)
+func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+	ring := ring.ReadRing(r.ring)
+
+	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		ring = r.ring.ShuffleShard(userID, shardSize)
+	}
+
+	rulers, err := ring.GetReplicationSetForOperation(RingOp)
 	if err != nil {
 		return nil, err
 	}
@@ -758,12 +778,12 @@ func (r *Ruler) getShardedRules(ctx context.Context) ([]*GroupStateDesc, error) 
 	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
 		addr := job.(string)
 
-		grpcClient, err := r.clientsPool.GetClientFor(addr)
+		rulerClient, err := r.clientsPool.GetClientFor(addr)
 		if err != nil {
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
+		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
 		if err != nil {
 			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}

@@ -4,15 +4,15 @@ import (
 	"flag"
 	"time"
 
-	"github.com/go-kit/kit/log"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/go-kit/log"
+	middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/grpc/encoding/snappy"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
+	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappy"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
@@ -24,8 +24,8 @@ type Config struct {
 	RateLimit       float64 `yaml:"rate_limit"`
 	RateLimitBurst  int     `yaml:"rate_limit_burst"`
 
-	BackoffOnRatelimits bool               `yaml:"backoff_on_ratelimits"`
-	BackoffConfig       util.BackoffConfig `yaml:"backoff_config"`
+	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits"`
+	BackoffConfig       backoff.Config `yaml:"backoff_config"`
 
 	TLSEnabled bool             `yaml:"tls_enabled"`
 	TLS        tls.ClientConfig `yaml:",inline"`
@@ -46,7 +46,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.BackoffOnRatelimits, prefix+".backoff-on-ratelimits", false, "Enable backoff and retry when we hit ratelimits.")
 	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
 
-	cfg.BackoffConfig.RegisterFlags(prefix, f)
+	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix, f)
 
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 }
@@ -92,8 +92,8 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	return append(
 		opts,
 		grpc.WithDefaultCallOptions(cfg.CallOptions()...),
-		grpc.WithUnaryInterceptor(grpc_middleware.ChainUnaryClient(unaryClientInterceptors...)),
-		grpc.WithStreamInterceptor(grpc_middleware.ChainStreamClient(streamClientInterceptors...)),
+		grpc.WithUnaryInterceptor(middleware.ChainUnaryClient(unaryClientInterceptors...)),
+		grpc.WithStreamInterceptor(middleware.ChainStreamClient(streamClientInterceptors...)),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                time.Second * 20,
 			Timeout:             time.Second * 10,

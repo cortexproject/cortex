@@ -5,13 +5,14 @@ import "testing"
 func TestInvalidates(t *testing.T) {
 	const key = "ring"
 
+	logger := testLogger{}
 	messages := map[string]ringBroadcast{
-		"b1": {key: key, content: []string{"A", "B", "C"}, version: 1},
-		"b2": {key: key, content: []string{"A", "B", "C"}, version: 2},
-		"b3": {key: key, content: []string{"A"}, version: 3},
-		"b4": {key: key, content: []string{"A", "B"}, version: 4},
-		"b5": {key: key, content: []string{"A", "B", "D"}, version: 5},
-		"b6": {key: key, content: []string{"A", "B", "C", "D"}, version: 6},
+		"b1": {key: key, content: []string{"A", "B", "C"}, version: 1, logger: logger},
+		"b2": {key: key, content: []string{"A", "B", "C"}, version: 2, logger: logger},
+		"b3": {key: key, content: []string{"A"}, version: 3, logger: logger},
+		"b4": {key: key, content: []string{"A", "B"}, version: 4, logger: logger},
+		"b5": {key: key, content: []string{"A", "B", "D"}, version: 5, logger: logger},
+		"b6": {key: key, content: []string{"A", "B", "C", "D"}, version: 6, logger: logger},
 	}
 
 	checkInvalidate(t, messages, "b2", "b1", true, false)

@@ -19,7 +19,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,15 +26,16 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/common/version"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
-	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/prompb"
 )
 
@@ -97,7 +97,7 @@ type ClientConfig struct {
 	URL              *config_util.URL
 	Timeout          model.Duration
 	HTTPClientConfig config_util.HTTPClientConfig
-	SigV4Config      *config.SigV4Config
+	SigV4Config      *sigv4.SigV4Config
 	Headers          map[string]string
 	RetryOnRateLimit bool
 }
@@ -110,7 +110,7 @@ type ReadClient interface {
 
 // NewReadClient creates a new client for remote read.
 func NewReadClient(name string, conf *ClientConfig) (ReadClient, error) {
-	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage_read_client", config_util.WithHTTP2Disabled())
+	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage_read_client")
 	if err != nil {
 		return nil, err
 	}
@@ -119,9 +119,7 @@ func NewReadClient(name string, conf *ClientConfig) (ReadClient, error) {
 	if len(conf.Headers) > 0 {
 		t = newInjectHeadersRoundTripper(conf.Headers, t)
 	}
-	httpClient.Transport = &nethttp.Transport{
-		RoundTripper: t,
-	}
+	httpClient.Transport = otelhttp.NewTransport(t)
 
 	return &Client{
 		remoteName:          name,
@@ -136,14 +134,14 @@ func NewReadClient(name string, conf *ClientConfig) (ReadClient, error) {
 
 // NewWriteClient creates a new client for remote write.
 func NewWriteClient(name string, conf *ClientConfig) (WriteClient, error) {
-	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage_write_client", config_util.WithHTTP2Disabled())
+	httpClient, err := config_util.NewClientFromConfig(conf.HTTPClientConfig, "remote_storage_write_client")
 	if err != nil {
 		return nil, err
 	}
 	t := httpClient.Transport
 
 	if conf.SigV4Config != nil {
-		t, err = newSigV4RoundTripper(conf.SigV4Config, httpClient.Transport)
+		t, err = sigv4.NewSigV4RoundTripper(conf.SigV4Config, httpClient.Transport)
 		if err != nil {
 			return nil, err
 		}
@@ -153,9 +151,7 @@ func NewWriteClient(name string, conf *ClientConfig) (WriteClient, error) {
 		t = newInjectHeadersRoundTripper(conf.Headers, t)
 	}
 
-	httpClient.Transport = &nethttp.Transport{
-		RoundTripper: t,
-	}
+	httpClient.Transport = otelhttp.NewTransport(t)
 
 	return &Client{
 		remoteName:       name,
@@ -206,27 +202,17 @@ func (c *Client) Store(ctx context.Context, req []byte) error {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	httpReq = httpReq.WithContext(ctx)
+	ctx, span := otel.Tracer("").Start(ctx, "Remote Store", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
 
-	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
-		var ht *nethttp.Tracer
-		httpReq, ht = nethttp.TraceRequest(
-			parentSpan.Tracer(),
-			httpReq,
-			nethttp.OperationName("Remote Store"),
-			nethttp.ClientTrace(false),
-		)
-		defer ht.Finish()
-	}
-
-	httpResp, err := c.Client.Do(httpReq)
+	httpResp, err := c.Client.Do(httpReq.WithContext(ctx))
 	if err != nil {
 		// Errors from Client.Do are from (for example) network errors, so are
 		// recoverable.
 		return RecoverableError{err, defaultBackoff}
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, httpResp.Body)
+		io.Copy(io.Discard, httpResp.Body)
 		httpResp.Body.Close()
 	}()
 
@@ -304,32 +290,22 @@ func (c *Client) Read(ctx context.Context, query *prompb.Query) (*prompb.QueryRe
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	httpReq = httpReq.WithContext(ctx)
-
-	if parentSpan := opentracing.SpanFromContext(ctx); parentSpan != nil {
-		var ht *nethttp.Tracer
-		httpReq, ht = nethttp.TraceRequest(
-			parentSpan.Tracer(),
-			httpReq,
-			nethttp.OperationName("Remote Read"),
-			nethttp.ClientTrace(false),
-		)
-		defer ht.Finish()
-	}
+	ctx, span := otel.Tracer("").Start(ctx, "Remote Read", trace.WithSpanKind(trace.SpanKindClient))
+	defer span.End()
 
 	start := time.Now()
-	httpResp, err := c.Client.Do(httpReq)
+	httpResp, err := c.Client.Do(httpReq.WithContext(ctx))
 	if err != nil {
 		return nil, errors.Wrap(err, "error sending request")
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, httpResp.Body)
+		io.Copy(io.Discard, httpResp.Body)
 		httpResp.Body.Close()
 	}()
 	c.readQueriesDuration.Observe(time.Since(start).Seconds())
 	c.readQueriesTotal.WithLabelValues(strconv.Itoa(httpResp.StatusCode)).Inc()
 
-	compressed, err = ioutil.ReadAll(httpResp.Body)
+	compressed, err = io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, errors.Wrap(err, fmt.Sprintf("error reading response. HTTP status code: %s", httpResp.Status))
 	}

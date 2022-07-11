@@ -5,9 +5,7 @@ package azure
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -19,6 +17,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/thanos-io/thanos/pkg/exthttp"
 )
 
 // DirDelim is the delimiter used to model a directory structure in an object store bucket.
@@ -104,8 +103,12 @@ func getContainerURL(ctx context.Context, logger log.Logger, conf Config) (blob.
 		retryOptions.TryTimeout = time.Until(deadline)
 	}
 
+	dt, err := exthttp.DefaultTransport(conf.HTTPConfig)
+	if err != nil {
+		return blob.ContainerURL{}, err
+	}
 	client := http.Client{
-		Transport: DefaultTransport(conf),
+		Transport: dt,
 	}
 
 	p := blob.NewPipeline(credentials, blob.PipelineOptions{
@@ -134,28 +137,6 @@ func getContainerURL(ctx context.Context, logger log.Logger, conf Config) (blob.
 	service := blob.NewServiceURL(*u, p)
 
 	return service.NewContainerURL(conf.ContainerName), nil
-}
-
-func DefaultTransport(config Config) *http.Transport {
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
-
-		MaxIdleConns:          config.HTTPConfig.MaxIdleConns,
-		MaxIdleConnsPerHost:   config.HTTPConfig.MaxIdleConnsPerHost,
-		IdleConnTimeout:       time.Duration(config.HTTPConfig.IdleConnTimeout),
-		MaxConnsPerHost:       config.HTTPConfig.MaxConnsPerHost,
-		TLSHandshakeTimeout:   time.Duration(config.HTTPConfig.TLSHandshakeTimeout),
-		ExpectContinueTimeout: time.Duration(config.HTTPConfig.ExpectContinueTimeout),
-
-		ResponseHeaderTimeout: time.Duration(config.HTTPConfig.ResponseHeaderTimeout),
-		DisableCompression:    config.HTTPConfig.DisableCompression,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: config.HTTPConfig.InsecureSkipVerify},
-	}
 }
 
 func getContainer(ctx context.Context, logger log.Logger, conf Config) (blob.ContainerURL, error) {

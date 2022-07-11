@@ -16,10 +16,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"gopkg.in/yaml.v3"
+
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
-	"golang.org/x/sync/errgroup"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -168,7 +168,7 @@ func NewRedisClientWithConfig(logger log.Logger, name string, config RedisClient
 	}
 	duration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "thanos_redis_operation_duration_seconds",
-		Help:    "Duration of operations against memcached.",
+		Help:    "Duration of operations against redis.",
 		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 3, 6, 10},
 	}, []string{"operation"})
 	c.durationSet = duration.WithLabelValues(opSet)
@@ -274,36 +274,6 @@ func stringToBytes(s string) []byte {
 			Cap int
 		}{s, len(s)},
 	))
-}
-
-// doWithBatch do func with batch and gate. batchSize==0 means one batch. gate==nil means no gate.
-func doWithBatch(ctx context.Context, totalSize int, batchSize int, ga gate.Gate, f func(startIndex, endIndex int) error) error {
-	if totalSize == 0 {
-		return nil
-	}
-	if batchSize <= 0 {
-		return f(0, totalSize)
-	}
-	g, ctx := errgroup.WithContext(ctx)
-	for i := 0; i < totalSize; i += batchSize {
-		j := i + batchSize
-		if j > totalSize {
-			j = totalSize
-		}
-		if ga != nil {
-			if err := ga.Start(ctx); err != nil {
-				return nil
-			}
-		}
-		startIndex, endIndex := i, j
-		g.Go(func() error {
-			if ga != nil {
-				defer ga.Done()
-			}
-			return f(startIndex, endIndex)
-		})
-	}
-	return g.Wait()
 }
 
 // parseRedisClientConfig unmarshals a buffer into a RedisClientConfig with default values.

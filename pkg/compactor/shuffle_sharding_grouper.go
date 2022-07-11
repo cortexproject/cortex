@@ -112,7 +112,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	// grouping (based on downsample resolution + external labels).
 	mainGroups := map[string][]*metadata.Meta{}
 	for _, b := range blocks {
-		key := compact.DefaultGroupKey(b.Thanos)
+		key := b.Thanos.GroupKey()
 		mainGroups[key] = append(mainGroups[key], b)
 	}
 
@@ -154,7 +154,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			}
 
 			remainingCompactions++
-			groupKey := fmt.Sprintf("%v%s", groupHash, compact.DefaultGroupKey(group.blocks[0].Thanos))
+			groupKey := fmt.Sprintf("%v%s", groupHash, group.blocks[0].Thanos.GroupKey())
 
 			level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
 

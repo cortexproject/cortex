@@ -59,7 +59,6 @@ type Syncer struct {
 	mtx                      sync.Mutex
 	blocks                   map[ulid.ULID]*metadata.Meta
 	partial                  map[ulid.ULID]error
-	blockSyncConcurrency     int
 	metrics                  *syncerMetrics
 	duplicateBlocksFilter    *block.DeduplicateFilter
 	ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter
@@ -98,7 +97,7 @@ func newSyncerMetrics(reg prometheus.Registerer, blocksMarkedForDeletion, garbag
 
 // NewMetaSyncer returns a new Syncer for the given Bucket and directory.
 // Blocks must be at least as old as the sync delay for being considered.
-func NewMetaSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bucket, fetcher block.MetadataFetcher, duplicateBlocksFilter *block.DeduplicateFilter, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, blocksMarkedForDeletion, garbageCollectedBlocks prometheus.Counter, blockSyncConcurrency int) (*Syncer, error) {
+func NewMetaSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bucket, fetcher block.MetadataFetcher, duplicateBlocksFilter *block.DeduplicateFilter, ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter, blocksMarkedForDeletion, garbageCollectedBlocks prometheus.Counter) (*Syncer, error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -111,7 +110,6 @@ func NewMetaSyncer(logger log.Logger, reg prometheus.Registerer, bkt objstore.Bu
 		metrics:                  newSyncerMetrics(reg, blocksMarkedForDeletion, garbageCollectedBlocks),
 		duplicateBlocksFilter:    duplicateBlocksFilter,
 		ignoreDeletionMarkFilter: ignoreDeletionMarkFilter,
-		blockSyncConcurrency:     blockSyncConcurrency,
 	}, nil
 }
 
@@ -123,9 +121,9 @@ func UntilNextDownsampling(m *metadata.Meta) (time.Duration, error) {
 	case downsample.ResLevel2:
 		return time.Duration(0), errors.New("no downsampling")
 	case downsample.ResLevel1:
-		return time.Duration(downsample.DownsampleRange1*time.Millisecond) - timeRange, nil
+		return time.Duration(downsample.ResLevel2DownsampleRange*time.Millisecond) - timeRange, nil
 	case downsample.ResLevel0:
-		return time.Duration(downsample.DownsampleRange0*time.Millisecond) - timeRange, nil
+		return time.Duration(downsample.ResLevel1DownsampleRange*time.Millisecond) - timeRange, nil
 	default:
 		panic(errors.Errorf("invalid resolution %v", m.Thanos.Downsample.Resolution))
 	}
@@ -218,16 +216,6 @@ type Grouper interface {
 	Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*Group, err error)
 }
 
-// DefaultGroupKey returns a unique identifier for the group the block belongs to, based on
-// the DefaultGrouper logic. It considers the downsampling resolution and the block's labels.
-func DefaultGroupKey(meta metadata.Thanos) string {
-	return defaultGroupKey(meta.Downsample.Resolution, labels.FromMap(meta.Labels))
-}
-
-func defaultGroupKey(res int64, lbls labels.Labels) string {
-	return fmt.Sprintf("%d@%v", res, lbls.Hash())
-}
-
 // DefaultGrouper is the Thanos built-in grouper. It groups blocks based on downsample
 // resolution and block's labels.
 type DefaultGrouper struct {
@@ -295,7 +283,7 @@ func NewDefaultGrouper(
 func (g *DefaultGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*Group, err error) {
 	groups := map[string]*Group{}
 	for _, m := range blocks {
-		groupKey := DefaultGroupKey(m.Thanos)
+		groupKey := m.Thanos.GroupKey()
 		group, ok := groups[groupKey]
 		if !ok {
 			lbls := labels.FromMap(m.Thanos.Labels)
@@ -637,7 +625,7 @@ func (ds *DownsampleProgressCalculator) ProgressCalculate(ctx context.Context, g
 					continue
 				}
 
-				if m.MaxTime-m.MinTime < downsample.DownsampleRange0 {
+				if m.MaxTime-m.MinTime < downsample.ResLevel1DownsampleRange {
 					continue
 				}
 				groupBlocks[group.key]++
@@ -653,7 +641,7 @@ func (ds *DownsampleProgressCalculator) ProgressCalculate(ctx context.Context, g
 					continue
 				}
 
-				if m.MaxTime-m.MinTime < downsample.DownsampleRange1 {
+				if m.MaxTime-m.MinTime < downsample.ResLevel2DownsampleRange {
 					continue
 				}
 				groupBlocks[group.key]++
@@ -1370,7 +1358,7 @@ func (f *GatherNoCompactionMarkFilter) NoCompactMarkedBlocks() map[ulid.ULID]*me
 }
 
 // Filter passes all metas, while gathering no compact markers.
-func (f *GatherNoCompactionMarkFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec) error {
+func (f *GatherNoCompactionMarkFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec, modified *extprom.TxGaugeVec) error {
 	f.noCompactMarkedMap = make(map[ulid.ULID]*metadata.NoCompactMark)
 
 	// Make a copy of block IDs to check, in order to avoid concurrency issues

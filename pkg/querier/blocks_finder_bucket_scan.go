@@ -386,7 +386,6 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 		filepath.Join(d.cfg.CacheDir, userID),
 		userReg,
 		filters,
-		nil,
 	)
 	if err != nil {
 		return nil, nil, nil, err

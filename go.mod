@@ -56,7 +56,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.6.0
 	github.com/stretchr/testify v1.7.2
-	github.com/thanos-io/thanos v0.27.0-rc.0.0.20220707121322-5f31fc5ad310
+	github.com/thanos-io/thanos v0.27.0-rc.0.0.20220712060227-ca4fe82d74f6
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6

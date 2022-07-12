@@ -40,6 +40,7 @@ type ShuffleShardingGrouper struct {
 	compactorCfg                Config
 	limits                      Limits
 	userID                      string
+	blockFilesConcurrency       int
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
@@ -61,6 +62,7 @@ func NewShuffleShardingGrouper(
 	ringLifecyclerAddr string,
 	limits Limits,
 	userID string,
+	blockFilesConcurrency int,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -98,11 +100,12 @@ func NewShuffleShardingGrouper(
 			Name: "thanos_compact_group_vertical_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 		}, []string{"group"}),
-		compactorCfg:       compactorCfg,
-		ring:               ring,
-		ringLifecyclerAddr: ringLifecyclerAddr,
-		limits:             limits,
-		userID:             userID,
+		compactorCfg:          compactorCfg,
+		ring:                  ring,
+		ringLifecyclerAddr:    ringLifecyclerAddr,
+		limits:                limits,
+		userID:                userID,
+		blockFilesConcurrency: blockFilesConcurrency,
 	}
 }
 
@@ -180,6 +183,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 				g.blocksMarkedForDeletion,
 				g.blocksMarkedForNoCompact,
 				g.hashFunc,
+				g.blockFilesConcurrency,
 			)
 			if err != nil {
 				return nil, errors.Wrap(err, "create compaction group")

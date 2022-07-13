@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
@@ -119,18 +119,14 @@ func (m *TombstoneManager) GetTombstoneByIDForUser(ctx context.Context, requestI
 
 	for _, state := range AllDeletionStates {
 		filename := getTombstoneFileName(requestID, state)
-		exists, err := m.TombstoneExists(ctx, requestID, state)
-		if err != nil {
+
+		t, err := m.ReadTombstone(ctx, path.Join(TombstonePath, filename))
+		if errors.Is(err, ErrTombstoneNotFound) {
+			continue
+		} else if err != nil {
 			return nil, err
 		}
-
-		if exists {
-			t, err := m.ReadTombstone(ctx, path.Join(TombstonePath, filename))
-			if err != nil {
-				return nil, err
-			}
-			found = append(found, t)
-		}
+		found = append(found, t)
 	}
 
 	if len(found) == 0 {
@@ -147,28 +143,28 @@ func (m *TombstoneManager) GetAllTombstonesForUser(ctx context.Context) ([]*Tomb
 	// add all the tombstones to a map and check for duplicates: if a key exists with the same request ID (but two different states).
 	discovered := make(map[string]BlockDeleteRequestState)
 	err := m.bkt.Iter(ctx, TombstonePath, func(s string) error {
-		requestID, state, err := GetStateAndRequestIDFromTombstonePath(filepath.Base(s))
+		requestID, newerState, err := GetStateAndRequestIDFromTombstonePath(filepath.Base(s))
 		if err != nil {
 			return err
 		}
 
 		if prevState, exists := discovered[requestID]; !exists {
-			discovered[requestID] = state
+			discovered[requestID] = newerState
 		} else {
 			// If there is more than one tombstone for a given request, we only want the latest state.
 			// States can move only in a specific direction, so the later state will always win.
-			orderA, err := state.GetStateOrder()
+			newerStateOrder, err := newerState.getStateOrder()
 			if err != nil {
 				return err
 			}
-			orderB, err := prevState.GetStateOrder()
+			prevStateOrder, err := prevState.getStateOrder()
 			if err != nil {
 				return err
 			}
 
 			// If the newer state found comes later in the order, then we replace the state in the map.
-			if orderA > orderB {
-				discovered[requestID] = state
+			if newerStateOrder > prevStateOrder {
+				discovered[requestID] = newerState
 			}
 		}
 		return nil
@@ -239,12 +235,12 @@ func (m *TombstoneManager) UpdateTombstoneState(ctx context.Context, t *Tombston
 
 	err := m.WriteTombstone(ctx, newT)
 	if err != nil {
-		level.Error(m.logger).Log("msg", "error creating file tombstone file with the updated state", "err", err)
+		level.Error(m.logger).Log("msg", "error creating file tombstone file with the updated state", "requestID", t.RequestID, "updated state", newState, "err", err)
 		return nil, err
 	}
 
 	if err = m.DeleteTombstoneFile(ctx, t.RequestID, t.State); err != nil {
-		level.Error(m.logger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "err", err)
+		level.Error(m.logger).Log("msg", "Created file with updated state but unable to delete previous state. Will retry next time tombstones are loaded", "requestID", t.RequestID, "previous state", t.State, "updated state", newState, err)
 	}
 
 	return newT, nil
@@ -346,7 +342,7 @@ func isValidDeleteRequestState(state BlockDeleteRequestState) bool {
 	return false
 }
 
-func (s BlockDeleteRequestState) GetStateOrder() (int, error) {
+func (s BlockDeleteRequestState) getStateOrder() (int, error) {
 	switch s {
 	case StatePending:
 		return 0, nil

@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -64,12 +64,10 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	for i := range match {
-		_, err := parser.ParseMetricSelector(match[i])
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	matchers, err := cortex_tsdb.ParseMatchers(match)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	startParam := params.Get("start")
@@ -105,12 +103,12 @@ func (api *BlocksPurgerAPI) AddDeleteRequestHandler(w http.ResponseWriter, r *ht
 
 	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
 
-	requestID := getTombstoneHash(startTime, endTime, match)
+	requestID := getTombstoneHash(startTime, endTime, matchers)
 	// Since the request id is based on a hash of the parameters, there is a possibility that a tombstone could already exist for it
 	// if the request was previously cancelled, we need to remove the cancelled tombstone before adding the pending one
 	if err := tManager.RemoveCancelledStateIfExists(ctx, requestID); err != nil {
 		level.Error(util_log.Logger).Log("msg", "removing cancelled tombstone state if it exists", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error checking previous delete requests and removing the past cancelled version of this request if it exists ", http.StatusInternalServerError)
 		return
 	}
 
@@ -144,6 +142,7 @@ func (api *BlocksPurgerAPI) GetAllDeleteRequestsHandler(w http.ResponseWriter, r
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+
 	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
 	deleteRequests, err := tManager.GetAllTombstonesForUser(ctx)
 	if err != nil {
@@ -155,8 +154,10 @@ func (api *BlocksPurgerAPI) GetAllDeleteRequestsHandler(w http.ResponseWriter, r
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
+		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 }
@@ -171,6 +172,10 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 
 	params := r.URL.Query()
 	requestID := params.Get("request_id")
+	if len(requestID) == 0 {
+		http.Error(w, "request_id not set", http.StatusBadRequest)
+		return
+	}
 
 	tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, api.logger)
 	deleteRequest, err := tManager.GetTombstoneByIDForUser(ctx, requestID)
@@ -186,7 +191,7 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	}
 
 	if deleteRequest.State == cortex_tsdb.StateCancelled {
-		http.Error(w, "the request has already been previously deleted", http.StatusBadRequest)
+		http.Error(w, "the series deletion request was cancelled previously", http.StatusAccepted)
 		return
 	}
 
@@ -211,7 +216,7 @@ func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func getTombstoneHash(startTime int64, endTime int64, selectors []string) string {
+func getTombstoneHash(startTime int64, endTime int64, selectors []*labels.Matcher) string {
 	// Any delete request with the same start, end time and same selectors should result in the same hash
 
 	hash := md5.New()
@@ -224,11 +229,19 @@ func getTombstoneHash(startTime int64, endTime int64, selectors []string) string
 	hash.Write(bufStart)
 	hash.Write(bufEnd)
 
-	sort.Strings(selectors)
-	for _, s := range selectors {
+	// First we get the strings of the parsed matchers which
+	// then are sorted and hashed after. This is done so that logically
+	// equivalent deletion requests result in the same hash
+	selectorStrings := make([]string, len(selectors))
+	for i, s := range selectors {
+		selectorStrings[i] = s.String()
+	}
+
+	sort.Strings(selectorStrings)
+	for _, s := range selectorStrings {
 		hash.Write([]byte(s))
 	}
 
-	md5Bytes := md5.Sum(nil)
+	md5Bytes := hash.Sum(nil)
 	return hex.EncodeToString(md5Bytes[:])
 }

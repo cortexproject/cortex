@@ -66,7 +66,7 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 			}
 
 			req := &http.Request{
-				Method:     "GET",
+				Method:     "POST",
 				RequestURI: u.String(),
 				URL:        u,
 				Body:       http.NoBody,
@@ -83,42 +83,82 @@ func TestBlocksDeleteSeries_AddingDeletionRequests(t *testing.T) {
 
 func TestBlocksDeleteSeries_AddingSameRequestTwiceShouldFail(t *testing.T) {
 
-	bkt := objstore.NewInMemBucket()
-	api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
+	for name, tc := range map[string]struct {
+		selectorsFirst  []string
+		selectorsSecond []string
+	}{
+		"exact same request twice should fail": {
+			selectorsFirst:  []string{"process_start_time_seconds{job=\"prometheus\"}"},
+			selectorsSecond: []string{"process_start_time_seconds{job=\"prometheus\"}"},
+		},
+		"same request but with extra whitespace should fail": {
+			selectorsFirst:  []string{"process_start_time_seconds{job=\"prometheus\"}"},
+			selectorsSecond: []string{"process_start_time_seconds{job= \"prometheus\"}"},
+		},
+		// Since a deletion request is performed using the AND of all provided selectors
+		// it doesn't matter if the selectors are provided together as one string or
+		// in separate strings.
+		"same request but split in multiple matchers should fail": {
+			selectorsFirst:  []string{"process_start_time_seconds{job=\"prometheus\"}"},
+			selectorsSecond: []string{"process_start_time_seconds", "{job= \"prometheus\"}"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bkt := objstore.NewInMemBucket()
+			api := newBlocksPurgerAPI(bkt, nil, log.NewNopLogger(), 0)
 
-	ctx := context.Background()
-	ctx = user.InjectOrgID(ctx, userID)
+			ctx := context.Background()
+			ctx = user.InjectOrgID(ctx, userID)
 
-	params := url.Values{
-		"start":   []string{"1"},
-		"end":     []string{"2"},
-		"match[]": []string{"node_exporter"},
+			params := url.Values{
+				"start":   []string{"1"},
+				"end":     []string{"2"},
+				"match[]": tc.selectorsFirst,
+			}
+
+			u := &url.URL{
+				RawQuery: params.Encode(),
+			}
+
+			req := &http.Request{
+				Method:     "POST",
+				RequestURI: u.String(),
+				URL:        u,
+				Body:       http.NoBody,
+				Header:     http.Header{},
+			}
+
+			resp := httptest.NewRecorder()
+			api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
+
+			// First request made should be okay
+			require.Equal(t, http.StatusNoContent, resp.Code)
+
+			params = url.Values{
+				"start":   []string{"1"},
+				"end":     []string{"2"},
+				"match[]": tc.selectorsSecond,
+			}
+
+			u = &url.URL{
+				RawQuery: params.Encode(),
+			}
+
+			req = &http.Request{
+				Method:     "POST",
+				RequestURI: u.String(),
+				URL:        u,
+				Body:       http.NoBody,
+				Header:     http.Header{},
+			}
+
+			//second should not be accepted because the same exact request already exists
+			resp = httptest.NewRecorder()
+			api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
+			require.Equal(t, http.StatusBadRequest, resp.Code)
+
+		})
 	}
-
-	u := &url.URL{
-		RawQuery: params.Encode(),
-	}
-
-	req := &http.Request{
-		Method:     "GET",
-		RequestURI: u.String(),
-		URL:        u,
-		Body:       http.NoBody,
-		Header:     http.Header{},
-	}
-
-	resp := httptest.NewRecorder()
-	api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
-
-	// First request made should be okay
-	require.Equal(t, http.StatusNoContent, resp.Code)
-
-	//second should not be accepted because the same exact request already exists
-	resp = httptest.NewRecorder()
-	api.AddDeleteRequestHandler(resp, req.WithContext(ctx))
-
-	require.Equal(t, http.StatusBadRequest, resp.Code)
-
 }
 
 func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testing.T) {
@@ -145,7 +185,7 @@ func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testin
 	}
 
 	reqCreate := &http.Request{
-		Method:     "GET",
+		Method:     "POST",
 		RequestURI: uCreate.String(),
 		URL:        uCreate,
 		Body:       http.NoBody,
@@ -157,7 +197,8 @@ func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testin
 	require.Equal(t, http.StatusNoContent, resp.Code)
 
 	//cancel the previous request
-	requestID := getTombstoneHash(1000, 2000, []string{"node_exporter"})
+	selector, _ := cortex_tsdb.ParseMatchers([]string{"node_exporter"})
+	requestID := getTombstoneHash(1000, 2000, selector)
 	paramsDelete := url.Values{
 		"request_id": []string{requestID},
 	}
@@ -192,9 +233,10 @@ func TestBlocksDeleteSeries_AddingNewRequestShouldDeleteCancelledState(t *testin
 
 }
 
-func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
+func TestBlocksDeleteSeries_CancellingRequest(t *testing.T) {
 
 	for name, tc := range map[string]struct {
+		requestID           string
 		createdAt           int64
 		requestState        cortex_tsdb.BlockDeleteRequestState
 		cancellationPeriod  time.Duration
@@ -202,6 +244,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 		expectedHTTPStatus  int
 	}{
 		"not allowed, grace period has passed": {
+			requestID:           "requestID",
 			createdAt:           0,
 			requestState:        cortex_tsdb.StatePending,
 			cancellationPeriod:  time.Second,
@@ -210,6 +253,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 		},
 
 		"allowed, grace period not over yet": {
+			requestID:           "requestID",
 			createdAt:           time.Now().Unix() * 1000,
 			requestState:        cortex_tsdb.StatePending,
 			cancellationPeriod:  time.Hour,
@@ -217,6 +261,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			expectedHTTPStatus:  http.StatusNoContent,
 		},
 		"not allowed, deletion already occurred": {
+			requestID:           "requestID",
 			createdAt:           0,
 			requestState:        cortex_tsdb.StateProcessed,
 			cancellationPeriod:  time.Second,
@@ -224,10 +269,19 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			expectedHTTPStatus:  http.StatusBadRequest,
 		},
 		"not allowed,request already cancelled": {
+			requestID:           "requestID",
 			createdAt:           0,
 			requestState:        cortex_tsdb.StateCancelled,
 			cancellationPeriod:  time.Second,
 			cancelledFileExists: true,
+			expectedHTTPStatus:  http.StatusAccepted,
+		},
+		"not allowed, request id missing": {
+			requestID:           "",
+			createdAt:           0,
+			requestState:        cortex_tsdb.StatePending,
+			cancellationPeriod:  time.Second,
+			cancelledFileExists: false,
 			expectedHTTPStatus:  http.StatusBadRequest,
 		},
 	} {
@@ -241,12 +295,12 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			tManager := cortex_tsdb.NewTombstoneManager(api.bucketClient, userID, api.cfgProvider, log.NewNopLogger())
 
 			//create the tombstone
-			tombstone := cortex_tsdb.NewTombstone(userID, tc.createdAt, tc.createdAt, 0, 1, []string{"match"}, "request_id", tc.requestState)
+			tombstone := cortex_tsdb.NewTombstone(userID, tc.createdAt, tc.createdAt, 0, 1, []string{"match"}, tc.requestID, tc.requestState)
 			err := tManager.WriteTombstone(ctx, tombstone)
 			require.NoError(t, err)
 
 			params := url.Values{
-				"request_id": []string{"request_id"},
+				"request_id": []string{tc.requestID},
 			}
 
 			u := &url.URL{
@@ -266,7 +320,7 @@ func TestBlocksDeleteSeries_CancellingRequestl(t *testing.T) {
 			require.Equal(t, tc.expectedHTTPStatus, resp.Code)
 
 			// check if the cancelled tombstone file exists
-			exists, _ := tManager.TombstoneExists(ctx, "request_id", cortex_tsdb.StateCancelled)
+			exists, _ := tManager.TombstoneExists(ctx, tc.requestID, cortex_tsdb.StateCancelled)
 			require.Equal(t, tc.cancelledFileExists, exists)
 
 		})

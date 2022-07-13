@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/types"
@@ -419,6 +422,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
 		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
+
 			return nil, err
 		}
 
@@ -586,6 +590,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			// TODO(goutham): we should ideally be passing the hints down to the storage layer
 			// and let the TSDB return us data with no chunks as in prometheus#8050.
 			// But this is an acceptable workaround for now.
+
+			// Only fail the function if we have validation error. We should return blocks that were successfully
+			// retrieved.
 			skipChunks := sp != nil && sp.Func == "series"
 
 			req, err := createSeriesRequest(minT, maxT, convertedMatchers, skipChunks, blockIDs)
@@ -595,6 +602,10 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
@@ -725,6 +736,10 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
@@ -802,6 +817,10 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
@@ -966,4 +985,14 @@ func countChunkBytes(series ...*storepb.Series) (count int) {
 	}
 
 	return count
+}
+
+// only retry connection issues
+func isRetryableError(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable:
+		return true
+	default:
+		return false
+	}
 }

@@ -734,18 +734,19 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
-	// Start the querier and store-gateway, and configure them to not frequently sync blocks.
+	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-blocks-storage.bucket-store.sync-interval": "1m",
+		"-blocks-storage.bucket-store.sync-interval": "5s",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-blocks-storage.bucket-store.sync-interval": "1m",
+		"-blocks-storage.bucket-store.sync-interval": "5s",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
-	// Wait until the querier and store-gateway have updated the ring.
+	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")

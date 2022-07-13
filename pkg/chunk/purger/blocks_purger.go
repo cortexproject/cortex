@@ -151,15 +151,12 @@ func (api *BlocksPurgerAPI) GetAllDeleteRequestsHandler(w http.ResponseWriter, r
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
 }
 
 func (api *BlocksPurgerAPI) CancelDeleteRequestHandler(w http.ResponseWriter, r *http.Request) {

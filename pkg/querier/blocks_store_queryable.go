@@ -603,7 +603,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
@@ -737,7 +737,7 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
@@ -818,7 +818,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())

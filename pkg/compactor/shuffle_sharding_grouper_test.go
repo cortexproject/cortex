@@ -241,7 +241,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				"test-addr",
 				overrides,
 				"",
-				10)
+				10,
+				3)
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)
 			require.Len(t, actual, len(testData.expected))

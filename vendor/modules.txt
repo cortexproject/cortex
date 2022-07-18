@@ -448,7 +448,7 @@ github.com/matttproud/golang_protobuf_extensions/pbutil
 github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.30
+# github.com/minio/minio-go/v7 v7.0.32-0.20220706200439-ef3e45ed9cdb
 ## explicit
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
@@ -655,7 +655,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/thanos v0.27.0-rc.0.0.20220712060227-ca4fe82d74f6
+# github.com/thanos-io/thanos v0.27.0-rc.0.0.20220715025542-84880ea6d7f8
 ## explicit
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

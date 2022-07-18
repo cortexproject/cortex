@@ -130,32 +130,32 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 	var complMultipartUpload completeMultipartUpload
 
 	// Declare a channel that sends the next part number to be uploaded.
-	// Buffered to 10000 because thats the maximum number of parts allowed
-	// by S3.
-	uploadPartsCh := make(chan uploadPartReq, 10000)
+	uploadPartsCh := make(chan uploadPartReq)
 
 	// Declare a channel that sends back the response of a part upload.
-	// Buffered to 10000 because thats the maximum number of parts allowed
-	// by S3.
-	uploadedPartsCh := make(chan uploadedPartRes, 10000)
+	uploadedPartsCh := make(chan uploadedPartRes)
 
 	// Used for readability, lastPartNumber is always totalPartsCount.
 	lastPartNumber := totalPartsCount
 
+	partitionCtx, partitionCancel := context.WithCancel(ctx)
+	defer partitionCancel()
 	// Send each part number to the channel to be processed.
-	for p := 1; p <= totalPartsCount; p++ {
-		uploadPartsCh <- uploadPartReq{PartNum: p}
-	}
-	close(uploadPartsCh)
+	go func() {
+		defer close(uploadPartsCh)
 
-	partsBuf := make([][]byte, opts.getNumThreads())
-	for i := range partsBuf {
-		partsBuf[i] = make([]byte, 0, partSize)
-	}
+		for p := 1; p <= totalPartsCount; p++ {
+			select {
+			case <-partitionCtx.Done():
+				return
+			case uploadPartsCh <- uploadPartReq{PartNum: p}:
+			}
+		}
+	}()
 
 	// Receive each part number from the channel allowing three parallel uploads.
 	for w := 1; w <= opts.getNumThreads(); w++ {
-		go func(w int, partSize int64) {
+		go func(partSize int64) {
 			for {
 				var uploadReq uploadPartReq
 				var ok bool
@@ -181,21 +181,11 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 					partSize = lastPartSize
 				}
 
-				n, rerr := readFull(io.NewSectionReader(reader, readOffset, partSize), partsBuf[w-1][:partSize])
-				if rerr != nil && rerr != io.ErrUnexpectedEOF && rerr != io.EOF {
-					uploadedPartsCh <- uploadedPartRes{
-						Error: rerr,
-					}
-					// Exit the goroutine.
-					return
-				}
-
-				// Get a section reader on a particular offset.
-				hookReader := newHook(bytes.NewReader(partsBuf[w-1][:n]), opts.Progress)
+				sectionReader := newHook(io.NewSectionReader(reader, readOffset, partSize), opts.Progress)
 
 				// Proceed to upload the part.
 				objPart, err := c.uploadPart(ctx, bucketName, objectName,
-					uploadID, hookReader, uploadReq.PartNum,
+					uploadID, sectionReader, uploadReq.PartNum,
 					"", "", partSize,
 					opts.ServerSideEncryption,
 					!opts.DisableContentSha256,
@@ -218,7 +208,7 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 					Part:    uploadReq.Part,
 				}
 			}
-		}(w, partSize)
+		}(partSize)
 	}
 
 	// Gather the responses as they occur and update any
@@ -229,12 +219,12 @@ func (c *Client) putObjectMultipartStreamFromReadAt(ctx context.Context, bucketN
 			return UploadInfo{}, ctx.Err()
 		case uploadRes := <-uploadedPartsCh:
 			if uploadRes.Error != nil {
+
 				return UploadInfo{}, uploadRes.Error
 			}
 
 			// Update the totalUploadedSize.
 			totalUploadedSize += uploadRes.Size
-			// Store the parts to be completed in order.
 			complMultipartUpload.Parts = append(complMultipartUpload.Parts, CompletePart{
 				ETag:       uploadRes.Part.ETag,
 				PartNumber: uploadRes.Part.PartNumber,

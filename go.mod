@@ -39,7 +39,7 @@ require (
 	github.com/hashicorp/memberlist v0.3.1
 	github.com/json-iterator/go v1.1.12
 	github.com/lib/pq v1.3.0
-	github.com/minio/minio-go/v7 v7.0.30
+	github.com/minio/minio-go/v7 v7.0.32-0.20220706200439-ef3e45ed9cdb
 	github.com/mitchellh/go-wordwrap v1.0.0
 	github.com/ncw/swift v1.0.52
 	github.com/oklog/ulid v1.3.1
@@ -56,7 +56,7 @@ require (
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.6.0
 	github.com/stretchr/testify v1.7.2
-	github.com/thanos-io/thanos v0.27.0-rc.0.0.20220712060227-ca4fe82d74f6
+	github.com/thanos-io/thanos v0.27.0-rc.0.0.20220715025542-84880ea6d7f8
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
 	go.etcd.io/bbolt v1.3.6

@@ -64,7 +64,7 @@ type Config struct {
 	// DefaultConfigHandler.
 	CustomConfigHandler ConfigHandler `yaml:"-"`
 	LogHeaders          bool          `yaml:"LogHeaders"`
-	Headers             string        `yaml:"headers"`
+	RequestIdHeader     string        `yaml:"RequestIdHeader"`
 
 	//or //TODO
 	//LogReqID	   bool                              `yaml:"LogReqID"`
@@ -77,7 +77,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	// TODO if adding options to api, register flags for them
 	f.BoolVar(&cfg.LogHeaders, "api.LogHeaders", false, "Enable logging of header specific context information")
-	f.StringVar(&cfg.Headers, "api.Header", "", "Target Header for logging (if enabled)")
+	f.StringVar(&cfg.RequestIdHeader, "api.RequestIdHeader", "", "Target Header for RequestID logging (if enabled)")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -97,15 +97,15 @@ func (cfg *Config) wrapDistributorPush(d *distributor.Distributor) push.Func {
 }
 
 type API struct {
-	AuthMiddleware middleware.Interface
-	cfg            Config
-	server         *server.Server
-	logger         log.Logger
-	sourceIPs      *middleware.SourceIPExtractor
-	indexPage      *IndexPageContent
-	HTTPLogger     middleware.HTTPLogger
-	Headers        string
-	LogHeaders     bool
+	AuthMiddleware       middleware.Interface
+	cfg                  Config
+	server               *server.Server
+	logger               log.Logger
+	sourceIPs            *middleware.SourceIPExtractor
+	indexPage            *IndexPageContent
+	HTTPHeaderMiddleware HTTPHeaderMiddleware
+	RequestIdHeader      string
+	LogHeaders           bool
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -123,14 +123,14 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	}
 
 	api := &API{
-		cfg:            cfg,
-		AuthMiddleware: cfg.HTTPAuthMiddleware,
-		server:         s,
-		logger:         logger,
-		sourceIPs:      sourceIPs,
-		indexPage:      newIndexPageContent(),
-		LogHeaders:     cfg.LogHeaders,
-		Headers:        cfg.Headers,
+		cfg:             cfg,
+		AuthMiddleware:  cfg.HTTPAuthMiddleware,
+		server:          s,
+		logger:          logger,
+		sourceIPs:       sourceIPs,
+		indexPage:       newIndexPageContent(),
+		LogHeaders:      cfg.LogHeaders,
+		RequestIdHeader: cfg.RequestIdHeader,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -138,8 +138,8 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 		api.AuthMiddleware = middleware.AuthenticateUser
 	}
 	if cfg.LogHeaders {
-		api.HTTPLogger = middleware.HTTPLogger{TargetHeader: cfg.Headers}
-		api.Headers = cfg.Headers
+		api.HTTPHeaderMiddleware = HTTPHeaderMiddleware{TargetHeader: cfg.RequestIdHeader}
+		api.RequestIdHeader = cfg.RequestIdHeader
 	}
 
 	return api, nil
@@ -160,7 +160,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 		handler = gziphandler.GzipHandler(handler)
 	}
 	if a.LogHeaders {
-		handler = a.HTTPLogger.Wrap(handler)
+		handler = a.HTTPHeaderMiddleware.Wrap(handler)
 	}
 
 	if len(methods) == 0 {
@@ -243,7 +243,7 @@ func (a *API) RegisterRuntimeConfig(runtimeConfigHandler http.HandlerFunc) {
 func (a *API) RegisterDistributor(d *distributor.Distributor, pushConfig distributor.Config) {
 	distributorpb.RegisterDistributorServer(a.server.GRPC, d)
 
-	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), false, "POST")
+	a.RegisterRoute("/api/v1/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, a.cfg.wrapDistributorPush(d)), true, "POST")
 
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/ring", "Distributor Ring Status")
 	a.indexPage.AddLink(SectionAdminEndpoints, "/distributor/all_user_stats", "Usage Statistics")

@@ -111,7 +111,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.30"
+	libraryVersion = "v7.0.32"
 )
 
 // User Agent should always following the below style.
@@ -379,7 +379,6 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 				atomic.StoreInt32(&c.healthStatus, unknown)
 				return
 			case <-timer.C:
-				timer.Reset(duration)
 				// Do health check the first time and ONLY if the connection is marked offline
 				if c.IsOffline() {
 					gctx, gcancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -394,6 +393,8 @@ func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, erro
 						atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
 					}
 				}
+
+				timer.Reset(duration)
 			}
 		}
 	}(hcDuration)

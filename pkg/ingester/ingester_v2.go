@@ -645,6 +645,7 @@ func (i *Ingester) stoppingV2(_ error) error {
 		level.Warn(i.logger).Log("msg", "failed to stop ingester lifecycler", "err", err)
 	}
 
+	i.stopIncomingRequests()
 	if !i.cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown {
 		i.closeAllTSDB()
 	}

@@ -32,6 +32,10 @@ func newS3Config(cfg Config) (s3.Config, error) {
 	if err != nil {
 		return s3.Config{}, err
 	}
+	bucketLookupType, err := cfg.bucketLookupType()
+	if err != nil {
+		return s3.Config{}, err
+	}
 
 	return s3.Config{
 		Bucket:    cfg.BucketName,
@@ -53,6 +57,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			Transport:             cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set
-		SignatureV2: cfg.SignatureVersion == SignatureVersionV2,
+		SignatureV2:      cfg.SignatureVersion == SignatureVersionV2,
+		BucketLookupType: bucketLookupType,
 	}, nil
 }

@@ -1397,6 +1397,11 @@ s3:
   # CLI flag: -ruler-storage.s3.signature-version
   [signature_version: <string> | default = "v4"]
 
+  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+  # path.
+  # CLI flag: -ruler-storage.s3.bucket-lookup-type
+  [bucket_lookup_type: <string> | default = "auto"]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: ruler-storage
   [sse: <s3_sse_config>]
@@ -1838,6 +1843,11 @@ s3:
   # are: v4, v2.
   # CLI flag: -alertmanager-storage.s3.signature-version
   [signature_version: <string> | default = "v4"]
+
+  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+  # path.
+  # CLI flag: -alertmanager-storage.s3.bucket-lookup-type
+  [bucket_lookup_type: <string> | default = "auto"]
 
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: alertmanager-storage
@@ -3080,6 +3090,11 @@ s3:
   # are: v4, v2.
   # CLI flag: -blocks-storage.s3.signature-version
   [signature_version: <string> | default = "v4"]
+
+  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+  # path.
+  # CLI flag: -blocks-storage.s3.bucket-lookup-type
+  [bucket_lookup_type: <string> | default = "auto"]
 
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: blocks-storage

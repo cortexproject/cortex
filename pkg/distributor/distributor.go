@@ -29,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -1080,6 +1081,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 }
 
 func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]model.Metric, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+	reqStats := stats.FromContext(ctx)
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 	if err != nil {
@@ -1107,6 +1109,7 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 		})
 	}
 	mutex.Unlock()
+	reqStats.AddFetchedSeries(uint64(len(result)))
 	return result, nil
 }
 

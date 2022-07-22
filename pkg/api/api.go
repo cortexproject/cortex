@@ -63,21 +63,17 @@ type Config struct {
 	// initialized, the custom config handler will be used instead of
 	// DefaultConfigHandler.
 	CustomConfigHandler ConfigHandler `yaml:"-"`
-	LogHeaders          bool          `yaml:"LogHeaders"`
-	RequestIdHeader     string        `yaml:"RequestIdHeader"`
 
-	//or //TODO
-	//LogReqID	   bool                              `yaml:"LogReqID"`
-	//ReqIDHeader    string                            `yaml:"ReqIDHeader"`
-	//
+	// These allow and are used to configure the addition of HTTP Header fields to logs
+	LogHeaders           bool   `yaml:"LogHeaders"`
+	TargetRequestHeaders string `yaml:"TargetRequestHeaders"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
-	// TODO if adding options to api, register flags for them
 	f.BoolVar(&cfg.LogHeaders, "api.LogHeaders", false, "Enable logging of header specific context information")
-	f.StringVar(&cfg.RequestIdHeader, "api.RequestIdHeader", "", "Target Header for RequestID logging (if enabled)")
+	f.StringVar(&cfg.TargetRequestHeaders, "api.TargetRequestHeaders", "", "Target Headers for Request logging (if enabled) Separate multiple headers with ~, whitespace is ignored")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -104,7 +100,6 @@ type API struct {
 	sourceIPs            *middleware.SourceIPExtractor
 	indexPage            *IndexPageContent
 	HTTPHeaderMiddleware HTTPHeaderMiddleware
-	RequestIdHeader      string
 	LogHeaders           bool
 }
 
@@ -123,14 +118,13 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	}
 
 	api := &API{
-		cfg:             cfg,
-		AuthMiddleware:  cfg.HTTPAuthMiddleware,
-		server:          s,
-		logger:          logger,
-		sourceIPs:       sourceIPs,
-		indexPage:       newIndexPageContent(),
-		LogHeaders:      cfg.LogHeaders,
-		RequestIdHeader: cfg.RequestIdHeader,
+		cfg:            cfg,
+		AuthMiddleware: cfg.HTTPAuthMiddleware,
+		server:         s,
+		logger:         logger,
+		sourceIPs:      sourceIPs,
+		indexPage:      newIndexPageContent(),
+		LogHeaders:     cfg.LogHeaders,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -138,8 +132,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 		api.AuthMiddleware = middleware.AuthenticateUser
 	}
 	if cfg.LogHeaders {
-		api.HTTPHeaderMiddleware = HTTPHeaderMiddleware{TargetHeader: cfg.RequestIdHeader}
-		api.RequestIdHeader = cfg.RequestIdHeader
+		api.HTTPHeaderMiddleware = NewHttpHeaderMiddleware(cfg.TargetRequestHeaders)
 	}
 
 	return api, nil
@@ -178,6 +171,9 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 	if a.cfg.ResponseCompression {
 		handler = gziphandler.GzipHandler(handler)
+	}
+	if a.LogHeaders {
+		handler = a.HTTPHeaderMiddleware.Wrap(handler)
 	}
 
 	if len(methods) == 0 {

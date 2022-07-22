@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"net/http"
+	"regexp"
+
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/weaveworks/common/middleware"
-	"net/http"
 )
 
 // middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation
@@ -28,22 +30,44 @@ func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.T
 	})
 }
 
-// HTTPHeaderMiddleware adds specified HTTPHeader to the request context
+// HTTPHeaderMiddleware adds specified HTTPHeaders to the request context
 type HTTPHeaderMiddleware struct {
-	TargetHeader string
+	TargetHeaders []string
 }
 
-// InjectRequestIdIntoHTTPRequest injects specified RequestID into the request context
-func (h HTTPHeaderMiddleware) InjectRequestIdIntoHTTPRequest(r *http.Request) context.Context {
+// NewHttpHeaderMiddleware creates a new hTTPHeaderMiddleware given a string containing headers delimited by ~ (whitespaces in headers ignored)
+func NewHttpHeaderMiddleware(unparsedTargetHeaders string) HTTPHeaderMiddleware {
+	removeWhitespaceRegex, err := regexp.Compile(`\s`)
+	if err != nil {
+		util_log.Logger.Log("WhitespaceRegexCompilationStatus", "Failed")
+		return HTTPHeaderMiddleware{TargetHeaders: nil}
+	}
+	headersWithNoWhitespace := removeWhitespaceRegex.ReplaceAllString(unparsedTargetHeaders, "")
 
-	//TODO comments
-	//TODO See if next 3 lines needed
-	existingID := r.Header.Get("RequestID")
-	if existingID != "" && existingID != h.TargetHeader {
+	splitRegex, err2 := regexp.Compile(`~`)
+	if err2 != nil {
+		util_log.Logger.Log("SplitRegexCompilationStatus", "Failed")
+		return HTTPHeaderMiddleware{TargetHeaders: nil}
+	}
+	splitHeaders := splitRegex.Split(headersWithNoWhitespace, -1)
+	return HTTPHeaderMiddleware{TargetHeaders: splitHeaders}
+
+}
+
+// InjectRequestIdIntoHTTPRequest injects specified HTTPHeaders into the request context
+func (h HTTPHeaderMiddleware) InjectRequestIdIntoHTTPRequest(r *http.Request) context.Context {
+	// Check to make sure that Headers have not already been injected
+	testing, ok := r.Context().Value(util_log.RequestTargetsContextKey).([]string)
+	if ok && h.TargetHeaders != nil && testing[0] == h.TargetHeaders[0] {
 		return r.Context()
 	}
+	headerContents := make([]string, len(h.TargetHeaders))
+	for index, target := range h.TargetHeaders {
+		headerContents[index] = r.Header.Get(target)
+	}
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, util_log.RequestIdContextKey, r.Header.Get(h.TargetHeader))
+	ctx = context.WithValue(ctx, util_log.RequestTargetsContextKey, h.TargetHeaders)
+	ctx = context.WithValue(ctx, util_log.RequestValuesContextKey, headerContents)
 	return ctx
 }
 
@@ -54,30 +78,3 @@ func (h HTTPHeaderMiddleware) Wrap(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
-//// ExtractHeadersFromHTTPRequest Extracts the specified headers from HTTP request and returns them, along with a context with those values embedded
-//func ExtractHeadersFromHTTPRequest(r *http.Request, target string) (string, context.Context, error) {
-//	reqID := r.Header.Get(target)
-//	if reqID == "" {
-//		return "", r.Context(), commonErrors.Error("No headers to extract")
-//	}
-//	return reqID, InjectReqID(r.Context(), reqID), nil
-//}
-//
-//func InjectReqID(ctx context.Context, reqID string) context.Context {
-//	return context.WithValue(ctx, "RequestID", reqID)
-//}
-//var Err = errors.New("HTTP prefix should be empty or start with /")
-
-// HTTPLogging is supposed to modify http headers
-//var HTTPLogging = Func(func(next http.Handler) http.Handler {
-//	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-//		_, ctx, err := ExtractHeadersFromHTTPRequest()
-//		if err != nil {
-//			http.Error(w, err.Error(), http.StatusUnauthorized)
-//			return
-//		}
-//
-//		next.ServeHTTP(w, r.WithContext(ctx))
-//	})
-//})

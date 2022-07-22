@@ -12,6 +12,13 @@ import (
 	"github.com/weaveworks/common/server"
 )
 
+type contextKey int
+
+const (
+	RequestValuesContextKey  contextKey = 0
+	RequestTargetsContextKey contextKey = 1
+)
+
 var (
 	// Logger is a shared go-kit logger.
 	// TODO: Change all components to take a non-global logger via their constructors.
@@ -38,8 +45,7 @@ func init() {
 // InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
 // default logger for the server.
 func InitLogger(cfg *server.Config) {
-	factory := NewPrometheusLoggerFactory()
-	l, err := factory(cfg.LogLevel, cfg.LogFormat)
+	l, err := NewPrometheusLogger(cfg.LogLevel, cfg.LogFormat)
 	if err != nil {
 		panic(err)
 	}
@@ -80,17 +86,6 @@ func NewPrometheusLogger(l logging.Level, format logging.Format) (log.Logger, er
 	// return a Logger without caller information, shouldn't use directly
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 	return logger, nil
-}
-
-type PrometheusLoggerFactory func(l logging.Level,
-	format logging.Format) (log.Logger, error)
-
-func NewPrometheusLoggerFactory() PrometheusLoggerFactory {
-	return func(l logging.Level,
-		format logging.Format) (log.Logger, error) {
-		return NewPrometheusLogger(l, format)
-	}
-
 }
 
 // Log increments the appropriate Prometheus counter depending on the log level.

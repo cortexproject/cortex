@@ -1,10 +1,13 @@
 # Changelog
 
 ## master / unreleased
-* [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
+* [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
+* [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
+
+
 
 ## 1.13.0 2022-07-14
 

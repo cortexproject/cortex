@@ -35,7 +35,6 @@
 * [ENHANCEMENT] Add length and limit to labelNameTooLongError and labelValueTooLongError #4595
 * [ENHANCEMENT] Add jitter to rejoinInterval. #4747
 * [ENHANCEMENT] Compactor: uploading blocks no compaction marks to the global location and introduce a new metric #4729
-* [ENHANCEMENT] Logger: add possibility to implement `PrometheusLoggerFactory` to InitLogger #4786
   * `cortex_bucket_blocks_marked_for_no_compaction_count`: Total number of blocks marked for no compaction in the bucket.
 * [ENHANCEMENT] Querier: Reduce the number of series that are kept in memory while streaming from ingesters. #4745
 * [BUGFIX] AlertManager: remove stale template files. #4495

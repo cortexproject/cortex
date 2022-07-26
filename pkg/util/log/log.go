@@ -15,8 +15,7 @@ import (
 type contextKey int
 
 const (
-	RequestValuesContextKey  contextKey = 0
-	RequestTargetsContextKey contextKey = 1
+	HeaderMapContextKey contextKey = 0
 )
 
 var (

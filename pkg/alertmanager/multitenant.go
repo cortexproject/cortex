@@ -477,7 +477,7 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 		am.subservicesWatcher.WatchManager(am.subservices)
 
 		// We wait until the instance is in the JOINING state, once it does we know that tokens are assigned to this instance and we'll be ready to perform an initial sync of configs.
-		level.Info(am.logger).Log("waiting until alertmanager is JOINING in the ring")
+		level.Info(am.logger).Log("msg", "waiting until alertmanager is JOINING in the ring")
 		if err = ring.WaitInstanceState(ctx, am.ring, am.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
 			return err
 		}

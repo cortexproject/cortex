@@ -152,7 +152,8 @@ func (b *batchTracker) record(sampleTrackers []*itemTracker, err error) {
 			errCount := sampleTrackers[i].recordError(err)
 			// We should return an error if we reach the maxFailure (quorum) on a given error family OR
 			// we dont have any remaining ingesters to try
-			// Ex: 2xx, 4xx, 5xx -> return 5xx
+			// Ex: 2xx, 4xx, 5xx -> return 4xx
+			// Ex: 2xx, 5xx, 4xx -> return 4xx
 			// Ex: 4xx, 4xx, _ -> return 4xx
 			// Ex: 5xx, _, 5xx -> return 5xx
 			if errCount > int32(sampleTrackers[i].maxFailures) || sampleTrackers[i].remaining.Dec() == 0 {

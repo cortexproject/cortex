@@ -554,7 +554,7 @@ func TestPush_QuorumError(t *testing.T) {
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
-		require.True(t, status.Code() == 429 || status.Code() == 500)
+		require.Equal(t, codes.Code(429), status.Code())
 	}
 
 	// Simulating 1 error -> Should return 2xx

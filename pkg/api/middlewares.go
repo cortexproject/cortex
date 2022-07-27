@@ -41,7 +41,7 @@ func (h HTTPHeaderMiddleware) InjectTargetHeadersIntoHTTPRequest(r *http.Request
 
 	// Check to make sure that Headers have not already been injected
 	testing, ok := r.Context().Value(util_log.HeaderMapContextKey).(map[string]string)
-	if ok && h.TargetHeaders != nil && testing[h.TargetHeaders[0]] == r.Header.Get(h.TargetHeaders[0]) {
+	if ok && testing != nil {
 		return r.Context()
 	}
 

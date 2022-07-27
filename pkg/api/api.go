@@ -66,8 +66,8 @@ type Config struct {
 	CustomConfigHandler ConfigHandler `yaml:"-"`
 
 	// These allow and are used to configure the addition of HTTP Header fields to logs
-	LogHeaders           bool                   `yaml:"LogHeaders"`
-	TargetRequestHeaders flagext.StringSliceCSV `yaml:"TargetRequestHeaders"`
+	LogHeaders           bool                `yaml:"LogHeaders"`
+	TargetRequestHeaders flagext.StringSlice `yaml:"TargetRequestHeaders"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

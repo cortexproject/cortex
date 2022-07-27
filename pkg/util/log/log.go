@@ -12,6 +12,12 @@ import (
 	"github.com/weaveworks/common/server"
 )
 
+type contextKey int
+
+const (
+	HeaderMapContextKey contextKey = 0
+)
+
 var (
 	// Logger is a shared go-kit logger.
 	// TODO: Change all components to take a non-global logger via their constructors.

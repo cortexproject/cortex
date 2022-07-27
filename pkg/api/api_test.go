@@ -84,7 +84,7 @@ func TestNewApiWithoutHeaderLogging(t *testing.T) {
 	}
 	serverCfg := server.Config{
 		HTTPListenNetwork: server.DefaultNetwork,
-		MetricsNamespace:  "with_header_logging",
+		MetricsNamespace:  "without_header_logging",
 	}
 	server, err := server.New(serverCfg)
 	require.NoError(t, err)

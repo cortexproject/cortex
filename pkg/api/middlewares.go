@@ -4,12 +4,12 @@ import (
 	"context"
 	"net/http"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // middleware for setting cache gen header to let consumer of response know all previous responses could be invalid due to delete operation

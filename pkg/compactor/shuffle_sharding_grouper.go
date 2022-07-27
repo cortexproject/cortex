@@ -1,8 +1,12 @@
 package compactor
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +25,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 )
 
+const BlockLockFile = "block.lock"
+const DefaultTimeFormat = time.RFC3339
+const HeartBeatTimeout = 5 * time.Minute
+
 type ShuffleShardingGrouper struct {
+	ctx                         context.Context
 	logger                      log.Logger
 	bkt                         objstore.Bucket
 	acceptMalformedIndex        bool
@@ -45,9 +54,13 @@ type ShuffleShardingGrouper struct {
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
+
+	groupCallLimit int
+	groupCallCount int
 }
 
 func NewShuffleShardingGrouper(
+	ctx context.Context,
 	logger log.Logger,
 	bkt objstore.Bucket,
 	acceptMalformedIndex bool,
@@ -65,12 +78,14 @@ func NewShuffleShardingGrouper(
 	userID string,
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
+	groupCallLimit int,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 
 	return &ShuffleShardingGrouper{
+		ctx:                         ctx,
 		logger:                      logger,
 		bkt:                         bkt,
 		acceptMalformedIndex:        acceptMalformedIndex,
@@ -109,11 +124,19 @@ func NewShuffleShardingGrouper(
 		userID:                 userID,
 		blockFilesConcurrency:  blockFilesConcurrency,
 		blocksFetchConcurrency: blocksFetchConcurrency,
+		groupCallLimit:         groupCallLimit,
+		groupCallCount:         0,
 	}
 }
 
 // Groups function modified from https://github.com/cortexproject/cortex/pull/2616
 func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*compact.Group, err error) {
+	g.groupCallCount++
+	if g.groupCallCount > g.groupCallLimit {
+		level.Debug(g.logger).Log("msg", "exceed group call limit, return empty group", "groupCallLimit", g.groupCallLimit)
+		return []*compact.Group{}, nil
+	}
+
 	// First of all we have to group blocks using the Thanos default
 	// grouping (based on downsample resolution + external labels).
 	mainGroups := map[string][]*metadata.Meta{}
@@ -142,64 +165,10 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	var remainingCompactions = 0.
 	defer func() { g.remainingPlannedCompactions.Set(remainingCompactions) }()
 
+	var groups []blocksGroup
 	for _, mainBlocks := range mainGroups {
 		for _, group := range groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds()) {
-			// Nothing to do if we don't have at least 2 blocks.
-			if len(group.blocks) < 2 {
-				continue
-			}
-
-			groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
-
-			if owned, err := g.ownGroup(groupHash); err != nil {
-				level.Warn(g.logger).Log("msg", "unable to check if user is owned by this shard", "group hash", groupHash, "err", err, "group", group.String())
-				continue
-			} else if !owned {
-				level.Info(g.logger).Log("msg", "skipping group because it is not owned by this shard", "group_hash", groupHash)
-				continue
-			}
-
-			remainingCompactions++
-			groupKey := fmt.Sprintf("%v%s", groupHash, group.blocks[0].Thanos.GroupKey())
-
-			level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
-
-			// All the blocks within the same group have the same downsample
-			// resolution and external labels.
-			resolution := group.blocks[0].Thanos.Downsample.Resolution
-			externalLabels := labels.FromMap(group.blocks[0].Thanos.Labels)
-
-			thanosGroup, err := compact.NewGroup(
-				log.With(g.logger, "groupKey", groupKey, "rangeStart", group.rangeStartTime().String(), "rangeEnd", group.rangeEndTime().String(), "externalLabels", externalLabels, "downsampleResolution", resolution),
-				g.bkt,
-				groupKey,
-				externalLabels,
-				resolution,
-				false, // No malformed index.
-				true,  // Enable vertical compaction.
-				g.compactions.WithLabelValues(groupKey),
-				g.compactionRunsStarted.WithLabelValues(groupKey),
-				g.compactionRunsCompleted.WithLabelValues(groupKey),
-				g.compactionFailures.WithLabelValues(groupKey),
-				g.verticalCompactions.WithLabelValues(groupKey),
-				g.garbageCollectedBlocks,
-				g.blocksMarkedForDeletion,
-				g.blocksMarkedForNoCompact,
-				g.hashFunc,
-				g.blockFilesConcurrency,
-				g.blocksFetchConcurrency,
-			)
-			if err != nil {
-				return nil, errors.Wrap(err, "create compaction group")
-			}
-
-			for _, m := range group.blocks {
-				if err := thanosGroup.AppendMeta(m); err != nil {
-					return nil, errors.Wrap(err, "add block to compaction group")
-				}
-			}
-
-			outGroups = append(outGroups, thanosGroup)
+			groups = append(groups, group)
 		}
 	}
 
@@ -207,20 +176,101 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	// is that we wanna favor smaller ranges first (ie. to deduplicate samples sooner
 	// than later) and older ones are more likely to be "complete" (no missing block still
 	// to be uploaded).
-	sort.SliceStable(outGroups, func(i, j int) bool {
-		iLength := outGroups[i].MaxTime() - outGroups[i].MinTime()
-		jLength := outGroups[j].MaxTime() - outGroups[j].MinTime()
+	sort.SliceStable(groups, func(i, j int) bool {
+		iGroup := groups[i]
+		jGroup := groups[j]
+		iMinTime := iGroup.minTime()
+		iMaxTime := iGroup.maxTime()
+		jMinTime := jGroup.minTime()
+		jMaxTime := jGroup.maxTime()
+		iLength := iMaxTime - iMinTime
+		jLength := jMaxTime - jMinTime
 
 		if iLength != jLength {
 			return iLength < jLength
 		}
-		if outGroups[i].MinTime() != outGroups[j].MinTime() {
-			return outGroups[i].MinTime() < outGroups[j].MinTime()
+		if iMinTime != jMinTime {
+			return iMinTime < jMinTime
 		}
 
+		iGroupHash := hashGroup(g.userID, iGroup.rangeStart, iGroup.rangeEnd)
+		iGroupKey := createGroupKey(iGroupHash, iGroup)
+		jGroupHash := hashGroup(g.userID, jGroup.rangeStart, jGroup.rangeEnd)
+		jGroupKey := createGroupKey(jGroupHash, jGroup)
 		// Guarantee stable sort for tests.
-		return outGroups[i].Key() < outGroups[j].Key()
+		return iGroupKey < jGroupKey
 	})
+
+mainLoop:
+	for _, group := range groups {
+		var blockIds []string
+		for _, block := range group.blocks {
+			blockIds = append(blockIds, block.ULID.String())
+		}
+		blocksInfo := strings.Join(blockIds, ",")
+		level.Info(g.logger).Log("msg", "check group", "blocks", blocksInfo)
+
+		// Nothing to do if we don't have at least 2 blocks.
+		if len(group.blocks) < 2 {
+			continue
+		}
+
+		groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
+
+		if isLocked, err := g.isGroupLocked(group.blocks); err != nil {
+			level.Warn(g.logger).Log("msg", "unable to check if blocks in group are locked", "group hash", groupHash, "err", err, "group", group.String())
+			continue
+		} else if isLocked {
+			level.Info(g.logger).Log("msg", "skipping group because at least one block in group are locked", "group_hash", groupHash)
+			continue
+		}
+
+		remainingCompactions++
+		groupKey := createGroupKey(groupHash, group)
+
+		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
+		go g.groupLockHeartBeat(group.blocks)
+
+		// All the blocks within the same group have the same downsample
+		// resolution and external labels.
+		resolution := group.blocks[0].Thanos.Downsample.Resolution
+		externalLabels := labels.FromMap(group.blocks[0].Thanos.Labels)
+
+		thanosGroup, err := compact.NewGroup(
+			log.With(g.logger, "groupKey", groupKey, "rangeStart", group.rangeStartTime().String(), "rangeEnd", group.rangeEndTime().String(), "externalLabels", externalLabels, "downsampleResolution", resolution),
+			g.bkt,
+			groupKey,
+			externalLabels,
+			resolution,
+			false, // No malformed index.
+			true,  // Enable vertical compaction.
+			g.compactions.WithLabelValues(groupKey),
+			g.compactionRunsStarted.WithLabelValues(groupKey),
+			g.compactionRunsCompleted.WithLabelValues(groupKey),
+			g.compactionFailures.WithLabelValues(groupKey),
+			g.verticalCompactions.WithLabelValues(groupKey),
+			g.garbageCollectedBlocks,
+			g.blocksMarkedForDeletion,
+			g.blocksMarkedForNoCompact,
+			g.hashFunc,
+			g.blockFilesConcurrency,
+			g.blocksFetchConcurrency,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "create compaction group")
+		}
+
+		for _, m := range group.blocks {
+			if err := thanosGroup.AppendMeta(m); err != nil {
+				return nil, errors.Wrap(err, "add block to compaction group")
+			}
+		}
+
+		outGroups = append(outGroups, thanosGroup)
+		break mainLoop
+	}
+
+	level.Info(g.logger).Log("msg", fmt.Sprintf("total groups for compaction: %d", len(outGroups)))
 
 	return outGroups, nil
 }
@@ -239,6 +289,63 @@ func (g *ShuffleShardingGrouper) ownGroup(groupHash uint32) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == g.ringLifecyclerAddr, nil
+}
+
+func (g *ShuffleShardingGrouper) isGroupLocked(blocks []*metadata.Meta) (bool, error) {
+	for _, block := range blocks {
+		blockId := block.ULID.String()
+		lockFileReader, err := g.bkt.Get(g.ctx, path.Join(blockId, BlockLockFile))
+		if err != nil {
+			if g.bkt.IsObjNotFoundErr(err) {
+				level.Debug(g.logger).Log("msg", fmt.Sprintf("no lock file for block: %s", blockId))
+				continue
+			}
+			return true, err
+		}
+		b, err := ioutil.ReadAll(lockFileReader)
+		if err != nil {
+			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to reach lock file for block: %s", blockId), "err", err)
+			return true, err
+		}
+		heartBeatTime, err := time.Parse(DefaultTimeFormat, string(b))
+		if err != nil {
+			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to parse timestamp in lock file for block: %s", blockId), "err", err)
+			return true, err
+		}
+		if time.Now().Before(heartBeatTime.Add(HeartBeatTimeout)) {
+			level.Debug(g.logger).Log("msg", fmt.Sprintf("locked block: %s", blockId))
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (g *ShuffleShardingGrouper) groupLockHeartBeat(blocks []*metadata.Meta) {
+	var blockIds []string
+	for _, block := range blocks {
+		blockIds = append(blockIds, block.ULID.String())
+	}
+	blocksInfo := strings.Join(blockIds, ",")
+	level.Info(g.logger).Log("msg", fmt.Sprintf("start heart beat for blocks: %s", blocksInfo))
+heartBeat:
+	for {
+		select {
+		case <-g.ctx.Done():
+			break heartBeat
+		default:
+			level.Debug(g.logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
+			for _, block := range blocks {
+				blockId := block.ULID.String()
+				blockLockFilePath := path.Join(blockId, BlockLockFile)
+				err := g.bkt.Upload(g.ctx, blockLockFilePath, bytes.NewReader([]byte(time.Now().Format(DefaultTimeFormat))))
+				if err != nil {
+					level.Error(g.logger).Log("msg", "unable to update heart beat for block", "block_id", blockId, "err", err)
+				}
+			}
+			time.Sleep(HeartBeatTimeout / 5) // it allows up to 5 failures on heart heat for single block
+		}
+	}
+	level.Info(g.logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
 }
 
 // Check whether this compactor exists on the subring based on user ID
@@ -262,6 +369,10 @@ func hashGroup(userID string, rangeStart int64, rangeEnd int64) uint32 {
 	groupHash := groupHasher.Sum32()
 
 	return groupHash
+}
+
+func createGroupKey(groupHash uint32, group blocksGroup) string {
+	return fmt.Sprintf("%v%s", groupHash, group.blocks[0].Thanos.GroupKey())
 }
 
 // blocksGroup struct and functions copied and adjusted from https://github.com/cortexproject/cortex/pull/2616

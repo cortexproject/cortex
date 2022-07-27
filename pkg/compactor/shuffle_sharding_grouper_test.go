@@ -2,6 +2,9 @@ package compactor
 
 import (
 	"bytes"
+	"context"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"path"
 	"testing"
 	"time"
 
@@ -112,8 +115,12 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		}
 
 	tests := map[string]struct {
-		ranges   []time.Duration
-		blocks   map[ulid.ULID]*metadata.Meta
+		ranges       []time.Duration
+		blocks       map[ulid.ULID]*metadata.Meta
+		lockedBlocks []struct {
+			id        ulid.ULID
+			isExpired bool
+		}
 		expected [][]ulid.ULID
 		metrics  string
 	}{
@@ -122,12 +129,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
-				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
-				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 3
+        	          cortex_compactor_remaining_planned_compactions 1
 `,
 		},
 		"test no compaction": {
@@ -144,12 +149,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block4hto6hExt2Ulid: blocks[block4hto6hExt2Ulid], block6hto8hExt2Ulid: blocks[block6hto8hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
-				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
-				{block4hto6hExt2Ulid, block6hto8hExt2Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 3
+        	          cortex_compactor_remaining_planned_compactions 1
 `,
 		},
 		"test oldest min time first": {
@@ -157,11 +160,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt1UlidCopy: blocks[block1hto2hExt1UlidCopy]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt1UlidCopy},
-				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 2
+        	          cortex_compactor_remaining_planned_compactions 1
 `,
 		},
 		"test overlapping blocks": {
@@ -195,6 +197,59 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
         	          cortex_compactor_remaining_planned_compactions 0
 `,
 		},
+		"test group with all blocks locked": {
+			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
+			expected: [][]ulid.ULID{
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+			},
+			lockedBlocks: []struct {
+				id        ulid.ULID
+				isExpired bool
+			}{
+				{id: block1hto2hExt2Ulid, isExpired: false},
+				{id: block0hto1hExt2Ulid, isExpired: false},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
+		"test group with one block locked": {
+			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
+			expected: [][]ulid.ULID{
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+			},
+			lockedBlocks: []struct {
+				id        ulid.ULID
+				isExpired bool
+			}{
+				{id: block1hto2hExt2Ulid, isExpired: false},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
+		"test group block lock file expired": {
+			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
+			expected: [][]ulid.ULID{
+				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
+			},
+			lockedBlocks: []struct {
+				id        ulid.ULID
+				isExpired bool
+			}{
+				{id: block1hto2hExt2Ulid, isExpired: true},
+				{id: block0hto1hExt2Ulid, isExpired: true},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -226,8 +281,24 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				Help: "Total number of plans that remain to be compacted.",
 			})
 
-			g := NewShuffleShardingGrouper(nil,
+			bkt := &bucket.ClientMock{}
+			for _, lockedBlock := range testData.lockedBlocks {
+				lockFile := path.Join(lockedBlock.id.String(), BlockLockFile)
+				expireTime := time.Now()
+				if lockedBlock.isExpired {
+					expireTime = expireTime.Add(-1 * HeartBeatTimeout)
+				}
+				bkt.MockGet(lockFile, expireTime.Format(DefaultTimeFormat), nil)
+			}
+			bkt.MockUpload(mock.Anything, nil)
+			bkt.MockGet(mock.Anything, "", nil)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			g := NewShuffleShardingGrouper(
+				ctx,
 				nil,
+				bkt,
 				false, // Do not accept malformed indexes
 				true,  // Enable vertical compaction
 				registerer,
@@ -242,7 +313,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				overrides,
 				"",
 				10,
-				3)
+				3,
+				1)
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)
 			require.Len(t, actual, len(testData.expected))

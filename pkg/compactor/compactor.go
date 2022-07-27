@@ -70,6 +70,7 @@ var (
 
 	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string) compact.Grouper {
 		return NewShuffleShardingGrouper(
+			ctx,
 			logger,
 			bkt,
 			false, // Do not accept malformed indexes
@@ -86,7 +87,8 @@ var (
 			limits,
 			userID,
 			cfg.BlockFilesConcurrency,
-			cfg.BlocksFetchConcurrency)
+			cfg.BlocksFetchConcurrency,
+			1)
 	}
 
 	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
@@ -760,10 +762,12 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "failed to create syncer")
 	}
 
+	currentCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.ring, c.ringLifecycler, c.limits, userID),
+		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.ring, c.ringLifecycler, c.limits, userID),
 		c.blocksPlannerFactory(ulogger, c.compactorCfg, noCompactMarkerFilter),
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),

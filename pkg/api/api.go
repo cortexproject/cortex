@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -63,11 +64,17 @@ type Config struct {
 	// initialized, the custom config handler will be used instead of
 	// DefaultConfigHandler.
 	CustomConfigHandler ConfigHandler `yaml:"-"`
+
+	// These allow and are used to configure the addition of HTTP Header fields to logs
+	LogHeaders           bool                `yaml:"LogHeaders"`
+	TargetRequestHeaders flagext.StringSlice `yaml:"TargetRequestHeaders"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
+	f.BoolVar(&cfg.LogHeaders, "api.LogHeaders", false, "Enable logging of header specific context information")
+	f.Var(&cfg.TargetRequestHeaders, "api.TargetRequestHeaders", "Target Headers for Request logging (if enabled) - Separate multiple headers with commas")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -87,13 +94,13 @@ func (cfg *Config) wrapDistributorPush(d *distributor.Distributor) push.Func {
 }
 
 type API struct {
-	AuthMiddleware middleware.Interface
-
-	cfg       Config
-	server    *server.Server
-	logger    log.Logger
-	sourceIPs *middleware.SourceIPExtractor
-	indexPage *IndexPageContent
+	AuthMiddleware       middleware.Interface
+	cfg                  Config
+	server               *server.Server
+	logger               log.Logger
+	sourceIPs            *middleware.SourceIPExtractor
+	indexPage            *IndexPageContent
+	HTTPHeaderMiddleware *HTTPHeaderMiddleware
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -123,6 +130,9 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	if cfg.HTTPAuthMiddleware == nil {
 		api.AuthMiddleware = middleware.AuthenticateUser
 	}
+	if cfg.LogHeaders {
+		api.HTTPHeaderMiddleware = &HTTPHeaderMiddleware{TargetHeaders: cfg.TargetRequestHeaders}
+	}
 
 	return api, nil
 }
@@ -141,6 +151,9 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	if a.cfg.ResponseCompression {
 		handler = gziphandler.GzipHandler(handler)
 	}
+	if a.HTTPHeaderMiddleware != nil {
+		handler = a.HTTPHeaderMiddleware.Wrap(handler)
+	}
 
 	if len(methods) == 0 {
 		a.server.HTTP.Path(path).Handler(handler)
@@ -157,6 +170,9 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 	if a.cfg.ResponseCompression {
 		handler = gziphandler.GzipHandler(handler)
+	}
+	if a.HTTPHeaderMiddleware != nil {
+		handler = a.HTTPHeaderMiddleware.Wrap(handler)
 	}
 
 	if len(methods) == 0 {

@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"net/http"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
@@ -25,5 +27,39 @@ func getHTTPCacheGenNumberHeaderSetterMiddleware(cacheGenNumbersLoader *purger.T
 			w.Header().Set(queryrange.ResultsCacheGenNumberHeaderName, cacheGenNumber)
 			next.ServeHTTP(w, r)
 		})
+	})
+}
+
+// HTTPHeaderMiddleware adds specified HTTPHeaders to the request context
+type HTTPHeaderMiddleware struct {
+	TargetHeaders []string
+}
+
+// InjectTargetHeadersIntoHTTPRequest injects specified HTTPHeaders into the request context
+func (h HTTPHeaderMiddleware) InjectTargetHeadersIntoHTTPRequest(r *http.Request) context.Context {
+	headerMap := make(map[string]string)
+
+	// Check to make sure that Headers have not already been injected
+	testing, ok := r.Context().Value(util_log.HeaderMapContextKey).(map[string]string)
+	if ok && testing != nil {
+		return r.Context()
+	}
+
+	for _, target := range h.TargetHeaders {
+		contents := r.Header.Get(target)
+		if contents != "" {
+			headerMap[target] = contents
+		}
+	}
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, headerMap)
+	return ctx
+}
+
+// Wrap implements Middleware
+func (h HTTPHeaderMiddleware) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := h.InjectTargetHeadersIntoHTTPRequest(r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

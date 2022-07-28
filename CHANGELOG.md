@@ -45,6 +45,7 @@
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
 * [FEATURE] Ruler: Add support for external implementations of Queryable and Pusher #4782
+* [FEATURE] Ruler: Add support to pass custom implementations of queryable and pusher #4782
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 
 ## 1.13.0 2022-07-14

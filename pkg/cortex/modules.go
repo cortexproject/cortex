@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-kit/log"	
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
@@ -68,7 +68,7 @@ const (
 	DeleteRequestsStore      string = "delete-requests-store"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
-	RulerExternal			 string = "ruler-external"
+	RulerExternal            string = "ruler-external"
 	Configs                  string = "configs"
 	AlertManager             string = "alertmanager"
 	Compactor                string = "compactor"
@@ -495,7 +495,6 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	return
 }
 
-
 func createActiveQueryTracker(cfg querier.Config, logger log.Logger) promql.QueryTracker {
 	dir := cfg.ActiveQueryTrackerDir
 
@@ -511,19 +510,18 @@ func (t *Cortex) initRulerExternal() (serv services.Service, err error) {
 		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
-	cfg := t.Cfg.Querier
-	logger := util_log.Logger
+
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util_log.Logger,
 		Reg:                prometheus.DefaultRegisterer,
-		ActiveQueryTracker: createActiveQueryTracker(cfg, logger),
-		MaxSamples:         cfg.MaxSamples,
-		Timeout:            cfg.Timeout,
-		LookbackDelta:      cfg.LookbackDelta,
-		EnablePerStepStats: cfg.EnablePerStepStats,
-		EnableAtModifier:   cfg.AtModifierEnabled,
+		ActiveQueryTracker: createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
+		MaxSamples:         t.Cfg.Querier.MaxSamples,
+		Timeout:            t.Cfg.Querier.Timeout,
+		LookbackDelta:      t.Cfg.Querier.LookbackDelta,
+		EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
+		EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
 		NoStepSubqueryIntervalFn: func(int64) int64 {
-			return cfg.DefaultEvaluationInterval.Milliseconds()
+			return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 		},
 	})
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
@@ -541,7 +539,7 @@ func (t *Cortex) initRulerExternal() (serv services.Service, err error) {
 	)
 
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// Expose HTTP/GRPC endpoints for the Ruler service
@@ -760,7 +758,7 @@ func (t *Cortex) setupModuleManager() error {
 		QueryScheduler:           {API, Overrides},
 		Ruler:                    {DistributorService, Overrides, DeleteRequestsStore, StoreQueryable, RulerStorage},
 		RulerStorage:             {Overrides},
-		RulerExternal: 			  {Store, RulerStorage},
+		RulerExternal:            {Store, RulerStorage},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},

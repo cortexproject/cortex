@@ -89,8 +89,8 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
-	ExternalQueryable		prom_storage.Queryable		`yaml:"-"`
-	ExternalPusher 			ruler.Pusher				`yaml:"-"`
+	ExternalQueryable prom_storage.Queryable `yaml:"-"`
+	ExternalPusher    ruler.Pusher           `yaml:"-"`
 
 	API              api.Config                      `yaml:"api"`
 	Server           server.Config                   `yaml:"server"`
@@ -297,15 +297,15 @@ type Cortex struct {
 	QuerierEngine            *promql.Engine
 	QueryFrontendTripperware queryrange.Tripperware
 
-	Ruler        *ruler.Ruler
+	Ruler         *ruler.Ruler
 	RulerExternal *ruler.Ruler
-	RulerStorage rulestore.RuleStore
-	ConfigAPI    *configAPI.API
-	ConfigDB     db.DB
-	Alertmanager *alertmanager.MultitenantAlertmanager
-	Compactor    *compactor.Compactor
-	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInitService
+	RulerStorage  rulestore.RuleStore
+	ConfigAPI     *configAPI.API
+	ConfigDB      db.DB
+	Alertmanager  *alertmanager.MultitenantAlertmanager
+	Compactor     *compactor.Compactor
+	StoreGateway  *storegateway.StoreGateway
+	MemberlistKV  *memberlist.KVInitService
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

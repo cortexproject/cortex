@@ -1,10 +1,10 @@
 package cortex
 
 import (
+	"context"
 	"net/http/httptest"
 	"os"
 	"testing"
-	"context"
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"

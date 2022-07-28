@@ -63,7 +63,7 @@ func TestNewApiWithInvalidSourceIPExtractor(t *testing.T) {
 
 func TestNewApiWithHeaderLogging(t *testing.T) {
 	cfg := Config{
-		LogHeaders: true,
+		LogHTTPRequestHeaders: true,
 	}
 	serverCfg := server.Config{
 		HTTPListenNetwork: server.DefaultNetwork,
@@ -80,7 +80,7 @@ func TestNewApiWithHeaderLogging(t *testing.T) {
 
 func TestNewApiWithoutHeaderLogging(t *testing.T) {
 	cfg := Config{
-		LogHeaders: false,
+		LogHTTPRequestHeaders: false,
 	}
 	serverCfg := server.Config{
 		HTTPListenNetwork: server.DefaultNetwork,

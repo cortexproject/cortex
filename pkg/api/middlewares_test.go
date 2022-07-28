@@ -40,9 +40,12 @@ func TestHeaderInjection(t *testing.T) {
 	for _, header := range HTTPTestMiddleware.TargetHeaders {
 		require.Equal(t, contentsMap[header], headerMap[header])
 	}
+	for header, contents := range contentsMap {
+		require.Equal(t, contents, headerMap[header])
+	}
 }
 
-func TestHeaderAlreadyInContext(t *testing.T) {
+func TestExistingHeaderInContextIsNotOverridden(t *testing.T) {
 	ctx := context.Background()
 
 	h := http.Header{}

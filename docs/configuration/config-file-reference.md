@@ -83,12 +83,12 @@ api:
   [prometheus_http_prefix: <string> | default = "/prometheus"]
 
   # Enable logging of header specific context information
-  # CLI flag: -api.LogHeaders
-  [LogHeaders: <boolean> | default = false]
+  # CLI flag: -api.log-http-request-headers
+  [log_http_request_headers: <boolean> | default = false]
 
   # Target Headers for Request logging (if enabled)
-  # CLI flag: -api.TargetRequestHeaders
-  [TargetRequestHeaders: <list of string> | default = []]
+  # CLI flag: -api.http-request-headers-to-log
+  [http_request_headers_to_log: <list of string> | default = []]
 
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).

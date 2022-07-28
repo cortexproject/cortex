@@ -2475,6 +2475,45 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
 }
 
+func TestIngester_sholdUpdateCacheShippedBlocks(t *testing.T) {
+	ctx := context.Background()
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, i))
+	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	mockUserShipper(t, i)
+
+	// Mock the shipper meta (no blocks).
+	db := i.getTSDB(userID)
+	err = db.updateCachedShippedBlocks()
+	require.NoError(t, err)
+
+	require.Equal(t, len(db.getCachedShippedBlocks()), 0)
+	shippedBlock, _ := ulid.Parse("01D78XZ44G0000000000000000")
+
+	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.db.Dir(), &shipper.Meta{
+		Version:  shipper.MetaVersion1,
+		Uploaded: []ulid.ULID{shippedBlock},
+	}))
+
+	err = db.updateCachedShippedBlocks()
+	require.NoError(t, err)
+
+	require.Equal(t, len(db.getCachedShippedBlocks()), 1)
+}
+
 func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInProgress(t *testing.T) {
 	ctx := context.Background()
 	cfg := defaultIngesterTestConfig(t)

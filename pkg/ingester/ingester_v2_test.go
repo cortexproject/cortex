@@ -2553,7 +2553,6 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 		defer db.stateMtx.RUnlock()
 		return db.state
 	})
-
 	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
 }
 

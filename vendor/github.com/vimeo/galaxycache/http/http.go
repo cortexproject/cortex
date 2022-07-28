@@ -186,12 +186,12 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
-	b, expTm, err := value.MarshalBinary()
+	b, _, err := value.MarshalBinary()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set(ttlHeader, fmt.Sprintf("%d", expTm.UnixMilli()))
+	//w.Header().Set(ttlHeader, fmt.Sprintf("%d", expTm.UnixMilli()))
 	w.Write(b)
 }
 
@@ -233,7 +233,7 @@ func (h *httpFetcher) Fetch(ctx context.Context, galaxy string, key string) ([]b
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("parsing TTL header %s: %w", ttlHeader, err)
 	}
-	return data, time.UnixMilli(expire), nil
+	return data, time.Unix(expire, 0), nil
 }
 
 // Close here implements the RemoteFetcher interface for closing (does nothing for HTTP)

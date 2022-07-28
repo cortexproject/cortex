@@ -6,6 +6,7 @@
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
 * [ENHANCEMENT] Compactor: Introduced lock file for blocks so blocks are under compaction will not be picked up by another compactor. #4805
+* [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 
 ## 1.13.0 2022-07-14
 

@@ -3,7 +3,6 @@ package compactor
 import (
 	"bytes"
 	"context"
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"path"
 	"testing"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 

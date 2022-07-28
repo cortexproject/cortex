@@ -4,11 +4,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"context"
 
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	prom_storage "github.com/prometheus/prometheus/storage"
 )
 
 func changeTargetConfig(c *Config) {
@@ -152,4 +156,43 @@ func TestCortex_InitRulerStorage(t *testing.T) {
 			}
 		})
 	}
+}
+
+type myPusher struct{}
+
+func (p *myPusher) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+	return nil, nil
+}
+
+type myQueryable struct{}
+
+func (q *myQueryable) Querier(ctx context.Context, mint, maxt int64) (prom_storage.Querier, error) {
+	return prom_storage.NoopQuerier(), nil
+}
+
+func Test_InitRulerExternal(t *testing.T) {
+
+	cfg := func() *Config {
+		cfg := newDefaultConfig()
+		cfg.Target = []string{"all"}
+		cfg.Ruler.StoreConfig.Type = "local"
+		cfg.Ruler.StoreConfig.Local.Directory = os.TempDir()
+		cfg.ExternalPusher = &myPusher{}
+		cfg.ExternalQueryable = &myQueryable{}
+		return cfg
+	}()
+
+	cortex := &Cortex{
+		Cfg:    *cfg,
+		Server: &server.Server{},
+	}
+
+	cortex.initServer()
+	require.NotNil(t, cortex.Server)
+	cortex.initAPI()
+	require.NotNil(t, cortex.API)
+	cortex.initRulerStorage()
+	require.NotNil(t, cortex.RulerStorage)
+	cortex.initRulerExternal()
+	require.NotNil(t, cortex.RulerExternal)
 }

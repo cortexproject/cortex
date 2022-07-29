@@ -54,9 +54,6 @@ type ShuffleShardingGrouper struct {
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
-
-	groupCallLimit int
-	groupCallCount int
 }
 
 func NewShuffleShardingGrouper(
@@ -78,7 +75,6 @@ func NewShuffleShardingGrouper(
 	userID string,
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
-	groupCallLimit int,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -124,19 +120,11 @@ func NewShuffleShardingGrouper(
 		userID:                 userID,
 		blockFilesConcurrency:  blockFilesConcurrency,
 		blocksFetchConcurrency: blocksFetchConcurrency,
-		groupCallLimit:         groupCallLimit,
-		groupCallCount:         0,
 	}
 }
 
 // Groups function modified from https://github.com/cortexproject/cortex/pull/2616
 func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*compact.Group, err error) {
-	g.groupCallCount++
-	if g.groupCallCount > g.groupCallLimit {
-		level.Debug(g.logger).Log("msg", "exceed group call limit, return empty group", "groupCallLimit", g.groupCallLimit)
-		return []*compact.Group{}, nil
-	}
-
 	// First of all we have to group blocks using the Thanos default
 	// grouping (based on downsample resolution + external labels).
 	mainGroups := map[string][]*metadata.Meta{}
@@ -167,9 +155,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 
 	var groups []blocksGroup
 	for _, mainBlocks := range mainGroups {
-		for _, group := range groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds()) {
-			groups = append(groups, group)
-		}
+		groups = append(groups, groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds())...)
 	}
 
 	// Ensure groups are sorted by smallest range, oldest min time first. The rationale
@@ -275,45 +261,29 @@ mainLoop:
 	return outGroups, nil
 }
 
-// Check whether this compactor instance owns the group.
-func (g *ShuffleShardingGrouper) ownGroup(groupHash uint32) (bool, error) {
-	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
-
-	rs, err := subRing.Get(groupHash, RingOp, nil, nil, nil)
-	if err != nil {
-		return false, err
-	}
-
-	if len(rs.Instances) != 1 {
-		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Instances))
-	}
-
-	return rs.Instances[0].Addr == g.ringLifecyclerAddr, nil
-}
-
 func (g *ShuffleShardingGrouper) isGroupLocked(blocks []*metadata.Meta) (bool, error) {
 	for _, block := range blocks {
-		blockId := block.ULID.String()
-		lockFileReader, err := g.bkt.Get(g.ctx, path.Join(blockId, BlockLockFile))
+		blockID := block.ULID.String()
+		lockFileReader, err := g.bkt.Get(g.ctx, path.Join(blockID, BlockLockFile))
 		if err != nil {
 			if g.bkt.IsObjNotFoundErr(err) {
-				level.Debug(g.logger).Log("msg", fmt.Sprintf("no lock file for block: %s", blockId))
+				level.Debug(g.logger).Log("msg", fmt.Sprintf("no lock file for block: %s", blockID))
 				continue
 			}
 			return true, err
 		}
 		b, err := ioutil.ReadAll(lockFileReader)
 		if err != nil {
-			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to reach lock file for block: %s", blockId), "err", err)
+			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to reach lock file for block: %s", blockID), "err", err)
 			return true, err
 		}
 		heartBeatTime, err := time.Parse(DefaultTimeFormat, string(b))
 		if err != nil {
-			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to parse timestamp in lock file for block: %s", blockId), "err", err)
+			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to parse timestamp in lock file for block: %s", blockID), "err", err)
 			return true, err
 		}
 		if time.Now().Before(heartBeatTime.Add(HeartBeatTimeout)) {
-			level.Debug(g.logger).Log("msg", fmt.Sprintf("locked block: %s", blockId))
+			level.Debug(g.logger).Log("msg", fmt.Sprintf("locked block: %s", blockID))
 			return true, nil
 		}
 	}
@@ -335,11 +305,11 @@ heartBeat:
 		default:
 			level.Debug(g.logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
 			for _, block := range blocks {
-				blockId := block.ULID.String()
-				blockLockFilePath := path.Join(blockId, BlockLockFile)
+				blockID := block.ULID.String()
+				blockLockFilePath := path.Join(blockID, BlockLockFile)
 				err := g.bkt.Upload(g.ctx, blockLockFilePath, bytes.NewReader([]byte(time.Now().Format(DefaultTimeFormat))))
 				if err != nil {
-					level.Error(g.logger).Log("msg", "unable to update heart beat for block", "block_id", blockId, "err", err)
+					level.Error(g.logger).Log("msg", "unable to update heart beat for block", "block_id", blockID, "err", err)
 				}
 			}
 			time.Sleep(HeartBeatTimeout / 5) // it allows up to 5 failures on heart heat for single block

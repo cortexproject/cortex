@@ -87,8 +87,7 @@ var (
 			limits,
 			userID,
 			cfg.BlockFilesConcurrency,
-			cfg.BlocksFetchConcurrency,
-			1)
+			cfg.BlocksFetchConcurrency)
 	}
 
 	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {

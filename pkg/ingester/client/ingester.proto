@@ -143,9 +143,6 @@ message Chunk {
   bytes data = 4;
 }
 
-message TransferChunksResponse {
-}
-
 message LabelMatchers {
   repeated LabelMatcher matchers = 1;
 }

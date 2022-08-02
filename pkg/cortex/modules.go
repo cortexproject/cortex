@@ -511,6 +511,11 @@ func (t *Cortex) initRulerExternal() (serv services.Service, err error) {
 		return nil, nil
 	}
 
+	if t.Cfg.ExternalPusher == nil || t.Cfg.ExternalQueryable == nil {
+		level.Info(util_log.Logger).Log("msg", "ExternalQueryable or ExternalPusher is nil.  Not starting the ruler.")
+		return nil, nil
+	}
+
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:             util_log.Logger,
 		Reg:                prometheus.DefaultRegisterer,
@@ -524,11 +529,13 @@ func (t *Cortex) initRulerExternal() (serv services.Service, err error) {
 			return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 		},
 	})
+
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
 	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
+	
 	t.RulerExternal, err = ruler.NewRuler(
 		t.Cfg.Ruler,
 		manager,

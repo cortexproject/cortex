@@ -2,24 +2,42 @@ package compactor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"path"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
 type ShuffleShardingPlanner struct {
+	ctx              context.Context
+	bkt              objstore.Bucket
 	logger           log.Logger
 	ranges           []int64
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark
+	ringLifecyclerID string
 }
 
-func NewShuffleShardingPlanner(logger log.Logger, ranges []int64, noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark) *ShuffleShardingPlanner {
+func NewShuffleShardingPlanner(
+	ctx context.Context,
+	bkt objstore.Bucket,
+	logger log.Logger,
+	ranges []int64,
+	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
+	ringLifecyclerID string,
+) *ShuffleShardingPlanner {
 	return &ShuffleShardingPlanner{
+		ctx:              ctx,
+		bkt:              bkt,
 		logger:           logger,
 		ranges:           ranges,
 		noCompBlocksFunc: noCompBlocksFunc,
+		ringLifecyclerID: ringLifecyclerID,
 	}
 }
 
@@ -35,12 +53,34 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 	resultMetas := make([]*metadata.Meta, 0, len(metasByMinTime))
 
 	for _, b := range metasByMinTime {
+		blockID := b.ULID.String()
 		if _, excluded := noCompactMarked[b.ULID]; excluded {
 			continue
 		}
 
 		if b.MinTime < rangeStart || b.MaxTime > rangeEnd {
-			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", b.ULID.String(), b.MinTime, b.MaxTime, rangeStart, rangeEnd)
+			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
+		}
+
+		lockFileReader, err := p.bkt.Get(p.ctx, path.Join(blockID, BlockLockFile))
+		if err != nil {
+			if p.bkt.IsObjNotFoundErr(err) {
+				resultMetas = append(resultMetas, b)
+				continue
+			}
+			return nil, fmt.Errorf("unable to get lock file for block %s: %s", blockID, err.Error())
+		}
+		bytes, err := ioutil.ReadAll(lockFileReader)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read lock file for block %s: %s", blockID, err.Error())
+		}
+		blockLocker := BlockLocker{}
+		err = json.Unmarshal(bytes, &blockLocker)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse lock file for block %s: %s", blockID, err.Error())
+		}
+		if time.Now().Before(blockLocker.LockTime.Add(HeartBeatTimeout)) && blockLocker.CompactorID != p.ringLifecyclerID {
+			return nil, fmt.Errorf("block %s is locked for compactor %s. but current compactor is %s", blockID, blockLocker.CompactorID, p.ringLifecyclerID)
 		}
 
 		resultMetas = append(resultMetas, b)

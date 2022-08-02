@@ -1207,11 +1207,16 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		blockDirectory := []string{}
 
 		for blockID, blockTimes := range blocks {
+			blockLocker := BlockLocker{
+				CompactorID: "test-compactor",
+				LockTime:    time.Now(),
+			}
+			lockFileContent, _ := json.Marshal(blockLocker)
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/no-compact-mark.json", "", nil)
 			bucketClient.MockGetTimes(userID+"/"+blockID+"/block.lock", "", nil, 1)
-			bucketClient.MockGet(userID+"/"+blockID+"/block.lock", time.Now().Format(DefaultTimeFormat), nil)
+			bucketClient.MockGet(userID+"/"+blockID+"/block.lock", string(lockFileContent), nil)
 			bucketClient.MockUpload(userID+"/"+blockID+"/block.lock", nil)
 			blockDirectory = append(blockDirectory, userID+"/"+blockID)
 
@@ -1534,7 +1539,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 
 	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
 		return tsdbCompactor,
-			func(_ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Planner {
+			func(ctx context.Context, bkt objstore.Bucket, _ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler) compact.Planner {
 				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
 				return tsdbPlanner
 			},

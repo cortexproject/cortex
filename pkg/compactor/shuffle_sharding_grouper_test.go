@@ -3,6 +3,7 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"path"
 	"testing"
 	"time"
@@ -288,7 +289,12 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				if lockedBlock.isExpired {
 					expireTime = expireTime.Add(-1 * HeartBeatTimeout)
 				}
-				bkt.MockGet(lockFile, expireTime.Format(DefaultTimeFormat), nil)
+				blockLocker := BlockLocker{
+					CompactorID: "test-compactor",
+					LockTime:    expireTime,
+				}
+				lockFileContent, _ := json.Marshal(blockLocker)
+				bkt.MockGet(lockFile, string(lockFileContent), nil)
 			}
 			bkt.MockUpload(mock.Anything, nil)
 			bkt.MockGet(mock.Anything, "", nil)
@@ -310,6 +316,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				*compactorCfg,
 				ring,
 				"test-addr",
+				"test-compactor",
 				overrides,
 				"",
 				10,

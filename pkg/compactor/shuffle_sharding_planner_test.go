@@ -2,18 +2,32 @@ package compactor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"path"
 	"testing"
 	"time"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 func TestShuffleShardingPlanner_Plan(t *testing.T) {
+	type LockedBlock struct {
+		id          ulid.ULID
+		isExpired   bool
+		compactorID string
+	}
+
+	currentCompactor := "test-compactor"
+	otherCompactor := "other-compactor"
+
 	block1ulid := ulid.MustNew(1, nil)
 	block2ulid := ulid.MustNew(2, nil)
 	block3ulid := ulid.MustNew(3, nil)
@@ -24,6 +38,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 		blocks          []*metadata.Meta
 		expected        []*metadata.Meta
 		expectedErr     error
+		lockedBlocks    []LockedBlock
 	}{
 		"test basic plan": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -184,15 +199,104 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 			},
 			expected: []*metadata.Meta{},
 		},
+		"test should not compact if lock file is not expired and locked by other compactor": {
+			ranges: []int64{2 * time.Hour.Milliseconds()},
+			blocks: []*metadata.Meta{
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block1ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block2ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+			},
+			lockedBlocks: []LockedBlock{
+				{
+					id:          block1ulid,
+					isExpired:   false,
+					compactorID: otherCompactor,
+				},
+			},
+			expectedErr: fmt.Errorf("block %s is locked for compactor %s. but current compactor is %s", block1ulid.String(), otherCompactor, currentCompactor),
+		},
+		"test should compact if lock file is expired and was locked by other compactor": {
+			ranges: []int64{2 * time.Hour.Milliseconds()},
+			blocks: []*metadata.Meta{
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block1ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block2ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+			},
+			expected: []*metadata.Meta{
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block1ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block2ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+			},
+			lockedBlocks: []LockedBlock{
+				{
+					id:          block1ulid,
+					isExpired:   true,
+					compactorID: otherCompactor,
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			p := NewShuffleShardingPlanner(nil,
+			bkt := &bucket.ClientMock{}
+			for _, lockedBlock := range testData.lockedBlocks {
+				lockFile := path.Join(lockedBlock.id.String(), BlockLockFile)
+				expireTime := time.Now()
+				if lockedBlock.isExpired {
+					expireTime = expireTime.Add(-1 * HeartBeatTimeout)
+				}
+				blockLocker := BlockLocker{
+					CompactorID: lockedBlock.compactorID,
+					LockTime:    expireTime,
+				}
+				lockFileContent, _ := json.Marshal(blockLocker)
+				bkt.MockGet(lockFile, string(lockFileContent), nil)
+			}
+			bkt.MockGet(mock.Anything, "", nil)
+
+			p := NewShuffleShardingPlanner(
+				context.Background(),
+				bkt,
+				nil,
 				testData.ranges,
 				func() map[ulid.ULID]*metadata.NoCompactMark {
 					return testData.noCompactBlocks
 				},
+				currentCompactor,
 			)
 			actual, err := p.Plan(context.Background(), testData.blocks)
 

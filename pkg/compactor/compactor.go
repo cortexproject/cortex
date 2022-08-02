@@ -84,6 +84,7 @@ var (
 			cfg,
 			ring,
 			ringLifecycle.Addr,
+			ringLifecycle.ID,
 			limits,
 			userID,
 			cfg.BlockFilesConcurrency,
@@ -96,7 +97,7 @@ var (
 			return nil, nil, err
 		}
 
-		plannerFactory := func(logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Planner {
+		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler) compact.Planner {
 			return compact.NewPlanner(logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter)
 		}
 
@@ -109,9 +110,9 @@ var (
 			return nil, nil, err
 		}
 
-		plannerFactory := func(logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Planner {
+		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler) compact.Planner {
 
-			return NewShuffleShardingPlanner(logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks)
+			return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID)
 		}
 		return compactor, plannerFactory, nil
 	}
@@ -143,9 +144,12 @@ type BlocksCompactorFactory func(
 ) (compact.Compactor, PlannerFactory, error)
 
 type PlannerFactory func(
+	ctx context.Context,
+	bkt objstore.Bucket,
 	logger log.Logger,
 	cfg Config,
 	noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter,
+	ringLifecycle *ring.Lifecycler,
 ) compact.Planner
 
 // Limits defines limits used by the Compactor.
@@ -767,7 +771,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ulogger,
 		syncer,
 		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.ring, c.ringLifecycler, c.limits, userID),
-		c.blocksPlannerFactory(ulogger, c.compactorCfg, noCompactMarkerFilter),
+		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler),
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,

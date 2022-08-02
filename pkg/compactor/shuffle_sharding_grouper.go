@@ -3,6 +3,7 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -54,6 +55,7 @@ type ShuffleShardingGrouper struct {
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
+	ringLifecyclerID   string
 }
 
 func NewShuffleShardingGrouper(
@@ -71,6 +73,7 @@ func NewShuffleShardingGrouper(
 	compactorCfg Config,
 	ring ring.ReadRing,
 	ringLifecyclerAddr string,
+	ringLifecyclerID string,
 	limits Limits,
 	userID string,
 	blockFilesConcurrency int,
@@ -116,6 +119,7 @@ func NewShuffleShardingGrouper(
 		compactorCfg:           compactorCfg,
 		ring:                   ring,
 		ringLifecyclerAddr:     ringLifecyclerAddr,
+		ringLifecyclerID:       ringLifecyclerID,
 		limits:                 limits,
 		userID:                 userID,
 		blockFilesConcurrency:  blockFilesConcurrency,
@@ -215,6 +219,7 @@ mainLoop:
 		groupKey := createGroupKey(groupHash, group)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
+		g.lockBlocks(group.blocks)
 		go g.groupLockHeartBeat(group.blocks)
 
 		// All the blocks within the same group have the same downsample
@@ -274,15 +279,16 @@ func (g *ShuffleShardingGrouper) isGroupLocked(blocks []*metadata.Meta) (bool, e
 		}
 		b, err := ioutil.ReadAll(lockFileReader)
 		if err != nil {
-			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to reach lock file for block: %s", blockID), "err", err)
+			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to read lock file for block: %s", blockID), "err", err)
 			return true, err
 		}
-		heartBeatTime, err := time.Parse(DefaultTimeFormat, string(b))
+		blockLocker := BlockLocker{}
+		err = json.Unmarshal(b, &blockLocker)
 		if err != nil {
-			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to parse timestamp in lock file for block: %s", blockID), "err", err)
+			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to parse lock file for block: %s", blockID), "err", err)
 			return true, err
 		}
-		if time.Now().Before(heartBeatTime.Add(HeartBeatTimeout)) {
+		if time.Now().Before(blockLocker.LockTime.Add(HeartBeatTimeout)) {
 			level.Debug(g.logger).Log("msg", fmt.Sprintf("locked block: %s", blockID))
 			return true, nil
 		}
@@ -304,18 +310,30 @@ heartBeat:
 			break heartBeat
 		default:
 			level.Debug(g.logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
-			for _, block := range blocks {
-				blockID := block.ULID.String()
-				blockLockFilePath := path.Join(blockID, BlockLockFile)
-				err := g.bkt.Upload(g.ctx, blockLockFilePath, bytes.NewReader([]byte(time.Now().Format(DefaultTimeFormat))))
-				if err != nil {
-					level.Error(g.logger).Log("msg", "unable to update heart beat for block", "block_id", blockID, "err", err)
-				}
-			}
+			g.lockBlocks(blocks)
 			time.Sleep(HeartBeatTimeout / 5) // it allows up to 5 failures on heart heat for single block
 		}
 	}
 	level.Info(g.logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
+}
+
+func (g *ShuffleShardingGrouper) lockBlocks(blocks []*metadata.Meta) {
+	for _, block := range blocks {
+		blockID := block.ULID.String()
+		blockLockFilePath := path.Join(blockID, BlockLockFile)
+		blockLocker := BlockLocker{
+			CompactorID: g.ringLifecyclerID,
+			LockTime:    time.Now(),
+		}
+		lockFileContent, err := json.Marshal(blockLocker)
+		if err != nil {
+			level.Error(g.logger).Log("msg", "unable to create lock file content for block", "block_id", blockID, "err", err)
+		}
+		err = g.bkt.Upload(g.ctx, blockLockFilePath, bytes.NewReader(lockFileContent))
+		if err != nil {
+			level.Error(g.logger).Log("msg", "unable to update heart beat for block", "block_id", blockID, "err", err)
+		}
+	}
 }
 
 // Check whether this compactor exists on the subring based on user ID
@@ -544,4 +562,9 @@ func sortMetasByMinTime(metas []*metadata.Meta) {
 	sort.Slice(metas, func(i, j int) bool {
 		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
 	})
+}
+
+type BlockLocker struct {
+	CompactorID string    `json:"compactorID"`
+	LockTime    time.Time `json:"lockTime"`
 }

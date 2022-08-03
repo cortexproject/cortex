@@ -768,6 +768,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
+		distributor.GetReplicaDescCodec(),
 	}
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
 		"cortex_",
@@ -782,6 +783,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 
 	// Update the config.
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Distributor.HATrackerConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV

@@ -704,45 +704,6 @@ lifecycler:
   # CLI flag: -ingester.readiness-check-ring-health
   [readiness_check_ring_health: <boolean> | default = true]
 
-# Period with which to attempt to flush chunks.
-# CLI flag: -ingester.flush-period
-[flush_period: <duration> | default = 1m]
-
-# Period chunks will remain in memory after flushing.
-# CLI flag: -ingester.retain-period
-[retain_period: <duration> | default = 5m]
-
-# Maximum chunk idle time before flushing.
-# CLI flag: -ingester.max-chunk-idle
-[max_chunk_idle_time: <duration> | default = 5m]
-
-# Maximum chunk idle time for chunks terminating in stale markers before
-# flushing. 0 disables it and a stale series is not flushed until the
-# max-chunk-idle timeout is reached.
-# CLI flag: -ingester.max-stale-chunk-idle
-[max_stale_chunk_idle_time: <duration> | default = 2m]
-
-# Timeout for individual flush operations.
-# CLI flag: -ingester.flush-op-timeout
-[flush_op_timeout: <duration> | default = 1m]
-
-# Maximum chunk age before flushing.
-# CLI flag: -ingester.max-chunk-age
-[max_chunk_age: <duration> | default = 12h]
-
-# Range of time to subtract from -ingester.max-chunk-age to spread out flushes
-# CLI flag: -ingester.chunk-age-jitter
-[chunk_age_jitter: <duration> | default = 0s]
-
-# Number of concurrent goroutines flushing to dynamodb.
-# CLI flag: -ingester.concurrent-flushes
-[concurrent_flushes: <int> | default = 50]
-
-# If true, spread series flushes across the whole period of
-# -ingester.max-chunk-age.
-# CLI flag: -ingester.spread-flushes
-[spread_flushes: <boolean> | default = true]
-
 # Period at which metadata we have not seen will remain in memory before being
 # deleted.
 # CLI flag: -ingester.metadata-retain-period

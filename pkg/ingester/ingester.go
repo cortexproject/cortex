@@ -49,17 +49,6 @@ var (
 type Config struct {
 	LifecyclerConfig ring.LifecyclerConfig `yaml:"lifecycler"`
 
-	// Config for chunk flushing.
-	FlushCheckPeriod  time.Duration `yaml:"flush_period"`
-	RetainPeriod      time.Duration `yaml:"retain_period"`
-	MaxChunkIdle      time.Duration `yaml:"max_chunk_idle_time"`
-	MaxStaleChunkIdle time.Duration `yaml:"max_stale_chunk_idle_time"`
-	FlushOpTimeout    time.Duration `yaml:"flush_op_timeout"`
-	MaxChunkAge       time.Duration `yaml:"max_chunk_age"`
-	ChunkAgeJitter    time.Duration `yaml:"chunk_age_jitter"`
-	ConcurrentFlushes int           `yaml:"concurrent_flushes"`
-	SpreadFlushes     bool          `yaml:"spread_flushes"`
-
 	// Config for metadata purging.
 	MetadataRetainPeriod time.Duration `yaml:"metadata_retain_period"`
 
@@ -93,16 +82,6 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f)
-
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-period", 1*time.Minute, "Period with which to attempt to flush chunks.")
-	f.DurationVar(&cfg.RetainPeriod, "ingester.retain-period", 5*time.Minute, "Period chunks will remain in memory after flushing.")
-	f.DurationVar(&cfg.MaxChunkIdle, "ingester.max-chunk-idle", 5*time.Minute, "Maximum chunk idle time before flushing.")
-	f.DurationVar(&cfg.MaxStaleChunkIdle, "ingester.max-stale-chunk-idle", 2*time.Minute, "Maximum chunk idle time for chunks terminating in stale markers before flushing. 0 disables it and a stale series is not flushed until the max-chunk-idle timeout is reached.")
-	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 1*time.Minute, "Timeout for individual flush operations.")
-	f.DurationVar(&cfg.MaxChunkAge, "ingester.max-chunk-age", 12*time.Hour, "Maximum chunk age before flushing.")
-	f.DurationVar(&cfg.ChunkAgeJitter, "ingester.chunk-age-jitter", 0, "Range of time to subtract from -ingester.max-chunk-age to spread out flushes")
-	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 50, "Number of concurrent goroutines flushing to dynamodb.")
-	f.BoolVar(&cfg.SpreadFlushes, "ingester.spread-flushes", true, "If true, spread series flushes across the whole period of -ingester.max-chunk-age.")
 
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 

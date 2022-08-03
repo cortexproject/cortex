@@ -6,6 +6,7 @@
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
+* [BUGFIX] Distributor: Fix HA Tracker kvstore memberlist panic. #4811
 
 
 

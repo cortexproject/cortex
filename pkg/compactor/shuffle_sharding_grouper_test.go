@@ -281,13 +281,22 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				Name: "cortex_compactor_remaining_planned_compactions",
 				Help: "Total number of plans that remain to be compacted.",
 			})
+			blockLockReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_lock_read_failed",
+				Help: "Number of block lock file failed to be read.",
+			})
+			blockLockWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_lock_write_failed",
+				Help: "Number of block lock file failed to be written.",
+			})
 
 			bkt := &bucket.ClientMock{}
+			blockLockTimeout := 5 * time.Minute
 			for _, lockedBlock := range testData.lockedBlocks {
 				lockFile := path.Join(lockedBlock.id.String(), BlockLockFile)
 				expireTime := time.Now()
 				if lockedBlock.isExpired {
-					expireTime = expireTime.Add(-1 * HeartBeatTimeout)
+					expireTime = expireTime.Add(-1 * blockLockTimeout)
 				}
 				blockLocker := BlockLocker{
 					CompactorID: "test-compactor",
@@ -320,7 +329,12 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				overrides,
 				"",
 				10,
-				3)
+				3,
+				blockLockTimeout,
+				time.Minute,
+				blockLockReadFailed,
+				blockLockWriteFailed,
+			)
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)
 			require.Len(t, actual, len(testData.expected))

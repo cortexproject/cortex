@@ -1,13 +1,9 @@
 package compactor
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"io/ioutil"
-	"path"
 	"sort"
 	"strings"
 	"time"
@@ -25,10 +21,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 )
-
-const BlockLockFile = "block.lock"
-const DefaultTimeFormat = time.RFC3339
-const HeartBeatTimeout = 5 * time.Minute
 
 type ShuffleShardingGrouper struct {
 	ctx                         context.Context
@@ -56,6 +48,11 @@ type ShuffleShardingGrouper struct {
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
 	ringLifecyclerID   string
+
+	blockLockTimeout            time.Duration
+	blockLockFileUpdateInterval time.Duration
+	blockLockReadFailed         prometheus.Counter
+	blockLockWriteFailed        prometheus.Counter
 }
 
 func NewShuffleShardingGrouper(
@@ -78,6 +75,10 @@ func NewShuffleShardingGrouper(
 	userID string,
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
+	blockLockTimeout time.Duration,
+	blockLockFileUpdateInterval time.Duration,
+	blockLockReadFailed prometheus.Counter,
+	blockLockWriteFailed prometheus.Counter,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -116,14 +117,18 @@ func NewShuffleShardingGrouper(
 			Name: "thanos_compact_group_vertical_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 		}, []string{"group"}),
-		compactorCfg:           compactorCfg,
-		ring:                   ring,
-		ringLifecyclerAddr:     ringLifecyclerAddr,
-		ringLifecyclerID:       ringLifecyclerID,
-		limits:                 limits,
-		userID:                 userID,
-		blockFilesConcurrency:  blockFilesConcurrency,
-		blocksFetchConcurrency: blocksFetchConcurrency,
+		compactorCfg:                compactorCfg,
+		ring:                        ring,
+		ringLifecyclerAddr:          ringLifecyclerAddr,
+		ringLifecyclerID:            ringLifecyclerID,
+		limits:                      limits,
+		userID:                      userID,
+		blockFilesConcurrency:       blockFilesConcurrency,
+		blocksFetchConcurrency:      blocksFetchConcurrency,
+		blockLockTimeout:            blockLockTimeout,
+		blockLockFileUpdateInterval: blockLockFileUpdateInterval,
+		blockLockReadFailed:         blockLockReadFailed,
+		blockLockWriteFailed:        blockLockWriteFailed,
 	}
 }
 
@@ -269,26 +274,16 @@ mainLoop:
 func (g *ShuffleShardingGrouper) isGroupLocked(blocks []*metadata.Meta) (bool, error) {
 	for _, block := range blocks {
 		blockID := block.ULID.String()
-		lockFileReader, err := g.bkt.Get(g.ctx, path.Join(blockID, BlockLockFile))
+		blockLocker, err := ReadBlockLocker(g.ctx, g.bkt, blockID, g.blockLockReadFailed)
 		if err != nil {
-			if g.bkt.IsObjNotFoundErr(err) {
-				level.Debug(g.logger).Log("msg", fmt.Sprintf("no lock file for block: %s", blockID))
+			if errors.Is(err, ErrorBlockLockNotFound) {
+				level.Debug(g.logger).Log("msg", "no lock file for block", "blockID", blockID)
 				continue
 			}
+			level.Error(g.logger).Log("msg", "unable to read block lock file", "blockID", blockID, "err", err)
 			return true, err
 		}
-		b, err := ioutil.ReadAll(lockFileReader)
-		if err != nil {
-			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to read lock file for block: %s", blockID), "err", err)
-			return true, err
-		}
-		blockLocker := BlockLocker{}
-		err = json.Unmarshal(b, &blockLocker)
-		if err != nil {
-			level.Error(g.logger).Log("msg", fmt.Sprintf("unable to parse lock file for block: %s", blockID), "err", err)
-			return true, err
-		}
-		if time.Now().Before(blockLocker.LockTime.Add(HeartBeatTimeout)) {
+		if blockLocker.isLocked(g.blockLockTimeout) {
 			level.Debug(g.logger).Log("msg", fmt.Sprintf("locked block: %s", blockID))
 			return true, nil
 		}
@@ -311,7 +306,7 @@ heartBeat:
 		default:
 			level.Debug(g.logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
 			g.lockBlocks(blocks)
-			time.Sleep(HeartBeatTimeout / 5) // it allows up to 5 failures on heart heat for single block
+			time.Sleep(g.blockLockFileUpdateInterval)
 		}
 	}
 	level.Info(g.logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
@@ -320,18 +315,9 @@ heartBeat:
 func (g *ShuffleShardingGrouper) lockBlocks(blocks []*metadata.Meta) {
 	for _, block := range blocks {
 		blockID := block.ULID.String()
-		blockLockFilePath := path.Join(blockID, BlockLockFile)
-		blockLocker := BlockLocker{
-			CompactorID: g.ringLifecyclerID,
-			LockTime:    time.Now(),
-		}
-		lockFileContent, err := json.Marshal(blockLocker)
+		err := UpdateBlockLocker(g.ctx, g.bkt, blockID, g.ringLifecyclerID, g.blockLockWriteFailed)
 		if err != nil {
-			level.Error(g.logger).Log("msg", "unable to create lock file content for block", "block_id", blockID, "err", err)
-		}
-		err = g.bkt.Upload(g.ctx, blockLockFilePath, bytes.NewReader(lockFileContent))
-		if err != nil {
-			level.Error(g.logger).Log("msg", "unable to update heart beat for block", "block_id", blockID, "err", err)
+			level.Error(g.logger).Log("msg", "unable to upsert lock file content for block", "blockID", blockID, "err", err)
 		}
 	}
 }
@@ -562,9 +548,4 @@ func sortMetasByMinTime(metas []*metadata.Meta) {
 	sort.Slice(metas, func(i, j int) bool {
 		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
 	})
-}
-
-type BlockLocker struct {
-	CompactorID string    `json:"compactorID"`
-	LockTime    time.Time `json:"lockTime"`
 }

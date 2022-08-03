@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/oklog/ulid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -270,6 +272,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 		},
 	}
 
+	blockLockTimeout := 5 * time.Minute
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			bkt := &bucket.ClientMock{}
@@ -277,7 +280,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 				lockFile := path.Join(lockedBlock.id.String(), BlockLockFile)
 				expireTime := time.Now()
 				if lockedBlock.isExpired {
-					expireTime = expireTime.Add(-1 * HeartBeatTimeout)
+					expireTime = expireTime.Add(-1 * blockLockTimeout)
 				}
 				blockLocker := BlockLocker{
 					CompactorID: lockedBlock.compactorID,
@@ -288,6 +291,11 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 			}
 			bkt.MockGet(mock.Anything, "", nil)
 
+			blockLockReadFailed := promauto.With(prometheus.NewPedanticRegistry()).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_lock_read_failed",
+				Help: "Number of block lock file failed to be read.",
+			})
+
 			p := NewShuffleShardingPlanner(
 				context.Background(),
 				bkt,
@@ -297,6 +305,8 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					return testData.noCompactBlocks
 				},
 				currentCompactor,
+				blockLockTimeout,
+				blockLockReadFailed,
 			)
 			actual, err := p.Plan(context.Background(), testData.blocks)
 

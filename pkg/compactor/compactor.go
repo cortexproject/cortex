@@ -53,7 +53,7 @@ var (
 	errInvalidShardingStrategy  = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize   = errors.New("invalid tenant shard size, the value must be greater than 0")
 
-	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string) compact.Grouper {
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ prometheus.Counter, _ prometheus.Counter, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string) compact.Grouper {
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
@@ -68,7 +68,7 @@ var (
 			cfg.BlocksFetchConcurrency)
 	}
 
-	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string) compact.Grouper {
+	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, blockLockReadFailed prometheus.Counter, blockLockWriteFailed prometheus.Counter, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string) compact.Grouper {
 		return NewShuffleShardingGrouper(
 			ctx,
 			logger,
@@ -88,7 +88,11 @@ var (
 			limits,
 			userID,
 			cfg.BlockFilesConcurrency,
-			cfg.BlocksFetchConcurrency)
+			cfg.BlocksFetchConcurrency,
+			cfg.BlockLockTimeout,
+			cfg.BlockLockFileUpdateInterval,
+			blockLockReadFailed,
+			blockLockWriteFailed)
 	}
 
 	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
@@ -97,7 +101,7 @@ var (
 			return nil, nil, err
 		}
 
-		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler) compact.Planner {
+		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ prometheus.Counter) compact.Planner {
 			return compact.NewPlanner(logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter)
 		}
 
@@ -110,9 +114,9 @@ var (
 			return nil, nil, err
 		}
 
-		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler) compact.Planner {
+		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, blockLockReadFailed prometheus.Counter) compact.Planner {
 
-			return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID)
+			return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID, cfg.BlockLockTimeout, blockLockReadFailed)
 		}
 		return compactor, plannerFactory, nil
 	}
@@ -129,6 +133,8 @@ type BlocksGrouperFactory func(
 	blocksMarkedForNoCompact prometheus.Counter,
 	garbageCollectedBlocks prometheus.Counter,
 	remainingPlannedCompactions prometheus.Gauge,
+	blockLockReadFailed prometheus.Counter,
+	blockLockWriteFailed prometheus.Counter,
 	ring *ring.Ring,
 	ringLifecycler *ring.Lifecycler,
 	limit Limits,
@@ -150,6 +156,7 @@ type PlannerFactory func(
 	cfg Config,
 	noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter,
 	ringLifecycle *ring.Lifecycler,
+	blockLockReadFailed prometheus.Counter,
 ) compact.Planner
 
 // Limits defines limits used by the Compactor.
@@ -195,6 +202,10 @@ type Config struct {
 	// Allow downstream projects to customise the blocks compactor.
 	BlocksGrouperFactory   BlocksGrouperFactory   `yaml:"-"`
 	BlocksCompactorFactory BlocksCompactorFactory `yaml:"-"`
+
+	// Block lock file config
+	BlockLockTimeout            time.Duration `yaml:"block_lock_timeout"`
+	BlockLockFileUpdateInterval time.Duration `yaml:"block_lock_file_update_interval"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -228,6 +239,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
+
+	f.DurationVar(&cfg.BlockLockTimeout, "compactor.block-lock-timeout", 5*time.Minute, "How long block lock file should be considered as expired and able to be picked up by compactor again.")
+	f.DurationVar(&cfg.BlockLockFileUpdateInterval, "compactor.block-lock-file-update-interval", 1*time.Minute, "How frequently block lock file should be updated duration compaction.")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
@@ -311,6 +325,8 @@ type Compactor struct {
 	blocksMarkedForNoCompaction    prometheus.Counter
 	garbageCollectedBlocks         prometheus.Counter
 	remainingPlannedCompactions    prometheus.Gauge
+	blockLockReadFailed            prometheus.Counter
+	blockLockWriteFailed           prometheus.Counter
 
 	// TSDB syncer metrics
 	syncerMetrics *syncerMetrics
@@ -427,6 +443,14 @@ func newCompactor(
 		garbageCollectedBlocks: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_garbage_collected_blocks_total",
 			Help: "Total number of blocks marked for deletion by compactor.",
+		}),
+		blockLockReadFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_compactor_block_lock_read_failed",
+			Help: "Number of block lock file failed to be read.",
+		}),
+		blockLockWriteFailed: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_compactor_block_lock_write_failed",
+			Help: "Number of block lock file failed to be written.",
 		}),
 		remainingPlannedCompactions: remainingPlannedCompactions,
 		limits:                      limits,
@@ -770,8 +794,8 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.ring, c.ringLifecycler, c.limits, userID),
-		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler),
+		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockLockReadFailed, c.blockLockWriteFailed, c.ring, c.ringLifecycler, c.limits, userID),
+		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockLockReadFailed),
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,

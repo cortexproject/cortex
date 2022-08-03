@@ -119,7 +119,6 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 		"-ingester.final-sleep":              "0s",
 		"-ingester.join-after":               "0s", // join quickly
 		"-ingester.min-ready-duration":       "0s",
-		"-ingester.concurrent-flushes":       "10",
 		"-ingester.num-tokens":               "512",
 		"-ingester.observe-period":           "5s", // to avoid conflicts in tokens
 		"-ring.store":                        "memberlist",

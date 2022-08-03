@@ -192,7 +192,6 @@ func NewIngesterWithConfigFile(name string, store RingStore, address, configFile
 			"-ingester.final-sleep":        "0s",
 			"-ingester.join-after":         "0s",
 			"-ingester.min-ready-duration": "0s",
-			"-ingester.concurrent-flushes": "10",
 			"-ingester.num-tokens":         "512",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
@@ -337,7 +336,6 @@ func NewSingleBinary(name string, flags map[string]string, image string, otherPo
 			"-ingester.final-sleep":        "0s",
 			"-ingester.join-after":         "0s",
 			"-ingester.min-ready-duration": "0s",
-			"-ingester.concurrent-flushes": "10",
 			"-ingester.num-tokens":         "512",
 			// Startup quickly.
 			"-store-gateway.sharding-ring.wait-stability-min-duration": "0",

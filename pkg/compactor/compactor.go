@@ -90,7 +90,6 @@ var (
 			cfg.BlockFilesConcurrency,
 			cfg.BlocksFetchConcurrency,
 			cfg.BlockLockTimeout,
-			cfg.BlockLockFileUpdateInterval,
 			blockLockReadFailed,
 			blockLockWriteFailed)
 	}
@@ -101,7 +100,7 @@ var (
 			return nil, nil, err
 		}
 
-		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ prometheus.Counter) compact.Planner {
+		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ prometheus.Counter, _ prometheus.Counter) compact.Planner {
 			return compact.NewPlanner(logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter)
 		}
 
@@ -114,9 +113,9 @@ var (
 			return nil, nil, err
 		}
 
-		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, blockLockReadFailed prometheus.Counter) compact.Planner {
+		plannerFactory := func(ctx context.Context, bkt objstore.Bucket, logger log.Logger, cfg Config, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, blockLockReadFailed prometheus.Counter, blockLockWriteFailed prometheus.Counter) compact.Planner {
 
-			return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID, cfg.BlockLockTimeout, blockLockReadFailed)
+			return NewShuffleShardingPlanner(ctx, bkt, logger, cfg.BlockRanges.ToMilliseconds(), noCompactionMarkFilter.NoCompactMarkedBlocks, ringLifecycle.ID, cfg.BlockLockTimeout, cfg.BlockLockFileUpdateInterval, blockLockReadFailed, blockLockWriteFailed)
 		}
 		return compactor, plannerFactory, nil
 	}
@@ -157,6 +156,7 @@ type PlannerFactory func(
 	noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter,
 	ringLifecycle *ring.Lifecycler,
 	blockLockReadFailed prometheus.Counter,
+	blockLockWriteFailed prometheus.Counter,
 ) compact.Planner
 
 // Limits defines limits used by the Compactor.
@@ -795,7 +795,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ulogger,
 		syncer,
 		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockLockReadFailed, c.blockLockWriteFailed, c.ring, c.ringLifecycler, c.limits, userID),
-		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockLockReadFailed),
+		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockLockReadFailed, c.blockLockWriteFailed),
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,

@@ -49,10 +49,9 @@ type ShuffleShardingGrouper struct {
 	ringLifecyclerAddr string
 	ringLifecyclerID   string
 
-	blockLockTimeout            time.Duration
-	blockLockFileUpdateInterval time.Duration
-	blockLockReadFailed         prometheus.Counter
-	blockLockWriteFailed        prometheus.Counter
+	blockLockTimeout     time.Duration
+	blockLockReadFailed  prometheus.Counter
+	blockLockWriteFailed prometheus.Counter
 }
 
 func NewShuffleShardingGrouper(
@@ -76,7 +75,6 @@ func NewShuffleShardingGrouper(
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
 	blockLockTimeout time.Duration,
-	blockLockFileUpdateInterval time.Duration,
 	blockLockReadFailed prometheus.Counter,
 	blockLockWriteFailed prometheus.Counter,
 ) *ShuffleShardingGrouper {
@@ -117,18 +115,17 @@ func NewShuffleShardingGrouper(
 			Name: "thanos_compact_group_vertical_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 		}, []string{"group"}),
-		compactorCfg:                compactorCfg,
-		ring:                        ring,
-		ringLifecyclerAddr:          ringLifecyclerAddr,
-		ringLifecyclerID:            ringLifecyclerID,
-		limits:                      limits,
-		userID:                      userID,
-		blockFilesConcurrency:       blockFilesConcurrency,
-		blocksFetchConcurrency:      blocksFetchConcurrency,
-		blockLockTimeout:            blockLockTimeout,
-		blockLockFileUpdateInterval: blockLockFileUpdateInterval,
-		blockLockReadFailed:         blockLockReadFailed,
-		blockLockWriteFailed:        blockLockWriteFailed,
+		compactorCfg:           compactorCfg,
+		ring:                   ring,
+		ringLifecyclerAddr:     ringLifecyclerAddr,
+		ringLifecyclerID:       ringLifecyclerID,
+		limits:                 limits,
+		userID:                 userID,
+		blockFilesConcurrency:  blockFilesConcurrency,
+		blocksFetchConcurrency: blocksFetchConcurrency,
+		blockLockTimeout:       blockLockTimeout,
+		blockLockReadFailed:    blockLockReadFailed,
+		blockLockWriteFailed:   blockLockWriteFailed,
 	}
 }
 
@@ -224,8 +221,7 @@ mainLoop:
 		groupKey := createGroupKey(groupHash, group)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
-		g.lockBlocks(group.blocks)
-		go g.groupLockHeartBeat(group.blocks)
+		LockBlocks(g.ctx, g.bkt, g.logger, group.blocks, g.ringLifecyclerID, g.blockLockWriteFailed)
 
 		// All the blocks within the same group have the same downsample
 		// resolution and external labels.
@@ -289,37 +285,6 @@ func (g *ShuffleShardingGrouper) isGroupLocked(blocks []*metadata.Meta) (bool, e
 		}
 	}
 	return false, nil
-}
-
-func (g *ShuffleShardingGrouper) groupLockHeartBeat(blocks []*metadata.Meta) {
-	var blockIds []string
-	for _, block := range blocks {
-		blockIds = append(blockIds, block.ULID.String())
-	}
-	blocksInfo := strings.Join(blockIds, ",")
-	level.Info(g.logger).Log("msg", fmt.Sprintf("start heart beat for blocks: %s", blocksInfo))
-heartBeat:
-	for {
-		select {
-		case <-g.ctx.Done():
-			break heartBeat
-		default:
-			level.Debug(g.logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
-			g.lockBlocks(blocks)
-			time.Sleep(g.blockLockFileUpdateInterval)
-		}
-	}
-	level.Info(g.logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
-}
-
-func (g *ShuffleShardingGrouper) lockBlocks(blocks []*metadata.Meta) {
-	for _, block := range blocks {
-		blockID := block.ULID.String()
-		err := UpdateBlockLocker(g.ctx, g.bkt, blockID, g.ringLifecyclerID, g.blockLockWriteFailed)
-		if err != nil {
-			level.Error(g.logger).Log("msg", "unable to upsert lock file content for block", "blockID", blockID, "err", err)
-		}
-	}
 }
 
 // Check whether this compactor exists on the subring based on user ID

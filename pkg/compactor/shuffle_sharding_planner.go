@@ -7,21 +7,22 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/objstore"
 )
 
 type ShuffleShardingPlanner struct {
-	ctx                 context.Context
-	bkt                 objstore.Bucket
-	logger              log.Logger
-	ranges              []int64
-	noCompBlocksFunc    func() map[ulid.ULID]*metadata.NoCompactMark
-	ringLifecyclerID    string
-	blockLockTimeout    time.Duration
-	blockLockReadFailed prometheus.Counter
+	ctx                         context.Context
+	bkt                         objstore.Bucket
+	logger                      log.Logger
+	ranges                      []int64
+	noCompBlocksFunc            func() map[ulid.ULID]*metadata.NoCompactMark
+	ringLifecyclerID            string
+	blockLockTimeout            time.Duration
+	blockLockFileUpdateInterval time.Duration
+	blockLockReadFailed         prometheus.Counter
+	blockLockWriteFailed        prometheus.Counter
 }
 
 func NewShuffleShardingPlanner(
@@ -32,17 +33,21 @@ func NewShuffleShardingPlanner(
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
 	ringLifecyclerID string,
 	blockLockTimeout time.Duration,
+	blockLockFileUpdateInterval time.Duration,
 	blockLockReadFailed prometheus.Counter,
+	blockLockWriteFailed prometheus.Counter,
 ) *ShuffleShardingPlanner {
 	return &ShuffleShardingPlanner{
-		ctx:                 ctx,
-		bkt:                 bkt,
-		logger:              logger,
-		ranges:              ranges,
-		noCompBlocksFunc:    noCompBlocksFunc,
-		ringLifecyclerID:    ringLifecyclerID,
-		blockLockTimeout:    blockLockTimeout,
-		blockLockReadFailed: blockLockReadFailed,
+		ctx:                         ctx,
+		bkt:                         bkt,
+		logger:                      logger,
+		ranges:                      ranges,
+		noCompBlocksFunc:            noCompBlocksFunc,
+		ringLifecyclerID:            ringLifecyclerID,
+		blockLockTimeout:            blockLockTimeout,
+		blockLockFileUpdateInterval: blockLockFileUpdateInterval,
+		blockLockReadFailed:         blockLockReadFailed,
+		blockLockWriteFailed:        blockLockWriteFailed,
 	}
 }
 
@@ -69,14 +74,12 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 
 		blockLocker, err := ReadBlockLocker(p.ctx, p.bkt, blockID, p.blockLockReadFailed)
 		if err != nil {
-			if errors.Is(err, ErrorBlockLockNotFound) {
-				resultMetas = append(resultMetas, b)
-				continue
-			}
+			// shuffle_sharding_grouper should put lock file for blocks ready for
+			// compaction. So error should be returned if lock file does not exist.
 			return nil, fmt.Errorf("unable to get lock file for block %s: %s", blockID, err.Error())
 		}
-		if blockLocker.isLockedForCompactor(p.blockLockTimeout, p.ringLifecyclerID) {
-			return nil, fmt.Errorf("block %s is locked for compactor %s. but current compactor is %s", blockID, blockLocker.CompactorID, p.ringLifecyclerID)
+		if !blockLocker.isLockedByCompactor(p.blockLockTimeout, p.ringLifecyclerID) {
+			return nil, fmt.Errorf("block %s is not locked by current compactor %s", blockID, p.ringLifecyclerID)
 		}
 
 		resultMetas = append(resultMetas, b)
@@ -85,6 +88,8 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 	if len(resultMetas) < 2 {
 		return nil, nil
 	}
+
+	go LockBlocksHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, p.ringLifecyclerID, p.blockLockFileUpdateInterval, p.blockLockWriteFailed)
 
 	return resultMetas, nil
 }

@@ -331,7 +331,6 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				10,
 				3,
 				blockLockTimeout,
-				time.Minute,
 				blockLockReadFailed,
 				blockLockWriteFailed,
 			)

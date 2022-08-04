@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"math"
 	"strings"
 	"sync"
+
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -564,8 +565,8 @@ type UserRegistry struct {
 // UserRegistries holds Prometheus registries for multiple users, guaranteeing
 // multi-thread safety and stable ordering.
 type UserRegistries struct {
-	regsMu sync.Mutex
-	regs   []UserRegistry
+	regsMu         sync.Mutex
+	regs           []UserRegistry
 	removedMetrics MetricFamilyMap
 }
 
@@ -714,7 +715,7 @@ func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 		}
 	}
 	data = append(data, struct {
-		user 	string
+		user    string
 		metrics MetricFamilyMap
 	}{
 		user: "", metrics: r.removedMetrics})
@@ -821,8 +822,8 @@ type CollectorVec interface {
 }
 
 type MergedMetricFamily struct {
-	metricFamily 	*dto.MetricFamily
-	metricMap 		MetricMap
+	metricFamily *dto.MetricFamily
+	metricMap    MetricMap
 }
 
 func (m *MergedMetricFamily) CreateMetricFamily() *dto.MetricFamily {
@@ -877,7 +878,7 @@ func getMergeFunc(metricType dto.MetricType) (func(existing *dto.Metric, new *dt
 	case dto.MetricType_HISTOGRAM:
 		return mergeHistogram, nil
 	default:
-		return nil, errors.New(fmt.Sprintf("unknown metric type: %v", metricType))
+		return nil, fmt.Errorf("unknown metric type: %v", metricType)
 	}
 }
 
@@ -919,12 +920,12 @@ func mergeSummary(mf1 *dto.Metric, mf2 *dto.Metric) {
 
 type MetricMap struct {
 	metrics map[string][]*Metric
-	lock	sync.Mutex
+	lock    sync.Mutex
 }
 
 type Metric struct {
-	metric 	dto.Metric
-	lock	sync.Mutex
+	metric dto.Metric
+	lock   sync.Mutex
 }
 
 func NewMetricMap() MetricMap {

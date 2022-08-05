@@ -68,7 +68,6 @@ const (
 	DeleteRequestsStore      string = "delete-requests-store"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
-	RulerExternal            string = "ruler-external"
 	Configs                  string = "configs"
 	AlertManager             string = "alertmanager"
 	Compactor                string = "compactor"
@@ -505,74 +504,44 @@ func createActiveQueryTracker(cfg querier.Config, logger log.Logger) promql.Quer
 	return nil
 }
 
-func (t *Cortex) initRulerExternal() (serv services.Service, err error) {
-	if t.RulerStorage == nil {
-		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
-		return nil, nil
-	}
-
-	if t.Cfg.ExternalPusher == nil || t.Cfg.ExternalQueryable == nil {
-		level.Info(util_log.Logger).Log("msg", "ExternalQueryable or ExternalPusher is nil.  Not starting the ruler.")
-		return nil, nil
-	}
-
-	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             util_log.Logger,
-		Reg:                prometheus.DefaultRegisterer,
-		ActiveQueryTracker: createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
-		MaxSamples:         t.Cfg.Querier.MaxSamples,
-		Timeout:            t.Cfg.Querier.Timeout,
-		LookbackDelta:      t.Cfg.Querier.LookbackDelta,
-		EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
-		EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
-		NoStepSubqueryIntervalFn: func(int64) int64 {
-			return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
-		},
-	})
-
-	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
-	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
-	if err != nil {
-		return nil, err
-	}
-	
-	t.RulerExternal, err = ruler.NewRuler(
-		t.Cfg.Ruler,
-		manager,
-		prometheus.DefaultRegisterer,
-		util_log.Logger,
-		t.RulerStorage,
-		t.Overrides,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Expose HTTP/GRPC endpoints for the Ruler service
-	t.API.RegisterRuler(t.RulerExternal)
-
-	// If the API is enabled, register the Ruler API
-	if t.Cfg.Ruler.EnableAPI {
-		t.API.RegisterRulerAPI(ruler.NewAPI(t.RulerExternal, t.RulerStorage, util_log.Logger))
-	}
-
-	return t.RulerExternal, nil
-}
-
 func (t *Cortex) initRuler() (serv services.Service, err error) {
+	var manager *ruler.DefaultMultiTenantManager
 	if t.RulerStorage == nil {
 		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 
-	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
-	// TODO: Consider wrapping logger to differentiate from querier module logger
-	queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
+	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 
-	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
-	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+		engine := promql.NewEngine(promql.EngineOpts{
+			Logger:             util_log.Logger,
+			Reg:                prometheus.DefaultRegisterer,
+			ActiveQueryTracker: createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
+			MaxSamples:         t.Cfg.Querier.MaxSamples,
+			Timeout:            t.Cfg.Querier.Timeout,
+			LookbackDelta:      t.Cfg.Querier.LookbackDelta,
+			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
+			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
+			NoStepSubqueryIntervalFn: func(int64) int64 {
+				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
+			},
+		})
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+
+	} else {
+
+		t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+		// TODO: Consider wrapping logger to differentiate from querier module logger
+		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -733,7 +702,6 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
-	mm.RegisterModule(RulerExternal, t.initRulerExternal)
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
@@ -765,7 +733,6 @@ func (t *Cortex) setupModuleManager() error {
 		QueryScheduler:           {API, Overrides},
 		Ruler:                    {DistributorService, Overrides, DeleteRequestsStore, StoreQueryable, RulerStorage},
 		RulerStorage:             {Overrides},
-		RulerExternal:            {Store, RulerStorage},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
@@ -774,6 +741,9 @@ func (t *Cortex) setupModuleManager() error {
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
+	}
+	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
+		deps[Ruler] = []string{Store, RulerStorage}
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

@@ -6,13 +6,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/gorilla/mux"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
-
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	prom_storage "github.com/prometheus/prometheus/storage"
 )
 
 func changeTargetConfig(c *Config) {
@@ -170,7 +169,7 @@ func (q *myQueryable) Querier(ctx context.Context, mint, maxt int64) (prom_stora
 	return prom_storage.NoopQuerier(), nil
 }
 
-func Test_InitRulerExternal(t *testing.T) {
+func Test_InitRuler(t *testing.T) {
 
 	cfg := func() *Config {
 		cfg := newDefaultConfig()
@@ -193,6 +192,6 @@ func Test_InitRulerExternal(t *testing.T) {
 	require.NotNil(t, cortex.API)
 	cortex.initRulerStorage()
 	require.NotNil(t, cortex.RulerStorage)
-	cortex.initRulerExternal()
-	require.NotNil(t, cortex.RulerExternal)
+	cortex.initRuler()
+	require.NotNil(t, cortex.Ruler)
 }

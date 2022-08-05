@@ -298,7 +298,6 @@ type Cortex struct {
 	QueryFrontendTripperware queryrange.Tripperware
 
 	Ruler         *ruler.Ruler
-	RulerExternal *ruler.Ruler
 	RulerStorage  rulestore.RuleStore
 	ConfigAPI     *configAPI.API
 	ConfigDB      db.DB

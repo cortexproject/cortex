@@ -96,3 +96,12 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
 
 // Same version being used by thanos
 replace github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
+
+// v0.20.5 caused go mod checksum error
+replace github.com/go-openapi/spec => github.com/go-openapi/spec v0.20.6
+
+// the v6.0.5851 Prometheus depends on doesn't seem to exist anymore?
+replace github.com/ionos-cloud/sdk-go/v6 => github.com/ionos-cloud/sdk-go/v6 v6.0.4
+
+// attempt to fix Thanos' dep: github.com/efficientgo/tools/core@v0.0.0-20210129205121-421d0828c9a6: invalid version: unknown revision 421d0828c9a6
+replace github.com/efficientgo/tools/core => github.com/efficientgo/tools/core v0.0.0-20210326193628-425a09c04e05

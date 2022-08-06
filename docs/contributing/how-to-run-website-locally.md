@@ -12,7 +12,7 @@ The Cortex documentation is compiled into a website published at [cortexmetrics.
 
 The following initial setup is required only once:
 
-1. Install [Hugo](https://gohugo.io/) `v0.72.0` (**extended** version)
+1. Install [Hugo](https://gohugo.io/) `v0.94.2` (**extended** version)
 2. Install [Node.js](https://nodejs.org/en/) `v14` or above (alternatively via [`nvm`](https://github.com/nvm-sh/nvm))
 3. Install required Node modules with:
    ```

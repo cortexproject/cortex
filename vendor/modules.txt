@@ -274,7 +274,7 @@ github.com/go-openapi/runtime/middleware/denco
 github.com/go-openapi/runtime/middleware/header
 github.com/go-openapi/runtime/middleware/untyped
 github.com/go-openapi/runtime/security
-# github.com/go-openapi/spec v0.20.5
+# github.com/go-openapi/spec v0.20.5 => github.com/go-openapi/spec v0.20.6
 github.com/go-openapi/spec
 # github.com/go-openapi/strfmt v0.21.2
 ## explicit
@@ -1098,3 +1098,6 @@ sigs.k8s.io/yaml
 # github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b
 # google.golang.org/grpc => google.golang.org/grpc v1.45.0
 # github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
+# github.com/go-openapi/spec => github.com/go-openapi/spec v0.20.6
+# github.com/ionos-cloud/sdk-go/v6 => github.com/ionos-cloud/sdk-go/v6 v6.0.4
+# github.com/efficientgo/tools/core => github.com/efficientgo/tools/core v0.0.0-20210326193628-425a09c04e05

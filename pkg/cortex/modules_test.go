@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/gorilla/mux"
@@ -174,8 +175,8 @@ func Test_InitRuler(t *testing.T) {
 	cfg := func() *Config {
 		cfg := newDefaultConfig()
 		cfg.Target = []string{"all"}
-		cfg.Ruler.StoreConfig.Type = "local"
-		cfg.Ruler.StoreConfig.Local.Directory = os.TempDir()
+		cfg.RulerStorage.Backend = "local"
+		cfg.RulerStorage.Local.Directory = os.TempDir()
 		cfg.ExternalPusher = &myPusher{}
 		cfg.ExternalQueryable = &myQueryable{}
 		return cfg
@@ -185,13 +186,78 @@ func Test_InitRuler(t *testing.T) {
 		Cfg:    *cfg,
 		Server: &server.Server{},
 	}
-
+	fmt.Println("test1")
 	cortex.initServer()
 	require.NotNil(t, cortex.Server)
+	fmt.Println("test2")
 	cortex.initAPI()
 	require.NotNil(t, cortex.API)
+	fmt.Println("test3")
 	cortex.initRulerStorage()
 	require.NotNil(t, cortex.RulerStorage)
+	fmt.Println("test4")
 	cortex.initRuler()
 	require.NotNil(t, cortex.Ruler)
+}
+
+func Test_setupModuleManager(t *testing.T) {
+	tests := []struct {
+		config           *Config
+		expectedOriginal bool
+	}{
+		{
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				cfg.RulerStorage.Backend = "local"
+				cfg.RulerStorage.Local.Directory = os.TempDir()
+				cfg.ExternalPusher = &myPusher{}
+				cfg.ExternalQueryable = &myQueryable{}
+				return cfg
+			}(),
+			expectedOriginal: false,
+		},
+		{
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				cfg.RulerStorage.Backend = "local"
+				cfg.RulerStorage.Local.Directory = os.TempDir()
+				return cfg
+			}(),
+			expectedOriginal: true,
+		},
+	}
+
+	for _, test := range tests {
+		cortex := &Cortex{
+			Cfg:    *test.config,
+			Server: &server.Server{},
+		}
+
+		cortex.setupModuleManager()
+
+		deps := cortex.ModuleManager.DependenciesForModule(Ruler)
+		original_dependecies := []string{DistributorService, StoreQueryable}
+
+		if test.expectedOriginal {
+			check := []bool{false, false}
+			for _, dep := range deps {
+				for i, o := range original_dependecies {
+					if dep == o {
+						check[i] = true
+					}
+				}
+			}
+			for _, val := range check {
+				require.True(t, val)
+			}
+		} else {
+			for _, dep := range deps {
+				for _, o := range original_dependecies {
+					require.NotEqual(t, dep, o)
+				}
+			}
+		}
+	}
 }

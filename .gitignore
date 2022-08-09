@@ -7,6 +7,7 @@ cmd/thanosconvert/thanosconvert
 .pkg
 .cache
 docker-images/
+website/.hugo_build.lock
 website/public
 website/resources
 website/content/en/docs

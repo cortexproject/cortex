@@ -8,7 +8,7 @@ RUN apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install website builder dependencies. Whenever you change these version, please also change website/package.json
 # and viceversa.
-RUN npm install -g postcss-cli@5.0.1 autoprefixer@9.8.5
+RUN npm install -g postcss-cli@7.1.2 autoprefixer@9.8.5
 
 ENV HUGO_VERSION=v0.94.3
 RUN git clone https://github.com/alvinlin123/hugo.git --branch ${HUGO_VERSION} --depth 1 && \

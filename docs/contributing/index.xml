@@ -50,25 +50,25 @@ Additionally, any maintainer may request that any change require a 2/3 majority 
 &lt;h2 id="initial-setup">Initial setup&lt;/h2>
 &lt;p>The following initial setup is required only once:&lt;/p>
 &lt;ol>
-&lt;li>Install &lt;a href="https://gohugo.io/">Hugo&lt;/a> &lt;code>v0.72.0&lt;/code> (&lt;strong>extended&lt;/strong> version)&lt;/li>
+&lt;li>Install &lt;a href="https://gohugo.io/">Hugo&lt;/a> &lt;code>v0.94.2&lt;/code> (&lt;strong>extended&lt;/strong> version)&lt;/li>
 &lt;li>Install &lt;a href="https://nodejs.org/en/">Node.js&lt;/a> &lt;code>v14&lt;/code> or above (alternatively via &lt;a href="https://github.com/nvm-sh/nvm">&lt;code>nvm&lt;/code>&lt;/a>)&lt;/li>
 &lt;li>Install required Node modules with:
-&lt;pre>&lt;code>cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -
+&lt;pre tabindex="0">&lt;code>cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -
 &lt;/code>&lt;/pre>&lt;/li>
 &lt;li>Install &lt;a href="https://github.com/campoy/embedmd">embedmd&lt;/a> &lt;code>v1.0.0&lt;/code>:
-&lt;pre>&lt;code>go install github.com/campoy/embedmd@v1.0.0
+&lt;pre tabindex="0">&lt;code>go install github.com/campoy/embedmd@v1.0.0
 &lt;/code>&lt;/pre>&lt;/li>
 &lt;li>Run &lt;code>make BUILD_IN_CONTAINER=false web-build&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;h2 id="run-it">Run it&lt;/h2>
 &lt;p>Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href="http://localhost:1313/">&lt;code>http://localhost:1313/&lt;/code>&lt;/a>&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">&lt;span style="color:#8f5902;font-style:italic"># Keep this running&lt;/span>
-make web-serve
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the content of &lt;code>docs/&lt;/code> or markdown files in the repository root &lt;code>/&lt;/code> you should run:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> web-pre
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-bash" data-lang="bash">make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> doc web-pre
-&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># Keep this running&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>make web-serve
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the content of &lt;code>docs/&lt;/code> or markdown files in the repository root &lt;code>/&lt;/code> you should run:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> web-pre
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> doc web-pre
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
 &lt;p>To upgrade the Golang version:&lt;/p>
 &lt;ol>
 &lt;li>Upgrade build image version
@@ -93,12 +93,12 @@ make web-serve
 &lt;p>Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e">custom framework&lt;/a> running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/">&lt;code>testing&lt;/code>&lt;/a> package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p>
 &lt;h2 id="how-to-run-integration-tests">How to run integration tests&lt;/h2>
 &lt;p>When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong>locally&lt;/strong> you should build the Cortex Docker image first:&lt;/p>
-&lt;pre>&lt;code>make ./cmd/cortex/.uptodate
+&lt;pre tabindex="0">&lt;code>make ./cmd/cortex/.uptodate
 &lt;/code>&lt;/pre>&lt;p>This will locally build the &lt;code>quay.io/cortexproject/cortex:latest&lt;/code> image used by integration tests. Whenever the Cortex code changes (&lt;code>cmd/&lt;/code>, &lt;code>pkg/&lt;/code> or vendors) you should rebuild the Cortex image, while it&amp;rsquo;s &lt;strong>not&lt;/strong> necessary to rebuild it while developing integration tests.&lt;/p>
 &lt;p>Once the Docker image is built, you can run integration tests:&lt;/p>
-&lt;pre>&lt;code>go test -v -tags=requires_docker ./integration/...
+&lt;pre tabindex="0">&lt;code>go test -v -tags=requires_docker ./integration/...
 &lt;/code>&lt;/pre>&lt;p>If you want to run a single test you can use a filter. For example, to only run &lt;code>TestChunksStorageAllIndexBackends&lt;/code>:&lt;/p>
-&lt;pre>&lt;code>go test -v -tags=requires_docker ./integration -run &amp;quot;^TestChunksStorageAllIndexBackends$&amp;quot;
+&lt;pre tabindex="0">&lt;code>go test -v -tags=requires_docker ./integration -run &amp;#34;^TestChunksStorageAllIndexBackends$&amp;#34;
 &lt;/code>&lt;/pre>&lt;h3 id="supported-environment-variables">Supported environment variables&lt;/h3>
 &lt;ul>
 &lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;br />

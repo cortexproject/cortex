@@ -12,24 +12,24 @@ Cortex can also make use of external memcacheds for caching and although these a
 &lt;h2 id="single-instance-single-process">Single instance, single process&lt;/h2>
 &lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a single process.&lt;/p>
 &lt;p>Clone and build Cortex&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ git clone https://github.com/cortexproject/cortex.git
-$ &lt;span style="color:#204a87">cd&lt;/span> cortex
-$ go build ./cmd/cortex
-$ ./cortex -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./docs/chunks-storage/single-process-config.yaml
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>This starts a single Cortex node storing chunks and index to your local filesystem in &lt;code>/tmp/cortex&lt;/code>.
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ git clone https://github.com/cortexproject/cortex.git
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ &lt;span style="color:#204a87">cd&lt;/span> cortex
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ go build ./cmd/cortex
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ ./cortex -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./docs/chunks-storage/single-process-config.yaml
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This starts a single Cortex node storing chunks and index to your local filesystem in &lt;code>/tmp/cortex&lt;/code>.
 It is not intended for production use.&lt;/p>
 &lt;p>Clone and build prometheus&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ git clone https://github.com/prometheus/prometheus
-$ &lt;span style="color:#204a87">cd&lt;/span> prometheus
-$ go build ./cmd/prometheus
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9009&lt;/span>/api/v1/push&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>And start Prometheus with that config file:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ ./prometheus --config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./documentation/examples/prometheus.yml
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Your Prometheus instance will now start pushing data to Cortex. To query that data, start a Grafana instance:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker run --rm -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana -p 3000:3000 grafana/grafana
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>In &lt;a href="http://localhost:3000">the Grafana UI&lt;/a> (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code>http://host.docker.internal:9009/prometheus&lt;/code>).&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ git clone https://github.com/prometheus/prometheus
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ &lt;span style="color:#204a87">cd&lt;/span> prometheus
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ go build ./cmd/prometheus
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://localhost:9009/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>And start Prometheus with that config file:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ ./prometheus --config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./documentation/examples/prometheus.yml
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Your Prometheus instance will now start pushing data to Cortex. To query that data, start a Grafana instance:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ docker run --rm -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana -p 3000:3000 grafana/grafana
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>In &lt;a href="http://localhost:3000">the Grafana UI&lt;/a> (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code>http://host.docker.internal:9009/prometheus&lt;/code>).&lt;/p>
 &lt;p>&lt;strong>To clean up:&lt;/strong> press CTRL-C in both terminals (for Cortex and Prometheus).&lt;/p>
 &lt;h2 id="horizontally-scale-out">Horizontally scale out&lt;/h2>
 &lt;p>Next we&amp;rsquo;re going to show how you can run a scale out Cortex cluster using Docker. We&amp;rsquo;ll need:&lt;/p>
@@ -38,81 +38,81 @@ $ go build ./cmd/prometheus
 &lt;li>A Docker network to put these containers on so they can resolve each other by name.&lt;/li>
 &lt;li>A single node Consul instance to coordinate the Cortex cluster.&lt;/li>
 &lt;/ul>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ make ./cmd/cortex/.uptodate
-$ docker network create cortex
-$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -e &lt;span style="color:#000">CONSUL_BIND_INTERFACE&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>eth0 consul
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Next we&amp;rsquo;ll run a couple of Cortex instances pointed at that Consul. You&amp;rsquo;ll note the Cortex configuration can be specified in either a config file or overridden on the command line. See &lt;a href="/docs/configuration/arguments/">the arguments documentation&lt;/a> for more information about Cortex configuration options.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex1 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9001:9009 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500
-$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex2 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9002:9009 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>If you go to http://localhost:9001/ring (or http://localhost:9002/ring) you should see both Cortex nodes join the ring.&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ make ./cmd/cortex/.uptodate
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker network create cortex
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -e &lt;span style="color:#000">CONSUL_BIND_INTERFACE&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>eth0 consul
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Next we&amp;rsquo;ll run a couple of Cortex instances pointed at that Consul. You&amp;rsquo;ll note the Cortex configuration can be specified in either a config file or overridden on the command line. See &lt;a href="/docs/configuration/arguments/">the arguments documentation&lt;/a> for more information about Cortex configuration options.&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex1 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -p 9001:9009 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex2 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -p 9002:9009 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>If you go to http://localhost:9001/ring (or http://localhost:9002/ring) you should see both Cortex nodes join the ring.&lt;/p>
 &lt;p>To demonstrate the correct operation of Cortex clustering, we&amp;rsquo;ll send samples
 to one of the instances and queries to another. In production, you&amp;rsquo;d want to
 load balance both pushes and queries evenly among all the nodes.&lt;/p>
 &lt;p>Point Prometheus at the first:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9001&lt;/span>/api/v1/push&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ ./prometheus --config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./documentation/examples/prometheus.yml
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>And Grafana at the second:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -p 3000:3000 grafana/grafana
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>In &lt;a href="http://localhost:3000">the Grafana UI&lt;/a> (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code>http://cortex2:9009/prometheus&lt;/code>).&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://localhost:9001/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ ./prometheus --config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./documentation/examples/prometheus.yml
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>And Grafana at the second:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -p 3000:3000 grafana/grafana
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>In &lt;a href="http://localhost:3000">the Grafana UI&lt;/a> (username/password admin/admin), add a Prometheus datasource for Cortex (&lt;code>http://cortex2:9009/prometheus&lt;/code>).&lt;/p>
 &lt;p>&lt;strong>To clean up:&lt;/strong> CTRL-C the Prometheus process and run:&lt;/p>
-&lt;pre>&lt;code>$ docker rm -f cortex1 cortex2 consul grafana
+&lt;pre tabindex="0">&lt;code>$ docker rm -f cortex1 cortex2 consul grafana
 $ docker network remove cortex
 &lt;/code>&lt;/pre>&lt;h2 id="high-availability-with-replication">High availability with replication&lt;/h2>
 &lt;p>In this last demo we&amp;rsquo;ll show how Cortex can replicate data among three nodes,
 and demonstrate Cortex can tolerate a node failure without affecting reads and writes.&lt;/p>
 &lt;p>First, create a network and run a new Consul and Grafana:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker network create cortex
-$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -e &lt;span style="color:#000">CONSUL_BIND_INTERFACE&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>eth0 consul
-$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -p 3000:3000 grafana/grafana
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Then, launch 3 Cortex nodes with replication factor 3:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex1 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9001:9009 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
-$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex2 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9002:9009 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
-$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex3 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -p 9003:9009 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
-&lt;/span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>Configure Prometheus to send data to the first replica:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9001&lt;/span>/api/v1/push&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ ./prometheus --config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./documentation/examples/prometheus.yml
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>In Grafana, add a datasource for the 3rd Cortex replica (&lt;code>http://cortex3:9009/prometheus&lt;/code>)
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ docker network create cortex
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -e &lt;span style="color:#000">CONSUL_BIND_INTERFACE&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>eth0 consul
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>grafana --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex -p 3000:3000 grafana/grafana
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Then, launch 3 Cortex nodes with replication factor 3:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex1 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -p 9001:9009 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex2 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -p 9002:9009 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>$ docker run -d --name&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex3 --network&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -v &lt;span style="color:#204a87;font-weight:bold">$(&lt;/span>&lt;span style="color:#204a87">pwd&lt;/span>&lt;span style="color:#204a87;font-weight:bold">)&lt;/span>/docs/chunks-storage/single-process-config.yaml:/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -p 9003:9009 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> quay.io/cortexproject/cortex &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>/etc/single-process-config.yaml &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -ring.store&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -consul.hostname&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>consul:8500 &lt;span style="color:#4e9a06">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#4e9a06">&lt;/span> -distributor.replication-factor&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Configure Prometheus to send data to the first replica:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://localhost:9001/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ ./prometheus --config.file&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>./documentation/examples/prometheus.yml
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>In Grafana, add a datasource for the 3rd Cortex replica (&lt;code>http://cortex3:9009/prometheus&lt;/code>)
 and verify the same data appears in both Prometheus and Cortex.&lt;/p>
 &lt;p>To show that Cortex can tolerate a node failure, hard kill one of the Cortex replicas:&lt;/p>
-&lt;pre>&lt;code>$ docker rm -f cortex2
+&lt;pre tabindex="0">&lt;code>$ docker rm -f cortex2
 &lt;/code>&lt;/pre>&lt;p>You should see writes and queries continue to work without error.&lt;/p>
 &lt;p>&lt;strong>To clean up:&lt;/strong> CTRL-C the Prometheus process and run:&lt;/p>
-&lt;pre>&lt;code>$ docker rm -f cortex1 cortex2 cortex3 consul grafana
+&lt;pre tabindex="0">&lt;code>$ docker rm -f cortex1 cortex2 cortex3 consul grafana
 $ docker network remove cortex
 &lt;/code>&lt;/pre></description></item><item><title>Docs: Running Cortex chunks storage in Production</title><link>/docs/chunks-storage/running-chunks-storage-in-production/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/running-chunks-storage-in-production/</guid><description>
 &lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
@@ -142,9 +142,9 @@ The &lt;strong>Query Frontend&lt;/strong> should be deployed behind a load balan
 The &lt;strong>Queriers&lt;/strong> should not use the load balancer to access the &lt;strong>Query Frontend&lt;/strong>.
 In Kubernetes, you should use a separate headless service.&lt;/p>
 &lt;p>To configure the &lt;strong>Queries&lt;/strong> to use the &lt;strong>Query Frontend&lt;/strong>, set the following flag:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh"> -querier.frontend-address string
-Address of query frontend service.
-&lt;/code>&lt;/pre>&lt;/div>&lt;p>There are other flag you can use to control the behaviour of the frontend - concurrency, retries, etc.
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span> -querier.frontend-address string
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> Address of query frontend service.
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>There are other flag you can use to control the behaviour of the frontend - concurrency, retries, etc.
 See &lt;a href="/docs/configuration/arguments/#query-frontend">Query Frontend configuration&lt;/a> for more information.&lt;/p>
 &lt;p>The &lt;strong>Query Frontend&lt;/strong> can run using an in-process cache, but should be configured with an external Memcached for production workloads.
 The next section has more details.&lt;/p>
@@ -178,12 +178,12 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;/ol>
 &lt;h2 id="setup-a-locally-running-cassandra">Setup a locally running Cassandra&lt;/h2>
 &lt;p>Run Cassandra with the following command:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
+&lt;pre tabindex="0">&lt;code>docker run -d --name cassandra --rm -p 9042:9042 cassandra:3.11
 &lt;/code>&lt;/pre>&lt;p>Use Docker to execute the Cassandra Query Language (CQL) shell in the container:&lt;/p>
-&lt;pre>&lt;code>docker exec -it &amp;lt;container_id&amp;gt; cqlsh
+&lt;pre tabindex="0">&lt;code>docker exec -it &amp;lt;container_id&amp;gt; cqlsh
 &lt;/code>&lt;/pre>&lt;p>Create a new Cassandra keyspace for Cortex metrics:&lt;/p>
 &lt;p>A keyspace is an object that is used to hold column families, user defined types. A keyspace is like RDBMS database which contains column families, indexes, user defined types.&lt;/p>
-&lt;pre>&lt;code>CREATE KEYSPACE cortex WITH replication = {'class':'SimpleStrategy', 'replication_factor' : 1};
+&lt;pre tabindex="0">&lt;code>CREATE KEYSPACE cortex WITH replication = {&amp;#39;class&amp;#39;:&amp;#39;SimpleStrategy&amp;#39;, &amp;#39;replication_factor&amp;#39; : 1};
 &lt;/code>&lt;/pre>&lt;h2 id="configure-cortex-to-store-chunks-and-index-on-cassandra">Configure Cortex to store chunks and index on Cassandra&lt;/h2>
 &lt;p>Now, we have to configure Cortex to store the chunks and index in Cassandra. Create a config file called &lt;code>single-process-config.yaml&lt;/code>, then add the content below. Make sure to replace the following placeholders:&lt;/p>
 &lt;ul>
@@ -191,7 +191,7 @@ For more information on how to configure Cortex and Prometheus to HA pairs, see 
 &lt;li>&lt;code>KEYSPACE&lt;/code>: The name of the Cassandra keyspace used to store the metrics.&lt;/li>
 &lt;/ul>
 &lt;p>&lt;code>single-process-config.yaml&lt;/code>&lt;/p>
-&lt;pre>&lt;code># Configuration for running Cortex in single-process mode.
+&lt;pre tabindex="0">&lt;code># Configuration for running Cortex in single-process mode.
 # This should not be used in production. It is only for getting started
 # and development.
 # Disable the requirement that every request to Cortex has a
@@ -222,7 +222,7 @@ address: 127.0.0.1
 join_after: 0
 final_sleep: 0s
 num_tokens: 512
-# Use an in memory ring store, so we don't need to launch a Consul.
+# Use an in memory ring store, so we don&amp;#39;t need to launch a Consul.
 ring:
 kvstore:
 store: inmemory
@@ -247,39 +247,39 @@ keyspace: KEYSPACE # configure desired keyspace here.
 &lt;/code>&lt;/pre>&lt;p>The latest tag is not published for the Cortex docker image. Visit quay.io/repository/cortexproject/cortex
 to find the latest stable version tag and use it in the command below (currently it is &lt;code>v1.11.0&lt;/code>).&lt;/p>
 &lt;p>Run Cortex using the latest stable version:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.11.0 -config.file=/etc/single-process-config.yaml
+&lt;pre tabindex="0">&lt;code>docker run -d --name=cortex -v $(pwd)/single-process-config.yaml:/etc/single-process-config.yaml -p 9009:9009 quay.io/cortexproject/cortex:v1.11.0 -config.file=/etc/single-process-config.yaml
 &lt;/code>&lt;/pre>&lt;p>In case you prefer to run the master version, please follow this &lt;a href="/docs/chunks-storage/getting-started-chunks-storage/">documentation&lt;/a> on how to build Cortex from source.&lt;/p>
 &lt;h3 id="configure-the-index-and-chunk-table-options">Configure the index and chunk table options&lt;/h3>
 &lt;p>In order to create index and chunk tables on Cassandra, Cortex will use the default table options of your Cassandra.
 If you want to configure the table options, use the &lt;code>storage.cassandra.table_options&lt;/code> property or &lt;code>cassandra.table-options&lt;/code> flag.
 This configuration property is just &lt;code>string&lt;/code> type and this value used as plain text on &lt;code>WITH&lt;/code> option of table creation query.
 It is recommended to enclose the value of &lt;code>table_options&lt;/code> in double-quotes because you should enclose strings of table options in quotes on Cassandra.&lt;/p>
-&lt;p>For example, suppose the name of index(or chunk) table is &amp;lsquo;test_table&amp;rsquo;.
+&lt;p>For example, suppose the name of index(or chunk) table is &amp;rsquo;test_table&amp;rsquo;.
 Details about column definitions of the table are omitted.
 If no table options configured, then Cortex will generate the query to create a table without a &lt;code>WITH&lt;/code> clause to use default table options:&lt;/p>
-&lt;pre>&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...)
+&lt;pre tabindex="0">&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...)
 &lt;/code>&lt;/pre>&lt;p>If table options configured with &lt;code>table_options&lt;/code> as below:&lt;/p>
-&lt;pre>&lt;code>storage:
+&lt;pre tabindex="0">&lt;code>storage:
 cassandra:
 addresses: 127.0.0.1
 keyspace: cortex
-table_options: &amp;quot;gc_grace_seocnds = 86400
-AND comments = 'this is a test table'
+table_options: &amp;#34;gc_grace_seocnds = 86400
+AND comments = &amp;#39;this is a test table&amp;#39;
 AND COMPACT STORAGE
-AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }&amp;quot;
+AND caching = { &amp;#39;keys&amp;#39;: &amp;#39;ALL&amp;#39;, &amp;#39;rows_per_partition&amp;#39;: 1024 }&amp;#34;
 &lt;/code>&lt;/pre>&lt;p>Then Cortex will generate the query to create a table with a &lt;code>WITH&lt;/code> clause as below:&lt;/p>
-&lt;pre>&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400 AND comments = 'this is a test table' AND COMPACT STORAGE AND caching = { 'keys': 'ALL', 'rows_per_partition': 1024 }
+&lt;pre tabindex="0">&lt;code>CREATE TABLE IF NOT EXISTS cortex.test_table (...) WITH gc_grace_seocnds = 86400 AND comments = &amp;#39;this is a test table&amp;#39; AND COMPACT STORAGE AND caching = { &amp;#39;keys&amp;#39;: &amp;#39;ALL&amp;#39;, &amp;#39;rows_per_partition&amp;#39;: 1024 }
 &lt;/code>&lt;/pre>&lt;p>Available settings of the table options on Cassandra depend on Cassandra version or storage which is compatible.
 For details about table options, see the official document of storage you are using.&lt;/p>
 &lt;p>&lt;strong>WARNING&lt;/strong>: Make sure there are no incorrect options and mistakes. Misconfigured table options may cause a failure in creating a table by &lt;a href="/docs/chunks-storage/table-manager/">table-manager&lt;/a> at runtime and seriously affect your Cortex.&lt;/p>
 &lt;h2 id="configure-prometheus-to-send-series-to-cortex">Configure Prometheus to send series to Cortex&lt;/h2>
 &lt;p>Now that Cortex is up, it should be running on &lt;code>http://localhost:9009&lt;/code>.&lt;/p>
 &lt;p>Add the following section to your Prometheus configuration file. This will configure the remote write to send metrics to Cortex.&lt;/p>
-&lt;pre>&lt;code>remote_write:
+&lt;pre tabindex="0">&lt;code>remote_write:
 - url: http://localhost:9009/api/v1/push
 &lt;/code>&lt;/pre>&lt;h2 id="configure-grafana-to-visualise-metrics">Configure Grafana to visualise metrics&lt;/h2>
 &lt;p>Run grafana to visualise metrics from Cortex:&lt;/p>
-&lt;pre>&lt;code>docker run -d --name=grafana -p 3000:3000 grafana/grafana
+&lt;pre tabindex="0">&lt;code>docker run -d --name=grafana -p 3000:3000 grafana/grafana
 &lt;/code>&lt;/pre>&lt;p>Add a data source in Grafana by selecting Prometheus as the data source type and use the Cortex URL to query metrics: &lt;code>http://localhost:9009/prometheus&lt;/code>.&lt;/p>
 &lt;p>Finally, You can monitor Cortex&amp;rsquo;s reads &amp;amp; writes by creating the dashboard. If you&amp;rsquo;re looking for ready to use dashboards, you can take a look at Grafana&amp;rsquo;s &lt;a href="https://github.com/grafana/cortex-jsonnet/">Cortex dashboards and alerts&lt;/a> (Jsonnet) or Weaveworks&amp;rsquo;s &lt;a href="https://github.com/weaveworks/cortex-dashboards">Cortex dashboards&lt;/a> (Python).&lt;/p></description></item><item><title>Docs: Schema Configuration</title><link>/docs/chunks-storage/schema-configuration/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/schema-configuration/</guid><description>
 &lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
@@ -305,49 +305,49 @@ The retention is implemented deleting an entire table, which allows to have fast
 &lt;p>Cortex supports multiple schema version (currently there are 11) but we recommend running with the &lt;strong>v9 schema&lt;/strong> for most use cases and &lt;strong>v10 schema&lt;/strong> if you expect to have very high cardinality metrics. You can move from one schema to another if a new schema fits your purpose better, but you still need to configure Cortex to make sure it can read the old data in the old schemas.&lt;/p>
 &lt;h2 id="schema-config">Schema config&lt;/h2>
 &lt;p>The path to the schema config YAML file can be specified to Cortex via the CLI flag &lt;code>-schema-config-file&lt;/code> and has the following structure.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">configs&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[]&lt;/span>&amp;lt;period_config&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="period_config">&lt;code>&amp;lt;period_config&amp;gt;&lt;/code>&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">configs&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000;font-weight:bold">[]&lt;/span>&lt;span style="color:#000">&amp;lt;period_config&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="period_config">&lt;code>&amp;lt;period_config&amp;gt;&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>period_config&lt;/code> configures a single period during which the storage is using a specific schema version and backend storage.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># The starting date in YYYY-MM-DD format (eg. 2020-03-01).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">from&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The key-value store to use for the index. Supported values are:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># aws-dynamo, bigtable, bigtable-hashed, cassandra, boltdb.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The object store to use for the chunks. Supported values are:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># If none is specified, &amp;#34;store&amp;#34; is used for storing chunks as well.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[object_store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The schema version to use. Supported versions are: v1, v2, v3, v4, v5,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># v6, v9, v10, v11. We recommended v9 for most use cases, alternatively&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># v10 if you expect to have very high cardinality metrics.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">schema&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">index: &amp;lt;periodic_table_config&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">chunks&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;periodic_table_config&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="periodic_table_config">&lt;code>periodic_table_config&lt;/code>&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># The starting date in YYYY-MM-DD format (eg. 2020-03-01).&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">from&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The key-value store to use for the index. Supported values are:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># aws-dynamo, bigtable, bigtable-hashed, cassandra, boltdb.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The object store to use for the chunks. Supported values are:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># s3, aws-dynamo, bigtable, bigtable-hashed, gcs, cassandra, filesystem.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># If none is specified, &amp;#34;store&amp;#34; is used for storing chunks as well.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[object_store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The schema version to use. Supported versions are: v1, v2, v3, v4, v5,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># v6, v9, v10, v11. We recommended v9 for most use cases, alternatively&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># v10 if you expect to have very high cardinality metrics.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">schema&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">index&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;periodic_table_config&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">chunks&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;periodic_table_config&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="periodic_table_config">&lt;code>periodic_table_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>periodic_table_config&lt;/code> configures the tables for a single period.&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># The prefix to use for the table names.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">prefix&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The duration for each table. A new table is created every &amp;#34;period&amp;#34;, which also&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># represents the granularity with which retention is enforced. Typically this value&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic">#is set to 1w (1 week). Must be a multiple of 24h.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;duration&lt;span style="color:#8f5902;font-style:italic">&amp;gt;
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic">
-&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The tags to be set on the created table.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tags&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;map&lt;span style="color:#000;font-weight:bold">[&lt;/span>string&lt;span style="color:#000;font-weight:bold">]&lt;/span>string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="schema-config-example">Schema config example&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># The prefix to use for the table names.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">prefix&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The duration for each table. A new table is created every &amp;#34;period&amp;#34;, which also&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># represents the granularity with which retention is enforced. Typically this value&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic">#is set to 1w (1 week). Must be a multiple of 24h.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">period&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;duration&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># The tags to be set on the created table.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">tags&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;map[string]string&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="schema-config-example">Schema config example&lt;/h2>
 &lt;p>The following example shows an advanced schema file covering different changes over the course of a long period. It starts with v9 and just Bigtable. Later it was migrated to GCS as the object store, and finally moved to v10.&lt;/p>
 &lt;p>&lt;em>This is a complex schema file showing several changes changes over the time, while a typical schema config file usually has just one or two schema versions.&lt;/em>&lt;/p>
-&lt;pre>&lt;code>configs:
+&lt;pre tabindex="0">&lt;code>configs:
 # Starting from 2018-08-23 Cortex should store chunks and indexes
 # on Google BigTable using weekly periodic tables. The chunks table
-# names will be prefixed with &amp;quot;dev_chunks_&amp;quot;, while index tables will be
-# prefixed with &amp;quot;dev_index_&amp;quot;.
-- from: &amp;quot;2018-08-23&amp;quot;
+# names will be prefixed with &amp;#34;dev_chunks_&amp;#34;, while index tables will be
+# prefixed with &amp;#34;dev_index_&amp;#34;.
+- from: &amp;#34;2018-08-23&amp;#34;
 schema: v9
 chunks:
 period: 1w
@@ -357,7 +357,7 @@ period: 1w
 prefix: dev_index_
 store: gcp-columnkey
 # Starting 2019-02-13 we moved from BigTable to GCS for storing the chunks.
-- from: &amp;quot;2019-02-13&amp;quot;
+- from: &amp;#34;2019-02-13&amp;#34;
 schema: v9
 chunks:
 period: 1w
@@ -369,7 +369,7 @@ object_store: gcs
 store: gcp-columnkey
 # Starting 2019-02-24 we moved our index from bigtable-columnkey to bigtable-hashed
 # which improves the distribution of keys.
-- from: &amp;quot;2019-02-24&amp;quot;
+- from: &amp;#34;2019-02-24&amp;#34;
 schema: v9
 chunks:
 period: 1w
@@ -380,7 +380,7 @@ prefix: dev_index_
 object_store: gcs
 store: bigtable-hashed
 # Starting 2019-03-05 we moved from v9 schema to v10 schema.
-- from: &amp;quot;2019-03-05&amp;quot;
+- from: &amp;#34;2019-03-05&amp;#34;
 schema: v10
 chunks:
 period: 1w
@@ -400,7 +400,7 @@ store: bigtable-hashed
 &lt;p>The retention - managed by the table-manager - is &lt;strong>disabled by default&lt;/strong>, due to its destructive nature. You can enable the data retention explicitly via &lt;code>-table-manager.retention-deletes-enabled=true&lt;/code> and setting &lt;code>-table-manager.retention-period&lt;/code> to a value greater than zero.&lt;/p>
 &lt;p>The table-manager implements the retention deleting the entire tables whose data exceeded the retention period. This design allows to have fast delete operations, at the cost of having a retention granularity controlled by the table&amp;rsquo;s &lt;a href="/docs/chunks-storage/schema-configuration/#schema-config">&lt;code>period&lt;/code>&lt;/a>.&lt;/p>
 &lt;p>Given each table contains data for &lt;code>period&lt;/code> of time and that the entire table is deleted, the table-manager keeps the last tables alive using this formula:&lt;/p>
-&lt;pre>&lt;code>number_of_tables_to_keep = floor(retention_period / table_period) + 1
+&lt;pre tabindex="0">&lt;code>number_of_tables_to_keep = floor(retention_period / table_period) + 1
 &lt;/code>&lt;/pre>&lt;p>&lt;img src="/images/chunks-storage/table-manager-retention.png" alt="Table-manager retention">&lt;/p>
 &lt;!-- Diagram source at https://docs.google.com/presentation/d/1bHp8_zcoWCYoNU2AhO2lSagQyuIrghkCncViSqn14cU/edit -->
 &lt;p>It&amp;rsquo;s important to note that - due to the internal implementation - &lt;strong>the table &lt;code>period&lt;/code> and the retention period must be multiples of &lt;code>24h&lt;/code>&lt;/strong> in order to get the expected behavior.&lt;/p>
@@ -449,14 +449,14 @@ store: bigtable-hashed
 &lt;/table>
 &lt;h3 id="dynamodb-provisioning">DynamoDB Provisioning&lt;/h3>
 &lt;p>When configuring DynamoDB with the table-manager, the default &lt;a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html">on-demand provisioning&lt;/a> capacity units for reads are set to 300 and writes are set to 3000. The defaults can be overwritten:&lt;/p>
-&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">table_manager&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">index_tables_provisioning&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_write_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_read_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">chunk_tables_provisioning&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_write_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_read_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Caching</title><link>/docs/chunks-storage/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/caching/</guid><description>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">table_manager&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">index_tables_provisioning&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_write_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_read_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">chunk_tables_provisioning&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_write_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">provisioned_read_throughput&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">10&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Caching</title><link>/docs/chunks-storage/caching/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/chunks-storage/caching/</guid><description>
 &lt;p>&lt;strong>Warning: the chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>.&lt;/strong>&lt;/p>
 &lt;p>Correctly configured caching is important for a production-ready Cortex cluster.
 Cortex has many opportunities for using caching to accelerate queries and reduce cost. Cortex can use a cache for:&lt;/p>
@@ -484,7 +484,7 @@ For help provisioning and monitoring memcached clusters using &lt;a href="https:
 You should ensure your memcached servers are not behind any kind of load balancer.
 If deploying Cortex on Kubernetes, Cortex should be pointed at a memcached &lt;a href="https://kubernetes.io/docs/concepts/services-networking/service/#headless-services">headless service&lt;/a>.&lt;/p>
 &lt;p>The flags used to configure memcached are common for each caching caching opportunity, differentiated by a prefix:&lt;/p>
-&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.cache.write-back-buffer int
+&lt;pre tabindex="0">&lt;code>-&amp;lt;prefix&amp;gt;.cache.write-back-buffer int
 How many chunks to buffer for background write back. (default 10000)
 -&amp;lt;prefix&amp;gt;.cache.write-back-goroutines int
 How many goroutines to use to write back to memcache. (default 10)
@@ -501,7 +501,7 @@ Maximum number of idle connections in pool. (default 16)
 -&amp;lt;prefix&amp;gt;.memcached.parallelism int
 Maximum active requests to memcache. (default 100)
 -&amp;lt;prefix&amp;gt;.memcached.service string
-SRV service used to discover memcache servers. (default &amp;quot;memcached&amp;quot;)
+SRV service used to discover memcache servers. (default &amp;#34;memcached&amp;#34;)
 -&amp;lt;prefix&amp;gt;.memcached.timeout duration
 Maximum time to wait before giving up on memcached requests. (default 100ms)
 -&amp;lt;prefix&amp;gt;.memcached.update-interval duration
@@ -513,7 +513,7 @@ The FIFO cache is useful for simple scenarios where deploying an additional memc
 The FIFO cache can also be used in front of Memcached to reduce latency for commonly accessed keys.
 The FIFO cache stores a fixed number of entries, and therefore it’s memory usage depends on the caches value’s size.&lt;/p>
 &lt;p>To enable the FIFO cache, use the following flags:&lt;/p>
-&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.cache.enable-fifocache
+&lt;pre tabindex="0">&lt;code>-&amp;lt;prefix&amp;gt;.cache.enable-fifocache
 Enable in-memory cache.
 -&amp;lt;prefix&amp;gt;.fifocache.duration duration
 The expiry duration for the cache.
@@ -524,10 +524,10 @@ Maximum number of entries in the cache.
 &lt;/code>&lt;/pre>&lt;p>See &lt;a href="/docs/configuration/configuration-file/#fifo-cache-config">&lt;code>fifo_cache_config&lt;/code> documentation&lt;/a> if you use a config file with Cortex.&lt;/p>
 &lt;h3 id="redis-experimental">Redis (Experimental)&lt;/h3>
 &lt;p>You can also use &lt;a href="https://redis.io/">Redis&lt;/a> for out-of-process caching; this is a relatively new addition to Cortex and is under active development.&lt;/p>
-&lt;pre>&lt;code>-&amp;lt;prefix&amp;gt;.redis.endpoint string
+&lt;pre tabindex="0">&lt;code>-&amp;lt;prefix&amp;gt;.redis.endpoint string
 Redis endpoint to use when caching chunks. If empty, no redis will be used.
 For Redis Server - Redis service endpoint
-For Redis Cluster - comma-separated list of Redis node's endpoints
+For Redis Cluster - comma-separated list of Redis node&amp;#39;s endpoints
 For Redis Sentinel - comma-separated list of Redis Sentinel endpoints
 -&amp;lt;prefix&amp;gt;.redis.master-name
 Redis Sentinel master group name.
@@ -561,23 +561,23 @@ Items stay in the cache indefinitely.&lt;/p>
 &lt;p>The chunk cache should be configured on the &lt;strong>ingester&lt;/strong>, &lt;strong>querier&lt;/strong> and &lt;strong>ruler&lt;/strong> using the flags with the prefix &lt;code>-store.chunks-cache&lt;/code>.&lt;/p>
 &lt;p>It is best practice to ensure the chunk cache is big enough to accommodate at least 24 hours of chunk data.
 You can use the following query (from the &lt;a href="https://github.com/grafana/cortex-jsonnet">cortex-mixin&lt;/a>) to estimate the required number of memcached replicas:&lt;/p>
-&lt;pre>&lt;code class="language-promql" data-lang="promql">// 4 x in-memory series size = 24hrs of data.
-(
-4 *
-sum by(cluster, namespace) (
-cortex_ingester_memory_series{job=~&amp;quot;.+/ingester&amp;quot;}
-*
-cortex_ingester_chunk_size_bytes_sum{job=~&amp;quot;.+/ingester&amp;quot;}
-/
-cortex_ingester_chunk_size_bytes_count{job=~&amp;quot;.+/ingester&amp;quot;}
-)
-/ 1e9
-)
-&amp;gt;
-(
-sum by (cluster, namespace) (memcached_limit_bytes{job=~&amp;quot;.+/memcached&amp;quot;}) / 1e9
-)
-&lt;/code>&lt;/pre>&lt;h3 id="index-read-cache">Index Read Cache&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-promql" data-lang="promql">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ce5c00;font-weight:bold">//&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">4&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#a40000">x&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">in&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span>&lt;span style="color:#000">memory&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">series&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">size&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#a40000">=&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">24h&lt;/span>&lt;span style="color:#000">rs&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">of&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">data&lt;/span>&lt;span style="color:#a40000">.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">4&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">sum&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">by&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>&lt;span style="color:#000">cluster&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">namespace&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">cortex_ingester_memory_series&lt;/span>&lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#f57900">job&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=~&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;&lt;/span>&lt;span style="color:#4e9a06">.+/ingester&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;}&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">cortex_ingester_chunk_size_bytes_sum&lt;/span>&lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#f57900">job&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=~&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;&lt;/span>&lt;span style="color:#4e9a06">.+/ingester&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;}&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">/&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">cortex_ingester_chunk_size_bytes_count&lt;/span>&lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#f57900">job&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=~&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;&lt;/span>&lt;span style="color:#4e9a06">.+/ingester&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;}&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">/&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000">e9&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">&amp;gt;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">sum&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">by&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>&lt;span style="color:#000">cluster&lt;/span>&lt;span style="color:#000;font-weight:bold">,&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">namespace&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">(&lt;/span>&lt;span style="color:#000">memcached_limit_bytes&lt;/span>&lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#f57900">job&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=~&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;&lt;/span>&lt;span style="color:#4e9a06">.+/memcached&lt;/span>&lt;span style="color:#000;font-weight:bold">&amp;#34;}&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">/&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000">e9&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">)&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="index-read-cache">Index Read Cache&lt;/h3>
 &lt;p>The index read cache stores entire rows from the inverted label index.
 The cache is used by queries to reduce load on the index.
 These are typically only a few KB in size, but can grow up to many MB for very high cardinality metrics.
@@ -778,7 +778,7 @@ similar with &lt;code>.periodic-table&lt;/code> which controls the index table.&
 &lt;p>Tablemanager can even adjust the capacity dynamically, by watching
 metrics for DynamoDB throttling and ingester queue length. Here is an
 example set of command-line parameters from a fairly modest install:&lt;/p>
-&lt;pre>&lt;code> -target=table-manager
+&lt;pre tabindex="0">&lt;code> -target=table-manager
 -metrics.url=http://prometheus.monitoring.svc.cluster.local./prometheus/
 -metrics.target-queue-length=100000
 -dynamodb.url=dynamodb://us-east-1/

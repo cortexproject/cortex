@@ -724,6 +724,85 @@ func TestUserRegistries_RemoveUserRegistry_SoftRemoval(t *testing.T) {
 			summary_user_sum{user="5"} 25
 			summary_user_count{user="5"} 5
 	`)))
+
+	tm.regs.RemoveUserRegistry(strconv.Itoa(4), false)
+	require.NoError(t, testutil.GatherAndCompare(mainRegistry, bytes.NewBufferString(`
+			# HELP counter help
+			# TYPE counter counter
+	# No change in counter
+			counter 75
+	
+			# HELP counter_labels help
+			# TYPE counter_labels counter
+	# No change in counter per label.
+			counter_labels{label_one="a"} 75
+	
+			# HELP counter_user help
+			# TYPE counter_user counter
+	# User 3 is now missing.
+			counter_user{user="1"} 5
+			counter_user{user="2"} 10
+			counter_user{user="5"} 25
+	
+			# HELP gauge help
+			# TYPE gauge gauge
+	# Drop in the gauge (value 3, counted 5 times)
+			gauge 40
+	
+			# HELP gauge_labels help
+			# TYPE gauge_labels gauge
+	# Drop in the gauge (value 3, counted 5 times)
+			gauge_labels{label_one="a"} 40
+	
+			# HELP gauge_user help
+			# TYPE gauge_user gauge
+	# User 3 is now missing.
+			gauge_user{user="1"} 5
+			gauge_user{user="2"} 10
+			gauge_user{user="5"} 25
+	
+			# HELP histogram help
+			# TYPE histogram histogram
+	# No change in the histogram
+			histogram_bucket{le="1"} 5
+			histogram_bucket{le="3"} 15
+			histogram_bucket{le="5"} 25
+			histogram_bucket{le="+Inf"} 25
+			histogram_sum 75
+			histogram_count 25
+	
+			# HELP histogram_labels help
+			# TYPE histogram_labels histogram
+	# No change in the histogram per label
+			histogram_labels_bucket{label_one="a",le="1"} 5
+			histogram_labels_bucket{label_one="a",le="3"} 15
+			histogram_labels_bucket{label_one="a",le="5"} 25
+			histogram_labels_bucket{label_one="a",le="+Inf"} 25
+			histogram_labels_sum{label_one="a"} 75
+			histogram_labels_count{label_one="a"} 25
+	
+			# HELP summary help
+			# TYPE summary summary
+	# No change in the summary
+			summary_sum 75
+			summary_count 25
+	
+			# HELP summary_labels help
+			# TYPE summary_labels summary
+	# No change in the summary per label
+			summary_labels_sum{label_one="a"} 75
+			summary_labels_count{label_one="a"} 25
+	
+			# HELP summary_user help
+			# TYPE summary_user summary
+	# Summary for user 3 is now missing.
+			summary_user_sum{user="1"} 5
+			summary_user_count{user="1"} 5
+			summary_user_sum{user="2"} 10
+			summary_user_count{user="2"} 5
+			summary_user_sum{user="5"} 25
+			summary_user_count{user="5"} 5
+	`)))
 }
 func TestUserRegistries_RemoveUserRegistry_HardRemoval(t *testing.T) {
 	tm := setupTestMetrics()
@@ -1142,6 +1221,30 @@ func TestGetLabels(t *testing.T) {
 	verifyLabels(t, m, map[string]string{"user": "user1", "reason": "worse"}, []labels.Labels{
 		labels.FromMap(map[string]string{"cluster": "abc", "reason": "worse", "user": "user1"}),
 	})
+}
+
+func TestMergeMetricFamilies(t *testing.T) {
+	tm := setupTestMetrics()
+
+	var list []MetricFamilyMap
+	for _, registry := range tm.regs.regs {
+		mfs, err := registry.reg.Gather()
+		var filteredMf []*dto.MetricFamily
+		for _, metric := range mfs {
+			if metric.GetType() == dto.MetricType_GAUGE {
+				continue
+			}
+			filteredMf = append(filteredMf, metric)
+		}
+		require.NoError(t, err)
+		mfm, err := NewMetricFamilyMap(filteredMf)
+		require.NoError(t, err)
+		list = append(list, mfm)
+	}
+
+	_, err := MergeMetricFamilies(list)
+
+	require.NoError(t, err)
 }
 
 func verifyLabels(t *testing.T, m prometheus.Collector, filter map[string]string, expectedLabels []labels.Labels) {

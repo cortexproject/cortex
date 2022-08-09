@@ -1,9 +1,9 @@
-{{ if .Path }}
+{{ if .File.Path }}
 {{ $gh_repo := ($.Param "github_repo") }}
 {{ $gh_project_repo := ($.Param "github_project_repo") }}
 {{ if $gh_repo }}
 <div class="td-page-meta ml-2 pb-1 pt-2 mb-0">
-{{ $editURL := printf "%s/edit/master/%s" $gh_repo .Path }}
+{{ $editURL := printf "%s/edit/master/%s" $gh_repo .File.Path }}
 {{ if (.Params.originalpath) }}
 {{ $editURL = printf "%s/edit/master/%s" $gh_repo .Params.originalpath }}
 {{ end }}

@@ -59,7 +59,7 @@
 &lt;p>The &lt;code>deletion-mark.json&lt;/code> files are stored within each block location. This means that the compactor would still need to run a &amp;ldquo;get object&amp;rdquo; operation for every single block in order to find out which block has it, while updating the bucket index.&lt;/p>
 &lt;p>To reduce the number of operations required, we propose to store block deletion marks for all blocks in a per-tenant location (&lt;code>markers/&lt;/code>). Discovering all blocks marked for deletion for a given tenant would only require a single &amp;ldquo;list objects&amp;rdquo; operation on the &lt;code>/&amp;lt;tenant-id&amp;gt;/markers/&lt;/code> prefix. New markers introduced in the future (eg. tenant deletion mark) could be stored in the same location in order to discover all markers with a single &amp;ldquo;list objects&amp;rdquo; operation.&lt;/p>
 &lt;p>For example:&lt;/p>
-&lt;pre tabindex="0">&lt;code>/user-1/markers/01ER1ZSYHF1FT6RBD8HTVQWX13-deletion-mark.json
+&lt;pre>&lt;code>/user-1/markers/01ER1ZSYHF1FT6RBD8HTVQWX13-deletion-mark.json
 /user-1/markers/01ER1ZGSX1Q4B41MK1QQ7RHD33-deletion-mark.json
 /user-1/markers/01ER1ZGWKVFT60YMXT8D3XJMDB-deletion-mark.json
 &lt;/code>&lt;/pre>&lt;h3 id="what-if-a-bucket-index-gets-stale">What if a bucket index gets stale&lt;/h3>
@@ -367,10 +367,10 @@ This must be done in external authorization proxy.&lt;/strong>&lt;/p>
 &lt;p>The above should be versioned under a single URL path (&lt;code>/docs/running-cortex/&lt;/code> in the following example, but final prefix is still to be decided).&lt;/p>
 &lt;h3 id="example">Example:&lt;/h3>
 &lt;p>For &lt;code>master&lt;/code> version we would be able to use the above links via the following path&lt;/p>
-&lt;pre tabindex="0">&lt;code>/docs/running-cortex/master/configuration/
+&lt;pre>&lt;code>/docs/running-cortex/master/configuration/
 /docs/running-cortex/master/api/
 &lt;/code>&lt;/pre>&lt;p>And for a minor version like &lt;code>1.x&lt;/code>:&lt;/p>
-&lt;pre tabindex="0">&lt;code>/docs/running-cortex/1.0/configuration/
+&lt;pre>&lt;code>/docs/running-cortex/1.0/configuration/
 /docs/running-cortex/1.0/apis/
 &lt;/code>&lt;/pre>&lt;p>we&amp;rsquo;ll have versioned documentation only under the /docs/running-cortex/ prefix and, as a starting point, all versioned pages should go there.&lt;/p></description></item><item><title>Docs: Generalize Modules Service to make it extensible</title><link>/docs/proposals/generalize-modules/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/generalize-modules/</guid><description>
 &lt;ul>
@@ -399,7 +399,7 @@ This must be done in external authorization proxy.&lt;/strong>&lt;/p>
 &lt;ul>
 &lt;li>Make a new component &lt;code>Manager&lt;/code>, which is envisioned to be a central manager for all modules of the application. It stores modules &amp;amp; dependencies, and will be housed under a new package &lt;code>pkg/util/modules&lt;/code>. &lt;code>Manager&lt;/code> has the following methods for interaction:&lt;/li>
 &lt;/ul>
-&lt;pre tabindex="0">&lt;code> func (m *Manager) RegisterModule(name string, initFn func() (Service, error))
+&lt;pre>&lt;code> func (m *Manager) RegisterModule(name string, initFn func() (Service, error))
 func (m *Manager) AddDependency(name string, dependsOn... string) error
 func (m *Manager) InitModuleServices(target string) (map[string]services.Service, error)
 &lt;/code>&lt;/pre>&lt;ul>
@@ -419,13 +419,13 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 &lt;p>These need to be added before the call to &lt;code>InitModuleServices&lt;/code>.&lt;/p>
 &lt;/li>
 &lt;li>
-&lt;p>The application can be initialized by running &lt;code>initFn&lt;/code>&amp;rsquo;s of all the modules in the right order of dependencies by invoking &lt;code>InitModuleServices&lt;/code> with the target module name.&lt;/p>
+&lt;p>The application can be initialized by running &lt;code>initFn&lt;/code>'s of all the modules in the right order of dependencies by invoking &lt;code>InitModuleServices&lt;/code> with the target module name.&lt;/p>
 &lt;/li>
 &lt;/ul>
 &lt;h3 id="changes-to-pkgcortex">Changes to &lt;code>pkg/cortex&lt;/code>:&lt;/h3>
 &lt;ul>
 &lt;li>
-&lt;p>&lt;code>WrappedService&lt;/code> present in the current &lt;code>module&lt;/code> design will be deprecated. All &lt;code>initFn&lt;/code>&amp;rsquo;s will be wrapped into &lt;code>WrappedService&lt;/code> by default.&lt;/p>
+&lt;p>&lt;code>WrappedService&lt;/code> present in the current &lt;code>module&lt;/code> design will be deprecated. All &lt;code>initFn&lt;/code>'s will be wrapped into &lt;code>WrappedService&lt;/code> by default.&lt;/p>
 &lt;/li>
 &lt;li>
 &lt;p>While the process of loading modules into &lt;code>modules.Manager&lt;/code> should be remain as part of the &lt;code>Cortex.New()&lt;/code> function, &lt;code>InitModuleServices&lt;/code> should be part of &lt;code>Cortex.Run()&lt;/code> and to enable this, &lt;code>modules.Manager&lt;/code> would be made a member of the &lt;code>Cortex&lt;/code> struct.&lt;/p>
@@ -835,20 +835,20 @@ As new blocks with old data appear on the store as a result of conversion, they 
 &lt;p>To prevent this we will add “flow control” information to the &lt;a href="https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21">ProcessResponse message&lt;/a> that is used to return query results from the querier to the query frontend. In an active system this message is passed multiple times per second from the queriers to the query frontends and would be a reliable way for the frontends to track the state of queriers and balance load.&lt;/p>
 &lt;p>There are a lot of options for an exact implementation of this idea. An effective solution should be determined and chosen by modeling a set of alternatives. The details of this would be included in another design doc. A simple implementation would look something like the following:&lt;/p>
 &lt;p>Add two new fields to &lt;a href="https://github.com/cortexproject/cortex/blob/master/pkg/querier/frontend/frontend.proto#L21">ProcessResponse&lt;/a>:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">message&lt;/span> &lt;span style="color:#000">ProcessResponse&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#a40000">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">httpgrpc.HTTPResponse&lt;/span> &lt;span style="color:#000">httpResponse&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">currentConcurrency&lt;/span> &lt;span style="color:#000">int&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">2&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">desiredConcurrency&lt;/span> &lt;span style="color:#000">int&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>&lt;span style="color:#a40000">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>currentConcurrency&lt;/strong> - The current number of queries being executed by the querier.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="color:#204a87;font-weight:bold">message&lt;/span> &lt;span style="color:#000">ProcessResponse&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">httpgrpc.HTTPResponse&lt;/span> &lt;span style="color:#000">httpResponse&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">1&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">currentConcurrency&lt;/span> &lt;span style="color:#000">int&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">2&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;span style="color:#a40000">&lt;/span> &lt;span style="color:#000">desiredConcurrency&lt;/span> &lt;span style="color:#000">int&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">3&lt;/span>&lt;span style="color:#000;font-weight:bold">;&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>&lt;span style="color:#a40000">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>currentConcurrency&lt;/strong> - The current number of queries being executed by the querier.&lt;/p>
 &lt;p>&lt;strong>desiredConcurrency&lt;/strong> - The total number of queries that a querier is capable of executing.&lt;/p>
 &lt;p>Add a short backoff to the main frontend &lt;a href="https://github.com/cortexproject/cortex/blob/8fb86155a7c7c155b8c4d31b91b267f9631b60ba/pkg/querier/frontend/frontend.go#L288-L331">processing loop&lt;/a>. This would cause the frontend to briefly back off of any querier that was overloaded but continue to send queries to those that were capable of doing work.&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">current&lt;/span> &lt;span style="color:#000;font-weight:bold">&amp;gt;&lt;/span> &lt;span style="color:#000">desired&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">zzz&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">current&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span> &lt;span style="color:#000">desired&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span> &lt;span style="color:#000">backoffDuration&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">zzz&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">1&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">+&lt;/span> &lt;span style="color:#000">rand&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Float64&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">.1&lt;/span> &lt;span style="color:#8f5902;font-style:italic">// jitter
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic">&lt;/span> &lt;span style="color:#000">time&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Sleep&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">zzz&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Passing flow control information from the querier to the frontend would also open up additional future work for more sophisticated load balancing across queriers. For example by simply comparing and choosing &lt;a href="https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/">the least congested of two&lt;/a> queriers we could dramatically improve how well work is distributed.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-go" data-lang="go">&lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">current&lt;/span> &lt;span style="color:#000;font-weight:bold">&amp;gt;&lt;/span> &lt;span style="color:#000">desired&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#000">zzz&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">current&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span> &lt;span style="color:#000">desired&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span> &lt;span style="color:#000">backoffDuration&lt;/span>
+&lt;span style="color:#000">zzz&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*=&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">1&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">+&lt;/span> &lt;span style="color:#000">rand&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Float64&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">*&lt;/span> &lt;span style="color:#0000cf;font-weight:bold">.1&lt;/span> &lt;span style="color:#8f5902;font-style:italic">// jitter
+&lt;/span>&lt;span style="color:#8f5902;font-style:italic">&lt;/span> &lt;span style="color:#000">time&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Sleep&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">zzz&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>Passing flow control information from the querier to the frontend would also open up additional future work for more sophisticated load balancing across queriers. For example by simply comparing and choosing &lt;a href="https://www.nginx.com/blog/nginx-power-of-two-choices-load-balancing-algorithm/">the least congested of two&lt;/a> queriers we could dramatically improve how well work is distributed.&lt;/p>
 &lt;h3 id="increased-time-to-failure">Increased Time To Failure&lt;/h3>
 &lt;h4 id="challenge-2">Challenge&lt;/h4>
 &lt;p>Scaling the query frontend also increases the per tenant queue length by creating more queues. This could result in increased latencies where failing fast (429) would have been preferred.&lt;/p>
@@ -1195,31 +1195,30 @@ Likewise, ShardingMetadataFilter will first build a &lt;strong>tenant’s subrin
 &lt;h4 id="scenario-ingester-scale-up">Scenario: ingester scale up&lt;/h4>
 &lt;p>When a new ingester is added to the ring, there will be a set of user subrings that see a change: an ingester being removed, and a new one being added. We need to guarantee that for some time period (the block flush interval), the ingester removed is also consulted for queries.&lt;/p>
 &lt;p>To do this, during the subring selection if we encounters an ingester added within the time period, we will add this to the subring but continue node selection as before - in effect, selecting an extra ingester:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">var&lt;/span> &lt;span style="color:#000;font-weight:bold">(&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">subringSize&lt;/span> &lt;span style="color:#204a87;font-weight:bold">int&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">selectedNodes&lt;/span> &lt;span style="color:#000;font-weight:bold">[]&lt;/span>&lt;span style="color:#000">Node&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">deadline&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">time&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Now&lt;/span>&lt;span style="color:#000;font-weight:bold">().&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span>&lt;span style="color:#000">flushWindow&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">for&lt;/span> &lt;span style="color:#204a87">len&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#000;font-weight:bold">&amp;lt;&lt;/span> &lt;span style="color:#000">subringSize&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">token&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000">random&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000">getNodeByToken&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">token&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">for&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000">in&lt;/span> &lt;span style="color:#000">selectedNodes&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">continue&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Added&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">After&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">deadline&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">subringSize&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">++&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">continue&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#204a87;font-weight:bold">break&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#000;font-weight:bold">)&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#000;font-weight:bold">}&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="scenario-ingester-scale-down">Scenario: ingester scale down&lt;/h4>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-go" data-lang="go">&lt;span style="color:#204a87;font-weight:bold">var&lt;/span> &lt;span style="color:#000;font-weight:bold">(&lt;/span>
+&lt;span style="color:#000">subringSize&lt;/span> &lt;span style="color:#204a87;font-weight:bold">int&lt;/span>
+&lt;span style="color:#000">selectedNodes&lt;/span> &lt;span style="color:#000;font-weight:bold">[]&lt;/span>&lt;span style="color:#000">Node&lt;/span>
+&lt;span style="color:#000">deadline&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">time&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Now&lt;/span>&lt;span style="color:#000;font-weight:bold">().&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">-&lt;/span>&lt;span style="color:#000">flushWindow&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">for&lt;/span> &lt;span style="color:#204a87">len&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#000;font-weight:bold">&amp;lt;&lt;/span> &lt;span style="color:#000">subringSize&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#000">token&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000">random&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
+&lt;span style="color:#000">node&lt;/span> &lt;span style="color:#ce5c00;font-weight:bold">:=&lt;/span> &lt;span style="color:#000">getNodeByToken&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">token&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">for&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000">in&lt;/span> &lt;span style="color:#000">selectedNodes&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">continue&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">if&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Added&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">After&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">deadline&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span> &lt;span style="color:#000;font-weight:bold">{&lt;/span>
+&lt;span style="color:#000">subringSize&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">++&lt;/span>
+&lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#000">node&lt;/span> &lt;span style="color:#000;font-weight:bold">=&lt;/span> &lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Next&lt;/span>&lt;span style="color:#000;font-weight:bold">()&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">continue&lt;/span>
+&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#000">selectedNodes&lt;/span>&lt;span style="color:#000;font-weight:bold">.&lt;/span>&lt;span style="color:#000">Add&lt;/span>&lt;span style="color:#000;font-weight:bold">(&lt;/span>&lt;span style="color:#000">node&lt;/span>&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#204a87;font-weight:bold">break&lt;/span>
+&lt;span style="color:#000;font-weight:bold">)&lt;/span>
+&lt;span style="color:#000;font-weight:bold">}&lt;/span>
+&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="scenario-ingester-scale-down">Scenario: ingester scale down&lt;/h4>
 &lt;p>When an ingester is permanently removed from the ring it will flush its data to the object store and the subrings containing the removed ingester will gain a “new” ingester. Queries consult the store and merge the results with those from the ingesters, so no data will be missed.&lt;/p>
 &lt;p>Queriers and store-gateways will discover newly flushed blocks on next sync (&lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code>, default 5 minutes).
 Multiple ingesters should not be scaled-down within this interval.&lt;/p>
@@ -1458,19 +1457,19 @@ Parameters:&lt;/p>
 &lt;li>&lt;code>/&amp;lt;tenantId&amp;gt;/tombstones/&amp;lt;request_id&amp;gt;.json.&amp;lt;state&amp;gt;&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;p>The schema of the JSON file is:&lt;/p>
-&lt;pre tabindex="0">&lt;code>{
-&amp;#34;requestId&amp;#34;: &amp;lt;string&amp;gt;,
-&amp;#34;startTime&amp;#34;: &amp;lt;int&amp;gt;,
-&amp;#34;endTime&amp;#34;: &amp;lt;int&amp;gt;,
-&amp;#34;requestCreationTime&amp;#34;: &amp;lt;int&amp;gt;,
-&amp;#34;stateCreationTime&amp;#34;: &amp;lt;int&amp;gt;,
-&amp;#34;matchers&amp;#34;: [
-&amp;#34;&amp;lt;string matcher 1&amp;gt;&amp;#34;,
+&lt;pre>&lt;code>{
+&amp;quot;requestId&amp;quot;: &amp;lt;string&amp;gt;,
+&amp;quot;startTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;endTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;requestCreationTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;stateCreationTime&amp;quot;: &amp;lt;int&amp;gt;,
+&amp;quot;matchers&amp;quot;: [
+&amp;quot;&amp;lt;string matcher 1&amp;gt;&amp;quot;,
 ..,
-&amp;#34;&amp;lt;string matcher n&amp;gt;&amp;#34;
+&amp;quot;&amp;lt;string matcher n&amp;gt;&amp;quot;
 ]
 },
-&amp;#34;userID&amp;#34;: &amp;lt;string&amp;gt;,
+&amp;quot;userID&amp;quot;: &amp;lt;string&amp;gt;,
 }
 &lt;/code>&lt;/pre>&lt;p>Pros:&lt;/p>
 &lt;ul>

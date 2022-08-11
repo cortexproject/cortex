@@ -10,7 +10,6 @@ RUN apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 # and viceversa.
 RUN npm install -g postcss-cli@7.1.2 autoprefixer@9.8.5
 
-
 ENV SHFMT_VERSION=3.2.4
 RUN GOARCH=$(go env GOARCH) && \
 	if [ "$GOARCH" = "amd64" ]; then \

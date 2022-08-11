@@ -8777,6 +8777,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;p>The build image currently can only be updated by a Cortex maintainer. If you&amp;rsquo;re not a maintainer you can still open a PR with the changes, asking a maintainer to assist you publishing the updated image. The procedure is:&lt;/p>
 &lt;ol>
 &lt;li>Update &lt;code>build-image/Docker&lt;/code>.&lt;/li>
+&lt;li>Run &lt;code>go env&lt;/code> and make sure &lt;code>GOPROXY=https://proxy.golang.org,direct&lt;/code> (Go&amp;rsquo;s default). Some environment may required &lt;code>GOPROXY=direct&lt;/code>, and if you push a build image with this, build workflow on GitHub will take a lot longer to download modules.&lt;/li>
 &lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer. Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>

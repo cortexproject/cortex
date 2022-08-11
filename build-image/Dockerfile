@@ -10,10 +10,6 @@ RUN apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 # and viceversa.
 RUN npm install -g postcss-cli@7.1.2 autoprefixer@9.8.5
 
-ENV HUGO_VERSION=v0.101.0
-RUN git clone https://github.com/gohugoio/hugo.git --branch ${HUGO_VERSION} --depth 1 && \
-	cd hugo  && go install --tags extended && cd ../ && \
-	rm -rf hugo/ && rm -rf /go/pkg /go/src /root/.cache
 
 ENV SHFMT_VERSION=3.2.4
 RUN GOARCH=$(go env GOARCH) && \
@@ -30,13 +26,14 @@ RUN GOARCH=$(go env GOARCH) && \
 
 RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v1.27.0
 
+ENV HUGO_VERSION=v0.101.0
 RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
-	go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	go install github.com/golang/protobuf/protoc-gen-go@v1.3.1 &&\
 	go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 &&\
 	go install github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 &&\
 	go install github.com/fatih/faillint@v1.5.0 &&\
 	go install github.com/campoy/embedmd@v1.0.0 &&\
+	go install --tags extended github.com/gohugoio/hugo@${HUGO_VERSION} &&\
 	rm -rf /go/pkg /go/src /root/.cache
 
 ENV NODE_PATH=/usr/lib/node_modules

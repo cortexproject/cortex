@@ -1914,6 +1914,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		SeriesLifecycleCallback:   userDB,
 		BlocksToDelete:            userDB.blocksToDelete,
 		EnableExemplarStorage:     enableExemplars,
+		IsolationDisabled:         true,
 		MaxExemplars:              int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
 	}, nil)
 	if err != nil {

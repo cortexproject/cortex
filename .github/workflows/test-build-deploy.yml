@@ -10,7 +10,7 @@ jobs:
   lint:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:update-go-1-17-8-6aed4de76
+      image: quay.io/cortexproject/build-image:update-hugo-0.94.x-96d1d7cdd
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2

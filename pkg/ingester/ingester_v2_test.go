@@ -2178,7 +2178,6 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 		return nil, err
 	}
 
-	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
@@ -2316,7 +2315,6 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			tempDir := t.TempDir()
 
 			ingesterCfg := defaultIngesterTestConfig(t)
-			ingesterCfg.BlocksStorageEnabled = true
 			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
 			ingesterCfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup = testData.concurrency
 			ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
@@ -3361,7 +3359,6 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 	require.NoError(t, err)
 
 	ingesterCfg := defaultIngesterTestConfig(t)
-	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
 	ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"

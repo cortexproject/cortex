@@ -66,17 +66,6 @@ For more information, please refer to the following dedicated sections:
 - [Store-gateway](./store-gateway.md)
 - [Production tips](./production-tips.md)
 
-## Configuration
-
-The general [configuration documentation](../configuration/config-file-reference.md) also applies to a Cortex cluster running the blocks storage. The blocks storage can be enabled switching the storage `engine` to `blocks`:
-
-```yaml
-storage:
-  # The storage engine to use. Use "blocks" for the blocks storage.
-  # CLI flag: -store.engine
-  engine: blocks
-```
-
 ## Known issues
 
 GitHub issues tagged with the [`storage/blocks`](https://github.com/cortexproject/cortex/issues?q=is%3Aopen+is%3Aissue+label%3Astorage%2Fblocks) label are the best source of currently known issues affecting the blocks storage.

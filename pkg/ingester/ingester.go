@@ -59,7 +59,6 @@ type Config struct {
 	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
 
 	// Use blocks storage.
-	BlocksStorageEnabled        bool                     `yaml:"-"`
 	BlocksStorageConfig         tsdb.BlocksStorageConfig `yaml:"-"`
 	StreamChunksWhenUsingBlocks bool                     `yaml:"-"`
 	// Runtime-override for type of streaming query to use (chunks or samples).
@@ -152,11 +151,6 @@ type Ingester struct {
 
 // New constructs a new Ingester.
 func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
-	if !cfg.BlocksStorageEnabled {
-		// TODO FIXME error message
-		return nil, fmt.Errorf("chunks storage is no longer supported")
-	}
-
 	defaultInstanceLimits = &cfg.DefaultLimits
 
 	if cfg.ingesterClientFactory == nil {
@@ -177,7 +171,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 // ShutdownHandler triggers the following set of operations in order:
 //     * Change the state of ring to stop accepting writes.
 //     * Flush all the chunks.
-func (i *Ingester) ShutdownHandler(w http.ResponseWriter, r *http.Request) {
+func (i *Ingester) ShutdownHandler(w http.ResponseWriter, _ *http.Request) {
 	originalFlush := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
 	i.lifecycler.SetFlushOnShutdown(true)
@@ -364,21 +358,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 }
 
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
-	if i.cfg.BlocksStorageEnabled {
-		return i.v2LabelValuesStream(req, stream)
-	}
-
-	resp, err := i.LabelValues(stream.Context(), req)
-	if err != nil {
-		return err
-	}
-
-	return client.SendAsBatchToStream(len(resp.LabelValues), metadataStreamBatchSize, func(i, j int) error {
-		resp := &client.LabelValuesStreamResponse{
-			LabelValues: resp.LabelValues[i:j],
-		}
-		return client.SendLabelValuesStream(stream, resp)
-	})
+	return i.v2LabelValuesStream(req, stream)
 }
 
 // LabelNames return all the label names.
@@ -388,21 +368,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
-	if i.cfg.BlocksStorageEnabled {
-		return i.v2LabelNamesStream(req, stream)
-	}
-
-	resp, err := i.LabelNames(stream.Context(), req)
-	if err != nil {
-		return err
-	}
-
-	return client.SendAsBatchToStream(len(resp.LabelNames), metadataStreamBatchSize, func(i, j int) error {
-		resp := &client.LabelNamesStreamResponse{
-			LabelNames: resp.LabelNames[i:j],
-		}
-		return client.SendLabelNamesStream(stream, resp)
-	})
+	return i.v2LabelNamesStream(req, stream)
 }
 
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
@@ -411,26 +377,11 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 }
 
 func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
-	if i.cfg.BlocksStorageEnabled {
-		return i.v2MetricsForLabelMatchersStream(req, stream)
-	}
-
-	resp, err := i.MetricsForLabelMatchers(stream.Context(), req)
-
-	if err != nil {
-		return err
-	}
-
-	return client.SendAsBatchToStream(len(resp.Metric), metadataStreamBatchSize, func(i, j int) error {
-		resp := &client.MetricsForLabelMatchersStreamResponse{
-			Metric: resp.Metric[i:j],
-		}
-		return client.SendMetricsForLabelMatchersStream(stream, resp)
-	})
+	return i.v2MetricsForLabelMatchersStream(req, stream)
 }
 
 // MetricsMetadata returns all the metric metadata of a user.
-func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) (*client.MetricsMetadataResponse, error) {
+func (i *Ingester) MetricsMetadata(ctx context.Context, _ *client.MetricsMetadataRequest) (*client.MetricsMetadataResponse, error) {
 	i.stoppedMtx.RLock()
 	if err := i.checkRunningOrStopping(); err != nil {
 		i.stoppedMtx.RUnlock()

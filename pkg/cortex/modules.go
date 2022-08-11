@@ -21,7 +21,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
@@ -65,9 +64,7 @@ const (
 	StoreQueryable           string = "store-queryable"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
-	Store                    string = "store"
 	DeleteRequestsStore      string = "delete-requests-store"
-	TableManager             string = "table-manager"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
 	Configs                  string = "configs"
@@ -345,8 +342,8 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
 	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
-	if q, err := initQueryableForEngine(t.Cfg.Storage.Engine, t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
-		return nil, fmt.Errorf("failed to initialize querier for engine '%s': %v", t.Cfg.Storage.Engine, err)
+	if q, err := initQueryableForEngine(t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
+		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
 		t.StoreQueryables = append(t.StoreQueryables, querier.UseAlwaysQueryable(q))
 		if s, ok := q.(services.Service); ok {
@@ -369,24 +366,17 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	}
 }
 
-func initQueryableForEngine(engine string, cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
-	switch engine {
-	case storage.StorageEngineBlocks:
-		// When running in single binary, if the blocks sharding is disabled and no custom
-		// store-gateway address has been configured, we can set it to the running process.
-		if cfg.isModuleEnabled(All) && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
-			cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
-		}
-
-		return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.BlocksStorage, limits, util_log.Logger, reg)
-
-	default:
-		return nil, fmt.Errorf("unknown storage engine '%s'", engine)
+func initQueryableForEngine(cfg Config, limits *validation.Overrides, reg prometheus.Registerer) (prom_storage.Queryable, error) {
+	// When running in single binary, if the blocks sharding is disabled and no custom
+	// store-gateway address has been configured, we can set it to the running process.
+	if cfg.isModuleEnabled(All) && !cfg.StoreGateway.ShardingEnabled && cfg.Querier.StoreGatewayAddresses == "" {
+		cfg.Querier.StoreGatewayAddresses = fmt.Sprintf("127.0.0.1:%d", cfg.Server.GRPCListenPort)
 	}
+
+	return querier.NewBlocksStoreQueryableFromConfig(cfg.Querier, cfg.StoreGateway, cfg.BlocksStorage, limits, util_log.Logger, reg)
 }
 
 func (t *Cortex) tsdbIngesterConfig() {
-	t.Cfg.Ingester.BlocksStorageEnabled = t.Cfg.Storage.Engine == storage.StorageEngineBlocks
 	t.Cfg.Ingester.BlocksStorageConfig = t.Cfg.BlocksStorage
 }
 
@@ -428,13 +418,6 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 	}
 
 	return t.Flusher, nil
-}
-
-func (t *Cortex) initChunkStore() (serv services.Service, err error) {
-	if t.Cfg.Storage.Engine == storage.StorageEngineChunks {
-		return nil, errors.New("should not get here: ingesting into chunks storage is no longer supported")
-	}
-	return nil, nil
 }
 
 func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
@@ -597,13 +580,6 @@ func (t *Cortex) initCompactor() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initStoreGateway() (serv services.Service, err error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
-		if !t.Cfg.isModuleEnabled(All) {
-			return nil, fmt.Errorf("storage engine must be set to blocks to enable the store-gateway")
-		}
-		return nil, nil
-	}
-
 	t.Cfg.StoreGateway.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	t.StoreGateway, err = storegateway.NewStoreGateway(t.Cfg.StoreGateway, t.Cfg.BlocksStorage, t.Overrides, t.Cfg.Server.LogLevel, util_log.Logger, prometheus.DefaultRegisterer)
@@ -646,10 +622,6 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 }
 
 func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
-	if t.Cfg.Storage.Engine != storage.StorageEngineBlocks {
-		return nil, nil
-	}
-
 	// t.RulerStorage can be nil when running in single-binary mode, and rule storage is not configured.
 	tenantDeletionAPI, err := purger.NewTenantDeletionAPI(t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -684,7 +656,6 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
-	mm.RegisterModule(Store, t.initChunkStore, modules.UserInvisibleModule)
 	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterService, t.initIngesterService, modules.UserInvisibleModule)
@@ -716,23 +687,22 @@ func (t *Cortex) setupModuleManager() error {
 		OverridesExporter:        {RuntimeConfig},
 		Distributor:              {DistributorService, API},
 		DistributorService:       {Ring, Overrides},
-		Store:                    {Overrides, DeleteRequestsStore},
-		Ingester:                 {IngesterService, API},
-		IngesterService:          {Overrides, Store, RuntimeConfig, MemberlistKV},
-		Flusher:                  {Store, API},
-		Queryable:                {Overrides, DistributorService, Store, Ring, API, StoreQueryable, MemberlistKV},
+		Ingester:                 {IngesterService, Overrides, DeleteRequestsStore, API},
+		IngesterService:          {Overrides, RuntimeConfig, MemberlistKV},
+		Flusher:                  {Overrides, DeleteRequestsStore, API},
+		Queryable:                {Overrides, DistributorService, Overrides, DeleteRequestsStore, Ring, API, StoreQueryable, MemberlistKV},
 		Querier:                  {TenantFederation},
-		StoreQueryable:           {Overrides, Store, MemberlistKV},
+		StoreQueryable:           {Overrides, Overrides, DeleteRequestsStore, MemberlistKV},
 		QueryFrontendTripperware: {API, Overrides, DeleteRequestsStore},
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, Overrides},
-		Ruler:                    {DistributorService, Store, StoreQueryable, RulerStorage},
+		Ruler:                    {DistributorService, Overrides, DeleteRequestsStore, StoreQueryable, RulerStorage},
 		RulerStorage:             {Overrides},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
-		TenantDeletion:           {Store, API, Overrides},
+		TenantDeletion:           {API, Overrides, DeleteRequestsStore},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},

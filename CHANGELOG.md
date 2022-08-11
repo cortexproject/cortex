@@ -37,6 +37,7 @@
   - `-grpc-store.*`
   - `-flusher.wal-dir`, `-flusher.concurrent-flushes`, `-flusher.flush-op-timeout`
 * [CHANGE] Remove support for alertmanager and ruler legacy store configuration. Before upgrading, you need to convert your configuration to use the `alertmanager-storage` and `ruler-storage` configuration on the version that you're already running, then upgrade.
+* [CHANGE] Disables TSDB isolation. #4825
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784

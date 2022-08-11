@@ -2173,19 +2173,16 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 
 	bucketDir := t.TempDir()
 
-	clientCfg := defaultClientTestConfig()
-
 	overrides, err := validation.NewOverrides(limits, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
 
-	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, registerer, log.NewNopLogger())
+	ingester, err := NewV2(ingesterCfg, overrides, registerer, log.NewNopLogger())
 	if err != nil {
 		return nil, err
 	}
@@ -2309,7 +2306,6 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 		testName := name
 		testData := test
 		t.Run(testName, func(t *testing.T) {
-			clientCfg := defaultClientTestConfig()
 			limits := defaultLimitsTestConfig()
 
 			overrides, err := validation.NewOverrides(limits, nil)
@@ -2319,7 +2315,6 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			tempDir := t.TempDir()
 
 			ingesterCfg := defaultIngesterTestConfig(t)
-			ingesterCfg.BlocksStorageEnabled = true
 			ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
 			ingesterCfg.BlocksStorageConfig.TSDB.MaxTSDBOpeningConcurrencyOnStartup = testData.concurrency
 			ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
@@ -2328,7 +2323,7 @@ func TestIngester_v2OpenExistingTSDBOnStartup(t *testing.T) {
 			// setup the tsdbs dir
 			testData.setup(t, tempDir)
 
-			ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil, log.NewNopLogger())
+			ingester, err := NewV2(ingesterCfg, overrides, nil, log.NewNopLogger())
 			require.NoError(t, err)
 
 			startErr := services.StartAndAwaitRunning(context.Background(), ingester)
@@ -2553,7 +2548,6 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 		defer db.stateMtx.RUnlock()
 		return db.state
 	})
-
 	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
 }
 
@@ -3234,8 +3228,8 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	// Wait until TSDB has been closed and removed.
 	test.Poll(t, 10*time.Second, 0, func() interface{} {
-		i.userStatesMtx.Lock()
-		defer i.userStatesMtx.Unlock()
+		i.stoppedMtx.Lock()
+		defer i.stoppedMtx.Unlock()
 		return len(i.TSDBState.dbs)
 	})
 
@@ -3359,20 +3353,18 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 		require.NoError(t, db.Close())
 	}
 
-	clientCfg := defaultClientTestConfig()
 	limits := defaultLimitsTestConfig()
 
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
 	ingesterCfg := defaultIngesterTestConfig(t)
-	ingesterCfg.BlocksStorageEnabled = true
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = tempDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "s3"
 	ingesterCfg.BlocksStorageConfig.Bucket.S3.Endpoint = "localhost"
 	ingesterCfg.BlocksStorageConfig.TSDB.Retention = 2 * 24 * time.Hour // Make sure that no newly created blocks are deleted.
 
-	ingester, err := NewV2(ingesterCfg, clientCfg, overrides, nil, log.NewNopLogger())
+	ingester, err := NewV2(ingesterCfg, overrides, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ingester))
 

@@ -11,18 +11,12 @@ Cortex has evolved over several years, and the command-line options sometimes re
 
 Duration arguments should be specified with a unit like `5s` or `3h`. Valid time units are "ms", "s", "m", "h".
 
-**Warning: some of the following config options apply only to chunks storage, which has been deprecated. You're encouraged to use the [blocks storage](../blocks-storage/_index.md).**
-
 ## Querier
 
 - `-querier.max-concurrent`
 
    The maximum number of top-level PromQL queries that will execute at the same time, per querier process.
    If using the query frontend, this should be set to at least (`-querier.worker-parallelism` * number of query frontend replicas). Otherwise queries may queue in the queriers and not the frontend, which will affect QoS.  Alternatively, consider using `-querier.worker-match-max-concurrent` to force worker parallelism to match `-querier.max-concurrent`.
-
-- `-querier.query-parallelism`
-
-   This refers to database queries against the store when running the deprecated Cortex chunks storage (e.g. Bigtable or DynamoDB).  This is the max subqueries run in parallel per higher-level query.
 
 - `-querier.timeout`
 
@@ -100,7 +94,7 @@ The ingester query API was improved over time, but defaults to the old behaviour
    - `querier.max-concurrent`
    - `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
 
-   Furthermore, both querier and query-frontend components require the `querier.query-ingesters-within` parameter to know when to start sharding requests (ingester queries are not sharded). It's recommended to align this with `ingester.max-chunk-age`.
+   Furthermore, both querier and query-frontend components require the `querier.query-ingesters-within` parameter to know when to start sharding requests (ingester queries are not sharded).
 
    Instrumentation (traces) also scale with the number of sharded queries and it's suggested to account for increased throughput there as well (for instance via `JAEGER_REPORTER_MAX_QUEUE_SIZE`).
 
@@ -329,52 +323,9 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 
 ## Ingester
 
-- `-ingester.max-chunk-age`
-
-  The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this the current chunk will be flushed to the store and a new chunk created. (default 12h)
-
-- `-ingester.max-chunk-idle`
-
-  If a series doesn't receive a sample for this duration, it is flushed and removed from memory.
-
-- `-ingester.max-stale-chunk-idle`
-
-  If a series receives a [staleness marker](https://www.robustperception.io/staleness-and-promql), then we wait for this duration to get another sample before we close and flush this series, removing it from memory. You want it to be at least 2x the scrape interval as you don't want a single failed scrape to cause a chunk flush.
-
-- `-ingester.chunk-age-jitter`
-
-  To reduce load on the database exactly 12 hours after starting, the age limit is reduced by a varying amount up to this. Don't enable this along with `-ingester.spread-flushes` (default 0m)
-
-- `-ingester.spread-flushes`
-
-  Makes the ingester flush each timeseries at a specific point in the `max-chunk-age` cycle. This means multiple replicas of a chunk are very likely to contain the same contents which cuts chunk storage space by up to 66%. Set `-ingester.chunk-age-jitter` to `0` when using this option. If a chunk cache is configured (via `-store.chunks-cache.memcached.hostname`) then duplicate chunk writes are skipped which cuts write IOPs.
-
 - `-ingester.join-after`
 
-   How long to wait in PENDING state during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the [chunks storage](../chunks-storage/_index.md)). (default 0s)
-
-- `-ingester.max-transfer-retries`
-
-   How many times a LEAVING ingester tries to find a PENDING ingester during the [hand-over process](../guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) (supported only by the [chunks storage](../chunks-storage/_index.md)). Negative value or zero disables hand-over process completely. (default 10)
-
-- `-ingester.normalise-tokens`
-
-   Deprecated. New ingesters always write "normalised" tokens to the ring. Normalised tokens consume less memory to encode and decode; as the ring is unmarshalled regularly, this significantly reduces memory usage of anything that watches the ring.
-
-   Cortex 0.4.0 is the last version that can *write* denormalised tokens. Cortex 0.5.0 and above always write normalised tokens.
-
-   Cortex 0.6.0 is the last version that can *read* denormalised tokens. Starting with Cortex 0.7.0 only normalised tokens are supported, and ingesters writing denormalised tokens to the ring (running Cortex 0.4.0 or earlier with `-ingester.normalise-tokens=false`) are ignored by distributors. Such ingesters should either switch to using normalised tokens, or be upgraded to Cortex 0.5.0 or later.
-
-- `-ingester.chunk-encoding`
-
-  Pick one of the encoding formats for timeseries data, which have different performance characteristics.
-  `Bigchunk` uses the Prometheus V2 code, and expands in memory to arbitrary length.
-  `Varbit`, `Delta` and `DoubleDelta` use Prometheus V1 code, and are fixed at 1K per chunk.
-  Defaults to `Bigchunk` starting version 0.7.0.
-
-- `-store.bigchunk-size-cap-bytes`
-
-   When using bigchunks, start a new bigchunk and flush the old one if the old one reaches this size. Use this setting to limit memory growth of ingesters with a lot of timeseries that last for days.
+   How long to wait in PENDING state during the hand-over process (supported only by the chunks storage). (default 0s)
 
 - `-ingester-client.expected-timeseries`
 
@@ -387,22 +338,6 @@ It also talks to a KVStore and has it's own copies of the same flags used by the
 - `-ingester-client.expected-labels`
 
    When `push` requests arrive, pre-allocate this many slots to decode them. Tune this setting to reduce memory allocations and garbage. The optimum value will depend on how many labels are sent with your timeseries samples.
-
-- `-store.chunk-cache.cache-stubs`
-
-   Where you don't want to cache every chunk written by ingesters, but you do want to take advantage of chunk write deduplication, this option will make ingesters write a placeholder to the cache for each chunk.
-   Make sure you configure ingesters with a different cache to queriers, which need the whole value.
-
-#### Flusher
-
-- `-flusher.wal-dir`
-   Directory where the WAL data should be recovered from.
-
-- `-flusher.concurrent-flushes`
-   Number of concurrent flushes.
-
-- `-flusher.flush-op-timeout`
-   Duration after which a flush should timeout.
 
 ## Runtime Configuration file
 
@@ -484,8 +419,6 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 - `max_series_per_metric` / `-ingester.max-series-per-metric`
 
   Enforced by the ingesters; limits the number of active series a user (or a given metric) can have.  When running with `-distributor.shard-by-all-labels=false` (the default), this limit will enforce the maximum number of series a metric can have 'globally', as all series for a single metric will be sent to the same replication set of ingesters.  This is not the case when running with `-distributor.shard-by-all-labels=true`, so the actual limit will be N/RF times higher, where N is number of ingester replicas and RF is configured replication factor.
-
-  An active series is a series to which a sample has been written in the last `-ingester.max-chunk-idle` duration, which defaults to 5 minutes.
 
 - `max_global_series_per_user` / `-ingester.max-global-series-per-user`
 - `max_global_series_per_metric` / `-ingester.max-global-series-per-metric`

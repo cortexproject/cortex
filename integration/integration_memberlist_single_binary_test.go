@@ -43,11 +43,10 @@ func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string)
 	defer s.Close()
 
 	// Start dependencies
-	dynamo := e2edb.NewDynamoDB()
+	minio := e2edb.NewMinio(9000, bucketName)
 	// Look ma, no Consul!
-	require.NoError(t, s.StartAndWaitReady(dynamo))
+	require.NoError(t, s.StartAndWaitReady(minio))
 
-	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
 	var cortex1, cortex2, cortex3 *e2ecortex.CortexService
 	if tlsEnabled {
 		var (
@@ -120,8 +119,6 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 		"-ingester.final-sleep":              "0s",
 		"-ingester.join-after":               "0s", // join quickly
 		"-ingester.min-ready-duration":       "0s",
-		"-ingester.concurrent-flushes":       "10",
-		"-ingester.max-transfer-retries":     "0", // disable
 		"-ingester.num-tokens":               "512",
 		"-ingester.observe-period":           "5s", // to avoid conflicts in tokens
 		"-ring.store":                        "memberlist",
@@ -136,7 +133,7 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 	serv := e2ecortex.NewSingleBinary(
 		name,
 		mergeFlags(
-			ChunksStorageFlags(),
+			BlocksStorageFlags(),
 			flags,
 			testFlags,
 			getTLSFlagsWithPrefix("memberlist", servername, servername == ""),
@@ -160,9 +157,8 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	dynamo := e2edb.NewDynamoDB()
-	require.NoError(t, s.StartAndWaitReady(dynamo))
-	require.NoError(t, writeFileToSharedDir(s, cortexSchemaConfigFile, []byte(cortexSchemaConfigYaml)))
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
 
 	// Scale up instances. These numbers seem enough to reliably reproduce some unwanted
 	// consequences of slow propagation, such as missing tombstones.

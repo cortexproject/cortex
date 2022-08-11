@@ -35,13 +35,6 @@ jobs:
     runs-on: ubuntu-20.04
     container:
       image: quay.io/cortexproject/build-image:update-hugo-0.94.x-96d1d7cdd
-    services:
-      cassandra:
-        image: cassandra:3.11
-        env:
-          JVM_OPTS: "-Xms1024M -Xmx1024M"
-        ports:
-          - 9042:9042
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
@@ -50,7 +43,7 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Run Tests
-        run: CASSANDRA_TEST_ADDRESSES=cassandra:9042 make BUILD_IN_CONTAINER=false test
+        run: make BUILD_IN_CONTAINER=false test
 
   build:
     runs-on: ubuntu-20.04
@@ -138,7 +131,6 @@ jobs:
           docker pull quay.io/cortexproject/cortex:v1.9.0
           docker pull quay.io/cortexproject/cortex:v1.10.0
           docker pull shopify/bigtable-emulator:0.1.0
-          docker pull rinscy/cassandra:3.11.0
           docker pull memcached:1.6.1
           docker pull bouncestorage/swift-aio:55ba4331
       - name: Integration Tests

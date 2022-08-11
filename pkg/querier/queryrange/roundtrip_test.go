@@ -8,15 +8,11 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -50,14 +46,6 @@ func TestRoundTrip(t *testing.T) {
 		mockLimits{},
 		PrometheusCodec,
 		nil,
-		chunk.SchemaConfig{},
-		promql.EngineOpts{
-			Logger:     log.NewNopLogger(),
-			Reg:        nil,
-			MaxSamples: 1000,
-			Timeout:    time.Minute,
-		},
-		0,
 		nil,
 		nil,
 	)
@@ -104,21 +92,4 @@ func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	r.URL.Scheme = "http"
 	r.URL.Host = s.host
 	return s.next.RoundTrip(r)
-}
-
-func Test_ShardingConfigError(t *testing.T) {
-	_, _, err := NewTripperware(
-		Config{ShardedQueries: true},
-		log.NewNopLogger(),
-		nil,
-		nil,
-		nil,
-		chunk.SchemaConfig{},
-		promql.EngineOpts{},
-		0,
-		nil,
-		nil,
-	)
-
-	require.EqualError(t, err, errInvalidMinShardingLookback.Error())
 }

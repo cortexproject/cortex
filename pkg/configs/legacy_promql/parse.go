@@ -10,7 +10,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//nolint //Since this was copied from Prometheus leave it as is
+// nolint //Since this was copied from Prometheus leave it as is
 package promql
 
 import (
@@ -352,8 +352,7 @@ func (p *parser) recover(errp *error) {
 
 // stmt parses any statement.
 //
-// 		alertStatement | recordStatement
-//
+//	alertStatement | recordStatement
 func (p *parser) stmt() Statement {
 	switch tok := p.peek(); tok.typ {
 	case itemAlert:
@@ -367,10 +366,9 @@ func (p *parser) stmt() Statement {
 
 // alertStmt parses an alert rule.
 //
-//		ALERT name IF expr [FOR duration]
-//			[LABELS label_set]
-//			[ANNOTATIONS label_set]
-//
+//	ALERT name IF expr [FOR duration]
+//		[LABELS label_set]
+//		[ANNOTATIONS label_set]
 func (p *parser) alertStmt() *AlertStmt {
 	const ctx = "alert statement"
 
@@ -540,8 +538,7 @@ func (p *parser) balance(lhs Expr, op ItemType, rhs Expr, vecMatching *VectorMat
 
 // unaryExpr parses a unary expression.
 //
-//		<Vector_selector> | <Matrix_selector> | (+|-) <number_literal> | '(' <expr> ')'
-//
+//	<Vector_selector> | <Matrix_selector> | (+|-) <number_literal> | '(' <expr> ')'
 func (p *parser) unaryExpr() Expr {
 	switch t := p.peek(); t.typ {
 	case itemADD, itemSUB:
@@ -595,8 +592,7 @@ func (p *parser) unaryExpr() Expr {
 // rangeSelector parses a Matrix (a.k.a. range) selector based on a given
 // Vector selector.
 //
-//		<Vector_selector> '[' <duration> ']'
-//
+//	<Vector_selector> '[' <duration> ']'
 func (p *parser) rangeSelector(vs *VectorSelector) *MatrixSelector {
 	const ctx = "range selector"
 	p.next()
@@ -635,8 +631,7 @@ func (p *parser) number(val string) float64 {
 
 // primaryExpr parses a primary expression.
 //
-//		<metric_name> | <function_call> | <Vector_aggregation> | <literal>
-//
+//	<metric_name> | <function_call> | <Vector_aggregation> | <literal>
 func (p *parser) primaryExpr() Expr {
 	switch t := p.next(); {
 	case t.typ == itemNumber:
@@ -673,8 +668,7 @@ func (p *parser) primaryExpr() Expr {
 
 // labels parses a list of labelnames.
 //
-//		'(' <label_name>, ... ')'
-//
+//	'(' <label_name>, ... ')'
 func (p *parser) labels() []string {
 	const ctx = "grouping opts"
 
@@ -702,9 +696,8 @@ func (p *parser) labels() []string {
 
 // aggrExpr parses an aggregation expression.
 //
-//		<aggr_op> (<Vector_expr>) [by|without <labels>]
-//		<aggr_op> [by|without <labels>] (<Vector_expr>)
-//
+//	<aggr_op> (<Vector_expr>) [by|without <labels>]
+//	<aggr_op> [by|without <labels>] (<Vector_expr>)
 func (p *parser) aggrExpr() *AggregateExpr {
 	const ctx = "aggregation"
 
@@ -759,8 +752,7 @@ func (p *parser) aggrExpr() *AggregateExpr {
 
 // call parses a function call.
 //
-//		<func_name> '(' [ <arg_expr>, ...] ')'
-//
+//	<func_name> '(' [ <arg_expr>, ...] ')'
 func (p *parser) call(name string) *Call {
 	const ctx = "function call"
 
@@ -796,8 +788,7 @@ func (p *parser) call(name string) *Call {
 
 // labelSet parses a set of label matchers
 //
-//		'{' [ <labelname> '=' <match_string>, ... ] '}'
-//
+//	'{' [ <labelname> '=' <match_string>, ... ] '}'
 func (p *parser) labelSet() labels.Labels {
 	set := []labels.Label{}
 	for _, lm := range p.labelMatchers(itemEQL) {
@@ -808,8 +799,7 @@ func (p *parser) labelSet() labels.Labels {
 
 // labelMatchers parses a set of label matchers.
 //
-//		'{' [ <labelname> <match_op> <match_string>, ... ] '}'
-//
+//	'{' [ <labelname> <match_op> <match_string>, ... ] '}'
 func (p *parser) labelMatchers(operators ...ItemType) []*labels.Matcher {
 	const ctx = "label matching"
 
@@ -887,9 +877,8 @@ func (p *parser) labelMatchers(operators ...ItemType) []*labels.Matcher {
 
 // metric parses a metric.
 //
-//		<label_set>
-//		<metric_identifier> [<label_set>]
-//
+//	<label_set>
+//	<metric_identifier> [<label_set>]
 func (p *parser) metric() labels.Labels {
 	name := ""
 	var m labels.Labels
@@ -914,8 +903,7 @@ func (p *parser) metric() labels.Labels {
 
 // offset parses an offset modifier.
 //
-//		offset <duration>
-//
+//	offset <duration>
 func (p *parser) offset() time.Duration {
 	const ctx = "offset"
 
@@ -932,9 +920,8 @@ func (p *parser) offset() time.Duration {
 
 // VectorSelector parses a new (instant) vector selector.
 //
-//		<metric_identifier> [<label_matchers>]
-//		[<metric_identifier>] <label_matchers>
-//
+//	<metric_identifier> [<label_matchers>]
+//	[<metric_identifier>] <label_matchers>
 func (p *parser) VectorSelector(name string) *VectorSelector {
 	var matchers []*labels.Matcher
 	// Parse label matching if any.

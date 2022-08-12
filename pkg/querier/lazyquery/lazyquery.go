@@ -1,36 +1,9 @@
 package lazyquery
 
 import (
-	"context"
-	"fmt"
-
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/querier/chunkstore"
 )
-
-// LazyQueryable wraps a storage.Queryable
-type LazyQueryable struct {
-	q storage.Queryable
-}
-
-// Querier implements storage.Queryable
-func (lq LazyQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	q, err := lq.q.Querier(ctx, mint, maxt)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewLazyQuerier(q), nil
-}
-
-// NewLazyQueryable returns a lazily wrapped queryable
-func NewLazyQueryable(q storage.Queryable) storage.Queryable {
-	return LazyQueryable{q}
-}
 
 // LazyQuerier is a lazy-loaded adapter for a storage.Querier
 type LazyQuerier struct {
@@ -70,16 +43,6 @@ func (l LazyQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.
 // Close implements Storage.Querier
 func (l LazyQuerier) Close() error {
 	return l.next.Close()
-}
-
-// Get implements chunk.Store for the chunk tar HTTP handler.
-func (l LazyQuerier) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
-	store, ok := l.next.(chunkstore.ChunkStore)
-	if !ok {
-		return nil, fmt.Errorf("not supported")
-	}
-
-	return store.Get(ctx, userID, from, through, matchers...)
 }
 
 type lazySeriesSet struct {

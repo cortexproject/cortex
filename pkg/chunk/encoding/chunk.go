@@ -17,12 +17,9 @@
 package encoding
 
 import (
-	"errors"
 	"io"
-	"sort"
 
 	"github.com/prometheus/common/model"
-	errs "github.com/weaveworks/common/errors"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 )
@@ -30,13 +27,6 @@ import (
 const (
 	// ChunkLen is the length of a chunk in bytes.
 	ChunkLen = 1024
-
-	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
-	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
-)
-
-var (
-	errChunkBoundsExceeded = errors.New("attempted access outside of chunk boundaries")
 )
 
 // Chunk is the interface for all chunks. Chunks are generally not
@@ -54,23 +44,13 @@ type Chunk interface {
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
-	Utilization() float64
-
-	// Slice returns a smaller chunk that includes all samples between start and end
-	// (inclusive).  Its may over estimate. On some encodings it is a noop.
-	Slice(start, end model.Time) Chunk
-
-	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
-	// We do not want to change existing Slice implementations because
-	// it is built specifically for query optimization and is a noop for some of the encodings.
-	Rebound(start, end model.Time) (Chunk, error)
 
 	// Len returns the number of samples in the chunk.  Implementations may be
 	// expensive.
 	Len() int
 
-	// Size returns the approximate length of the chunk in bytes.
-	Size() int
+	// Equals checks if this chunk holds the same data as another.
+	Equals(Chunk) (bool, error)
 }
 
 // Iterator enables efficient access to the content of a chunk. It is
@@ -126,171 +106,4 @@ func RangeValues(it Iterator, in metric.Interval) ([]model.SamplePair, error) {
 		}
 	}
 	return result, it.Err()
-}
-
-// addToOverflowChunk is a utility function that creates a new chunk as overflow
-// chunk, adds the provided sample to it, and returns a chunk slice containing
-// the provided old chunk followed by the new overflow chunk.
-func addToOverflowChunk(s model.SamplePair) (Chunk, error) {
-	overflowChunk := New()
-	_, err := overflowChunk.Add(s)
-	if err != nil {
-		return nil, err
-	}
-	return overflowChunk, nil
-}
-
-// transcodeAndAdd is a utility function that transcodes the dst chunk into the
-// provided src chunk (plus the necessary overflow chunks) and then adds the
-// provided sample. It returns the new chunks (transcoded plus overflow) with
-// the new sample at the end.
-func transcodeAndAdd(dst Chunk, src Chunk, s model.SamplePair) ([]Chunk, error) {
-	Ops.WithLabelValues(Transcode).Inc()
-
-	var (
-		head     = dst
-		newChunk Chunk
-		body     = []Chunk{head}
-		err      error
-	)
-
-	it := src.NewIterator(nil)
-	for it.Scan() {
-		if newChunk, err = head.Add(it.Value()); err != nil {
-			return nil, err
-		}
-		if newChunk != nil {
-			body = append(body, newChunk)
-			head = newChunk
-		}
-	}
-	if it.Err() != nil {
-		return nil, it.Err()
-	}
-
-	if newChunk, err = head.Add(s); err != nil {
-		return nil, err
-	}
-	if newChunk != nil {
-		body = append(body, newChunk)
-	}
-	return body, nil
-}
-
-// indexAccessor allows accesses to samples by index.
-type indexAccessor interface {
-	timestampAtIndex(int) model.Time
-	sampleValueAtIndex(int) model.SampleValue
-	err() error
-}
-
-// indexAccessingChunkIterator is a chunk iterator for chunks for which an
-// indexAccessor implementation exists.
-type indexAccessingChunkIterator struct {
-	len       int
-	pos       int
-	lastValue model.SamplePair
-	acc       indexAccessor
-}
-
-func newIndexAccessingChunkIterator(len int, acc indexAccessor) *indexAccessingChunkIterator {
-	return &indexAccessingChunkIterator{
-		len:       len,
-		pos:       -1,
-		lastValue: model.ZeroSamplePair,
-		acc:       acc,
-	}
-}
-
-// scan implements Iterator.
-func (it *indexAccessingChunkIterator) Scan() bool {
-	it.pos++
-	if it.pos >= it.len {
-		return false
-	}
-	it.lastValue = model.SamplePair{
-		Timestamp: it.acc.timestampAtIndex(it.pos),
-		Value:     it.acc.sampleValueAtIndex(it.pos),
-	}
-	return it.acc.err() == nil
-}
-
-// findAtOrAfter implements Iterator.
-func (it *indexAccessingChunkIterator) FindAtOrAfter(t model.Time) bool {
-	i := sort.Search(it.len, func(i int) bool {
-		return !it.acc.timestampAtIndex(i).Before(t)
-	})
-	if i == it.len || it.acc.err() != nil {
-		return false
-	}
-	it.pos = i
-	it.lastValue = model.SamplePair{
-		Timestamp: it.acc.timestampAtIndex(i),
-		Value:     it.acc.sampleValueAtIndex(i),
-	}
-	return true
-}
-
-// value implements Iterator.
-func (it *indexAccessingChunkIterator) Value() model.SamplePair {
-	return it.lastValue
-}
-
-func (it *indexAccessingChunkIterator) Batch(size int) Batch {
-	var batch Batch
-	j := 0
-	for j < size && it.pos < it.len {
-		batch.Timestamps[j] = int64(it.acc.timestampAtIndex(it.pos))
-		batch.Values[j] = float64(it.acc.sampleValueAtIndex(it.pos))
-		it.pos++
-		j++
-	}
-	// Interface contract is that you call Scan before calling Batch; therefore
-	// without this decrement, you'd end up skipping samples.
-	it.pos--
-	batch.Index = 0
-	batch.Length = j
-	return batch
-}
-
-// err implements Iterator.
-func (it *indexAccessingChunkIterator) Err() error {
-	return it.acc.err()
-}
-
-func reboundChunk(c Chunk, start, end model.Time) (Chunk, error) {
-	itr := c.NewIterator(nil)
-	if !itr.FindAtOrAfter(start) {
-		return nil, ErrSliceNoDataInRange
-	}
-
-	pc, err := NewForEncoding(c.Encoding())
-	if err != nil {
-		return nil, err
-	}
-
-	for !itr.Value().Timestamp.After(end) {
-		oc, err := pc.Add(itr.Value())
-		if err != nil {
-			return nil, err
-		}
-
-		if oc != nil {
-			return nil, ErrSliceChunkOverflow
-		}
-		if !itr.Scan() {
-			break
-		}
-	}
-
-	err = itr.Err()
-	if err != nil {
-		return nil, err
-	}
-
-	if pc.Len() == 0 {
-		return nil, ErrSliceNoDataInRange
-	}
-
-	return pc, nil
 }

@@ -45,6 +45,8 @@ account_name: test-account-name
 account_key: test-account-key
 container_name: test-container-name
 endpoint_suffix: test-endpoint-suffix
+msi_resource: test-msi-resource
+user_assigned_id: test-user-assigned-id
 max_retries: 1
 http:
   idle_conn_timeout: 2s
@@ -61,6 +63,8 @@ http:
 				StorageAccountKey:  flagext.Secret{Value: "test-account-key"},
 				ContainerName:      "test-container-name",
 				Endpoint:           "test-endpoint-suffix",
+				MSIResource:        "test-msi-resource",
+				UserAssignedID:     "test-user-assigned-id",
 				MaxRetries:         1,
 				Config: http.Config{
 					IdleConnTimeout:       2 * time.Second,

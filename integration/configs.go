@@ -1,3 +1,4 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
@@ -14,24 +15,19 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 )
 
-type storeConfig struct {
-	From, IndexStore string
-}
-
 const (
-	userID                 = "e2e-user"
-	defaultNetworkName     = "e2e-cortex-test"
-	bucketName             = "cortex"
-	rulestoreBucketName    = "cortex-rules"
-	alertsBucketName       = "cortex-alerts"
-	cortexConfigFile       = "config.yaml"
-	cortexSchemaConfigFile = "schema.yaml"
-	blocksStorageEngine    = "blocks"
-	clientCertFile         = "certs/client.crt"
-	clientKeyFile          = "certs/client.key"
-	caCertFile             = "certs/root.crt"
-	serverCertFile         = "certs/server.crt"
-	serverKeyFile          = "certs/server.key"
+	userID              = "e2e-user"
+	defaultNetworkName  = "e2e-cortex-test"
+	bucketName          = "cortex"
+	rulestoreBucketName = "cortex-rules"
+	alertsBucketName    = "cortex-alerts"
+	cortexConfigFile    = "config.yaml"
+	blocksStorageEngine = "blocks"
+	clientCertFile      = "certs/client.crt"
+	clientKeyFile       = "certs/client.key"
+	caCertFile          = "certs/root.crt"
+	serverCertFile      = "certs/server.crt"
+	serverKeyFile       = "certs/server.key"
 )
 
 // GetNetworkName returns the docker network name to run tests within.
@@ -46,18 +42,7 @@ func GetNetworkName() string {
 }
 
 var (
-	networkName         = GetNetworkName()
-	storeConfigTemplate = `
-- from: {{.From}}
-  store: {{.IndexStore}}
-  schema: v9
-  index:
-    prefix: cortex_
-    period: 168h
-  chunks:
-    prefix: cortex_chunks_
-    period: 168h
-`
+	networkName = GetNetworkName()
 
 	cortexAlertmanagerUserConfigYaml = `route:
   receiver: "example_receiver"
@@ -88,8 +73,6 @@ receivers:
 )
 
 var (
-	cortexSchemaConfigYaml = buildSchemaConfigWith([]storeConfig{{From: "2019-03-20", IndexStore: "aws-dynamo"}})
-
 	AlertmanagerFlags = func() map[string]string {
 		return map[string]string{
 			"-alertmanager.configs.poll-interval": "1s",
@@ -123,21 +106,12 @@ var (
 
 	AlertmanagerLocalFlags = func() map[string]string {
 		return map[string]string{
-			"-alertmanager.storage.type":       "local",
-			"-alertmanager.storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+			"-alertmanager-storage.backend":    "local",
+			"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
 		}
 	}
 
-	AlertmanagerS3Flags = func(legacy bool) map[string]string {
-		if legacy {
-			return map[string]string{
-				"-alertmanager.storage.type":                "s3",
-				"-alertmanager.storage.s3.buckets":          alertsBucketName,
-				"-alertmanager.storage.s3.force-path-style": "true",
-				"-alertmanager.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
-			}
-		}
-
+	AlertmanagerS3Flags = func() map[string]string {
 		return map[string]string{
 			"-alertmanager-storage.backend":              "s3",
 			"-alertmanager-storage.s3.access-key-id":     e2edb.MinioAccessKey,
@@ -148,19 +122,7 @@ var (
 		}
 	}
 
-	RulerFlags = func(legacy bool) map[string]string {
-		if legacy {
-			return map[string]string{
-				"-api.response-compression-enabled":  "true",
-				"-ruler.enable-sharding":             "false",
-				"-ruler.poll-interval":               "2s",
-				"-experimental.ruler.enable-api":     "true",
-				"-ruler.storage.type":                "s3",
-				"-ruler.storage.s3.buckets":          rulestoreBucketName,
-				"-ruler.storage.s3.force-path-style": "true",
-				"-ruler.storage.s3.url":              fmt.Sprintf("s3://%s:%s@%s-minio-9000.:9000", e2edb.MinioAccessKey, e2edb.MinioSecretKey, networkName),
-			}
-		}
+	RulerFlags = func() map[string]string {
 		return map[string]string{
 			"-api.response-compression-enabled":   "true",
 			"-ruler.enable-sharding":              "false",
@@ -230,35 +192,6 @@ blocks_storage:
 		MinioSecretKey: e2edb.MinioSecretKey,
 		MinioEndpoint:  fmt.Sprintf("%s-minio-9000:9000", networkName),
 	})
-
-	ChunksStorageFlags = func() map[string]string {
-		return map[string]string{
-			"-dynamodb.url":                   fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
-			"-table-manager.poll-interval":    "1m",
-			"-schema-config-file":             filepath.Join(e2e.ContainerSharedDir, cortexSchemaConfigFile),
-			"-table-manager.retention-period": "168h",
-		}
-	}
-
-	ChunksStorageConfig = buildConfigFromTemplate(`
-storage:
-  aws:
-    dynamodb:
-      dynamodb_url: {{.DynamoDBURL}}
-
-table_manager:
-  poll_interval:    1m
-  retention_period: 168h
-
-schema:
-{{.SchemaConfig}}
-`, struct {
-		DynamoDBURL  string
-		SchemaConfig string
-	}{
-		DynamoDBURL:  fmt.Sprintf("dynamodb://u:p@%s-dynamodb.:8000", networkName),
-		SchemaConfig: indentConfig(cortexSchemaConfigYaml, 2),
-	})
 )
 
 func buildConfigFromTemplate(tmpl string, data interface{}) string {
@@ -273,33 +206,4 @@ func buildConfigFromTemplate(tmpl string, data interface{}) string {
 	}
 
 	return w.String()
-}
-
-func indentConfig(config string, indentation int) string {
-	output := strings.Builder{}
-
-	for _, line := range strings.Split(config, "\n") {
-		if line == "" {
-			output.WriteString("\n")
-			continue
-		}
-
-		output.WriteString(strings.Repeat(" ", indentation))
-		output.WriteString(line)
-		output.WriteString("\n")
-	}
-
-	return output.String()
-}
-
-func buildSchemaConfigWith(configs []storeConfig) string {
-	configYamls := ""
-	for _, config := range configs {
-		configYamls += buildConfigFromTemplate(
-			storeConfigTemplate,
-			config,
-		)
-	}
-
-	return "configs:" + configYamls
 }

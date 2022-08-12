@@ -404,6 +404,15 @@ blocks_storage:
     # CLI flag: -blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
 
+    # Azure storage MSI resource. Either this or account key must be set.
+    # CLI flag: -blocks-storage.azure.msi-resource
+    [msi_resource: <string> | default = ""]
+
+    # Azure storage MSI resource managed identity client Id. If not supplied
+    # system assigned identity is used
+    # CLI flag: -blocks-storage.azure.user-assigned-id
+    [user_assigned_id: <string> | default = ""]
+
     http:
       # The time an idle connection will remain idle before closing.
       # CLI flag: -blocks-storage.azure.http.idle-conn-timeout

@@ -2,7 +2,6 @@ package alertstore
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/objectclient"
-	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 func TestAlertStore_ListAllUsers(t *testing.T) {
@@ -152,9 +149,6 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 }
 
 func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, client interface{})) {
-	legacyClient := chunk.NewMockStorage()
-	legacyStore := objectclient.NewAlertStore(legacyClient, log.NewNopLogger())
-
 	bucketClient := objstore.NewInMemBucket()
 	bucketStore := bucketclient.NewBucketAlertStore(bucketClient, nil, log.NewNopLogger())
 
@@ -162,7 +156,6 @@ func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertSto
 		store  AlertStore
 		client interface{}
 	}{
-		"legacy": {store: legacyStore, client: legacyClient},
 		"bucket": {store: bucketStore, client: bucketClient},
 	}
 
@@ -174,17 +167,6 @@ func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertSto
 }
 
 func objectExists(bucketClient interface{}, key string) (bool, error) {
-	if typed, ok := bucketClient.(*chunk.MockStorage); ok {
-		_, err := typed.GetObject(context.Background(), key)
-		if errors.Is(err, chunk.ErrStorageObjectNotFound) {
-			return false, nil
-		}
-		if err == nil {
-			return true, nil
-		}
-		return false, err
-	}
-
 	if typed, ok := bucketClient.(*objstore.InMemBucket); ok {
 		return typed.Exists(context.Background(), key)
 	}

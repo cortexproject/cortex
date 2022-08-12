@@ -3,8 +3,5 @@
 BUILD_IMAGE ?= quay.io/cortexproject/build-image
 IMAGE_PREFIX ?= custom-prefix/
 
-blocksconvert-push: cmd/blocksconvert/.uptodate
-	docker push $(IMAGE_PREFIX)blocksconvert:$(IMAGE_TAG)
-
 cortex-push: cmd/cortex/.uptodate
 	docker push $(IMAGE_PREFIX)cortex:$(IMAGE_TAG)

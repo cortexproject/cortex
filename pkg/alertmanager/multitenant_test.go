@@ -138,13 +138,6 @@ func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 			},
 			expected: errShardingUnsupportedStorage,
 		},
-		"should fail if sharding enabled and legacy store configuration given": {
-			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
-				cfg.ShardingEnabled = true
-				cfg.Store.Type = "s3"
-			},
-			expected: errShardingLegacyStorage,
-		},
 		"should fail if zone aware is enabled but zone is not set": {
 			setup: func(t *testing.T, cfg *MultitenantAlertmanagerConfig, storageCfg *alertstore.Config) {
 				cfg.ShardingEnabled = true

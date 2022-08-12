@@ -30,11 +30,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -44,15 +42,6 @@ import (
 
 const day = 24 * time.Hour
 
-var (
-	// PassthroughMiddleware is a noop middleware
-	PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
-		return next
-	})
-
-	errInvalidMinShardingLookback = errors.New("a non-zero value is required for querier.query-ingesters-within when -querier.parallelise-shardable-queries is enabled")
-)
-
 // Config for query_range middleware chain.
 type Config struct {
 	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
@@ -60,7 +49,6 @@ type Config struct {
 	ResultsCacheConfig     `yaml:"results_cache"`
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
-	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 }
@@ -71,7 +59,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
-	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", false, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
@@ -144,9 +131,6 @@ func NewTripperware(
 	limits Limits,
 	codec Codec,
 	cacheExtractor Extractor,
-	schema chunk.SchemaConfig,
-	engineOpts promql.EngineOpts,
-	minShardingLookback time.Duration,
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
 ) (Tripperware, cache.Cache, error) {
@@ -186,27 +170,6 @@ func NewTripperware(
 		}
 		c = cache
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache", metrics), queryCacheMiddleware)
-	}
-
-	if cfg.ShardedQueries {
-		if minShardingLookback == 0 {
-			return nil, nil, errInvalidMinShardingLookback
-		}
-
-		shardingware := NewQueryShardMiddleware(
-			log,
-			promql.NewEngine(engineOpts),
-			schema.Configs,
-			codec,
-			minShardingLookback,
-			metrics,
-			registerer,
-		)
-
-		queryRangeMiddleware = append(
-			queryRangeMiddleware,
-			shardingware, // instrumentation is included in the sharding middleware
-		)
 	}
 
 	if cfg.MaxRetries > 0 {

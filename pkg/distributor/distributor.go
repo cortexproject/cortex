@@ -787,6 +787,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
 
+		if headerMap := ctx.Value(util_log.HeaderMapContextKey); headerMap != nil {
+			localCtx = context.WithValue(localCtx, util_log.HeaderMapContextKey, headerMap)
+		}
+
 		// Get clientIP(s) from Context and add it to localCtx
 		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
 

@@ -56,8 +56,8 @@ func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
 func headersFromContext(ctx context.Context, l log.Logger) log.Logger {
 	headerContentsMap, ok := ctx.Value(HeaderMapContextKey).(map[string]string)
 	if ok {
-		for target, contents := range headerContentsMap {
-			l = kitlog.With(l, target, contents)
+		for header, contents := range headerContentsMap {
+			l = kitlog.With(l, header, contents)
 		}
 	}
 	return l

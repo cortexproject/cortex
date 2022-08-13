@@ -7153,7 +7153,11 @@ The key selling point, he adds, was Cortex’s multi-tenant support, which also 
 &lt;h2 id="initial-setup">Initial setup&lt;/h2>
 &lt;p>The following initial setup is required only once:&lt;/p>
 &lt;ol>
-&lt;li>Install &lt;a href="https://gohugo.io/">Hugo&lt;/a> &lt;code>v0.94.2&lt;/code> (&lt;strong>extended&lt;/strong> version)&lt;/li>
+&lt;li>Install &lt;a href="https://gohugo.io/">Hugo&lt;/a> (&lt;strong>extended&lt;/strong> version)
+&lt;ul>
+&lt;li>Look for value of &lt;code>HUGO_VERSION&lt;/code> in &lt;code>build-image/Dockerfile&lt;/code>.&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;li>Install &lt;a href="https://nodejs.org/en/">Node.js&lt;/a> &lt;code>v14&lt;/code> or above (alternatively via &lt;a href="https://github.com/nvm-sh/nvm">&lt;code>nvm&lt;/code>&lt;/a>)&lt;/li>
 &lt;li>Install required Node modules with:
 &lt;pre tabindex="0">&lt;code>cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -

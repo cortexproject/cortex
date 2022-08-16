@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
-	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/gorilla/mux"
@@ -168,36 +167,6 @@ type myQueryable struct{}
 
 func (q *myQueryable) Querier(ctx context.Context, mint, maxt int64) (prom_storage.Querier, error) {
 	return prom_storage.NoopQuerier(), nil
-}
-
-func Test_InitRuler(t *testing.T) {
-
-	cfg := func() *Config {
-		cfg := newDefaultConfig()
-		cfg.Target = []string{"all"}
-		cfg.RulerStorage.Backend = "local"
-		cfg.RulerStorage.Local.Directory = os.TempDir()
-		cfg.ExternalPusher = &myPusher{}
-		cfg.ExternalQueryable = &myQueryable{}
-		return cfg
-	}()
-
-	cortex := &Cortex{
-		Cfg:    *cfg,
-		Server: &server.Server{},
-	}
-	fmt.Println("test1")
-	cortex.initServer()
-	require.NotNil(t, cortex.Server)
-	fmt.Println("test2")
-	cortex.initAPI()
-	require.NotNil(t, cortex.API)
-	fmt.Println("test3")
-	cortex.initRulerStorage()
-	require.NotNil(t, cortex.RulerStorage)
-	fmt.Println("test4")
-	cortex.initRuler()
-	require.NotNil(t, cortex.Ruler)
 }
 
 func Test_setupModuleManager(t *testing.T) {

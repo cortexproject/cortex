@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+
   **This release removes support for chunks storage. See below for more.**
 * [CHANGE] Remove support for chunks storage entirely. If you are using chunks storage on a previous version, you must [migrate your data](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md) on version 1.12 or earlier. Before upgrading to this release, you should also remove any deprecated chunks-related configuration, as this release will no longer accept that. The following flags are gone:
   - `-dynamodb.*`
@@ -45,6 +46,7 @@
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
+* [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields #4767
 
 ## 1.13.0 2022-07-14
 

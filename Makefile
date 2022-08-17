@@ -96,15 +96,12 @@ pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/fronte
 pkg/frontend/v2/frontendv2pb/frontend.pb.go: pkg/frontend/v2/frontendv2pb/frontend.proto
 pkg/querier/queryrange/queryrange.pb.go: pkg/querier/queryrange/queryrange.proto
 pkg/querier/stats/stats.pb.go: pkg/querier/stats/stats.proto
-pkg/chunk/storage/caching_index_client.pb.go: pkg/chunk/storage/caching_index_client.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
 pkg/ruler/rulespb/rules.pb.go: pkg/ruler/rulespb/rules.proto
 pkg/ruler/ruler.pb.go: pkg/ruler/ruler.proto
 pkg/ring/kv/memberlist/kv.pb.go: pkg/ring/kv/memberlist/kv.proto
 pkg/scheduler/schedulerpb/scheduler.pb.go: pkg/scheduler/schedulerpb/scheduler.proto
 pkg/storegateway/storegatewaypb/gateway.pb.go: pkg/storegateway/storegatewaypb/gateway.proto
-pkg/chunk/grpc/grpc.pb.go: pkg/chunk/grpc/grpc.proto
-tools/blocksconvert/scheduler.pb.go: tools/blocksconvert/scheduler.proto
 pkg/alertmanager/alertmanagerpb/alertmanager.pb.go: pkg/alertmanager/alertmanagerpb/alertmanager.proto
 pkg/alertmanager/alertspb/alerts.pb.go: pkg/alertmanager/alertspb/alerts.proto
 
@@ -119,7 +116,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= update-go-1-17-8-6aed4de76
+LATEST_BUILD_IMAGE_TAG ?= update-go-1-19-a2f4d2c79
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -359,7 +356,7 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--before-remove packaging/deb/control/prerm \
 			--package dist/cortex-$(VERSION)_$$arch.deb \
 			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
-			docs/chunks-storage/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			docs/configuration/single-process-config-blocks.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/deb/default/cortex=/etc/default/cortex \
 			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
 		$(FPM_OPTS) -t rpm  \
@@ -368,7 +365,7 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--before-remove packaging/rpm/control/preun \
 			--package dist/cortex-$(VERSION)_$$arch.rpm \
 			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
-			docs/chunks-storage/single-process-config.yaml=/etc/cortex/single-process-config.yaml \
+			docs/configuration/single-process-config-blocks.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
 			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
 	done

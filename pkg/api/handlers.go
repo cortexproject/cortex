@@ -160,7 +160,7 @@ func NewQuerierHandler(
 	exemplarQueryable storage.ExemplarQueryable,
 	engine *promql.Engine,
 	distributor Distributor,
-	tombstonesLoader *purger.TombstonesLoader,
+	tombstonesLoader purger.TombstonesLoader,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) http.Handler {

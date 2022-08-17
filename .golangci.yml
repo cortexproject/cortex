@@ -4,12 +4,16 @@ output:
 linters:
   enable:
     - goimports
-    - golint
+    - revive
     - gofmt
     - misspell
     - depguard
 
 linters-settings:
+  staticcheck:
+    checks:
+      - all
+      - "-SA1019" # Disable because too many file uses io/ioutil now, will fix later
   errcheck:
     # path to a file containing a list of functions to exclude from checking
     # see https://github.com/kisielk/errcheck#excluding-functions for details

@@ -1,8 +1,11 @@
 package compactor
 
 import (
+	"bytes"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,82 +21,92 @@ import (
 )
 
 func TestShuffleShardingGrouper_Groups(t *testing.T) {
-	block1ulid := ulid.MustNew(1, nil)
-	block2ulid := ulid.MustNew(2, nil)
-	block3ulid := ulid.MustNew(3, nil)
-	block4ulid := ulid.MustNew(4, nil)
-	block5ulid := ulid.MustNew(5, nil)
-	block6ulid := ulid.MustNew(6, nil)
-	block7ulid := ulid.MustNew(7, nil)
-	block8ulid := ulid.MustNew(8, nil)
-	block9ulid := ulid.MustNew(9, nil)
-	block10ulid := ulid.MustNew(10, nil)
-	block11ulid := ulid.MustNew(11, nil)
-	block12ulid := ulid.MustNew(12, nil)
-	block13ulid := ulid.MustNew(13, nil)
-	block14ulid := ulid.MustNew(14, nil)
-	block15ulid := ulid.MustNew(15, nil)
+	block1hto2hExt1Ulid := ulid.MustNew(1, nil)
+	block3hto4hExt1Ulid := ulid.MustNew(2, nil)
+	block0hto1hExt1Ulid := ulid.MustNew(3, nil)
+	block2hto3hExt1Ulid := ulid.MustNew(4, nil)
+	block1hto2hExt2Ulid := ulid.MustNew(5, nil)
+	block0hto1hExt2Ulid := ulid.MustNew(6, nil)
+	block0to1hExt3Ulid := ulid.MustNew(7, nil)
+	block4hto6hExt2Ulid := ulid.MustNew(8, nil)
+	block6hto8hExt2Ulid := ulid.MustNew(9, nil)
+	block1hto2hExt1UlidCopy := ulid.MustNew(10, nil)
+	block0hto20hExt1Ulid := ulid.MustNew(11, nil)
+	block21hto40hExt1Ulid := ulid.MustNew(12, nil)
+	block21hto40hExt1UlidCopy := ulid.MustNew(13, nil)
+	block0hto45mExt1Ulid := ulid.MustNew(14, nil)
+	block0hto1h30mExt1Ulid := ulid.MustNew(15, nil)
+	blocklast1hExt1Ulid := ulid.MustNew(16, nil)
+	blocklast1hExt1UlidCopy := ulid.MustNew(17, nil)
 
 	blocks :=
 		map[ulid.ULID]*metadata.Meta{
-			block1ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			block1hto2hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt1Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block2ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block2ulid, MinTime: 3 * time.Hour.Milliseconds(), MaxTime: 4 * time.Hour.Milliseconds()},
+			block1hto2hExt1UlidCopy: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt1UlidCopy, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block3ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block3ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+			block3hto4hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block3hto4hExt1Ulid, MinTime: 3 * time.Hour.Milliseconds(), MaxTime: 4 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block4ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block4ulid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
+			block0hto1hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto1hExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block5ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block5ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			block2hto3hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block2hto3hExt1Ulid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block1hto2hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block1hto2hExt2Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block6ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block6ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+			block0hto1hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto1hExt2Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block7ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block7ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
-			},
-			block8ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block8ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
-				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
-			},
-			block9ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block9ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
+			block0to1hExt3Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0to1hExt3Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "3"}},
 			},
-			block10ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block10ulid, MinTime: 4 * time.Hour.Milliseconds(), MaxTime: 6 * time.Hour.Milliseconds()},
+			block4hto6hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block4hto6hExt2Ulid, MinTime: 4 * time.Hour.Milliseconds(), MaxTime: 6 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block11ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block11ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
+			block6hto8hExt2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block6hto8hExt2Ulid, MinTime: 6 * time.Hour.Milliseconds(), MaxTime: 8 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "2"}},
 			},
-			block12ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block12ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			block0hto20hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto20hExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 20 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block13ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block13ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 20 * time.Hour.Milliseconds()},
+			block21hto40hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1Ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block14ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block14ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
+			block21hto40hExt1UlidCopy: {
+				BlockMeta: tsdb.BlockMeta{ULID: block21hto40hExt1UlidCopy, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
-			block15ulid: {
-				BlockMeta: tsdb.BlockMeta{ULID: block15ulid, MinTime: 21 * time.Hour.Milliseconds(), MaxTime: 40 * time.Hour.Milliseconds()},
+			block0hto45mExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto45mExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 45 * time.Minute.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			block0hto1h30mExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: block0hto1h30mExt1Ulid, MinTime: 0 * time.Hour.Milliseconds(), MaxTime: 1*time.Hour.Milliseconds() + 30*time.Minute.Milliseconds()},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			blocklast1hExt1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1Ulid, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
+				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+			},
+			blocklast1hExt1UlidCopy: {
+				BlockMeta: tsdb.BlockMeta{ULID: blocklast1hExt1UlidCopy, MinTime: int64(ulid.Now()) - 1*time.Hour.Milliseconds(), MaxTime: int64(ulid.Now())},
 				Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
 			},
 		}
@@ -102,42 +115,85 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		ranges   []time.Duration
 		blocks   map[ulid.ULID]*metadata.Meta
 		expected [][]ulid.ULID
+		metrics  string
 	}{
 		"test basic grouping": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1ulid: blocks[block1ulid], block2ulid: blocks[block2ulid], block3ulid: blocks[block3ulid], block4ulid: blocks[block4ulid], block5ulid: blocks[block5ulid], block6ulid: blocks[block6ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
-				{block5ulid, block6ulid},
-				{block1ulid, block3ulid},
-				{block2ulid, block4ulid},
+				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 3
+`,
 		},
 		"test no compaction": {
 			ranges:   []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks:   map[ulid.ULID]*metadata.Meta{block7ulid: blocks[block7ulid], block8ulid: blocks[block8ulid], block9ulid: blocks[block9ulid]},
+			blocks:   map[ulid.ULID]*metadata.Meta{block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid], block0to1hExt3Ulid: blocks[block0to1hExt3Ulid]},
 			expected: [][]ulid.ULID{},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 0
+`,
 		},
 		"test smallest range first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1ulid: blocks[block1ulid], block2ulid: blocks[block2ulid], block3ulid: blocks[block3ulid], block4ulid: blocks[block4ulid], block10ulid: blocks[block10ulid], block11ulid: blocks[block11ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block4hto6hExt2Ulid: blocks[block4hto6hExt2Ulid], block6hto8hExt2Ulid: blocks[block6hto8hExt2Ulid]},
 			expected: [][]ulid.ULID{
-				{block1ulid, block3ulid},
-				{block2ulid, block4ulid},
-				{block10ulid, block11ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
+				{block4hto6hExt2Ulid, block6hto8hExt2Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 3
+`,
 		},
 		"test oldest min time first": {
 			ranges: []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks: map[ulid.ULID]*metadata.Meta{block1ulid: blocks[block1ulid], block2ulid: blocks[block2ulid], block3ulid: blocks[block3ulid], block4ulid: blocks[block4ulid], block12ulid: blocks[block12ulid]},
+			blocks: map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt1UlidCopy: blocks[block1hto2hExt1UlidCopy]},
 			expected: [][]ulid.ULID{
-				{block1ulid, block3ulid, block12ulid},
-				{block2ulid, block4ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt1UlidCopy},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 2
+`,
 		},
 		"test overlapping blocks": {
-			ranges:   []time.Duration{20 * time.Hour, 40 * time.Hour},
-			blocks:   map[ulid.ULID]*metadata.Meta{block13ulid: blocks[block13ulid], block14ulid: blocks[block14ulid], block15ulid: blocks[block15ulid]},
+			ranges: []time.Duration{20 * time.Hour, 40 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block0hto20hExt1Ulid: blocks[block0hto20hExt1Ulid], block21hto40hExt1Ulid: blocks[block21hto40hExt1Ulid], block21hto40hExt1UlidCopy: blocks[block21hto40hExt1UlidCopy]},
+			expected: [][]ulid.ULID{
+				{block21hto40hExt1Ulid, block21hto40hExt1UlidCopy},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
+		"test imperfect maxTime blocks": {
+			ranges: []time.Duration{2 * time.Hour},
+			blocks: map[ulid.ULID]*metadata.Meta{block0hto1h30mExt1Ulid: blocks[block0hto1h30mExt1Ulid], block0hto45mExt1Ulid: blocks[block0hto45mExt1Ulid]},
+			expected: [][]ulid.ULID{
+				{block0hto45mExt1Ulid, block0hto1h30mExt1Ulid},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
+		"test prematurely created blocks": {
+			ranges:   []time.Duration{2 * time.Hour},
+			blocks:   map[ulid.ULID]*metadata.Meta{blocklast1hExt1UlidCopy: blocks[blocklast1hExt1UlidCopy], blocklast1hExt1Ulid: blocks[blocklast1hExt1Ulid]},
 			expected: [][]ulid.ULID{},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 0
+`,
 		},
 	}
 
@@ -164,7 +220,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			ring := &RingMock{}
 			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
 
-			registerer := prometheus.NewRegistry()
+			registerer := prometheus.NewPedanticRegistry()
 			remainingPlannedCompactions := promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 				Name: "cortex_compactor_remaining_planned_compactions",
 				Help: "Total number of plans that remain to be compacted.",
@@ -184,7 +240,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				ring,
 				"test-addr",
 				overrides,
-				"")
+				"",
+				10,
+				3)
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)
 			require.Len(t, actual, len(testData.expected))
@@ -192,6 +250,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			for idx, expectedIDs := range testData.expected {
 				assert.Equal(t, expectedIDs, actual[idx].IDs())
 			}
+
+			err = testutil.GatherAndCompare(registerer, bytes.NewBufferString(testData.metrics), "cortex_compactor_remaining_planned_compactions")
+			require.NoError(t, err)
 		})
 	}
 }
@@ -371,21 +432,6 @@ func TestGroupBlocksByCompactableRanges(t *testing.T) {
 				{rangeStart: 80, rangeEnd: 120, blocks: []*metadata.Meta{
 					{BlockMeta: tsdb.BlockMeta{MinTime: 80, MaxTime: 120}},
 					{BlockMeta: tsdb.BlockMeta{MinTime: 80, MaxTime: 120}},
-				}},
-			},
-		},
-		"a range containing the most recent block shouldn't be prematurely compacted if doesn't cover the full range": {
-			ranges: []int64{10, 20, 40},
-			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{MinTime: 5, MaxTime: 8}},
-				{BlockMeta: tsdb.BlockMeta{MinTime: 7, MaxTime: 9}},
-				{BlockMeta: tsdb.BlockMeta{MinTime: 10, MaxTime: 12}},
-				{BlockMeta: tsdb.BlockMeta{MinTime: 13, MaxTime: 15}},
-			},
-			expected: []blocksGroup{
-				{rangeStart: 0, rangeEnd: 10, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{MinTime: 5, MaxTime: 8}},
-					{BlockMeta: tsdb.BlockMeta{MinTime: 7, MaxTime: 9}},
 				}},
 			},
 		},

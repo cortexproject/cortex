@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/pkg/errors"
@@ -70,31 +71,11 @@ func (p *prometheusXorChunk) Encoding() Encoding {
 	return PrometheusXorChunk
 }
 
-func (p *prometheusXorChunk) Utilization() float64 {
-	// Used for reporting when chunk is used to store new data.
-	return 0
-}
-
-func (p *prometheusXorChunk) Slice(_, _ model.Time) Chunk {
-	return p
-}
-
-func (p *prometheusXorChunk) Rebound(from, to model.Time) (Chunk, error) {
-	return nil, errors.New("Rebound not supported by PrometheusXorChunk")
-}
-
 func (p *prometheusXorChunk) Len() int {
 	if p.chunk == nil {
 		return 0
 	}
 	return p.chunk.NumSamples()
-}
-
-func (p *prometheusXorChunk) Size() int {
-	if p.chunk == nil {
-		return 0
-	}
-	return len(p.chunk.Bytes())
 }
 
 type prometheusChunkIterator struct {
@@ -140,6 +121,14 @@ func (p *prometheusChunkIterator) Batch(size int) Batch {
 
 func (p *prometheusChunkIterator) Err() error {
 	return p.it.Err()
+}
+
+func (p *prometheusXorChunk) Equals(chunk Chunk) (bool, error) {
+	po, ok := chunk.(*prometheusXorChunk)
+	if !ok {
+		return false, errors.New("other chunk is not a prometheusXorChunk")
+	}
+	return bytes.Equal(p.chunk.Bytes(), po.chunk.Bytes()), nil
 }
 
 type errorIterator string

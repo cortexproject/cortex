@@ -272,12 +272,12 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 	for _, v := range headerValues {
 		if v == noStoreValue {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+			level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
 	}
 
-	if !s.isAtModifierCachable(req, maxCacheTime) {
+	if !s.isAtModifierCachable(ctx, req, maxCacheTime) {
 		return false
 	}
 
@@ -289,13 +289,13 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
 
 	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
 		return false
 	}
 
 	for _, gen := range genNumbersFromResp {
 		if gen != genNumberFromCtx {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
 			return false
 		}
 	}
@@ -307,7 +307,7 @@ var errAtModifierAfterEnd = errors.New("at modifier after end")
 
 // isAtModifierCachable returns true if the @ modifier result
 // is safe to cache.
-func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
+func (s resultsCache) isAtModifierCachable(ctx context.Context, r Request, maxCacheTime int64) bool {
 	// There are 2 cases when @ modifier is not safe to cache:
 	//   1. When @ modifier points to time beyond the maxCacheTime.
 	//   2. If the @ modifier time is > the query range end while being
@@ -321,7 +321,7 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
-		level.Warn(s.logger).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
+		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
 		return false
 	}
 
@@ -632,7 +632,7 @@ func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
 		Extents: extents,
 	})
 	if err != nil {
-		level.Error(s.logger).Log("msg", "error marshalling cached value", "err", err)
+		level.Error(util_log.WithContext(ctx, s.logger)).Log("msg", "error marshalling cached value", "err", err)
 		return
 	}
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/url"
+	"os"
 
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
@@ -73,7 +73,7 @@ func New(cfg Config) (DB, error) {
 		if u.User == nil {
 			return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
 		}
-		passwordBytes, err := ioutil.ReadFile(cfg.PasswordFile)
+		passwordBytes, err := os.ReadFile(cfg.PasswordFile)
 		if err != nil {
 			return nil, fmt.Errorf("Could not read database password file: %v", err)
 		}

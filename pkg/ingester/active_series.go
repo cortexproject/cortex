@@ -87,7 +87,7 @@ func (c *ActiveSeries) Purge(keepUntil time.Time) {
 	}
 }
 
-//nolint // Linter reports that this method is unused, but it is.
+// nolint // Linter reports that this method is unused, but it is.
 func (c *ActiveSeries) clear() {
 	for s := 0; s < numActiveSeriesStripes; s++ {
 		c.stripes[s].clear()
@@ -164,7 +164,7 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, seri
 	return e.nanos, true
 }
 
-//nolint // Linter reports that this method is unused, but it is.
+// nolint // Linter reports that this method is unused, but it is.
 func (s *activeSeriesStripe) clear() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

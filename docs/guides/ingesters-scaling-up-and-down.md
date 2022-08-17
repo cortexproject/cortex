@@ -14,9 +14,7 @@ _If you're looking how to run ingesters rolling updates, please refer to the [de
 Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the [hash ring](../architecture.md#the-hash-ring) and the distributors will reshard received series accordingly.
 Ingesters that were previously receiving those series will see data stop arriving and will consider those series "idle".
 
-If you run with `-distributor.shard-by-all-labels=false` (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries.
-For chunks storage, this will start after `-ingester.max-chunk-idle` time (default 5 minutes), and will finish when the flush queue is clear - how long depends on how fast your back-end store can accept writes.
-For blocks storage, this will happen after the next "head compaction" (typically every 2 hours).
+If you run with `-distributor.shard-by-all-labels=false` (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries. This will happen after the next "head compaction" (typically every 2 hours).
 If you have set `-querier.query-store-after` then that is also a minimum time you have to wait before adding a second ingester.
 
 If you run with `-distributor.shard-by-all-labels=true`,
@@ -26,15 +24,7 @@ no special care is required to take when scaling up ingesters.
 
 A running ingester holds several hours of time series data in memory, before they're flushed to the long-term storage.  When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.
 
-The procedure to adopt when scaling down ingesters depends on your Cortex setup:
-
-- [Blocks storage](#blocks-storage)
-- [Chunks storage with WAL enabled](#chunks-storage-with-wal-enabled)
-- [Chunks storage with WAL disabled](#chunks-storage-with-wal-disabled-hand-over)
-
-### Blocks storage
-
-When Cortex is running the [blocks storage](../blocks-storage/_index.md), ingesters don't flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint [`/shutdown`](../api/_index.md#shutdown) that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.
+Ingesters don't flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint [`/shutdown`](../api/_index.md#shutdown) that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.
 
 Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven't been discovered yet.
 
@@ -54,19 +44,3 @@ The ingesters scale down is deemed an infrequent operation and no automation is 
   2. Wait until the HTTP call returns successfully or "finished flushing and shipping TSDB blocks" is logged
   3. Terminate the ingester process (the `/shutdown` will not do it)
   4. Before proceeding to the next ingester, wait 2x the maximum between `-blocks-storage.bucket-store.sync-interval` and `-compactor.cleanup-interval`
-
-### Chunks storage with WAL enabled
-
-When Cortex is running the [chunks storage](../chunks-storage/_index.md) with WAL enabled, ingesters don't flush series chunks to storage at shutdown by default. However, Cortex ingesters expose an API endpoint [`/shutdown`](../api/_index.md#shutdown) that can be called to flush chunks to the long-term storage before the ingester terminates.
-
-The procedure to scale down ingesters -- one by one -- should be:
-
-1. Call `/shutdown` endpoint on the ingester to shutdown
-2.  Wait until the HTTP call returns successfully or "flushing of chunks complete" is logged
-3. Terminate the ingester process (the `/shutdown` will not do it)
-
-_For more information about the chunks storage WAL, please refer to [Ingesters with WAL](../chunks-storage/ingesters-with-wal.md)._
-
-### Chunks storage with WAL disabled
-
-When Cortex is running the chunks storage with WAL disabled, ingesters flush series chunks to the storage at shutdown if no `PENDING` ingester (to transfer series to) is found. Because of this, it's safe to scale down ingesters with no special care in this setup.

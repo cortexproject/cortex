@@ -1,9 +1,55 @@
 # Changelog
 
 ## master / unreleased
+
+  **This release removes support for chunks storage. See below for more.**
+* [CHANGE] Remove support for chunks storage entirely. If you are using chunks storage on a previous version, you must [migrate your data](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md) on version 1.12 or earlier. Before upgrading to this release, you should also remove any deprecated chunks-related configuration, as this release will no longer accept that. The following flags are gone:
+  - `-dynamodb.*`
+  - `-metrics.*`
+  - `-s3.*`
+  - `-azure.*`
+  - `-bigtable.*`
+  - `-gcs.*`
+  - `-cassandra.*`
+  - `-boltdb.*`
+  - `-local.*`
+  - some `-ingester` flags:
+    - `-ingester.wal-enabled`
+    - `-ingester.checkpoint-enabled`
+    - `-ingester.recover-from-wal`
+    - `-ingester.wal-dir`
+    - `-ingester.checkpoint-duration`
+    - `-ingester.flush-on-shutdown-with-wal-enabled`
+    - `-ingester.max-transfer-retries`
+    - `-ingester.max-samples-per-query`
+    - `-ingester.min-chunk-length`
+    - `-ingester.flush-period`
+    - `-ingester.retain-period`
+    - `-ingester.max-chunk-idle`
+    - `-ingester.max-stale-chunk-idle`
+    - `-ingester.flush-op-timeout`
+    - `-ingester.max-chunk-age`
+    - `-ingester.chunk-age-jitter`
+    - `-ingester.concurrent-flushes`
+    - `-ingester.spread-flushes`
+    - `-store.*` except `-store.engine` and `-store.max-query-length`
+    - `-store.query-chunk-limit` was deprecated and replaced by `-querier.max-fetched-chunks-per-query`
+  - `-deletes.*`
+  - `-grpc-store.*`
+  - `-flusher.wal-dir`, `-flusher.concurrent-flushes`, `-flusher.flush-op-timeout`
+* [CHANGE] Remove support for alertmanager and ruler legacy store configuration. Before upgrading, you need to convert your configuration to use the `alertmanager-storage` and `ruler-storage` configuration on the version that you're already running, then upgrade.
+* [CHANGE] Disables TSDB isolation. #4825
+* [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532
+* [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
+* [ENHANCEMENT] Cortex now built with Go 1.18. #4829
+* [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
+* [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
+* [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
+* [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields #4767
 
-## 1.13.0 in progress
+## 1.13.0 2022-07-14
+
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539
 * [CHANGE] query-frontend: Do not print anything in the logs of `query-frontend` if a in-progress query has been canceled (context canceled) to avoid spam. #4562
 * [CHANGE] Compactor block deletion mark migration, needed when upgrading from v1.7, is now disabled by default. #4597
@@ -47,6 +93,8 @@
 * [BUGFIX] Distributor: Fix a memory leak in distributor due to the cluster label. #4739
 * [BUGFIX] Memberlist: Avoid clock skew by limiting the timestamp accepted on gossip. #4750
 * [BUGFIX] Compactor: skip compaction if there is only 1 block available for shuffle-sharding compactor. #4756
+* [BUGFIX] Compactor: Fixes #4770 - an edge case in compactor with shulffle sharding where compaction stops when a tenant stops ingesting samples. #4771
+* [BUGFIX] Compactor: fix cortex_compactor_remaining_planned_compactions not set after plan generation for shuffle sharding compactor. #4772
 
 ## 1.11.0 2021-11-25
 

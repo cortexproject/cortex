@@ -40,6 +40,8 @@ type ShuffleShardingGrouper struct {
 	compactorCfg                Config
 	limits                      Limits
 	userID                      string
+	blockFilesConcurrency       int
+	blocksFetchConcurrency      int
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
@@ -61,6 +63,8 @@ func NewShuffleShardingGrouper(
 	ringLifecyclerAddr string,
 	limits Limits,
 	userID string,
+	blockFilesConcurrency int,
+	blocksFetchConcurrency int,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -98,11 +102,13 @@ func NewShuffleShardingGrouper(
 			Name: "thanos_compact_group_vertical_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 		}, []string{"group"}),
-		compactorCfg:       compactorCfg,
-		ring:               ring,
-		ringLifecyclerAddr: ringLifecyclerAddr,
-		limits:             limits,
-		userID:             userID,
+		compactorCfg:           compactorCfg,
+		ring:                   ring,
+		ringLifecyclerAddr:     ringLifecyclerAddr,
+		limits:                 limits,
+		userID:                 userID,
+		blockFilesConcurrency:  blockFilesConcurrency,
+		blocksFetchConcurrency: blocksFetchConcurrency,
 	}
 }
 
@@ -112,7 +118,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	// grouping (based on downsample resolution + external labels).
 	mainGroups := map[string][]*metadata.Meta{}
 	for _, b := range blocks {
-		key := compact.DefaultGroupKey(b.Thanos)
+		key := b.Thanos.GroupKey()
 		mainGroups[key] = append(mainGroups[key], b)
 	}
 
@@ -134,7 +140,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	}
 	// Metrics for the remaining planned compactions
 	var remainingCompactions = 0.
-	defer g.remainingPlannedCompactions.Set(remainingCompactions)
+	defer func() { g.remainingPlannedCompactions.Set(remainingCompactions) }()
 
 	for _, mainBlocks := range mainGroups {
 		for _, group := range groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds()) {
@@ -154,7 +160,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			}
 
 			remainingCompactions++
-			groupKey := fmt.Sprintf("%v%s", groupHash, compact.DefaultGroupKey(group.blocks[0].Thanos))
+			groupKey := fmt.Sprintf("%v%s", groupHash, group.blocks[0].Thanos.GroupKey())
 
 			level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
 
@@ -180,6 +186,8 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 				g.blocksMarkedForDeletion,
 				g.blocksMarkedForNoCompact,
 				g.hashFunc,
+				g.blockFilesConcurrency,
+				g.blocksFetchConcurrency,
 			)
 			if err != nil {
 				return nil, errors.Wrap(err, "create compaction group")
@@ -361,7 +369,6 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 	// the same size still fits in the range. To do it, we consider valid a group only
 	// if it's before the most recent block or if it fully covers the range.
 	highestMinTime := blocks[len(blocks)-1].MinTime
-
 	for idx := 0; idx < len(groups); {
 		group := groups[idx]
 
@@ -373,6 +380,13 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 
 		// If the group covers the full range, it's fine.
 		if group.maxTime()-group.minTime() == group.rangeLength() {
+			idx++
+			continue
+		}
+
+		// If the group's maxTime is after 1 block range, we can compact assuming that
+		// all the required blocks have already been uploaded.
+		if int64(ulid.Now()) > group.maxTime()+group.rangeLength() {
 			idx++
 			continue
 		}

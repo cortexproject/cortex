@@ -8,12 +8,12 @@ slug: ingesters-migration
 - Author: @pstibrany
 - Reviewers:
 - Date: June 2020
-- Status: Replaced with [migration guide](../blocks-storage/migrate-from-chunks-to-blocks.md).
+- Status: Replaced with [migration guide (now removed from this site)](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md).
 
 ## Warning
 
 Suggestions from this proposal were implemented, but general procedure outlined here doesn't quite work in
-Kubernetes environment. Please see [chunks to blocks migration guide](../blocks-storage/migrate-from-chunks-to-blocks.md)
+Kubernetes environment. Please see [chunks to blocks migration guide (now removed from this site)](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md)
 instead.
 
 ## Introduction

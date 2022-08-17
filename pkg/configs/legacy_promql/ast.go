@@ -10,7 +10,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//nolint //Since this was copied from Prometheus leave it as is
+// nolint //Since this was copied from Prometheus leave it as is
 package promql
 
 import (
@@ -27,13 +27,12 @@ import (
 // or a chain of function definitions (e.g. String(), expr(), etc.) convention is
 // to list them as follows:
 //
-// 	- Statements
-// 	- statement types (alphabetical)
-// 	- ...
-// 	- Expressions
-// 	- expression types (alphabetical)
-// 	- ...
-//
+//   - Statements
+//   - statement types (alphabetical)
+//   - ...
+//   - Expressions
+//   - expression types (alphabetical)
+//   - ...
 type Node interface {
 	// String representation of the node that returns the given node when parsed
 	// as part of a valid query.

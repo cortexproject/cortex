@@ -28,7 +28,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Remote write](#remote-write) | Distributor | `POST /api/v1/push` |
 | [Tenants stats](#tenants-stats) | Distributor | `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor | `GET /distributor/ha_tracker` |
-| [Flush chunks / blocks](#flush-chunks--blocks) | Ingester | `GET,POST /ingester/flush` |
+| [Flush blocks](#flush-blocks) | Ingester | `GET,POST /ingester/flush` |
 | [Shutdown](#shutdown) | Ingester | `GET,POST /ingester/shutdown` |
 | [Ingesters ring status](#ingesters-ring-status) | Ingester | `GET /ingester/ring` |
 | [Instant query](#instant-query) | Querier, Query-frontend | `GET,POST <prometheus-http-prefix>/api/v1/query` |
@@ -40,7 +40,6 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get metric metadata](#get-metric-metadata) | Querier, Query-frontend | `GET <prometheus-http-prefix>/api/v1/metadata` |
 | [Remote read](#remote-read) | Querier, Query-frontend | `POST <prometheus-http-prefix>/api/v1/read` |
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier | `GET /api/v1/user_stats` |
-| [Get tenant chunks](#get-tenant-chunks) | Querier | `GET /api/v1/chunks` |
 | [Ruler ring status](#ruler-ring-status) | Ruler | `GET /ruler/ring` |
 | [Ruler rules ](#ruler-rule-groups) | Ruler | `GET /ruler/rule_groups` |
 | [List rules](#list-rules) | Ruler | `GET <prometheus-http-prefix>/api/v1/rules` |
@@ -60,9 +59,6 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get Alertmanager configuration](#get-alertmanager-configuration) | Alertmanager | `GET /api/v1/alerts` |
 | [Set Alertmanager configuration](#set-alertmanager-configuration) | Alertmanager | `POST /api/v1/alerts` |
 | [Delete Alertmanager configuration](#delete-alertmanager-configuration) | Alertmanager | `DELETE /api/v1/alerts` |
-| [Delete series](#delete-series) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
-| [List delete requests](#list-delete-requests) | Purger | `GET <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series` |
-| [Cancel delete request](#cancel-delete-request) | Purger | `PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request` |
 | [Tenant delete request](#tenant-delete-request) | Purger | `POST /purger/delete_tenant` |
 | [Tenant delete status](#tenant-delete-status) | Purger | `GET /purger/delete_tenant_status` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway | `GET /store-gateway/ring` |
@@ -247,7 +243,7 @@ Displays a web page with the current status of the HA tracker, including the ele
 
 ## Ingester
 
-### Flush chunks / blocks
+### Flush blocks
 
 ```
 GET,POST /ingester/flush
@@ -256,11 +252,11 @@ GET,POST /ingester/flush
 GET,POST /flush
 ```
 
-Triggers a flush of the in-memory time series data (chunks or blocks) to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
+Triggers a flush of the in-memory time series data to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
 
-When using blocks storage, this endpoint accepts `tenant` parameter to specify tenant whose blocks are compacted and shipped. This parameter may be specified multiple times to select more tenants. If no tenant is specified, all tenants are flushed.
+This endpoint accepts `tenant` parameter to specify tenant whose blocks are compacted and shipped. This parameter may be specified multiple times to select more tenants. If no tenant is specified, all tenants are flushed.
 
-Flush endpoint now also accepts `wait=true` parameter, which makes the call synchronous – it will only return after flushing has finished. Note that returned status code does not reflect the result of flush operation. This parameter is only available when using blocks storage.
+Flush endpoint now also accepts `wait=true` parameter, which makes the call synchronous – it will only return after flushing has finished. Note that returned status code does not reflect the result of flush operation.
 
 ### Shutdown
 
@@ -424,25 +420,6 @@ GET <legacy-http-prefix>/user_stats
 ```
 
 Returns realtime ingestion rate, for the authenticated tenant, in `JSON` format.
-
-_Requires [authentication](#authentication)._
-
-### Get tenant chunks
-
-```
-GET /api/v1/chunks
-
-# Legacy
-GET <legacy-http-prefix>/chunks
-```
-
-Fetch a compressed tar of all the chunks containing samples for the given time range and label matchers. This endpoint is supported only by the **chunks storage**, requires `-querier.ingester-streaming=true` and should **not be exposed to users** but just used for debugging purposes.
-
-| URL query parameter | Description |
-| ------------------- | ----------- |
-| `start` | Start timestamp, in RFC3339 format or unix epoch. |
-| `end` | End timestamp, in RFC3339 format or unix epoch. |
-| `matcher` | Label matcher that selects the series for which chunks should be fetched. |
 
 _Requires [authentication](#authentication)._
 
@@ -810,52 +787,7 @@ _Requires [authentication](#authentication)._
 
 ## Purger
 
-The Purger service provides APIs for requesting deletion of series in chunks storage and managing delete requests. For more information about it, please read the [Delete series Guide](../guides/deleting-series.md).
-
-### Delete series
-
-```
-PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series
-
-# Legacy
-PUT,POST <legacy-http-prefix>/api/v1/admin/tsdb/delete_series
-```
-
-Prometheus-compatible delete series endpoint.
-
-_For more information, please check out the Prometheus [delete series](https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series) documentation._
-
-_Requires [authentication](#authentication)._
-
-### List delete requests
-
-```
-GET <prometheus-http-prefix>/api/v1/admin/tsdb/delete_series
-
-# Legacy
-GET <legacy-http-prefix>/api/v1/admin/tsdb/delete_series
-```
-
-List all the delete requests.
-
-_Requires [authentication](#authentication)._
-
-### Cancel delete request
-
-```
-PUT,POST <prometheus-http-prefix>/api/v1/admin/tsdb/cancel_delete_request
-
-# Legacy
-PUT,POST <legacy-http-prefix>/api/v1/admin/tsdb/cancel_delete_request
-```
-
-Cancel a delete request while the request is still in the grace period (before the request is effectively processed by the purger and time series data is hard-deleted from the storage).
-
-| URL query parameter | Description |
-| ------------------- | ----------- |
-| `request_id` | Deletion request ID to cancel. Can be obtained by the [List delete requests](#list-delete-requests) endpoint. |
-
-_Requires [authentication](#authentication)._
+The Purger service provides APIs for requesting deletion of tenants.
 
 ### Tenant Delete Request
 

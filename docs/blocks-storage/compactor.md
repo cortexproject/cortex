@@ -152,6 +152,16 @@ compactor:
   # CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
   [skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
 
+  # Number of goroutines to use when fetching/uploading block files from object
+  # storage.
+  # CLI flag: -compactor.block-files-concurrency
+  [block_files_concurrency: <int> | default = 10]
+
+  # Number of goroutines to use when fetching blocks from object storage when
+  # compacting.
+  # CLI flag: -compactor.blocks-fetch-concurrency
+  [blocks_fetch_concurrency: <int> | default = 3]
+
   # When enabled, at compactor startup the bucket will be scanned and all found
   # deletion marks inside the block location will be copied to the markers
   # global location too. This option can (and should) be safely disabled as soon

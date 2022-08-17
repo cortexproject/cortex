@@ -63,7 +63,9 @@ var (
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
 			blocksMarkedForNoCompaction,
-			metadata.NoneFunc)
+			metadata.NoneFunc,
+			cfg.BlockFilesConcurrency,
+			cfg.BlocksFetchConcurrency)
 	}
 
 	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string) compact.Grouper {
@@ -82,7 +84,9 @@ var (
 			ring,
 			ringLifecycle.Addr,
 			limits,
-			userID)
+			userID,
+			cfg.BlockFilesConcurrency,
+			cfg.BlocksFetchConcurrency)
 	}
 
 	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
@@ -163,6 +167,8 @@ type Config struct {
 	DeletionDelay                         time.Duration            `yaml:"deletion_delay"`
 	TenantCleanupDelay                    time.Duration            `yaml:"tenant_cleanup_delay"`
 	SkipBlocksWithOutOfOrderChunksEnabled bool                     `yaml:"skip_blocks_with_out_of_order_chunks_enabled"`
+	BlockFilesConcurrency                 int                      `yaml:"block_files_concurrency"`
+	BlocksFetchConcurrency                int                      `yaml:"blocks_fetch_concurrency"`
 
 	// Whether the migration of block deletion marks to the global markers location is enabled.
 	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
@@ -212,6 +218,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TenantCleanupDelay, "compactor.tenant-cleanup-delay", 6*time.Hour, "For tenants marked for deletion, this is time between deleting of last block, and doing final cleanup (marker files, debug files) of the tenant.")
 	f.BoolVar(&cfg.BlockDeletionMarksMigrationEnabled, "compactor.block-deletion-marks-migration-enabled", false, "When enabled, at compactor startup the bucket will be scanned and all found deletion marks inside the block location will be copied to the markers global location too. This option can (and should) be safely disabled as soon as the compactor has successfully run at least once.")
 	f.BoolVar(&cfg.SkipBlocksWithOutOfOrderChunksEnabled, "compactor.skip-blocks-with-out-of-order-chunks-enabled", false, "When enabled, mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction.")
+	f.IntVar(&cfg.BlockFilesConcurrency, "compactor.block-files-concurrency", 10, "Number of goroutines to use when fetching/uploading block files from object storage.")
+	f.IntVar(&cfg.BlocksFetchConcurrency, "compactor.blocks-fetch-concurrency", 3, "Number of goroutines to use when fetching blocks from object storage when compacting.")
 
 	f.Var(&cfg.EnabledTenants, "compactor.enabled-tenants", "Comma separated list of tenants that can be compacted. If specified, only these tenants will be compacted by compactor, otherwise all tenants can be compacted. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "compactor.disabled-tenants", "Comma separated list of tenants that cannot be compacted by this compactor. If specified, and compactor would normally pick given tenant for compaction (via -compactor.enabled-tenants or sharding), it will be ignored instead.")
@@ -703,7 +711,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	// Filters out duplicate blocks that can be formed from two or more overlapping
 	// blocks that fully submatches the source blocks of the older blocks.
-	deduplicateBlocksFilter := block.NewDeduplicateFilter()
+	deduplicateBlocksFilter := block.NewDeduplicateFilter(c.compactorCfg.BlockSyncConcurrency)
 
 	// While fetching blocks, we filter out blocks that were marked for deletion by using IgnoreDeletionMarkFilter.
 	// No delay is used -- all blocks with deletion marker are ignored, and not considered for compaction.
@@ -733,7 +741,6 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 			deduplicateBlocksFilter,
 			noCompactMarkerFilter,
 		},
-		nil,
 	)
 	if err != nil {
 		return err
@@ -748,7 +755,6 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		ignoreDeletionMarkFilter,
 		c.blocksMarkedForDeletion,
 		c.garbageCollectedBlocks,
-		c.compactorCfg.BlockSyncConcurrency,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create syncer")

@@ -6,12 +6,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/gorilla/mux"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func changeTargetConfig(c *Config) {
@@ -204,15 +205,16 @@ func Test_setupModuleManager(t *testing.T) {
 			Server: &server.Server{},
 		}
 
-		cortex.setupModuleManager()
+		err := cortex.setupModuleManager()
+		require.Nil(t, err)
 
 		deps := cortex.ModuleManager.DependenciesForModule(Ruler)
-		original_dependecies := []string{DistributorService, StoreQueryable}
+		originalDependecies := []string{DistributorService, StoreQueryable}
 
 		if test.expectedOriginal {
 			check := []bool{false, false}
 			for _, dep := range deps {
-				for i, o := range original_dependecies {
+				for i, o := range originalDependecies {
 					if dep == o {
 						check[i] = true
 					}
@@ -223,7 +225,7 @@ func Test_setupModuleManager(t *testing.T) {
 			}
 		} else {
 			for _, dep := range deps {
-				for _, o := range original_dependecies {
+				for _, o := range originalDependecies {
 					require.NotEqual(t, dep, o)
 				}
 			}

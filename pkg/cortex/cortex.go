@@ -89,6 +89,9 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
+	ExternalQueryable prom_storage.Queryable `yaml:"-"`
+	ExternalPusher    ruler.Pusher           `yaml:"-"`
+
 	API              api.Config                      `yaml:"api"`
 	Server           server.Config                   `yaml:"server"`
 	Distributor      distributor.Config              `yaml:"distributor"`

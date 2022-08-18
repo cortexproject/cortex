@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -493,19 +495,52 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	return
 }
 
+func createActiveQueryTracker(cfg querier.Config, logger log.Logger) promql.QueryTracker {
+	dir := cfg.ActiveQueryTrackerDir
+
+	if dir != "" {
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+	}
+
+	return nil
+}
+
 func (t *Cortex) initRuler() (serv services.Service, err error) {
+	var manager *ruler.DefaultMultiTenantManager
 	if t.RulerStorage == nil {
 		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
-	// TODO: Consider wrapping logger to differentiate from querier module logger
-	queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
 
-	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
-	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
+		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+		engine := promql.NewEngine(promql.EngineOpts{
+			Logger:             util_log.Logger,
+			Reg:                rulerRegisterer,
+			ActiveQueryTracker: createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
+			MaxSamples:         t.Cfg.Querier.MaxSamples,
+			Timeout:            t.Cfg.Querier.Timeout,
+			LookbackDelta:      t.Cfg.Querier.LookbackDelta,
+			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
+			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
+			NoStepSubqueryIntervalFn: func(int64) int64 {
+				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
+			},
+		})
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+	} else {
+		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+		// TODO: Consider wrapping logger to differentiate from querier module logger
+		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -705,6 +740,9 @@ func (t *Cortex) setupModuleManager() error {
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
+	}
+	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
+		deps[Ruler] = []string{Overrides, DeleteRequestsStore, RulerStorage}
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

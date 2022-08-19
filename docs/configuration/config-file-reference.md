@@ -3978,11 +3978,9 @@ The `s3_sse_config` configures the S3 server-side encryption. The supported CLI 
 The `tracing_config` configures backends cortex uses.
 
 ```yaml
-# Set to false to disable tracing.
-# CLI flag: -tracing.enabled
-[enabled: <boolean> | default = true]
-
-# Tracing type. OTEL and JAEGER are currently supported.
+# Tracing type. OTEL and JAEGER are currently supported. For jaeger
+# `JAEGER_AGENT_HOST` environment variable should also be set. See:
+# https://cortexmetrics.io/docs/guides/tracing .
 # CLI flag: -tracing.type
 [type: <string> | default = "jaeger"]
 

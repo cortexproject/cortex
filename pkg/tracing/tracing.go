@@ -30,9 +30,8 @@ const (
 )
 
 type Config struct {
-	Enabled bool   `yaml:"enabled" json:"enabled"`
-	Type    string `yaml:"type" json:"type"`
-	Otel    Otel   `yaml:"otel" json:"otel"`
+	Type string `yaml:"type" json:"type"`
+	Otel Otel   `yaml:"otel" json:"otel"`
 }
 
 type Otel struct {
@@ -45,8 +44,7 @@ type Otel struct {
 // RegisterFlags registers flag.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	p := "tracing"
-	f.BoolVar(&c.Enabled, p+".enabled", true, "Set to false to disable tracing.")
-	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported.")
+	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported. For jaeger `JAEGER_AGENT_HOST` environment variable should also be set. See: https://cortexmetrics.io/docs/guides/tracing .")
 	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ration", 0.001, "Fraction of traces to be sampled. Fractions >= 1 will always sample.")
 	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.BoolVar(&c.Otel.Insecure, p+".otel.insecure", false, "Disables client transport security for the exporter.")
@@ -54,10 +52,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (c *Config) Validate() error {
-	if !c.Enabled {
-		return nil
-	}
-
 	switch strings.ToLower(c.Type) {
 	case OtelType:
 		if c.Otel.OltpEndpoint == "" {
@@ -69,10 +63,6 @@ func (c *Config) Validate() error {
 }
 
 func InstallExportPipeline(ctx context.Context, name string, c Config) (func(context.Context) error, error) {
-	if !c.Enabled {
-		return nil, nil
-	}
-
 	switch strings.ToLower(c.Type) {
 	case JaegerType:
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.

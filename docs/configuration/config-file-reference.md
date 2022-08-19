@@ -3982,12 +3982,12 @@ The `tracing_config` configures backends cortex uses.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
 
-# Tracing type. OTEL and JAEGER are currently supported
+# Tracing type. OTEL and JAEGER are currently supported.
 # CLI flag: -tracing.type
 [type: <string> | default = "jaeger"]
 
 otel:
-  # otl collector endpoint that the driver will use to send spans
+  # otl collector endpoint that the driver will use to send spans.
   # CLI flag: -tracing.otel.oltp-endpoint
   [oltp_endpoint: <string> | default = ""]
 
@@ -3995,8 +3995,8 @@ otel:
   # CLI flag: -tracing.otel.insecure
   [insecure: <boolean> | default = false]
 
-  # enhance exporter with attributes for specific exporter. Currently only
-  # awsxray is supported
+  # enhance/modify traces/propagators for specific exporter. If empty, OTEL
+  # defaults will apply. Supported values are: `awsxray.`
   # CLI flag: -tracing.otel.exporter-type
   [exporter_type: <string> | default = ""]
 

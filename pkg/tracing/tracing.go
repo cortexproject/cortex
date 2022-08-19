@@ -46,11 +46,11 @@ type Otel struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	p := "tracing"
 	f.BoolVar(&c.Enabled, p+".enabled", true, "Set to false to disable tracing.")
-	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported")
+	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported.")
 	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ration", 0.001, "Fraction of traces to be sampled. Fractions >= 1 will always sample.")
-	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "otl collector endpoint that the driver will use to send spans")
+	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.BoolVar(&c.Otel.Insecure, p+".otel.insecure", false, "Disables client transport security for the exporter.")
-	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance exporter with attributes for specific exporter. Currently only awsxray is supported")
+	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance/modify traces/propagators for specific exporter. If empty, OTEL defaults will apply. Supported values are: `awsxray.`")
 }
 
 func (c *Config) Validate() error {

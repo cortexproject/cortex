@@ -12,24 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package noop provides noop tracing implementations for tracer and span.
-package noop // import "go.opentelemetry.io/otel/internal/trace/noop"
+package tracetransform // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform"
 
 import (
-	"context"
-
-	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/sdk/resource"
+	resourcepb "go.opentelemetry.io/proto/otlp/resource/v1"
 )
 
-var (
-	// Tracer is a noop tracer that starts noop spans.
-	Tracer trace.Tracer
-
-	// Span is a noop Span.
-	Span trace.Span
-)
-
-func init() {
-	Tracer = trace.NewNoopTracerProvider().Tracer("")
-	_, Span = Tracer.Start(context.Background(), "")
+// Resource transforms a Resource into an OTLP Resource.
+func Resource(r *resource.Resource) *resourcepb.Resource {
+	if r == nil {
+		return nil
+	}
+	return &resourcepb.Resource{Attributes: ResourceAttributes(r)}
 }

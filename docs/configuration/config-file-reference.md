@@ -250,6 +250,9 @@ query_scheduler:
     # Skip validating server certificate.
     # CLI flag: -query-scheduler.grpc-client-config.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+
+# The tracing_config configures backends cortex uses.
+[tracing: <tracing_config>]
 ```
 
 ### `server_config`
@@ -3968,4 +3971,36 @@ The `s3_sse_config` configures the S3 server-side encryption. The supported CLI 
 # string.
 # CLI flag: -<prefix>.s3.sse.kms-encryption-context
 [kms_encryption_context: <string> | default = ""]
+```
+
+### `tracing_config`
+
+The `tracing_config` configures backends cortex uses.
+
+```yaml
+# Set to false to disable tracing.
+# CLI flag: -tracing.enabled
+[enabled: <boolean> | default = true]
+
+# Tracing type. OTEL and JAEGER are currently supported
+# CLI flag: -tracing.type
+[type: <string> | default = "jaeger"]
+
+otel:
+  # otl collector endpoint that the driver will use to send spans
+  # CLI flag: -tracing.otel.oltp-endpoint
+  [oltp_endpoint: <string> | default = ""]
+
+  # Disables client transport security for the exporter.
+  # CLI flag: -tracing.otel.insecure
+  [insecure: <boolean> | default = false]
+
+  # enhance exporter with attributes for specific exporter. Currently only
+  # awsxray is supported
+  # CLI flag: -tracing.otel.exporter-type
+  [exporter_type: <string> | default = ""]
+
+  # Fraction of traces to be sampled. Fractions >= 1 will always sample.
+  # CLI flag: -tracing.otel.sample-ration
+  [sample_ratio: <float> | default = 0.001]
 ```

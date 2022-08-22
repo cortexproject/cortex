@@ -96,7 +96,7 @@ func makeConfig() userconfig.Config {
 
             receivers:
             - name: noop`),
-		RulesConfig: userconfig.RulesConfig{},
+		RulesConfig: userconfig.RulesConfig{FormatVersion: userconfig.RuleFormatV2},
 	}
 }
 

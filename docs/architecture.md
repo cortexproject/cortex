@@ -19,32 +19,7 @@ Incoming samples (writes from Prometheus) are handled by the [distributor](#dist
 
 ## Storage
 
-Cortex currently supports two storage engines to store and query the time series:
-
-- Chunks (deprecated)
-- Blocks
-
-The two engines mostly share the same Cortex architecture with few differences outlined in the rest of the document.
-
-### Chunks storage (deprecated)
-
-The chunks storage stores each single time series into a separate object called _Chunk_. Each Chunk contains the samples for a given period (defaults to 12 hours). Chunks are then indexed by time range and labels, in order to provide a fast lookup across many (over millions) Chunks.
-
-For this reason, the chunks storage consists of:
-
-* An index for the Chunks. This index can be backed by:
-  * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-  * [Google Bigtable](https://cloud.google.com/bigtable)
-  * [Apache Cassandra](https://cassandra.apache.org)
-* An object store for the Chunk data itself, which can be:
-  * [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-  * [Google Bigtable](https://cloud.google.com/bigtable)
-  * [Apache Cassandra](https://cassandra.apache.org)
-  * [Amazon S3](https://aws.amazon.com/s3)
-  * [Google Cloud Storage](https://cloud.google.com/storage/)
-  * [Microsoft Azure Storage](https://azure.microsoft.com/en-us/services/storage/)
-
-For more information, please check out the [Chunks storage](./chunks-storage/_index.md) documentation.
+Cortex currently supports the `blocks` storage engine to store and query time series. It used to support `chunks` storage in the past.
 
 ### Blocks storage
 
@@ -151,22 +126,20 @@ We recommend randomly load balancing write requests across distributor instances
 
 The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#storage) on the write path and returning in-memory series samples for queries on the read path.
 
-Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 12 hours for the chunks storage and 2 hours for the blocks storage). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
+Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 2 hours). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
 
 Ingesters contain a **lifecycler** which manages the lifecycle of an ingester and stores the **ingester state** in the [hash ring](#the-hash-ring). Each ingester could be in one of the following states:
 
 - **`PENDING`**<br />
-  The ingester has just started. While in this state, the ingester doesn't receive neither write and read requests, and could be waiting for time series data transfer from another ingester if running the chunks storage and the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) is enabled.
+  The ingester has just started. While in this state, the ingester doesn't receive neither write and read requests.
 - **`JOINING`**<br />
-  The ingester is starting up and joining the ring. While in this state the ingester doesn't receive neither write and read requests. The ingester will join the ring using tokens received by a leaving ingester as part of the [hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) process (if enabled), otherwise it could load tokens from disk (if `-ingester.tokens-file-path` is configured) or generate a set of new random ones. Finally, the ingester optionally observes the ring for tokens conflicts and then, once any conflict is resolved, will move to `ACTIVE` state.
+  The ingester is starting up and joining the ring. While in this state the ingester doesn't receive neither write and read requests. The ingester will join the ring using tokens loaded from disk (if `-ingester.tokens-file-path` is configured) or generate a set of new random ones. Finally, the ingester optionally observes the ring for tokens conflicts and then, once any conflict is resolved, will move to `ACTIVE` state.
 - **`ACTIVE`**<br />
   The ingester is up and running. While in this state the ingester can receive both write and read requests.
 - **`LEAVING`**<br />
   The ingester is shutting down and leaving the ring. While in this state the ingester doesn't receive write requests, while it could receive read requests.
 - **`UNHEALTHY`**<br />
   The ingester has failed to heartbeat to the ring's KV Store. While in this state, distributors skip the ingester while building the replication set for incoming series and the ingester does not receive write or read requests.
-
-_The ingester states are internally used for different purposes, including the series hand-over process supported by the chunks storage. For more information about it, please check out the [Ingester hand-over](guides/ingesters-rolling-updates.md#chunks-storage-with-wal-disabled-hand-over) documentation._
 
 Ingesters are **semi-stateful**.
 
@@ -182,8 +155,6 @@ The **replication** is used to hold multiple (typically 3) replicas of each time
 The **write-ahead log** (WAL) is used to write to a persistent disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
 
 Contrary to the sole replication and given the persistent disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.
-
-The WAL for the chunks storage is disabled by default, while it's always enabled for the blocks storage.
 
 #### Ingesters write de-amplification
 

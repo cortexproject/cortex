@@ -24,7 +24,7 @@ func TestChunkQueryable(t *testing.T) {
 			for _, query := range queries {
 				t.Run(fmt.Sprintf("%s/%s/%s", testcase.name, encoding.name, query.query), func(t *testing.T) {
 					store, from := makeMockChunkStore(t, 24, encoding.e)
-					queryable := newChunkStoreQueryable(store, testcase.f)
+					queryable := newMockStoreQueryable(store, testcase.f)
 					testRangeQuery(t, queryable, from, query)
 				})
 			}
@@ -67,7 +67,7 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 		require.NoError(t, err)
 		require.Nil(t, nc)
 	}
-	return chunk.NewChunk(userID, fp, metric, pc, mint, maxt)
+	return chunk.NewChunk(metric, pc, mint, maxt)
 }
 
 func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
@@ -76,7 +76,7 @@ func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
 	const count = 10
 	// go down, to add series in reversed order
 	for i := count; i > 0; i-- {
-		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.Bigchunk)
+		ch := mkChunk(t, model.Time(0), model.Time(1000), time.Millisecond, promchunk.PrometheusXorChunk)
 		// mkChunk uses `foo` as metric name, so we rename metric to be unique
 		ch.Metric[0].Value = fmt.Sprintf("%02d", i)
 

@@ -16,11 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/objstore"
 
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 )
 
 type testGroup struct {
@@ -232,9 +230,6 @@ func TestDelete(t *testing.T) {
 }
 
 func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient interface{})) {
-	legacyClient := chunk.NewMockStorage()
-	legacyStore := objectclient.NewRuleStore(legacyClient, 5, log.NewNopLogger())
-
 	bucketClient := objstore.NewInMemBucket()
 	bucketStore := NewBucketRuleStore(bucketClient, nil, log.NewNopLogger())
 
@@ -242,7 +237,6 @@ func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore
 		store  rulestore.RuleStore
 		client interface{}
 	}{
-		"legacy": {store: legacyStore, client: legacyClient},
 		"bucket": {store: bucketStore, client: bucketClient},
 	}
 
@@ -254,10 +248,6 @@ func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore
 }
 
 func getSortedObjectKeys(bucketClient interface{}) []string {
-	if typed, ok := bucketClient.(*chunk.MockStorage); ok {
-		return typed.GetSortedObjectKeys()
-	}
-
 	if typed, ok := bucketClient.(*objstore.InMemBucket); ok {
 		var keys []string
 		for key := range typed.Objects() {

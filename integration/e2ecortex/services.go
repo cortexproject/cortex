@@ -187,14 +187,12 @@ func NewIngesterWithConfigFile(name string, store RingStore, address, configFile
 		name,
 		image,
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
-			"-target":                        "ingester",
-			"-log.level":                     "warn",
-			"-ingester.final-sleep":          "0s",
-			"-ingester.join-after":           "0s",
-			"-ingester.min-ready-duration":   "0s",
-			"-ingester.concurrent-flushes":   "10",
-			"-ingester.max-transfer-retries": "10",
-			"-ingester.num-tokens":           "512",
+			"-target":                      "ingester",
+			"-log.level":                   "warn",
+			"-ingester.final-sleep":        "0s",
+			"-ingester.join-after":         "0s",
+			"-ingester.min-ready-duration": "0s",
+			"-ingester.num-tokens":         "512",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,
@@ -335,12 +333,10 @@ func NewSingleBinary(name string, flags map[string]string, image string, otherPo
 			// Distributor.
 			"-distributor.replication-factor": "1",
 			// Ingester.
-			"-ingester.final-sleep":          "0s",
-			"-ingester.join-after":           "0s",
-			"-ingester.min-ready-duration":   "0s",
-			"-ingester.concurrent-flushes":   "10",
-			"-ingester.max-transfer-retries": "10",
-			"-ingester.num-tokens":           "512",
+			"-ingester.final-sleep":        "0s",
+			"-ingester.join-after":         "0s",
+			"-ingester.min-ready-duration": "0s",
+			"-ingester.num-tokens":         "512",
 			// Startup quickly.
 			"-store-gateway.sharding-ring.wait-stability-min-duration": "0",
 			"-store-gateway.sharding-ring.wait-stability-max-duration": "0",
@@ -424,9 +420,14 @@ func NewRuler(name string, consulAddress string, flags map[string]string, image 
 		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
 			"-target":    "ruler",
 			"-log.level": "warn",
-			// Configure the ingesters ring backend
-			"-ring.store":      "consul",
-			"-consul.hostname": consulAddress,
+			// Configure the ring backend
+			"-ring.store":                                  "consul",
+			"-store-gateway.sharding-ring.store":           "consul",
+			"-consul.hostname":                             consulAddress,
+			"-store-gateway.sharding-ring.consul.hostname": consulAddress,
+			// Store-gateway ring backend.
+			"-store-gateway.sharding-enabled":                 "true",
+			"-store-gateway.sharding-ring.replication-factor": "1",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

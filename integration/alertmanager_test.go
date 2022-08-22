@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thanos-io/thanos/pkg/objstore/s3"
+
 	amlabels "github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/common/model"
@@ -23,8 +25,6 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
-	s3 "github.com/cortexproject/cortex/pkg/chunk/aws"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const simpleAlertmanagerConfig = `route:
@@ -90,148 +90,125 @@ func TestAlertmanager(t *testing.T) {
 }
 
 func TestAlertmanagerStoreAPI(t *testing.T) {
-	tests := map[string]struct {
-		legacyAlertStore bool
-	}{
-		"legacy alertstore": {legacyAlertStore: true},
-		"bucket alertstore": {legacyAlertStore: false},
-	}
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
 
-	for testName, testCfg := range tests {
-		t.Run(testName, func(t *testing.T) {
-			s, err := e2e.NewScenario(networkName)
-			require.NoError(t, err)
-			defer s.Close()
+	flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
 
-			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(testCfg.legacyAlertStore))
+	minio := e2edb.NewMinio(9000, alertsBucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
 
-			minio := e2edb.NewMinio(9000, alertsBucketName)
-			require.NoError(t, s.StartAndWaitReady(minio))
+	am := e2ecortex.NewAlertmanager(
+		"alertmanager",
+		flags,
+		"",
+	)
 
-			am := e2ecortex.NewAlertmanager(
-				"alertmanager",
-				flags,
-				"",
-			)
+	require.NoError(t, s.StartAndWaitReady(am))
+	require.NoError(t, am.WaitSumMetrics(e2e.Equals(1), "alertmanager_cluster_members"))
 
-			require.NoError(t, s.StartAndWaitReady(am))
-			require.NoError(t, am.WaitSumMetrics(e2e.Equals(1), "alertmanager_cluster_members"))
+	c, err := e2ecortex.NewClient("", "", am.HTTPEndpoint(), "", "user-1")
+	require.NoError(t, err)
 
-			c, err := e2ecortex.NewClient("", "", am.HTTPEndpoint(), "", "user-1")
-			require.NoError(t, err)
+	_, err = c.GetAlertmanagerConfig(context.Background())
+	require.Error(t, err)
+	require.EqualError(t, err, e2ecortex.ErrNotFound.Error())
 
-			_, err = c.GetAlertmanagerConfig(context.Background())
-			require.Error(t, err)
-			require.EqualError(t, err, e2ecortex.ErrNotFound.Error())
+	err = c.SetAlertmanagerConfig(context.Background(), cortexAlertmanagerUserConfigYaml, map[string]string{})
+	require.NoError(t, err)
 
-			err = c.SetAlertmanagerConfig(context.Background(), cortexAlertmanagerUserConfigYaml, map[string]string{})
-			require.NoError(t, err)
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_config_last_reload_successful"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_alertmanager_config_last_reload_successful_seconds"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
 
-			require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_config_last_reload_successful"},
-				e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
-				e2e.WaitMissingMetrics))
-			require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_alertmanager_config_last_reload_successful_seconds"},
-				e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
-				e2e.WaitMissingMetrics))
+	cfg, err := c.GetAlertmanagerConfig(context.Background())
+	require.NoError(t, err)
 
-			cfg, err := c.GetAlertmanagerConfig(context.Background())
-			require.NoError(t, err)
+	// Ensure the returned status config matches the loaded config
+	require.NotNil(t, cfg)
+	require.Equal(t, "example_receiver", cfg.Route.Receiver)
+	require.Len(t, cfg.Route.GroupByStr, 1)
+	require.Equal(t, "example_groupby", cfg.Route.GroupByStr[0])
+	require.Len(t, cfg.Receivers, 1)
+	require.Equal(t, "example_receiver", cfg.Receivers[0].Name)
 
-			// Ensure the returned status config matches the loaded config
-			require.NotNil(t, cfg)
-			require.Equal(t, "example_receiver", cfg.Route.Receiver)
-			require.Len(t, cfg.Route.GroupByStr, 1)
-			require.Equal(t, "example_groupby", cfg.Route.GroupByStr[0])
-			require.Len(t, cfg.Receivers, 1)
-			require.Equal(t, "example_receiver", cfg.Receivers[0].Name)
+	err = c.SendAlertToAlermanager(context.Background(), &model.Alert{Labels: model.LabelSet{"foo": "bar"}})
+	require.NoError(t, err)
 
-			err = c.SendAlertToAlermanager(context.Background(), &model.Alert{Labels: model.LabelSet{"foo": "bar"}})
-			require.NoError(t, err)
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_alerts_received_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
+		e2e.WaitMissingMetrics))
 
-			require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_alerts_received_total"},
-				e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
-				e2e.WaitMissingMetrics))
+	err = c.DeleteAlertmanagerConfig(context.Background())
+	require.NoError(t, err)
 
-			err = c.DeleteAlertmanagerConfig(context.Background())
-			require.NoError(t, err)
+	// The deleted config is applied asynchronously, so we should wait until the metric
+	// disappear for the specific user.
+	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_last_reload_successful", e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
+	require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_last_reload_successful_seconds", e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
 
-			// The deleted config is applied asynchronously, so we should wait until the metric
-			// disappear for the specific user.
-			require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_last_reload_successful", e2e.WithLabelMatchers(
-				labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
-			require.NoError(t, am.WaitRemovedMetric("cortex_alertmanager_config_last_reload_successful_seconds", e2e.WithLabelMatchers(
-				labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
-
-			cfg, err = c.GetAlertmanagerConfig(context.Background())
-			require.Error(t, err)
-			require.Nil(t, cfg)
-			require.EqualError(t, err, "not found")
-		})
-	}
+	cfg, err = c.GetAlertmanagerConfig(context.Background())
+	require.Error(t, err)
+	require.Nil(t, cfg)
+	require.EqualError(t, err, "not found")
 }
 
 func TestAlertmanagerClustering(t *testing.T) {
-	tests := map[string]struct {
-		legacyAlertStore bool
-	}{
-		"legacy alertstore": {legacyAlertStore: true},
-		"bucket alertstore": {legacyAlertStore: false},
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, alertsBucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    alertsBucketName,
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "alertmanager-test")
+	require.NoError(t, err)
+
+	// Create and upload an Alertmanager configuration.
+	user := "user-1"
+	desc := alertspb.AlertConfigDesc{RawConfig: simpleAlertmanagerConfig, User: user, Templates: []*alertspb.TemplateDesc{}}
+
+	d, err := desc.Marshal()
+	require.NoError(t, err)
+	err = client.Upload(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+	require.NoError(t, err)
+
+	peers := strings.Join([]string{
+		e2e.NetworkContainerHostPort(networkName, "alertmanager-1", e2ecortex.GossipPort),
+		e2e.NetworkContainerHostPort(networkName, "alertmanager-2", e2ecortex.GossipPort),
+	}, ",")
+	flags = mergeFlags(flags, AlertmanagerClusterFlags(peers))
+
+	// Wait for the Alertmanagers to start.
+	alertmanager1 := e2ecortex.NewAlertmanager("alertmanager-1", flags, "")
+	alertmanager2 := e2ecortex.NewAlertmanager("alertmanager-2", flags, "")
+
+	alertmanagers := e2ecortex.NewCompositeCortexService(alertmanager1, alertmanager2)
+
+	// Start Alertmanager instances.
+	for _, am := range alertmanagers.Instances() {
+		require.NoError(t, s.StartAndWaitReady(am))
 	}
 
-	for testName, testCfg := range tests {
-		t.Run(testName, func(t *testing.T) {
-			s, err := e2e.NewScenario(networkName)
-			require.NoError(t, err)
-			defer s.Close()
-
-			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(testCfg.legacyAlertStore))
-
-			// Start dependencies.
-			minio := e2edb.NewMinio(9000, alertsBucketName)
-			require.NoError(t, s.StartAndWaitReady(minio))
-
-			client, err := s3.NewS3ObjectClient(s3.S3Config{
-				Endpoint:         minio.HTTPEndpoint(),
-				S3ForcePathStyle: true,
-				Insecure:         true,
-				BucketNames:      alertsBucketName,
-				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
-			})
-			require.NoError(t, err)
-
-			// Create and upload an Alertmanager configuration.
-			user := "user-1"
-			desc := alertspb.AlertConfigDesc{RawConfig: simpleAlertmanagerConfig, User: user, Templates: []*alertspb.TemplateDesc{}}
-
-			d, err := desc.Marshal()
-			require.NoError(t, err)
-			err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
-			require.NoError(t, err)
-
-			peers := strings.Join([]string{
-				e2e.NetworkContainerHostPort(networkName, "alertmanager-1", e2ecortex.GossipPort),
-				e2e.NetworkContainerHostPort(networkName, "alertmanager-2", e2ecortex.GossipPort),
-			}, ",")
-			flags = mergeFlags(flags, AlertmanagerClusterFlags(peers))
-
-			// Wait for the Alertmanagers to start.
-			alertmanager1 := e2ecortex.NewAlertmanager("alertmanager-1", flags, "")
-			alertmanager2 := e2ecortex.NewAlertmanager("alertmanager-2", flags, "")
-
-			alertmanagers := e2ecortex.NewCompositeCortexService(alertmanager1, alertmanager2)
-
-			// Start Alertmanager instances.
-			for _, am := range alertmanagers.Instances() {
-				require.NoError(t, s.StartAndWaitReady(am))
-			}
-
-			for _, am := range alertmanagers.Instances() {
-				require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(0)), "alertmanager_cluster_health_score")) // Lower means healthier, 0 being totally healthy.
-				require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(0)), "alertmanager_cluster_failed_peers"))
-				require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(2)), "alertmanager_cluster_members"))
-			}
-		})
+	for _, am := range alertmanagers.Instances() {
+		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(0)), "alertmanager_cluster_health_score")) // Lower means healthier, 0 being totally healthy.
+		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(0)), "alertmanager_cluster_failed_peers"))
+		require.NoError(t, am.WaitSumMetrics(e2e.Equals(float64(2)), "alertmanager_cluster_members"))
 	}
 }
 
@@ -249,21 +226,20 @@ func TestAlertmanagerSharding(t *testing.T) {
 			require.NoError(t, err)
 			defer s.Close()
 
-			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags(false))
+			flags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
 
 			// Start dependencies.
 			consul := e2edb.NewConsul()
 			minio := e2edb.NewMinio(9000, alertsBucketName)
 			require.NoError(t, s.StartAndWaitReady(consul, minio))
 
-			client, err := s3.NewS3ObjectClient(s3.S3Config{
-				Endpoint:         minio.HTTPEndpoint(),
-				S3ForcePathStyle: true,
-				Insecure:         true,
-				BucketNames:      alertsBucketName,
-				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
-			})
+			client, err := s3.NewBucketWithConfig(nil, s3.Config{
+				Endpoint:  minio.HTTPEndpoint(),
+				Insecure:  true,
+				Bucket:    alertsBucketName,
+				AccessKey: e2edb.MinioAccessKey,
+				SecretKey: e2edb.MinioSecretKey,
+			}, "alertmanager-test")
 			require.NoError(t, err)
 
 			// Create and upload Alertmanager configurations.
@@ -277,7 +253,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 
 				d, err := desc.Marshal()
 				require.NoError(t, err)
-				err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+				err = client.Upload(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
 				require.NoError(t, err)
 			}
 
@@ -619,14 +595,13 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 			minio := e2edb.NewMinio(9000, alertsBucketName)
 			require.NoError(t, s.StartAndWaitReady(consul, minio))
 
-			client, err := s3.NewS3ObjectClient(s3.S3Config{
-				Endpoint:         minio.HTTPEndpoint(),
-				S3ForcePathStyle: true,
-				Insecure:         true,
-				BucketNames:      alertsBucketName,
-				AccessKeyID:      e2edb.MinioAccessKey,
-				SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
-			})
+			client, err := s3.NewBucketWithConfig(nil, s3.Config{
+				Endpoint:  minio.HTTPEndpoint(),
+				Insecure:  true,
+				Bucket:    alertsBucketName,
+				AccessKey: e2edb.MinioAccessKey,
+				SecretKey: e2edb.MinioSecretKey,
+			}, "alertmanager-test")
 			require.NoError(t, err)
 
 			// Create and upload Alertmanager configurations.
@@ -641,7 +616,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 
 				d, err := desc.Marshal()
 				require.NoError(t, err)
-				err = client.PutObject(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
+				err = client.Upload(context.Background(), fmt.Sprintf("/alerts/%s", user), bytes.NewReader(d))
 				require.NoError(t, err)
 			}
 
@@ -651,7 +626,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 			}
 
 			flags := mergeFlags(AlertmanagerFlags(),
-				AlertmanagerS3Flags(false),
+				AlertmanagerS3Flags(),
 				AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), testCfg.replicationFactor),
 				AlertmanagerPersisterFlags(persistInterval))
 

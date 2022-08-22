@@ -15,6 +15,8 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		ContainerName:      cfg.ContainerName,
 		Endpoint:           cfg.Endpoint,
 		MaxRetries:         cfg.MaxRetries,
+		MSIResource:        cfg.MSIResource,
+		UserAssignedID:     cfg.UserAssignedID,
 		HTTPConfig: azure.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.ResponseHeaderTimeout),

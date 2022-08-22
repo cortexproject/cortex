@@ -825,18 +825,6 @@ func (i *Lifecycler) SetUnregisterOnShutdown(enabled bool) {
 
 func (i *Lifecycler) processShutdown(ctx context.Context) {
 	flushRequired := i.flushOnShutdown.Load()
-	transferStart := time.Now()
-	if err := i.flushTransferer.TransferOut(ctx); err != nil {
-		if err == ErrTransferDisabled {
-			level.Info(i.logger).Log("msg", "transfers are disabled")
-		} else {
-			level.Error(i.logger).Log("msg", "failed to transfer chunks to another instance", "ring", i.RingName, "err", err)
-			i.lifecyclerMetrics.shutdownDuration.WithLabelValues("transfer", "fail").Observe(time.Since(transferStart).Seconds())
-		}
-	} else {
-		flushRequired = false
-		i.lifecyclerMetrics.shutdownDuration.WithLabelValues("transfer", "success").Observe(time.Since(transferStart).Seconds())
-	}
 
 	if flushRequired {
 		flushStart := time.Now()

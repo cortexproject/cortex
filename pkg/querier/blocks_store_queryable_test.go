@@ -616,6 +616,38 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"multiple store-gateways has the block, but one of them fails to return on stream": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:            "1.1.1.1",
+						mockedSeriesStreamErr: status.Error(codes.Unavailable, "unavailable"),
+						mockedSeriesResponses: []*storepb.SeriesResponse{
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+							mockHintsResponse(block1),
+						}}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1429,6 +1461,7 @@ type storeGatewayClientMock struct {
 	remoteAddr                string
 	mockedSeriesResponses     []*storepb.SeriesResponse
 	mockedSeriesErr           error
+	mockedSeriesStreamErr     error
 	mockedLabelNamesResponse  *storepb.LabelNamesResponse
 	mockedLabelValuesResponse *storepb.LabelValuesResponse
 	mockedLabelValuesErr      error
@@ -1436,7 +1469,8 @@ type storeGatewayClientMock struct {
 
 func (m *storeGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesRequest, opts ...grpc.CallOption) (storegatewaypb.StoreGateway_SeriesClient, error) {
 	seriesClient := &storeGatewaySeriesClientMock{
-		mockedResponses: m.mockedSeriesResponses,
+		mockedResponses:       m.mockedSeriesResponses,
+		mockedSeriesStreamErr: m.mockedSeriesStreamErr,
 	}
 
 	return seriesClient, m.mockedSeriesErr
@@ -1457,7 +1491,8 @@ func (m *storeGatewayClientMock) RemoteAddress() string {
 type storeGatewaySeriesClientMock struct {
 	grpc.ClientStream
 
-	mockedResponses []*storepb.SeriesResponse
+	mockedResponses       []*storepb.SeriesResponse
+	mockedSeriesStreamErr error
 }
 
 func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
@@ -1470,7 +1505,7 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 
 	res := m.mockedResponses[0]
 	m.mockedResponses = m.mockedResponses[1:]
-	return res, nil
+	return res, m.mockedSeriesStreamErr
 }
 
 type blocksStoreLimitsMock struct {

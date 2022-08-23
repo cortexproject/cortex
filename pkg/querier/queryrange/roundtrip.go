@@ -18,6 +18,7 @@ package queryrange
 import (
 	"context"
 	"flag"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -149,7 +150,6 @@ func NewTripperware(
 
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
-
 	queryRangeMiddleware := []Middleware{NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
@@ -253,7 +253,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	EncodeHTTPLoggingHeadersForRequest(ctx, request)
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -268,4 +268,16 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}()
 
 	return q.codec.DecodeResponse(ctx, response, r)
+}
+
+// EncodeHTTPLoggingHeadersForRequest encodes headers that are supposed to be included in logs
+// to be transferred over a HTTPgRPC connection (Works with DecodeHTTPHeadersForLogging)
+func EncodeHTTPLoggingHeadersForRequest(ctx context.Context, request *http.Request) {
+	headerContentsMap, ok := ctx.Value(util_log.HeaderMapContextKey).(map[string]string)
+	if ok {
+		for header, contents := range headerContentsMap {
+			request.Header.Add("httpheaderforwardingnames", header)
+			request.Header.Add("httpheaderforwardingcontents", contents)
+		}
+	}
 }

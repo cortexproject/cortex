@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"fmt"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/weaveworks/common/httpgrpc"
 	"math/rand"
 	"testing"
 	"time"
@@ -120,3 +122,53 @@ func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc
 }
 
 func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}
+
+func TestNoHeadersForDecodeHTTPHeadersForLogging(t *testing.T) {
+	// Test embedding of map into context when working properly - see middleware test for refrence on what to test
+
+	ctx := context.Background()
+	request := httpgrpc.HTTPRequest{Headers: nil}
+
+	ctx = DecodeHTTPHeadersForLogging(ctx, &request)
+
+	require.Nil(t, ctx.Value(util_log.HeaderMapContextKey))
+
+}
+
+func TestDifferentHeaderLengthsForDecodeHTTPHeadersForLogging(t *testing.T) {
+	names := []string{"TestHeader1", "TestHeader2", "Test3"}
+	contents := []string{"SomeInformation", "ContentsOfTestHeader2"}
+	headerNames := httpgrpc.Header{Key: "httpheaderforwardingnames", Values: names}
+	headerContents := httpgrpc.Header{Key: "httpheaderforwardingcontents", Values: contents}
+	headers := []*httpgrpc.Header{&headerNames, &headerContents}
+
+	ctx := context.Background()
+	request := httpgrpc.HTTPRequest{Headers: headers}
+
+	ctx = DecodeHTTPHeadersForLogging(ctx, &request)
+
+	require.Nil(t, ctx.Value(util_log.HeaderMapContextKey))
+
+}
+
+func TestValidInputForDecodeHTTPHeadersForLogging(t *testing.T) {
+	names := []string{"TestHeader1", "TestHeader2"}
+	contents := []string{"SomeInformation", "ContentsOfTestHeader2"}
+	headerNames := httpgrpc.Header{Key: "httpheaderforwardingnames", Values: names}
+	headerContents := httpgrpc.Header{Key: "httpheaderforwardingcontents", Values: contents}
+	headers := []*httpgrpc.Header{&headerNames, &headerContents}
+
+	ctx := context.Background()
+	request := httpgrpc.HTTPRequest{Headers: headers}
+
+	ctx = DecodeHTTPHeadersForLogging(ctx, &request)
+
+	headerMap, worked := ctx.Value(util_log.HeaderMapContextKey).(map[string]string)
+	require.True(t, worked)
+	require.NotNil(t, headerMap)
+	require.Equal(t, 2, len(headerMap))
+	for i, name := range names {
+		require.Equal(t, headerMap[name], contents[i])
+	}
+
+}

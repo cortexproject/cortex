@@ -345,6 +345,7 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.setupThanosTracing()
+	cortex.setupGRPCHeaderForwarding()
 
 	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
@@ -358,6 +359,14 @@ func New(cfg Config) (*Cortex, error) {
 func (t *Cortex) setupThanosTracing() {
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, ThanosTracerUnaryInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
+}
+
+// setupGRPCHeaderForwarding appends a gRPC middleware used to enable the propagation of
+// HTTP Headers through child gRPC calls
+func (t *Cortex) setupGRPCHeaderForwarding() {
+	if t.Cfg.API.LogHTTPRequestHeaders {
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor())
+	}
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.

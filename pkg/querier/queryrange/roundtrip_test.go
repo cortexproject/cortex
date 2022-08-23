@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -92,4 +93,36 @@ func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	r.URL.Scheme = "http"
 	r.URL.Host = s.host
 	return s.next.RoundTrip(r)
+}
+
+func TestEncodeHTTPLoggingHeadersForRequest(t *testing.T) {
+
+	contentsMap := make(map[string]string)
+	contentsMap["TestHeader1"] = "RequestID"
+	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
+
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, contentsMap)
+
+	h := http.Header{}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: "/HTTPHeaderTest",
+		Body:       http.NoBody,
+		Header:     h,
+	}
+	EncodeHTTPLoggingHeadersForRequest(ctx, req)
+	names := req.Header.Values("httpheaderforwardingnames")
+	contents := req.Header.Values("httpheaderforwardingcontents")
+
+	require.NotNil(t, names)
+	require.NotNil(t, contents)
+	require.Equal(t, 2, len(names))
+	require.Equal(t, 2, len(contents))
+
+	for header, headerContents := range contentsMap {
+		require.Contains(t, names, header)
+		require.Contains(t, contents, headerContents)
+	}
+
 }

@@ -3,7 +3,9 @@ package worker
 import (
 	"context"
 	"flag"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -269,4 +271,34 @@ func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.Clie
 		return nil, err
 	}
 	return conn, nil
+}
+
+// DecodeHTTPHeadersForLogging decodes previously encoded HTTP headers that are supposed to be included in logs
+// (Works with EncodeHTTPLoggingHeadersForRequest)
+func DecodeHTTPHeadersForLogging(ctx context.Context, request *httpgrpc.HTTPRequest) context.Context {
+	headerIndex := -1
+	contentsIndex := -1
+	headers := request.Headers
+	for index, header := range headers {
+		// HTTPgRPC connection has potential to change capitalization of headers, so convert to lowercase
+		if strings.ToLower(header.Key) == "httpheaderforwardingnames" {
+			headerIndex = index
+		}
+		if strings.ToLower(header.Key) == "httpheaderforwardingcontents" {
+			contentsIndex = index
+		}
+	}
+	// Only attempt to create map if we found both headers from encoding
+	if headerIndex >= 0 && contentsIndex >= 0 {
+		headerMap := make(map[string]string)
+		headersSlice := headers[headerIndex].Values
+		headerContentsSlice := headers[contentsIndex].Values
+		if len(headersSlice) == len(headerContentsSlice) {
+			for i, header := range headersSlice {
+				headerMap[header] = headerContentsSlice[i]
+			}
+			ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, headerMap)
+		}
+	}
+	return ctx
 }

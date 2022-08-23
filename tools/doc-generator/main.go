@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/tracing"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -186,6 +187,11 @@ var (
 			name:       "s3_sse_config",
 			structType: reflect.TypeOf(s3.SSEConfig{}),
 			desc:       "The s3_sse_config configures the S3 server-side encryption.",
+		},
+		{
+			name:       "tracing_config",
+			structType: reflect.TypeOf(tracing.Config{}),
+			desc:       "The tracing_config configures backends cortex uses.",
 		},
 	}
 )

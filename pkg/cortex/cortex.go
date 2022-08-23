@@ -49,6 +49,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/tracing"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -118,6 +119,8 @@ type Config struct {
 	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
+
+	Tracing tracing.Config `yaml:"tracing"`
 }
 
 // RegisterFlags registers flag.
@@ -162,6 +165,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
+	c.Tracing.RegisterFlags(f)
 }
 
 // Validate the cortex config and returns an error if the validation
@@ -216,6 +220,10 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.Alertmanager.Validate(c.AlertmanagerStorage); err != nil {
 		return errors.Wrap(err, "invalid alertmanager config")
+	}
+
+	if err := c.Tracing.Validate(); err != nil {
+		return errors.Wrap(err, "invalid tracing config")
 	}
 
 	return nil

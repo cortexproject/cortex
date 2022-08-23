@@ -56,8 +56,7 @@ to set up the environment.
 
 ### Configuration
 
-The [Configuration file](https://cortexmetrics.io/docs/configuration/configuration-file/) has now a tracing section
-to configure the OpenTelemetry exporter.
+See document on the tracing section in [Configuration file](https://cortexmetrics.io/docs/configuration/configuration-file/).
 
 ### Current State
 

@@ -3998,7 +3998,8 @@ otel:
   # CLI flag: -tracing.otel.exporter-type
   [exporter_type: <string> | default = ""]
 
-  # Fraction of traces to be sampled. Fractions >= 1 will always sample.
+  # Fraction of traces to be sampled. Fractions >= 1 means sampling if off and
+  # everything is traced.
   # CLI flag: -tracing.otel.sample-ration
   [sample_ratio: <float> | default = 0.001]
 ```

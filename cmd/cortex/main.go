@@ -159,7 +159,7 @@ func main() {
 			name += "-" + cfg.Target[0]
 		}
 
-		if close, err := tracing.InstallExportPipeline(ctx, name, cfg.Tracing); err != nil {
+		if close, err := tracing.SetupTracing(ctx, name, cfg.Tracing); err != nil {
 			level.Error(util_log.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
 		} else {
 			defer close(ctx) // nolint:errcheck

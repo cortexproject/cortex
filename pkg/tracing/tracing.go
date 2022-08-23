@@ -45,7 +45,7 @@ type Otel struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	p := "tracing"
 	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported. For jaeger `JAEGER_AGENT_HOST` environment variable should also be set. See: https://cortexmetrics.io/docs/guides/tracing .")
-	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ration", 0.001, "Fraction of traces to be sampled. Fractions >= 1 will always sample.")
+	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ration", 0.001, "Fraction of traces to be sampled. Fractions >= 1 means sampling if off and everything is traced.")
 	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.BoolVar(&c.Otel.Insecure, p+".otel.insecure", false, "Disables client transport security for the exporter.")
 	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance/modify traces/propagators for specific exporter. If empty, OTEL defaults will apply. Supported values are: `awsxray.`")
@@ -62,7 +62,7 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func InstallExportPipeline(ctx context.Context, name string, c Config) (func(context.Context) error, error) {
+func SetupTracing(ctx context.Context, name string, c Config) (func(context.Context) error, error) {
 	switch strings.ToLower(c.Type) {
 	case JaegerType:
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.

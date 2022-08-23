@@ -703,16 +703,17 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;h3 id="does-shuffle-sharding-add-additional-overhead-to-the-kv-store">Does shuffle sharding add additional overhead to the KV store?&lt;/h3>
 &lt;p>No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.&lt;/p>
 &lt;p>However, each tenant&amp;rsquo;s subring is cached in memory on the client-side which may slightly increase the memory footprint of certain components (mostly the distributor).&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
-&lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> to implement distributed
-tracing. We have found Jaeger invaluable for troubleshooting the behavior of
+&lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> or &lt;a href="https://opentelemetry.io/">OpenTelemetry&lt;/a> to implement distributed
+tracing. We have found tracing invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p>
-&lt;h2 id="dependencies">Dependencies&lt;/h2>
+&lt;h2 id="jaeger">Jaeger&lt;/h2>
+&lt;h3 id="dependencies">Dependencies&lt;/h3>
 &lt;p>In order to send traces you will need to set up a Jaeger deployment. A
 deployment includes either the jaeger all-in-one binary, or else a distributed
 system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href="https://github.com/jaegertracing/jaeger-kubernetes">Jaeger
 Kubernetes&lt;/a> is an excellent
 resource.&lt;/p>
-&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;h3 id="configuration">Configuration&lt;/h3>
 &lt;p>In order to configure Cortex to send traces you must do two things:&lt;/p>
 &lt;ol>
 &lt;li>Set the &lt;code>JAEGER_AGENT_HOST&lt;/code> environment variable in all components to point
@@ -734,7 +735,21 @@ documentation&lt;/a>
 for the full list of environment variables you can configure.&lt;/p>
 &lt;p>Note that you must specify one of &lt;code>JAEGER_AGENT_HOST&lt;/code> or
 &lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> in each component for Jaeger to be enabled,
-even if you plan to use the default values.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+even if you plan to use the default values.&lt;/p>
+&lt;h2 id="opentelemetry">OpenTelemetry&lt;/h2>
+&lt;h3 id="dependencies-1">Dependencies&lt;/h3>
+&lt;p>In order to send traces you will need to set up an OpenTelemetry Collector. The collector will be able to send traces to
+multiple destinations such &lt;a href="https://aws-otel.github.io/docs/getting-started/x-ray">AWS X-Ray&lt;/a>,
+&lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter">Google Cloud&lt;/a>,
+&lt;a href="https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/">DataDog&lt;/a> and
+&lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter">others&lt;/a>. OpenTelemetry Collector
+provides a &lt;a href="https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces">helm chart&lt;/a>
+to set up the environment.&lt;/p>
+&lt;h3 id="configuration-1">Configuration&lt;/h3>
+&lt;p>See document on the tracing section in &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/">Configuration file&lt;/a>.&lt;/p>
+&lt;h3 id="current-state">Current State&lt;/h3>
+&lt;p>Cortex is maintaining backward compatibility with Jaeger support, Cortex has not fully migrated from OpenTracing to OpenTelemetry and is currently using the
+&lt;a href="https://opentelemetry.io/docs/migration/opentracing/">OpenTracing bridge&lt;/a>.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
 &lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
 &lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
 &lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>

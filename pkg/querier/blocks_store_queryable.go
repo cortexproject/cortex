@@ -624,6 +624,12 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if err == io.EOF {
 					break
 				}
+
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to receive series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
+
 				if err != nil {
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}

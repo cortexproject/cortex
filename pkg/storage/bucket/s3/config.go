@@ -9,7 +9,7 @@ import (
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
+	"github.com/thanos-io/objstore/providers/s3"
 
 	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
 	"github.com/cortexproject/cortex/pkg/util"

@@ -16,7 +16,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 

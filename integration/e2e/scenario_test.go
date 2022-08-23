@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/integration/e2e"

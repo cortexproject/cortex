@@ -424,6 +424,10 @@ grpc_tls_config:
 # CLI flag: -server.log-source-ips-regex
 [log_source_ips_regex: <string> | default = ""]
 
+# Optionally log requests at info level instead of debug level.
+# CLI flag: -server.log-request-at-info-level-enabled
+[log_request_at_info_level_enabled: <boolean> | default = false]
+
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]

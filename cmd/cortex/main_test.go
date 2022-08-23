@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -111,7 +110,7 @@ func testSingle(t *testing.T, arguments []string, yaml string, stdoutMessage, st
 	defer restoreIfNeeded()
 
 	if yaml != "" {
-		tempFile, err := ioutil.TempFile("", "test")
+		tempFile, err := os.CreateTemp("", "test")
 		require.NoError(t, err)
 
 		defer func() {

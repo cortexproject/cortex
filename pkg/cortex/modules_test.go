@@ -1,14 +1,18 @@
 package cortex
 
 import (
+	"context"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	"github.com/gorilla/mux"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func changeTargetConfig(c *Config) {
@@ -151,5 +155,80 @@ func TestCortex_InitRulerStorage(t *testing.T) {
 				assert.Nil(t, cortex.RulerStorage)
 			}
 		})
+	}
+}
+
+type myPusher struct{}
+
+func (p *myPusher) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+	return nil, nil
+}
+
+type myQueryable struct{}
+
+func (q *myQueryable) Querier(ctx context.Context, mint, maxt int64) (prom_storage.Querier, error) {
+	return prom_storage.NoopQuerier(), nil
+}
+
+func Test_setupModuleManager(t *testing.T) {
+	tests := []struct {
+		config           *Config
+		expectedOriginal bool
+	}{
+		{
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				cfg.RulerStorage.Backend = "local"
+				cfg.RulerStorage.Local.Directory = os.TempDir()
+				cfg.ExternalPusher = &myPusher{}
+				cfg.ExternalQueryable = &myQueryable{}
+				return cfg
+			}(),
+			expectedOriginal: false,
+		},
+		{
+			config: func() *Config {
+				cfg := newDefaultConfig()
+				cfg.Target = []string{"all"}
+				cfg.RulerStorage.Backend = "local"
+				cfg.RulerStorage.Local.Directory = os.TempDir()
+				return cfg
+			}(),
+			expectedOriginal: true,
+		},
+	}
+
+	for _, test := range tests {
+		cortex := &Cortex{
+			Cfg:    *test.config,
+			Server: &server.Server{},
+		}
+
+		err := cortex.setupModuleManager()
+		require.Nil(t, err)
+
+		deps := cortex.ModuleManager.DependenciesForModule(Ruler)
+		originalDependecies := []string{DistributorService, StoreQueryable}
+
+		if test.expectedOriginal {
+			check := []bool{false, false}
+			for _, dep := range deps {
+				for i, o := range originalDependecies {
+					if dep == o {
+						check[i] = true
+					}
+				}
+			}
+			for _, val := range check {
+				require.True(t, val)
+			}
+		} else {
+			for _, dep := range deps {
+				for _, o := range originalDependecies {
+					require.NotEqual(t, dep, o)
+				}
+			}
+		}
 	}
 }

@@ -12,17 +12,18 @@ The Cortex documentation is compiled into a website published at [cortexmetrics.
 
 The following initial setup is required only once:
 
-1. Install [Hugo](https://gohugo.io/) `v0.94.2` (**extended** version)
-2. Install [Node.js](https://nodejs.org/en/) `v14` or above (alternatively via [`nvm`](https://github.com/nvm-sh/nvm))
-3. Install required Node modules with:
+1. Install [Hugo](https://gohugo.io/) (**extended** version)
+   * Look for value of `HUGO_VERSION` in `build-image/Dockerfile`.
+1. Install [Node.js](https://nodejs.org/en/) `v14` or above (alternatively via [`nvm`](https://github.com/nvm-sh/nvm))
+1. Install required Node modules with:
    ```
    cd website && npm install && cd -
    ```
-4. Install [embedmd](https://github.com/campoy/embedmd) `v1.0.0`:
+1. Install [embedmd](https://github.com/campoy/embedmd) `v1.0.0`:
    ```
    go install github.com/campoy/embedmd@v1.0.0
    ```
-5. Run `make BUILD_IN_CONTAINER=false web-build`
+1. Run `make BUILD_IN_CONTAINER=false web-build`
 
 
 ## Run it

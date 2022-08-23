@@ -293,7 +293,7 @@ func Test_SetConfig_ValidatesAlertmanagerConfig(t *testing.T) {
 
 	userID := makeUserID()
 	for i, test := range amCfgValidationTests {
-		cfg := userconfig.Config{AlertmanagerConfig: test.config}
+		cfg := userconfig.Config{AlertmanagerConfig: test.config, RulesConfig: userconfig.RulesConfig{FormatVersion: userconfig.RuleFormatV2}}
 		resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
 
 		if !test.shouldFail {
@@ -322,7 +322,7 @@ func Test_SetConfig_ValidatesAlertmanagerConfig_WithEmailEnabled(t *testing.T) {
 	defer cleanup(t)
 
 	userID := makeUserID()
-	cfg := userconfig.Config{AlertmanagerConfig: config}
+	cfg := userconfig.Config{AlertmanagerConfig: config, RulesConfig: userconfig.RulesConfig{FormatVersion: userconfig.RuleFormatV2}}
 	resp := requestAsUser(t, userID, "POST", "/api/prom/configs/alertmanager", "", readerFromConfig(t, cfg))
 
 	assert.Equal(t, http.StatusNoContent, resp.Code)

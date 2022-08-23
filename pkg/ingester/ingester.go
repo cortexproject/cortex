@@ -666,8 +666,9 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 
 // NewForFlusher constructs a new Ingester to be used by flusher target.
 // Compared to the 'New' method:
-//   * Always replays the WAL.
-//   * Does not start the lifecycler.
+//   - Always replays the WAL.
+//   - Does not start the lifecycler.
+//
 // this is a special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
 // on Flush method and flush all openened TSDBs when called.
 func NewForFlusher(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
@@ -840,8 +841,8 @@ func (i *Ingester) updateActiveSeries() {
 }
 
 // ShutdownHandler triggers the following set of operations in order:
-//     * Change the state of ring to stop accepting writes.
-//     * Flush all the chunks.
+//   - Change the state of ring to stop accepting writes.
+//   - Flush all the chunks.
 func (i *Ingester) ShutdownHandler(w http.ResponseWriter, _ *http.Request) {
 	originalFlush := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.

@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
@@ -237,53 +239,52 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 // initQuerier registers an internal HTTP router with a Prometheus API backed by the
 // Cortex Queryable. Then it does one of the following:
 //
-// 1. Query-Frontend Enabled: If Cortex has an All or QueryFrontend target, the internal
-//    HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
-//    worker.
+//  1. Query-Frontend Enabled: If Cortex has an All or QueryFrontend target, the internal
+//     HTTP router is wrapped with Tenant ID parsing middleware and passed to the frontend
+//     worker.
 //
-// 2. Querier Standalone: The querier will register the internal HTTP router with the external
-//    HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
-//    as a http.Handler to the frontend worker.
+//  2. Querier Standalone: The querier will register the internal HTTP router with the external
+//     HTTP router for the Prometheus API routes. Then the external HTTP server will be passed
+//     as a http.Handler to the frontend worker.
 //
 // Route Diagram:
 //
-//                        │  query
-//                        │ request
-//                        │
-//                        ▼
-//              ┌──────────────────┐    QF to      ┌──────────────────┐
-//              │  external HTTP   │    Worker     │                  │
-//              │      router      │──────────────▶│ frontend worker  │
-//              │                  │               │                  │
-//              └──────────────────┘               └──────────────────┘
-//                        │                                  │
-//                                                           │
-//               only in  │                                  │
-//            microservice         ┌──────────────────┐      │
-//              querier   │        │ internal Querier │      │
-//                         ─ ─ ─ ─▶│      router      │◀─────┘
-//                                 │                  │
-//                                 └──────────────────┘
-//                                           │
-//                                           │
-//  /metadata & /chunk ┌─────────────────────┼─────────────────────┐
-//        requests     │                     │                     │
-//                     │                     │                     │
-//                     ▼                     ▼                     ▼
-//           ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-//           │                  │  │                  │  │                  │
-//           │Querier Queryable │  │  /api/v1 router  │  │ /api/prom router │
-//           │                  │  │                  │  │                  │
-//           └──────────────────┘  └──────────────────┘  └──────────────────┘
-//                     ▲                     │                     │
-//                     │                     └──────────┬──────────┘
-//                     │                                ▼
-//                     │                      ┌──────────────────┐
-//                     │                      │                  │
-//                     └──────────────────────│  Prometheus API  │
-//                                            │                  │
-//                                            └──────────────────┘
-//
+//	                      │  query
+//	                      │ request
+//	                      │
+//	                      ▼
+//	            ┌──────────────────┐    QF to      ┌──────────────────┐
+//	            │  external HTTP   │    Worker     │                  │
+//	            │      router      │──────────────▶│ frontend worker  │
+//	            │                  │               │                  │
+//	            └──────────────────┘               └──────────────────┘
+//	                      │                                  │
+//	                                                         │
+//	             only in  │                                  │
+//	          microservice         ┌──────────────────┐      │
+//	            querier   │        │ internal Querier │      │
+//	                       ─ ─ ─ ─▶│      router      │◀─────┘
+//	                               │                  │
+//	                               └──────────────────┘
+//	                                         │
+//	                                         │
+//	/metadata & /chunk ┌─────────────────────┼─────────────────────┐
+//	      requests     │                     │                     │
+//	                   │                     │                     │
+//	                   ▼                     ▼                     ▼
+//	         ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+//	         │                  │  │                  │  │                  │
+//	         │Querier Queryable │  │  /api/v1 router  │  │ /api/prom router │
+//	         │                  │  │                  │  │                  │
+//	         └──────────────────┘  └──────────────────┘  └──────────────────┘
+//	                   ▲                     │                     │
+//	                   │                     └──────────┬──────────┘
+//	                   │                                ▼
+//	                   │                      ┌──────────────────┐
+//	                   │                      │                  │
+//	                   └──────────────────────│  Prometheus API  │
+//	                                          │                  │
+//	                                          └──────────────────┘
 func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	// Create a internal HTTP handler that is configured with the Prometheus API routes and points
 	// to a Prometheus API struct instantiated with the Cortex Queryable.
@@ -341,7 +342,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	var servs []services.Service
 
-	//nolint:golint // I prefer this form over removing 'else', because it allows q to have smaller scope.
+	//nolint:revive // I prefer this form over removing 'else', because it allows q to have smaller scope.
 	if q, err := initQueryableForEngine(t.Cfg, t.Overrides, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
@@ -494,19 +495,52 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	return
 }
 
+func createActiveQueryTracker(cfg querier.Config, logger log.Logger) promql.QueryTracker {
+	dir := cfg.ActiveQueryTrackerDir
+
+	if dir != "" {
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+	}
+
+	return nil
+}
+
 func (t *Cortex) initRuler() (serv services.Service, err error) {
+	var manager *ruler.DefaultMultiTenantManager
 	if t.RulerStorage == nil {
 		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
-	// TODO: Consider wrapping logger to differentiate from querier module logger
-	queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
 
-	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
-	manager, err := ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
+		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+		engine := promql.NewEngine(promql.EngineOpts{
+			Logger:             util_log.Logger,
+			Reg:                rulerRegisterer,
+			ActiveQueryTracker: createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
+			MaxSamples:         t.Cfg.Querier.MaxSamples,
+			Timeout:            t.Cfg.Querier.Timeout,
+			LookbackDelta:      t.Cfg.Querier.LookbackDelta,
+			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
+			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
+			NoStepSubqueryIntervalFn: func(int64) int64 {
+				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
+			},
+		})
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+	} else {
+		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+		// TODO: Consider wrapping logger to differentiate from querier module logger
+		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
+
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -706,6 +740,9 @@ func (t *Cortex) setupModuleManager() error {
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
+	}
+	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
+		deps[Ruler] = []string{Overrides, DeleteRequestsStore, RulerStorage}
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

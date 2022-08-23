@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+
   **This release removes support for chunks storage. See below for more.**
 * [CHANGE] Remove support for chunks storage entirely. If you are using chunks storage on a previous version, you must [migrate your data](https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md) on version 1.12 or earlier. Before upgrading to this release, you should also remove any deprecated chunks-related configuration, as this release will no longer accept that. The following flags are gone:
   - `-dynamodb.*`
@@ -38,12 +39,16 @@
   - `-flusher.wal-dir`, `-flusher.concurrent-flushes`, `-flusher.flush-op-timeout`
 * [CHANGE] Remove support for alertmanager and ruler legacy store configuration. Before upgrading, you need to convert your configuration to use the `alertmanager-storage` and `ruler-storage` configuration on the version that you're already running, then upgrade.
 * [CHANGE] Disables TSDB isolation. #4825
+* [CHANGE] Drops support Prometheus 1.x rule format on configdb. #4826
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
+* [ENHANCEMENT] Cortex now built with Go 1.18. #4829
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
+* [FEATURE] Ruler: Add support to pass custom implementations of queryable and pusher #4782
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
+* [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields #4767
 
 ## 1.13.0 2022-07-14
 

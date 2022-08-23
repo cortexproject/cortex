@@ -80,7 +80,6 @@ func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 	assert.Equal(t, headersMap["Test123"], "Results")
 	assert.Equal(t, headersMap["TestHeader2"], "Results2")
 
-	ctx = pullForwardedHeadersFromMetadata(ctx)
 }
 
 func TestGRPCHeaderDifferentLengthsForHTTPPropagationServerInterceptor(t *testing.T) {

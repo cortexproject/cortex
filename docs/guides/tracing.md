@@ -61,5 +61,5 @@ to configure the OpenTelemetry exporter.
 
 ### Current State
 
-Cortex has not fully migrated from OpenTracing to OpenTelemetry and is currently using the
+Cortex is maintaining backward compatibility with Jaeger support, Cortex has not fully migrated from OpenTracing to OpenTelemetry and is currently using the
 [OpenTracing bridge](https://opentelemetry.io/docs/migration/opentracing/).

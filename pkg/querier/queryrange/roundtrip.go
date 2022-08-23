@@ -18,7 +18,6 @@ package queryrange
 import (
 	"context"
 	"flag"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -39,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const day = 24 * time.Hour
@@ -150,6 +150,7 @@ func NewTripperware(
 
 	// Metric used to keep track of each middleware execution duration.
 	metrics := NewInstrumentMiddlewareMetrics(registerer)
+
 	queryRangeMiddleware := []Middleware{NewLimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
@@ -253,7 +254,9 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	EncodeHTTPLoggingHeadersForRequest(ctx, request)
+
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}

@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRoundTrip(t *testing.T) {

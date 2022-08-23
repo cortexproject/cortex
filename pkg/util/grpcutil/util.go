@@ -2,11 +2,13 @@ package grpcutil
 
 import (
 	"context"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+
 	"github.com/gogo/status"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // IsGRPCContextCanceled returns whether the input error is a GRPC error wrapping

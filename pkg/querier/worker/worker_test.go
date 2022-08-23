@@ -3,8 +3,6 @@ package worker
 import (
 	"context"
 	"fmt"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/weaveworks/common/httpgrpc"
 	"math/rand"
 	"testing"
 	"time"
@@ -12,8 +10,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )

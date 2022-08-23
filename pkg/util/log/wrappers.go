@@ -32,13 +32,15 @@ func WithTraceID(traceID string, l kitlog.Logger) kitlog.Logger {
 //	log := util.WithContext(ctx)
 //	log.Errorf("Could not chunk chunks: %v", err)
 func WithContext(ctx context.Context, l kitlog.Logger) kitlog.Logger {
+	l = headersFromContext(ctx, l)
+
 	// Weaveworks uses "orgs" and "orgID" to represent Cortex users,
 	// even though the code-base generally uses `userID` to refer to the same thing.
-	l = headersFromContext(ctx, l)
 	userID, err := tenant.TenantID(ctx)
 	if err == nil {
 		l = WithUserID(userID, l)
 	}
+
 	traceID, ok := tracing.ExtractSampledTraceID(ctx)
 	if !ok {
 		return l

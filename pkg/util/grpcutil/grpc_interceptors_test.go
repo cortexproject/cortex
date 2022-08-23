@@ -2,11 +2,13 @@ package grpcutil
 
 import (
 	"context"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
-	"testing"
+
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {

@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"flag"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"os"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 

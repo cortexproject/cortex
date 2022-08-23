@@ -124,8 +124,6 @@ func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc
 func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}
 
 func TestNoHeadersForDecodeHTTPHeadersForLogging(t *testing.T) {
-	// Test embedding of map into context when working properly - see middleware test for refrence on what to test
-
 	ctx := context.Background()
 	request := httpgrpc.HTTPRequest{Headers: nil}
 

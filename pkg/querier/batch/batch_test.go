@@ -19,12 +19,6 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 		duplicationFactor  int
 		enc                promchunk.Encoding
 	}{
-		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.Bigchunk},
-		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.Bigchunk},
-		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.Varbit},
-		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.Varbit},
-		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.DoubleDelta},
-		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.DoubleDelta},
 		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
 		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
 		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},

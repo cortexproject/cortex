@@ -13,20 +13,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// StreamsToMatrix converts a slice of QueryStreamResponse to a model.Matrix.
-func StreamsToMatrix(from, through model.Time, responses []*client.QueryStreamResponse) (model.Matrix, error) {
-	result := model.Matrix{}
-	for _, response := range responses {
-		series, err := SeriesChunksToMatrix(from, through, response.Chunkseries)
-		if err != nil {
-			return nil, err
-		}
-
-		result = append(result, series...)
-	}
-	return result, nil
-}
-
 // SeriesChunksToMatrix converts slice of []client.TimeSeriesChunk to a model.Matrix.
 func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeriesChunk) (model.Matrix, error) {
 	if serieses == nil {
@@ -36,7 +22,7 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 	result := model.Matrix{}
 	for _, series := range serieses {
 		metric := cortexpb.FromLabelAdaptersToMetric(series.Labels)
-		chunks, err := FromChunks("", cortexpb.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
+		chunks, err := FromChunks(cortexpb.FromLabelAdaptersToLabels(series.Labels), series.Chunks)
 		if err != nil {
 			return nil, err
 		}
@@ -59,7 +45,7 @@ func SeriesChunksToMatrix(from, through model.Time, serieses []client.TimeSeries
 }
 
 // FromChunks converts []client.Chunk to []chunk.Chunk.
-func FromChunks(userID string, metric labels.Labels, in []client.Chunk) ([]chunk.Chunk, error) {
+func FromChunks(metric labels.Labels, in []client.Chunk) ([]chunk.Chunk, error) {
 	out := make([]chunk.Chunk, 0, len(in))
 	for _, i := range in {
 		o, err := prom_chunk.NewForEncoding(prom_chunk.Encoding(byte(i.Encoding)))
@@ -74,7 +60,7 @@ func FromChunks(userID string, metric labels.Labels, in []client.Chunk) ([]chunk
 		firstTime, lastTime := model.Time(i.StartTimestampMs), model.Time(i.EndTimestampMs)
 		// As the lifetime of this chunk is scopes to this request, we don't need
 		// to supply a fingerprint.
-		out = append(out, chunk.NewChunk(userID, 0, metric, o, firstTime, lastTime))
+		out = append(out, chunk.NewChunk(metric, o, firstTime, lastTime))
 	}
 	return out, nil
 }

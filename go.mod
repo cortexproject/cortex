@@ -3,28 +3,21 @@ module github.com/cortexproject/cortex
 go 1.16
 
 require (
-	cloud.google.com/go/bigtable v1.3.0
 	cloud.google.com/go/iam v0.3.0 // indirect
-	cloud.google.com/go/storage v1.10.0
-	github.com/Azure/azure-pipeline-go v0.2.3
-	github.com/Azure/azure-storage-blob-go v0.13.0
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 	github.com/alicebob/miniredis/v2 v2.14.3
 	github.com/armon/go-metrics v0.3.9
-	github.com/aws/aws-sdk-go v1.44.29
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.2
-	github.com/fsouza/fake-gcs-server v1.7.0
 	github.com/go-kit/log v0.2.1
 	github.com/go-openapi/strfmt v0.21.2
 	github.com/go-openapi/swag v0.21.1
 	github.com/go-redis/redis/v8 v8.11.4
-	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.2
 	github.com/gogo/status v1.1.0
 	github.com/golang-migrate/migrate/v4 v4.7.0
@@ -41,7 +34,6 @@ require (
 	github.com/lib/pq v1.3.0
 	github.com/minio/minio-go/v7 v7.0.32-0.20220706200439-ef3e45ed9cdb
 	github.com/mitchellh/go-wordwrap v1.0.0
-	github.com/ncw/swift v1.0.52
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
 	github.com/opentracing-contrib/go-stdlib v1.0.0
@@ -55,19 +47,24 @@ require (
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.4.1
 	github.com/spf13/afero v1.6.0
-	github.com/stretchr/testify v1.7.2
+	github.com/stretchr/testify v1.8.0
 	github.com/thanos-io/thanos v0.27.0-rc.0.0.20220715025542-84880ea6d7f8
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20210913144402-035033b78a78
-	go.etcd.io/bbolt v1.3.6
 	go.etcd.io/etcd/api/v3 v3.5.4
 	go.etcd.io/etcd/client/pkg/v3 v3.5.4
 	go.etcd.io/etcd/client/v3 v3.5.4
+	go.opentelemetry.io/contrib/propagators/aws v1.9.0
+	go.opentelemetry.io/otel v1.9.0
+	go.opentelemetry.io/otel/bridge/opentracing v1.9.1-0.20220818174925-b9adb171b08e
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.9.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.9.0
+	go.opentelemetry.io/otel/sdk v1.9.0
+	go.opentelemetry.io/otel/trace v1.9.0
 	go.uber.org/atomic v1.9.0
 	golang.org/x/net v0.0.0-20220607020251-c690dde0001d
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65
-	google.golang.org/api v0.83.0
 	google.golang.org/grpc v1.47.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -96,3 +93,12 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.45.0
 
 // Same version being used by thanos
 replace github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
+
+// v0.20.5 caused go mod checksum error
+replace github.com/go-openapi/spec => github.com/go-openapi/spec v0.20.6
+
+// the v6.0.5851 Prometheus depends on doesn't seem to exist anymore?
+replace github.com/ionos-cloud/sdk-go/v6 => github.com/ionos-cloud/sdk-go/v6 v6.0.4
+
+// attempt to fix Thanos' dep: github.com/efficientgo/tools/core@v0.0.0-20210129205121-421d0828c9a6: invalid version: unknown revision 421d0828c9a6
+replace github.com/efficientgo/tools/core => github.com/efficientgo/tools/core v0.0.0-20210326193628-425a09c04e05

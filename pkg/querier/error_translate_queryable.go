@@ -3,14 +3,13 @@ package querier
 import (
 	"context"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/gogo/status"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
-
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // TranslateToPromqlAPIError converts error to one of promql.Errors for consumption in PromQL API.
@@ -18,10 +17,10 @@ import (
 //
 // Specifically, it supports:
 //
-//   promql.ErrQueryCanceled, mapped to 503
-//   promql.ErrQueryTimeout, mapped to 503
-//   promql.ErrStorage mapped to 500
-//   anything else is mapped to 422
+//	promql.ErrQueryCanceled, mapped to 503
+//	promql.ErrQueryTimeout, mapped to 503
+//	promql.ErrStorage mapped to 500
+//	anything else is mapped to 422
 //
 // Querier code produces different kinds of errors, and we want to map them to above-mentioned HTTP status codes correctly.
 //
@@ -37,7 +36,7 @@ func TranslateToPromqlAPIError(err error) error {
 	case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
 		// Don't translate those, just in case we use them internally.
 		return err
-	case chunk.QueryError, validation.LimitError:
+	case validation.LimitError:
 		// This will be returned with status code 422 by Prometheus API.
 		return err
 	default:

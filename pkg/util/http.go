@@ -17,7 +17,8 @@ import (
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
+	yamlv3 "gopkg.in/yaml.v3"
 )
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
@@ -108,11 +109,11 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 	}
 }
 
-// StreamWriteYAMLResponse stream writes data as http response
-func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
+// StreamWriteYAMLResponseCommon stream writes data as http response
+func streamWriteYAMLResponseCommon(w http.ResponseWriter, iter chan interface{}, logger log.Logger, marshalFn func(in interface{}) (out []byte, err error)) {
 	w.Header().Set("Content-Type", "application/yaml")
 	for v := range iter {
-		data, err := yaml.Marshal(v)
+		data, err := marshalFn(v)
 		if err != nil {
 			level.Error(logger).Log("msg", "yaml marshal failed", "err", err)
 			continue
@@ -123,6 +124,16 @@ func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logge
 			return
 		}
 	}
+}
+
+// StreamWriteYAMLResponse stream writes data as http response using yaml v2 library
+func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
+	streamWriteYAMLResponseCommon(w, iter, logger, yaml.Marshal)
+}
+
+// StreamWriteYAMLV3Response stream writes data as http response using yaml v3 library
+func StreamWriteYAMLV3Response(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
+	streamWriteYAMLResponseCommon(w, iter, logger, yamlv3.Marshal)
 }
 
 // CompressionType for encoding and decoding requests and responses.

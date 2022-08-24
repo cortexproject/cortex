@@ -73,40 +73,12 @@ func TestLimits_Validate(t *testing.T) {
 }
 
 func TestOverrides_MaxChunksPerQueryFromStore(t *testing.T) {
-	tests := map[string]struct {
-		setup    func(limits *Limits)
-		expected int
-	}{
-		"should return the default legacy setting with the default config": {
-			setup:    func(limits *Limits) {},
-			expected: 2000000,
-		},
-		"the new config option should take precedence over the deprecated one": {
-			setup: func(limits *Limits) {
-				limits.MaxChunksPerQueryFromStore = 10
-				limits.MaxChunksPerQuery = 20
-			},
-			expected: 20,
-		},
-		"the deprecated config option should be used if the new config option is unset": {
-			setup: func(limits *Limits) {
-				limits.MaxChunksPerQueryFromStore = 10
-			},
-			expected: 10,
-		},
-	}
+	limits := Limits{}
+	flagext.DefaultValues(&limits)
 
-	for testName, testData := range tests {
-		t.Run(testName, func(t *testing.T) {
-			limits := Limits{}
-			flagext.DefaultValues(&limits)
-			testData.setup(&limits)
-
-			overrides, err := NewOverrides(limits, nil)
-			require.NoError(t, err)
-			assert.Equal(t, testData.expected, overrides.MaxChunksPerQueryFromStore("test"))
-		})
-	}
+	overrides, err := NewOverrides(limits, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 2000000, overrides.MaxChunksPerQueryFromStore("test"))
 }
 
 func TestOverridesManager_GetOverrides(t *testing.T) {
@@ -123,8 +95,7 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 
 	// Update limits for tenant user1. We only update single field, the rest is copied from defaults.
 	// (That is how limits work when loaded from YAML)
-	l := Limits{}
-	l = defaults
+	l := defaults
 	l.MaxLabelValueLength = 150
 
 	tenantLimits["user1"] = &l

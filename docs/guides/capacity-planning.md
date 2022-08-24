@@ -5,6 +5,8 @@ weight: 10
 slug: capacity-planning
 ---
 
+_This doc is likely out of date. It should be updated for blocks storage._
+
 
 You will want to estimate how many nodes are required, how many of
 each component to run, and how much storage space will be required.

@@ -2,6 +2,7 @@ package userconfig
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -99,25 +100,13 @@ func TestParseLegacyAlerts(t *testing.T) {
 	for i, tc := range []struct {
 		cfg      RulesConfig
 		expected map[string][]rules.Rule
+		err      error
 	}{
 		{
 			cfg: RulesConfig{
 				FormatVersion: RuleFormatV1,
-				Files: map[string]string{
-					"legacy.rules": `
-		ALERT TestAlert
-		IF up == 0
-		FOR 5m
-		LABELS { severity = "critical" }
-		ANNOTATIONS {
-			message = "I am a message"
-		}
-		`,
-				},
 			},
-			expected: map[string][]rules.Rule{
-				"legacy.rules": {rule},
-			},
+			err: fmt.Errorf("unsupported rule format version 0"),
 		},
 		{
 			cfg: RulesConfig{
@@ -144,8 +133,12 @@ groups:
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			rules, err := tc.cfg.Parse()
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, rules)
+			if tc.err != nil {
+				require.Equal(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, rules)
+			}
 		})
 	}
 }
@@ -153,20 +146,6 @@ groups:
 func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
-
-	rulesV1 := []rulefmt.RuleNode{
-		{
-			Alert: yaml.Node{Value: "TestAlert"},
-			Expr:  yaml.Node{Value: "up == 0"},
-			For:   dur,
-			Labels: map[string]string{
-				"severity": "critical",
-			},
-			Annotations: map[string]string{
-				"message": "I am a message",
-			},
-		},
-	}
 
 	alertNode := yaml.Node{Line: 4, Column: 12}
 	alertNode.SetString("TestAlert")
@@ -189,6 +168,7 @@ func TestParseFormatted(t *testing.T) {
 	for i, tc := range []struct {
 		cfg      RulesConfig
 		expected map[string]rulefmt.RuleGroups
+		err      error
 	}{
 		{
 			cfg: RulesConfig{
@@ -197,16 +177,7 @@ func TestParseFormatted(t *testing.T) {
 					"legacy.rules": legacyRulesFile,
 				},
 			},
-			expected: map[string]rulefmt.RuleGroups{
-				"legacy.rules": {
-					Groups: []rulefmt.RuleGroup{
-						{
-							Name:  "rg:legacy.rules",
-							Rules: rulesV1,
-						},
-					},
-				},
-			},
+			err: fmt.Errorf("unsupported rule format version 0"),
 		},
 		{
 			cfg: RulesConfig{
@@ -229,8 +200,12 @@ func TestParseFormatted(t *testing.T) {
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			rules, err := tc.cfg.ParseFormatted()
-			require.NoError(t, err)
-			require.Equal(t, tc.expected, rules)
+			if tc.err != nil {
+				require.Equal(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, rules)
+			}
 		})
 	}
 }

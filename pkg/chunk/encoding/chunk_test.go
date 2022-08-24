@@ -29,7 +29,7 @@ import (
 
 func TestLen(t *testing.T) {
 	chunks := []Chunk{}
-	for _, encoding := range []Encoding{DoubleDelta, Varbit, Bigchunk, PrometheusXorChunk} {
+	for _, encoding := range []Encoding{PrometheusXorChunk} {
 		c, err := NewForEncoding(encoding)
 		if err != nil {
 			t.Fatal(err)
@@ -60,17 +60,9 @@ func TestChunk(t *testing.T) {
 		encoding   Encoding
 		maxSamples int
 	}{
-		{DoubleDelta, 989},
-		{Varbit, 2048},
-		{Bigchunk, 4096},
 		{PrometheusXorChunk, 2048},
 	} {
 		for samples := tc.maxSamples / 10; samples < tc.maxSamples; samples += tc.maxSamples / 10 {
-
-			// DoubleDelta doesn't support zero length chunks.
-			if tc.encoding == DoubleDelta && samples == 0 {
-				continue
-			}
 
 			t.Run(fmt.Sprintf("testChunkEncoding/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
 				testChunkEncoding(t, tc.encoding, samples)
@@ -87,12 +79,6 @@ func TestChunk(t *testing.T) {
 			t.Run(fmt.Sprintf("testChunkBatch/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
 				testChunkBatch(t, tc.encoding, samples)
 			})
-
-			if tc.encoding != PrometheusXorChunk {
-				t.Run(fmt.Sprintf("testChunkRebound/%s/%d", tc.encoding.String(), samples), func(t *testing.T) {
-					testChunkRebound(t, tc.encoding, samples)
-				})
-			}
 		}
 	}
 }
@@ -226,72 +212,4 @@ func testChunkBatch(t *testing.T, encoding Encoding, samples int) {
 	}
 	require.False(t, iter.Scan())
 	require.NoError(t, iter.Err())
-}
-
-func testChunkRebound(t *testing.T, encoding Encoding, samples int) {
-	for _, tc := range []struct {
-		name               string
-		sliceFrom, sliceTo model.Time
-		err                error
-	}{
-		{
-			name:      "slice first half",
-			sliceFrom: 0,
-			sliceTo:   model.Time((samples / 2) * step),
-		},
-		{
-			name:      "slice second half",
-			sliceFrom: model.Time((samples / 2) * step),
-			sliceTo:   model.Time((samples - 1) * step),
-		},
-		{
-			name:      "slice in the middle",
-			sliceFrom: model.Time(int(float64(samples)*0.25) * step),
-			sliceTo:   model.Time(int(float64(samples)*0.75) * step),
-		},
-		{
-			name:      "slice no data in range",
-			err:       ErrSliceNoDataInRange,
-			sliceFrom: model.Time((samples + 1) * step),
-			sliceTo:   model.Time(samples * 2 * step),
-		},
-		{
-			name:      "slice interval not aligned with sample intervals",
-			sliceFrom: model.Time(0 + step/2),
-			sliceTo:   model.Time(samples * step).Add(time.Duration(-step / 2)),
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			originalChunk := mkChunk(t, encoding, samples)
-
-			newChunk, err := originalChunk.Rebound(tc.sliceFrom, tc.sliceTo)
-			if tc.err != nil {
-				require.Equal(t, tc.err, err)
-				return
-			}
-			require.NoError(t, err)
-
-			chunkItr := originalChunk.NewIterator(nil)
-			chunkItr.FindAtOrAfter(tc.sliceFrom)
-
-			newChunkItr := newChunk.NewIterator(nil)
-			newChunkItr.Scan()
-
-			for {
-				require.Equal(t, chunkItr.Value(), newChunkItr.Value())
-
-				originalChunksHasMoreSamples := chunkItr.Scan()
-				newChunkHasMoreSamples := newChunkItr.Scan()
-
-				// originalChunk and newChunk both should end at same time or newChunk should end before or at slice end time
-				if !originalChunksHasMoreSamples || chunkItr.Value().Timestamp > tc.sliceTo {
-					require.False(t, newChunkHasMoreSamples)
-					break
-				}
-
-				require.True(t, newChunkHasMoreSamples)
-			}
-
-		})
-	}
 }

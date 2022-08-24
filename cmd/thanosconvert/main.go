@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -42,7 +41,7 @@ func main() {
 	}
 
 	if configFilename != "" {
-		buf, err := ioutil.ReadFile(configFilename)
+		buf, err := os.ReadFile(configFilename)
 		if err != nil {
 			fatal("failed to load config file from %s: %v", configFilename, err)
 		}

@@ -11,9 +11,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func copyFn(l labels.Labels) labels.Labels { return l }
@@ -32,20 +29,6 @@ func TestActiveSeries_UpdateSeries(t *testing.T) {
 	assert.Equal(t, 1, c.Active())
 
 	c.UpdateSeries(ls2, time.Now(), copyFn)
-	assert.Equal(t, 2, c.Active())
-}
-
-func TestActiveSeries_ShouldCorrectlyHandleFingerprintCollisions(t *testing.T) {
-	metric := labels.NewBuilder(labels.FromStrings("__name__", "logs"))
-	ls1 := metric.Set("_", "ypfajYg2lsv").Labels()
-	ls2 := metric.Set("_", "KiqbryhzUpn").Labels()
-
-	require.True(t, client.Fingerprint(ls1) == client.Fingerprint(ls2))
-
-	c := NewActiveSeries()
-	c.UpdateSeries(ls1, time.Now(), copyFn)
-	c.UpdateSeries(ls2, time.Now(), copyFn)
-
 	assert.Equal(t, 2, c.Active())
 }
 

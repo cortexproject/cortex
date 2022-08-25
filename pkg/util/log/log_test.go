@@ -2,10 +2,11 @@ package log
 
 import (
 	"context"
+	"testing"
+
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/metadata"
-	"testing"
 )
 
 func TestHeaderMapFromMetadata(t *testing.T) {

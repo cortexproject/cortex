@@ -278,7 +278,7 @@ func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.Clie
 func DecodeHTTPHeadersForLogging(ctx context.Context, request *httpgrpc.HTTPRequest) context.Context {
 	for _, header := range request.Headers {
 		// HTTPgRPC connection has potential to change capitalization of headers, so convert to lowercase
-		if strings.ToLower(header.Key) == util_log.HeaderPropagationStringForRequestLogging {
+		if strings.EqualFold(header.Key, util_log.HeaderPropagationStringForRequestLogging) {
 			ctx = util_log.ContextWithHeaderMapFromRequestHeader(ctx, header)
 			break
 		}

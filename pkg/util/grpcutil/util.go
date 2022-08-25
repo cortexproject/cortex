@@ -38,7 +38,7 @@ func HTTPHeaderPropagationServerInterceptor() grpc.UnaryServerInterceptor {
 func pullForwardedHeadersFromMetadata(ctx context.Context) context.Context {
 	meta, worked := metadata.FromIncomingContext(ctx)
 	if worked {
-		return util_log.HeaderMapFromMetadata(ctx, meta)
+		return util_log.ContextWithHeaderMapFromMetadata(ctx, meta)
 	}
 	return ctx
 }
@@ -64,7 +64,7 @@ func putForwardedHeadersIntoMetadata(ctx context.Context) context.Context {
 	}
 	headerContentsMap := util_log.HeaderMapFromContext(ctx)
 	if headerContentsMap != nil {
-		ctx = util_log.ContextWithMetadataHeaderMap(ctx, headerContentsMap)
+		ctx = util_log.ContextWithHeaderMapInMetadata(ctx, headerContentsMap)
 	}
 	return ctx
 }

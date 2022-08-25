@@ -63,11 +63,11 @@ func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 	testMap["TestHeader2"] = "Results2"
 
 	ctx = metadata.NewOutgoingContext(ctx, nil)
-	ctx = util_log.ContextWithMetadataHeaderMap(ctx, testMap)
+	ctx = util_log.ContextWithHeaderMapInMetadata(ctx, testMap)
 
 	md, worked := metadata.FromOutgoingContext(ctx)
 	require.True(t, worked)
-	ctx = util_log.HeaderMapFromMetadata(ctx, md)
+	ctx = util_log.ContextWithHeaderMapFromMetadata(ctx, md)
 
 	headersMap := util_log.HeaderMapFromContext(ctx)
 

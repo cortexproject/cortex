@@ -276,18 +276,12 @@ func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.Clie
 // DecodeHTTPHeadersForLogging decodes previously encoded HTTP headers that are supposed to be included in logs
 // (Works with EncodeHTTPLoggingHeadersForRequest)
 func DecodeHTTPHeadersForLogging(ctx context.Context, request *httpgrpc.HTTPRequest) context.Context {
-	headerIndex := -1
-	headers := request.Headers
-	for index, header := range headers {
+	for _, header := range request.Headers {
 		// HTTPgRPC connection has potential to change capitalization of headers, so convert to lowercase
 		if strings.ToLower(header.Key) == util_log.HeaderPropagationStringForRequestLogging {
-			headerIndex = index
+			ctx = util_log.ContextWithHeaderMapFromRequestHeader(ctx, header)
 			break
 		}
-	}
-	// Only attempt to add map to context if we found headers from encoding
-	if headerIndex >= 0 {
-		ctx = util_log.HeaderMapFromRequestHeader(ctx, headers[headerIndex])
 	}
 	return ctx
 }

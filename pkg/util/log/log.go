@@ -157,7 +157,7 @@ func RequestWithHeaderMap(headerMap map[string]string, request *http.Request) {
 	}
 }
 
-func HeaderMapFromRequestHeader(ctx context.Context, header *httpgrpc.Header) context.Context {
+func ContextWithHeaderMapFromRequestHeader(ctx context.Context, header *httpgrpc.Header) context.Context {
 	headerMap := make(map[string]string)
 	headersSlice := header.Values
 	if len(headersSlice)%2 == 0 {
@@ -169,7 +169,7 @@ func HeaderMapFromRequestHeader(ctx context.Context, header *httpgrpc.Header) co
 	return ctx
 }
 
-func ContextWithMetadataHeaderMap(ctx context.Context, headerMap map[string]string) context.Context {
+func ContextWithHeaderMapInMetadata(ctx context.Context, headerMap map[string]string) context.Context {
 	for header, contents := range headerMap {
 		ctx = metadata.AppendToOutgoingContext(ctx, HeaderPropagationStringForRequestLogging, header)
 		ctx = metadata.AppendToOutgoingContext(ctx, HeaderPropagationStringForRequestLogging, contents)
@@ -177,7 +177,7 @@ func ContextWithMetadataHeaderMap(ctx context.Context, headerMap map[string]stri
 	return ctx
 }
 
-func HeaderMapFromMetadata(ctx context.Context, md metadata.MD) context.Context {
+func ContextWithHeaderMapFromMetadata(ctx context.Context, md metadata.MD) context.Context {
 	headerMap := make(map[string]string)
 	headersSlice := md[HeaderPropagationStringForRequestLogging]
 

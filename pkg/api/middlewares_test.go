@@ -34,8 +34,8 @@ func TestHeaderInjection(t *testing.T) {
 	req = req.WithContext(ctx)
 	ctx = HTTPTestMiddleware.InjectTargetHeadersIntoHTTPRequest(req)
 
-	headerMap, ok := ctx.Value(util_log.HeaderMapContextKey).(map[string]string)
-	require.True(t, ok)
+	headerMap := util_log.HeaderMapFromContext(ctx)
+	require.NotNil(t, headerMap)
 
 	for _, header := range HTTPTestMiddleware.TargetHeaders {
 		require.Equal(t, contentsMap[header], headerMap[header])
@@ -58,7 +58,7 @@ func TestExistingHeaderInContextIsNotOverridden(t *testing.T) {
 	h.Add("TestHeader2", "Fail2")
 	h.Add("Test3", "Fail3")
 
-	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, contentsMap)
+	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
 	req := &http.Request{
 		Method:     "GET",
 		RequestURI: "/HTTPHeaderTest",
@@ -69,6 +69,6 @@ func TestExistingHeaderInContextIsNotOverridden(t *testing.T) {
 	req = req.WithContext(ctx)
 	ctx = HTTPTestMiddleware.InjectTargetHeadersIntoHTTPRequest(req)
 
-	require.Equal(t, contentsMap, ctx.Value(util_log.HeaderMapContextKey))
+	require.Equal(t, contentsMap, util_log.HeaderMapFromContext(ctx))
 
 }

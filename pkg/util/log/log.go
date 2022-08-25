@@ -1,21 +1,27 @@
 package log
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/go-kit/log"
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
+	"google.golang.org/grpc/metadata"
 )
 
 type contextKey int
 
 const (
-	HeaderMapContextKey contextKey = 0
+	headerMapContextKey contextKey = 0
+
+	HeaderPropagationStringForRequestLogging string = "httpheaderforwardingforlogging"
 )
 
 var (
@@ -130,4 +136,57 @@ func LevelFilter(l string) level.Option {
 	default:
 		return level.AllowAll()
 	}
+}
+
+func HeaderMapFromContext(ctx context.Context) map[string]string {
+	headerMap, worked := ctx.Value(headerMapContextKey).(map[string]string)
+	if worked {
+		return headerMap
+	}
+	return nil
+}
+
+func ContextWithHeaderMap(ctx context.Context, headerMap map[string]string) context.Context {
+	return context.WithValue(ctx, headerMapContextKey, headerMap)
+}
+
+func RequestWithHeaderMap(headerMap map[string]string, request *http.Request) {
+	for header, contents := range headerMap {
+		request.Header.Add(HeaderPropagationStringForRequestLogging, header)
+		request.Header.Add(HeaderPropagationStringForRequestLogging, contents)
+	}
+}
+
+func HeaderMapFromRequestHeader(ctx context.Context, header *httpgrpc.Header) context.Context {
+	headerMap := make(map[string]string)
+	headersSlice := header.Values
+	if len(headersSlice)%2 == 0 {
+		for i := 0; i < len(headersSlice); i += 2 {
+			headerMap[headersSlice[i]] = headersSlice[i+1]
+		}
+		ctx = ContextWithHeaderMap(ctx, headerMap)
+	}
+	return ctx
+}
+
+func ContextWithMetadataHeaderMap(ctx context.Context, headerMap map[string]string) context.Context {
+	for header, contents := range headerMap {
+		ctx = metadata.AppendToOutgoingContext(ctx, HeaderPropagationStringForRequestLogging, header)
+		ctx = metadata.AppendToOutgoingContext(ctx, HeaderPropagationStringForRequestLogging, contents)
+	}
+	return ctx
+}
+
+func HeaderMapFromMetadata(ctx context.Context, md metadata.MD) context.Context {
+	headerMap := make(map[string]string)
+	headersSlice := md[HeaderPropagationStringForRequestLogging]
+
+	if len(headersSlice)%2 == 0 {
+		for i := 0; i < len(headersSlice); i += 2 {
+			headerMap[headersSlice[i]] = headersSlice[i+1]
+		}
+		ctx = ContextWithHeaderMap(ctx, headerMap)
+	}
+
+	return ctx
 }

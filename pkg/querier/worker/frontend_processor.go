@@ -96,7 +96,6 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 			// here, as we're running in lock step with the server - each Recv is
 			// paired with a Send.
 
-			ctx = DecodeHTTPHeadersForLogging(ctx, request.HttpRequest)
 			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.HTTPResponse, stats *stats.Stats) error {
 				return c.Send(&frontendv1pb.ClientToFrontend{
 					HttpResponse: response,

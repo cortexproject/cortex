@@ -40,8 +40,8 @@ func (h HTTPHeaderMiddleware) InjectTargetHeadersIntoHTTPRequest(r *http.Request
 	headerMap := make(map[string]string)
 
 	// Check to make sure that Headers have not already been injected
-	testing, ok := r.Context().Value(util_log.HeaderMapContextKey).(map[string]string)
-	if ok && testing != nil {
+	checkMapInContext := util_log.HeaderMapFromContext(r.Context())
+	if checkMapInContext != nil {
 		return r.Context()
 	}
 
@@ -52,7 +52,7 @@ func (h HTTPHeaderMiddleware) InjectTargetHeadersIntoHTTPRequest(r *http.Request
 		}
 	}
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, headerMap)
+	ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
 	return ctx
 }
 

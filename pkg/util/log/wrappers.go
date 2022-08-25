@@ -57,8 +57,8 @@ func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
 
 // HeadersFromContext enables the logging of specified HTTP Headers that have been added to a context
 func headersFromContext(ctx context.Context, l log.Logger) log.Logger {
-	headerContentsMap, ok := ctx.Value(HeaderMapContextKey).(map[string]string)
-	if ok {
+	headerContentsMap := HeaderMapFromContext(ctx)
+	if headerContentsMap != nil {
 		for header, contents := range headerContentsMap {
 			l = kitlog.With(l, header, contents)
 		}

@@ -71,8 +71,8 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
-	f.BoolVar(&cfg.LogHTTPRequestHeaders, "api.log-http-request-headers", false, "Enable logging of header specific context information")
-	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Target Headers for Request logging (if enabled)")
+	f.BoolVar(&cfg.LogHTTPRequestHeaders, "api.log-http-request-headers", false, "Enable logging of HTTP Request Header specific context information")
+	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Headers to log for HTTP Request logging (if enabled)")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 

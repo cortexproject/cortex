@@ -787,8 +787,8 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
 		}
 		// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
-		if headerMap := ctx.Value(util_log.HeaderMapContextKey); headerMap != nil {
-			localCtx = context.WithValue(localCtx, util_log.HeaderMapContextKey, headerMap)
+		if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+			localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
 		}
 
 		// Get clientIP(s) from Context and add it to localCtx

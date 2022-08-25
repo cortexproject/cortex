@@ -37,21 +37,8 @@ func HTTPHeaderPropagationServerInterceptor() grpc.UnaryServerInterceptor {
 // headers into incoming context
 func pullForwardedHeadersFromMetadata(ctx context.Context) context.Context {
 	meta, worked := metadata.FromIncomingContext(ctx)
-	return forwardHeadersFromMetadataHelper(ctx, meta, worked)
-}
-
-// forwardHeadersFromMetadataHelper implements pullForwardedHeadersFromMetadata
-func forwardHeadersFromMetadataHelper(ctx context.Context, meta metadata.MD, worked bool) context.Context {
-	headerMap := make(map[string]string)
 	if worked {
-		headersSlice := meta["httpheaderforwardingnames"]
-		headerContentsSlice := meta["httpheaderforwardingcontents"]
-		if len(headersSlice) == len(headerContentsSlice) {
-			for i, header := range headersSlice {
-				headerMap[header] = headerContentsSlice[i]
-			}
-			ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, headerMap)
-		}
+		return util_log.HeaderMapFromMetadata(ctx, meta)
 	}
 	return ctx
 }
@@ -71,17 +58,13 @@ func HTTPHeaderPropagationClientInterceptor() grpc.UnaryClientInterceptor {
 func putForwardedHeadersIntoMetadata(ctx context.Context) context.Context {
 	meta, worked := metadata.FromOutgoingContext(ctx)
 	if worked {
-		if len(meta["httpheaderforwardingnames"]) != 0 || len(meta["httpheaderforwardingcontents"]) != 0 {
+		if len(meta[util_log.HeaderPropagationStringForRequestLogging]) != 0 {
 			return ctx
 		}
 	}
-
-	headerContentsMap, ok := ctx.Value(util_log.HeaderMapContextKey).(map[string]string)
-	if ok {
-		for header, contents := range headerContentsMap {
-			ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingnames", header)
-			ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingcontents", contents)
-		}
+	headerContentsMap := util_log.HeaderMapFromContext(ctx)
+	if headerContentsMap != nil {
+		ctx = util_log.ContextWithMetadataHeaderMap(ctx, headerContentsMap)
 	}
 	return ctx
 }

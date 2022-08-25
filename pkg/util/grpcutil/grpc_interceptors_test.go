@@ -18,42 +18,39 @@ func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {
 	contentsMap["TestHeader1"] = "RequestID"
 	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
 	contentsMap["Test3"] = "SomeInformation"
-	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, contentsMap)
+	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
 
 	ctx = putForwardedHeadersIntoMetadata(ctx)
 
 	meta, worked := metadata.FromOutgoingContext(ctx)
 	require.True(t, worked)
 
-	headers := meta["httpheaderforwardingnames"]
-	assert.Equal(t, 3, len(headers))
+	headers := meta[util_log.HeaderPropagationStringForRequestLogging]
+	assert.Equal(t, 6, len(headers))
 	assert.Contains(t, headers, "TestHeader1")
 	assert.Contains(t, headers, "TestHeader2")
 	assert.Contains(t, headers, "Test3")
-
-	headerContents := meta["httpheaderforwardingcontents"]
-	assert.Equal(t, 3, len(headerContents))
-	assert.Contains(t, headerContents, "RequestID")
-	assert.Contains(t, headerContents, "ContentsOfTestHeader2")
-	assert.Contains(t, headerContents, "SomeInformation")
+	assert.Contains(t, headers, "RequestID")
+	assert.Contains(t, headers, "ContentsOfTestHeader2")
+	assert.Contains(t, headers, "SomeInformation")
 }
 
 func TestExistingValuesInMetadataForHTTPPropagationClientInterceptor(t *testing.T) {
 	ctx := context.Background()
-	ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingnames", "testabc123")
+	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "testabc123")
 
 	contentsMap := make(map[string]string)
 	contentsMap["TestHeader1"] = "RequestID"
 	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
 	contentsMap["Test3"] = "SomeInformation"
-	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, contentsMap)
+	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
 
 	ctx = putForwardedHeadersIntoMetadata(ctx)
 
 	meta, worked := metadata.FromOutgoingContext(ctx)
 	require.True(t, worked)
 
-	contents := meta["httpheaderforwardingnames"]
+	contents := meta[util_log.HeaderPropagationStringForRequestLogging]
 	assert.Contains(t, contents, "testabc123")
 	assert.Equal(t, 1, len(contents))
 }
@@ -61,34 +58,34 @@ func TestExistingValuesInMetadataForHTTPPropagationClientInterceptor(t *testing.
 func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 	ctx := context.Background()
 	testMap := make(map[string]string)
-	testMap["httpheaderforwardingnames"] = "Test123"
-	testMap["httpheaderforwardingcontents"] = "Results"
-	meta := metadata.New(testMap)
-	ctx = metadata.NewOutgoingContext(ctx, meta)
 
-	ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingnames", "TestHeader2")
-	ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingcontents", "Results2")
+	testMap["Test1"] = "Results"
+	testMap["TestHeader2"] = "Results2"
+
+	ctx = metadata.NewOutgoingContext(ctx, nil)
+	ctx = util_log.ContextWithMetadataHeaderMap(ctx, testMap)
+
 	md, worked := metadata.FromOutgoingContext(ctx)
-	ctx = forwardHeadersFromMetadataHelper(ctx, md, worked)
-
-	headersMap, worked := ctx.Value(util_log.HeaderMapContextKey).(map[string]string)
-
 	require.True(t, worked)
+	ctx = util_log.HeaderMapFromMetadata(ctx, md)
+
+	headersMap := util_log.HeaderMapFromContext(ctx)
+
 	require.NotNil(t, headersMap)
 	assert.Equal(t, 2, len(headersMap))
 
-	assert.Equal(t, headersMap["Test123"], "Results")
-	assert.Equal(t, headersMap["TestHeader2"], "Results2")
+	assert.Equal(t, "Results", headersMap["Test1"])
+	assert.Equal(t, "Results2", headersMap["TestHeader2"])
 
 }
 
 func TestGRPCHeaderDifferentLengthsForHTTPPropagationServerInterceptor(t *testing.T) {
 	ctx := context.Background()
-	ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingnames", "Test123")
-	ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingcontents", "Results")
-	ctx = metadata.AppendToOutgoingContext(ctx, "httpheaderforwardingcontents", "Results2")
+	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Test123")
+	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Results")
+	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Results2")
 
 	ctx = pullForwardedHeadersFromMetadata(ctx)
 
-	assert.Nil(t, ctx.Value(util_log.HeaderMapContextKey))
+	assert.Nil(t, util_log.HeaderMapFromContext(ctx))
 }

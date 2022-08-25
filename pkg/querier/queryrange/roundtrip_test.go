@@ -97,13 +97,12 @@ func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 }
 
 func TestEncodeHTTPLoggingHeadersForRequest(t *testing.T) {
-
 	contentsMap := make(map[string]string)
 	contentsMap["TestHeader1"] = "RequestID"
 	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, contentsMap)
+	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
 
 	h := http.Header{}
 	req := &http.Request{
@@ -113,17 +112,14 @@ func TestEncodeHTTPLoggingHeadersForRequest(t *testing.T) {
 		Header:     h,
 	}
 	EncodeHTTPLoggingHeadersForRequest(ctx, req)
-	names := req.Header.Values("httpheaderforwardingnames")
-	contents := req.Header.Values("httpheaderforwardingcontents")
+	headers := req.Header.Values(util_log.HeaderPropagationStringForRequestLogging)
 
-	require.NotNil(t, names)
-	require.NotNil(t, contents)
-	require.Equal(t, 2, len(names))
-	require.Equal(t, 2, len(contents))
+	require.NotNil(t, headers)
+	require.Equal(t, 4, len(headers))
 
-	for header, headerContents := range contentsMap {
-		require.Contains(t, names, header)
-		require.Contains(t, contents, headerContents)
+	for headerName, headerContents := range contentsMap {
+		require.Contains(t, headers, headerName)
+		require.Contains(t, headers, headerContents)
 	}
 
 }

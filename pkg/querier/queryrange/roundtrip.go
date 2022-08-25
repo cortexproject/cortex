@@ -276,11 +276,8 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 // EncodeHTTPLoggingHeadersForRequest encodes headers that are supposed to be included in logs
 // to be transferred over a HTTPgRPC connection (Works with DecodeHTTPHeadersForLogging)
 func EncodeHTTPLoggingHeadersForRequest(ctx context.Context, request *http.Request) {
-	headerContentsMap, ok := ctx.Value(util_log.HeaderMapContextKey).(map[string]string)
-	if ok {
-		for header, contents := range headerContentsMap {
-			request.Header.Add("httpheaderforwardingnames", header)
-			request.Header.Add("httpheaderforwardingcontents", contents)
-		}
+	headerContentsMap := util_log.HeaderMapFromContext(ctx)
+	if headerContentsMap != nil {
+		util_log.RequestWithHeaderMap(headerContentsMap, request)
 	}
 }

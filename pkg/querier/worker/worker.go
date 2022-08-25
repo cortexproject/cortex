@@ -277,28 +277,17 @@ func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.Clie
 // (Works with EncodeHTTPLoggingHeadersForRequest)
 func DecodeHTTPHeadersForLogging(ctx context.Context, request *httpgrpc.HTTPRequest) context.Context {
 	headerIndex := -1
-	contentsIndex := -1
 	headers := request.Headers
 	for index, header := range headers {
 		// HTTPgRPC connection has potential to change capitalization of headers, so convert to lowercase
-		if strings.ToLower(header.Key) == "httpheaderforwardingnames" {
+		if strings.ToLower(header.Key) == util_log.HeaderPropagationStringForRequestLogging {
 			headerIndex = index
-		}
-		if strings.ToLower(header.Key) == "httpheaderforwardingcontents" {
-			contentsIndex = index
+			break
 		}
 	}
-	// Only attempt to create map if we found both headers from encoding
-	if headerIndex >= 0 && contentsIndex >= 0 {
-		headerMap := make(map[string]string)
-		headersSlice := headers[headerIndex].Values
-		headerContentsSlice := headers[contentsIndex].Values
-		if len(headersSlice) == len(headerContentsSlice) {
-			for i, header := range headersSlice {
-				headerMap[header] = headerContentsSlice[i]
-			}
-			ctx = context.WithValue(ctx, util_log.HeaderMapContextKey, headerMap)
-		}
+	// Only attempt to add map to context if we found headers from encoding
+	if headerIndex >= 0 {
+		ctx = util_log.HeaderMapFromRequestHeader(ctx, headers[headerIndex])
 	}
 	return ctx
 }

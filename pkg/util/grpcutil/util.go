@@ -11,6 +11,15 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
+type wrappedServerStream struct {
+	ctx context.Context
+	grpc.ServerStream
+}
+
+func (ss wrappedServerStream) Context() context.Context {
+	return ss.ctx
+}
+
 // IsGRPCContextCanceled returns whether the input error is a GRPC error wrapping
 // the context.Canceled error.
 func IsGRPCContextCanceled(err error) bool {
@@ -30,6 +39,16 @@ func HTTPHeaderPropagationServerInterceptor() grpc.UnaryServerInterceptor {
 		ctx = pullForwardedHeadersFromMetadata(ctx)
 		h, err := handler(ctx, req)
 		return h, err
+	}
+}
+
+// HTTPHeaderPropagationStreamServerInterceptor does the same as HTTPHeaderPropagationServerInterceptor but for streams
+func HTTPHeaderPropagationStreamServerInterceptor() grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		return handler(srv, wrappedServerStream{
+			ctx:          pullForwardedHeadersFromMetadata(ss.Context()),
+			ServerStream: ss,
+		})
 	}
 }
 
@@ -53,8 +72,16 @@ func HTTPHeaderPropagationClientInterceptor() grpc.UnaryClientInterceptor {
 	}
 }
 
-// putForwardedHeadersIntoMetadata implements HTTPHeaderPropagationClientInterceptor by inserting headers
-// that are supposed to be forwarded into metadata of the request
+// HTTPHeaderPropagationStreamClientInterceptor does the same as HTTPHeaderPropagationClientInterceptor but for streams
+func HTTPHeaderPropagationStreamClientInterceptor() grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		ctx = putForwardedHeadersIntoMetadata(ctx)
+		return streamer(ctx, desc, cc, method)
+	}
+}
+
+// putForwardedHeadersIntoMetadata implements HTTPHeaderPropagationClientInterceptor and HTTPHeaderPropagationStreamClientInterceptor
+// by inserting headers that are supposed to be forwarded into metadata of the request
 func putForwardedHeadersIntoMetadata(ctx context.Context) context.Context {
 	meta, worked := metadata.FromOutgoingContext(ctx)
 	if worked {

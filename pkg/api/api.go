@@ -63,16 +63,14 @@ type Config struct {
 	// DefaultConfigHandler.
 	CustomConfigHandler ConfigHandler `yaml:"-"`
 
-	// These allow and are used to configure the addition of HTTP Header fields to logs
-	LogHTTPRequestHeaders   bool                `yaml:"log_http_request_headers"`
+	// Allows and is used to configure the addition of HTTP Header fields to logs
 	HTTPRequestHeadersToLog flagext.StringSlice `yaml:"http_request_headers_to_log"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
-	f.BoolVar(&cfg.LogHTTPRequestHeaders, "api.log-http-request-headers", false, "Enable logging of HTTP Request Header specific context information")
-	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Headers to log for HTTP Request logging (if enabled)")
+	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -128,7 +126,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	if cfg.HTTPAuthMiddleware == nil {
 		api.AuthMiddleware = middleware.AuthenticateUser
 	}
-	if cfg.LogHTTPRequestHeaders {
+	if len(cfg.HTTPRequestHeadersToLog) > 0 {
 		api.HTTPHeaderMiddleware = &HTTPHeaderMiddleware{TargetHeaders: cfg.HTTPRequestHeadersToLog}
 	}
 

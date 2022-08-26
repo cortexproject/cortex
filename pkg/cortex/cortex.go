@@ -372,8 +372,9 @@ func (t *Cortex) setupThanosTracing() {
 // setupGRPCHeaderForwarding appends a gRPC middleware used to enable the propagation of
 // HTTP Headers through child gRPC calls
 func (t *Cortex) setupGRPCHeaderForwarding() {
-	if t.Cfg.API.LogHTTPRequestHeaders {
+	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor())
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor())
 	}
 }
 

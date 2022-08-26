@@ -82,11 +82,7 @@ api:
   # CLI flag: -http.prometheus-http-prefix
   [prometheus_http_prefix: <string> | default = "/prometheus"]
 
-  # Enable logging of HTTP Request Header specific context information
-  # CLI flag: -api.log-http-request-headers
-  [log_http_request_headers: <boolean> | default = false]
-
-  # Headers to log for HTTP Request logging (if enabled)
+  # Which HTTP Request headers to add to logs
   # CLI flag: -api.http-request-headers-to-log
   [http_request_headers_to_log: <list of string> | default = []]
 

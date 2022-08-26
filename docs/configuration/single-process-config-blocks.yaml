@@ -6,7 +6,10 @@
 # Disable the requirement that every request to Cortex has a
 # X-Scope-OrgID header. `fake` will be substituted in instead.
 auth_enabled: false
-
+api:
+  log_http_request_headers: true
+  http_request_headers_to_log:
+    - exampleRequestID
 server:
   http_listen_port: 9009
 
@@ -57,7 +60,7 @@ blocks_storage:
 
   # You can choose between local storage and Amazon S3, Google GCS and Azure storage. Each option requires additional configuration
   # as shown below. All options can be configured via flags as well which might be handy for secret inputs.
-  backend: s3 # s3, gcs, azure or filesystem are valid options
+  backend: filesystem # s3, gcs, azure or filesystem are valid options
   s3:
     bucket_name: cortex
     endpoint: s3.dualstack.us-east-1.amazonaws.com
@@ -73,8 +76,8 @@ blocks_storage:
 #    container_name:
 #    endpoint_suffix:
 #    max_retries: # Number of retries for recoverable errors (defaults to 20)
-# filesystem:
-#   dir: ./data/tsdb
+  filesystem:
+    dir: ./data/tsdb
 
 compactor:
   data_dir: /tmp/cortex/compactor

@@ -18,6 +18,7 @@ func Instrument(requestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInt
 			middleware.ClientUserHeaderInterceptor,
 			cortexmiddleware.PrometheusGRPCUnaryInstrumentation(requestDuration),
 		}, []grpc.StreamClientInterceptor{
+			grpcutil.HTTPHeaderPropagationStreamClientInterceptor(),
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientUserHeaderInterceptor,
 			cortexmiddleware.PrometheusGRPCStreamInstrumentation(requestDuration),

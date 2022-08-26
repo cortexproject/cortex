@@ -48,6 +48,7 @@
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
 * [FEATURE] Ruler: Add support to pass custom implementations of queryable and pusher. #4782
 * [FEATURE] Create OpenTelemetry Bridge for Tracing. Now cortex can send traces to multiple destinations using OTEL Collectors. #4834
+* [FEATURE] Added support for logging of HTTP Headers #4803
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767
 

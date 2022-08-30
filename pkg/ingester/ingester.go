@@ -638,7 +638,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		}, i.getOldestUnshippedBlockMetric)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, false, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
 	if err != nil {
 		return nil, err
 	}
@@ -706,13 +706,6 @@ func (i *Ingester) startingV2ForFlusher(ctx context.Context) error {
 }
 
 func (i *Ingester) starting(ctx context.Context) error {
-	if err := i.openExistingTSDB(ctx); err != nil {
-		// Try to rollback and close opened TSDBs before halting the ingester.
-		i.closeAllTSDB()
-
-		return errors.Wrap(err, "opening existing TSDBs")
-	}
-
 	// Important: we want to keep lifecycler running until we ask it to stop, so we need to give it independent context
 	if err := i.lifecycler.StartAsync(context.Background()); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
@@ -720,6 +713,15 @@ func (i *Ingester) starting(ctx context.Context) error {
 	if err := i.lifecycler.AwaitRunning(ctx); err != nil {
 		return errors.Wrap(err, "failed to start lifecycler")
 	}
+
+	if err := i.openExistingTSDB(ctx); err != nil {
+		// Try to rollback and close opened TSDBs before halting the ingester.
+		i.closeAllTSDB()
+
+		return errors.Wrap(err, "opening existing TSDBs")
+	}
+
+	i.lifecycler.Join()
 
 	// let's start the rest of subservices via manager
 	servs := []services.Service(nil)

@@ -43,6 +43,7 @@
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
 * [ENHANCEMENT] Cortex now built with Go 1.18. #4829
+* [ENHANCEMENT] Ingester: Prevent ingesters to become unhealthy during wall replay. #4847
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818

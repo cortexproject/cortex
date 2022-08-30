@@ -40,16 +40,18 @@
 * [CHANGE] Remove support for alertmanager and ruler legacy store configuration. Before upgrading, you need to convert your configuration to use the `alertmanager-storage` and `ruler-storage` configuration on the version that you're already running, then upgrade.
 * [CHANGE] Disables TSDB isolation. #4825
 * [CHANGE] Drops support Prometheus 1.x rule format on configdb. #4826
-* [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532
+* [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
 * [ENHANCEMENT] Cortex now built with Go 1.18. #4829
+* [ENHANCEMENT] Ingester: Prevent ingesters to become unhealthy during wall replay. #4847
 * [ENHANCEMENT] Compactor: Introduced lock file for blocks so blocks are under compaction will not be picked up by another compactor. #4805
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
-* [FEATURE] Ruler: Add support to pass custom implementations of queryable and pusher #4782
+* [FEATURE] Ruler: Add support to pass custom implementations of queryable and pusher. #4782
+* [FEATURE] Create OpenTelemetry Bridge for Tracing. Now cortex can send traces to multiple destinations using OTEL Collectors. #4834
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
-* [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields #4767
+* [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767
 
 ## 1.13.0 2022-07-14
 

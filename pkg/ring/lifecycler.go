@@ -93,7 +93,8 @@ type Lifecycler struct {
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
 
-	actorChan chan func()
+	actorChan    chan func()
+	autojoinChan chan struct{}
 
 	// These values are initialised at startup, and never change
 	ID       string
@@ -105,6 +106,9 @@ type Lifecycler struct {
 	// Whether to flush if transfer fails on shutdown.
 	flushOnShutdown      *atomic.Bool
 	unregisterOnShutdown *atomic.Bool
+
+	// Whether to auto join on ring on startup. If set to false, Join should be called.
+	autoJoinOnStartup bool
 
 	// We need to remember the ingester state, tokens and registered timestamp just in case the KV store
 	// goes away and comes back empty. The state changes during lifecycle of instance.
@@ -128,7 +132,14 @@ type Lifecycler struct {
 }
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
-func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool, logger log.Logger, reg prometheus.Registerer) (*Lifecycler, error) {
+func NewLifecycler(
+	cfg LifecyclerConfig,
+	flushTransferer FlushTransferer,
+	ringName, ringKey string,
+	autoJoinOnStartup, flushOnShutdown bool,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) (*Lifecycler, error) {
 	addr, err := GetInstanceAddr(cfg.Addr, cfg.InfNames, logger)
 	if err != nil {
 		return nil, err
@@ -165,10 +176,12 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		ID:                   cfg.ID,
 		RingName:             ringName,
 		RingKey:              ringKey,
+		autoJoinOnStartup:    autoJoinOnStartup,
 		flushOnShutdown:      atomic.NewBool(flushOnShutdown),
 		unregisterOnShutdown: atomic.NewBool(cfg.UnregisterOnShutdown),
 		Zone:                 zone,
 		actorChan:            make(chan func()),
+		autojoinChan:         make(chan struct{}, 1),
 		state:                PENDING,
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),
 		logger:               logger,
@@ -391,7 +404,17 @@ func (i *Lifecycler) ZonesCount() int {
 	return i.zonesCount
 }
 
+// Join trigger the instance to join the ring, if autoJoinOnStartup is set to false.
+func (i *Lifecycler) Join() {
+	select {
+	case i.autojoinChan <- struct{}{}:
+	default:
+		level.Warn(i.logger).Log("msg", "join was called more than one time", "ring", i.RingName)
+	}
+}
+
 func (i *Lifecycler) loop(ctx context.Context) error {
+	joined := false
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
 	if err := i.initRing(context.Background()); err != nil {
@@ -399,15 +422,25 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 
 	// We do various period tasks
-	autoJoinAfter := time.After(i.cfg.JoinAfter)
+	var autoJoinAfter <-chan time.Time
 	var observeChan <-chan time.Time
+
+	if i.autoJoinOnStartup {
+		autoJoinAfter = time.After(i.cfg.JoinAfter)
+	}
 
 	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(i.cfg.HeartbeatPeriod)
 	defer heartbeatTickerStop()
 
 	for {
 		select {
+		case <-i.autojoinChan:
+			autoJoinAfter = time.After(i.cfg.JoinAfter)
 		case <-autoJoinAfter:
+			if joined {
+				continue
+			}
+			joined = true
 			level.Debug(i.logger).Log("msg", "JoinAfter expired", "ring", i.RingName)
 			// Will only fire once, after auto join timeout.  If we haven't entered "JOINING" state,
 			// then pick some tokens and enter ACTIVE state.
@@ -556,7 +589,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			// We use the tokens from the file only if it does not exist in the ring yet.
 			if len(tokensFromFile) > 0 {
 				level.Info(i.logger).Log("msg", "adding tokens from file", "num_tokens", len(tokensFromFile))
-				if len(tokensFromFile) >= i.cfg.NumTokens {
+				if len(tokensFromFile) >= i.cfg.NumTokens && i.autoJoinOnStartup {
 					i.setState(ACTIVE)
 				}
 				ringDesc.AddIngester(i.ID, i.Addr, i.Zone, tokensFromFile, i.GetState(), registeredAt)
@@ -587,9 +620,14 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 
 		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
 		// OR unregister_on_shutdown=false
-		// Move it into ACTIVE to ensure the ingester joins the ring.
+		// if autoJoinOnStartup, move it into ACTIVE to ensure the ingester joins the ring.
+		// else set to PENDING
 		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
-			instanceDesc.State = ACTIVE
+			if i.autoJoinOnStartup {
+				instanceDesc.State = ACTIVE
+			} else {
+				instanceDesc.State = PENDING
+			}
 		}
 
 		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
@@ -699,9 +737,6 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
-		if len(myTokens) > 0 {
-			level.Error(i.logger).Log("msg", "tokens already exist for this instance - wasn't expecting any!", "num_tokens", len(myTokens), "ring", i.RingName)
-		}
 
 		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)

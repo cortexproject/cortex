@@ -47,6 +47,34 @@ func checkNormalised(d interface{}, id string) bool {
 		len(desc.Ingesters[id].Tokens) == 1
 }
 
+func TestLifecycler_JoinShouldNotBlock(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	lifecyclerConfig1 := testLifecyclerConfig(ringConfig, "ing1")
+	lifecyclerConfig1.HeartbeatPeriod = 100 * time.Millisecond
+
+	l1, err := NewLifecycler(lifecyclerConfig1, &nopFlushTransferer{}, "ingester", ringKey, false, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	c := make(chan struct{})
+	go func() {
+		l1.Join()
+		l1.Join()
+		l1.Join()
+		c <- struct{}{}
+	}()
+	select {
+	case <-c:
+		return
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+}
+
 func TestLifecycler_DefferedJoin(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })

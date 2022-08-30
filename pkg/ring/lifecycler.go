@@ -181,7 +181,7 @@ func NewLifecycler(
 		unregisterOnShutdown: atomic.NewBool(cfg.UnregisterOnShutdown),
 		Zone:                 zone,
 		actorChan:            make(chan func()),
-		autojoinChan:         make(chan struct{}),
+		autojoinChan:         make(chan struct{}, 1),
 		state:                PENDING,
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),
 		logger:               logger,
@@ -405,7 +405,10 @@ func (i *Lifecycler) ZonesCount() int {
 }
 
 func (i *Lifecycler) Join() {
-	i.autojoinChan <- struct{}{}
+	select {
+	case i.autojoinChan <- struct{}{}:
+	default:
+	}
 }
 
 func (i *Lifecycler) loop(ctx context.Context) error {
@@ -421,7 +424,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	var observeChan <-chan time.Time
 
 	if i.autoJoinOnStartup {
-		i.Join()
+		autoJoinAfter = time.After(i.cfg.JoinAfter)
 	}
 
 	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(i.cfg.HeartbeatPeriod)

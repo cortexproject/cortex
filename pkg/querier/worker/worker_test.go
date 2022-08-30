@@ -10,10 +10,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -122,47 +120,3 @@ func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc
 }
 
 func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}
-
-func TestNoHeadersForDecodeHTTPHeadersForLogging(t *testing.T) {
-	ctx := context.Background()
-	request := httpgrpc.HTTPRequest{Headers: nil}
-
-	ctx = DecodeHTTPHeadersForLogging(ctx, &request)
-
-	require.Nil(t, util_log.HeaderMapFromContext(ctx))
-
-}
-
-func TestDifferentHeaderLengthsForDecodeHTTPHeadersForLogging(t *testing.T) {
-	headerSlice := []string{"TestHeader1", "SomeInformation", "TestHeader2", "ContentsOfTestHeader2", "Test3"}
-	header := httpgrpc.Header{Key: util_log.HeaderPropagationStringForRequestLogging, Values: headerSlice}
-	headers := []*httpgrpc.Header{&header}
-
-	ctx := context.Background()
-	request := httpgrpc.HTTPRequest{Headers: headers}
-
-	ctx = DecodeHTTPHeadersForLogging(ctx, &request)
-
-	require.Nil(t, util_log.HeaderMapFromContext(ctx))
-
-}
-
-func TestValidInputForDecodeHTTPHeadersForLogging(t *testing.T) {
-	headerSlice := []string{"TestHeader1", "SomeInformation", "TestHeader2", "ContentsOfTestHeader2"}
-	header := httpgrpc.Header{Key: util_log.HeaderPropagationStringForRequestLogging, Values: headerSlice}
-	headers := []*httpgrpc.Header{&header}
-
-	ctx := context.Background()
-	request := httpgrpc.HTTPRequest{Headers: headers}
-
-	ctx = DecodeHTTPHeadersForLogging(ctx, &request)
-
-	headerMap := util_log.HeaderMapFromContext(ctx)
-	require.NotNil(t, headerMap)
-	require.Equal(t, 2, len(headerMap))
-	for headerName, headerContents := range headerMap {
-		require.Contains(t, headerSlice, headerName)
-		require.Contains(t, headerSlice, headerContents)
-	}
-
-}

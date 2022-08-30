@@ -15,6 +15,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -95,7 +96,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 			// and cancel the query.  We don't actually handle queries in parallel
 			// here, as we're running in lock step with the server - each Recv is
 			// paired with a Send.
-			ctx = DecodeHTTPHeadersForLogging(ctx, request.HttpRequest)
+			ctx = util_log.ExtractHeadersFromHTTPRequest(ctx, request.HttpRequest)
 			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.HTTPResponse, stats *stats.Stats) error {
 				return c.Send(&frontendv1pb.ClientToFrontend{
 					HttpResponse: response,

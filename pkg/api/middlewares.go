@@ -51,9 +51,7 @@ func (h HTTPHeaderMiddleware) InjectTargetHeadersIntoHTTPRequest(r *http.Request
 			headerMap[target] = contents
 		}
 	}
-	ctx := r.Context()
-	ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
-	return ctx
+	return util_log.ContextWithHeaderMap(r.Context(), headerMap)
 }
 
 // Wrap implements Middleware

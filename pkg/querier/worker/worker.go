@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +16,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -271,17 +269,4 @@ func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.Clie
 		return nil, err
 	}
 	return conn, nil
-}
-
-// DecodeHTTPHeadersForLogging decodes previously encoded HTTP headers that are supposed to be included in logs
-// (Works with EncodeHTTPLoggingHeadersForRequest)
-func DecodeHTTPHeadersForLogging(ctx context.Context, request *httpgrpc.HTTPRequest) context.Context {
-	for _, header := range request.Headers {
-		// HTTPgRPC connection has potential to change capitalization of headers, so convert to lowercase
-		if strings.EqualFold(header.Key, util_log.HeaderPropagationStringForRequestLogging) {
-			ctx = util_log.ContextWithHeaderMapFromRequestHeader(ctx, header)
-			break
-		}
-	}
-	return ctx
 }

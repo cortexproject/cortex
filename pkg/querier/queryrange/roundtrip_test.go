@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
-
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -94,32 +92,4 @@ func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 	r.URL.Scheme = "http"
 	r.URL.Host = s.host
 	return s.next.RoundTrip(r)
-}
-
-func TestEncodeHTTPLoggingHeadersForRequest(t *testing.T) {
-	contentsMap := make(map[string]string)
-	contentsMap["TestHeader1"] = "RequestID"
-	contentsMap["TestHeader2"] = "ContentsOfTestHeader2"
-
-	ctx := context.Background()
-	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
-
-	h := http.Header{}
-	req := &http.Request{
-		Method:     "GET",
-		RequestURI: "/HTTPHeaderTest",
-		Body:       http.NoBody,
-		Header:     h,
-	}
-	EncodeHTTPLoggingHeadersForRequest(ctx, req)
-	headers := req.Header.Values(util_log.HeaderPropagationStringForRequestLogging)
-
-	require.NotNil(t, headers)
-	require.Equal(t, 4, len(headers))
-
-	for headerName, headerContents := range contentsMap {
-		require.Contains(t, headers, headerName)
-		require.Contains(t, headers, headerContents)
-	}
-
 }

@@ -107,7 +107,7 @@ type Lifecycler struct {
 	flushOnShutdown      *atomic.Bool
 	unregisterOnShutdown *atomic.Bool
 
-	// Whether to auto join on ring on startup.
+	// Whether to auto join on ring on startup. If set to false, Join should be called.
 	autoJoinOnStartup bool
 
 	// We need to remember the ingester state, tokens and registered timestamp just in case the KV store
@@ -404,10 +404,12 @@ func (i *Lifecycler) ZonesCount() int {
 	return i.zonesCount
 }
 
+// Join trigger the instance to join the ring, if autoJoinOnStartup is set to false.
 func (i *Lifecycler) Join() {
 	select {
 	case i.autojoinChan <- struct{}{}:
 	default:
+		level.Warn(i.logger).Log("msg", "join was called more than one time", "ring", i.RingName)
 	}
 }
 

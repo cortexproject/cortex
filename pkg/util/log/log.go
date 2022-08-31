@@ -3,18 +3,15 @@ package log
 import (
 	"context"
 	"fmt"
-	"net/http"
-	"os"
-	"strings"
-
 	"github.com/go-kit/log"
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/metadata"
+	"net/http"
+	"os"
 )
 
 type contextKey int
@@ -154,29 +151,8 @@ func ContextWithHeaderMap(ctx context.Context, headerMap map[string]string) cont
 // InjectHeadersIntoHTTPRequest injects the logging header map from the context into the request headers.
 func InjectHeadersIntoHTTPRequest(headerMap map[string]string, request *http.Request) {
 	for header, contents := range headerMap {
-		request.Header.Add(HeaderPropagationStringForRequestLogging, header)
-		request.Header.Add(HeaderPropagationStringForRequestLogging, contents)
+		request.Header.Add(header, contents)
 	}
-}
-
-// ExtractHeadersFromHTTPRequest extracts the logging header map from the request headers and returns
-// a context with the logging header map embedded.
-func ExtractHeadersFromHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest) context.Context {
-	headerMap := make(map[string]string)
-	for _, header := range request.Headers {
-		// HTTPgRPC connection has potential to change capitalization of headers, so convert to lowercase
-		if strings.EqualFold(header.Key, HeaderPropagationStringForRequestLogging) {
-			headersSlice := header.Values
-			if len(headersSlice)%2 == 0 {
-				for i := 0; i < len(headersSlice); i += 2 {
-					headerMap[headersSlice[i]] = headersSlice[i+1]
-				}
-				ctx = ContextWithHeaderMap(ctx, headerMap)
-			}
-			break
-		}
-	}
-	return ctx
 }
 
 func ContextWithHeaderMapInMetadata(ctx context.Context, headerMap map[string]string) context.Context {

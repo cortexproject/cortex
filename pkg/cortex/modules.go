@@ -335,6 +335,10 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		return nil, nil
 	}
 
+	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
+		internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
+	}
+
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util_log.Logger, prometheus.DefaultRegisterer)
 }

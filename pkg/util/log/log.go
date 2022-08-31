@@ -3,6 +3,9 @@ package log
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
+
 	"github.com/go-kit/log"
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -10,8 +13,6 @@ import (
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/metadata"
-	"net/http"
-	"os"
 )
 
 type contextKey int

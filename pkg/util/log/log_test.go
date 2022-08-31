@@ -58,7 +58,7 @@ func TestHeaderMapFromRequestHeaderWithImproperLength(t *testing.T) {
 	headerSlice := []string{"TestHeader1", "SomeInformation", "TestHeader2", "ContentsOfTestHeader2", "Test3"}
 	header := httpgrpc.Header{Key: HeaderPropagationStringForRequestLogging, Values: headerSlice}
 	request := httpgrpc.HTTPRequest{Headers: []*httpgrpc.Header{&header}}
-	
+
 	ctx := context.Background()
 	ctx = ExtractHeadersFromHTTPRequest(ctx, &request)
 

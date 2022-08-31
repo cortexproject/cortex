@@ -98,15 +98,18 @@ func LockBlocksHeartBeat(ctx context.Context, bkt objstore.Bucket, logger log.Lo
 	}
 	blocksInfo := strings.Join(blockIds, ",")
 	level.Info(logger).Log("msg", fmt.Sprintf("start heart beat for blocks: %s", blocksInfo))
+	ticker := time.NewTicker(blockLockFileUpdateInterval)
+	defer ticker.Stop()
 heartBeat:
 	for {
+		level.Debug(logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
+		LockBlocks(ctx, bkt, logger, blocks, compactorID, blockLockWriteFailed)
+
 		select {
 		case <-ctx.Done():
 			break heartBeat
-		default:
-			level.Debug(logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
-			LockBlocks(ctx, bkt, logger, blocks, compactorID, blockLockWriteFailed)
-			time.Sleep(blockLockFileUpdateInterval)
+		case <-ticker.C:
+			continue
 		}
 	}
 	level.Info(logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))

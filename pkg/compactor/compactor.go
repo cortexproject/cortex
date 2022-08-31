@@ -89,6 +89,7 @@ var (
 			userID,
 			cfg.BlockFilesConcurrency,
 			cfg.BlocksFetchConcurrency,
+			cfg.CompactionConcurrency,
 			cfg.BlockLockTimeout,
 			blockLockReadFailed,
 			blockLockWriteFailed)

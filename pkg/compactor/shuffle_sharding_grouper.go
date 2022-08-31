@@ -44,6 +44,7 @@ type ShuffleShardingGrouper struct {
 	userID                      string
 	blockFilesConcurrency       int
 	blocksFetchConcurrency      int
+	compactionConcurrency       int
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
@@ -74,6 +75,7 @@ func NewShuffleShardingGrouper(
 	userID string,
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
+	compactionConcurrency int,
 	blockLockTimeout time.Duration,
 	blockLockReadFailed prometheus.Counter,
 	blockLockWriteFailed prometheus.Counter,
@@ -123,6 +125,7 @@ func NewShuffleShardingGrouper(
 		userID:                 userID,
 		blockFilesConcurrency:  blockFilesConcurrency,
 		blocksFetchConcurrency: blocksFetchConcurrency,
+		compactionConcurrency:  compactionConcurrency,
 		blockLockTimeout:       blockLockTimeout,
 		blockLockReadFailed:    blockLockReadFailed,
 		blockLockWriteFailed:   blockLockWriteFailed,
@@ -259,7 +262,9 @@ mainLoop:
 		}
 
 		outGroups = append(outGroups, thanosGroup)
-		break mainLoop
+		if len(outGroups) == g.compactionConcurrency {
+			break mainLoop
+		}
 	}
 
 	level.Info(g.logger).Log("msg", fmt.Sprintf("total groups for compaction: %d", len(outGroups)))

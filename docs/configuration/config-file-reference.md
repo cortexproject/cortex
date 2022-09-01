@@ -3847,14 +3847,14 @@ sharding_ring:
   # CLI flag: -compactor.ring.wait-active-instance-timeout
   [wait_active_instance_timeout: <duration> | default = 10m]
 
-# How long block lock file should be considered as expired and able to be picked
-# up by compactor again.
-# CLI flag: -compactor.block-lock-timeout
-[block_lock_timeout: <duration> | default = 5m]
+# How long block visit marker file should be considered as expired and able to
+# be picked up by compactor again.
+# CLI flag: -compactor.block-visit-marker-timeout
+[block_visit_marker_timeout: <duration> | default = 5m]
 
-# How frequently block lock file should be updated duration compaction.
-# CLI flag: -compactor.block-lock-file-update-interval
-[block_lock_file_update_interval: <duration> | default = 1m]
+# How frequently block visit marker file should be updated duration compaction.
+# CLI flag: -compactor.block-visit-marker-file-update-interval
+[block_visit_marker_file_update_interval: <duration> | default = 1m]
 ```
 
 ### `store_gateway_config`

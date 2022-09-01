@@ -23,7 +23,7 @@ import (
 )
 
 func TestShuffleShardingPlanner_Plan(t *testing.T) {
-	type LockedBlock struct {
+	type VisitedBlock struct {
 		id          ulid.ULID
 		isExpired   bool
 		compactorID string
@@ -42,7 +42,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 		blocks          []*metadata.Meta
 		expected        []*metadata.Meta
 		expectedErr     error
-		lockedBlocks    []LockedBlock
+		visitedBlocks   []VisitedBlock
 	}{
 		"test basic plan": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -62,7 +62,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
@@ -109,7 +109,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
@@ -141,7 +141,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
@@ -173,7 +173,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
@@ -213,7 +213,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
@@ -266,7 +266,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
@@ -280,7 +280,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 			},
 			expected: []*metadata.Meta{},
 		},
-		"test should not compact if lock file is not expired and locked by other compactor": {
+		"test should not compact if visit marker file is not expired and visited by other compactor": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
@@ -298,16 +298,16 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: otherCompactor,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s is not locked by current compactor %s", block1ulid.String(), currentCompactor),
+			expectedErr: fmt.Errorf("block %s is not visited by current compactor %s", block1ulid.String(), currentCompactor),
 		},
-		"test should not compact if lock file is expired": {
+		"test should not compact if visit marker file is expired": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
@@ -325,44 +325,44 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			lockedBlocks: []LockedBlock{
+			visitedBlocks: []VisitedBlock{
 				{
 					id:          block1ulid,
 					isExpired:   true,
 					compactorID: currentCompactor,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s is not locked by current compactor %s", block1ulid.String(), currentCompactor),
+			expectedErr: fmt.Errorf("block %s is not visited by current compactor %s", block1ulid.String(), currentCompactor),
 		},
 	}
 
-	blockLockTimeout := 5 * time.Minute
+	blockVisitMarkerTimeout := 5 * time.Minute
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			bkt := &bucket.ClientMock{}
-			for _, lockedBlock := range testData.lockedBlocks {
-				lockFile := path.Join(lockedBlock.id.String(), BlockLockFile)
+			for _, visitedBlock := range testData.visitedBlocks {
+				visitMarkerFile := path.Join(visitedBlock.id.String(), BlockVisitMarkerFile)
 				expireTime := time.Now()
-				if lockedBlock.isExpired {
-					expireTime = expireTime.Add(-1 * blockLockTimeout)
+				if visitedBlock.isExpired {
+					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
 				}
-				blockLocker := BlockLocker{
-					CompactorID: lockedBlock.compactorID,
-					LockTime:    expireTime,
+				blockVisitMarker := BlockVisitMarker{
+					CompactorID: visitedBlock.compactorID,
+					VisitTime:   expireTime,
 				}
-				lockFileContent, _ := json.Marshal(blockLocker)
-				bkt.MockGet(lockFile, string(lockFileContent), nil)
+				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
+				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
 			}
 			bkt.MockUpload(mock.Anything, nil)
 
 			registerer := prometheus.NewPedanticRegistry()
-			blockLockReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_compactor_block_lock_read_failed",
-				Help: "Number of block lock file failed to be read.",
+			blockVisitMarkerReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_visit_marker_read_failed",
+				Help: "Number of block visit marker file failed to be read.",
 			})
-			blockLockWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_compactor_block_lock_write_failed",
-				Help: "Number of block lock file failed to be written.",
+			blockVisitMarkerWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_visit_marker_write_failed",
+				Help: "Number of block visit marker file failed to be written.",
 			})
 
 			logs := &concurrency.SyncBuffer{}
@@ -376,10 +376,10 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					return testData.noCompactBlocks
 				},
 				currentCompactor,
-				blockLockTimeout,
+				blockVisitMarkerTimeout,
 				time.Minute,
-				blockLockReadFailed,
-				blockLockWriteFailed,
+				blockVisitMarkerReadFailed,
+				blockVisitMarkerWriteFailed,
 			)
 			actual, err := p.Plan(context.Background(), testData.blocks)
 

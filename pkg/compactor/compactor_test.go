@@ -1207,9 +1207,9 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		blockDirectory := []string{}
 
 		for blockID, blockTimes := range blocks {
-			blockLocker := BlockLocker{
+			blockLocker := BlockVisitMarker{
 				CompactorID: "test-compactor",
-				LockTime:    time.Now(),
+				VisitTime:   time.Now(),
 			}
 			lockFileContent, _ := json.Marshal(blockLocker)
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)

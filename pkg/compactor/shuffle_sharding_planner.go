@@ -13,16 +13,16 @@ import (
 )
 
 type ShuffleShardingPlanner struct {
-	ctx                         context.Context
-	bkt                         objstore.Bucket
-	logger                      log.Logger
-	ranges                      []int64
-	noCompBlocksFunc            func() map[ulid.ULID]*metadata.NoCompactMark
-	ringLifecyclerID            string
-	blockLockTimeout            time.Duration
-	blockLockFileUpdateInterval time.Duration
-	blockLockReadFailed         prometheus.Counter
-	blockLockWriteFailed        prometheus.Counter
+	ctx                                context.Context
+	bkt                                objstore.Bucket
+	logger                             log.Logger
+	ranges                             []int64
+	noCompBlocksFunc                   func() map[ulid.ULID]*metadata.NoCompactMark
+	ringLifecyclerID                   string
+	blockVisitMarkerTimeout            time.Duration
+	blockVisitMarkerFileUpdateInterval time.Duration
+	blockVisitMarkerReadFailed         prometheus.Counter
+	blockVisitMarkerWriteFailed        prometheus.Counter
 }
 
 func NewShuffleShardingPlanner(
@@ -32,22 +32,22 @@ func NewShuffleShardingPlanner(
 	ranges []int64,
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
 	ringLifecyclerID string,
-	blockLockTimeout time.Duration,
-	blockLockFileUpdateInterval time.Duration,
-	blockLockReadFailed prometheus.Counter,
-	blockLockWriteFailed prometheus.Counter,
+	blockVisitMarkerTimeout time.Duration,
+	blockVisitMarkerFileUpdateInterval time.Duration,
+	blockVisitMarkerReadFailed prometheus.Counter,
+	blockVisitMarkerWriteFailed prometheus.Counter,
 ) *ShuffleShardingPlanner {
 	return &ShuffleShardingPlanner{
-		ctx:                         ctx,
-		bkt:                         bkt,
-		logger:                      logger,
-		ranges:                      ranges,
-		noCompBlocksFunc:            noCompBlocksFunc,
-		ringLifecyclerID:            ringLifecyclerID,
-		blockLockTimeout:            blockLockTimeout,
-		blockLockFileUpdateInterval: blockLockFileUpdateInterval,
-		blockLockReadFailed:         blockLockReadFailed,
-		blockLockWriteFailed:        blockLockWriteFailed,
+		ctx:                                ctx,
+		bkt:                                bkt,
+		logger:                             logger,
+		ranges:                             ranges,
+		noCompBlocksFunc:                   noCompBlocksFunc,
+		ringLifecyclerID:                   ringLifecyclerID,
+		blockVisitMarkerTimeout:            blockVisitMarkerTimeout,
+		blockVisitMarkerFileUpdateInterval: blockVisitMarkerFileUpdateInterval,
+		blockVisitMarkerReadFailed:         blockVisitMarkerReadFailed,
+		blockVisitMarkerWriteFailed:        blockVisitMarkerWriteFailed,
 	}
 }
 
@@ -72,14 +72,14 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
 		}
 
-		blockLocker, err := ReadBlockLocker(p.ctx, p.bkt, blockID, p.blockLockReadFailed)
+		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, blockID, p.blockVisitMarkerReadFailed)
 		if err != nil {
-			// shuffle_sharding_grouper should put lock file for blocks ready for
-			// compaction. So error should be returned if lock file does not exist.
-			return nil, fmt.Errorf("unable to get lock file for block %s: %s", blockID, err.Error())
+			// shuffle_sharding_grouper should put visit marker file for blocks ready for
+			// compaction. So error should be returned if visit marker file does not exist.
+			return nil, fmt.Errorf("unable to get visit marker file for block %s: %s", blockID, err.Error())
 		}
-		if !blockLocker.isLockedByCompactor(p.blockLockTimeout, p.ringLifecyclerID) {
-			return nil, fmt.Errorf("block %s is not locked by current compactor %s", blockID, p.ringLifecyclerID)
+		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, p.ringLifecyclerID) {
+			return nil, fmt.Errorf("block %s is not visited by current compactor %s", blockID, p.ringLifecyclerID)
 		}
 
 		resultMetas = append(resultMetas, b)
@@ -89,7 +89,7 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 		return nil, nil
 	}
 
-	go LockBlocksHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, p.ringLifecyclerID, p.blockLockFileUpdateInterval, p.blockLockWriteFailed)
+	go markBlocksVisitedHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, p.ringLifecyclerID, p.blockVisitMarkerFileUpdateInterval, p.blockVisitMarkerWriteFailed)
 
 	return resultMetas, nil
 }

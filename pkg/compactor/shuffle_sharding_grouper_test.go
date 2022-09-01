@@ -116,10 +116,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		}
 
 	tests := map[string]struct {
-		concurrency  int
-		ranges       []time.Duration
-		blocks       map[ulid.ULID]*metadata.Meta
-		lockedBlocks []struct {
+		concurrency   int
+		ranges        []time.Duration
+		blocks        map[ulid.ULID]*metadata.Meta
+		visitedBlocks []struct {
 			id        ulid.ULID
 			isExpired bool
 		}
@@ -206,14 +206,14 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
         	          cortex_compactor_remaining_planned_compactions 0
 `,
 		},
-		"test group with all blocks locked": {
+		"test group with all blocks visited": {
 			concurrency: 1,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 			},
-			lockedBlocks: []struct {
+			visitedBlocks: []struct {
 				id        ulid.ULID
 				isExpired bool
 			}{
@@ -225,14 +225,14 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
         	          cortex_compactor_remaining_planned_compactions 1
 `,
 		},
-		"test group with one block locked": {
+		"test group with one block visited": {
 			concurrency: 1,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 			},
-			lockedBlocks: []struct {
+			visitedBlocks: []struct {
 				id        ulid.ULID
 				isExpired bool
 			}{
@@ -243,14 +243,14 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
         	          cortex_compactor_remaining_planned_compactions 1
 `,
 		},
-		"test group block lock file expired": {
+		"test group block visit marker file expired": {
 			concurrency: 1,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
 			},
-			lockedBlocks: []struct {
+			visitedBlocks: []struct {
 				id        ulid.ULID
 				isExpired bool
 			}{
@@ -305,29 +305,29 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				Name: "cortex_compactor_remaining_planned_compactions",
 				Help: "Total number of plans that remain to be compacted.",
 			})
-			blockLockReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_compactor_block_lock_read_failed",
-				Help: "Number of block lock file failed to be read.",
+			blockVisitMarkerReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_visit_marker_read_failed",
+				Help: "Number of block visit marker file failed to be read.",
 			})
-			blockLockWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_compactor_block_lock_write_failed",
-				Help: "Number of block lock file failed to be written.",
+			blockVisitMarkerWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_block_visit_marker_write_failed",
+				Help: "Number of block visit marker file failed to be written.",
 			})
 
 			bkt := &bucket.ClientMock{}
-			blockLockTimeout := 5 * time.Minute
-			for _, lockedBlock := range testData.lockedBlocks {
-				lockFile := path.Join(lockedBlock.id.String(), BlockLockFile)
+			blockVisitMarkerTimeout := 5 * time.Minute
+			for _, visitedBlock := range testData.visitedBlocks {
+				visitMarkerFile := path.Join(visitedBlock.id.String(), BlockVisitMarkerFile)
 				expireTime := time.Now()
-				if lockedBlock.isExpired {
-					expireTime = expireTime.Add(-1 * blockLockTimeout)
+				if visitedBlock.isExpired {
+					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
 				}
-				blockLocker := BlockLocker{
+				blockVisitMarker := BlockVisitMarker{
 					CompactorID: "test-compactor",
-					LockTime:    expireTime,
+					VisitTime:   expireTime,
 				}
-				lockFileContent, _ := json.Marshal(blockLocker)
-				bkt.MockGet(lockFile, string(lockFileContent), nil)
+				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
+				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
 			}
 			bkt.MockUpload(mock.Anything, nil)
 			bkt.MockGet(mock.Anything, "", nil)
@@ -355,9 +355,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				10,
 				3,
 				testData.concurrency,
-				blockLockTimeout,
-				blockLockReadFailed,
-				blockLockWriteFailed,
+				blockVisitMarkerTimeout,
+				blockVisitMarkerReadFailed,
+				blockVisitMarkerWriteFailed,
 			)
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)

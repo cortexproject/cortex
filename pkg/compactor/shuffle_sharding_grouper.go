@@ -50,9 +50,9 @@ type ShuffleShardingGrouper struct {
 	ringLifecyclerAddr string
 	ringLifecyclerID   string
 
-	blockLockTimeout     time.Duration
-	blockLockReadFailed  prometheus.Counter
-	blockLockWriteFailed prometheus.Counter
+	blockVisitMarkerTimeout     time.Duration
+	blockVisitMarkerReadFailed  prometheus.Counter
+	blockVisitMarkerWriteFailed prometheus.Counter
 }
 
 func NewShuffleShardingGrouper(
@@ -76,9 +76,9 @@ func NewShuffleShardingGrouper(
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
 	compactionConcurrency int,
-	blockLockTimeout time.Duration,
-	blockLockReadFailed prometheus.Counter,
-	blockLockWriteFailed prometheus.Counter,
+	blockVisitMarkerTimeout time.Duration,
+	blockVisitMarkerReadFailed prometheus.Counter,
+	blockVisitMarkerWriteFailed prometheus.Counter,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -117,18 +117,18 @@ func NewShuffleShardingGrouper(
 			Name: "thanos_compact_group_vertical_compactions_total",
 			Help: "Total number of group compaction attempts that resulted in a new block based on overlapping blocks.",
 		}, []string{"group"}),
-		compactorCfg:           compactorCfg,
-		ring:                   ring,
-		ringLifecyclerAddr:     ringLifecyclerAddr,
-		ringLifecyclerID:       ringLifecyclerID,
-		limits:                 limits,
-		userID:                 userID,
-		blockFilesConcurrency:  blockFilesConcurrency,
-		blocksFetchConcurrency: blocksFetchConcurrency,
-		compactionConcurrency:  compactionConcurrency,
-		blockLockTimeout:       blockLockTimeout,
-		blockLockReadFailed:    blockLockReadFailed,
-		blockLockWriteFailed:   blockLockWriteFailed,
+		compactorCfg:                compactorCfg,
+		ring:                        ring,
+		ringLifecyclerAddr:          ringLifecyclerAddr,
+		ringLifecyclerID:            ringLifecyclerID,
+		limits:                      limits,
+		userID:                      userID,
+		blockFilesConcurrency:       blockFilesConcurrency,
+		blocksFetchConcurrency:      blocksFetchConcurrency,
+		compactionConcurrency:       compactionConcurrency,
+		blockVisitMarkerTimeout:     blockVisitMarkerTimeout,
+		blockVisitMarkerReadFailed:  blockVisitMarkerReadFailed,
+		blockVisitMarkerWriteFailed: blockVisitMarkerWriteFailed,
 	}
 }
 
@@ -212,11 +212,11 @@ mainLoop:
 
 		groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
 
-		if isLocked, err := g.isGroupLocked(group.blocks); err != nil {
-			level.Warn(g.logger).Log("msg", "unable to check if blocks in group are locked", "group hash", groupHash, "err", err, "group", group.String())
+		if isVisited, err := g.isGroupVisited(group.blocks); err != nil {
+			level.Warn(g.logger).Log("msg", "unable to check if blocks in group are visited", "group hash", groupHash, "err", err, "group", group.String())
 			continue
-		} else if isLocked {
-			level.Info(g.logger).Log("msg", "skipping group because at least one block in group are locked", "group_hash", groupHash)
+		} else if isVisited {
+			level.Info(g.logger).Log("msg", "skipping group because at least one block in group is visited", "group_hash", groupHash)
 			continue
 		}
 
@@ -224,7 +224,7 @@ mainLoop:
 		groupKey := createGroupKey(groupHash, group)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
-		LockBlocks(g.ctx, g.bkt, g.logger, group.blocks, g.ringLifecyclerID, g.blockLockWriteFailed)
+		markBlocksVisited(g.ctx, g.bkt, g.logger, group.blocks, g.ringLifecyclerID, g.blockVisitMarkerWriteFailed)
 
 		// All the blocks within the same group have the same downsample
 		// resolution and external labels.
@@ -272,20 +272,20 @@ mainLoop:
 	return outGroups, nil
 }
 
-func (g *ShuffleShardingGrouper) isGroupLocked(blocks []*metadata.Meta) (bool, error) {
+func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta) (bool, error) {
 	for _, block := range blocks {
 		blockID := block.ULID.String()
-		blockLocker, err := ReadBlockLocker(g.ctx, g.bkt, blockID, g.blockLockReadFailed)
+		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, blockID, g.blockVisitMarkerReadFailed)
 		if err != nil {
-			if errors.Is(err, ErrorBlockLockNotFound) {
-				level.Debug(g.logger).Log("msg", "no lock file for block", "blockID", blockID)
+			if errors.Is(err, ErrorBlockVisitMarkerNotFound) {
+				level.Debug(g.logger).Log("msg", "no visit marker file for block", "blockID", blockID)
 				continue
 			}
-			level.Error(g.logger).Log("msg", "unable to read block lock file", "blockID", blockID, "err", err)
+			level.Error(g.logger).Log("msg", "unable to read block visit marker file", "blockID", blockID, "err", err)
 			return true, err
 		}
-		if blockLocker.isLocked(g.blockLockTimeout) {
-			level.Debug(g.logger).Log("msg", fmt.Sprintf("locked block: %s", blockID))
+		if blockVisitMarker.isVisited(g.blockVisitMarkerTimeout) {
+			level.Debug(g.logger).Log("msg", fmt.Sprintf("visited block: %s", blockID))
 			return true, nil
 		}
 	}

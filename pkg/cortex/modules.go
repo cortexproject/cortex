@@ -328,15 +328,15 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
 		// request context.
 		internalQuerierRouter = t.API.AuthMiddleware.Wrap(internalQuerierRouter)
+
+		if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
+			internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
+		}
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker is needed.
 	if t.Cfg.Worker.FrontendAddress == "" && t.Cfg.Worker.SchedulerAddress == "" {
 		return nil, nil
-	}
-
-	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
-		internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
 	}
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent

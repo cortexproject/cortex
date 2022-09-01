@@ -20,7 +20,7 @@ type contextKey int
 const (
 	headerMapContextKey contextKey = 0
 
-	HeaderPropagationStringForRequestLogging string = "httpheaderforwardingforlogging"
+	HeaderPropagationStringForRequestLogging string = "x-http-header-forwarding-logging"
 )
 
 var (
@@ -138,11 +138,11 @@ func LevelFilter(l string) level.Option {
 }
 
 func HeaderMapFromContext(ctx context.Context) map[string]string {
-	headerMap, worked := ctx.Value(headerMapContextKey).(map[string]string)
-	if worked {
-		return headerMap
+	headerMap, ok := ctx.Value(headerMapContextKey).(map[string]string)
+	if !ok {
+		return nil
 	}
-	return nil
+	return headerMap
 }
 
 func ContextWithHeaderMap(ctx context.Context, headerMap map[string]string) context.Context {
@@ -156,24 +156,16 @@ func InjectHeadersIntoHTTPRequest(headerMap map[string]string, request *http.Req
 	}
 }
 
-func ContextWithHeaderMapInMetadata(ctx context.Context, headerMap map[string]string) context.Context {
-	for header, contents := range headerMap {
-		ctx = metadata.AppendToOutgoingContext(ctx, HeaderPropagationStringForRequestLogging, header)
-		ctx = metadata.AppendToOutgoingContext(ctx, HeaderPropagationStringForRequestLogging, contents)
-	}
-	return ctx
-}
-
 func ContextWithHeaderMapFromMetadata(ctx context.Context, md metadata.MD) context.Context {
-	headerMap := make(map[string]string)
-	headersSlice := md[HeaderPropagationStringForRequestLogging]
-
-	if len(headersSlice)%2 == 0 {
-		for i := 0; i < len(headersSlice); i += 2 {
-			headerMap[headersSlice[i]] = headersSlice[i+1]
-		}
-		ctx = ContextWithHeaderMap(ctx, headerMap)
+	headersSlice, ok := md[HeaderPropagationStringForRequestLogging]
+	if !ok || len(headersSlice)%2 == 1 {
+		return ctx
 	}
 
-	return ctx
+	headerMap := make(map[string]string)
+	for i := 0; i < len(headersSlice); i += 2 {
+		headerMap[headersSlice[i]] = headersSlice[i+1]
+	}
+
+	return ContextWithHeaderMap(ctx, headerMap)
 }

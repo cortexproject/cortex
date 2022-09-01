@@ -20,7 +20,7 @@ func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {
 	contentsMap["Test3"] = "SomeInformation"
 	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
 
-	ctx = putForwardedHeadersIntoMetadata(ctx)
+	ctx = injectForwardedHeadersIntoMetadata(ctx)
 
 	meta, worked := metadata.FromOutgoingContext(ctx)
 	require.True(t, worked)
@@ -45,7 +45,7 @@ func TestExistingValuesInMetadataForHTTPPropagationClientInterceptor(t *testing.
 	contentsMap["Test3"] = "SomeInformation"
 	ctx = util_log.ContextWithHeaderMap(ctx, contentsMap)
 
-	ctx = putForwardedHeadersIntoMetadata(ctx)
+	ctx = injectForwardedHeadersIntoMetadata(ctx)
 
 	meta, worked := metadata.FromOutgoingContext(ctx)
 	require.True(t, worked)
@@ -63,7 +63,8 @@ func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 	testMap["TestHeader2"] = "Results2"
 
 	ctx = metadata.NewOutgoingContext(ctx, nil)
-	ctx = util_log.ContextWithHeaderMapInMetadata(ctx, testMap)
+	ctx = util_log.ContextWithHeaderMap(ctx, testMap)
+	ctx = injectForwardedHeadersIntoMetadata(ctx)
 
 	md, worked := metadata.FromOutgoingContext(ctx)
 	require.True(t, worked)
@@ -85,7 +86,7 @@ func TestGRPCHeaderDifferentLengthsForHTTPPropagationServerInterceptor(t *testin
 	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Results")
 	ctx = metadata.AppendToOutgoingContext(ctx, util_log.HeaderPropagationStringForRequestLogging, "Results2")
 
-	ctx = pullForwardedHeadersFromMetadata(ctx)
+	ctx = extractForwardedHeadersFromMetadata(ctx)
 
 	assert.Nil(t, util_log.HeaderMapFromContext(ctx))
 }

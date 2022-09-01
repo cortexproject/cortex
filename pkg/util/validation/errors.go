@@ -68,6 +68,26 @@ func newLabelValueTooLongError(series []cortexpb.LabelAdapter, labelValue string
 	}
 }
 
+// labelsSizeBytesExceededError is a customized ValidationError, in that the cause and the series are
+// formatted in different order in Error.
+type labelsSizeBytesExceededError struct {
+	labelsSizeBytes int
+	series          []cortexpb.LabelAdapter
+	limit           int
+}
+
+func (e *labelsSizeBytesExceededError) Error() string {
+	return fmt.Sprintf("labels size bytes exceeded for metric (actual: %d, limit: %d) metric: %.200q", e.labelsSizeBytes, e.limit, formatLabelSet(e.series))
+}
+
+func labelSizeBytesExceededError(series []cortexpb.LabelAdapter, labelsSizeBytes int, limit int) ValidationError {
+	return &labelsSizeBytesExceededError{
+		labelsSizeBytes: labelsSizeBytes,
+		series:          series,
+		limit:           limit,
+	}
+}
+
 func newInvalidLabelError(series []cortexpb.LabelAdapter, labelName string) ValidationError {
 	return &genericValidationError{
 		message: "sample invalid label: %.200q metric %.200q",

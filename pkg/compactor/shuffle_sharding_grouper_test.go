@@ -127,15 +127,17 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 		metrics  string
 	}{
 		"test basic grouping": {
-			concurrency: 1,
+			concurrency: 3,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 3
 `,
 		},
 		"test no compaction": {
@@ -149,27 +151,30 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 `,
 		},
 		"test smallest range first": {
-			concurrency: 1,
+			concurrency: 3,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block4hto6hExt2Ulid: blocks[block4hto6hExt2Ulid], block6hto8hExt2Ulid: blocks[block6hto8hExt2Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
+				{block4hto6hExt2Ulid, block6hto8hExt2Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 3
 `,
 		},
 		"test oldest min time first": {
-			concurrency: 1,
+			concurrency: 2,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
 			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt1UlidCopy: blocks[block1hto2hExt1UlidCopy]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid, block1hto2hExt1UlidCopy},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 2
 `,
 		},
 		"test overlapping blocks": {

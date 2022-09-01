@@ -22,10 +22,10 @@ func TestHTTPHeaderPropagationClientInterceptor(t *testing.T) {
 
 	ctx = injectForwardedHeadersIntoMetadata(ctx)
 
-	meta, worked := metadata.FromOutgoingContext(ctx)
-	require.True(t, worked)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	require.True(t, ok)
 
-	headers := meta[util_log.HeaderPropagationStringForRequestLogging]
+	headers := md[util_log.HeaderPropagationStringForRequestLogging]
 	assert.Equal(t, 6, len(headers))
 	assert.Contains(t, headers, "TestHeader1")
 	assert.Contains(t, headers, "TestHeader2")
@@ -47,10 +47,10 @@ func TestExistingValuesInMetadataForHTTPPropagationClientInterceptor(t *testing.
 
 	ctx = injectForwardedHeadersIntoMetadata(ctx)
 
-	meta, worked := metadata.FromOutgoingContext(ctx)
-	require.True(t, worked)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	require.True(t, ok)
 
-	contents := meta[util_log.HeaderPropagationStringForRequestLogging]
+	contents := md[util_log.HeaderPropagationStringForRequestLogging]
 	assert.Contains(t, contents, "testabc123")
 	assert.Equal(t, 1, len(contents))
 }
@@ -66,8 +66,8 @@ func TestGRPCHeaderInjectionForHTTPPropagationServerInterceptor(t *testing.T) {
 	ctx = util_log.ContextWithHeaderMap(ctx, testMap)
 	ctx = injectForwardedHeadersIntoMetadata(ctx)
 
-	md, worked := metadata.FromOutgoingContext(ctx)
-	require.True(t, worked)
+	md, ok := metadata.FromOutgoingContext(ctx)
+	require.True(t, ok)
 	ctx = util_log.ContextWithHeaderMapFromMetadata(ctx, md)
 
 	headersMap := util_log.HeaderMapFromContext(ctx)

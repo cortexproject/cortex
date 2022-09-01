@@ -3989,10 +3989,6 @@ otel:
   # CLI flag: -tracing.otel.oltp-endpoint
   [oltp_endpoint: <string> | default = ""]
 
-  # Disables client transport security for the exporter.
-  # CLI flag: -tracing.otel.insecure
-  [insecure: <boolean> | default = false]
-
   # enhance/modify traces/propagators for specific exporter. If empty, OTEL
   # defaults will apply. Supported values are: `awsxray.`
   # CLI flag: -tracing.otel.exporter-type
@@ -4002,4 +3998,34 @@ otel:
   # everything is traced.
   # CLI flag: -tracing.otel.sample-ration
   [sample_ratio: <float> | default = 0.001]
+
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -tracing.otel.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  tls:
+    # Path to the client certificate file, which will be used for authenticating
+    # with the server. Also requires the key path to be configured.
+    # CLI flag: -tracing.otel.tls.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key file for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -tracing.otel.tls.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Path to the CA certificates file to validate server certificate against.
+    # If not set, the host's root CA certificates are used.
+    # CLI flag: -tracing.otel.tls.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -tracing.otel.tls.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -tracing.otel.tls.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
 ```

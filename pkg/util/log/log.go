@@ -1,7 +1,9 @@
 package log
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/go-kit/log"
@@ -10,6 +12,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/server"
+	"google.golang.org/grpc/metadata"
+)
+
+type contextKey int
+
+const (
+	headerMapContextKey contextKey = 0
+
+	HeaderPropagationStringForRequestLogging string = "x-http-header-forwarding-logging"
 )
 
 var (
@@ -124,4 +135,37 @@ func LevelFilter(l string) level.Option {
 	default:
 		return level.AllowAll()
 	}
+}
+
+func HeaderMapFromContext(ctx context.Context) map[string]string {
+	headerMap, ok := ctx.Value(headerMapContextKey).(map[string]string)
+	if !ok {
+		return nil
+	}
+	return headerMap
+}
+
+func ContextWithHeaderMap(ctx context.Context, headerMap map[string]string) context.Context {
+	return context.WithValue(ctx, headerMapContextKey, headerMap)
+}
+
+// InjectHeadersIntoHTTPRequest injects the logging header map from the context into the request headers.
+func InjectHeadersIntoHTTPRequest(headerMap map[string]string, request *http.Request) {
+	for header, contents := range headerMap {
+		request.Header.Add(header, contents)
+	}
+}
+
+func ContextWithHeaderMapFromMetadata(ctx context.Context, md metadata.MD) context.Context {
+	headersSlice, ok := md[HeaderPropagationStringForRequestLogging]
+	if !ok || len(headersSlice)%2 == 1 {
+		return ctx
+	}
+
+	headerMap := make(map[string]string)
+	for i := 0; i < len(headersSlice); i += 2 {
+		headerMap[headersSlice[i]] = headersSlice[i+1]
+	}
+
+	return ContextWithHeaderMap(ctx, headerMap)
 }

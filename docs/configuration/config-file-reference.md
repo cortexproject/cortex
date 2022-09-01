@@ -82,6 +82,10 @@ api:
   # CLI flag: -http.prometheus-http-prefix
   [prometheus_http_prefix: <string> | default = "/prometheus"]
 
+  # Which HTTP Request headers to add to logs
+  # CLI flag: -api.http-request-headers-to-log
+  [http_request_headers_to_log: <list of string> | default = []]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]

@@ -38,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const day = 24 * time.Hour
@@ -252,6 +253,10 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
+	}
+
+	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+		util_log.InjectHeadersIntoHTTPRequest(headerMap, request)
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {

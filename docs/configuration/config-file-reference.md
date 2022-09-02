@@ -2557,6 +2557,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -validation.max-label-names-per-series
 [max_label_names_per_series: <int> | default = 30]
 
+# Maximum combined size in bytes of all labels and label values accepted for a
+# series. 0 to disable the limit.
+# CLI flag: -validation.max-labels-size-bytes
+[max_labels_size_bytes: <int> | default = 0]
+
 # Maximum length accepted for metric metadata. Metadata refers to Metric Name,
 # HELP and UNIT.
 # CLI flag: -validation.max-metadata-length

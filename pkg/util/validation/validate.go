@@ -44,6 +44,7 @@ const (
 	duplicateLabelNames     = "duplicate_label_names"
 	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
+	labelsSizeBytesExceeded = "labels_size_bytes_exceeded"
 
 	// Exemplar-specific validation reasons
 	exemplarLabelsMissing    = "exemplar_labels_missing"
@@ -168,6 +169,7 @@ type LabelValidationConfig interface {
 	MaxLabelNamesPerSeries(userID string) int
 	MaxLabelNameLength(userID string) int
 	MaxLabelValueLength(userID string) int
+	MaxLabelsSizeBytes(userID string) int
 }
 
 // ValidateLabels returns an err if the labels are invalid.
@@ -195,6 +197,9 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
 	maxLabelValueLength := cfg.MaxLabelValueLength(userID)
 	lastLabelName := ""
+	maxLabelsSizeBytes := cfg.MaxLabelsSizeBytes(userID)
+	labelsSizeBytes := 0
+
 	for _, l := range ls {
 		if !skipLabelNameValidation && !model.LabelName(l.Name).IsValid() {
 			DiscardedSamples.WithLabelValues(invalidLabel, userID).Inc()
@@ -216,6 +221,11 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 		}
 
 		lastLabelName = l.Name
+		labelsSizeBytes += l.Size()
+	}
+	if maxLabelsSizeBytes > 0 && labelsSizeBytes > maxLabelsSizeBytes {
+		DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID).Inc()
+		return labelSizeBytesExceededError(ls, labelsSizeBytes, maxLabelsSizeBytes)
 	}
 	return nil
 }

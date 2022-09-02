@@ -1680,6 +1680,34 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			},
 			expectedErr: "label value too long",
 		},
+		"max label size bytes per series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelsSizeBytes = 1024
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					// Add a label with a very long value.
+					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
+
+					metrics[i] = lbls.Labels()
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "labels size bytes exceeded",
+		},
 		"timestamp too old": {
 			prepareConfig: func(limits *validation.Limits) {
 				limits.RejectOldSamples = true
@@ -1770,7 +1798,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			limits := validation.Limits{}
 			flagext.DefaultValues(&distributorCfg, &clientConfig, &limits)
 
-			limits.IngestionRate = 0 // Unlimited.
+			limits.IngestionRate = 10000000 // Unlimited.
 			testData.prepareConfig(&limits)
 
 			distributorCfg.ShardByAllLabels = true

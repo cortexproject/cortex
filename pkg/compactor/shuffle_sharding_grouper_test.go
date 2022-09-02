@@ -115,13 +115,17 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			},
 		}
 
+	testCompactorID := "test-compactor"
+	otherCompactorID := "other-compactor"
+
 	tests := map[string]struct {
 		concurrency   int
 		ranges        []time.Duration
 		blocks        map[ulid.ULID]*metadata.Meta
 		visitedBlocks []struct {
-			id        ulid.ULID
-			isExpired bool
+			id          ulid.ULID
+			compactorID string
+			isExpired   bool
 		}
 		expected [][]ulid.ULID
 		metrics  string
@@ -219,11 +223,12 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 			},
 			visitedBlocks: []struct {
-				id        ulid.ULID
-				isExpired bool
+				id          ulid.ULID
+				compactorID string
+				isExpired   bool
 			}{
-				{id: block1hto2hExt2Ulid, isExpired: false},
-				{id: block0hto1hExt2Ulid, isExpired: false},
+				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
+				{id: block0hto1hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
@@ -238,10 +243,11 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
 			},
 			visitedBlocks: []struct {
-				id        ulid.ULID
-				isExpired bool
+				id          ulid.ULID
+				compactorID string
+				isExpired   bool
 			}{
-				{id: block1hto2hExt2Ulid, isExpired: false},
+				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
@@ -256,11 +262,31 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
 			},
 			visitedBlocks: []struct {
-				id        ulid.ULID
-				isExpired bool
+				id          ulid.ULID
+				compactorID string
+				isExpired   bool
 			}{
-				{id: block1hto2hExt2Ulid, isExpired: true},
-				{id: block0hto1hExt2Ulid, isExpired: true},
+				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: true},
+				{id: block0hto1hExt2Ulid, compactorID: otherCompactorID, isExpired: true},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
+		"test group with one block visited by current compactor": {
+			concurrency: 1,
+			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
+			expected: [][]ulid.ULID{
+				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
+			},
+			visitedBlocks: []struct {
+				id          ulid.ULID
+				compactorID string
+				isExpired   bool
+			}{
+				{id: block1hto2hExt2Ulid, compactorID: testCompactorID, isExpired: false},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
@@ -328,7 +354,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
 				}
 				blockVisitMarker := BlockVisitMarker{
-					CompactorID: "test-compactor",
+					CompactorID: visitedBlock.compactorID,
 					VisitTime:   expireTime,
 				}
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
@@ -354,7 +380,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				*compactorCfg,
 				ring,
 				"test-addr",
-				"test-compactor",
+				testCompactorID,
 				overrides,
 				"",
 				10,

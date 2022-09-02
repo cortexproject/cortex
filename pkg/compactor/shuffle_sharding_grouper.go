@@ -212,7 +212,7 @@ mainLoop:
 
 		groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
 
-		if isVisited, err := g.isGroupVisited(group.blocks); err != nil {
+		if isVisited, err := g.isGroupVisited(group.blocks, g.ringLifecyclerID); err != nil {
 			level.Warn(g.logger).Log("msg", "unable to check if blocks in group are visited", "group hash", groupHash, "err", err, "group", group.String())
 			continue
 		} else if isVisited {
@@ -272,7 +272,7 @@ mainLoop:
 	return outGroups, nil
 }
 
-func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta) (bool, error) {
+func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta, compactorID string) (bool, error) {
 	for _, block := range blocks {
 		blockID := block.ULID.String()
 		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, blockID, g.blockVisitMarkerReadFailed)
@@ -284,7 +284,7 @@ func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta) (bool, 
 			level.Error(g.logger).Log("msg", "unable to read block visit marker file", "blockID", blockID, "err", err)
 			return true, err
 		}
-		if blockVisitMarker.isVisited(g.blockVisitMarkerTimeout) {
+		if compactorID != blockVisitMarker.CompactorID && blockVisitMarker.isVisited(g.blockVisitMarkerTimeout) {
 			level.Debug(g.logger).Log("msg", fmt.Sprintf("visited block: %s", blockID))
 			return true, nil
 		}

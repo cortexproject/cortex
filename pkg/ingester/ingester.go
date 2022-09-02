@@ -1037,7 +1037,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(i.logger).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
+				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
 			}
 
 			return nil, wrapWithUser(err, userID)
@@ -2024,7 +2024,7 @@ func (i *Ingester) closeAllTSDB() {
 // openExistingTSDB walks the user tsdb dir, and opens a tsdb for each user. This may start a WAL replay, so we limit the number of
 // concurrently opening TSDB.
 func (i *Ingester) openExistingTSDB(ctx context.Context) error {
-	level.Info(i.logger).Log("msg", "opening existing TSDBs")
+	level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "opening existing TSDBs")
 
 	queue := make(chan string)
 	group, groupCtx := errgroup.WithContext(ctx)
@@ -2037,7 +2037,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 
 				db, err := i.createTSDB(userID)
 				if err != nil {
-					level.Error(i.logger).Log("msg", "unable to open TSDB", "err", err, "user", userID)
+					level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "unable to open TSDB", "err", err, "user", userID)
 					return errors.Wrapf(err, "unable to open TSDB for user %s", userID)
 				}
 
@@ -2066,7 +2066,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 					return filepath.SkipDir
 				}
 
-				level.Error(i.logger).Log("msg", "an error occurred while iterating the filesystem storing TSDBs", "path", path, "err", err)
+				level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "an error occurred while iterating the filesystem storing TSDBs", "path", path, "err", err)
 				return errors.Wrapf(err, "an error occurred while iterating the filesystem storing TSDBs at %s", path)
 			}
 
@@ -2079,7 +2079,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 			userID := info.Name()
 			f, err := os.Open(path)
 			if err != nil {
-				level.Error(i.logger).Log("msg", "unable to open TSDB dir", "err", err, "user", userID, "path", path)
+				level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "unable to open TSDB dir", "err", err, "user", userID, "path", path)
 				return errors.Wrapf(err, "unable to open TSDB dir %s for user %s", path, userID)
 			}
 			defer f.Close()
@@ -2090,7 +2090,7 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 					return filepath.SkipDir
 				}
 
-				level.Error(i.logger).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
+				level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "unable to read TSDB dir", "err", err, "user", userID, "path", path)
 				return errors.Wrapf(err, "unable to read TSDB dir %s for user %s", path, userID)
 			}
 
@@ -2113,11 +2113,11 @@ func (i *Ingester) openExistingTSDB(ctx context.Context) error {
 	// Wait for all workers to complete.
 	err := group.Wait()
 	if err != nil {
-		level.Error(i.logger).Log("msg", "error while opening existing TSDBs", "err", err)
+		level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error while opening existing TSDBs", "err", err)
 		return err
 	}
 
-	level.Info(i.logger).Log("msg", "successfully opened existing TSDBs")
+	level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "successfully opened existing TSDBs")
 	return nil
 }
 
@@ -2182,9 +2182,10 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
 	// run the shipper in such state we could end up with race conditions.
+	level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state")
 	if i.lifecycler != nil {
 		if ingesterState := i.lifecycler.GetState(); ingesterState == ring.PENDING || ingesterState == ring.JOINING {
-			level.Info(i.logger).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)
+			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)
 			return
 		}
 	}
@@ -2214,11 +2215,11 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			if err != nil {
 				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
 				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
-				level.Warn(i.logger).Log("msg", "failed to check for tenant deletion mark before shipping blocks", "user", userID, "err", err)
+				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to check for tenant deletion mark before shipping blocks", "user", userID, "err", err)
 			} else if deletionMarkExists {
 				userDB.deletionMarkFound.Store(true)
 
-				level.Info(i.logger).Log("msg", "tenant deletion mark exists, not shipping blocks", "user", userID)
+				level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "tenant deletion mark exists, not shipping blocks", "user", userID)
 				return nil
 			}
 		}
@@ -2226,16 +2227,16 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 		// Run the shipper's Sync() to upload unshipped blocks. Make sure the TSDB state is active, in order to
 		// avoid any race condition with closing idle TSDBs.
 		if !userDB.casState(active, activeShipping) {
-			level.Info(i.logger).Log("msg", "shipper skipped because the TSDB is not active", "user", userID)
+			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "shipper skipped because the TSDB is not active", "user", userID)
 			return nil
 		}
 		defer userDB.casState(activeShipping, active)
 
 		uploaded, err := userDB.shipper.Sync(ctx)
 		if err != nil {
-			level.Warn(i.logger).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
 		} else {
-			level.Debug(i.logger).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
+			level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "shipper successfully synchronized TSDB blocks with storage", "user", userID, "uploaded", uploaded)
 		}
 
 		// The shipper meta file could be updated even if the Sync() returned an error,
@@ -2245,7 +2246,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 		// the cached list of blocks in such case, so we're not handling it.
 		if uploaded > 0 {
 			if err := userDB.updateCachedShippedBlocks(); err != nil {
-				level.Error(i.logger).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
+				level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to update cached shipped blocks after shipper synchronisation", "user", userID, "err", err)
 			}
 		}
 
@@ -2279,7 +2280,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
 		if ingesterState := i.lifecycler.GetState(); ingesterState == ring.JOINING {
-			level.Info(i.logger).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
+			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction has been skipped because of the current ingester state", "state", ingesterState)
 			return
 		}
 	}
@@ -2312,7 +2313,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 
 		case i.TSDBState.compactionIdleTimeout > 0 && userDB.isIdle(time.Now(), i.TSDBState.compactionIdleTimeout):
 			reason = "idle"
-			level.Info(i.logger).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
+			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB is idle, forcing compaction", "user", userID)
 			err = userDB.compactHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0].Milliseconds())
 
 		default:
@@ -2322,9 +2323,9 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 
 		if err != nil {
 			i.TSDBState.compactionsFailed.Inc()
-			level.Warn(i.logger).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
 		} else {
-			level.Debug(i.logger).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
+			level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 		}
 
 		return nil
@@ -2563,7 +2564,7 @@ const (
 func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
-		level.Warn(i.logger).Log("msg", "failed to parse HTTP request in flush handler", "err", err)
+		level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to parse HTTP request in flush handler", "err", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -2574,54 +2575,54 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 	run := func() {
 		ingCtx := i.BasicService.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {
-			level.Info(i.logger).Log("msg", "flushing TSDB blocks: ingester not running, ignoring flush request")
+			level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "flushing TSDB blocks: ingester not running, ignoring flush request")
 			return
 		}
 
 		compactionCallbackCh := make(chan struct{})
 
-		level.Info(i.logger).Log("msg", "flushing TSDB blocks: triggering compaction")
+		level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "flushing TSDB blocks: triggering compaction")
 		select {
 		case i.TSDBState.forceCompactTrigger <- requestWithUsersAndCallback{users: allowedUsers, callback: compactionCallbackCh}:
 			// Compacting now.
 		case <-ingCtx.Done():
-			level.Warn(i.logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
+			level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
 			return
 		}
 
 		// Wait until notified about compaction being finished.
 		select {
 		case <-compactionCallbackCh:
-			level.Info(i.logger).Log("msg", "finished compacting TSDB blocks")
+			level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "finished compacting TSDB blocks")
 		case <-ingCtx.Done():
-			level.Warn(i.logger).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
+			level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to compact TSDB blocks, ingester not running anymore")
 			return
 		}
 
 		if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 			shippingCallbackCh := make(chan struct{}) // must be new channel, as compactionCallbackCh is closed now.
 
-			level.Info(i.logger).Log("msg", "flushing TSDB blocks: triggering shipping")
+			level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "flushing TSDB blocks: triggering shipping")
 
 			select {
 			case i.TSDBState.shipTrigger <- requestWithUsersAndCallback{users: allowedUsers, callback: shippingCallbackCh}:
 				// shipping now
 			case <-ingCtx.Done():
-				level.Warn(i.logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
 				return
 			}
 
 			// Wait until shipping finished.
 			select {
 			case <-shippingCallbackCh:
-				level.Info(i.logger).Log("msg", "shipping of TSDB blocks finished")
+				level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "shipping of TSDB blocks finished")
 			case <-ingCtx.Done():
-				level.Warn(i.logger).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
+				level.Warn(logutil.WithContext(r.Context(), i.logger)).Log("msg", "failed to ship TSDB blocks, ingester not running anymore")
 				return
 			}
 		}
 
-		level.Info(i.logger).Log("msg", "flushing TSDB blocks: finished")
+		level.Info(logutil.WithContext(r.Context(), i.logger)).Log("msg", "flushing TSDB blocks: finished")
 	}
 
 	if len(r.Form[waitParam]) > 0 && r.Form[waitParam][0] == "true" {

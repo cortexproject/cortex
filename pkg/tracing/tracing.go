@@ -48,7 +48,7 @@ type Otel struct {
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	p := "tracing"
 	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported. For jaeger `JAEGER_AGENT_HOST` environment variable should also be set. See: https://cortexmetrics.io/docs/guides/tracing .")
-	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ration", 0.001, "Fraction of traces to be sampled. Fractions >= 1 means sampling if off and everything is traced.")
+	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ratio", 0.001, "Fraction of traces to be sampled. Fractions >= 1 means sampling if off and everything is traced.")
 	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance/modify traces/propagators for specific exporter. If empty, OTEL defaults will apply. Supported values are: `awsxray.`")
 	f.BoolVar(&c.Otel.TLSEnabled, p+".otel.tls-enabled", c.Otel.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")

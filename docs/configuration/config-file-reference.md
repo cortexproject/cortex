@@ -4009,7 +4009,7 @@ otel:
 
   # Fraction of traces to be sampled. Fractions >= 1 means sampling if off and
   # everything is traced.
-  # CLI flag: -tracing.otel.sample-ration
+  # CLI flag: -tracing.otel.sample-ratio
   [sample_ratio: <float> | default = 0.001]
 
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other

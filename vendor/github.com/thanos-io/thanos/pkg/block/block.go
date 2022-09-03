@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,9 +22,9 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
@@ -283,7 +283,7 @@ func DownloadMeta(ctx context.Context, logger log.Logger, bkt objstore.Bucket, i
 
 	var m metadata.Meta
 
-	obj, err := ioutil.ReadAll(rc)
+	obj, err := io.ReadAll(rc)
 	if err != nil {
 		return metadata.Meta{}, errors.Wrapf(err, "read meta.json for block %s", id.String())
 	}
@@ -303,7 +303,7 @@ func IsBlockDir(path string) (id ulid.ULID, ok bool) {
 // GetSegmentFiles returns list of segment files for given block. Paths are relative to the chunks directory.
 // In case of errors, nil is returned.
 func GetSegmentFiles(blockDir string) []string {
-	files, err := ioutil.ReadDir(filepath.Join(blockDir, ChunksDirname))
+	files, err := os.ReadDir(filepath.Join(blockDir, ChunksDirname))
 	if err != nil {
 		return nil
 	}
@@ -318,14 +318,19 @@ func GetSegmentFiles(blockDir string) []string {
 
 // GatherFileStats returns metadata.File entry for files inside TSDB block (index, chunks, meta.json).
 func GatherFileStats(blockDir string, hf metadata.HashFunc, logger log.Logger) (res []metadata.File, _ error) {
-	files, err := ioutil.ReadDir(filepath.Join(blockDir, ChunksDirname))
+	files, err := os.ReadDir(filepath.Join(blockDir, ChunksDirname))
 	if err != nil {
 		return nil, errors.Wrapf(err, "read dir %v", filepath.Join(blockDir, ChunksDirname))
 	}
 	for _, f := range files {
+		fi, err := f.Info()
+		if err != nil {
+			return nil, errors.Wrapf(err, "getting file info %v", filepath.Join(ChunksDirname, f.Name()))
+		}
+
 		mf := metadata.File{
 			RelPath:   filepath.Join(ChunksDirname, f.Name()),
-			SizeBytes: f.Size(),
+			SizeBytes: fi.Size(),
 		}
 		if hf != metadata.NoneFunc && !f.IsDir() {
 			h, err := metadata.CalculateHash(filepath.Join(blockDir, ChunksDirname, f.Name()), hf, logger)

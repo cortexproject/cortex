@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"time"
 
 	"github.com/stretchr/testify/mock"
@@ -93,7 +92,7 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 		// that getting the same mocked object twice works as expected.
 		mockedGet := m.On("Get", mock.Anything, name)
 		mockedGet.Run(func(args mock.Arguments) {
-			mockedGet.Return(ioutil.NopCloser(bytes.NewReader([]byte(content))), err)
+			mockedGet.Return(io.NopCloser(bytes.NewReader([]byte(content))), err)
 		})
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err)
@@ -116,7 +115,7 @@ func (m *ClientMock) MockGetTimes(name, content string, err error, times int) {
 		// that getting the same mocked object twice works as expected.
 		mockedGet := m.On("Get", mock.Anything, name).Times(times)
 		mockedGet.Run(func(args mock.Arguments) {
-			mockedGet.Return(ioutil.NopCloser(bytes.NewReader([]byte(content))), err)
+			mockedGet.Return(io.NopCloser(bytes.NewReader([]byte(content))), err)
 		})
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err).Times(times)

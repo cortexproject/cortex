@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -491,7 +491,7 @@ receivers:
 					am.ServeHTTP(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
-					_, err := ioutil.ReadAll(resp.Body)
+					_, err := io.ReadAll(resp.Body)
 					require.NoError(t, err)
 					assert.Equal(t, http.StatusOK, w.Code)
 				}
@@ -827,7 +827,7 @@ func TestMultitenantAlertmanager_ServeHTTP(t *testing.T) {
 		am.ServeHTTP(w, req.WithContext(ctx))
 
 		resp := w.Result()
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		require.Equal(t, 404, w.Code)
 		require.Equal(t, "the Alertmanager is not configured\n", string(body))
 	}
@@ -886,7 +886,7 @@ func TestMultitenantAlertmanager_ServeHTTP(t *testing.T) {
 		am.ServeHTTP(w, req.WithContext(ctx))
 
 		resp := w.Result()
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		require.Equal(t, 404, w.Code)
 		require.Equal(t, "the Alertmanager is not configured\n", string(body))
 	}
@@ -1646,7 +1646,7 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 				multitenantAM.serveRequest(w, req.WithContext(reqCtx))
 
 				resp := w.Result()
-				body, _ := ioutil.ReadAll(resp.Body)
+				body, _ := io.ReadAll(resp.Body)
 				assert.Equal(t, http.StatusOK, w.Code)
 				require.Regexp(t, regexp.MustCompile(`{"silenceID":".+"}`), string(body))
 			}
@@ -1804,7 +1804,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 					i.serveRequest(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
-					body, _ := ioutil.ReadAll(resp.Body)
+					body, _ := io.ReadAll(resp.Body)
 					assert.Equal(t, http.StatusOK, w.Code)
 					require.Regexp(t, regexp.MustCompile(`{"silenceID":".+"}`), string(body))
 				}
@@ -1819,7 +1819,7 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 					i.serveRequest(w, req.WithContext(reqCtx))
 
 					resp := w.Result()
-					body, _ := ioutil.ReadAll(resp.Body)
+					body, _ := io.ReadAll(resp.Body)
 					assert.Equal(t, http.StatusOK, w.Code)
 					require.Regexp(t, regexp.MustCompile(`"comment":"Created for a test case."`), string(body))
 				}

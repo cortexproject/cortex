@@ -2,7 +2,7 @@ package querytee
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -110,7 +110,7 @@ func (b *ProxyBackend) doBackendRequest(req *http.Request) (int, []byte, error) 
 
 	// Read the entire response body.
 	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return 0, nil, errors.Wrap(err, "reading backend response")
 	}

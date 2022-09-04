@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path"
@@ -911,7 +910,7 @@ func (c *Compactor) metaSyncDirForUser(userID string) string {
 func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
 	result := map[string]struct{}{}
 
-	files, err := ioutil.ReadDir(c.compactorCfg.DataDir)
+	files, err := os.ReadDir(c.compactorCfg.DataDir)
 	if err != nil {
 		return nil
 	}

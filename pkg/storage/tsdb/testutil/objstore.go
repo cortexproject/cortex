@@ -1,7 +1,6 @@
 package testutil
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -12,7 +11,7 @@ import (
 )
 
 func PrepareFilesystemBucket(t testing.TB) (objstore.Bucket, string) {
-	storageDir, err := ioutil.TempDir(os.TempDir(), "bucket")
+	storageDir, err := os.MkdirTemp(os.TempDir(), "bucket")
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

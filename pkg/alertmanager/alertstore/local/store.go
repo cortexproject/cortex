@@ -3,7 +3,6 @@ package local
 import (
 	"context"
 	"flag"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,7 +140,7 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		}
 
 		// Load the file to be returned by the store.
-		content, err := ioutil.ReadFile(path)
+		content, err := os.ReadFile(path)
 		if err != nil {
 			return errors.Wrapf(err, "unable to read alertmanager config %s", path)
 		}

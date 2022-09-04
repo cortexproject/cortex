@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"runtime"
@@ -204,7 +204,7 @@ func main() {
 func parseConfigFileParameter(args []string) (configFile string, expandEnv bool) {
 	// ignore errors and any output here. Any flag errors will be reported by main flag.Parse() call.
 	fs := flag.NewFlagSet("", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
+	fs.SetOutput(io.Discard)
 
 	// usage not used in these functions.
 	fs.StringVar(&configFile, configFileOption, "", "")
@@ -223,7 +223,7 @@ func parseConfigFileParameter(args []string) (configFile string, expandEnv bool)
 
 // LoadConfig read YAML-formatted config from filename into cfg.
 func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := os.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}

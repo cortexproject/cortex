@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"path"
 	"strings"
 	"time"
@@ -48,7 +48,7 @@ func ReadBlockVisitMarker(ctx context.Context, bkt objstore.Bucket, blockID stri
 		blockVisitMarkerReadFailed.Inc()
 		return nil, errors.Wrapf(err, "get block visit marker file: %s", visitMarkerFile)
 	}
-	b, err := ioutil.ReadAll(visitMarkerFileReader)
+	b, err := io.ReadAll(visitMarkerFileReader)
 	if err != nil {
 		blockVisitMarkerReadFailed.Inc()
 		return nil, errors.Wrapf(err, "read block visit marker file: %s", visitMarkerFile)

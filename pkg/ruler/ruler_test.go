@@ -3,7 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	io "io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -1113,7 +1113,7 @@ func TestRuler_ListAllRules(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and header
 	require.Equal(t, http.StatusOK, resp.StatusCode)

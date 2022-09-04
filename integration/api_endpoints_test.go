@@ -5,7 +5,7 @@ package integration
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -55,7 +55,7 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "config API response")
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 

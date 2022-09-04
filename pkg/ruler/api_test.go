@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,7 +33,7 @@ func TestRuler_rules(t *testing.T) {
 	a.PrometheusRules(w, req)
 
 	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
 	responseJSON := response{}
@@ -90,7 +89,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	a.PrometheusRules(w, req)
 
 	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
 	responseJSON := response{}
@@ -146,7 +145,7 @@ func TestRuler_alerts(t *testing.T) {
 	a.PrometheusAlerts(w, req)
 
 	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
 	responseJSON := response{}

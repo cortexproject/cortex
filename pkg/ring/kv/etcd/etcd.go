@@ -298,3 +298,7 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	_, err := c.cli.Delete(ctx, key)
 	return err
 }
+
+func (c *Client) LastUpdateTime(_ string) time.Time {
+	return time.Now().UTC()
+}

@@ -205,6 +205,19 @@ store_gateway:
       # CLI flag: -store-gateway.sharding-ring.prefix
       [prefix: <string> | default = "collectors/"]
 
+      dynamodb:
+        # Region to access dynamodb.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.region
+        [region: <string> | default = ""]
+
+        # Table name to use on dynamodb.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.table-name
+        [table_name: <string> | default = ""]
+
+        # Time to expire items on dynamodb.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.ttl-time
+        [ttl: <duration> | default = 0s]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is:
       # store-gateway.sharding-ring

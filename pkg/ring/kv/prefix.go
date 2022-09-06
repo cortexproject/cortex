@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type prefixedKVClient struct {
@@ -60,4 +61,8 @@ func (c *prefixedKVClient) Get(ctx context.Context, key string) (interface{}, er
 // Delete removes a given object from its key.
 func (c *prefixedKVClient) Delete(ctx context.Context, key string) error {
 	return c.client.Delete(ctx, c.prefix+key)
+}
+
+func (c *prefixedKVClient) LastUpdateTime(key string) time.Time {
+	return c.client.LastUpdateTime(c.prefix + key)
 }

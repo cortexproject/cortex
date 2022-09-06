@@ -389,6 +389,10 @@ func (m *MockClient) WatchPrefix(ctx context.Context, prefix string, f func(stri
 	}
 }
 
+func (m *MockClient) LastUpdateTime(_ string) time.Time {
+	return time.Now().UTC()
+}
+
 // Ensure a check ready returns error when consul returns a nil key and the ingester already holds keys. This happens if the ring key gets deleted
 func TestCheckReady_NoRingInKVStore(t *testing.T) {
 	ctx := context.Background()

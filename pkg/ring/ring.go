@@ -395,7 +395,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		instances = append(instances, instance)
 	}
 
-	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled)
+	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled, r.KVClient.LastUpdateTime(r.key))
 	if err != nil {
 		return ReplicationSet{}, err
 	}
@@ -415,10 +415,10 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 		return ReplicationSet{}, ErrEmptyRing
 	}
 
-	now := time.Now()
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
 	instances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	for _, instance := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&instance, op, now) {
+		if r.IsHealthy(&instance, op, storageLastUpdate) {
 			instances = append(instances, instance)
 		}
 	}
@@ -441,10 +441,10 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	// Build the initial replication set, excluding unhealthy instances.
 	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
 	zoneFailures := make(map[string]struct{})
-	now := time.Now()
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
 
 	for _, instance := range r.ringDesc.Ingesters {
-		if r.IsHealthy(&instance, op, now) {
+		if r.IsHealthy(&instance, op, storageLastUpdate) {
 			healthyInstances = append(healthyInstances, instance)
 		} else {
 			zoneFailures[instance.Zone] = struct{}{}
@@ -559,7 +559,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 
 	for _, instance := range r.ringDesc.Ingesters {
 		s := instance.State.String()
-		if !r.IsHealthy(&instance, Reporting, time.Now()) {
+		if !r.IsHealthy(&instance, Reporting, r.KVClient.LastUpdateTime(r.key)) {
 			s = unhealthy
 		}
 		numByState[s]++
@@ -744,6 +744,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		ringTokens:       shardDesc.GetTokens(),
 		ringTokensByZone: shardTokensByZone,
 		ringZones:        getZones(shardTokensByZone),
+		KVClient:         r.KVClient,
 
 		// We reference the original map as is in order to avoid copying. It's safe to do
 		// because this map is immutable by design and it's a superset of the actual instances

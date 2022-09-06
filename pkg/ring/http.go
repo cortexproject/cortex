@@ -24,6 +24,7 @@ const pageContent = `
 	<body>
 		<h1>Ring Status</h1>
 		<p>Current time: {{ .Now }}</p>
+        <p>Storage updated: {{ .StorageLastUpdated }}</p>
 		<form action="" method="POST">
 			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
 			<table width="100%" border="1">
@@ -116,9 +117,10 @@ type ingesterDesc struct {
 }
 
 type httpResponse struct {
-	Ingesters  []ingesterDesc `json:"shards"`
-	Now        time.Time      `json:"now"`
-	ShowTokens bool           `json:"-"`
+	Ingesters          []ingesterDesc `json:"shards"`
+	Now                time.Time      `json:"now"`
+	StorageLastUpdated time.Time      `json:"storageLastUpdated"`
+	ShowTokens         bool           `json:"-"`
 }
 
 func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -149,14 +151,14 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	sort.Strings(ingesterIDs)
 
-	now := time.Now()
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
 	var ingesters []ingesterDesc
 	_, owned := r.countTokens()
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
 		state := ing.State.String()
-		if !r.IsHealthy(&ing, Reporting, now) {
+		if !r.IsHealthy(&ing, Reporting, storageLastUpdate) {
 			state = unhealthy
 		}
 
@@ -182,9 +184,10 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	tokensParam := req.URL.Query().Get("tokens")
 
 	renderHTTPResponse(w, httpResponse{
-		Ingesters:  ingesters,
-		Now:        now,
-		ShowTokens: tokensParam == "true",
+		Ingesters:          ingesters,
+		Now:                time.Now(),
+		StorageLastUpdated: storageLastUpdate,
+		ShowTokens:         tokensParam == "true",
 	}, pageTemplate, req)
 }
 

@@ -1006,6 +1006,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
 			// we actually ingested all samples which haven't failed.
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failure to push", "err", err)
 			switch cause := errors.Cause(err); cause {
 			case storage.ErrOutOfBounds:
 				sampleOutOfBoundsCount++

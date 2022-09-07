@@ -27,14 +27,20 @@ const (
 	// SSES3 config type constant to configure S3 server side encryption with AES-256
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingServerSideEncryption.html
 	SSES3 = "SSE-S3"
+
+	BucketAutoLookup        = "auto"
+	BucketVirtualHostLookup = "virtual-hosted"
+	BucketPathLookup        = "path"
 )
 
 var (
 	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
 	supportedSSETypes              = []string{SSEKMS, SSES3}
+	supportedBucketLookupTypes     = []string{BucketAutoLookup, BucketVirtualHostLookup, BucketPathLookup}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
+	errInvalidBucketLookupType     = errors.New("invalid bucket lookup type")
 )
 
 // HTTPConfig stores the http.Transport configuration for the s3 minio client.
@@ -59,6 +65,7 @@ type Config struct {
 	AccessKeyID      string         `yaml:"access_key_id"`
 	Insecure         bool           `yaml:"insecure"`
 	SignatureVersion string         `yaml:"signature_version"`
+	BucketLookupType string         `yaml:"bucket_lookup_type"`
 
 	SSE  SSEConfig  `yaml:"sse"`
 	HTTP HTTPConfig `yaml:"http"`
@@ -78,6 +85,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
+	f.StringVar(&cfg.BucketLookupType, prefix+"s3.bucket-lookup-type", BucketAutoLookup, fmt.Sprintf("The s3 bucket lookup style. Supported values are: %s.", strings.Join(supportedBucketLookupTypes, ", ")))
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }
@@ -87,12 +95,28 @@ func (cfg *Config) Validate() error {
 	if !util.StringsContain(supportedSignatureVersions, cfg.SignatureVersion) {
 		return errUnsupportedSignatureVersion
 	}
+	if !util.StringsContain(supportedBucketLookupTypes, cfg.BucketLookupType) {
+		return errInvalidBucketLookupType
+	}
 
 	if err := cfg.SSE.Validate(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (cfg *Config) bucketLookupType() (s3.BucketLookupType, error) {
+	switch cfg.BucketLookupType {
+	case BucketVirtualHostLookup:
+		return s3.VirtualHostLookup, nil
+	case BucketPathLookup:
+		return s3.PathLookup, nil
+	case BucketAutoLookup:
+		return s3.AutoLookup, nil
+	default:
+		return s3.AutoLookup, errInvalidBucketLookupType
+	}
 }
 
 // SSEConfig configures S3 server side encryption

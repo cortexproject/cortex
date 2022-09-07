@@ -17,6 +17,7 @@ import (
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
+	BucketLookupType: BucketAutoLookup,
 	HTTP: HTTPConfig{
 		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -53,6 +54,7 @@ secret_access_key: test-secret-access-key
 access_key_id: test-access-key-id
 insecure: true
 signature_version: test-signature-version
+bucket_lookup_type: virtual-hosted
 sse:
   type: test-type
   kms_key_id: test-kms-key-id
@@ -75,6 +77,7 @@ http:
 				AccessKeyID:      "test-access-key-id",
 				Insecure:         true,
 				SignatureVersion: "test-signature-version",
+				BucketLookupType: BucketVirtualHostLookup,
 				SSE: SSEConfig{
 					Type:                 "test-type",
 					KMSKeyID:             "test-kms-key-id",

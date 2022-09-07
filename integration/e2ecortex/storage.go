@@ -39,11 +39,12 @@ func NewS3Client(cfg s3.Config) (*S3Client, error) {
 
 func NewS3ClientForMinio(minio *e2e.HTTPService, bucketName string) (*S3Client, error) {
 	return NewS3Client(s3.Config{
-		Endpoint:        minio.HTTPEndpoint(),
-		BucketName:      bucketName,
-		SecretAccessKey: flagext.Secret{Value: e2edb.MinioSecretKey},
-		AccessKeyID:     e2edb.MinioAccessKey,
-		Insecure:        true,
+		Endpoint:         minio.HTTPEndpoint(),
+		BucketName:       bucketName,
+		SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
+		AccessKeyID:      e2edb.MinioAccessKey,
+		Insecure:         true,
+		BucketLookupType: s3.BucketAutoLookup,
 	})
 }
 

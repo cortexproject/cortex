@@ -48,12 +48,13 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 			defer srv.Close()
 
 			s3Cfg := s3.Config{
-				Endpoint:        srv.Listener.Addr().String(),
-				Region:          "test",
-				BucketName:      "test-bucket",
-				SecretAccessKey: flagext.Secret{Value: "test"},
-				AccessKeyID:     "test",
-				Insecure:        true,
+				Endpoint:         srv.Listener.Addr().String(),
+				Region:           "test",
+				BucketName:       "test-bucket",
+				SecretAccessKey:  flagext.Secret{Value: "test"},
+				AccessKeyID:      "test",
+				Insecure:         true,
+				BucketLookupType: s3.BucketPathLookup,
 			}
 
 			s3Client, err := s3.NewBucketClient(s3Cfg, "test", log.NewNopLogger())

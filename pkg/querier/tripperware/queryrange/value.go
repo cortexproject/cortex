@@ -14,7 +14,7 @@ import (
 )
 
 // FromResult transforms a promql query result into a samplestream
-func FromResult(res *promql.Result) ([]SampleStream, error) {
+func FromResult(res *promql.Result) ([]tripperware.SampleStream, error) {
 	if res.Err != nil {
 		// The error could be wrapped by the PromQL engine. We get the error's cause in order to
 		// correctly parse the error in parent callers (eg. gRPC response status code extraction).
@@ -22,7 +22,7 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 	}
 	switch v := res.Value.(type) {
 	case promql.Scalar:
-		return []SampleStream{
+		return []tripperware.SampleStream{
 			{
 				Samples: []cortexpb.Sample{
 					{
@@ -34,9 +34,9 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 		}, nil
 
 	case promql.Vector:
-		res := make([]SampleStream, 0, len(v))
+		res := make([]tripperware.SampleStream, 0, len(v))
 		for _, sample := range v {
-			res = append(res, SampleStream{
+			res = append(res, tripperware.SampleStream{
 				Labels:  mapLabels(sample.Metric),
 				Samples: mapPoints(sample.Point),
 			})
@@ -44,9 +44,9 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 		return res, nil
 
 	case promql.Matrix:
-		res := make([]SampleStream, 0, len(v))
+		res := make([]tripperware.SampleStream, 0, len(v))
 		for _, series := range v {
-			res = append(res, SampleStream{
+			res = append(res, tripperware.SampleStream{
 				Labels:  mapLabels(series.Metric),
 				Samples: mapPoints(series.Points...),
 			})
@@ -81,7 +81,7 @@ func mapPoints(pts ...promql.Point) []cortexpb.Sample {
 }
 
 // ResponseToSamples is needed to map back from api response to the underlying series data
-func ResponseToSamples(resp tripperware.Response) ([]SampleStream, error) {
+func ResponseToSamples(resp tripperware.Response) ([]tripperware.SampleStream, error) {
 	promRes, ok := resp.(*PrometheusResponse)
 	if !ok {
 		return nil, errors.Errorf("error invalid response type: %T, expected: %T", resp, &PrometheusResponse{})
@@ -104,7 +104,7 @@ func ResponseToSamples(resp tripperware.Response) ([]SampleStream, error) {
 
 // NewSeriesSet returns an in memory storage.SeriesSet from a []SampleStream
 // As NewSeriesSet uses NewConcreteSeriesSet to implement SeriesSet, result will be sorted by label names.
-func NewSeriesSet(results []SampleStream) storage.SeriesSet {
+func NewSeriesSet(results []tripperware.SampleStream) storage.SeriesSet {
 	set := make([]storage.Series, 0, len(results))
 
 	for _, stream := range results {

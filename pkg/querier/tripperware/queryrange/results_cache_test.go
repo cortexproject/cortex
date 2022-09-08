@@ -67,7 +67,7 @@ var (
 		Status: "success",
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
-			Result: []SampleStream{
+			Result: []tripperware.SampleStream{
 				{
 					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},
@@ -88,9 +88,9 @@ func mkAPIResponse(start, end, step int64) *PrometheusResponse {
 
 func mkAPIResponseWithStats(start, end, step int64, withStats bool) *PrometheusResponse {
 	var samples []cortexpb.Sample
-	var stats *PrometheusResponseStats
+	var stats *tripperware.PrometheusResponseStats
 	if withStats {
-		stats = &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+		stats = &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{}}
 	}
 	for i := start; i <= end; i += step {
 		samples = append(samples, cortexpb.Sample{
@@ -99,7 +99,7 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool) *PrometheusR
 		})
 
 		if withStats {
-			stats.Samples.TotalQueryableSamplesPerStep = append(stats.Samples.TotalQueryableSamplesPerStep, &PrometheusResponseQueryableSamplesStatsPerStep{
+			stats.Samples.TotalQueryableSamplesPerStep = append(stats.Samples.TotalQueryableSamplesPerStep, &tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
 				TimestampMs: i,
 				Value:       i,
 			})
@@ -113,7 +113,7 @@ func mkAPIResponseWithStats(start, end, step int64, withStats bool) *PrometheusR
 		Data: PrometheusData{
 			ResultType: matrix,
 			Stats:      stats,
-			Result: []SampleStream{
+			Result: []tripperware.SampleStream{
 				{
 					Labels: []cortexpb.LabelAdapter{
 						{Name: "foo", Value: "bar"},

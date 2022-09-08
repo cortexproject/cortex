@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
@@ -57,7 +58,7 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 }
 
 func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusResponse {
-	stream := make([]SampleStream, numSeries)
+	stream := make([]tripperware.SampleStream, numSeries)
 	for s := 0; s < numSeries; s++ {
 		// Generate random samples.
 		samples := make([]cortexpb.Sample, numSamplesPerSeries)
@@ -75,7 +76,7 @@ func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusRespo
 			lbls[i].Value = "a_medium_size_label_value_that_is_used_to_benchmark_marshalling"
 		}
 
-		stream[s] = SampleStream{
+		stream[s] = tripperware.SampleStream{
 			Labels:  lbls,
 			Samples: samples,
 		}

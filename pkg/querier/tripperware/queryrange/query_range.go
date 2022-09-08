@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
@@ -120,7 +119,7 @@ func NewEmptyPrometheusResponse() *PrometheusResponse {
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
-			Result:     []SampleStream{},
+			Result:     []tripperware.SampleStream{},
 		},
 	}
 }
@@ -330,36 +329,10 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 	return &resp, nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (s *SampleStream) UnmarshalJSON(data []byte) error {
-	var stream struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
-	}
-	if err := json.Unmarshal(data, &stream); err != nil {
-		return err
-	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
-	s.Samples = stream.Values
-	return nil
-}
-
-// MarshalJSON implements json.Marshaler.
-func (s *SampleStream) MarshalJSON() ([]byte, error) {
-	stream := struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
-	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
-		Values: s.Samples,
-	}
-	return json.Marshal(stream)
-}
-
 // statsMerge merge the stats from 2 responses
 // this function is similar to matrixMerge
-func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
-	output := map[int64]*PrometheusResponseQueryableSamplesStatsPerStep{}
+func statsMerge(resps []*PrometheusResponse) *tripperware.PrometheusResponseStats {
+	output := map[int64]*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{}
 	hasStats := false
 	for _, resp := range resps {
 		if resp.Data.Stats == nil {
@@ -387,7 +360,7 @@ func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 
-	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	result := &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{}}
 	for _, key := range keys {
 		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, output[key])
 		result.Samples.TotalQueryableSamples += output[key].Value
@@ -396,14 +369,14 @@ func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 	return result
 }
 
-func matrixMerge(resps []*PrometheusResponse) []SampleStream {
-	output := map[string]*SampleStream{}
+func matrixMerge(resps []*PrometheusResponse) []tripperware.SampleStream {
+	output := map[string]*tripperware.SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
 			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
-				existing = &SampleStream{
+				existing = &tripperware.SampleStream{
 					Labels: stream.Labels,
 				}
 			}
@@ -431,7 +404,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	}
 	sort.Strings(keys)
 
-	result := make([]SampleStream, 0, len(output))
+	result := make([]tripperware.SampleStream, 0, len(output))
 	for _, key := range keys {
 		result = append(result, *output[key])
 	}
@@ -488,42 +461,4 @@ func decorateWithParamName(err error, field string) error {
 		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
 	}
 	return fmt.Errorf(errTmpl, field, err)
-}
-
-func PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
-	if !iter.ReadArray() {
-		iter.ReportError("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", "expected [")
-		return
-	}
-
-	t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
-
-	if !iter.ReadArray() {
-		iter.ReportError("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", "expected ,")
-		return
-	}
-	v := iter.ReadInt64()
-
-	if iter.ReadArray() {
-		iter.ReportError("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", "expected ]")
-	}
-
-	*(*PrometheusResponseQueryableSamplesStatsPerStep)(ptr) = PrometheusResponseQueryableSamplesStatsPerStep{
-		TimestampMs: int64(t),
-		Value:       v,
-	}
-}
-
-func PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-	stats := (*PrometheusResponseQueryableSamplesStatsPerStep)(ptr)
-	stream.WriteArrayStart()
-	stream.WriteFloat64(float64(stats.TimestampMs) / float64(time.Second/time.Millisecond))
-	stream.WriteMore()
-	stream.WriteInt64(stats.Value)
-	stream.WriteArrayEnd()
-}
-
-func init() {
-	jsoniter.RegisterTypeEncoderFunc("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
-	jsoniter.RegisterTypeDecoderFunc("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
 }

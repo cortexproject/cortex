@@ -2,10 +2,17 @@ package tripperware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"time"
+	"unsafe"
 
 	"github.com/gogo/protobuf/proto"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/common/model"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -57,4 +64,68 @@ type Request interface {
 	GetStats() string
 	// WithStats clones the current `PrometheusRequest` with a new stats.
 	WithStats(stats string) Request
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (s *SampleStream) UnmarshalJSON(data []byte) error {
+	var stream struct {
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
+	}
+	if err := json.Unmarshal(data, &stream); err != nil {
+		return err
+	}
+	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
+	s.Samples = stream.Values
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler.
+func (s *SampleStream) MarshalJSON() ([]byte, error) {
+	stream := struct {
+		Metric model.Metric      `json:"metric"`
+		Values []cortexpb.Sample `json:"values"`
+	}{
+		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
+		Values: s.Samples,
+	}
+	return json.Marshal(stream)
+}
+
+func PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	if !iter.ReadArray() {
+		iter.ReportError("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", "expected [")
+		return
+	}
+
+	t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
+
+	if !iter.ReadArray() {
+		iter.ReportError("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", "expected ,")
+		return
+	}
+	v := iter.ReadInt64()
+
+	if iter.ReadArray() {
+		iter.ReportError("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", "expected ]")
+	}
+
+	*(*PrometheusResponseQueryableSamplesStatsPerStep)(ptr) = PrometheusResponseQueryableSamplesStatsPerStep{
+		TimestampMs: int64(t),
+		Value:       v,
+	}
+}
+
+func PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	stats := (*PrometheusResponseQueryableSamplesStatsPerStep)(ptr)
+	stream.WriteArrayStart()
+	stream.WriteFloat64(float64(stats.TimestampMs) / float64(time.Second/time.Millisecond))
+	stream.WriteMore()
+	stream.WriteInt64(stats.Value)
+	stream.WriteArrayEnd()
+}
+
+func init() {
+	jsoniter.RegisterTypeEncoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
+	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
 }

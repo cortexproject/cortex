@@ -679,12 +679,12 @@ func getSpanContext(ctx context.Context) (jaeger.SpanContext, bool) {
 
 // extractStats returns the stats for a given time range
 // this function is similar to extractSampleStream
-func extractStats(start, end int64, stats *PrometheusResponseStats) *PrometheusResponseStats {
+func extractStats(start, end int64, stats *tripperware.PrometheusResponseStats) *tripperware.PrometheusResponseStats {
 	if stats == nil || stats.Samples == nil {
 		return stats
 	}
 
-	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	result := &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{}}
 	for _, s := range stats.Samples.TotalQueryableSamplesPerStep {
 		if start <= s.TimestampMs && s.TimestampMs <= end {
 			result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, s)
@@ -694,8 +694,8 @@ func extractStats(start, end int64, stats *PrometheusResponseStats) *PrometheusR
 	return result
 }
 
-func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
-	result := make([]SampleStream, 0, len(matrix))
+func extractMatrix(start, end int64, matrix []tripperware.SampleStream) []tripperware.SampleStream {
+	result := make([]tripperware.SampleStream, 0, len(matrix))
 	for _, stream := range matrix {
 		extracted, ok := extractSampleStream(start, end, stream)
 		if ok {
@@ -705,8 +705,8 @@ func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 	return result
 }
 
-func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
-	result := SampleStream{
+func extractSampleStream(start, end int64, stream tripperware.SampleStream) (tripperware.SampleStream, bool) {
+	result := tripperware.SampleStream{
 		Labels:  stream.Labels,
 		Samples: make([]cortexpb.Sample, 0, len(stream.Samples)),
 	}
@@ -716,7 +716,7 @@ func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, b
 		}
 	}
 	if len(result.Samples) == 0 {
-		return SampleStream{}, false
+		return tripperware.SampleStream{}, false
 	}
 	return result, true
 }

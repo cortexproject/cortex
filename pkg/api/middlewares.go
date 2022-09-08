@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )

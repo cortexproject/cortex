@@ -218,45 +218,153 @@ func (m *PrometheusResponseQueryableSamplesStatsPerStep) GetTimestampMs() int64 
 	return 0
 }
 
+type PrometheusResponseHeader struct {
+	Name   string   `protobuf:"bytes,1,opt,name=Name,proto3" json:"-"`
+	Values []string `protobuf:"bytes,2,rep,name=Values,proto3" json:"-"`
+}
+
+func (m *PrometheusResponseHeader) Reset()      { *m = PrometheusResponseHeader{} }
+func (*PrometheusResponseHeader) ProtoMessage() {}
+func (*PrometheusResponseHeader) Descriptor() ([]byte, []int) {
+	return fileDescriptor_5c6ac9b241082464, []int{4}
+}
+func (m *PrometheusResponseHeader) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PrometheusResponseHeader) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PrometheusResponseHeader.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PrometheusResponseHeader) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrometheusResponseHeader.Merge(m, src)
+}
+func (m *PrometheusResponseHeader) XXX_Size() int {
+	return m.Size()
+}
+func (m *PrometheusResponseHeader) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrometheusResponseHeader.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PrometheusResponseHeader proto.InternalMessageInfo
+
+func (m *PrometheusResponseHeader) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *PrometheusResponseHeader) GetValues() []string {
+	if m != nil {
+		return m.Values
+	}
+	return nil
+}
+
+type PrometheusRequestHeader struct {
+	Name   string   `protobuf:"bytes,1,opt,name=Name,proto3" json:"-"`
+	Values []string `protobuf:"bytes,2,rep,name=Values,proto3" json:"-"`
+}
+
+func (m *PrometheusRequestHeader) Reset()      { *m = PrometheusRequestHeader{} }
+func (*PrometheusRequestHeader) ProtoMessage() {}
+func (*PrometheusRequestHeader) Descriptor() ([]byte, []int) {
+	return fileDescriptor_5c6ac9b241082464, []int{5}
+}
+func (m *PrometheusRequestHeader) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PrometheusRequestHeader) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PrometheusRequestHeader.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PrometheusRequestHeader) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrometheusRequestHeader.Merge(m, src)
+}
+func (m *PrometheusRequestHeader) XXX_Size() int {
+	return m.Size()
+}
+func (m *PrometheusRequestHeader) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrometheusRequestHeader.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PrometheusRequestHeader proto.InternalMessageInfo
+
+func (m *PrometheusRequestHeader) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *PrometheusRequestHeader) GetValues() []string {
+	if m != nil {
+		return m.Values
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*SampleStream)(nil), "tripperware.SampleStream")
 	proto.RegisterType((*PrometheusResponseStats)(nil), "tripperware.PrometheusResponseStats")
 	proto.RegisterType((*PrometheusResponseSamplesStats)(nil), "tripperware.PrometheusResponseSamplesStats")
 	proto.RegisterType((*PrometheusResponseQueryableSamplesStatsPerStep)(nil), "tripperware.PrometheusResponseQueryableSamplesStatsPerStep")
+	proto.RegisterType((*PrometheusResponseHeader)(nil), "tripperware.PrometheusResponseHeader")
+	proto.RegisterType((*PrometheusRequestHeader)(nil), "tripperware.PrometheusRequestHeader")
 }
 
 func init() { proto.RegisterFile("query.proto", fileDescriptor_5c6ac9b241082464) }
 
 var fileDescriptor_5c6ac9b241082464 = []byte{
-	// 447 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x93, 0xb1, 0x8e, 0xd3, 0x40,
-	0x10, 0x86, 0xbd, 0x77, 0x22, 0x48, 0xeb, 0x13, 0x42, 0x0b, 0x88, 0xe3, 0x84, 0xd6, 0x21, 0xd5,
-	0x49, 0x08, 0x47, 0x3a, 0x2a, 0xa0, 0x3a, 0xb7, 0x80, 0x08, 0x4e, 0x47, 0x83, 0xd6, 0x61, 0xc8,
-	0x19, 0xbc, 0xec, 0xb2, 0x3b, 0x86, 0xa3, 0xe3, 0x11, 0x68, 0x78, 0x00, 0x3a, 0x1e, 0x84, 0xe2,
-	0xca, 0x94, 0x27, 0x0a, 0x8b, 0x38, 0x0d, 0x4a, 0x75, 0x8f, 0x80, 0xbc, 0xb6, 0x49, 0x84, 0xac,
-	0xa0, 0x74, 0x3b, 0xf3, 0xcf, 0xb7, 0xff, 0x78, 0xd6, 0x43, 0xfd, 0xf7, 0x39, 0x98, 0x4f, 0xa1,
-	0x36, 0x0a, 0x15, 0xf3, 0xd1, 0xa4, 0x5a, 0x83, 0xf9, 0x28, 0x0c, 0x1c, 0xdc, 0x9b, 0xa6, 0x78,
-	0x92, 0x27, 0xe1, 0x44, 0xc9, 0xe1, 0x54, 0x4d, 0xd5, 0xd0, 0xd5, 0x24, 0xf9, 0x6b, 0x17, 0xb9,
-	0xc0, 0x9d, 0x6a, 0xf6, 0xe0, 0xc1, 0x5a, 0xf9, 0x44, 0x19, 0x84, 0x53, 0x6d, 0xd4, 0x1b, 0x98,
-	0x60, 0x13, 0x0d, 0xf5, 0xdb, 0x69, 0x2b, 0x24, 0xcd, 0xa1, 0x46, 0x07, 0x3f, 0x08, 0xdd, 0x1b,
-	0x0b, 0xa9, 0x33, 0x18, 0xa3, 0x01, 0x21, 0xd9, 0x29, 0xed, 0x65, 0x22, 0x81, 0xcc, 0xee, 0x93,
-	0xfe, 0xee, 0xa1, 0x7f, 0x74, 0x2d, 0x6c, 0xc1, 0xf0, 0x49, 0x95, 0x1f, 0x89, 0xd4, 0x44, 0x8f,
-	0xcf, 0x8a, 0xc0, 0xfb, 0x59, 0x04, 0x5b, 0x19, 0xd7, 0xfc, 0xf1, 0x2b, 0xa1, 0x11, 0xcc, 0xb2,
-	0x08, 0x7a, 0x12, 0xd0, 0xa4, 0x93, 0xb8, 0xf1, 0x63, 0x0f, 0xe9, 0x65, 0xeb, 0x3a, 0xb1, 0xfb,
-	0x3b, 0xce, 0xfa, 0xea, 0xca, 0xba, 0x6e, 0x31, 0xba, 0x52, 0xf9, 0x56, 0xe8, 0x07, 0x91, 0xe5,
-	0x60, 0xe3, 0x16, 0x18, 0x48, 0x7a, 0x73, 0x64, 0x94, 0x04, 0x3c, 0x81, 0xdc, 0xc6, 0x60, 0xb5,
-	0x7a, 0x67, 0x61, 0x8c, 0x02, 0x2d, 0x8b, 0x57, 0xd7, 0x92, 0x3e, 0x39, 0xf4, 0x8f, 0xee, 0x86,
-	0x6b, 0xa3, 0x0e, 0x3b, 0xb0, 0xba, 0xda, 0xd1, 0x91, 0xbf, 0x2c, 0x82, 0x96, 0x5f, 0xd9, 0x7d,
-	0xdd, 0xa1, 0x7c, 0x33, 0xc8, 0x9e, 0xd1, 0x1b, 0xa8, 0x50, 0x64, 0xcf, 0xab, 0x37, 0x16, 0x49,
-	0xd6, 0xaa, 0xae, 0x89, 0xdd, 0xe8, 0xd6, 0xb2, 0x08, 0xba, 0x0b, 0xe2, 0xee, 0x34, 0xfb, 0x46,
-	0xe8, 0xed, 0x4e, 0x65, 0x04, 0x66, 0x8c, 0xa0, 0x9b, 0xa1, 0x3d, 0xfa, 0xcf, 0xd7, 0xfd, 0x4b,
-	0xbb, 0x6e, 0x9b, 0x2b, 0xa2, 0xfe, 0xb2, 0x08, 0x36, 0x9a, 0xc4, 0x1b, 0xd5, 0x41, 0x4a, 0xb7,
-	0x74, 0x64, 0xd7, 0xe9, 0x25, 0xf7, 0x96, 0xf5, 0x58, 0xe2, 0x3a, 0x60, 0x77, 0xe8, 0x1e, 0xa6,
-	0x12, 0x2c, 0x0a, 0xa9, 0x5f, 0xca, 0xea, 0x7f, 0xa8, 0x44, 0xff, 0x6f, 0xee, 0xa9, 0x8d, 0x8e,
-	0x67, 0x73, 0xee, 0x9d, 0xcf, 0xb9, 0x77, 0x31, 0xe7, 0xe4, 0x73, 0xc9, 0xc9, 0xf7, 0x92, 0x93,
-	0xb3, 0x92, 0x93, 0x59, 0xc9, 0xc9, 0xaf, 0x92, 0x93, 0xdf, 0x25, 0xf7, 0x2e, 0x4a, 0x4e, 0xbe,
-	0x2c, 0xb8, 0x37, 0x5b, 0x70, 0xef, 0x7c, 0xc1, 0xbd, 0x17, 0xeb, 0x5b, 0x96, 0xf4, 0xdc, 0x0a,
-	0xdc, 0xff, 0x13, 0x00, 0x00, 0xff, 0xff, 0xad, 0x1f, 0x41, 0xea, 0x88, 0x03, 0x00, 0x00,
+	// 502 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x94, 0xcf, 0x6e, 0xd3, 0x40,
+	0x10, 0xc6, 0xbd, 0x2d, 0x0d, 0x62, 0x5d, 0x21, 0xb4, 0x80, 0x48, 0x2b, 0x58, 0x87, 0x9c, 0x2a,
+	0xa1, 0x3a, 0x52, 0x39, 0x01, 0xa7, 0xfa, 0x84, 0xc4, 0xbf, 0xe0, 0x20, 0x0e, 0x5c, 0xd0, 0x3a,
+	0x1d, 0x52, 0x83, 0x97, 0xdd, 0xee, 0xae, 0xa1, 0xdc, 0x78, 0x04, 0x2e, 0x3c, 0x00, 0x37, 0x1e,
+	0x84, 0x43, 0x8f, 0x39, 0x56, 0x1c, 0x2c, 0xe2, 0x5c, 0x90, 0x4f, 0x7d, 0x04, 0xe4, 0xb5, 0xdd,
+	0x04, 0x88, 0x82, 0x2a, 0x6e, 0x3b, 0xf3, 0xcd, 0x6f, 0xbe, 0xc9, 0xec, 0xc6, 0xd8, 0x3d, 0x48,
+	0x41, 0x7d, 0xf0, 0xa5, 0x12, 0x46, 0x10, 0xd7, 0xa8, 0x58, 0x4a, 0x50, 0xef, 0x99, 0x82, 0xcd,
+	0xed, 0x51, 0x6c, 0xf6, 0xd3, 0xc8, 0x1f, 0x0a, 0xde, 0x1b, 0x89, 0x91, 0xe8, 0xd9, 0x9a, 0x28,
+	0x7d, 0x65, 0x23, 0x1b, 0xd8, 0x53, 0xc5, 0x6e, 0xde, 0x99, 0x2b, 0x1f, 0x0a, 0x65, 0xe0, 0x50,
+	0x2a, 0xf1, 0x1a, 0x86, 0xa6, 0x8e, 0x7a, 0xf2, 0xcd, 0xa8, 0x11, 0xa2, 0xfa, 0x50, 0xa1, 0xdd,
+	0x6f, 0x08, 0xaf, 0x0f, 0x18, 0x97, 0x09, 0x0c, 0x8c, 0x02, 0xc6, 0xc9, 0x21, 0x6e, 0x25, 0x2c,
+	0x82, 0x44, 0xb7, 0x51, 0x67, 0x75, 0xcb, 0xdd, 0xb9, 0xec, 0x37, 0xa0, 0xff, 0xb0, 0xcc, 0xf7,
+	0x59, 0xac, 0x82, 0x07, 0x47, 0x99, 0xe7, 0x7c, 0xcf, 0xbc, 0x33, 0x19, 0x57, 0xfc, 0xee, 0x1e,
+	0x93, 0x06, 0x54, 0x91, 0x79, 0x2d, 0x0e, 0x46, 0xc5, 0xc3, 0xb0, 0xf6, 0x23, 0x77, 0xf1, 0x79,
+	0x6d, 0x27, 0xd1, 0xed, 0x15, 0x6b, 0x7d, 0x69, 0x66, 0x5d, 0x8d, 0x18, 0x5c, 0x2c, 0x7d, 0x4b,
+	0xf4, 0x1d, 0x4b, 0x52, 0xd0, 0x61, 0x03, 0x74, 0x39, 0xbe, 0xd6, 0x57, 0x82, 0x83, 0xd9, 0x87,
+	0x54, 0x87, 0xa0, 0xa5, 0x78, 0xab, 0x61, 0x60, 0x98, 0xd1, 0x24, 0x9c, 0xb5, 0x45, 0x1d, 0xb4,
+	0xe5, 0xee, 0xdc, 0xf2, 0xe7, 0x56, 0xed, 0x2f, 0xc0, 0xaa, 0x6a, 0x4b, 0x07, 0x6e, 0x91, 0x79,
+	0x0d, 0x3f, 0xb3, 0xfb, 0xbc, 0x82, 0xe9, 0x72, 0x90, 0x3c, 0xc1, 0x57, 0x8d, 0x30, 0x2c, 0x79,
+	0x5a, 0xde, 0x31, 0x8b, 0x92, 0x46, 0xb5, 0x43, 0xac, 0x06, 0x1b, 0x45, 0xe6, 0x2d, 0x2e, 0x08,
+	0x17, 0xa7, 0xc9, 0x17, 0x84, 0xaf, 0x2f, 0x54, 0xfa, 0xa0, 0x06, 0x06, 0x64, 0xbd, 0xb4, 0x7b,
+	0xff, 0xf8, 0x75, 0x7f, 0xd2, 0x76, 0xda, 0xba, 0x45, 0xd0, 0x29, 0x32, 0x6f, 0xa9, 0x49, 0xb8,
+	0x54, 0xed, 0xc6, 0xf8, 0x8c, 0x8e, 0xe4, 0x0a, 0x5e, 0xb3, 0x77, 0x59, 0xad, 0x25, 0xac, 0x02,
+	0x72, 0x13, 0xaf, 0x9b, 0x98, 0x83, 0x36, 0x8c, 0xcb, 0x97, 0xbc, 0x7c, 0x0f, 0xa5, 0xe8, 0x9e,
+	0xe6, 0x1e, 0xe9, 0xee, 0x33, 0xdc, 0xfe, 0xdb, 0xea, 0x3e, 0xb0, 0x3d, 0x50, 0x64, 0x03, 0x9f,
+	0x7b, 0xcc, 0x78, 0xd5, 0xf3, 0x42, 0xb0, 0x56, 0x64, 0x1e, 0xda, 0x0e, 0x6d, 0x8a, 0xdc, 0xc0,
+	0xad, 0xe7, 0xf6, 0xed, 0xd8, 0x75, 0x9d, 0x8a, 0x75, 0xb2, 0x3b, 0xf8, 0xfd, 0x1d, 0x1d, 0xa4,
+	0xa0, 0xcd, 0xff, 0x36, 0x0d, 0x76, 0xc7, 0x13, 0xea, 0x1c, 0x4f, 0xa8, 0x73, 0x32, 0xa1, 0xe8,
+	0x63, 0x4e, 0xd1, 0xd7, 0x9c, 0xa2, 0xa3, 0x9c, 0xa2, 0x71, 0x4e, 0xd1, 0x8f, 0x9c, 0xa2, 0x9f,
+	0x39, 0x75, 0x4e, 0x72, 0x8a, 0x3e, 0x4d, 0xa9, 0x33, 0x9e, 0x52, 0xe7, 0x78, 0x4a, 0x9d, 0x17,
+	0xf3, 0x1f, 0x84, 0xa8, 0x65, 0xff, 0xad, 0xb7, 0x7f, 0x05, 0x00, 0x00, 0xff, 0xff, 0x52, 0xc5,
+	0xe2, 0x36, 0x33, 0x04, 0x00, 0x00,
 }
 
 func (this *SampleStream) Equal(that interface{}) bool {
@@ -379,6 +487,70 @@ func (this *PrometheusResponseQueryableSamplesStatsPerStep) Equal(that interface
 	}
 	return true
 }
+func (this *PrometheusResponseHeader) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrometheusResponseHeader)
+	if !ok {
+		that2, ok := that.(PrometheusResponseHeader)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if len(this.Values) != len(that1.Values) {
+		return false
+	}
+	for i := range this.Values {
+		if this.Values[i] != that1.Values[i] {
+			return false
+		}
+	}
+	return true
+}
+func (this *PrometheusRequestHeader) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*PrometheusRequestHeader)
+	if !ok {
+		that2, ok := that.(PrometheusRequestHeader)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if len(this.Values) != len(that1.Values) {
+		return false
+	}
+	for i := range this.Values {
+		if this.Values[i] != that1.Values[i] {
+			return false
+		}
+	}
+	return true
+}
 func (this *SampleStream) GoString() string {
 	if this == nil {
 		return "nil"
@@ -429,6 +601,28 @@ func (this *PrometheusResponseQueryableSamplesStatsPerStep) GoString() string {
 	s = append(s, "&tripperware.PrometheusResponseQueryableSamplesStatsPerStep{")
 	s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
 	s = append(s, "TimestampMs: "+fmt.Sprintf("%#v", this.TimestampMs)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *PrometheusResponseHeader) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&tripperware.PrometheusResponseHeader{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *PrometheusRequestHeader) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&tripperware.PrometheusRequestHeader{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -601,6 +795,84 @@ func (m *PrometheusResponseQueryableSamplesStatsPerStep) MarshalToSizedBuffer(dA
 	return len(dAtA) - i, nil
 }
 
+func (m *PrometheusResponseHeader) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PrometheusResponseHeader) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrometheusResponseHeader) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Values) > 0 {
+		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Values[iNdEx])
+			copy(dAtA[i:], m.Values[iNdEx])
+			i = encodeVarintQuery(dAtA, i, uint64(len(m.Values[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PrometheusRequestHeader) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PrometheusRequestHeader) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PrometheusRequestHeader) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Values) > 0 {
+		for iNdEx := len(m.Values) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Values[iNdEx])
+			copy(dAtA[i:], m.Values[iNdEx])
+			i = encodeVarintQuery(dAtA, i, uint64(len(m.Values[iNdEx])))
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintQuery(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintQuery(dAtA []byte, offset int, v uint64) int {
 	offset -= sovQuery(v)
 	base := offset
@@ -679,6 +951,44 @@ func (m *PrometheusResponseQueryableSamplesStatsPerStep) Size() (n int) {
 	return n
 }
 
+func (m *PrometheusResponseHeader) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	if len(m.Values) > 0 {
+		for _, s := range m.Values {
+			l = len(s)
+			n += 1 + l + sovQuery(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *PrometheusRequestHeader) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovQuery(uint64(l))
+	}
+	if len(m.Values) > 0 {
+		for _, s := range m.Values {
+			l = len(s)
+			n += 1 + l + sovQuery(uint64(l))
+		}
+	}
+	return n
+}
+
 func sovQuery(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
@@ -734,6 +1044,28 @@ func (this *PrometheusResponseQueryableSamplesStatsPerStep) String() string {
 	s := strings.Join([]string{`&PrometheusResponseQueryableSamplesStatsPerStep{`,
 		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
 		`TimestampMs:` + fmt.Sprintf("%v", this.TimestampMs) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *PrometheusResponseHeader) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&PrometheusResponseHeader{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Values:` + fmt.Sprintf("%v", this.Values) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *PrometheusRequestHeader) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&PrometheusRequestHeader{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Values:` + fmt.Sprintf("%v", this.Values) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1129,6 +1461,240 @@ func (m *PrometheusResponseQueryableSamplesStatsPerStep) Unmarshal(dAtA []byte) 
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PrometheusResponseHeader) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PrometheusResponseHeader: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PrometheusResponseHeader: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Values = append(m.Values, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PrometheusRequestHeader) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PrometheusRequestHeader: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PrometheusRequestHeader: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Values = append(m.Values, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipQuery(dAtA[iNdEx:])

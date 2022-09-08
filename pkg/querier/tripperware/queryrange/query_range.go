@@ -151,7 +151,7 @@ func (prometheusCodec) MergeResponse(responses ...tripperware.Response) (tripper
 	}
 
 	if len(resultsCacheGenNumberHeaderValues) != 0 {
-		response.Headers = []*PrometheusResponseHeader{{
+		response.Headers = []*tripperware.PrometheusResponseHeader{{
 			Name:   ResultsCacheGenNumberHeaderName,
 			Values: resultsCacheGenNumberHeaderValues,
 		}}
@@ -200,7 +200,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 	for _, header := range forwardHeaders {
 		for h, hv := range r.Header {
 			if strings.EqualFold(h, header) {
-				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
+				result.Headers = append(result.Headers, &tripperware.PrometheusRequestHeader{Name: h, Values: hv})
 				break
 			}
 		}
@@ -272,7 +272,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	}
 
 	for h, hv := range r.Header {
-		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
+		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
 }

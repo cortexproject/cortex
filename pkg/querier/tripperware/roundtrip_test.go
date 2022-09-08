@@ -3,7 +3,7 @@ package tripperware
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -47,7 +47,7 @@ func (c mockCodec) EncodeResponse(_ context.Context, resp Response) (*http.Respo
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:          ioutil.NopCloser(bytes.NewBuffer([]byte(r.resp))),
+		Body:          io.NopCloser(bytes.NewBuffer([]byte(r.resp))),
 		StatusCode:    http.StatusOK,
 		ContentLength: int64(len([]byte(r.resp))),
 	}, nil
@@ -122,7 +122,7 @@ func TestRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
 
-			bs, err := ioutil.ReadAll(resp.Body)
+			bs, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedBody, string(bs))
 		})

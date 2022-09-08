@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestStepAlign(t *testing.T) {

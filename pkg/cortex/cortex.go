@@ -10,7 +10,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -41,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"

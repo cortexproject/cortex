@@ -9,11 +9,12 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestRoundTrip(t *testing.T) {

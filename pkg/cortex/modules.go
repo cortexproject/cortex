@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	queryrange2 "github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -35,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -435,12 +435,12 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	queryRangeMiddlewares, cache, err := queryrange2.Middlewares(
+	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.Overrides,
-		queryrange2.PrometheusCodec,
-		queryrange2.PrometheusResponseExtractor{},
+		queryrange.PrometheusCodec,
+		queryrange.PrometheusResponseExtractor{},
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
 	)
@@ -453,7 +453,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheus.DefaultRegisterer,
 		t.Cfg.QueryRange.ForwardHeaders,
 		queryRangeMiddlewares,
-		queryrange2.PrometheusCodec,
+		queryrange.PrometheusCodec,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

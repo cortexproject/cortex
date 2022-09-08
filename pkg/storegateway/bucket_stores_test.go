@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -543,7 +542,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 }
 
 func getUsersInDir(t *testing.T, dir string) []string {
-	fs, err := ioutil.ReadDir(dir)
+	fs, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
 	var result []string

@@ -1,7 +1,7 @@
 package api
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -156,7 +156,7 @@ func TestConfigDiffHandler(t *testing.T) {
 			resp := w.Result()
 			assert.Equal(t, tc.expectedStatusCode, resp.StatusCode)
 
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedBody, string(body))
 		})
@@ -185,7 +185,7 @@ func TestConfigOverrideHandler(t *testing.T) {
 	resp := w.Result()
 	assert.Equal(t, 200, resp.StatusCode)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("config"), body)
 }

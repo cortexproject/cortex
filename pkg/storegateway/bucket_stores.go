@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -511,7 +510,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 // deleteLocalFilesForExcludedTenants removes local "sync" directories for tenants that are not included in the current
 // shard.
 func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
-	files, err := ioutil.ReadDir(u.cfg.BucketStore.SyncDir)
+	files, err := os.ReadDir(u.cfg.BucketStore.SyncDir)
 	if err != nil {
 		return
 	}

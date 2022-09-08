@@ -6,7 +6,7 @@ package e2e_test
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 
@@ -65,13 +65,13 @@ func testMinioWorking(t *testing.T, m *e2e.HTTPService) {
 
 	r, err := bkt.Get(ctx, "recipe")
 	require.NoError(t, err)
-	b, err = ioutil.ReadAll(r)
+	b, err = io.ReadAll(r)
 	require.NoError(t, err)
 	require.Equal(t, "Just go to Pastry Shop and buy.", string(b))
 
 	r, err = bkt.Get(ctx, "mom/recipe")
 	require.NoError(t, err)
-	b, err = ioutil.ReadAll(r)
+	b, err = io.ReadAll(r)
 	require.NoError(t, err)
 	require.Equal(t, "https://www.bbcgoodfood.com/recipes/strawberry-cheesecake-4-easy-steps", string(b))
 }

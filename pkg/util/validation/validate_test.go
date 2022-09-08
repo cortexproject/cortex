@@ -109,7 +109,7 @@ func TestValidateLabels(t *testing.T) {
 			newLabelValueTooLongError([]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "badLabelValue"},
 				{Name: "much_shorter_name", Value: "test_value_please_ignore_no_really_nothing_to_see_here"},
-			}, "test_value_please_ignore_no_really_nothing_to_see_here", cfg.maxLabelValueLength),
+			}, "much_shorter_name", "test_value_please_ignore_no_really_nothing_to_see_here", cfg.maxLabelValueLength),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},

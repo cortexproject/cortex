@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -35,12 +36,12 @@ type Limits interface {
 
 type limitsMiddleware struct {
 	Limits
-	next Handler
+	next tripperware.Handler
 }
 
 // NewLimitsMiddleware creates a new Middleware that enforces query limits.
-func NewLimitsMiddleware(l Limits) Middleware {
-	return MiddlewareFunc(func(next Handler) Handler {
+func NewLimitsMiddleware(l Limits) tripperware.Middleware {
+	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return limitsMiddleware{
 			next:   next,
 			Limits: l,
@@ -48,7 +49,7 @@ func NewLimitsMiddleware(l Limits) Middleware {
 	})
 }
 
-func (l limitsMiddleware) Do(ctx context.Context, r Request) (Response, error) {
+func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "limits")
 	defer log.Finish()
 

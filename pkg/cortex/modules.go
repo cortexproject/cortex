@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -434,7 +435,7 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	tripperware, cache, err := queryrange.NewTripperware(
+	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.Overrides,
@@ -448,7 +449,12 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
-	t.QueryFrontendTripperware = tripperware
+	t.QueryFrontendTripperware = tripperware.NewQueryTripperware(util_log.Logger,
+		prometheus.DefaultRegisterer,
+		t.Cfg.QueryRange.ForwardHeaders,
+		queryRangeMiddlewares,
+		queryrange.PrometheusCodec,
+	)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		if cache != nil {

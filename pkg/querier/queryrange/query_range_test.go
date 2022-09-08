@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestRequest(t *testing.T) {
@@ -26,7 +27,7 @@ func TestRequest(t *testing.T) {
 	parsedRequestWithHeaders.Headers = reqHeaders
 	for _, tc := range []struct {
 		url         string
-		expected    Request
+		expected    tripperware.Request
 		expectedErr error
 	}{
 		{
@@ -181,12 +182,12 @@ func TestResponseWithStats(t *testing.T) {
 func TestMergeAPIResponses(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		input    []Response
-		expected Response
+		input    []tripperware.Response
+		expected tripperware.Response
 	}{
 		{
 			name:  "No responses shouldn't panic and return a non-null result and result type.",
-			input: []Response{},
+			input: []tripperware.Response{},
 			expected: &PrometheusResponse{
 				Status: StatusSuccess,
 				Data: PrometheusData{
@@ -198,7 +199,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "A single empty response shouldn't panic.",
-			input: []Response{
+			input: []tripperware.Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: matrix,
@@ -217,7 +218,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "Multiple empty responses shouldn't panic.",
-			input: []Response{
+			input: []tripperware.Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: matrix,
@@ -242,7 +243,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "Basic merging of two responses.",
-			input: []Response{
+			input: []tripperware.Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: matrix,
@@ -293,7 +294,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "Merging of responses when labels are in different order.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[0,"0"],[1,"1"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
@@ -318,7 +319,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "Merging of samples where there is single overlap.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"]]}]}}`),
 			},
@@ -341,7 +342,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "Merging of samples where there is multiple partial overlaps.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}]}}`),
 			},
@@ -366,7 +367,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "Merging of samples where there is complete overlap.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}]}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}]}}`),
 			},
@@ -390,7 +391,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "[stats] A single empty response shouldn't panic.",
-			input: []Response{
+			input: []tripperware.Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: matrix,
@@ -411,7 +412,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "[stats] Multiple empty responses shouldn't panic.",
-			input: []Response{
+			input: []tripperware.Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: matrix,
@@ -439,7 +440,7 @@ func TestMergeAPIResponses(t *testing.T) {
 
 		{
 			name: "[stats] Basic merging of two responses.",
-			input: []Response{
+			input: []tripperware.Response{
 				&PrometheusResponse{
 					Data: PrometheusData{
 						ResultType: matrix,
@@ -512,7 +513,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "[stats] Merging of samples where there is single overlap.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,5],[2,5]]}}}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,5],[3,15]]}}}}`),
 			},
@@ -543,7 +544,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "[stats] Merging of multiple responses with some overlap.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[3,"3"],[4,"4"],[5,"5"]]}],"stats":{"samples":{"totalQueryableSamples":12,"totalQueryableSamplesPerStep":[[3,3],[4,4],[5,5]]}}}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"],[3,"3"],[4,"4"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3],[4,4]]}}}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[5,"5"],[6,"6"],[7,"7"]]}],"stats":{"samples":{"totalQueryableSamples":18,"totalQueryableSamplesPerStep":[[5,5],[6,6],[7,7]]}}}}`),
@@ -583,7 +584,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "[stats] Merging of samples where there is multiple partial overlaps.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3],[4,4],[5,5]]}}}}`),
 			},
@@ -618,7 +619,7 @@ func TestMergeAPIResponses(t *testing.T) {
 		},
 		{
 			name: "[stats] Merging of samples where there is complete overlap.",
-			input: []Response{
+			input: []tripperware.Response{
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`),
 				mustParse(t, `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"c":"d","a":"b"},"values":[[2,"2"],[3,"3"],[4,"4"],[5,"5"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3],[4,4],[5,5]]}}}}`),
 			},
@@ -657,7 +658,7 @@ func TestMergeAPIResponses(t *testing.T) {
 	}
 }
 
-func mustParse(t *testing.T, response string) Response {
+func mustParse(t *testing.T, response string) tripperware.Response {
 	var resp PrometheusResponse
 	// Needed as goimports automatically add a json import otherwise.
 	json := jsoniter.ConfigCompatibleWithStandardLibrary

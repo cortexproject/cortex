@@ -10,6 +10,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 // FromResult transforms a promql query result into a samplestream
@@ -80,7 +81,7 @@ func mapPoints(pts ...promql.Point) []cortexpb.Sample {
 }
 
 // ResponseToSamples is needed to map back from api response to the underlying series data
-func ResponseToSamples(resp Response) ([]SampleStream, error) {
+func ResponseToSamples(resp tripperware.Response) ([]SampleStream, error) {
 	promRes, ok := resp.(*PrometheusResponse)
 	if !ok {
 		return nil, errors.Errorf("error invalid response type: %T, expected: %T", resp, &PrometheusResponse{})

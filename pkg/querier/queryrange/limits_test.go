@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -95,8 +96,8 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 				// Assert on the time range of the request passed to the inner handler (5s delta).
 				delta := float64(5000)
 				require.Len(t, inner.Calls, 1)
-				assert.InDelta(t, util.TimeToMillis(testData.expectedStartTime), inner.Calls[0].Arguments.Get(1).(Request).GetStart(), delta)
-				assert.InDelta(t, util.TimeToMillis(testData.expectedEndTime), inner.Calls[0].Arguments.Get(1).(Request).GetEnd(), delta)
+				assert.InDelta(t, util.TimeToMillis(testData.expectedStartTime), inner.Calls[0].Arguments.Get(1).(tripperware.Request).GetStart(), delta)
+				assert.InDelta(t, util.TimeToMillis(testData.expectedEndTime), inner.Calls[0].Arguments.Get(1).(tripperware.Request).GetEnd(), delta)
 			}
 		})
 	}
@@ -179,8 +180,8 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 
 				// The time range of the request passed to the inner handler should have not been manipulated.
 				require.Len(t, inner.Calls, 1)
-				assert.Equal(t, util.TimeToMillis(testData.reqStartTime), inner.Calls[0].Arguments.Get(1).(Request).GetStart())
-				assert.Equal(t, util.TimeToMillis(testData.reqEndTime), inner.Calls[0].Arguments.Get(1).(Request).GetEnd())
+				assert.Equal(t, util.TimeToMillis(testData.reqStartTime), inner.Calls[0].Arguments.Get(1).(tripperware.Request).GetStart())
+				assert.Equal(t, util.TimeToMillis(testData.reqEndTime), inner.Calls[0].Arguments.Get(1).(tripperware.Request).GetEnd())
 			}
 		})
 	}
@@ -212,7 +213,7 @@ type mockHandler struct {
 	mock.Mock
 }
 
-func (m *mockHandler) Do(ctx context.Context, req Request) (Response, error) {
+func (m *mockHandler) Do(ctx context.Context, req tripperware.Request) (tripperware.Response, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(Response), args.Error(1)
+	return args.Get(0).(tripperware.Response), args.Error(1)
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -155,9 +156,9 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 		name                       string
 		cacheQueryableSamplesStats bool
 		err                        error
-		req                        Request
-		upstreamResponse           Response
-		expectedResponse           Response
+		req                        tripperware.Request
+		upstreamResponse           tripperware.Response
+		expectedResponse           tripperware.Response
 	}{
 		{
 			name:                       "should return error",
@@ -214,7 +215,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 			)
 			require.NoError(t, err)
 
-			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				if tc.cacheQueryableSamplesStats {
 					require.Equal(t, "all", req.GetStats())
 				} else {
@@ -235,8 +236,8 @@ func TestShouldCache(t *testing.T) {
 	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader()}
 	for _, tc := range []struct {
 		name                   string
-		request                Request
-		input                  Response
+		request                tripperware.Request
+		input                  tripperware.Response
 		cacheGenNumberToInject string
 		expected               bool
 	}{
@@ -244,7 +245,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "does not contain the cacheControl header",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
@@ -257,7 +258,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "does contain the cacheControl header which has the value",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
@@ -270,7 +271,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "cacheControl header contains extra values but still good",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
@@ -283,13 +284,13 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:     "broken response",
 			request:  &PrometheusRequest{Query: "metric"},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:    "nil headers",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{nil},
 			}),
 			expected: true,
@@ -297,7 +298,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "had cacheControl header but no values",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{{Name: cacheControlHeader}},
 			}),
 			expected: true,
@@ -307,7 +308,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "cacheGenNumber not set in both header and store",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
@@ -320,7 +321,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "cacheGenNumber set in store but not in header",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   "meaninglessheader",
@@ -334,7 +335,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "cacheGenNumber set in header but not in store",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
@@ -347,7 +348,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "cacheGenNumber in header and store are the same",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
@@ -361,7 +362,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "inconsistency between cacheGenNumber in header and store",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   ResultsCacheGenNumberHeaderName,
@@ -375,7 +376,7 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:    "cacheControl header says not to catch and cacheGenNumbers in store and headers have consistency",
 			request: &PrometheusRequest{Query: "metric"},
-			input: Response(&PrometheusResponse{
+			input: tripperware.Response(&PrometheusResponse{
 				Headers: []*PrometheusResponseHeader{
 					{
 						Name:   cacheControlHeader,
@@ -394,111 +395,111 @@ func TestShouldCache(t *testing.T) {
 		{
 			name:     "@ modifier on vector selector, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 123", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on vector selector, after end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 127", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector, before end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 151", End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector, after end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ 151", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on vector selector with start() before maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ start()", Start: 100000, End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on vector selector with end() after maxCacheTime",
 			request:  &PrometheusRequest{Query: "metric @ end()", Start: 100000, End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		// @ modifier on matrix selectors.
 		{
 			name:     "@ modifier on matrix selector, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 123)", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on matrix selector, after end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 127)", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector, before end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector, after end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ 151)", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on matrix selector with start() before maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ start())", Start: 100000, End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on matrix selector with end() after maxCacheTime",
 			request:  &PrometheusRequest{Query: "rate(metric[5m] @ end())", Start: 100000, End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		// @ modifier on subqueries.
 		{
 			name:     "@ modifier on subqueries, before end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 123)", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on subqueries, after end, before maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 127)", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries, before end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries, after end, after maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ 151)", End: 125000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 		{
 			name:     "@ modifier on subqueries with start() before maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ start())", Start: 100000, End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: true,
 		},
 		{
 			name:     "@ modifier on subqueries with end() after maxCacheTime",
 			request:  &PrometheusRequest{Query: "sum_over_time(rate(metric[1m])[10m:1m] @ end())", Start: 100000, End: 200000},
-			input:    Response(&PrometheusResponse{}),
+			input:    tripperware.Response(&PrometheusResponse{}),
 			expected: false,
 		},
 	} {
@@ -515,10 +516,10 @@ func TestShouldCache(t *testing.T) {
 func TestPartition(t *testing.T) {
 	for _, tc := range []struct {
 		name                   string
-		input                  Request
+		input                  tripperware.Request
 		prevCachedResponse     []Extent
-		expectedRequests       []Request
-		expectedCachedResponse []Response
+		expectedRequests       []tripperware.Request
+		expectedCachedResponse []tripperware.Response
 	}{
 		{
 			name: "Test a complete hit.",
@@ -529,7 +530,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(0, 100),
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponse(0, 100, 10),
 			},
 		},
@@ -543,7 +544,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(110, 210),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   100,
@@ -558,13 +559,13 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 100),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   50,
 				},
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponse(50, 100, 10),
 			},
 		},
@@ -578,13 +579,13 @@ func TestPartition(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(160, 250),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponse(100, 120, 10),
 				mkAPIResponse(160, 200, 10),
 			},
@@ -599,13 +600,13 @@ func TestPartition(t *testing.T) {
 				mkExtent(50, 120),
 				mkExtent(122, 130),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponse(100, 120, 10),
 			},
 		},
@@ -618,7 +619,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(50, 90),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 100,
 					End:   100,
@@ -635,7 +636,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtent(100, 100),
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponse(100, 105, 10),
 			},
 		},
@@ -648,7 +649,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtentWithStats(0, 100),
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(0, 100, 10, true),
 			},
 		},
@@ -662,7 +663,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtentWithStats(110, 210),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   100,
@@ -677,13 +678,13 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtentWithStats(50, 100),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   50,
 				},
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(50, 100, 10, true),
 			},
 		},
@@ -697,13 +698,13 @@ func TestPartition(t *testing.T) {
 				mkExtentWithStats(50, 120),
 				mkExtentWithStats(160, 250),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 120, 10, true),
 				mkAPIResponseWithStats(160, 200, 10, true),
 			},
@@ -718,13 +719,13 @@ func TestPartition(t *testing.T) {
 				mkExtentWithStats(50, 120),
 				mkExtentWithStats(122, 130),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 120,
 					End:   160,
 				},
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 120, 10, true),
 			},
 		},
@@ -737,7 +738,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtentWithStats(50, 90),
 			},
-			expectedRequests: []Request{
+			expectedRequests: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 100,
 					End:   100,
@@ -754,7 +755,7 @@ func TestPartition(t *testing.T) {
 			prevCachedResponse: []Extent{
 				mkExtentWithStats(100, 100),
 			},
-			expectedCachedResponse: []Response{
+			expectedCachedResponse: []tripperware.Response{
 				mkAPIResponseWithStats(100, 105, 10, true),
 			},
 		},
@@ -775,7 +776,7 @@ func TestPartition(t *testing.T) {
 func TestHandleHit(t *testing.T) {
 	for _, tc := range []struct {
 		name                       string
-		input                      Request
+		input                      tripperware.Request
 		cachedEntry                []Extent
 		expectedUpdatedCachedEntry []Extent
 	}{
@@ -964,7 +965,7 @@ func TestHandleHit(t *testing.T) {
 				minCacheExtent: 10,
 				limits:         mockLimits{},
 				merger:         PrometheusCodec,
-				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+				next: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
 				}),
 			}
@@ -1000,7 +1001,7 @@ func TestResultsCache(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+	rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -1044,7 +1045,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
 
 	calls := 0
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r Request) (Response, error) {
+	rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, r tripperware.Request) (tripperware.Response, error) {
 		calls++
 		assert.Equal(t, r, req)
 		return parsedResponse, nil
@@ -1068,7 +1069,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 	modelNow := model.Now()
 	for i, tc := range []struct {
 		fakeLimits       Limits
-		Handler          HandlerFunc
+		Handler          tripperware.HandlerFunc
 		expectedResponse *PrometheusResponse
 	}{
 		{
@@ -1079,7 +1080,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 		{
 			// should not lookup cache because per-tenant override will be applied
 			fakeLimits: mockLimits{maxCacheFreshness: 10 * time.Minute},
-			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
+			Handler: tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
 				return parsedResponse, nil
 			}),
 			expectedResponse: parsedResponse,
@@ -1174,7 +1175,7 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		r        Request
+		r        tripperware.Request
 		interval time.Duration
 		want     string
 	}{
@@ -1200,29 +1201,32 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 	testcases := []struct {
 		name         string
 		shouldCache  ShouldCacheFn
-		requests     []Request
+		requests     []tripperware.Request
 		expectedCall int
 	}{
 		{
 			name:         "normal",
 			shouldCache:  nil,
-			requests:     []Request{parsedRequest, parsedRequest},
+			requests:     []tripperware.Request{parsedRequest, parsedRequest},
 			expectedCall: 1,
 		},
 		{
 			name: "always no cache",
-			shouldCache: func(r Request) bool {
+			shouldCache: func(r tripperware.Request) bool {
 				return false
 			},
-			requests:     []Request{parsedRequest, parsedRequest},
+			requests:     []tripperware.Request{parsedRequest, parsedRequest},
 			expectedCall: 2,
 		},
 		{
 			name: "check cache based on request",
-			shouldCache: func(r Request) bool {
-				return !r.GetCachingOptions().Disabled
+			shouldCache: func(r tripperware.Request) bool {
+				if v, ok := r.(*PrometheusRequest); ok {
+					return !v.CachingOptions.Disabled
+				}
+				return false
 			},
-			requests:     []Request{noCacheRequest, noCacheRequest},
+			requests:     []tripperware.Request{noCacheRequest, noCacheRequest},
 			expectedCall: 2,
 		},
 	}
@@ -1245,7 +1249,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
-			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				calls++
 				return parsedResponse, nil
 			}))

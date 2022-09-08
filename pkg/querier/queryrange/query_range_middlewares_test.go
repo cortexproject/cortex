@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
@@ -41,13 +42,20 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	tw, _, err := NewTripperware(Config{},
+	queyrangemiddlewares, _, err := Middlewares(Config{},
 		log.NewNopLogger(),
 		mockLimits{},
 		PrometheusCodec,
 		nil,
 		nil,
 		nil,
+	)
+
+	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
+		nil,
+		nil,
+		queyrangemiddlewares,
+		PrometheusCodec,
 	)
 
 	if err != nil {

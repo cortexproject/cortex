@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -30,7 +31,7 @@ func NewRetryMiddlewareMetrics(registerer prometheus.Registerer) *RetryMiddlewar
 
 type retry struct {
 	log        log.Logger
-	next       Handler
+	next       tripperware.Handler
 	maxRetries int
 
 	metrics *RetryMiddlewareMetrics
@@ -38,12 +39,12 @@ type retry struct {
 
 // NewRetryMiddleware returns a middleware that retries requests if they
 // fail with 500 or a non-HTTP error.
-func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddlewareMetrics) Middleware {
+func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddlewareMetrics) tripperware.Middleware {
 	if metrics == nil {
 		metrics = NewRetryMiddlewareMetrics(nil)
 	}
 
-	return MiddlewareFunc(func(next Handler) Handler {
+	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return retry{
 			log:        log,
 			next:       next,
@@ -53,7 +54,7 @@ func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddleware
 	})
 }
 
-func (r retry) Do(ctx context.Context, req Request) (Response, error) {
+func (r retry) Do(ctx context.Context, req tripperware.Request) (tripperware.Response, error) {
 	tries := 0
 	defer func() { r.metrics.retriesCount.Observe(float64(tries)) }()
 

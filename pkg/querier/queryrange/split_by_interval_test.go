@@ -17,6 +17,8 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 const seconds = 1e3 // 1e3 milliseconds per second.
@@ -61,8 +63,8 @@ func TestNextIntervalBoundary(t *testing.T) {
 
 func TestSplitQuery(t *testing.T) {
 	for i, tc := range []struct {
-		input    Request
-		expected []Request
+		input    tripperware.Request
+		expected []tripperware.Request
 		interval time.Duration
 	}{
 		{
@@ -72,7 +74,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   60 * 60 * seconds,
@@ -89,7 +91,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   60 * 60 * seconds,
@@ -106,7 +108,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   24 * 3600 * seconds,
@@ -123,7 +125,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   3 * 3600 * seconds,
@@ -140,7 +142,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo @ start()",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
@@ -163,7 +165,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 0,
 					End:   (3 * 3600 * seconds) - (15 * seconds),
@@ -186,7 +188,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 3 * 3600 * seconds,
 					End:   (24 * 3600 * seconds) - (15 * seconds),
@@ -215,7 +217,7 @@ func TestSplitQuery(t *testing.T) {
 				Step:  15 * seconds,
 				Query: "foo",
 			},
-			expected: []Request{
+			expected: []tripperware.Request{
 				&PrometheusRequest{
 					Start: 2 * 3600 * seconds,
 					End:   (3 * 3600 * seconds) - (15 * seconds),
@@ -277,8 +279,8 @@ func TestSplitByDay(t *testing.T) {
 			u, err := url.Parse(s.URL)
 			require.NoError(t, err)
 
-			interval := func(_ Request) time.Duration { return 24 * time.Hour }
-			roundtripper := NewRoundTripper(singleHostRoundTripper{
+			interval := func(_ tripperware.Request) time.Duration { return 24 * time.Hour }
+			roundtripper := tripperware.NewRoundTripper(singleHostRoundTripper{
 				host: u.Host,
 				next: http.DefaultTransport,
 			}, PrometheusCodec, nil, NewLimitsMiddleware(mockLimits{}), SplitByIntervalMiddleware(interval, mockLimits{}, PrometheusCodec, nil))

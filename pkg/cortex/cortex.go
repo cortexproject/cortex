@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -303,7 +304,7 @@ type Cortex struct {
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	QuerierEngine            *promql.Engine
-	QueryFrontendTripperware queryrange.Tripperware
+	QueryFrontendTripperware tripperware.Tripperware
 
 	Ruler        *ruler.Ruler
 	RulerStorage rulestore.RuleStore

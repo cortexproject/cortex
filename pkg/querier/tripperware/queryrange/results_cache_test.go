@@ -1068,7 +1068,7 @@ func TestResultsCacheRecent(t *testing.T) {
 func TestResultsCacheMaxFreshness(t *testing.T) {
 	modelNow := model.Now()
 	for i, tc := range []struct {
-		fakeLimits       Limits
+		fakeLimits       tripperware.Limits
 		Handler          tripperware.HandlerFunc
 		expectedResponse *PrometheusResponse
 	}{

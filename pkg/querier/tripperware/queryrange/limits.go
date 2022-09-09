@@ -16,31 +16,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// Limits allows us to specify per-tenant runtime limits on the behavior of
-// the query handling code.
-type Limits interface {
-	// MaxQueryLookback returns the max lookback period of queries.
-	MaxQueryLookback(userID string) time.Duration
-
-	// MaxQueryLength returns the limit of the length (in time) of a query.
-	MaxQueryLength(string) time.Duration
-
-	// MaxQueryParallelism returns the limit to the number of split queries the
-	// frontend will process in parallel.
-	MaxQueryParallelism(string) int
-
-	// MaxCacheFreshness returns the period after which results are cacheable,
-	// to prevent caching of very recent results.
-	MaxCacheFreshness(string) time.Duration
-}
-
 type limitsMiddleware struct {
-	Limits
+	tripperware.Limits
 	next tripperware.Handler
 }
 
 // NewLimitsMiddleware creates a new Middleware that enforces query limits.
-func NewLimitsMiddleware(l Limits) tripperware.Middleware {
+func NewLimitsMiddleware(l tripperware.Limits) tripperware.Middleware {
 	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return limitsMiddleware{
 			next:   next,

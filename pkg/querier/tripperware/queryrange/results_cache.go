@@ -155,7 +155,7 @@ type resultsCache struct {
 	cfg      ResultsCacheConfig
 	next     tripperware.Handler
 	cache    cache.Cache
-	limits   Limits
+	limits   tripperware.Limits
 	splitter CacheSplitter
 
 	extractor                  Extractor
@@ -176,7 +176,7 @@ func NewResultsCacheMiddleware(
 	logger log.Logger,
 	cfg ResultsCacheConfig,
 	splitter CacheSplitter,
-	limits Limits,
+	limits tripperware.Limits,
 	merger tripperware.Merger,
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
@@ -394,7 +394,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r tripperware.Request, max
 
 func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, extents []Extent, maxCacheTime int64) (tripperware.Response, []Extent, error) {
 	var (
-		reqResps []RequestResponse
+		reqResps []tripperware.RequestResponse
 		err      error
 	)
 	log, ctx := spanlogger.New(ctx, "handleHit")
@@ -412,7 +412,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 		return response, nil, err
 	}
 
-	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
+	reqResps, err = tripperware.DoRequests(ctx, s.next, requests, s.limits)
 	if err != nil {
 		return nil, nil, err
 	}

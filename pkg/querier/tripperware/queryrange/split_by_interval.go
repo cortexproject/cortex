@@ -16,7 +16,7 @@ import (
 type IntervalFn func(r tripperware.Request) time.Duration
 
 // SplitByIntervalMiddleware creates a new Middleware that splits requests by a given interval.
-func SplitByIntervalMiddleware(interval IntervalFn, limits Limits, merger tripperware.Merger, registerer prometheus.Registerer) tripperware.Middleware {
+func SplitByIntervalMiddleware(interval IntervalFn, limits tripperware.Limits, merger tripperware.Merger, registerer prometheus.Registerer) tripperware.Middleware {
 	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return splitByInterval{
 			next:     next,
@@ -34,7 +34,7 @@ func SplitByIntervalMiddleware(interval IntervalFn, limits Limits, merger trippe
 
 type splitByInterval struct {
 	next     tripperware.Handler
-	limits   Limits
+	limits   tripperware.Limits
 	merger   tripperware.Merger
 	interval IntervalFn
 
@@ -51,7 +51,7 @@ func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripper
 	}
 	s.splitByCounter.Add(float64(len(reqs)))
 
-	reqResps, err := DoRequests(ctx, s.next, reqs, s.limits)
+	reqResps, err := tripperware.DoRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-package queryrange
+package tripperware
 
 import (
 	"context"
@@ -6,19 +6,18 @@ import (
 
 	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // RequestResponse contains a request response and the respective request that was used.
 type RequestResponse struct {
-	Request  tripperware.Request
-	Response tripperware.Response
+	Request  Request
+	Response Response
 }
 
 // DoRequests executes a list of requests in parallel. The limits parameters is used to limit parallelism per single request.
-func DoRequests(ctx context.Context, downstream tripperware.Handler, reqs []tripperware.Request, limits Limits) ([]RequestResponse, error) {
+func DoRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]RequestResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -29,7 +28,7 @@ func DoRequests(ctx context.Context, downstream tripperware.Handler, reqs []trip
 	defer cancel()
 
 	// Feed all requests to a bounded intermediate channel to limit parallelism.
-	intermediate := make(chan tripperware.Request)
+	intermediate := make(chan Request)
 	go func() {
 		for _, req := range reqs {
 			intermediate <- req

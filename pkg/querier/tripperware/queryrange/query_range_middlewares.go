@@ -69,7 +69,7 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 func Middlewares(
 	cfg Config,
 	log log.Logger,
-	limits Limits,
+	limits tripperware.Limits,
 	codec tripperware.Codec,
 	cacheExtractor Extractor,
 	registerer prometheus.Registerer,

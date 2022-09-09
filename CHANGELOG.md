@@ -40,6 +40,7 @@
 * [CHANGE] Remove support for alertmanager and ruler legacy store configuration. Before upgrading, you need to convert your configuration to use the `alertmanager-storage` and `ruler-storage` configuration on the version that you're already running, then upgrade.
 * [CHANGE] Disables TSDB isolation. #4825
 * [CHANGE] Drops support Prometheus 1.x rule format on configdb. #4826
+* [ENHANCEMENT] AlertManager: Retrying AlertManager Get Requests (Get Alertmanager status, Get Alertmanager Receivers) on next replica on error #4840
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
 * [ENHANCEMENT] Cortex now built with Go 1.18. #4829

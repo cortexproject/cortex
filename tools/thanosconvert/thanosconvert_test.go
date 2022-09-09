@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"strings"
 	"testing"
 
@@ -265,9 +265,9 @@ func mockBucket(data fakeBucket) *bucket.ClientMock {
 			case blockWithGetFailure:
 				bkt.On("Get", mock.Anything, key).Return(nil, errors.Errorf("test error in Get"))
 			case blockWithMalformedMeta:
-				bkt.On("Get", mock.Anything, key).Return(ioutil.NopCloser(bytes.NewBufferString("invalid json")), nil)
+				bkt.On("Get", mock.Anything, key).Return(io.NopCloser(bytes.NewBufferString("invalid json")), nil)
 			default:
-				bkt.On("Get", mock.Anything, key).Return(ioutil.NopCloser(&body), nil)
+				bkt.On("Get", mock.Anything, key).Return(io.NopCloser(&body), nil)
 			}
 
 			switch block {

@@ -2,7 +2,7 @@ package tls
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -80,17 +80,17 @@ func newTestX509Files(t *testing.T, cert, key, ca []byte) x509Paths {
 	}
 
 	if cert != nil {
-		err := ioutil.WriteFile(paths.cert, cert, 0600)
+		err := os.WriteFile(paths.cert, cert, 0600)
 		require.NoError(t, err)
 	}
 
 	if key != nil {
-		err := ioutil.WriteFile(paths.key, key, 0600)
+		err := os.WriteFile(paths.key, key, 0600)
 		require.NoError(t, err)
 	}
 
 	if ca != nil {
-		err := ioutil.WriteFile(paths.ca, ca, 0600)
+		err := os.WriteFile(paths.ca, ca, 0600)
 		require.NoError(t, err)
 	}
 

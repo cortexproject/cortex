@@ -53,7 +53,8 @@ func TestCortex(t *testing.T) {
 				Bucket: bucket.Config{
 					Backend: bucket.S3,
 					S3: s3.Config{
-						Endpoint: "localhost",
+						Endpoint:         "localhost",
+						BucketLookupType: s3.BucketPathLookup,
 					},
 				},
 			},
@@ -71,7 +72,8 @@ func TestCortex(t *testing.T) {
 			Bucket: bucket.Config{
 				Backend: bucket.S3,
 				S3: s3.Config{
-					Endpoint: "localhost",
+					Endpoint:         "localhost",
+					BucketLookupType: s3.BucketPathLookup,
 				},
 			},
 			BucketStore: tsdb.BucketStoreConfig{

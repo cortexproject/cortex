@@ -3,7 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	io "io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +16,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 
@@ -1113,7 +1113,7 @@ func TestRuler_ListAllRules(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and header
 	require.Equal(t, http.StatusOK, resp.StatusCode)

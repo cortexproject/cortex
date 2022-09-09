@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -111,7 +110,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 		input = r.Body
 	}
 
-	payload, err := ioutil.ReadAll(input)
+	payload, err := io.ReadAll(input)
 	if err != nil {
 		level.Error(logger).Log("msg", errReadingConfiguration, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errReadingConfiguration, err.Error()), http.StatusBadRequest)
@@ -223,7 +222,7 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc, limits 
 	// not to configured data dir, and on the flipside, it'll fail if we can't write
 	// to tmpDir. Ignoring both cases for now as they're ultra rare but will revisit if
 	// we see this in the wild.
-	userTempDir, err := ioutil.TempDir("", "validate-config-"+cfg.User)
+	userTempDir, err := os.MkdirTemp("", "validate-config-"+cfg.User)
 	if err != nil {
 		return err
 	}

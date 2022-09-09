@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -127,7 +126,7 @@ func newIntegrationClientServer(
 				assert.NoError(t, err, tc.name)
 				return
 			}
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			assert.NoError(t, err, tc.name)
 
 			assert.Equal(t, []byte("OK"), body, tc.name)

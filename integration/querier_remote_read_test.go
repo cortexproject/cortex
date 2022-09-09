@@ -6,7 +6,7 @@ package integration
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -102,7 +102,7 @@ func TestQuerierRemoteRead(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, httpResp.StatusCode)
 
-	compressed, err = ioutil.ReadAll(httpResp.Body)
+	compressed, err = io.ReadAll(httpResp.Body)
 	require.NoError(t, err)
 
 	uncompressed, err := snappy.Decode(nil, compressed)

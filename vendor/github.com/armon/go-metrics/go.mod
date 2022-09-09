@@ -15,3 +15,6 @@ require (
 	github.com/prometheus/common v0.9.1
 	github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926 // indirect
 )
+
+// Introduced undocumented breaking change to metrics sink interface
+retract v0.3.11

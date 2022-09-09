@@ -5,11 +5,10 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"time"
 
 	"github.com/stretchr/testify/mock"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 )
 
 var errObjectDoesNotExist = errors.New("object does not exist")
@@ -93,12 +92,35 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 		// that getting the same mocked object twice works as expected.
 		mockedGet := m.On("Get", mock.Anything, name)
 		mockedGet.Run(func(args mock.Arguments) {
-			mockedGet.Return(ioutil.NopCloser(bytes.NewReader([]byte(content))), err)
+			mockedGet.Return(io.NopCloser(bytes.NewReader([]byte(content))), err)
 		})
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err)
 		m.On("Get", mock.Anything, name).Return(nil, errObjectDoesNotExist)
 		m.On("Attributes", mock.Anything, name).Return(nil, errObjectDoesNotExist)
+	}
+}
+
+// MockGetTimes is a convenient method to mock Get() and Exists() to run x time
+func (m *ClientMock) MockGetTimes(name, content string, err error, times int) {
+	if content != "" {
+		m.On("Exists", mock.Anything, name).Return(true, err).Times(times)
+		m.On("Attributes", mock.Anything, name).Return(objstore.ObjectAttributes{
+			Size:         int64(len(content)),
+			LastModified: time.Now(),
+		}, nil).Times(times)
+
+		// Since we return an ReadCloser and it can be consumed only once,
+		// each time the mocked Get() is called we do create a new one, so
+		// that getting the same mocked object twice works as expected.
+		mockedGet := m.On("Get", mock.Anything, name).Times(times)
+		mockedGet.Run(func(args mock.Arguments) {
+			mockedGet.Return(io.NopCloser(bytes.NewReader([]byte(content))), err)
+		})
+	} else {
+		m.On("Exists", mock.Anything, name).Return(false, err).Times(times)
+		m.On("Get", mock.Anything, name).Return(nil, errObjectDoesNotExist).Times(times)
+		m.On("Attributes", mock.Anything, name).Return(nil, errObjectDoesNotExist).Times(times)
 	}
 }
 

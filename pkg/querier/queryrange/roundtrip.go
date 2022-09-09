@@ -19,7 +19,6 @@ import (
 	"context"
 	"flag"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -38,6 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const day = 24 * time.Hour
@@ -254,6 +254,10 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
+	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+		util_log.InjectHeadersIntoHTTPRequest(headerMap, request)
+	}
+
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -263,7 +267,7 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 	defer func() {
-		io.Copy(ioutil.Discard, io.LimitReader(response.Body, 1024))
+		io.Copy(io.Discard, io.LimitReader(response.Body, 1024))
 		_ = response.Body.Close()
 	}()
 

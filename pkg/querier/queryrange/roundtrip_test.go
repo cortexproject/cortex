@@ -2,7 +2,7 @@ package queryrange
 
 import (
 	"context"
-	"io/ioutil"
+	io "io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -76,7 +76,7 @@ func TestRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
 
-			bs, err := ioutil.ReadAll(resp.Body)
+			bs, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedBody, string(bs))
 		})

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,9 +26,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/testutil"
 	"gopkg.in/yaml.v2"
 
@@ -465,9 +464,13 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/block.visit", "", nil)
+	bucketClient.MockUpload(userID+"/01DTVP434PA9VFXSW2JKB3392D/block.visit", nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
+	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", "", nil)
+	bucketClient.MockUpload(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", nil)
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 
@@ -516,15 +519,19 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/block.visit", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/block.visit", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -767,16 +774,24 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", mockNoCompactBlockJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", "", nil)
+	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", mockNoCompactBlockJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", "", nil)
+	bucketClient.MockUpload("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", nil)
 
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/block.visit", "", nil)
+	bucketClient.MockUpload("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/block.visit", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/block.visit", "", nil)
+	bucketClient.MockUpload("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/block.visit", nil)
 
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
@@ -828,6 +843,8 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	bucketClient.MockIter("user-1/01DTVP434PA9VFXSW2JKB3392D", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTVP434PA9VFXSW2JKB3392D/index"}, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/index", "some index content", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", "", nil)
+	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", nil)
 	bucketClient.MockExists("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", false, nil)
 
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", nil)
@@ -988,15 +1005,23 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", "", nil)
+	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/block.visit", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", "", nil)
+	bucketClient.MockUpload("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/block.visit", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/block.visit", "", nil)
+	bucketClient.MockUpload("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/block.visit", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/block.visit", "", nil)
+	bucketClient.MockUpload("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/block.visit", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
@@ -1078,6 +1103,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/block.visit", "", nil)
+		bucketClient.MockUpload(userID+"/01DTVP434PA9VFXSW2JKB3392D/block.visit", nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 	}
@@ -1179,9 +1206,17 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		blockDirectory := []string{}
 
 		for blockID, blockTimes := range blocks {
+			blockVisitMarker := BlockVisitMarker{
+				CompactorID: "test-compactor",
+				VisitTime:   time.Now(),
+			}
+			visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/no-compact-mark.json", "", nil)
+			bucketClient.MockGetTimes(userID+"/"+blockID+"/block.visit", "", nil, 1)
+			bucketClient.MockGet(userID+"/"+blockID+"/block.visit", string(visitMarkerFileContent), nil)
+			bucketClient.MockUpload(userID+"/"+blockID+"/block.visit", nil)
 			blockDirectory = append(blockDirectory, userID+"/"+blockID)
 
 			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted
@@ -1326,7 +1361,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 	require.NoError(t, db.Snapshot(snapshotDir, true))
 
 	// Look for the created block (we expect one).
-	entries, err := ioutil.ReadDir(snapshotDir)
+	entries, err := os.ReadDir(snapshotDir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	require.True(t, entries[0].IsDir())
@@ -1353,7 +1388,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 		}
 
 		// Read the file content in memory.
-		content, err := ioutil.ReadFile(file)
+		content, err := os.ReadFile(file)
 		if err != nil {
 			return err
 		}
@@ -1503,7 +1538,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 
 	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
 		return tsdbCompactor,
-			func(_ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Planner {
+			func(ctx context.Context, bkt objstore.Bucket, _ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ prometheus.Counter, _ prometheus.Counter) compact.Planner {
 				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
 				return tsdbPlanner
 			},

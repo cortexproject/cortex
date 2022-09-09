@@ -32,6 +32,8 @@ func WithTraceID(traceID string, l kitlog.Logger) kitlog.Logger {
 //	log := util.WithContext(ctx)
 //	log.Errorf("Could not chunk chunks: %v", err)
 func WithContext(ctx context.Context, l kitlog.Logger) kitlog.Logger {
+	l = headersFromContext(ctx, l)
+
 	// Weaveworks uses "orgs" and "orgID" to represent Cortex users,
 	// even though the code-base generally uses `userID` to refer to the same thing.
 	userID, err := tenant.TenantID(ctx)
@@ -51,4 +53,13 @@ func WithContext(ctx context.Context, l kitlog.Logger) kitlog.Logger {
 // its details.
 func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
 	return log.With(l, "sourceIPs", sourceIPs)
+}
+
+// HeadersFromContext enables the logging of specified HTTP Headers that have been added to a context
+func headersFromContext(ctx context.Context, l log.Logger) log.Logger {
+	headerContentsMap := HeaderMapFromContext(ctx)
+	for header, contents := range headerContentsMap {
+		l = kitlog.With(l, header, contents)
+	}
+	return l
 }

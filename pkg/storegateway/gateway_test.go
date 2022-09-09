@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net/http"
@@ -26,10 +25,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc/status"
@@ -556,7 +555,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			tokensFile, err := ioutil.TempFile(os.TempDir(), "tokens-*")
+			tokensFile, err := os.CreateTemp(os.TempDir(), "tokens-*")
 			require.NoError(t, err)
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
 
@@ -994,7 +993,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 	logger := log.NewNopLogger()
 	userID := "user-1"
 
-	storageDir, err := ioutil.TempDir(os.TempDir(), "")
+	storageDir, err := os.MkdirTemp(os.TempDir(), "")
 	require.NoError(t, err)
 	defer os.RemoveAll(storageDir) //nolint:errcheck
 

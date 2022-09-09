@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"os/exec"
 	"regexp"
@@ -418,7 +418,7 @@ func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	}
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "response readiness")
-	body, _ := ioutil.ReadAll(res.Body)
+	body, _ := io.ReadAll(res.Body)
 
 	if res.StatusCode < p.expectedStatusRangeStart || res.StatusCode > p.expectedStatusRangeEnd {
 		return fmt.Errorf("expected code in range: [%v, %v], got status code: %v and body: %v", p.expectedStatusRangeStart, p.expectedStatusRangeEnd, res.StatusCode, string(body))
@@ -534,7 +534,7 @@ func (s *HTTPService) Metrics() (_ string, err error) {
 	}
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "metrics response")
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 
 	return string(body), err
 }

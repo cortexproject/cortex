@@ -21,6 +21,7 @@ type validateLabelsCfg struct {
 	maxLabelNamesPerSeries int
 	maxLabelNameLength     int
 	maxLabelValueLength    int
+	maxLabelsSizeBytes     int
 }
 
 func (v validateLabelsCfg) EnforceMetricName(userID string) bool {
@@ -37,6 +38,10 @@ func (v validateLabelsCfg) MaxLabelNameLength(userID string) int {
 
 func (v validateLabelsCfg) MaxLabelValueLength(userID string) int {
 	return v.maxLabelValueLength
+}
+
+func (v validateLabelsCfg) MaxLabelsSizeBytes(userID string) int {
+	return v.maxLabelsSizeBytes
 }
 
 type validateMetadataCfg struct {
@@ -59,6 +64,7 @@ func TestValidateLabels(t *testing.T) {
 	cfg.maxLabelValueLength = 25
 	cfg.maxLabelNameLength = 25
 	cfg.maxLabelNamesPerSeries = 2
+	cfg.maxLabelsSizeBytes = 90
 	cfg.enforceMetricName = true
 
 	for _, c := range []struct {
@@ -103,7 +109,7 @@ func TestValidateLabels(t *testing.T) {
 			newLabelValueTooLongError([]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "badLabelValue"},
 				{Name: "much_shorter_name", Value: "test_value_please_ignore_no_really_nothing_to_see_here"},
-			}, "test_value_please_ignore_no_really_nothing_to_see_here", cfg.maxLabelValueLength),
+			}, "much_shorter_name", "test_value_please_ignore_no_really_nothing_to_see_here", cfg.maxLabelValueLength),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
@@ -113,6 +119,14 @@ func TestValidateLabels(t *testing.T) {
 				{Name: "bar", Value: "baz"},
 				{Name: "blip", Value: "blop"},
 			}, 2),
+		},
+		{
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "exactly_twenty_five_chars", "exactly_twenty_five_chars": "exactly_twenty_five_chars"},
+			false,
+			labelSizeBytesExceededError([]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "exactly_twenty_five_chars"},
+				{Name: "exactly_twenty_five_chars", Value: "exactly_twenty_five_chars"},
+			}, 91, cfg.maxLabelsSizeBytes),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "invalid%label&name": "bar"},
@@ -135,6 +149,7 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="max_label_names_per_series",user="testUser"} 1
 			cortex_discarded_samples_total{reason="metric_name_invalid",user="testUser"} 1
 			cortex_discarded_samples_total{reason="missing_metric_name",user="testUser"} 1
+			cortex_discarded_samples_total{reason="labels_size_bytes_exceeded",user="testUser"} 1
 
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))

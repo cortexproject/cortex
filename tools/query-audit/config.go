@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io/ioutil"
+	"os"
 	"time"
 
 	"github.com/pkg/errors"
@@ -53,7 +53,7 @@ func (cfg *Config) Validate() error {
 
 // LoadConfig read YAML-formatted config from filename into cfg.
 func LoadConfig(filename string, cfg *Config) error {
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := os.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}

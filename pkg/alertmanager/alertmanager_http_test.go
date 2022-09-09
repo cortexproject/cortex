@@ -2,7 +2,7 @@ package alertmanager
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -77,7 +77,7 @@ func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
 
 		resp := w.Result()
 		require.Equal(t, 200, w.Code)
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, _ := io.ReadAll(resp.Body)
 		content := string(body)
 		require.Contains(t, content, tt.content)
 		require.NotContains(t, content, tt.nocontent)

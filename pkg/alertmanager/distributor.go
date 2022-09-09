@@ -3,7 +3,7 @@ package alertmanager
 import (
 	"context"
 	"hash/fnv"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"path"
@@ -164,7 +164,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	var body []byte
 	var err error
 	if r.Body != nil {
-		body, err = ioutil.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
+		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
 		if err != nil {
 			if util.IsRequestBodyTooLarge(err) {
 				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
@@ -181,7 +181,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
-		localCtx := user.InjectOrgID(context.Background(), userID)
+		localCtx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), userID), opentracing.SpanFromContext(r.Context()))
 		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorum")
 		defer sp.Finish()
 
@@ -233,7 +233,7 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	body, err := ioutil.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
 	if err != nil {
 		if util.IsRequestBodyTooLarge(err) {
 			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)

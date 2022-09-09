@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -24,9 +23,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -543,7 +542,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 }
 
 func getUsersInDir(t *testing.T, dir string) []string {
-	fs, err := ioutil.ReadDir(dir)
+	fs, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
 	var result []string

@@ -3,7 +3,7 @@ package frontend
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -79,7 +79,7 @@ func TestFrontend_RequestHostHeaderWhenDownstreamURLIsConfigured(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode)
 
 		defer resp.Body.Close()
-		_, err = ioutil.ReadAll(resp.Body)
+		_, err = io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
 		// We expect the Host received by the downstream is the downstream host itself
@@ -158,7 +158,7 @@ func TestFrontend_LogsSlowQueries(t *testing.T) {
 
 				resp, err := client.Do(req)
 				assert.NoError(t, err)
-				b, err := ioutil.ReadAll(resp.Body)
+				b, err := io.ReadAll(resp.Body)
 				resp.Body.Close()
 
 				assert.NoError(t, err)
@@ -223,7 +223,7 @@ func TestFrontend_ReturnsRequestBodyTooLargeError(t *testing.T) {
 
 		resp, err := client.Do(req)
 		assert.NoError(t, err)
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		assert.NoError(t, err)
 

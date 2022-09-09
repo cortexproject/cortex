@@ -216,7 +216,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if !canJoinDistributorsRing {
 		ingestionRateStrategy = newInfiniteIngestionRateStrategy()
 	} else if limits.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, true, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+		distributorsLifeCycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, true, true, log, prometheus.WrapRegistererWithPrefix("cortex_", reg))
 		if err != nil {
 			return nil, err
 		}
@@ -785,6 +785,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		localCtx = user.InjectOrgID(localCtx, userID)
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
 			localCtx = opentracing.ContextWithSpan(localCtx, sp)
+		}
+		// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
+		if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+			localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
 		}
 
 		// Get clientIP(s) from Context and add it to localCtx

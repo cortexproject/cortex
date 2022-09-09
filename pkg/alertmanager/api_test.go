@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,7 +17,7 @@ import (
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
@@ -553,7 +553,7 @@ template_files:
 			am.SetUserConfig(w, req.WithContext(ctx))
 			resp := w.Result()
 
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
 			if tc.err == nil {
@@ -688,7 +688,7 @@ receivers:
 	resp := w.Result()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, "application/yaml", resp.Header.Get("Content-Type"))
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	old, err := yaml.Marshal(testCases)
 	require.NoError(t, err)

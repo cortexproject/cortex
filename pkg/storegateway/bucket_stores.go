@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -19,11 +18,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -511,7 +510,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 // deleteLocalFilesForExcludedTenants removes local "sync" directories for tenants that are not included in the current
 // shard.
 func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
-	files, err := ioutil.ReadDir(u.cfg.BucketStore.SyncDir)
+	files, err := os.ReadDir(u.cfg.BucketStore.SyncDir)
 	if err != nil {
 		return
 	}

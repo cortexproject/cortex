@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
-	"io/ioutil"
+	"io"
 	"mime"
 	"net/http"
 	"strconv"
@@ -203,7 +203,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) validateAlertmanagerConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
-	cfg, err := ioutil.ReadAll(r.Body)
+	cfg, err := io.ReadAll(r.Body)
 	if err != nil {
 		level.Error(logger).Log("msg", "error reading request body", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

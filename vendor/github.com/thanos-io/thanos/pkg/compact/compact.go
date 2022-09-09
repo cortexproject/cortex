@@ -6,7 +6,6 @@ package compact
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -23,6 +22,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/thanos-io/thanos/pkg/block"
@@ -30,7 +30,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/extprom"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/tracing"
 )
@@ -927,7 +926,7 @@ func RepairIssue347(ctx context.Context, logger log.Logger, bkt objstore.Bucket,
 
 	level.Info(logger).Log("msg", "Repairing block broken by https://github.com/prometheus/tsdb/issues/347", "id", ie.id, "err", issue347Err)
 
-	tmpdir, err := ioutil.TempDir("", fmt.Sprintf("repair-issue-347-id-%s-", ie.id))
+	tmpdir, err := os.MkdirTemp("", fmt.Sprintf("repair-issue-347-id-%s-", ie.id))
 	if err != nil {
 		return err
 	}
@@ -1053,7 +1052,7 @@ func (cg *Group) compact(ctx context.Context, dir string, planner Planner, comp 
 					return issue347Error(errors.Wrapf(err, "invalid, but reparable block %s", bdir), meta.ULID)
 				}
 
-				if err := stats.PrometheusIssue5372Err(); !cg.acceptMalformedIndex && err != nil {
+				if err := stats.OutOfOrderLabelsErr(); !cg.acceptMalformedIndex && err != nil {
 					return errors.Wrapf(err,
 						"block id %s, try running with --debug.accept-malformed-index", meta.ULID)
 				}

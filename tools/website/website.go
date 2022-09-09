@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,7 +19,7 @@ func main() {
 		log.Fatal("provide a file to process")
 	}
 	filepath := os.Args[1]
-	buff, err := ioutil.ReadFile(filepath)
+	buff, err := os.ReadFile(filepath)
 	if err != nil {
 		panic(err)
 	}
@@ -33,7 +32,7 @@ func main() {
 		content = addPRLinks(content)
 	}
 
-	if err := ioutil.WriteFile(filepath, []byte(content), 0); err != nil {
+	if err := os.WriteFile(filepath, []byte(content), 0); err != nil {
 		panic(err)
 	}
 }

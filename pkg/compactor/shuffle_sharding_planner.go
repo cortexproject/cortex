@@ -3,23 +3,51 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
 type ShuffleShardingPlanner struct {
-	logger           log.Logger
-	ranges           []int64
-	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark
+	ctx                                context.Context
+	bkt                                objstore.Bucket
+	logger                             log.Logger
+	ranges                             []int64
+	noCompBlocksFunc                   func() map[ulid.ULID]*metadata.NoCompactMark
+	ringLifecyclerID                   string
+	blockVisitMarkerTimeout            time.Duration
+	blockVisitMarkerFileUpdateInterval time.Duration
+	blockVisitMarkerReadFailed         prometheus.Counter
+	blockVisitMarkerWriteFailed        prometheus.Counter
 }
 
-func NewShuffleShardingPlanner(logger log.Logger, ranges []int64, noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark) *ShuffleShardingPlanner {
+func NewShuffleShardingPlanner(
+	ctx context.Context,
+	bkt objstore.Bucket,
+	logger log.Logger,
+	ranges []int64,
+	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
+	ringLifecyclerID string,
+	blockVisitMarkerTimeout time.Duration,
+	blockVisitMarkerFileUpdateInterval time.Duration,
+	blockVisitMarkerReadFailed prometheus.Counter,
+	blockVisitMarkerWriteFailed prometheus.Counter,
+) *ShuffleShardingPlanner {
 	return &ShuffleShardingPlanner{
-		logger:           logger,
-		ranges:           ranges,
-		noCompBlocksFunc: noCompBlocksFunc,
+		ctx:                                ctx,
+		bkt:                                bkt,
+		logger:                             logger,
+		ranges:                             ranges,
+		noCompBlocksFunc:                   noCompBlocksFunc,
+		ringLifecyclerID:                   ringLifecyclerID,
+		blockVisitMarkerTimeout:            blockVisitMarkerTimeout,
+		blockVisitMarkerFileUpdateInterval: blockVisitMarkerFileUpdateInterval,
+		blockVisitMarkerReadFailed:         blockVisitMarkerReadFailed,
+		blockVisitMarkerWriteFailed:        blockVisitMarkerWriteFailed,
 	}
 }
 
@@ -35,12 +63,23 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 	resultMetas := make([]*metadata.Meta, 0, len(metasByMinTime))
 
 	for _, b := range metasByMinTime {
+		blockID := b.ULID.String()
 		if _, excluded := noCompactMarked[b.ULID]; excluded {
 			continue
 		}
 
 		if b.MinTime < rangeStart || b.MaxTime > rangeEnd {
-			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", b.ULID.String(), b.MinTime, b.MaxTime, rangeStart, rangeEnd)
+			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
+		}
+
+		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, blockID, p.blockVisitMarkerReadFailed)
+		if err != nil {
+			// shuffle_sharding_grouper should put visit marker file for blocks ready for
+			// compaction. So error should be returned if visit marker file does not exist.
+			return nil, fmt.Errorf("unable to get visit marker file for block %s: %s", blockID, err.Error())
+		}
+		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, p.ringLifecyclerID) {
+			return nil, fmt.Errorf("block %s is not visited by current compactor %s", blockID, p.ringLifecyclerID)
 		}
 
 		resultMetas = append(resultMetas, b)
@@ -49,6 +88,8 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 	if len(resultMetas) < 2 {
 		return nil, nil
 	}
+
+	go markBlocksVisitedHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, p.ringLifecyclerID, p.blockVisitMarkerFileUpdateInterval, p.blockVisitMarkerWriteFailed)
 
 	return resultMetas, nil
 }

@@ -227,6 +227,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if s.shouldCache != nil && !s.shouldCache(r) {
+		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "should not cache", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 		return s.next.Do(ctx, r)
 	}
 
@@ -243,6 +244,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, s.limits.MaxCacheFreshness)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
+		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "cache miss", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 		return s.next.Do(ctx, r)
 	}
 
@@ -368,6 +370,7 @@ func getHeaderValuesWithName(r Response, headerName string) (headerValues []stri
 }
 
 func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
+	level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "handle miss", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
@@ -395,6 +398,8 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	)
 	log, ctx := spanlogger.New(ctx, "handleHit")
 	defer log.Finish()
+
+	level.Debug(util_log.WithContext(ctx, log)).Log("msg", "handle hit", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 
 	requests, responses, err := s.partition(r, extents)
 	if err != nil {
@@ -639,18 +644,36 @@ func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
 	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
 }
 
-func jaegerTraceID(ctx context.Context) string {
-	span := opentracing.SpanFromContext(ctx)
-	if span == nil {
+func jaegerSpanID(ctx context.Context) string {
+	spanContext, ok := getSpanContext(ctx)
+	if !ok {
 		return ""
 	}
 
-	spanContext, ok := span.Context().(jaeger.SpanContext)
+	return spanContext.SpanID().String()
+}
+
+func jaegerTraceID(ctx context.Context) string {
+	spanContext, ok := getSpanContext(ctx)
 	if !ok {
 		return ""
 	}
 
 	return spanContext.TraceID().String()
+}
+
+func getSpanContext(ctx context.Context) (jaeger.SpanContext, bool) {
+	span := opentracing.SpanFromContext(ctx)
+	if span == nil {
+		return jaeger.SpanContext{}, false
+	}
+
+	spanContext, ok := span.Context().(jaeger.SpanContext)
+	if !ok {
+		return jaeger.SpanContext{}, false
+	}
+
+	return spanContext, true
 }
 
 // extractStats returns the stats for a given time range

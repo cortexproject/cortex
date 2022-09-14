@@ -240,7 +240,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "Basic merging of two responses.",
 			input: []tripperware.Response{

@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -434,15 +435,20 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
+	t.Cfg.QueryRange.VerticalShardSize = t.Cfg.Query.VerticalShardSize
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.Overrides,
-		queryrange.PrometheusCodec,
 		queryrange.PrometheusResponseExtractor{},
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	instantQueryMiddlewares, err := instantquery.Middlewares(t.Cfg.Query, util_log.Logger, t.Overrides)
 
 	if err != nil {
 		return nil, err
@@ -452,7 +458,9 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheus.DefaultRegisterer,
 		t.Cfg.QueryRange.ForwardHeaders,
 		queryRangeMiddlewares,
+		instantQueryMiddlewares,
 		queryrange.PrometheusCodec,
+		instantquery.InstantQueryCodec,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

@@ -95,7 +95,9 @@ func NewQueryTripperware(
 	registerer prometheus.Registerer,
 	forwardHeaders []string,
 	queryRangeMiddleware []Middleware,
+	instantRangeMiddleware []Middleware,
 	queryRangeCodec Codec,
+	instantQueryCodec Codec,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -113,10 +115,12 @@ func NewQueryTripperware(
 	// Start cleanup. If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 	_ = activeUsers.StartAsync(context.Background())
 	return func(next http.RoundTripper) http.RoundTripper {
-		// Finally, if the user selected any query range middleware, stitch it in.
-		if len(queryRangeMiddleware) > 0 {
+		// Finally, if the user selected any query middleware, stitch it in.
+		if len(queryRangeMiddleware) > 0 || len(instantRangeMiddleware) > 0 {
 			queryrange := NewRoundTripper(next, queryRangeCodec, forwardHeaders, queryRangeMiddleware...)
+			instantQuery := NewRoundTripper(next, instantQueryCodec, forwardHeaders, instantRangeMiddleware...)
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				op := "query"
 				if isQueryRange {
@@ -132,10 +136,12 @@ func NewQueryTripperware(
 				activeUsers.UpdateUserTimestamp(userStr, time.Now())
 				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
-				if !isQueryRange {
-					return next.RoundTrip(r)
+				if isQueryRange {
+					return queryrange.RoundTrip(r)
+				} else if isQuery && len(instantRangeMiddleware) > 0 {
+					return instantQuery.RoundTrip(r)
 				}
-				return queryrange.RoundTrip(r)
+				return next.RoundTrip(r)
 			})
 		}
 		return next

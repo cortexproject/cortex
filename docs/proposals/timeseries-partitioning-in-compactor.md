@@ -20,7 +20,7 @@ The compactor is a crucial component in Cortex responsible for deduplication of 
 
 ## Problem and Requirements
 
-Cortex introduced horizontally scaling compactor which allows multiple compactors to compact blocks for a single tenant, sharded by time interval. The compactor is capable of compacting multiple smaller blocks into a larger block, to reduce the the duplicated information in index. The following is an illustration of how the shuffle sharding compactor works, where each arrow represents a single compaction that can be carried out independently.
+Cortex introduced horizontally scaling compactor which allows multiple compactors to compact blocks for a single tenant, sharded by time interval. The compactor is capable of compacting multiple smaller blocks into a larger block, to reduce the duplicated information in index. The following is an illustration of how the shuffle sharding compactor works, where each arrow represents a single compaction that can be carried out independently.
 ![Current Implementation](/images/proposals/parallel-compaction-grouping.png)
 
 However, if the tenant is sending unique timeseries, the compaction process does not help with reducing the index size. Furthermore, this scaling of parallelism by time interval is not sufficient for a tenant with hundreds of millions of timeseries, as more timeseries means longer compaction time.
@@ -31,7 +31,7 @@ The compactor is able to compact up to 400M timeseries within 12 hours, and will
 
 * handling the 64GB index limit
 * reducing the overall compaction time
-    * reducing the amount of data downloaded
+    * downloading the data in smaller batches
     * reducing the time required to compact
 
 ## Design
@@ -210,7 +210,7 @@ having to download all 14 blocks in a single compactor
 If T1-T3 can fit inside 4 partitions, we can do the following grouping
 
 T1 partition 1 - Hash(timeseries label) % 2 == 0 && % 4 == 0
-T2 partition 1 - Hash(timeseries label) % 4 == 0 && 
+T2 partition 1 - Hash(timeseries label) % 4 == 0 &&
 T3 partition 1 - Hash(timeseries label) % 8 == 0
 T3 partition 5 - Hash(timeseries label) % 8 == 4
 

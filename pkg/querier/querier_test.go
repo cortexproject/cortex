@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/storage/purger"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 

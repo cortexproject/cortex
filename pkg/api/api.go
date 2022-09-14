@@ -17,7 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/storage/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"

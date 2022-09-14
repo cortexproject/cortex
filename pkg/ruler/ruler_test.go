@@ -40,7 +40,7 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/storage/purger"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"

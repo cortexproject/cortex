@@ -11,22 +11,22 @@ type randGenerator interface {
 	Float64() float64
 }
 
-type RandTraceIDRatioBased struct {
+type RandomRatioBased struct {
 	rnd      randGenerator
 	fraction float64
 }
 
-func NewRandTraceIDRatioBased(fraction float64, rnd randGenerator) sdktrace.Sampler {
+func NewRandomRatioBased(fraction float64, rnd randGenerator) sdktrace.Sampler {
 	if fraction > 1 {
 		return sdktrace.AlwaysSample()
 	} else if fraction <= 0 {
 		return sdktrace.NeverSample()
 	}
 
-	return &RandTraceIDRatioBased{rnd: rnd, fraction: fraction}
+	return &RandomRatioBased{rnd: rnd, fraction: fraction}
 }
 
-func (s *RandTraceIDRatioBased) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
+func (s *RandomRatioBased) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	psc := trace.SpanContextFromContext(p.ParentContext)
 	shouldSample := s.rnd.Float64() < s.fraction
 	if shouldSample {
@@ -41,6 +41,6 @@ func (s *RandTraceIDRatioBased) ShouldSample(p sdktrace.SamplingParameters) sdkt
 	}
 }
 
-func (s *RandTraceIDRatioBased) Description() string {
-	return fmt.Sprintf("RandTraceIDRatioBased{%g}", s.fraction)
+func (s *RandomRatioBased) Description() string {
+	return fmt.Sprintf("RandomRatioBased{%g}", s.fraction)
 }

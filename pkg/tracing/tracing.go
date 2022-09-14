@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -126,7 +127,7 @@ func newTraceProvider(name string, c Config, exporter *otlptrace.Exporter) *sdkt
 	switch strings.ToLower(c.Otel.ExporterType) {
 	case "awsxray":
 		options = append(options, sdktrace.WithIDGenerator(xray.NewIDGenerator()))
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewRandTraceIDRatioBased(c.Otel.SampleRatio, rand.New(rand.NewSource(rand.Int63()))))))
+		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewRandomRatioBased(c.Otel.SampleRatio, rand.New(rand.NewSource(time.Now().Unix()))))))
 	default:
 		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 	}

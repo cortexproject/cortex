@@ -652,11 +652,15 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 						}
 					}
 					chunksSize := countChunkBytes(s)
+					dataSize := countDataBytes(s)
 					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
 						return validation.LimitError(chunkBytesLimitErr.Error())
 					}
 					if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks)); chunkLimitErr != nil {
 						return validation.LimitError(chunkLimitErr.Error())
+					}
+					if dataBytesLimitErr := queryLimiter.AddDataBytes(dataSize); dataBytesLimitErr != nil {
+						return validation.LimitError(dataBytesLimitErr.Error())
 					}
 				}
 
@@ -681,14 +685,18 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			numSeries := len(mySeries)
 			chunkBytes := countChunkBytes(mySeries...)
+			labelBytes := countDataBytes(mySeries...)
+			dataBytes := labelBytes + chunkBytes
 
 			reqStats.AddFetchedSeries(uint64(numSeries))
 			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
+			reqStats.AddFetchedDataBytes(uint64(dataBytes))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
 				"fetched series", numSeries,
 				"fetched chunk bytes", chunkBytes,
+				"fetched data bytes", dataBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 
@@ -988,6 +996,15 @@ func countChunkBytes(series ...*storepb.Series) (count int) {
 		for _, c := range s.Chunks {
 			count += c.Size()
 		}
+	}
+
+	return count
+}
+
+// countChunkBytes returns the size of the chunks making up the provided series in bytes
+func countDataBytes(series ...*storepb.Series) (count int) {
+	for _, s := range series {
+		count += s.Size()
 	}
 
 	return count

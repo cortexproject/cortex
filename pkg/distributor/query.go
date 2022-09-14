@@ -335,6 +335,10 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				return nil, validation.LimitError(chunkBytesLimitErr.Error())
 			}
 
+			if dataBytesLimitErr := queryLimiter.AddDataBytes(resp.Size()); dataBytesLimitErr != nil {
+				return nil, validation.LimitError(dataBytesLimitErr.Error())
+			}
+
 			for _, series := range resp.Timeseries {
 				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
 					return nil, validation.LimitError(limitErr.Error())
@@ -392,6 +396,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
 	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
+	reqStats.AddFetchedDataBytes(uint64(resp.Size()))
 
 	return resp, nil
 }

@@ -17,4 +17,6 @@ message Stats {
   uint64 fetched_series_count = 2;
   // The number of bytes of the chunks fetched for the query
   uint64 fetched_chunk_bytes = 3;
+  // The number of bytes of data fetched for the query
+  uint64 fetched_data_bytes = 4;
 }

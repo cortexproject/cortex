@@ -1,4 +1,4 @@
-package queryrange
+package tripperware
 
 import (
 	"context"

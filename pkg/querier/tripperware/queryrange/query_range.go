@@ -12,9 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -24,6 +22,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -43,69 +42,16 @@ var (
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	PrometheusCodec Codec = &prometheusCodec{}
+	PrometheusCodec tripperware.Codec = &prometheusCodec{}
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
 )
 
-// Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
-type Codec interface {
-	Merger
-	// DecodeRequest decodes a Request from an http request.
-	DecodeRequest(_ context.Context, request *http.Request, forwardHeaders []string) (Request, error)
-	// DecodeResponse decodes a Response from an http response.
-	// The original request is also passed as a parameter this is useful for implementation that needs the request
-	// to merge result or build the result correctly.
-	DecodeResponse(context.Context, *http.Response, Request) (Response, error)
-	// EncodeRequest encodes a Request into an http request.
-	EncodeRequest(context.Context, Request) (*http.Request, error)
-	// EncodeResponse encodes a Response into an http response.
-	EncodeResponse(context.Context, Response) (*http.Response, error)
-}
-
-// Merger is used by middlewares making multiple requests to merge back all responses into a single one.
-type Merger interface {
-	// MergeResponse merges responses from multiple requests into a single Response
-	MergeResponse(...Response) (Response, error)
-}
-
-// Request represents a query range request that can be process by middlewares.
-type Request interface {
-	// GetStart returns the start timestamp of the request in milliseconds.
-	GetStart() int64
-	// GetEnd returns the end timestamp of the request in milliseconds.
-	GetEnd() int64
-	// GetStep returns the step of the request in milliseconds.
-	GetStep() int64
-	// GetQuery returns the query of the request.
-	GetQuery() string
-	// GetCachingOptions returns the caching options.
-	GetCachingOptions() CachingOptions
-	// WithStartEnd clone the current request with different start and end timestamp.
-	WithStartEnd(startTime int64, endTime int64) Request
-	// WithQuery clone the current request with a different query.
-	WithQuery(string) Request
-	proto.Message
-	// LogToSpan writes information about this request to an OpenTracing span
-	LogToSpan(opentracing.Span)
-	// GetStats returns the stats of the request.
-	GetStats() string
-	// WithStats clones the current `PrometheusRequest` with a new stats.
-	WithStats(stats string) Request
-}
-
-// Response represents a query range response.
-type Response interface {
-	proto.Message
-	// GetHeaders returns the HTTP headers in the response.
-	GetHeaders() []*PrometheusResponseHeader
-}
-
 type prometheusCodec struct{}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
-func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
+func (q *PrometheusRequest) WithStartEnd(start int64, end int64) tripperware.Request {
 	new := *q
 	new.Start = start
 	new.End = end
@@ -113,14 +59,14 @@ func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
 }
 
 // WithQuery clones the current `PrometheusRequest` with a new query.
-func (q *PrometheusRequest) WithQuery(query string) Request {
+func (q *PrometheusRequest) WithQuery(query string) tripperware.Request {
 	new := *q
 	new.Query = query
 	return &new
 }
 
 // WithStats clones the current `PrometheusRequest` with a new stats.
-func (q *PrometheusRequest) WithStats(stats string) Request {
+func (q *PrometheusRequest) WithStats(stats string) tripperware.Request {
 	new := *q
 	new.Stats = stats
 	return &new
@@ -153,18 +99,32 @@ func (resp *PrometheusResponse) minTime() int64 {
 	return result[0].Samples[0].TimestampMs
 }
 
+func (resp *PrometheusResponse) HTTPHeaders() map[string][]string {
+	if resp != nil && resp.GetHeaders() != nil {
+		r := map[string][]string{}
+		for _, header := range resp.GetHeaders() {
+			if header != nil {
+				r[header.Name] = header.Values
+			}
+		}
+
+		return r
+	}
+	return nil
+}
+
 // NewEmptyPrometheusResponse returns an empty successful Prometheus query range response.
 func NewEmptyPrometheusResponse() *PrometheusResponse {
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
-			Result:     []SampleStream{},
+			Result:     []tripperware.SampleStream{},
 		},
 	}
 }
 
-func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
+func (prometheusCodec) MergeResponse(responses ...tripperware.Response) (tripperware.Response, error) {
 	if len(responses) == 0 {
 		return NewEmptyPrometheusResponse(), nil
 	}
@@ -191,7 +151,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	}
 
 	if len(resultsCacheGenNumberHeaderValues) != 0 {
-		response.Headers = []*PrometheusResponseHeader{{
+		response.Headers = []*tripperware.PrometheusResponseHeader{{
 			Name:   ResultsCacheGenNumberHeaderName,
 			Values: resultsCacheGenNumberHeaderValues,
 		}}
@@ -200,7 +160,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (Request, error) {
+func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -240,7 +200,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 	for _, header := range forwardHeaders {
 		for h, hv := range r.Header {
 			if strings.EqualFold(h, header) {
-				result.Headers = append(result.Headers, &PrometheusRequestHeader{Name: h, Values: hv})
+				result.Headers = append(result.Headers, &tripperware.PrometheusRequestHeader{Name: h, Values: hv})
 				break
 			}
 		}
@@ -256,7 +216,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 	return &result, nil
 }
 
-func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Request, error) {
+func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -291,7 +251,7 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Requ
 	return req.WithContext(ctx), nil
 }
 
-func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ Request) (Response, error) {
+func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
@@ -312,7 +272,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ R
 	}
 
 	for h, hv := range r.Header {
-		resp.Headers = append(resp.Headers, &PrometheusResponseHeader{Name: h, Values: hv})
+		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
 }
@@ -340,7 +300,7 @@ func bodyBuffer(res *http.Response) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.Response, error) {
+func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 
@@ -369,36 +329,10 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.
 	return &resp, nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
-func (s *SampleStream) UnmarshalJSON(data []byte) error {
-	var stream struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
-	}
-	if err := json.Unmarshal(data, &stream); err != nil {
-		return err
-	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
-	s.Samples = stream.Values
-	return nil
-}
-
-// MarshalJSON implements json.Marshaler.
-func (s *SampleStream) MarshalJSON() ([]byte, error) {
-	stream := struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
-	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
-		Values: s.Samples,
-	}
-	return json.Marshal(stream)
-}
-
 // statsMerge merge the stats from 2 responses
 // this function is similar to matrixMerge
-func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
-	output := map[int64]*PrometheusResponseQueryableSamplesStatsPerStep{}
+func statsMerge(resps []*PrometheusResponse) *tripperware.PrometheusResponseStats {
+	output := map[int64]*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{}
 	hasStats := false
 	for _, resp := range resps {
 		if resp.Data.Stats == nil {
@@ -426,7 +360,7 @@ func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 
-	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	result := &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{}}
 	for _, key := range keys {
 		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, output[key])
 		result.Samples.TotalQueryableSamples += output[key].Value
@@ -435,14 +369,14 @@ func statsMerge(resps []*PrometheusResponse) *PrometheusResponseStats {
 	return result
 }
 
-func matrixMerge(resps []*PrometheusResponse) []SampleStream {
-	output := map[string]*SampleStream{}
+func matrixMerge(resps []*PrometheusResponse) []tripperware.SampleStream {
+	output := map[string]*tripperware.SampleStream{}
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
 			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
 			existing, ok := output[metric]
 			if !ok {
-				existing = &SampleStream{
+				existing = &tripperware.SampleStream{
 					Labels: stream.Labels,
 				}
 			}
@@ -470,7 +404,7 @@ func matrixMerge(resps []*PrometheusResponse) []SampleStream {
 	}
 	sort.Strings(keys)
 
-	result := make([]SampleStream, 0, len(output))
+	result := make([]tripperware.SampleStream, 0, len(output))
 	for _, key := range keys {
 		result = append(result, *output[key])
 	}
@@ -527,42 +461,4 @@ func decorateWithParamName(err error, field string) error {
 		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
 	}
 	return fmt.Errorf(errTmpl, field, err)
-}
-
-func PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
-	if !iter.ReadArray() {
-		iter.ReportError("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", "expected [")
-		return
-	}
-
-	t := model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond))
-
-	if !iter.ReadArray() {
-		iter.ReportError("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", "expected ,")
-		return
-	}
-	v := iter.ReadInt64()
-
-	if iter.ReadArray() {
-		iter.ReportError("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", "expected ]")
-	}
-
-	*(*PrometheusResponseQueryableSamplesStatsPerStep)(ptr) = PrometheusResponseQueryableSamplesStatsPerStep{
-		TimestampMs: int64(t),
-		Value:       v,
-	}
-}
-
-func PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
-	stats := (*PrometheusResponseQueryableSamplesStatsPerStep)(ptr)
-	stream.WriteArrayStart()
-	stream.WriteFloat64(float64(stats.TimestampMs) / float64(time.Second/time.Millisecond))
-	stream.WriteMore()
-	stream.WriteInt64(stats.Value)
-	stream.WriteArrayEnd()
-}
-
-func init() {
-	jsoniter.RegisterTypeEncoderFunc("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
-	jsoniter.RegisterTypeDecoderFunc("queryrange.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
 }

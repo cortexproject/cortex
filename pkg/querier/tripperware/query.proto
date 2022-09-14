@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package tripperware;
+
+option go_package = "tripperware";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message SampleStream {
+  repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
+  repeated cortexpb.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+}
+
+message PrometheusResponseStats {
+  PrometheusResponseSamplesStats samples = 1 [(gogoproto.jsontag) = "samples"];
+}
+
+message PrometheusResponseSamplesStats {
+  int64 totalQueryableSamples = 1 [(gogoproto.jsontag) = "totalQueryableSamples"];
+  repeated PrometheusResponseQueryableSamplesStatsPerStep totalQueryableSamplesPerStep = 2 [(gogoproto.jsontag) = "totalQueryableSamplesPerStep"];
+}
+
+message PrometheusResponseQueryableSamplesStatsPerStep {
+  int64 value       = 1;
+  int64 timestamp_ms = 2;
+}
+
+message PrometheusResponseHeader {
+  string Name = 1 [(gogoproto.jsontag) = "-"];
+  repeated string Values = 2 [(gogoproto.jsontag) = "-"];
+}
+
+message PrometheusRequestHeader {
+  string Name = 1 [(gogoproto.jsontag) = "-"];
+  repeated string Values = 2 [(gogoproto.jsontag) = "-"];
+}

@@ -3,7 +3,7 @@ package queryrange
 import (
 	"context"
 	"errors"
-	fmt "fmt"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestRetry(t *testing.T) {
@@ -18,13 +20,13 @@ func TestRetry(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		handler Handler
-		resp    Response
+		handler tripperware.Handler
+		resp    tripperware.Response
 		err     error
 	}{
 		{
 			name: "retry failures",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				if try.Inc() == 5 {
 					return &PrometheusResponse{Status: "Hello World"}, nil
 				}
@@ -34,21 +36,21 @@ func TestRetry(t *testing.T) {
 		},
 		{
 			name: "don't retry 400s",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 			}),
 			err: httpgrpc.Errorf(http.StatusBadRequest, "Bad Request"),
 		},
 		{
 			name: "retry 500s",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error")
 			}),
 			err: httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error"),
 		},
 		{
 			name: "last error",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 				if try.Inc() == 5 {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 				}
@@ -72,7 +74,7 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := NewRetryMiddleware(log.NewNopLogger(), 5, nil).Wrap(
-		HandlerFunc(func(c context.Context, r Request) (Response, error) {
+		tripperware.HandlerFunc(func(c context.Context, r tripperware.Request) (tripperware.Response, error) {
 			try.Inc()
 			return nil, ctx.Err()
 		}),
@@ -82,7 +84,7 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 
 	ctx, cancel = context.WithCancel(context.Background())
 	_, err = NewRetryMiddleware(log.NewNopLogger(), 5, nil).Wrap(
-		HandlerFunc(func(c context.Context, r Request) (Response, error) {
+		tripperware.HandlerFunc(func(c context.Context, r tripperware.Request) (tripperware.Response, error) {
 			try.Inc()
 			cancel()
 			return nil, errors.New("failed")

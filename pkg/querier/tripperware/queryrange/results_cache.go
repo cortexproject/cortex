@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -81,16 +82,16 @@ func (cfg *ResultsCacheConfig) Validate(qCfg querier.Config) error {
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
 type Extractor interface {
 	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
-	Extract(start, end int64, from Response) Response
-	ResponseWithoutHeaders(resp Response) Response
-	ResponseWithoutStats(resp Response) Response
+	Extract(start, end int64, from tripperware.Response) tripperware.Response
+	ResponseWithoutHeaders(resp tripperware.Response) tripperware.Response
+	ResponseWithoutStats(resp tripperware.Response) tripperware.Response
 }
 
 // PrometheusResponseExtractor helps extracting specific info from Query Response.
 type PrometheusResponseExtractor struct{}
 
 // Extract extracts response for specific a range from a response.
-func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Response {
+func (PrometheusResponseExtractor) Extract(start, end int64, from tripperware.Response) tripperware.Response {
 	promRes := from.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
@@ -105,7 +106,7 @@ func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Resp
 
 // ResponseWithoutHeaders is useful in caching data without headers since
 // we anyways do not need headers for sending back the response so this saves some space by reducing size of the objects.
-func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Response {
+func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp tripperware.Response) tripperware.Response {
 	promRes := resp.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
@@ -118,7 +119,7 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Respons
 }
 
 // ResponseWithoutStats is returns the response without the stats information
-func (PrometheusResponseExtractor) ResponseWithoutStats(resp Response) Response {
+func (PrometheusResponseExtractor) ResponseWithoutStats(resp tripperware.Response) tripperware.Response {
 	promRes := resp.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
@@ -133,33 +134,33 @@ func (PrometheusResponseExtractor) ResponseWithoutStats(resp Response) Response 
 // CacheSplitter generates cache keys. This is a useful interface for downstream
 // consumers who wish to implement their own strategies.
 type CacheSplitter interface {
-	GenerateCacheKey(userID string, r Request) string
+	GenerateCacheKey(userID string, r tripperware.Request) string
 }
 
 // constSplitter is a utility for using a constant split interval when determining cache keys
 type constSplitter time.Duration
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
+func (t constSplitter) GenerateCacheKey(userID string, r tripperware.Request) string {
 	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 // ShouldCacheFn checks whether the current request should go to cache
 // or not. If not, just send the request to next handler.
-type ShouldCacheFn func(r Request) bool
+type ShouldCacheFn func(r tripperware.Request) bool
 
 type resultsCache struct {
 	logger   log.Logger
 	cfg      ResultsCacheConfig
-	next     Handler
+	next     tripperware.Handler
 	cache    cache.Cache
-	limits   Limits
+	limits   tripperware.Limits
 	splitter CacheSplitter
 
 	extractor                  Extractor
 	minCacheExtent             int64 // discard any cache extent smaller than this
-	merger                     Merger
+	merger                     tripperware.Merger
 	cacheGenNumberLoader       CacheGenNumberLoader
 	shouldCache                ShouldCacheFn
 	cacheQueryableSamplesStats bool
@@ -175,13 +176,13 @@ func NewResultsCacheMiddleware(
 	logger log.Logger,
 	cfg ResultsCacheConfig,
 	splitter CacheSplitter,
-	limits Limits,
-	merger Merger,
+	limits tripperware.Limits,
+	merger tripperware.Merger,
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
 	reg prometheus.Registerer,
-) (Middleware, cache.Cache, error) {
+) (tripperware.Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig, reg, logger)
 	if err != nil {
 		return nil, nil, err
@@ -194,7 +195,7 @@ func NewResultsCacheMiddleware(
 		c = cache.NewCacheGenNumMiddleware(c)
 	}
 
-	return MiddlewareFunc(func(next Handler) Handler {
+	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return &resultsCache{
 			logger:                     logger,
 			cfg:                        cfg,
@@ -212,7 +213,7 @@ func NewResultsCacheMiddleware(
 	}), c, nil
 }
 
-func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
+func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	respWithStats := r.GetStats() != "" && s.cacheQueryableSamplesStats
 	if err != nil {
@@ -238,7 +239,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	var (
 		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
-		response Response
+		response tripperware.Response
 	)
 
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, s.limits.MaxCacheFreshness)
@@ -270,7 +271,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 }
 
 // shouldCacheResponse says whether the response should be cached or not.
-func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
+func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.Request, r tripperware.Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
 	for _, v := range headerValues {
 		if v == noStoreValue {
@@ -309,7 +310,7 @@ var errAtModifierAfterEnd = errors.New("at modifier after end")
 
 // isAtModifierCachable returns true if the @ modifier result
 // is safe to cache.
-func (s resultsCache) isAtModifierCachable(ctx context.Context, r Request, maxCacheTime int64) bool {
+func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Request, maxCacheTime int64) bool {
 	// There are 2 cases when @ modifier is not safe to cache:
 	//   1. When @ modifier points to time beyond the maxCacheTime.
 	//   2. If the @ modifier time is > the query range end while being
@@ -357,19 +358,19 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r Request, maxCa
 	return atModCachable
 }
 
-func getHeaderValuesWithName(r Response, headerName string) (headerValues []string) {
-	for _, hv := range r.GetHeaders() {
-		if hv.GetName() != headerName {
+func getHeaderValuesWithName(r tripperware.Response, headerName string) (headerValues []string) {
+	for name, hv := range r.HTTPHeaders() {
+		if name != headerName {
 			continue
 		}
 
-		headerValues = append(headerValues, hv.GetValues()...)
+		headerValues = append(headerValues, hv...)
 	}
 
 	return
 }
 
-func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
+func (s resultsCache) handleMiss(ctx context.Context, r tripperware.Request, maxCacheTime int64) (tripperware.Response, []Extent, error) {
 	level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "handle miss", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 	response, err := s.next.Do(ctx, r)
 	if err != nil {
@@ -391,9 +392,9 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime in
 	return response, extents, nil
 }
 
-func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent, maxCacheTime int64) (Response, []Extent, error) {
+func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, extents []Extent, maxCacheTime int64) (tripperware.Response, []Extent, error) {
 	var (
-		reqResps []RequestResponse
+		reqResps []tripperware.RequestResponse
 		err      error
 	)
 	log, ctx := spanlogger.New(ctx, "handleHit")
@@ -411,7 +412,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
+	reqResps, err = tripperware.DoRequests(ctx, s.next, requests, s.limits)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -485,7 +486,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 }
 
 type accumulator struct {
-	Response
+	tripperware.Response
 	Extent
 }
 
@@ -513,7 +514,7 @@ func newAccumulator(base Extent) (*accumulator, error) {
 	}, nil
 }
 
-func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
+func toExtent(ctx context.Context, req tripperware.Request, res tripperware.Response) (Extent, error) {
 	any, err := types.MarshalAny(res)
 	if err != nil {
 		return Extent{}, err
@@ -528,9 +529,9 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 
 // partition calculates the required requests to satisfy req given the cached data.
 // extents must be in order by start time.
-func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Response, error) {
-	var requests []Request
-	var cachedResponses []Response
+func (s resultsCache) partition(req tripperware.Request, extents []Extent) ([]tripperware.Request, []tripperware.Response, error) {
+	var requests []tripperware.Request
+	var cachedResponses []tripperware.Response
 	start := req.GetStart()
 
 	for _, extent := range extents {
@@ -578,7 +579,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 	return requests, cachedResponses, nil
 }
 
-func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
+func (s resultsCache) filterRecentExtents(req tripperware.Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
 	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / req.GetStep()) * req.GetStep()
 	for i := range extents {
 		// Never cache data for the latest freshness period.
@@ -678,12 +679,12 @@ func getSpanContext(ctx context.Context) (jaeger.SpanContext, bool) {
 
 // extractStats returns the stats for a given time range
 // this function is similar to extractSampleStream
-func extractStats(start, end int64, stats *PrometheusResponseStats) *PrometheusResponseStats {
+func extractStats(start, end int64, stats *tripperware.PrometheusResponseStats) *tripperware.PrometheusResponseStats {
 	if stats == nil || stats.Samples == nil {
 		return stats
 	}
 
-	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	result := &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{}}
 	for _, s := range stats.Samples.TotalQueryableSamplesPerStep {
 		if start <= s.TimestampMs && s.TimestampMs <= end {
 			result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, s)
@@ -693,8 +694,8 @@ func extractStats(start, end int64, stats *PrometheusResponseStats) *PrometheusR
 	return result
 }
 
-func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
-	result := make([]SampleStream, 0, len(matrix))
+func extractMatrix(start, end int64, matrix []tripperware.SampleStream) []tripperware.SampleStream {
+	result := make([]tripperware.SampleStream, 0, len(matrix))
 	for _, stream := range matrix {
 		extracted, ok := extractSampleStream(start, end, stream)
 		if ok {
@@ -704,8 +705,8 @@ func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {
 	return result
 }
 
-func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, bool) {
-	result := SampleStream{
+func extractSampleStream(start, end int64, stream tripperware.SampleStream) (tripperware.SampleStream, bool) {
+	result := tripperware.SampleStream{
 		Labels:  stream.Labels,
 		Samples: make([]cortexpb.Sample, 0, len(stream.Samples)),
 	}
@@ -715,12 +716,12 @@ func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, b
 		}
 	}
 	if len(result.Samples) == 0 {
-		return SampleStream{}, false
+		return tripperware.SampleStream{}, false
 	}
 	return result, true
 }
 
-func (e *Extent) toResponse() (Response, error) {
+func (e *Extent) toResponse() (tripperware.Response, error) {
 	msg, err := types.EmptyAny(e.Response)
 	if err != nil {
 		return nil, err
@@ -730,7 +731,7 @@ func (e *Extent) toResponse() (Response, error) {
 		return nil, err
 	}
 
-	resp, ok := msg.(Response)
+	resp, ok := msg.(tripperware.Response)
 	if !ok {
 		return nil, fmt.Errorf("bad cached type")
 	}

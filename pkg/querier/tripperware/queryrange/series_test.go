@@ -7,13 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func Test_ResponseToSamples(t *testing.T) {
 	input := &PrometheusResponse{
 		Data: PrometheusData{
 			ResultType: string(parser.ValueTypeMatrix),
-			Result: []SampleStream{
+			Result: []tripperware.SampleStream{
 				{
 					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},

@@ -32,8 +32,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
@@ -434,7 +435,7 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	tripperware, cache, err := queryrange.NewTripperware(
+	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.Overrides,
@@ -448,7 +449,12 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
-	t.QueryFrontendTripperware = tripperware
+	t.QueryFrontendTripperware = tripperware.NewQueryTripperware(util_log.Logger,
+		prometheus.DefaultRegisterer,
+		t.Cfg.QueryRange.ForwardHeaders,
+		queryRangeMiddlewares,
+		queryrange.PrometheusCodec,
+	)
 
 	return services.NewIdleService(nil, func(_ error) error {
 		if cache != nil {

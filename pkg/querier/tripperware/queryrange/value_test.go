@@ -10,13 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestFromValue(t *testing.T) {
 	var testExpr = []struct {
 		input    *promql.Result
 		err      bool
-		expected []SampleStream
+		expected []tripperware.SampleStream
 	}{
 		// string (errors)
 		{
@@ -31,7 +32,7 @@ func TestFromValue(t *testing.T) {
 		{
 			input: &promql.Result{Value: promql.Scalar{T: 1, V: 1}},
 			err:   false,
-			expected: []SampleStream{
+			expected: []tripperware.SampleStream{
 				{
 					Samples: []cortexpb.Sample{
 						{
@@ -63,7 +64,7 @@ func TestFromValue(t *testing.T) {
 				},
 			},
 			err: false,
-			expected: []SampleStream{
+			expected: []tripperware.SampleStream{
 				{
 					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},
@@ -117,7 +118,7 @@ func TestFromValue(t *testing.T) {
 				},
 			},
 			err: false,
-			expected: []SampleStream{
+			expected: []tripperware.SampleStream{
 				{
 					Labels: []cortexpb.LabelAdapter{
 						{Name: "a", Value: "a1"},

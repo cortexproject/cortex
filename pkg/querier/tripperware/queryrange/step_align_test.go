@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestStepAlign(t *testing.T) {
@@ -41,7 +43,7 @@ func TestStepAlign(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var result *PrometheusRequest
 			s := stepAlign{
-				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+				next: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 					result = req.(*PrometheusRequest)
 					return nil, nil
 				}),

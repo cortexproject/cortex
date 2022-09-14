@@ -13,11 +13,10 @@
 //
 // Mostly lifted from prometheus/web/api/v1/api.go.
 
-package queryrange
+package tripperware
 
 import (
 	"context"
-	"flag"
 	"io"
 	"net/http"
 	"strings"
@@ -26,55 +25,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
-
-const day = 24 * time.Hour
-
-// Config for query_range middleware chain.
-type Config struct {
-	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
-	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
-	ResultsCacheConfig     `yaml:"results_cache"`
-	CacheResults           bool `yaml:"cache_results"`
-	MaxRetries             int  `yaml:"max_retries"`
-	// List of headers which query_range middleware chain would forward to downstream querier.
-	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
-}
-
-// RegisterFlags adds the flags required to config this to the given FlagSet.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
-	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks. This also determines how cache keys are chosen when result caching is enabled")
-	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
-	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
-	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
-	cfg.ResultsCacheConfig.RegisterFlags(f)
-}
-
-// Validate validates the config.
-func (cfg *Config) Validate(qCfg querier.Config) error {
-	if cfg.CacheResults {
-		if cfg.SplitQueriesByInterval <= 0 {
-			return errors.New("querier.cache-results may only be enabled in conjunction with querier.split-queries-by-interval. Please set the latter")
-		}
-		if err := cfg.ResultsCacheConfig.Validate(qCfg); err != nil {
-			return errors.Wrap(err, "invalid ResultsCache config")
-		}
-	}
-	return nil
-}
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
 type HandlerFunc func(context.Context, Request) (Response, error)
@@ -82,35 +41,6 @@ type HandlerFunc func(context.Context, Request) (Response, error)
 // Do implements Handler.
 func (q HandlerFunc) Do(ctx context.Context, req Request) (Response, error) {
 	return q(ctx, req)
-}
-
-// Handler is like http.Handle, but specifically for Prometheus query_range calls.
-type Handler interface {
-	Do(context.Context, Request) (Response, error)
-}
-
-// MiddlewareFunc is like http.HandlerFunc, but for Middleware.
-type MiddlewareFunc func(Handler) Handler
-
-// Wrap implements Middleware.
-func (q MiddlewareFunc) Wrap(h Handler) Handler {
-	return q(h)
-}
-
-// Middleware is a higher order Handler.
-type Middleware interface {
-	Wrap(Handler) Handler
-}
-
-// MergeMiddlewares produces a middleware that applies multiple middleware in turn;
-// ie Merge(f,g,h).Wrap(handler) == f.Wrap(g.Wrap(h.Wrap(handler)))
-func MergeMiddlewares(middleware ...Middleware) Middleware {
-	return MiddlewareFunc(func(next Handler) Handler {
-		for i := len(middleware) - 1; i >= 0; i-- {
-			next = middleware[i].Wrap(next)
-		}
-		return next
-	})
 }
 
 // Tripperware is a signature for all http client-side middleware.
@@ -124,16 +54,49 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
 
-// NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
-func NewTripperware(
-	cfg Config,
+// Handler is like http.Handle, but specifically for Prometheus query_range calls.
+type Handler interface {
+	Do(context.Context, Request) (Response, error)
+}
+
+// Middleware is a higher order Handler.
+type Middleware interface {
+	Wrap(Handler) Handler
+}
+
+// MiddlewareFunc is like http.HandlerFunc, but for Middleware.
+type MiddlewareFunc func(Handler) Handler
+
+// Wrap implements Middleware.
+func (q MiddlewareFunc) Wrap(h Handler) Handler {
+	return q(h)
+}
+
+type roundTripper struct {
+	next    http.RoundTripper
+	handler Handler
+	codec   Codec
+	headers []string
+}
+
+// MergeMiddlewares produces a middleware that applies multiple middleware in turn;
+// ie Merge(f,g,h).Wrap(handler) == f.Wrap(g.Wrap(h.Wrap(handler)))
+func MergeMiddlewares(middleware ...Middleware) Middleware {
+	return MiddlewareFunc(func(next Handler) Handler {
+		for i := len(middleware) - 1; i >= 0; i-- {
+			next = middleware[i].Wrap(next)
+		}
+		return next
+	})
+}
+
+func NewQueryTripperware(
 	log log.Logger,
-	limits Limits,
-	codec Codec,
-	cacheExtractor Extractor,
 	registerer prometheus.Registerer,
-	cacheGenNumberLoader CacheGenNumberLoader,
-) (Tripperware, cache.Cache, error) {
+	forwardHeaders []string,
+	queryRangeMiddleware []Middleware,
+	queryRangeCodec Codec,
+) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_frontend_queries_total",
@@ -147,41 +110,12 @@ func NewTripperware(
 		}
 	})
 
-	// Metric used to keep track of each middleware execution duration.
-	metrics := NewInstrumentMiddlewareMetrics(registerer)
-
-	queryRangeMiddleware := []Middleware{NewLimitsMiddleware(limits)}
-	if cfg.AlignQueriesWithStep {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
-	}
-	if cfg.SplitQueriesByInterval != 0 {
-		staticIntervalFn := func(_ Request) time.Duration { return cfg.SplitQueriesByInterval }
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, codec, registerer))
-	}
-
-	var c cache.Cache
-	if cfg.CacheResults {
-		shouldCache := func(r Request) bool {
-			return !r.GetCachingOptions().Disabled
-		}
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
-		if err != nil {
-			return nil, nil, err
-		}
-		c = cache
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("results_cache", metrics), queryCacheMiddleware)
-	}
-
-	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
-	}
-
 	// Start cleanup. If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 	_ = activeUsers.StartAsync(context.Background())
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			queryrange := NewRoundTripper(next, codec, cfg.ForwardHeaders, queryRangeMiddleware...)
+			queryrange := NewRoundTripper(next, queryRangeCodec, forwardHeaders, queryRangeMiddleware...)
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 				op := "query"
@@ -205,14 +139,7 @@ func NewTripperware(
 			})
 		}
 		return next
-	}, c, nil
-}
-
-type roundTripper struct {
-	next    http.RoundTripper
-	handler Handler
-	codec   Codec
-	headers []string
+	}
 }
 
 // NewRoundTripper merges a set of middlewares into an handler, then inject it into the `next` roundtripper

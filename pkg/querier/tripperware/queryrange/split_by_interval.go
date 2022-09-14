@@ -9,13 +9,15 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
-type IntervalFn func(r Request) time.Duration
+type IntervalFn func(r tripperware.Request) time.Duration
 
 // SplitByIntervalMiddleware creates a new Middleware that splits requests by a given interval.
-func SplitByIntervalMiddleware(interval IntervalFn, limits Limits, merger Merger, registerer prometheus.Registerer) Middleware {
-	return MiddlewareFunc(func(next Handler) Handler {
+func SplitByIntervalMiddleware(interval IntervalFn, limits tripperware.Limits, merger tripperware.Merger, registerer prometheus.Registerer) tripperware.Middleware {
+	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return splitByInterval{
 			next:     next,
 			limits:   limits,
@@ -31,16 +33,16 @@ func SplitByIntervalMiddleware(interval IntervalFn, limits Limits, merger Merger
 }
 
 type splitByInterval struct {
-	next     Handler
-	limits   Limits
-	merger   Merger
+	next     tripperware.Handler
+	limits   tripperware.Limits
+	merger   tripperware.Merger
 	interval IntervalFn
 
 	// Metrics.
 	splitByCounter prometheus.Counter
 }
 
-func (s splitByInterval) Do(ctx context.Context, r Request) (Response, error) {
+func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
 	reqs, err := splitQuery(r, s.interval(r))
@@ -49,12 +51,12 @@ func (s splitByInterval) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	s.splitByCounter.Add(float64(len(reqs)))
 
-	reqResps, err := DoRequests(ctx, s.next, reqs, s.limits)
+	reqResps, err := tripperware.DoRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {
 		return nil, err
 	}
 
-	resps := make([]Response, 0, len(reqResps))
+	resps := make([]tripperware.Response, 0, len(reqResps))
 	for _, reqResp := range reqResps {
 		resps = append(resps, reqResp.Response)
 	}
@@ -66,14 +68,14 @@ func (s splitByInterval) Do(ctx context.Context, r Request) (Response, error) {
 	return response, nil
 }
 
-func splitQuery(r Request, interval time.Duration) ([]Request, error) {
+func splitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Request, error) {
 	// Replace @ modifier function to their respective constant values in the query.
 	// This way subqueries will be evaluated at the same time as the parent query.
 	query, err := evaluateAtModifierFunction(r.GetQuery(), r.GetStart(), r.GetEnd())
 	if err != nil {
 		return nil, err
 	}
-	var reqs []Request
+	var reqs []tripperware.Request
 	for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)
 		if end+r.GetStep() >= r.GetEnd() {

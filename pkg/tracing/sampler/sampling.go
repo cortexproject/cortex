@@ -31,7 +31,6 @@ func NewRandomRatioBased(fraction float64, rnd randGenerator) sdktrace.Sampler {
 	return &RandomRatioBased{rnd: rnd, fraction: fraction}
 }
 
-// ShouldSample impleents sdktrace.Sampler.ShouldSample.
 func (s *RandomRatioBased) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	psc := trace.SpanContextFromContext(p.ParentContext)
 	shouldSample := s.rnd.Float64() < s.fraction
@@ -47,7 +46,6 @@ func (s *RandomRatioBased) ShouldSample(p sdktrace.SamplingParameters) sdktrace.
 	}
 }
 
-// Description implements sdktrace.Sampler.Description.
 func (s *RandomRatioBased) Description() string {
 	return fmt.Sprintf("RandomRatioBased{%g}", s.fraction)
 }

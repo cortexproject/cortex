@@ -104,28 +104,6 @@ func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-ch
 	}
 }
 
-func ingesterChunkStreaming(manager *runtimeconfig.Manager) func() ingester.QueryStreamType {
-	if manager == nil {
-		return nil
-	}
-
-	return func() ingester.QueryStreamType {
-		val := manager.GetConfig()
-		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
-			if cfg.IngesterChunkStreaming == nil {
-				return ingester.QueryStreamDefault
-			}
-
-			if *cfg.IngesterChunkStreaming {
-				return ingester.QueryStreamChunks
-			}
-			return ingester.QueryStreamSamples
-		}
-
-		return ingester.QueryStreamDefault
-	}
-}
-
 func ingesterInstanceLimits(manager *runtimeconfig.Manager) func() *ingester.InstanceLimits {
 	if manager == nil {
 		return nil

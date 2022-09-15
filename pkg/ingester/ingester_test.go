@@ -1388,7 +1388,7 @@ func Test_Ingester_LabelNames(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1432,7 +1432,7 @@ func Test_Ingester_LabelValues(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1551,7 +1551,7 @@ func Test_Ingester_Query(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1845,7 +1845,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range fixtures {
-		req, _, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -1984,12 +1984,6 @@ func TestIngester_QueryStream(t *testing.T) {
 	// Create ingester.
 	cfg := defaultIngesterTestConfig(t)
 
-	// change stream type in runtime.
-	var streamType QueryStreamType
-	cfg.StreamTypeFn = func() QueryStreamType {
-		return streamType
-	}
-
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -2003,7 +1997,7 @@ func TestIngester_QueryStream(t *testing.T) {
 	// Push series.
 	ctx := user.InjectOrgID(context.Background(), userID)
 	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
-	req, _, expectedResponseSamples, expectedResponseChunks := mockWriteRequest(t, lbls, 123000, 456)
+	req, _, expectedResponseChunks := mockWriteRequest(t, lbls, 123000, 456)
 	_, err = i.Push(ctx, req)
 	require.NoError(t, err)
 
@@ -2034,26 +2028,6 @@ func TestIngester_QueryStream(t *testing.T) {
 		}},
 	}
 
-	samplesTest := func(t *testing.T) {
-		s, err := c.QueryStream(ctx, queryRequest)
-		require.NoError(t, err)
-
-		count := 0
-		var lastResp *client.QueryStreamResponse
-		for {
-			resp, err := s.Recv()
-			if err == io.EOF {
-				break
-			}
-			require.NoError(t, err)
-			require.Zero(t, len(resp.Chunkseries)) // No chunks expected
-			count += len(resp.Timeseries)
-			lastResp = resp
-		}
-		require.Equal(t, 1, count)
-		require.Equal(t, expectedResponseSamples, lastResp)
-	}
-
 	chunksTest := func(t *testing.T) {
 		s, err := c.QueryStream(ctx, queryRequest)
 		require.NoError(t, err)
@@ -2074,114 +2048,12 @@ func TestIngester_QueryStream(t *testing.T) {
 		require.Equal(t, expectedResponseChunks, lastResp)
 	}
 
-	streamType = QueryStreamDefault
-	t.Run("default", samplesTest)
-
-	streamType = QueryStreamSamples
-	t.Run("samples", samplesTest)
-
-	streamType = QueryStreamChunks
 	t.Run("chunks", chunksTest)
-}
-
-func TestIngester_QueryStreamManySamples(t *testing.T) {
-	// Create ingester.
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	// Wait until it's ACTIVE.
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Push series.
-	ctx := user.InjectOrgID(context.Background(), userID)
-
-	const samplesCount = 100000
-	samples := make([]cortexpb.Sample, 0, samplesCount)
-
-	for i := 0; i < samplesCount; i++ {
-		samples = append(samples, cortexpb.Sample{
-			Value:       float64(i),
-			TimestampMs: int64(i),
-		})
-	}
-
-	// 10k samples encode to around 140 KiB,
-	_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "1"}}, samples[0:10000]))
-	require.NoError(t, err)
-
-	// 100k samples encode to around 1.4 MiB,
-	_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "2"}}, samples))
-	require.NoError(t, err)
-
-	// 50k samples encode to around 716 KiB,
-	_, err = i.Push(ctx, writeRequestSingleSeries(labels.Labels{{Name: labels.MetricName, Value: "foo"}, {Name: "l", Value: "3"}}, samples[0:50000]))
-	require.NoError(t, err)
-
-	// Create a GRPC server used to query back the data.
-	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
-	defer serv.GracefulStop()
-	client.RegisterIngesterServer(serv, i)
-
-	listener, err := net.Listen("tcp", "localhost:0")
-	require.NoError(t, err)
-
-	go func() {
-		require.NoError(t, serv.Serve(listener))
-	}()
-
-	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
-	require.NoError(t, err)
-	defer c.Close()
-
-	s, err := c.QueryStream(ctx, &client.QueryRequest{
-		StartTimestampMs: 0,
-		EndTimestampMs:   samplesCount + 1,
-
-		Matchers: []*client.LabelMatcher{{
-			Type:  client.EQUAL,
-			Name:  model.MetricNameLabel,
-			Value: "foo",
-		}},
-	})
-	require.NoError(t, err)
-
-	recvMsgs := 0
-	series := 0
-	totalSamples := 0
-
-	for {
-		resp, err := s.Recv()
-		if err == io.EOF {
-			break
-		}
-		require.NoError(t, err)
-		require.True(t, len(resp.Timeseries) > 0) // No empty messages.
-
-		recvMsgs++
-		series += len(resp.Timeseries)
-
-		for _, ts := range resp.Timeseries {
-			totalSamples += len(ts.Samples)
-		}
-	}
-
-	// As ingester doesn't guarantee sorting of series, we can get 2 (10k + 50k in first, 100k in second)
-	// or 3 messages (small series first, 100k second, small series last).
-
-	require.True(t, 2 <= recvMsgs && recvMsgs <= 3)
-	require.Equal(t, 3, series)
-	require.Equal(t, 10000+50000+samplesCount, totalSamples)
 }
 
 func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	// Create ingester.
 	cfg := defaultIngesterTestConfig(t)
-	cfg.StreamChunksWhenUsingBlocks = true
 
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 	require.NoError(t, err)
@@ -2307,17 +2179,12 @@ func (m *mockQueryStreamServer) Context() context.Context {
 	return m.ctx
 }
 
-func BenchmarkIngester_QueryStream_Samples(b *testing.B) {
-	benchmarkQueryStream(b, false)
-}
-
 func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
-	benchmarkQueryStream(b, true)
+	benchmarkQueryStream(b)
 }
 
-func benchmarkQueryStream(b *testing.B, streamChunks bool) {
+func benchmarkQueryStream(b *testing.B) {
 	cfg := defaultIngesterTestConfig(b)
-	cfg.StreamChunksWhenUsingBlocks = streamChunks
 
 	// Create ingester.
 	i, err := prepareIngesterWithBlocksStorage(b, cfg, nil)
@@ -2370,7 +2237,7 @@ func benchmarkQueryStream(b *testing.B, streamChunks bool) {
 	}
 }
 
-func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestampMs int64) (*cortexpb.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse, *client.QueryStreamResponse) {
+func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestampMs int64) (*cortexpb.WriteRequest, *client.QueryResponse, *client.QueryStreamResponse) {
 	samples := []cortexpb.Sample{
 		{
 			TimestampMs: timestampMs,
@@ -2382,15 +2249,6 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 
 	// Generate the expected response
 	expectedQueryRes := &client.QueryResponse{
-		Timeseries: []cortexpb.TimeSeries{
-			{
-				Labels:  cortexpb.FromLabelsToLabelAdapters(lbls),
-				Samples: samples,
-			},
-		},
-	}
-
-	expectedQueryStreamResSamples := &client.QueryStreamResponse{
 		Timeseries: []cortexpb.TimeSeries{
 			{
 				Labels:  cortexpb.FromLabelsToLabelAdapters(lbls),
@@ -2421,7 +2279,7 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 		},
 	}
 
-	return req, expectedQueryRes, expectedQueryStreamResSamples, expectedQueryStreamResChunks
+	return req, expectedQueryRes, expectedQueryStreamResChunks
 }
 
 func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
@@ -2935,7 +2793,7 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 	sampleTimestamp := int64(model.Now())
 
 	{
-		req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, sampleTimestamp)
+		req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, sampleTimestamp)
 		_, err = i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -2950,7 +2808,7 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 
 	// Push another sample to the same metric and timestamp, with different value. We expect to get error.
 	{
-		req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 1, sampleTimestamp)
+		req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 1, sampleTimestamp)
 		_, err = i.Push(ctx, req)
 		require.Error(t, err)
 	}
@@ -3267,7 +3125,7 @@ func Test_Ingester_UserStats(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	for _, series := range series {
-		req, _, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -3312,7 +3170,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 	})
 	for _, series := range series {
 		ctx := user.InjectOrgID(context.Background(), series.user)
-		req, _, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		req, _, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -3562,7 +3420,7 @@ func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
 
 func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	req.Metadata = append(req.Metadata, &cortexpb.MetricMetadata{MetricFamilyName: "test", Help: "a help for metric", Unit: "", Type: cortexpb.COUNTER})
 	_, err := i.Push(ctx, req)
 	require.NoError(t, err)
@@ -3570,7 +3428,7 @@ func pushSingleSampleWithMetadata(t *testing.T, i *Ingester) {
 
 func pushSingleSampleAtTime(t *testing.T, i *Ingester, ts int64) {
 	ctx := user.InjectOrgID(context.Background(), userID)
-	req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
+	req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, ts)
 	_, err := i.Push(ctx, req)
 	require.NoError(t, err)
 }
@@ -3707,7 +3565,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	// Push some data to create 3 blocks.
 	ctx := user.InjectOrgID(context.Background(), userID)
 	for j := int64(0); j < 5; j++ {
-		req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -3734,7 +3592,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	// Add more samples that could trigger another compaction and hence reload of blocks.
 	for j := int64(5); j < 6; j++ {
-		req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -3762,7 +3620,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	// Add more samples that could trigger another compaction and hence reload of blocks.
 	for j := int64(6); j < 7; j++ {
-		req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
+		req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
@@ -3808,7 +3666,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	require.True(t, db.casState(active, forceCompacting))
 
 	// Ingestion should fail with a 503.
-	req, _, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
+	req, _, _ := mockWriteRequest(t, labels.Labels{{Name: labels.MetricName, Value: "test"}}, 0, util.TimeToMillis(time.Now()))
 	ctx := user.InjectOrgID(context.Background(), userID)
 	_, err = i.Push(ctx, req)
 	require.Equal(t, httpgrpc.Errorf(http.StatusServiceUnavailable, wrapWithUser(errors.New("forced compaction in progress"), userID).Error()), err)

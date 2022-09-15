@@ -540,8 +540,6 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 
 			// Very low limit so that ruler hits it.
 			"-querier.max-fetched-chunks-per-query": "5",
-			// We need this to make limit work.
-			"-ingester.stream-chunks-when-using-blocks": "true",
 		},
 	)
 

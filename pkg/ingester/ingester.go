@@ -97,10 +97,7 @@ type Config struct {
 	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
 
 	// Use blocks storage.
-	BlocksStorageConfig         cortex_tsdb.BlocksStorageConfig `yaml:"-"`
-	StreamChunksWhenUsingBlocks bool                            `yaml:"-"`
-	// Runtime-override for type of streaming query to use (chunks or samples).
-	StreamTypeFn func() QueryStreamType `yaml:"-"`
+	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
 
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
@@ -126,7 +123,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", true, "Enable tracking of active series and export them as metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
-	f.BoolVar(&cfg.StreamChunksWhenUsingBlocks, "ingester.stream-chunks-when-using-blocks", false, "Stream chunks when using blocks. This is experimental feature and not yet tested. Once ready, it will be made default and this config option removed.")
 
 	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
@@ -222,15 +218,6 @@ const (
 func (r tsdbCloseCheckResult) shouldClose() bool {
 	return r == tsdbIdle || r == tsdbTenantMarkedForDeletion
 }
-
-// QueryStreamType defines type of function to use when doing query-stream operation.
-type QueryStreamType int
-
-const (
-	QueryStreamDefault QueryStreamType = iota // Use default configured value.
-	QueryStreamSamples                        // Stream individual samples.
-	QueryStreamChunks                         // Stream entire chunks.
-)
 
 type userTSDB struct {
 	db             *tsdb.DB
@@ -1622,31 +1609,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	numSamples := 0
 	numSeries := 0
+	numSeries, numSamples, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, stream)
 
-	streamType := QueryStreamSamples
-	if i.cfg.StreamChunksWhenUsingBlocks {
-		streamType = QueryStreamChunks
-	}
-
-	if i.cfg.StreamTypeFn != nil {
-		runtimeType := i.cfg.StreamTypeFn()
-		switch runtimeType {
-		case QueryStreamChunks:
-			streamType = QueryStreamChunks
-		case QueryStreamSamples:
-			streamType = QueryStreamSamples
-		default:
-			// no change from config value.
-		}
-	}
-
-	if streamType == QueryStreamChunks {
-		level.Debug(spanlog).Log("msg", "using queryStreamChunks")
-		numSeries, numSamples, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, stream)
-	} else {
-		level.Debug(spanlog).Log("msg", "using QueryStreamSamples")
-		numSeries, numSamples, err = i.queryStreamSamples(ctx, db, int64(from), int64(through), matchers, stream)
-	}
 	if err != nil {
 		return err
 	}
@@ -1655,74 +1619,6 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	i.metrics.queriedSamples.Observe(float64(numSamples))
 	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples)
 	return nil
-}
-
-func (i *Ingester) queryStreamSamples(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
-	q, err := db.Querier(ctx, from, through)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer q.Close()
-
-	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
-	if ss.Err() != nil {
-		return 0, 0, ss.Err()
-	}
-
-	timeseries := make([]cortexpb.TimeSeries, 0, queryStreamBatchSize)
-	batchSizeBytes := 0
-	for ss.Next() {
-		series := ss.At()
-
-		// convert labels to LabelAdapter
-		ts := cortexpb.TimeSeries{
-			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
-		}
-
-		it := series.Iterator()
-		for it.Next() {
-			t, v := it.At()
-			ts.Samples = append(ts.Samples, cortexpb.Sample{Value: v, TimestampMs: t})
-		}
-		numSamples += len(ts.Samples)
-		numSeries++
-		tsSize := ts.Size()
-
-		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(timeseries) >= queryStreamBatchSize {
-			// Adding this series to the batch would make it too big,
-			// flush the data and add it to new batch instead.
-			err = client.SendQueryStream(stream, &client.QueryStreamResponse{
-				Timeseries: timeseries,
-			})
-			if err != nil {
-				return 0, 0, err
-			}
-
-			batchSizeBytes = 0
-			timeseries = timeseries[:0]
-		}
-
-		timeseries = append(timeseries, ts)
-		batchSizeBytes += tsSize
-	}
-
-	// Ensure no error occurred while iterating the series set.
-	if err := ss.Err(); err != nil {
-		return 0, 0, err
-	}
-
-	// Final flush any existing metrics
-	if batchSizeBytes != 0 {
-		err = client.SendQueryStream(stream, &client.QueryStreamResponse{
-			Timeseries: timeseries,
-		})
-		if err != nil {
-			return 0, 0, err
-		}
-	}
-
-	return numSeries, numSamples, nil
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface

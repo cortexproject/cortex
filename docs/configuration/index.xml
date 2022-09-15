@@ -4509,7 +4509,7 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Querier: tenant federation&lt;/li>
 &lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
 &lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
-&lt;li>Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
+&lt;li>Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed on next release:
 &lt;ul>
 &lt;li>&lt;code>-ingester.stream-chunks-when-using-blocks&lt;/code> CLI flag&lt;/li>
 &lt;li>&lt;code>-ingester_stream_chunks_when_using_blocks&lt;/code> (boolean) field in runtime config file&lt;/li>

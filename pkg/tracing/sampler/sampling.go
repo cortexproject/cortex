@@ -17,7 +17,7 @@ type RandomRatioBased struct {
 	fraction float64
 }
 
-// NewRandomRatioBased crea
+// NewRandomRatioBased creates a sampler based on random number.
 // fraction parameter should be between 0 and 1 where:
 // fraction >= 1 it will always sample
 // fraction <= 0 it will never sample

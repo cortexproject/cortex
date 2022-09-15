@@ -4,7 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -22,6 +24,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
 
 	"github.com/cortexproject/cortex/pkg/tracing/migration"
+	"github.com/cortexproject/cortex/pkg/tracing/sampler"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -118,13 +121,15 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 func newTraceProvider(name string, c Config, exporter *otlptrace.Exporter) *sdktrace.TracerProvider {
 	options := []sdktrace.TracerProviderOption{
 		sdktrace.WithBatcher(exporter),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))),
 		sdktrace.WithResource(newResource(name)),
 	}
 
 	switch strings.ToLower(c.Otel.ExporterType) {
 	case "awsxray":
 		options = append(options, sdktrace.WithIDGenerator(xray.NewIDGenerator()))
+		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewRandomRatioBased(c.Otel.SampleRatio, rand.New(rand.NewSource(time.Now().Unix()))))))
+	default:
+		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 	}
 
 	return sdktrace.NewTracerProvider(options...)

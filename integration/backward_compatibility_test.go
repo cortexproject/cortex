@@ -26,6 +26,7 @@ var (
 		"quay.io/cortexproject/cortex:v1.8.0":  preCortex110Flags,
 		"quay.io/cortexproject/cortex:v1.9.0":  preCortex110Flags,
 		"quay.io/cortexproject/cortex:v1.10.0": nil,
+		"quay.io/cortexproject/cortex:v1.11.1": nil,
 	}
 )
 

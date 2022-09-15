@@ -12,12 +12,17 @@ type randGenerator interface {
 }
 
 type RandomRatioBased struct {
+	sdktrace.Sampler
 	rnd      randGenerator
 	fraction float64
 }
 
+// NewRandomRatioBased crea
+// fraction parameter should be between 0 and 1 where:
+// fraction >= 1 it will always sample
+// fraction <= 0 it will never sample
 func NewRandomRatioBased(fraction float64, rnd randGenerator) sdktrace.Sampler {
-	if fraction > 1 {
+	if fraction >= 1 {
 		return sdktrace.AlwaysSample()
 	} else if fraction <= 0 {
 		return sdktrace.NeverSample()

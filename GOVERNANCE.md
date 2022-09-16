@@ -27,7 +27,7 @@ to keep the list of maintainers current in order to have effective governance. P
 of maintainers via one of the following ways:
   * They can resign
   * If they stop contributing to the project for a period of 6 months or more
-  * By a 2/3 majority vote by maintainers
+  * By a 2/3 majority vote from active maintainers
 
 Former maintainers are recognized with an honorary _Emeritus Maintainer_ status, and have their names permanently
 listed in the [README](README.md) as a form of gratitude for their contributions.

@@ -53,7 +53,7 @@ func Test_ResponseToSamples(t *testing.T) {
 
 	streams, err := ResponseToSamples(input)
 	require.Nil(t, err)
-	set := NewSeriesSet(streams)
+	set := NewSeriesSet(false, streams)
 
 	setCt := 0
 

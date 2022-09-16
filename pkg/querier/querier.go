@@ -655,5 +655,5 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 		})
 	}
 
-	return seriesset.NewConcreteSeriesSet(series)
+	return seriesset.NewConcreteSeriesSet(true, series)
 }

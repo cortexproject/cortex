@@ -359,7 +359,7 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 	sets := make(chan storage.SeriesSet, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
-			sets <- querier.Select(sortSeries, sp, matchers...)
+			sets <- querier.Select(true, sp, matchers...)
 		}(querier)
 	}
 

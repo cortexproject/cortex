@@ -159,7 +159,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 
 	sets := []storage.SeriesSet(nil)
 	if len(results.Timeseries) > 0 {
-		sets = append(sets, newTimeSeriesSeriesSet(results.Timeseries))
+		sets = append(sets, newTimeSeriesSeriesSet(sortSeries, results.Timeseries))
 	}
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))

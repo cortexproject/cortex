@@ -46,6 +46,28 @@ const (
 	samplesPerChunk = chunkLength / sampleRate
 )
 
+type wrappedQuerier struct {
+	storage.Querier
+	selectCallsArgs [][]interface{}
+}
+
+func (q *wrappedQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	q.selectCallsArgs = append(q.selectCallsArgs, []interface{}{sortSeries, hints, matchers})
+	return q.Querier.Select(sortSeries, hints, matchers...)
+}
+
+type wrappedSampleAndChunkQueryable struct {
+	QueryableWithFilter
+	queriers []*wrappedQuerier
+}
+
+func (q *wrappedSampleAndChunkQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	querier, err := q.QueryableWithFilter.Querier(ctx, mint, maxt)
+	wQuerier := &wrappedQuerier{Querier: querier}
+	q.queriers = append(q.queriers, wQuerier)
+	return wQuerier, err
+}
+
 type query struct {
 	query    string
 	labels   labels.Labels
@@ -132,8 +154,9 @@ var (
 	}
 )
 
-func TestQuerierWith(t *testing.T) {
+func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	start := time.Now().Add(-2 * time.Hour)
+	end := time.Now()
 	ctx := user.InjectOrgID(context.Background(), "0")
 	var cfg Config
 	flagext.DefaultValues(&cfg)
@@ -154,7 +177,6 @@ func TestQuerierWith(t *testing.T) {
 
 	db, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
 	distributor := &MockDistributor{}
-	queryables := []QueryableWithFilter{UseAlwaysQueryable(db)}
 
 	unorderedResponse := client.QueryStreamResponse{
 		Timeseries: []cortexpb.TimeSeries{
@@ -176,22 +198,63 @@ func TestQuerierWith(t *testing.T) {
 	}
 	distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
 
-	queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+	tCases := []struct {
+		name                 string
+		distributorQueryable QueryableWithFilter
+		queriables           []QueryableWithFilter
+		sorted               bool
+	}{
+		{
+			name:                 "should sort if querying 2 queryables",
+			distributorQueryable: newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin),
+			queriables:           []QueryableWithFilter{UseAlwaysQueryable(db)},
+			sorted:               true,
+		},
+		{
+			name:                 "should not sort if querying only ingesters",
+			distributorQueryable: newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin),
+			queriables:           []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
+			sorted:               false,
+		},
+		{
+			name:                 "should not sort if querying only stores",
+			distributorQueryable: UseBeforeTimestampQueryable(newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin), start.Add(-1*time.Hour)),
+			queriables:           []QueryableWithFilter{UseAlwaysQueryable(db)},
+			sorted:               false,
+		},
+	}
 
-	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
+	for _, tc := range tCases {
+		t.Run(tc.name, func(t *testing.T) {
+			wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
+			var wQueriables []QueryableWithFilter
+			for _, queriable := range tc.queriables {
+				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
+			}
+			queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides, purger.NewNoopTombstonesLoader())
+			queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
 
-	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
-		ActiveQueryTracker: queryTracker,
-		MaxSamples:         1e6,
-		Timeout:            1 * time.Minute,
-	})
+			engine := promql.NewEngine(promql.EngineOpts{
+				Logger:             log.NewNopLogger(),
+				ActiveQueryTracker: queryTracker,
+				MaxSamples:         1e6,
+				Timeout:            1 * time.Minute,
+			})
 
-	query, err := engine.NewRangeQuery(queryable, nil, "foo", start, time.Now(), 1*time.Minute)
-	r := query.Exec(ctx)
+			query, err := engine.NewRangeQuery(queryable, nil, "foo", start, end, 1*time.Minute)
+			r := query.Exec(ctx)
 
-	require.NoError(t, err)
-	require.Equal(t, 2, r.Value.(promql.Matrix).Len())
+			require.NoError(t, err)
+			require.Equal(t, 2, r.Value.(promql.Matrix).Len())
+
+			for _, queryable := range append(wQueriables, wDistributorQueriable) {
+				var wQueryable = queryable.(*wrappedSampleAndChunkQueryable)
+				if wQueryable.UseQueryable(time.Now(), start.Unix()*1000, end.Unix()*1000) {
+					require.Equal(t, tc.sorted, wQueryable.queriers[0].selectCallsArgs[0][0])
+				}
+			}
+		})
+	}
 }
 
 func TestQuerier(t *testing.T) {

@@ -148,7 +148,7 @@ func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, ma
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
-	return series.MatrixToSeriesSet(sortSeries, matrix)
+	return series.MatrixToSeriesSet(true, matrix)
 }
 
 func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
@@ -157,6 +157,8 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 		return storage.ErrSeriesSet(err)
 	}
 
+	// we should sort the series if we need to merge them even if sortSeries is not required by the querier
+	sortSeries = sortSeries || (len(results.Timeseries) > 0 && len(results.Chunkseries) > 0)
 	sets := []storage.SeriesSet(nil)
 	if len(results.Timeseries) > 0 {
 		sets = append(sets, newTimeSeriesSeriesSet(sortSeries, results.Timeseries))
@@ -186,7 +188,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 	}
 
 	if len(serieses) > 0 {
-		sets = append(sets, series.NewConcreteSeriesSet(sortSeries, serieses))
+		sets = append(sets, series.NewConcreteSeriesSet(sortSeries || len(sets) > 0, serieses))
 	}
 
 	if len(sets) == 0 {

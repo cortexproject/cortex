@@ -31,6 +31,7 @@ func TestMarkBlocksVisited(t *testing.T) {
 			visitMarker: BlockVisitMarker{
 				CompactorID: "foo",
 				VisitTime:   now,
+				Version:     VisitMarkerVersion1,
 			},
 			blocks: []*metadata.Meta{
 				{
@@ -55,6 +56,7 @@ func TestMarkBlocksVisited(t *testing.T) {
 			visitMarker: BlockVisitMarker{
 				CompactorID: "bar",
 				VisitTime:   nowBefore1h,
+				Version:     VisitMarkerVersion1,
 			},
 			blocks: []*metadata.Meta{
 				{

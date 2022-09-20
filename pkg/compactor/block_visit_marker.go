@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/runutil"
 	"io"
 	"path"
 	"strings"
@@ -17,6 +16,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
 const (

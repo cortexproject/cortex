@@ -350,6 +350,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 				blockVisitMarker := BlockVisitMarker{
 					CompactorID: visitedBlock.compactorID,
 					VisitTime:   expireTime.Unix(),
+					Version:     VisitMarkerVersion1,
 				}
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)

@@ -280,7 +280,7 @@ mainLoop:
 func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta, compactorID string) (bool, error) {
 	for _, block := range blocks {
 		blockID := block.ULID.String()
-		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, blockID, g.blockVisitMarkerReadFailed)
+		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, g.logger, blockID, g.blockVisitMarkerReadFailed)
 		if err != nil {
 			if errors.Is(err, ErrorBlockVisitMarkerNotFound) {
 				level.Debug(g.logger).Log("msg", "no visit marker file for block", "blockID", blockID)

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -81,9 +82,10 @@ func TestMarkBlocksVisited(t *testing.T) {
 			ctx := context.Background()
 			dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
 			bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-			markBlocksVisited(ctx, bkt, log.NewNopLogger(), tcase.blocks, tcase.visitMarker, dummyCounter)
+			logger := log.NewNopLogger()
+			markBlocksVisited(ctx, bkt, logger, tcase.blocks, tcase.visitMarker, dummyCounter)
 			for _, meta := range tcase.blocks {
-				res, err := ReadBlockVisitMarker(ctx, bkt, meta.ULID.String(), dummyCounter)
+				res, err := ReadBlockVisitMarker(ctx, objstore.WithNoopInstr(bkt), logger, meta.ULID.String(), dummyCounter)
 				require.NoError(t, err)
 				require.Equal(t, tcase.visitMarker, *res)
 			}

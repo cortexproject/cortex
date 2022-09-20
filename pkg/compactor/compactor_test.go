@@ -1209,6 +1209,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 			blockVisitMarker := BlockVisitMarker{
 				CompactorID: "test-compactor",
 				VisitTime:   time.Now().Unix(),
+				Version:     VisitMarkerVersion1,
 			}
 			visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)

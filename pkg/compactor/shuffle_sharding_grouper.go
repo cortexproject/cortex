@@ -25,7 +25,7 @@ import (
 type ShuffleShardingGrouper struct {
 	ctx                         context.Context
 	logger                      log.Logger
-	bkt                         objstore.Bucket
+	bkt                         objstore.InstrumentedBucket
 	acceptMalformedIndex        bool
 	enableVerticalCompaction    bool
 	reg                         prometheus.Registerer
@@ -58,7 +58,7 @@ type ShuffleShardingGrouper struct {
 func NewShuffleShardingGrouper(
 	ctx context.Context,
 	logger log.Logger,
-	bkt objstore.Bucket,
+	bkt objstore.InstrumentedBucket,
 	acceptMalformedIndex bool,
 	enableVerticalCompaction bool,
 	reg prometheus.Registerer,

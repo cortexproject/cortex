@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/thanos-io/objstore"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -368,7 +369,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			g := NewShuffleShardingGrouper(
 				ctx,
 				nil,
-				bkt,
+				objstore.WithNoopInstr(bkt),
 				false, // Do not accept malformed indexes
 				true,  // Enable vertical compaction
 				registerer,

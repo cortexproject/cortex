@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 	"io"
 	"path"
 	"strings"
@@ -46,7 +47,7 @@ func (b *BlockVisitMarker) isVisitedByCompactor(blockVisitMarkerTimeout time.Dur
 	return b.CompactorID == compactorID && time.Now().Before(time.Unix(b.VisitTime, 0).Add(blockVisitMarkerTimeout))
 }
 
-func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketReader, blockID string, blockVisitMarkerReadFailed prometheus.Counter) (*BlockVisitMarker, error) {
+func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketReader, logger log.Logger, blockID string, blockVisitMarkerReadFailed prometheus.Counter) (*BlockVisitMarker, error) {
 	visitMarkerFile := path.Join(blockID, BlockVisitMarkerFile)
 	visitMarkerFileReader, err := bkt.ReaderWithExpectedErrs(bkt.IsObjNotFoundErr).Get(ctx, visitMarkerFile)
 	if err != nil {
@@ -56,6 +57,7 @@ func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketRe
 		blockVisitMarkerReadFailed.Inc()
 		return nil, errors.Wrapf(err, "get block visit marker file: %s", visitMarkerFile)
 	}
+	defer runutil.CloseWithLogOnErr(logger, visitMarkerFileReader, "close block visit marker reader")
 	b, err := io.ReadAll(visitMarkerFileReader)
 	if err != nil {
 		blockVisitMarkerReadFailed.Inc()

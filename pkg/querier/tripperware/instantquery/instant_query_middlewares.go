@@ -8,7 +8,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
-// Config for query_range middleware chain.
+// Config for instant query middleware chain.
 type Config struct {
 	VerticalShardSize int `yaml:"vertical_shard_size"`
 }

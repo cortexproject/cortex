@@ -80,6 +80,10 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 / on ()
 http_requests_total`,
 		},
+		{
+			name:       "problematic query",
+			expression: `sum(a by(lanel)`,
+		},
 	}
 
 	shardableByLabels := []queries{

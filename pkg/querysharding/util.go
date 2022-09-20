@@ -29,12 +29,13 @@ func InjectShardingInfo(query string, shardInfo *storepb.ShardInfo) (string, err
 	if err != nil {
 		return "", err
 	}
+	eShardInfo := base64.StdEncoding.EncodeToString(b)
 	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
 		if selector, ok := n.(*parser.VectorSelector); ok {
 			selector.LabelMatchers = append(selector.LabelMatchers, &labels.Matcher{
 				Type:  labels.MatchEqual,
 				Name:  CortexShardByLabel,
-				Value: base64.StdEncoding.EncodeToString(b),
+				Value: eShardInfo,
 			})
 		}
 		return nil

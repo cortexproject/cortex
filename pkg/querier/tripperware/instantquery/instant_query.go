@@ -14,6 +14,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
@@ -83,6 +84,7 @@ func (r *PrometheusRequest) WithQuery(query string) tripperware.Request {
 func (r *PrometheusRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
 		otlog.String("query", r.GetQuery()),
+		otlog.String("time", timestamp.Time(r.GetTime()).String()),
 	)
 }
 

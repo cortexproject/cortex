@@ -4,15 +4,17 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	cquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger, numShards int) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
-		return shardQueryByMiddleware{
+		return shardBy{
 			next:      next,
 			limits:    limits,
 			merger:    merger,
@@ -22,7 +24,7 @@ func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger, numShard
 	})
 }
 
-type shardQueryByMiddleware struct {
+type shardBy struct {
 	next          Handler
 	limits        Limits
 	logger        log.Logger
@@ -31,17 +33,18 @@ type shardQueryByMiddleware struct {
 	numShards     int
 }
 
-func (s shardQueryByMiddleware) Do(ctx context.Context, r Request) (Response, error) {
+func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
+	logger := util_log.WithContext(ctx, s.logger)
 	analysis, err := s.queryAnalyzer.Analyze(r.GetQuery())
 	if err != nil {
-		return nil, err
+		level.Warn(logger).Log("msg", "error sharding query", "q", r.GetQuery(), "err", err)
 	}
 
-	if !analysis.IsShardable() {
+	if err != nil || !analysis.IsShardable() {
 		return s.next.Do(ctx, r)
 	}
 
-	reqs := s.shardQuery(r, analysis)
+	reqs := s.shardQuery(logger, r, analysis)
 
 	reqResps, err := DoRequests(ctx, s.next, reqs, s.limits)
 	if err != nil {
@@ -60,7 +63,7 @@ func (s shardQueryByMiddleware) Do(ctx context.Context, r Request) (Response, er
 	return response, nil
 }
 
-func (s shardQueryByMiddleware) shardQuery(r Request, analysis querysharding.QueryAnalysis) []Request {
+func (s shardBy) shardQuery(l log.Logger, r Request, analysis querysharding.QueryAnalysis) []Request {
 	reqs := make([]Request, s.numShards)
 	for i := 0; i < s.numShards; i++ {
 		q, err := cquerysharding.InjectShardingInfo(r.GetQuery(), &storepb.ShardInfo{
@@ -72,7 +75,7 @@ func (s shardQueryByMiddleware) shardQuery(r Request, analysis querysharding.Que
 		reqs[i] = r.WithQuery(q)
 
 		if err != nil {
-			s.logger.Log("error sharding query", "q", r.GetQuery())
+			level.Warn(l).Log("msg", "error sharding query", "q", r.GetQuery(), "err", err)
 			return []Request{r}
 		}
 	}

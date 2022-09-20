@@ -578,11 +578,12 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		reqStats      = stats.FromContext(ctx)
 	)
 	matchers, shardingInfo, err := querysharding.ExtractShardingInfo(matchers)
-	convertedMatchers := convertMatchersToLabelMatcher(matchers)
 
 	if err != nil {
 		return nil, nil, nil, 0, err
+
 	}
+	convertedMatchers := convertMatchersToLabelMatcher(matchers)
 
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {

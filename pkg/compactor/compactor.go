@@ -733,6 +733,11 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+
+	if ib, ok := bucket.WithExpectedErrs(bucket.IsObjNotFoundErr).(objstore.InstrumentedBucket); ok {
+		bucket = ib
+	}
+
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 

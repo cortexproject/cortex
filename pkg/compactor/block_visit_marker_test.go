@@ -2,15 +2,17 @@ package compactor
 
 import (
 	"context"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"testing"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"testing"
-	"time"
+
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
 func TestMarkBlocksVisited(t *testing.T) {

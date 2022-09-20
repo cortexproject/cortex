@@ -176,6 +176,12 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}
 
 	db, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
+	samplePairs := []model.SamplePair{}
+
+	for _, s := range samples {
+		samplePairs = append(samplePairs, model.SamplePair{Timestamp: model.Time(s.TimestampMs), Value: model.SampleValue(s.Value)})
+	}
+
 	distributor := &MockDistributor{}
 
 	unorderedResponse := client.QueryStreamResponse{
@@ -196,8 +202,22 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 			},
 		},
 	}
+
+	unorderedResponseMatrix := model.Matrix{
+		{
+			Metric: util.LabelsToMetric(cortexpb.FromLabelAdaptersToLabels(unorderedResponse.Timeseries[0].Labels)),
+			Values: samplePairs,
+		},
+		{
+			Metric: util.LabelsToMetric(cortexpb.FromLabelAdaptersToLabels(unorderedResponse.Timeseries[1].Labels)),
+			Values: samplePairs,
+		},
+	}
+
 	distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+	distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(unorderedResponseMatrix, nil)
+	distributorQueryableStreaming := newDistributorQueryable(distributor, true, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
+	distributorQueryable := newDistributorQueryable(distributor, false, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
 
 	tCases := []struct {
 		name                 string
@@ -207,18 +227,36 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}{
 		{
 			name:                 "should sort if querying 2 queryables",
-			distributorQueryable: distributorQueryable,
+			distributorQueryable: distributorQueryableStreaming,
 			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               true,
 		},
 		{
 			name:                 "should not sort if querying only ingesters",
-			distributorQueryable: distributorQueryable,
+			distributorQueryable: distributorQueryableStreaming,
 			storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
 			sorted:               false,
 		},
 		{
 			name:                 "should not sort if querying only stores",
+			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryableStreaming, start.Add(-1*time.Hour)),
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
+			sorted:               false,
+		},
+		{
+			name:                 "should sort if querying 2 queryables with streaming off",
+			distributorQueryable: distributorQueryable,
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
+			sorted:               true,
+		},
+		{
+			name:                 "should not sort if querying only ingesters with streaming off",
+			distributorQueryable: distributorQueryable,
+			storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
+			sorted:               false,
+		},
+		{
+			name:                 "should not sort if querying only stores with streaming off",
 			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryable, start.Add(-1*time.Hour)),
 			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               false,

@@ -148,7 +148,7 @@ func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, ma
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
-	return series.MatrixToSeriesSet(true, matrix)
+	return series.MatrixToSeriesSet(sortSeries, matrix)
 }
 
 func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {

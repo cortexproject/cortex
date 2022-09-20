@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -369,7 +370,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 			logger := log.NewLogfmtLogger(logs)
 			p := NewShuffleShardingPlanner(
 				context.Background(),
-				bkt,
+				objstore.WithNoopInstr(bkt),
 				logger,
 				testData.ranges,
 				func() map[ulid.ULID]*metadata.NoCompactMark {

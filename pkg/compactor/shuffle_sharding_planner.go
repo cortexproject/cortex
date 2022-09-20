@@ -14,7 +14,7 @@ import (
 
 type ShuffleShardingPlanner struct {
 	ctx                                context.Context
-	bkt                                objstore.Bucket
+	bkt                                objstore.InstrumentedBucket
 	logger                             log.Logger
 	ranges                             []int64
 	noCompBlocksFunc                   func() map[ulid.ULID]*metadata.NoCompactMark
@@ -27,7 +27,7 @@ type ShuffleShardingPlanner struct {
 
 func NewShuffleShardingPlanner(
 	ctx context.Context,
-	bkt objstore.Bucket,
+	bkt objstore.InstrumentedBucket,
 	logger log.Logger,
 	ranges []int64,
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,

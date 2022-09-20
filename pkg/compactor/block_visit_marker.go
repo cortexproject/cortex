@@ -18,7 +18,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 
-const BlockVisitMarkerFile = "block.visit"
+// BlockVisitMarkerFile is the known json filename for representing the most recent compactor visit.
+const BlockVisitMarkerFile = "visit-mark.json"
 
 var (
 	ErrorBlockVisitMarkerNotFound  = errors.New("block visit marker not found")
@@ -26,16 +27,17 @@ var (
 )
 
 type BlockVisitMarker struct {
-	CompactorID string    `json:"compactorID"`
-	VisitTime   time.Time `json:"visitTime"`
+	CompactorID string `json:"compactorID"`
+	// VisitTime is a unix timestamp of when the block was visited (mark updated).
+	VisitTime int64 `json:"visitTime"`
 }
 
 func (b *BlockVisitMarker) isVisited(blockVisitMarkerTimeout time.Duration) bool {
-	return time.Now().Before(b.VisitTime.Add(blockVisitMarkerTimeout))
+	return time.Now().Before(time.Unix(b.VisitTime, 0).Add(blockVisitMarkerTimeout))
 }
 
 func (b *BlockVisitMarker) isVisitedByCompactor(blockVisitMarkerTimeout time.Duration, compactorID string) bool {
-	return time.Now().Before(b.VisitTime.Add(blockVisitMarkerTimeout)) && b.CompactorID == compactorID
+	return b.CompactorID == compactorID && time.Now().Before(time.Unix(b.VisitTime, 0).Add(blockVisitMarkerTimeout))
 }
 
 func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketReader, blockID string, blockVisitMarkerReadFailed prometheus.Counter) (*BlockVisitMarker, error) {
@@ -62,32 +64,35 @@ func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketRe
 	return &blockVisitMarker, nil
 }
 
-func UpdateBlockVisitMarker(ctx context.Context, bkt objstore.Bucket, blockID string, compactorID string, blockVisitMarkerWriteFailed prometheus.Counter) error {
+func UpdateBlockVisitMarker(ctx context.Context, bkt objstore.Bucket, blockID string, reader io.Reader, blockVisitMarkerWriteFailed prometheus.Counter) error {
 	blockVisitMarkerFilePath := path.Join(blockID, BlockVisitMarkerFile)
-	blockVisitMarker := BlockVisitMarker{
-		CompactorID: compactorID,
-		VisitTime:   time.Now(),
-	}
-	visitMarkerFileContent, err := json.Marshal(blockVisitMarker)
-	if err != nil {
-		blockVisitMarkerWriteFailed.Inc()
-		return err
-	}
-	err = bkt.Upload(ctx, blockVisitMarkerFilePath, bytes.NewReader(visitMarkerFileContent))
-	if err != nil {
+	if err := bkt.Upload(ctx, blockVisitMarkerFilePath, reader); err != nil {
 		blockVisitMarkerWriteFailed.Inc()
 		return err
 	}
 	return nil
 }
 
-func markBlocksVisited(ctx context.Context, bkt objstore.Bucket, logger log.Logger, blocks []*metadata.Meta, compactorID string, blockVisitMarkerWriteFailed prometheus.Counter) {
+func markBlocksVisited(
+	ctx context.Context,
+	bkt objstore.Bucket,
+	logger log.Logger,
+	blocks []*metadata.Meta,
+	marker BlockVisitMarker,
+	blockVisitMarkerWriteFailed prometheus.Counter,
+) {
+	visitMarkerFileContent, err := json.Marshal(marker)
+	if err != nil {
+		blockVisitMarkerWriteFailed.Inc()
+		return
+	}
+	reader := bytes.NewReader(visitMarkerFileContent)
 	for _, block := range blocks {
 		blockID := block.ULID.String()
-		err := UpdateBlockVisitMarker(ctx, bkt, blockID, compactorID, blockVisitMarkerWriteFailed)
-		if err != nil {
+		if err := UpdateBlockVisitMarker(ctx, bkt, blockID, reader, blockVisitMarkerWriteFailed); err != nil {
 			level.Error(logger).Log("msg", "unable to upsert visit marker file content for block", "blockID", blockID, "err", err)
 		}
+		reader.Reset(visitMarkerFileContent)
 	}
 }
 
@@ -103,7 +108,11 @@ func markBlocksVisitedHeartBeat(ctx context.Context, bkt objstore.Bucket, logger
 heartBeat:
 	for {
 		level.Debug(logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
-		markBlocksVisited(ctx, bkt, logger, blocks, compactorID, blockVisitMarkerWriteFailed)
+		blockVisitMarker := BlockVisitMarker{
+			VisitTime:   time.Now().Unix(),
+			CompactorID: compactorID,
+		}
+		markBlocksVisited(ctx, bkt, logger, blocks, blockVisitMarker, blockVisitMarkerWriteFailed)
 
 		select {
 		case <-ctx.Done():

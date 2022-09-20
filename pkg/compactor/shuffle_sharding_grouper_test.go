@@ -356,7 +356,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				}
 				blockVisitMarker := BlockVisitMarker{
 					CompactorID: visitedBlock.compactorID,
-					VisitTime:   expireTime,
+					VisitTime:   expireTime.Unix(),
 				}
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)

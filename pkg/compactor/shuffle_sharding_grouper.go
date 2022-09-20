@@ -224,7 +224,8 @@ mainLoop:
 		groupKey := createGroupKey(groupHash, group)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
-		markBlocksVisited(g.ctx, g.bkt, g.logger, group.blocks, g.ringLifecyclerID, g.blockVisitMarkerWriteFailed)
+		blockVisitMarker := BlockVisitMarker{VisitTime: time.Now().Unix(), CompactorID: g.ringLifecyclerID}
+		markBlocksVisited(g.ctx, g.bkt, g.logger, group.blocks, blockVisitMarker, g.blockVisitMarkerWriteFailed)
 
 		// All the blocks within the same group have the same downsample
 		// resolution and external labels.

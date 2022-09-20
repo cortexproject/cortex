@@ -197,29 +197,30 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		},
 	}
 	distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin)
 
 	tCases := []struct {
 		name                 string
 		distributorQueryable QueryableWithFilter
-		queriables           []QueryableWithFilter
+		storeQueriables      []QueryableWithFilter
 		sorted               bool
 	}{
 		{
 			name:                 "should sort if querying 2 queryables",
-			distributorQueryable: newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin),
-			queriables:           []QueryableWithFilter{UseAlwaysQueryable(db)},
+			distributorQueryable: distributorQueryable,
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               true,
 		},
 		{
 			name:                 "should not sort if querying only ingesters",
-			distributorQueryable: newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin),
-			queriables:           []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
+			distributorQueryable: distributorQueryable,
+			storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
 			sorted:               false,
 		},
 		{
 			name:                 "should not sort if querying only stores",
-			distributorQueryable: UseBeforeTimestampQueryable(newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin), start.Add(-1*time.Hour)),
-			queriables:           []QueryableWithFilter{UseAlwaysQueryable(db)},
+			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryable, start.Add(-1*time.Hour)),
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               false,
 		},
 	}
@@ -228,7 +229,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 			var wQueriables []QueryableWithFilter
-			for _, queriable := range tc.queriables {
+			for _, queriable := range tc.storeQueriables {
 				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
 			}
 			queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides, purger.NewNoopTombstonesLoader())

@@ -246,6 +246,7 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 	}
 
 	var r isPrometheusInstantQueryResult_Result
+	// For now, we only shard queries that returns a vector.
 	switch promResponses[0].Data.ResultType {
 	case model.ValVector.String():
 		r = &PrometheusInstantQueryResult_Vector{

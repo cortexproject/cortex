@@ -15,7 +15,7 @@ Maintainers should indicate their yes/no vote on that issue or PR, and after a s
 
 Maintainers are required to participate in the project, by joining discussions, submitting and reviewing pull requests, answering user questions, among others.
 
-Besides that, we have one concrete activity in which maintainers have to engage from time to time: releasing new versions of Cortex. This process ideally takes only a couple of hours, but requires coordination on different fronts. Even though the process is well documented, it is not without eventual glitches, so, each release needs a "Release shepherd". How it works is described in the [RELEASE.md](RELEASE.md) file.
+Besides that, we have one concrete activity in which maintainers have to engage from time to time: releasing new versions of Cortex. This process ideally takes only a couple of hours, but requires coordination on different fronts. Even though the process is well documented, it is not without eventual glitches, so, each release needs a "Release shepherd". How it works is described in the [RELEASE.md](https://github.com/cortexproject/cortex/blob/master/RELEASE.md) file.
 
 ## Changes in Maintainership
 
@@ -30,7 +30,7 @@ of maintainers via one of the following ways:
   * By a 2/3 majority vote from active maintainers
 
 Former maintainers are recognized with an honorary _Emeritus Maintainer_ status, and have their names permanently
-listed in the [README](README.md) as a form of gratitude for their contributions.
+listed in the [README](https://github.com/cortexproject/cortex/blob/master/README.md) as a form of gratitude for their contributions.
 
 ## Approving PRs
 

@@ -59,6 +59,7 @@
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767
 * [BUGFIX] Respecting `-tracing.otel.sample-ratio` configuration when enabling OpenTelemetry tracing with X-ray. #4862
+* [BUGFIX] QueryFrontend: fixed query_range requests when query has `start` equals to `end`. #4877
 
 ## 1.13.0 2022-07-14
 

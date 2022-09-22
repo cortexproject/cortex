@@ -24,8 +24,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/purger"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.

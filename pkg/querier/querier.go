@@ -22,7 +22,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
+	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"

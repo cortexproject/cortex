@@ -208,8 +208,18 @@ http_requests_total`,
 			},
 			response: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
 		},
+		{
+			name:        "shold not shard if shard size is 1",
+			path:        `/api/v1/query?time=120&query=sum(metric) by (pod,cluster_name)`,
+			codec:       instantQueryCodec,
+			shardSize:   1,
+			isShardable: false,
+			responses: []string{
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			},
+			response: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+		},
 	}
-
 	for _, query := range nonShardable {
 		tests = append(tests, testCase{
 			name:        fmt.Sprintf("non shardable query: %s", query.name),
@@ -297,7 +307,7 @@ http_requests_total`,
 				next: http.DefaultTransport,
 			}
 
-			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), mockLimits{}, tt.codec, tt.shardSize))
+			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), mockLimits{shardSize: tt.shardSize}, tt.codec))
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
@@ -321,6 +331,7 @@ type mockLimits struct {
 	maxQueryLookback  time.Duration
 	maxQueryLength    time.Duration
 	maxCacheFreshness time.Duration
+	shardSize         int
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {
@@ -337,6 +348,10 @@ func (mockLimits) MaxQueryParallelism(string) int {
 
 func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 	return m.maxCacheFreshness
+}
+
+func (m mockLimits) QueryVerticalShardSize(userID string) int {
+	return m.shardSize
 }
 
 type singleHostRoundTripper struct {

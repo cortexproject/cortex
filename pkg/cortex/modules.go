@@ -435,7 +435,6 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
-	t.Cfg.QueryRange.VerticalShardSize = t.Cfg.Query.VerticalShardSize
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
@@ -448,7 +447,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(t.Cfg.Query, util_log.Logger, t.Overrides)
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides)
 
 	if err != nil {
 		return nil, err

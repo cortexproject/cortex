@@ -126,11 +126,6 @@ api:
 # Cortex query-frontend.
 [query_range: <query_range_config>]
 
-query:
-  # Number of shards to use when distributing shardable PromQL queries.
-  # CLI flag: -querier.vertical-shard-size
-  [vertical_shard_size: <int> | default = 0]
-
 # The blocks_storage_config configures the blocks storage.
 [blocks_storage: <blocks_storage_config>]
 

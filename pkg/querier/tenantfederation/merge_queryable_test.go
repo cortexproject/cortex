@@ -172,7 +172,7 @@ func (m mockTenantQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 	}
 
 	return &mockSeriesSet{
-		upstream: series.MatrixToSeriesSet(matrix),
+		upstream: series.MatrixToSeriesSet(false, matrix),
 		warnings: m.warnings,
 		queryErr: m.queryErr,
 	}

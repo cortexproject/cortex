@@ -288,7 +288,7 @@ type querier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(q.ctx, "querier.Select")
 	defer log.Span.Finish()
 
@@ -347,7 +347,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	}
 
 	if len(q.queriers) == 1 {
-		seriesSet := q.queriers[0].Select(true, sp, matchers...)
+		seriesSet := q.queriers[0].Select(sortSeries, sp, matchers...)
 
 		if tombstones.Len() != 0 {
 			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
@@ -359,6 +359,7 @@ func (q querier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Mat
 	sets := make(chan storage.SeriesSet, len(q.queriers))
 	for _, querier := range q.queriers {
 		go func(querier storage.Querier) {
+			// We should always select sorted here as we will need to merge the series
 			sets <- querier.Select(true, sp, matchers...)
 		}(querier)
 	}
@@ -655,5 +656,5 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 		})
 	}
 
-	return seriesset.NewConcreteSeriesSet(series)
+	return seriesset.NewConcreteSeriesSet(true, series)
 }

@@ -85,7 +85,7 @@ func dedupeSorted(samples []cortexpb.Sample) []cortexpb.Sample {
 }
 
 func runPromQLAndGetJSONResult(t *testing.T, query string, ts cortexpb.TimeSeries, step time.Duration) string {
-	tq := &testQueryable{ts: newTimeSeriesSeriesSet([]cortexpb.TimeSeries{ts})}
+	tq := &testQueryable{ts: newTimeSeriesSeriesSet(true, []cortexpb.TimeSeries{ts})}
 
 	engine := promql.NewEngine(promql.EngineOpts{
 		Logger:     log.NewNopLogger(),

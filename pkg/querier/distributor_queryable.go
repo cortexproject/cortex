@@ -85,7 +85,7 @@ type distributorQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.Select")
 	defer log.Span.Finish()
 
@@ -116,7 +116,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
-		return series.MetricsToSeriesSet(ms)
+		return series.MetricsToSeriesSet(sortSeries, ms)
 	}
 
 	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
@@ -139,7 +139,7 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	}
 
 	if q.streaming {
-		return q.streamingSelect(ctx, minT, maxT, matchers)
+		return q.streamingSelect(ctx, sortSeries, minT, maxT, matchers)
 	}
 
 	matrix, err := q.distributor.Query(ctx, model.Time(minT), model.Time(maxT), matchers...)
@@ -148,18 +148,20 @@ func (q *distributorQuerier) Select(_ bool, sp *storage.SelectHints, matchers ..
 	}
 
 	// Using MatrixToSeriesSet (and in turn NewConcreteSeriesSet), sorts the series.
-	return series.MatrixToSeriesSet(matrix)
+	return series.MatrixToSeriesSet(sortSeries, matrix)
 }
 
-func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
+func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries bool, minT, maxT int64, matchers []*labels.Matcher) storage.SeriesSet {
 	results, err := q.distributor.QueryStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
 
+	// we should sort the series if we need to merge them even if sortSeries is not required by the querier
+	sortSeries = sortSeries || (len(results.Timeseries) > 0 && len(results.Chunkseries) > 0)
 	sets := []storage.SeriesSet(nil)
 	if len(results.Timeseries) > 0 {
-		sets = append(sets, newTimeSeriesSeriesSet(results.Timeseries))
+		sets = append(sets, newTimeSeriesSeriesSet(sortSeries, results.Timeseries))
 	}
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
@@ -170,7 +172,6 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int
 		}
 
 		ls := cortexpb.FromLabelAdaptersToLabels(result.Labels)
-		sort.Sort(ls)
 
 		chunks, err := chunkcompat.FromChunks(ls, result.Chunks)
 		if err != nil {
@@ -187,7 +188,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, minT, maxT int
 	}
 
 	if len(serieses) > 0 {
-		sets = append(sets, series.NewConcreteSeriesSet(serieses))
+		sets = append(sets, series.NewConcreteSeriesSet(sortSeries || len(sets) > 0, serieses))
 	}
 
 	if len(sets) == 0 {

@@ -69,6 +69,11 @@ func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripper
 }
 
 func splitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Request, error) {
+	// If Start == end we should just run the original request
+	if r.GetStart() == r.GetEnd() {
+		return []tripperware.Request{r}, nil
+	}
+
 	// Replace @ modifier function to their respective constant values in the query.
 	// This way subqueries will be evaluated at the same time as the parent query.
 	query, err := evaluateAtModifierFunction(r.GetQuery(), r.GetStart(), r.GetEnd())
@@ -76,7 +81,7 @@ func splitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Re
 		return nil, err
 	}
 	var reqs []tripperware.Request
-	for start := r.GetStart(); start <= r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
+	for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)
 		if end+r.GetStep() >= r.GetEnd() {
 			end = r.GetEnd()

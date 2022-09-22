@@ -8,7 +8,7 @@ The Cortex project employs voting to ensure no single member can dominate the pr
 
 For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.
 
-Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Mainainers who do not cast a vote, after a suitable period of time, are not included in the marjority calculation.
+Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Maintainers who do not cast a vote, after a suitable period of time, are not included in the majority calculation.
 
 
 ## Maintainer duties

@@ -86,6 +86,23 @@ func TestSplitQuery(t *testing.T) {
 		},
 		{
 			input: &PrometheusRequest{
+				Start: 60 * 60 * seconds,
+				End:   60 * 60 * seconds,
+				Step:  15 * seconds,
+				Query: "foo",
+			},
+			expected: []tripperware.Request{
+				&PrometheusRequest{
+					Start: 60 * 60 * seconds,
+					End:   60 * 60 * seconds,
+					Step:  15 * seconds,
+					Query: "foo",
+				},
+			},
+			interval: day,
+		},
+		{
+			input: &PrometheusRequest{
 				Start: 0,
 				End:   60 * 60 * seconds,
 				Step:  15 * seconds,

@@ -76,7 +76,7 @@ func splitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Re
 		return nil, err
 	}
 	var reqs []tripperware.Request
-	for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
+	for start := r.GetStart(); start <= r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
 		end := nextIntervalBoundary(start, r.GetStep(), interval)
 		if end+r.GetStep() >= r.GetEnd() {
 			end = r.GetEnd()

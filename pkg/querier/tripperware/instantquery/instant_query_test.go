@@ -25,13 +25,13 @@ func TestRequest(t *testing.T) {
 
 	for _, tc := range []struct {
 		url         string
-		expectedUrl string
+		expectedURL string
 		expected    tripperware.Request
 		expectedErr error
 	}{
 		{
 			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all&time=1536673680",
-			expectedUrl: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all&time=1536673680",
+			expectedURL: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all&time=1536673680",
 			expected: &PrometheusRequest{
 				Path:  "/api/v1/query",
 				Time:  1536673680 * 1e3,
@@ -44,7 +44,7 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=1536673680",
-			expectedUrl: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=1536673680",
+			expectedURL: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=1536673680",
 			expected: &PrometheusRequest{
 				Path:  "/api/v1/query",
 				Time:  1536673680 * 1e3,
@@ -57,7 +57,7 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29",
-			expectedUrl: fmt.Sprintf("%s%d", "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=", now.Unix()),
+			expectedURL: fmt.Sprintf("%s%d", "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=", now.Unix()),
 			expected: &PrometheusRequest{
 				Path:  "/api/v1/query",
 				Time:  now.Unix() * 1e3,
@@ -88,7 +88,7 @@ func TestRequest(t *testing.T) {
 
 			rdash, err := codec.EncodeRequest(context.Background(), req)
 			require.NoError(t, err)
-			require.EqualValues(t, tc.expectedUrl, rdash.RequestURI)
+			require.EqualValues(t, tc.expectedURL, rdash.RequestURI)
 		})
 	}
 }

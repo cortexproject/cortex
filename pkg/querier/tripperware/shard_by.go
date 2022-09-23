@@ -22,7 +22,8 @@ func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger) Middlewa
 			next:   next,
 			limits: limits,
 			merger: merger,
-			logger: logger}
+			logger: logger,
+		}
 	})
 }
 
@@ -50,7 +51,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	logger := util_log.WithContext(ctx, s.logger)
 	analysis, err := s.queryAnalyzer.Analyze(r.GetQuery())
 	if err != nil {
-		level.Warn(logger).Log("msg", "error sharding query", "q", r.GetQuery(), "err", err)
+		level.Warn(logger).Log("msg", "error analyzing query", "q", r.GetQuery(), "err", err)
 	}
 
 	if err != nil || !analysis.IsShardable() {
@@ -69,11 +70,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		resps = append(resps, reqResp.Response)
 	}
 
-	response, err := s.merger.MergeResponse(resps...)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return s.merger.MergeResponse(resps...)
 }
 
 func (s shardBy) shardQuery(l log.Logger, numShards int, r Request, analysis querysharding.QueryAnalysis) []Request {

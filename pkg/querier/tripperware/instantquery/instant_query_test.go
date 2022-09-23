@@ -8,24 +8,30 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestRequest(t *testing.T) {
+	now := time.Now()
+	codec := instantQueryCodec{now: func() time.Time {
+		return now
+	}}
 
 	for _, tc := range []struct {
 		url         string
+		expectedUrl string
 		expected    tripperware.Request
 		expectedErr error
 	}{
 		{
-			url: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all&time=1536673680",
+			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all&time=1536673680",
+			expectedUrl: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all&time=1536673680",
 			expected: &PrometheusRequest{
 				Path:  "/api/v1/query",
 				Time:  1536673680 * 1e3,
@@ -37,7 +43,8 @@ func TestRequest(t *testing.T) {
 			},
 		},
 		{
-			url: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=1536673680",
+			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=1536673680",
+			expectedUrl: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=1536673680",
 			expected: &PrometheusRequest{
 				Path:  "/api/v1/query",
 				Time:  1536673680 * 1e3,
@@ -49,8 +56,17 @@ func TestRequest(t *testing.T) {
 			},
 		},
 		{
-			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&stats=all",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "invalid parameter \"time\"; cannot parse \"\" to a valid timestamp"),
+			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29",
+			expectedUrl: fmt.Sprintf("%s%d", "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=", now.Unix()),
+			expected: &PrometheusRequest{
+				Path:  "/api/v1/query",
+				Time:  now.Unix() * 1e3,
+				Query: "sum(container_memory_rss) by (namespace)",
+				Stats: "",
+				Headers: map[string][]string{
+					"Test-Header": {"test"},
+				},
+			},
 		},
 	} {
 		t.Run(tc.url, func(t *testing.T) {
@@ -63,16 +79,16 @@ func TestRequest(t *testing.T) {
 			// Get a deep copy of the request with Context changed to ctx
 			r = r.Clone(ctx)
 
-			req, err := InstantQueryCodec.DecodeRequest(ctx, r, []string{"Test-Header"})
+			req, err := codec.DecodeRequest(ctx, r, []string{"Test-Header"})
 			if err != nil {
 				require.EqualValues(t, tc.expectedErr, err)
 				return
 			}
 			require.EqualValues(t, tc.expected, req)
 
-			rdash, err := InstantQueryCodec.EncodeRequest(context.Background(), req)
+			rdash, err := codec.EncodeRequest(context.Background(), req)
 			require.NoError(t, err)
-			require.EqualValues(t, tc.url, rdash.RequestURI)
+			require.EqualValues(t, tc.expectedUrl, rdash.RequestURI)
 		})
 	}
 }

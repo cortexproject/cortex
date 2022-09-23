@@ -8,11 +8,14 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
@@ -26,7 +29,7 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = instantQueryCodec{}
+	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
 	json                                = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
@@ -102,6 +105,11 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
+	now func() time.Time
+}
+
+func newInstantQueryCodec() instantQueryCodec {
+	return instantQueryCodec{now: time.Now}
 }
 
 func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
@@ -118,10 +126,10 @@ func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
 	return nil
 }
 
-func (instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
+func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Time, err = util.ParseTime(r.FormValue("time"))
+	result.Time, err = parseTimeParam(r, "time", c.now().Unix())
 	if err != nil {
 		return nil, decorateWithParamName(err, "time")
 	}
@@ -442,4 +450,16 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 	default:
 		return s.Result.GetRawBytes(), nil
 	}
+}
+
+func parseTimeParam(r *http.Request, paramName string, defaultValue int64) (int64, error) {
+	val := r.FormValue(paramName)
+	if val == "" {
+		val = strconv.FormatInt(defaultValue, 10)
+	}
+	result, err := util.ParseTime(val)
+	if err != nil {
+		return 0, errors.Wrapf(err, "Invalid time value for '%s'", paramName)
+	}
+	return result, nil
 }

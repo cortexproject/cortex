@@ -9677,6 +9677,12 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;li>Enabled via &lt;code>-compactor.sharding-enabled=true&lt;/code>, &lt;code>-compactor.sharding-strategy=shuffle-sharding&lt;/code>, and &lt;code>-compactor.tenant-shard-size&lt;/code> set to a value larger than 0.&lt;/li>
 &lt;/ul>
 &lt;/li>
+&lt;li>Vertical sharding at query frontend for range/instant queries
+&lt;ul>
+&lt;li>&lt;code>-frontend.query-vertical-shard-size&lt;/code> (int) CLI flag&lt;/li>
+&lt;li>&lt;code>query_vertical_shard_size&lt;/code> (int) field in runtime config file&lt;/li>
+&lt;/ul>
+&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Migrate the storage from Thanos and Prometheus</title><link>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-storage-from-thanos-and-prometheus/</guid><description>
 &lt;p>The Cortex blocks storage engine stores series in TSDB blocks uploaded in the storage bucket. This makes very easy to migrate the storage from Thanos and/or Prometheus to Cortex, when running the blocks storage.&lt;/p>
 &lt;h2 id="cortex-blocks-storage-requirements">Cortex blocks storage requirements&lt;/h2>

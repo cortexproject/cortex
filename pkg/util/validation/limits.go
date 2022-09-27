@@ -427,7 +427,7 @@ func (o *Overrides) MaxQueriersPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxQueriersPerTenant
 }
 
-// QueryVerticalShardSize returns the maximum number of queriers that can handle requests for this user.
+// QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
 func (o *Overrides) QueryVerticalShardSize(userID string) int {
 	return o.getOverridesForUser(userID).QueryVerticalShardSize
 }

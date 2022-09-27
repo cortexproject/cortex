@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"testing"
 	"time"
 
@@ -91,6 +92,11 @@ http_requests_total`,
 			name:           "aggregation with grouping",
 			expression:     "sum by (pod) (http_requests_total)",
 			shardingLabels: []string{"pod"},
+		},
+		{
+			name:           "aggregation with comparison",
+			expression:     "avg by (Roles,type) (rss_service_message_handling) > 0.5",
+			shardingLabels: []string{"Roles", "type"},
 		},
 		{
 			name:           "multiple aggregations with grouping",
@@ -185,11 +191,12 @@ http_requests_total`,
 	}
 	tests := []testCase{
 		{
-			name:        "should shard range query when query is shardable",
-			path:        `/api/v1/query_range?end=1&start=0&step=120&query=sum(metric) by (pod,cluster_name)`,
-			isShardable: true,
-			codec:       shardedPrometheusCodec,
-			shardSize:   2,
+			name:           "should shard range query when query is shardable",
+			path:           `/api/v1/query_range?end=1&start=0&step=120&query=sum(metric) by (pod,cluster_name)`,
+			isShardable:    true,
+			codec:          shardedPrometheusCodec,
+			shardingLabels: []string{"pod", "cluster_name"},
+			shardSize:      2,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"a"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"b"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
@@ -197,11 +204,12 @@ http_requests_total`,
 			response: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]},{"metric":{"__job__":"b","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":12,"totalQueryableSamplesPerStep":[[1,2],[2,4],[3,6]]}}}}`,
 		},
 		{
-			name:        "should shard instant query when query is shardable",
-			path:        `/api/v1/query?time=120&query=sum(metric) by (pod,cluster_name)`,
-			codec:       instantQueryCodec,
-			shardSize:   2,
-			isShardable: true,
+			name:           "should shard instant query when query is shardable",
+			path:           `/api/v1/query?time=120&query=sum(metric) by (pod,cluster_name)`,
+			codec:          instantQueryCodec,
+			shardSize:      2,
+			shardingLabels: []string{"pod", "cluster_name"},
+			isShardable:    true,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
@@ -258,11 +266,12 @@ http_requests_total`,
 			response: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
 		})
 		tests = append(tests, testCase{
-			name:        fmt.Sprintf("shardable query_range: %s", query.name),
-			path:        fmt.Sprintf(`/api/v1/query_range?start=1&end=2&step=1&query=%s`, url.QueryEscape(query.expression)),
-			codec:       shardedPrometheusCodec,
-			isShardable: true,
-			shardSize:   2,
+			name:           fmt.Sprintf("shardable query_range: %s", query.name),
+			path:           fmt.Sprintf(`/api/v1/query_range?start=1&end=2&step=1&query=%s`, url.QueryEscape(query.expression)),
+			codec:          shardedPrometheusCodec,
+			isShardable:    true,
+			shardSize:      2,
+			shardingLabels: query.shardingLabels,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"a"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"b"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
@@ -273,11 +282,12 @@ http_requests_total`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			sort.Strings(tt.shardingLabels)
 			s := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					q := r.FormValue("query")
 					expr, _ := parser.ParseExpr(q)
-					shardInfo := storepb.ShardInfo{}
+					shardIndex := int64(0)
 
 					parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
 						if selector, ok := n.(*parser.VectorSelector); ok {
@@ -285,16 +295,20 @@ http_requests_total`,
 								if matcher.Name == querysharding.CortexShardByLabel {
 
 									decoded, _ := base64.StdEncoding.DecodeString(matcher.Value)
+									shardInfo := storepb.ShardInfo{}
 									err := shardInfo.Unmarshal(decoded)
 									require.NoError(t, err)
+									sort.Strings(shardInfo.Labels)
+									require.Equal(t, tt.shardingLabels, shardInfo.Labels)
+									require.Equal(t, tt.isShardable, shardInfo.TotalShards > 0)
+									shardIndex = shardInfo.ShardIndex
 								}
 							}
 						}
 						return nil
 					})
 
-					require.Equal(t, tt.isShardable, shardInfo.TotalShards > 0)
-					_, _ = w.Write([]byte(tt.responses[shardInfo.ShardIndex]))
+					_, _ = w.Write([]byte(tt.responses[shardIndex]))
 				}),
 			)
 			defer s.Close()

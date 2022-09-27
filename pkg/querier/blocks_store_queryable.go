@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -409,9 +410,8 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 
 	var (
-		convertedMatchers = convertMatchersToLabelMatcher(matchers)
-		resSeriesSets     = []storage.SeriesSet(nil)
-		resWarnings       = storage.Warnings(nil)
+		resSeriesSets = []storage.SeriesSet(nil)
+		resWarnings   = storage.Warnings(nil)
 
 		maxChunksLimit  = q.limits.MaxChunksPerQueryFromStore(q.userID)
 		leftChunksLimit = maxChunksLimit
@@ -420,7 +420,7 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	)
 
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
-		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
+		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
 
 			return nil, err
@@ -562,7 +562,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	minT int64,
 	maxT int64,
 	matchers []*labels.Matcher,
-	convertedMatchers []storepb.LabelMatcher,
 	maxChunksLimit int,
 	leftChunksLimit int,
 ) ([]storage.SeriesSet, []ulid.ULID, storage.Warnings, int, error) {
@@ -578,6 +577,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 		reqStats      = stats.FromContext(ctx)
 	)
+	matchers, shardingInfo, err := querysharding.ExtractShardingInfo(matchers)
+
+	if err != nil {
+		return nil, nil, nil, 0, err
+
+	}
+	convertedMatchers := convertMatchersToLabelMatcher(matchers)
 
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
@@ -595,7 +601,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			// retrieved.
 			skipChunks := sp != nil && sp.Func == "series"
 
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, skipChunks, blockIDs)
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -875,7 +881,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	return valueSets, warnings, queriedBlocks, nil
 }
 
-func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -899,6 +905,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skip
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
+		ShardInfo:               shardingInfo,
 	}, nil
 }
 

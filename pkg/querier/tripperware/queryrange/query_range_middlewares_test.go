@@ -46,7 +46,6 @@ func TestRoundTrip(t *testing.T) {
 	queyrangemiddlewares, _, err := Middlewares(Config{},
 		log.NewNopLogger(),
 		mockLimits{},
-		PrometheusCodec,
 		nil,
 		nil,
 		nil,
@@ -56,7 +55,9 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 		queyrangemiddlewares,
+		nil,
 		PrometheusCodec,
+		nil,
 	)
 
 	if err != nil {

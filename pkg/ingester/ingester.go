@@ -29,6 +29,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
@@ -37,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -1173,6 +1175,13 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return nil, err
 	}
 
+	matchers, sm, err := querysharding.ExtractShardingMatchers(matchers)
+	if err != nil {
+		return nil, err
+	}
+
+	defer sm.Close()
+
 	i.metrics.queries.Inc()
 
 	db := i.getTSDB(userID)
@@ -1197,6 +1206,9 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 	result := &client.QueryResponse{}
 	for ss.Next() {
 		series := ss.At()
+		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
+			continue
+		}
 
 		ts := cortexpb.TimeSeries{
 			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
@@ -1600,6 +1612,13 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
+	matchers, shardMatcher, err := querysharding.ExtractShardingMatchers(matchers)
+	if err != nil {
+		return err
+	}
+
+	defer shardMatcher.Close()
+
 	i.metrics.queries.Inc()
 
 	db := i.getTSDB(userID)
@@ -1609,7 +1628,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	numSamples := 0
 	numSeries := 0
-	numSeries, numSamples, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, stream)
+	numSeries, numSamples, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -1622,7 +1641,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
 	q, err := db.ChunkQuerier(ctx, from, through)
 	if err != nil {
 		return 0, 0, err
@@ -1639,6 +1658,10 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	batchSizeBytes := 0
 	for ss.Next() {
 		series := ss.At()
+
+		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
+			continue
+		}
 
 		// convert labels to LabelAdapter
 		ts := client.TimeSeriesChunk{

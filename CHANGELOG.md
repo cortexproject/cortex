@@ -56,6 +56,7 @@
 * [FEATURE] Added `-api.http-request-headers-to-log` allowing for the addition of HTTP Headers to logs #4803
 * [FEATURE] Distributor: Added a new limit `-validation.max-labels-size-bytes` allowing to limit the combined size of labels for each timeseries. #4848
 * [FEATURE] Storage/Bucket: Added `-*.s3.bucket-lookup-type` allowing to configure the s3 bucket lookup type. #4794
+* [FEATURE] QueryFrontend: Implement experimental vertical sharding at query frontend for range/instant queries. #4863
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767
 * [BUGFIX] Respecting `-tracing.otel.sample-ratio` configuration when enabling OpenTelemetry tracing with X-ray. #4862

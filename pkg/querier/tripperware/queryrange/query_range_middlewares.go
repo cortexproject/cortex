@@ -40,6 +40,9 @@ type Config struct {
 	MaxRetries             int  `yaml:"max_retries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+
+	// Populated based on the query configuration
+	VerticalShardSize int `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -70,7 +73,6 @@ func Middlewares(
 	cfg Config,
 	log log.Logger,
 	limits tripperware.Limits,
-	codec tripperware.Codec,
 	cacheExtractor Extractor,
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
@@ -84,7 +86,7 @@ func Middlewares(
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		staticIntervalFn := func(_ tripperware.Request) time.Duration { return cfg.SplitQueriesByInterval }
-		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, codec, registerer))
+		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, PrometheusCodec, registerer))
 	}
 
 	var c cache.Cache
@@ -95,7 +97,7 @@ func Middlewares(
 			}
 			return false
 		}
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, codec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, PrometheusCodec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -106,6 +108,8 @@ func Middlewares(
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
 	}
+
+	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, ShardedPrometheusCodec))
 
 	return queryRangeMiddleware, c, nil
 }

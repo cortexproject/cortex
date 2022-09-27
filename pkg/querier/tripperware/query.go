@@ -1,9 +1,12 @@
 package tripperware
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -11,6 +14,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
@@ -128,4 +132,49 @@ func PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode(ptr unsafe.Poi
 func init() {
 	jsoniter.RegisterTypeEncoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
 	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
+}
+
+func EncodeTime(t int64) string {
+	f := float64(t) / 1.0e3
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+// Buffer can be used to read a response body.
+// This allows to avoid reading the body multiple times from the `http.Response.Body`.
+type Buffer interface {
+	Bytes() []byte
+}
+
+func BodyBuffer(res *http.Response) ([]byte, error) {
+	// Attempt to cast the response body to a Buffer and use it if possible.
+	// This is because the frontend may have already read the body and buffered it.
+	if buffer, ok := res.Body.(Buffer); ok {
+		return buffer.Bytes(), nil
+	}
+	// Preallocate the buffer with the exact size so we don't waste allocations
+	// while progressively growing an initial small buffer. The buffer capacity
+	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+	// internally works.
+	buf := bytes.NewBuffer(make([]byte, 0, res.ContentLength+bytes.MinRead))
+	if _, err := buf.ReadFrom(res.Body); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep) *PrometheusResponseStats {
+	keys := make([]int64, 0, len(stats))
+	for key := range stats {
+		keys = append(keys, key)
+	}
+
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
+	for _, key := range keys {
+		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, stats[key])
+		result.Samples.TotalQueryableSamples += stats[key].Value
+	}
+
+	return result
 }

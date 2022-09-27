@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package instantquery;
+
+option go_package = "instantquery";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/querier/tripperware/query.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+
+message PrometheusInstantQueryResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  PrometheusInstantQueryData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
+  string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
+  repeated tripperware.PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message PrometheusInstantQueryData {
+  string ResultType = 1 [(gogoproto.jsontag) = "resultType"];
+  PrometheusInstantQueryResult Result = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "result"];
+  tripperware.PrometheusResponseStats stats = 3 [(gogoproto.jsontag) = "stats,omitempty"];
+}
+
+message PrometheusInstantQueryResult {
+  oneof result {
+    Vector vector = 1;
+    bytes rawBytes = 2;
+  }
+}
+
+message Vector {
+  repeated Sample samples = 1;
+}
+
+message Sample {
+  repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
+  cortexpb.Sample sample = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "value"];
+}

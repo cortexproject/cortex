@@ -96,3 +96,6 @@ Currently experimental features are:
   - `-store-gateway.sharding-ring.heartbeat-period=0`
 - Compactor shuffle sharding
   - Enabled via `-compactor.sharding-enabled=true`, `-compactor.sharding-strategy=shuffle-sharding`, and `-compactor.tenant-shard-size` set to a value larger than 0.
+- Vertical sharding at query frontend for range/instant queries
+  - `-frontend.query-vertical-shard-size` (int) CLI flag
+  - `query_vertical_shard_size` (int) field in runtime config file

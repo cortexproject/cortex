@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"runtime"
 	"sync"
 )
@@ -719,7 +720,11 @@ func (r *Reader) Skip(n int64) error {
 			// decoded[i:j] contains decoded bytes that have not yet been passed on.
 			left := int64(r.j - r.i)
 			if left >= n {
-				r.i += int(n)
+				tmp := int64(r.i) + n
+				if tmp > math.MaxInt32 {
+					return errors.New("s2: internal overflow in skip")
+				}
+				r.i = int(tmp)
 				return nil
 			}
 			n -= int64(r.j - r.i)

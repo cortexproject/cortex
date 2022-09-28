@@ -102,7 +102,7 @@ func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
 	return nil
 }
 
-// AddDataBytes adds the input label size in bytes and returns an error if the limit is reached.
+// AddDataBytes adds the queried data bytes and returns an error if the limit is reached.
 func (ql *QueryLimiter) AddDataBytes(dataSizeInBytes int) error {
 	if ql.maxDataBytesPerQuery == 0 {
 		return nil

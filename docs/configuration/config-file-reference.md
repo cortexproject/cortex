@@ -804,6 +804,12 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.max-samples
 [max_samples: <int> | default = 50000000]
 
+# Maximum memory limit in bytes for querier. Beyond this limit, querier will try
+# to protect itself from OOM by throwing errors from active queries. 0 means
+# disabled.
+# CLI flag: -querier.max-memory-limit
+[max_memory_limit: <int> | default = 0]
+
 # Maximum lookback beyond which queries are not sent to ingester. 0 means all
 # queries are sent to ingester.
 # CLI flag: -querier.query-ingesters-within

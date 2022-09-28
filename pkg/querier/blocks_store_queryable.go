@@ -575,6 +575,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		numChunks     = atomic.NewInt32(0)
 		spanLog       = spanlogger.FromContext(ctx)
 		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
+		memLimiter    = limiter.MemLimiterFromContextWithFallback(ctx)
+		reqID         = limiter.RequestIDFromContextWithFallback(ctx)
 		reqStats      = stats.FromContext(ctx)
 	)
 	matchers, shardingInfo, err := querysharding.ExtractShardingInfo(matchers)
@@ -663,6 +665,11 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					}
 					if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks)); chunkLimitErr != nil {
 						return validation.LimitError(chunkLimitErr.Error())
+					}
+
+					err := memLimiter.LoadBytes(resp.Size(), reqID)
+					if err != nil {
+						return err
 					}
 				}
 

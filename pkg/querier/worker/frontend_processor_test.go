@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
@@ -24,7 +25,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	require.NoError(t, err)
 
 	cfg := Config{}
-	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger())
+	mgr := newFrontendProcessor(cfg, nil, log.NewNopLogger(), &limiter.NoOpMemLimiter{})
 	running := atomic.NewBool(false)
 	go func() {
 		running.Store(true)

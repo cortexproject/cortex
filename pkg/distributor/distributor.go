@@ -1021,7 +1021,7 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 
 // MetricsForLabelMatchers gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
+	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter, memLimiter limiter.MemLimiter, reqID string) error {
 		_, err := d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.MetricsForLabelMatchers(ctx, req)
 			if err != nil {
@@ -1030,6 +1030,9 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			ms := ingester_client.FromMetricsForLabelMatchersResponse(resp)
 			for _, m := range ms {
 				if err := queryLimiter.AddSeries(cortexpb.FromMetricsToLabelAdapters(m)); err != nil {
+					return nil, err
+				}
+				if err := memLimiter.LoadBytes(resp.Size(), reqID); err != nil {
 					return nil, err
 				}
 				fingerprint := m.Fingerprint()
@@ -1046,7 +1049,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 }
 
 func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
+	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter, memLimiter limiter.MemLimiter, reqID string) error {
 		_, err := d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.MetricsForLabelMatchersStream(ctx, req)
 			if err != nil {
@@ -1068,7 +1071,9 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 					if err := queryLimiter.AddSeries(metric.Labels); err != nil {
 						return nil, err
 					}
-
+					if err := memLimiter.LoadBytes(resp.Size(), reqID); err != nil {
+						return nil, err
+					}
 					fingerprint := m.Fingerprint()
 					mutex.Lock()
 					(*metrics)[fingerprint] = m
@@ -1083,9 +1088,11 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 	}, matchers...)
 }
 
-func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]model.Metric, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]model.Metric, *sync.Mutex, *limiter.QueryLimiter, limiter.MemLimiter, string) error, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
+	memLimiter := limiter.MemLimiterFromContextWithFallback(ctx)
+	reqID := limiter.RequestIDFromContextWithFallback(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1097,7 +1104,7 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 	mutex := sync.Mutex{}
 	metrics := map[model.Fingerprint]model.Metric{}
 
-	err = f(ctx, replicationSet, req, &metrics, &mutex, queryLimiter)
+	err = f(ctx, replicationSet, req, &metrics, &mutex, queryLimiter, memLimiter, reqID)
 
 	if err != nil {
 		return nil, err

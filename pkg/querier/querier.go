@@ -44,6 +44,7 @@ type Config struct {
 	IngesterStreaming         bool          `yaml:"ingester_streaming"`
 	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
 	MaxSamples                int           `yaml:"max_samples"`
+	MaxMemoryLimit            uint64        `yaml:"max_memory_limit"`
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
 	QueryStoreForLabels       bool          `yaml:"query_store_for_labels_enabled"`
 	AtModifierEnabled         bool          `yaml:"at_modifier_enabled"`
@@ -90,6 +91,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
 	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
+	f.Uint64Var(&cfg.MaxMemoryLimit, "querier.max-memory-limit", 0, "Maximum memory limit in bytes for querier. Beyond this limit, querier will try to protect itself from OOM by throwing errors from active queries. 0 means disabled.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
 	f.BoolVar(&cfg.AtModifierEnabled, "querier.at-modifier-enabled", false, "Enable the @ modifier in PromQL.")

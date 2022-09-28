@@ -3,11 +3,13 @@ package worker
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/oklog/ulid"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 )
 
 var (
@@ -24,12 +27,13 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) processor {
+func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger, ml limiter.MemLimiter) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
+		memLimiter:     ml,
 	}
 }
 
@@ -38,6 +42,7 @@ type frontendProcessor struct {
 	handler        RequestHandler
 	maxMessageSize int
 	querierID      string
+	memLimiter     limiter.MemLimiter
 
 	log log.Logger
 }
@@ -115,6 +120,12 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *stats.Stats) error) {
+	requestId := ulid.MustNew(ulid.Now(), rand.New(rand.NewSource(time.Now().UnixNano()))).String()
+	fp.memLimiter.AddRequest(requestId)
+	defer fp.memLimiter.RemoveRequest(requestId)
+	ctx = limiter.AddRequestIDToContext(ctx, requestId)
+	ctx = limiter.AddMemLimiterToContext(ctx, fp.memLimiter)
+
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)

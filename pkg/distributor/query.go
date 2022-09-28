@@ -289,6 +289,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 		reqStats     = stats.FromContext(ctx)
+		memLimiter   = limiter.MemLimiterFromContextWithFallback(ctx)
+		reqID        = limiter.RequestIDFromContextWithFallback(ctx)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -339,6 +341,10 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
 					return nil, validation.LimitError(limitErr.Error())
 				}
+			}
+
+			if err := memLimiter.LoadBytes(resp.Size(), reqID); err != nil {
+				return nil, err
 			}
 
 			result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)

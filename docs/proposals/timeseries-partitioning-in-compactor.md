@@ -122,6 +122,37 @@ Now that the planner has produced a compaction plan for the T1-T3 compaction gro
 ![Grouping](/images/proposals/timeseries-partitioning-in-compactor-compact.png)
 T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having duplication information in blocks produced by compaction group 3-8, compaction group 5-8, and compaction group 7-8, we need apply the filter the `%8 == 0` hash, as that’s the hash of the highest partition count.
 
+### Compaction Workflow
+
+1. Cortex Compactor initializes grouper and planner. Then, call Thanos Compactor to compact blocks.
+2. Thanos Compactor retrieves block meta and call Grouper to group blocks for compaction.
+3. Grouper generates compaction plans:
+   1. Grouper groups source blocks into unpartitioned groups.
+   2. For each unpartitioned group:
+      1. Calculates partition number. Partition number indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
+      2. Assign source blocks into each partition with partition ID (value is in range from 0 to Partition Number - 1). Note that one source block could be used in multiple partitions. So multiple partition ID could be assigned to same source block. Check the examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
+      3. Gather all partition IDs got assigned to each source blocks.
+      4. For each source block, save compaction plan file into block-storage. Compaction plan file would look like:
+         ```
+         {"partitionIDs": [0, 1, ...]}
+         ```
+4. Grouper returns compaction plans to Thanos Compactor.
+5. Thanos Compactor iterates over each compaction plan (partitioned group). For each iteration, calls Planner to make sure the group is ready for compaction.
+6. Planner collects all compaction plans which are ready for compaction.
+   1. For each compaction plan and for each blocks in the plan:
+      1. Retrieve block partition visit marker file from block-storage based on partition ID of the plan.
+      2. If there is no visit marker file or visit marker file is expired and not in completed status, put visit marker file for this block partition in block-storage. The visit marker file would be named like `partition-<partition_id>-visit-mark.json` and its content would look like:
+         ```
+         {"compactorID":"<current_compactor_id>","visitTime":"<date_now>","status":"pending","version":1}
+         ```
+      4. Otherwise, skip this compaction plan. Because at least one block partition is picked up by other compactor.
+7. Return all ready compaction plans to Thanos Compactor.
+8. Thanos Compactor starts compacting partitioned blocks from compaction plans. Once compaction completed, Thanos Compactor would upload deletion marker for the source blocks in the plan. Also, it would update `partition-<partition_id>-visit-mark.json` to have status set to `completed`.
+
+### Clean up Workflow
+
+Cleaner would periodically check any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should retrieve compaction plan to get all partition IDs assigned to this block. If visit marker files for all partitions have status set to `completed`, this source block can be deleted. Otherwise, skip deletion.
+
 ## Performance
 
 Currently a 400M timeseries takes 12 hours to compact, without taking block download into consideration. If we have a partition count of 2, we can reduce this down to 6 hours, and a partition count of 10 is 3 hours. The scaling is not linear, and I’m still attempting to find out why. The initial result is promising enough to continue though.
@@ -264,4 +295,128 @@ T2 partition 4 - Hash(timeseries label) % 4 == 3 && % 8 == 7
 T3 partition 8 - Hash(timeseries label) % 8 == 7
 ```
 
+### Compaction Partitioning Examples
+
+#### Ideal case:
+
+All source blocks were previously compacted through partitioning compaction. In this case for each time interval, the number of blocks belong to same time interval would be 2^x if multiplier is set to 2.
+
+```
+Time intervals:
+T1, T2, T3
+
+Source blocks:
+T1: B1, B2
+T2: B3, B4, B5, B6
+T3: B7, B8, B9, B10, B11, B12, B13, B14
+
+Total indices size of all source blocks:
+200G
+```
+
+Partition Number = (200G / 64G) => round up to next 2^x = 4
+
+Partitioning:
+* For T1, there are only 2 blocks which is < 4. So
+
+    * B1 (index 0 in the time interval) can be grouped with other blocks having N % 4 == 0 or 2. Because 0 % 2 == 0.
+    * B2 (index 1 in the time interval) can be grouped with other blocks having N % 4 == 1 or 3. Because 1 % 2 == 1.
+
+* For T2,
+
+    * B3 (index 0 in the time interval) can be grouped with other blocks having N % 4 == 0.
+    * B4 (index 1 in the time interval) can be grouped with other blocks having N % 4 == 1.
+    * B5 (index 2 in the time interval) can be grouped with other blocks having N % 4 == 2.
+    * B6 (index 3 in the time interval) can be grouped with other blocks having N % 4 == 3.
+
+* For T3,
+
+    * B7 (index 0 in the time interval) can be grouped with other blocks having N % 4 == 0.
+    * B8 (index 1 in the time interval) can be grouped with other blocks having N % 4 == 1.
+    * B9 (index 2 in the time interval) can be grouped with other blocks having N % 4 == 2.
+    * B10 (index 3 in the time interval) can be grouped with other blocks having N % 4 == 3.
+    * B11 (index 4 in the time interval) can be grouped with other blocks having N % 4 == 0.
+    * B12 (index 5 in the time interval) can be grouped with other blocks having N % 4 == 1.
+    * B13 (index 6 in the time interval) can be grouped with other blocks having N % 4 == 2.
+    * B14 (index 7 in the time interval) can be grouped with other blocks having N % 4 == 3.
+
+Compaction Plans:
+
+* Partition ID: 0 \
+  Partition Number: 4 \
+  Blocks: B1, B3, B7, B11
+* Partition ID: 1 \
+  Partition Number: 4 \
+  Blocks: B2, B4, B8, B12
+* Partition ID: 2 \
+  Partition Number: 4 \
+  Blocks: B1, B5, B9, B13
+* Partition ID: 3 \
+  Partition Number: 4 \
+  Blocks: B2, B6, B10, B14
+
+---
+
+#### Only Level 1 Blocks:
+
+All source blocks are level 1 blocks. Since number of level 1 blocks in one time interval is not guaranteed to be 2^x, all blocks need to be included in each partition.
+
+```
+Time intervals:
+T1
+
+Source blocks:
+T1: B1, B2, B3
+
+Total indices size of all source blocks: 
+100G
+```
+
+Partition Number = (100G / 64G) => round up to next 2^x = 2
+
+Partitioning: There is only one time interval from all source blocks which means it is compacting level 1 blocks. Partitioning needs to include all source blocks in each partitions.
+
+Compaction Plans:
+
+* Partition ID: 0 \
+  Partition Number: 2 \
+  Blocks: B1, B2, B3
+* Partition ID: 1 \
+  Partition Number: 2 \
+  Blocks: B1, B2, B3
+
+---
+
+#### Legacy High Level Blocks:
+
+For legacy high level blocks, there would be only one block for each time interval. Since there is only one block in one time interval, that one block would be included in all partitions.
+
+```
+Time intervals:
+T1, T2, T3
+
+Source blocks:
+T1: B1
+T2: B2
+T3: B3
+
+Total indices size of all source blocks:
+100G
+```
+
+Partition Number = (100G / 64G) => round up to next 2^x = 2
+
+Partitioning:
+* For T1, there is only one source block. Include B1 in all partitions.
+* For T2, there is only one source block. Include B2 in all partitions.
+* For T3, there is only one source block. Include B3 in all partitions.
+
+Compaction Plans:
+
+* Partition ID: 0 \
+  Partition Number: 2 \
+  Blocks: B1, B2, B3
+* Partition ID: 1 \
+  Partition Number: 2 \
+  Blocks: B1, B2, B3
 

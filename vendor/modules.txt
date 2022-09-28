@@ -778,7 +778,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.27.0-rc.0.0.20220927155220-ebd06fc8e9c0
+# github.com/thanos-io/thanos v0.27.0-rc.0.0.20220928153911-e414597420da
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -818,6 +818,7 @@ github.com/thanos-io/thanos/pkg/store/storepb/prompb
 github.com/thanos-io/thanos/pkg/strutil
 github.com/thanos-io/thanos/pkg/targets/targetspb
 github.com/thanos-io/thanos/pkg/testutil
+github.com/thanos-io/thanos/pkg/tls
 github.com/thanos-io/thanos/pkg/tracing
 github.com/thanos-io/thanos/pkg/tracing/migration
 # github.com/uber/jaeger-client-go v2.30.0+incompatible

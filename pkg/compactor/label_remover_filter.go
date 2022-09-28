@@ -2,9 +2,9 @@ package compactor
 
 import (
 	"context"
-	"github.com/thanos-io/thanos/pkg/block"
 
 	"github.com/oklog/ulid"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
 

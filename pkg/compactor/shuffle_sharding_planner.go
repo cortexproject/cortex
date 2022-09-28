@@ -14,7 +14,7 @@ import (
 
 type ShuffleShardingPlanner struct {
 	ctx                                context.Context
-	bkt                                objstore.Bucket
+	bkt                                objstore.InstrumentedBucket
 	logger                             log.Logger
 	ranges                             []int64
 	noCompBlocksFunc                   func() map[ulid.ULID]*metadata.NoCompactMark
@@ -27,7 +27,7 @@ type ShuffleShardingPlanner struct {
 
 func NewShuffleShardingPlanner(
 	ctx context.Context,
-	bkt objstore.Bucket,
+	bkt objstore.InstrumentedBucket,
 	logger log.Logger,
 	ranges []int64,
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
@@ -72,7 +72,7 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
 		}
 
-		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, blockID, p.blockVisitMarkerReadFailed)
+		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, p.logger, blockID, p.blockVisitMarkerReadFailed)
 		if err != nil {
 			// shuffle_sharding_grouper should put visit marker file for blocks ready for
 			// compaction. So error should be returned if visit marker file does not exist.

@@ -209,6 +209,10 @@ func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 	return m.maxCacheFreshness
 }
 
+func (m mockLimits) QueryVerticalShardSize(userID string) int {
+	return 0
+}
+
 type mockHandler struct {
 	mock.Mock
 }

@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
-
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -355,7 +355,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				}
 				blockVisitMarker := BlockVisitMarker{
 					CompactorID: visitedBlock.compactorID,
-					VisitTime:   expireTime,
+					VisitTime:   expireTime.Unix(),
+					Version:     VisitMarkerVersion1,
 				}
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
@@ -368,7 +369,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			g := NewShuffleShardingGrouper(
 				ctx,
 				nil,
-				bkt,
+				objstore.WithNoopInstr(bkt),
 				false, // Do not accept malformed indexes
 				true,  // Enable vertical compaction
 				registerer,

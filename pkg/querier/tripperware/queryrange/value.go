@@ -104,7 +104,7 @@ func ResponseToSamples(resp tripperware.Response) ([]tripperware.SampleStream, e
 
 // NewSeriesSet returns an in memory storage.SeriesSet from a []SampleStream
 // As NewSeriesSet uses NewConcreteSeriesSet to implement SeriesSet, result will be sorted by label names.
-func NewSeriesSet(results []tripperware.SampleStream) storage.SeriesSet {
+func NewSeriesSet(sortSeries bool, results []tripperware.SampleStream) storage.SeriesSet {
 	set := make([]storage.Series, 0, len(results))
 
 	for _, stream := range results {
@@ -122,5 +122,5 @@ func NewSeriesSet(results []tripperware.SampleStream) storage.SeriesSet {
 		}
 		set = append(set, series.NewConcreteSeries(ls, samples))
 	}
-	return series.NewConcreteSeriesSet(set)
+	return series.NewConcreteSeriesSet(sortSeries, set)
 }

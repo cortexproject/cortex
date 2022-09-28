@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -16,8 +15,10 @@ import (
 )
 
 const (
-	query        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
-	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	queryRange    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
+	query         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680"
+	queryExemplar = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
+	responseBody  = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 type mockRequest struct {
@@ -35,7 +36,7 @@ type mockCodec struct {
 }
 
 func (c mockCodec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (Request, error) {
-	if r.URL.String() == query {
+	if r.URL.String() == query || r.URL.String() == queryRange {
 		return &mockRequest{resp: responseBody}, nil
 	}
 	return mockRequest{}, nil
@@ -64,12 +65,7 @@ func (m mockMiddleware) Do(_ context.Context, req Request) (Response, error) {
 func TestRoundTrip(t *testing.T) {
 	s := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var err error
-			if r.RequestURI == query {
-				_, err = w.Write([]byte(responseBody))
-			} else {
-				_, err = w.Write([]byte("bar"))
-			}
+			_, err := w.Write([]byte("bar"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,14 +81,17 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
+	middlewares := []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return mockMiddleware{}
+		}),
+	}
 	tw := NewQueryTripperware(log.NewNopLogger(),
 		nil,
 		nil,
-		[]Middleware{
-			MiddlewareFunc(func(next Handler) Handler {
-				return mockMiddleware{}
-			}),
-		},
+		middlewares,
+		middlewares,
+		mockCodec{},
 		mockCodec{},
 	)
 
@@ -100,13 +99,15 @@ func TestRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i, tc := range []struct {
+	for _, tc := range []struct {
 		path, expectedBody string
 	}{
 		{"/foo", "bar"},
+		{queryExemplar, "bar"},
+		{queryRange, responseBody},
 		{query, responseBody},
 	} {
-		t.Run(strconv.Itoa(i), func(t *testing.T) {
+		t.Run(tc.path, func(t *testing.T) {
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
 
@@ -127,15 +128,4 @@ func TestRoundTrip(t *testing.T) {
 			require.Equal(t, tc.expectedBody, string(bs))
 		})
 	}
-}
-
-type singleHostRoundTripper struct {
-	host string
-	next http.RoundTripper
-}
-
-func (s singleHostRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.URL.Scheme = "http"
-	r.URL.Host = s.host
-	return s.next.RoundTrip(r)
 }

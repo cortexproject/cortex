@@ -42,13 +42,17 @@ var (
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	PrometheusCodec tripperware.Codec = &prometheusCodec{}
+	PrometheusCodec tripperware.Codec = &prometheusCodec{sharded: false}
+	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
+	ShardedPrometheusCodec tripperware.Codec = &prometheusCodec{sharded: true}
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
 )
 
-type prometheusCodec struct{}
+type prometheusCodec struct {
+	sharded bool
+}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start int64, end int64) tripperware.Request {
@@ -124,7 +128,7 @@ func NewEmptyPrometheusResponse() *PrometheusResponse {
 	}
 }
 
-func (prometheusCodec) MergeResponse(responses ...tripperware.Response) (tripperware.Response, error) {
+func (c prometheusCodec) MergeResponse(responses ...tripperware.Response) (tripperware.Response, error) {
 	if len(responses) == 0 {
 		return NewEmptyPrometheusResponse(), nil
 	}
@@ -146,7 +150,7 @@ func (prometheusCodec) MergeResponse(responses ...tripperware.Response) (tripper
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
 			Result:     matrixMerge(promResponses),
-			Stats:      statsMerge(promResponses),
+			Stats:      statsMerge(c.sharded, promResponses),
 		},
 	}
 
@@ -222,8 +226,8 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
 	}
 	params := url.Values{
-		"start": []string{encodeTime(promReq.Start)},
-		"end":   []string{encodeTime(promReq.End)},
+		"start": []string{tripperware.EncodeTime(promReq.Start)},
+		"end":   []string{tripperware.EncodeTime(promReq.End)},
 		"step":  []string{encodeDurationMs(promReq.Step)},
 		"query": []string{promReq.Query},
 		"stats": []string{promReq.Stats},
@@ -259,7 +263,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := bodyBuffer(r)
+	buf, err := tripperware.BodyBuffer(r)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -275,29 +279,6 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
 	}
 	return &resp, nil
-}
-
-// Buffer can be used to read a response body.
-// This allows to avoid reading the body multiple times from the `http.Response.Body`.
-type Buffer interface {
-	Bytes() []byte
-}
-
-func bodyBuffer(res *http.Response) ([]byte, error) {
-	// Attempt to cast the response body to a Buffer and use it if possible.
-	// This is because the frontend may have already read the body and buffered it.
-	if buffer, ok := res.Body.(Buffer); ok {
-		return buffer.Bytes(), nil
-	}
-	// Preallocate the buffer with the exact size so we don't waste allocations
-	// while progressively growing an initial small buffer. The buffer capacity
-	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
-	// internally works.
-	buf := bytes.NewBuffer(make([]byte, 0, res.ContentLength+bytes.MinRead))
-	if _, err := buf.ReadFrom(res.Body); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
-	}
-	return buf.Bytes(), nil
 }
 
 func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Response) (*http.Response, error) {
@@ -331,7 +312,7 @@ func (prometheusCodec) EncodeResponse(ctx context.Context, res tripperware.Respo
 
 // statsMerge merge the stats from 2 responses
 // this function is similar to matrixMerge
-func statsMerge(resps []*PrometheusResponse) *tripperware.PrometheusResponseStats {
+func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *tripperware.PrometheusResponseStats {
 	output := map[int64]*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{}
 	hasStats := false
 	for _, resp := range resps {
@@ -345,28 +326,22 @@ func statsMerge(resps []*PrometheusResponse) *tripperware.PrometheusResponseStat
 		}
 
 		for _, s := range resp.Data.Stats.Samples.TotalQueryableSamplesPerStep {
-			output[s.GetTimestampMs()] = s
+			if shouldSumStats {
+				if stats, ok := output[s.GetTimestampMs()]; ok {
+					stats.Value += s.Value
+				} else {
+					output[s.GetTimestampMs()] = s
+				}
+			} else {
+				output[s.GetTimestampMs()] = s
+			}
 		}
 	}
 
 	if !hasStats {
 		return nil
 	}
-
-	keys := make([]int64, 0, len(output))
-	for key := range output {
-		keys = append(keys, key)
-	}
-
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-
-	result := &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{}}
-	for _, key := range keys {
-		result.Samples.TotalQueryableSamplesPerStep = append(result.Samples.TotalQueryableSamplesPerStep, output[key])
-		result.Samples.TotalQueryableSamples += output[key].Value
-	}
-
-	return result
+	return tripperware.StatsMerge(output)
 }
 
 func matrixMerge(resps []*PrometheusResponse) []tripperware.SampleStream {
@@ -444,11 +419,6 @@ func parseDurationMs(s string) (int64, error) {
 		return int64(d) / int64(time.Millisecond/time.Nanosecond), nil
 	}
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration", s)
-}
-
-func encodeTime(t int64) string {
-	f := float64(t) / 1.0e3
-	return strconv.FormatFloat(f, 'f', -1, 64)
 }
 
 func encodeDurationMs(d int64) string {

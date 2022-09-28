@@ -1,50 +1,47 @@
 ---
 adopters:
-- name: Aspen Mesh
-  url: https://aspenmesh.io/
-  logo: aspen_mesh.png
-- name: AWS
-  url: https://aws.amazon.com/prometheus/
-  logo: AWS_logo_RGB.png
-- name: Buoyant
-  url: https://buoyant.io/
-  logo: buoyant.svg
-- name: DigitalOcean
-  url: https://www.digitalocean.com/
-  logo: digital_ocean.png
-- name: Electronic Arts
-  url: https://www.ea.com/
-  logo: ea.png
-- name: Etsy
-  url: https://www.etsy.com/
-  logo: etsy.svg
-- name: EverQuote
-  url: https://www.everquote.com/
-  logo: everquote.png
-- name: GoJek
-  url: https://www.gojek.io/
-  logo: gojek.png
-- name: Grafana Labs
-  url: https://grafana.com/
-  logo: grafana.svg
-- name: MayaData
-  url: https://mayadata.io/
-  logo: mayadata.svg
-- name: Northflank
-  url: https://northflank.com/
-  logo: northflank.svg
-- name: Opstrace
-  url: https://opstrace.com/
-  logo: opstrace.png
-- name: Platform9
-  url: https://platform9.com/
-  logo: platform9.svg
-- name: REWE Digital
-  url: https://rewe-digital.com/
-  logo: rewe_digital.png
-- name: SysEleven
-  url: https://www.syseleven.de/
-  logo: syseleven.png
-- name: Weaveworks
-  url: https://www.weave.works/
-  logo: weaveworks.svg
+  - name: Aspen Mesh
+    url: https://aspenmesh.io/
+    logo: aspen_mesh.png
+  - name: AWS
+    url: https://aws.amazon.com/prometheus/
+    logo: AWS_logo_RGB.png
+  - name: Buoyant
+    url: https://buoyant.io/
+    logo: buoyant.svg
+  - name: DigitalOcean
+    url: https://www.digitalocean.com/
+    logo: digital_ocean.png
+  - name: Electronic Arts
+    url: https://www.ea.com/
+    logo: ea.png
+  - name: Etsy
+    url: https://www.etsy.com/
+    logo: etsy.svg
+  - name: EverQuote
+    url: https://www.everquote.com/
+    logo: everquote.png
+  - name: GoJek
+    url: https://www.gojek.io/
+    logo: gojek.png
+  - name: MayaData
+    url: https://mayadata.io/
+    logo: mayadata.svg
+  - name: Northflank
+    url: https://northflank.com/
+    logo: northflank.svg
+  - name: Opstrace
+    url: https://opstrace.com/
+    logo: opstrace.png
+  - name: Platform9
+    url: https://platform9.com/
+    logo: platform9.svg
+  - name: REWE Digital
+    url: https://rewe-digital.com/
+    logo: rewe_digital.png
+  - name: SysEleven
+    url: https://www.syseleven.de/
+    logo: syseleven.png
+  - name: Weaveworks
+    url: https://www.weave.works/
+    logo: weaveworks.svg

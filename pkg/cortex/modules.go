@@ -22,7 +22,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
@@ -31,9 +30,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -438,11 +439,15 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.QueryRange,
 		util_log.Logger,
 		t.Overrides,
-		queryrange.PrometheusCodec,
 		queryrange.PrometheusResponseExtractor{},
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides)
 
 	if err != nil {
 		return nil, err
@@ -452,7 +457,9 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheus.DefaultRegisterer,
 		t.Cfg.QueryRange.ForwardHeaders,
 		queryRangeMiddlewares,
+		instantQueryMiddlewares,
 		queryrange.PrometheusCodec,
+		instantquery.InstantQueryCodec,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

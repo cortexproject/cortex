@@ -19,7 +19,7 @@ func TestConcreteSeriesSet(t *testing.T) {
 		labels:  labels.FromStrings("foo", "baz"),
 		samples: []model.SamplePair{{Value: 3, Timestamp: 4}},
 	}
-	c := NewConcreteSeriesSet([]storage.Series{series2, series1})
+	c := NewConcreteSeriesSet(true, []storage.Series{series2, series1})
 	require.True(t, c.Next())
 	require.Equal(t, series1, c.At())
 	require.True(t, c.Next())
@@ -40,7 +40,7 @@ func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {
 			Values: []model.SamplePair{{Timestamp: 0, Value: 0}},
 		},
 	}
-	ss := MatrixToSeriesSet(matrix)
+	ss := MatrixToSeriesSet(true, matrix)
 	require.True(t, ss.Next())
 	require.NoError(t, ss.Err())
 

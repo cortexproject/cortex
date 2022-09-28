@@ -25,7 +25,7 @@ import (
 type ShuffleShardingGrouper struct {
 	ctx                         context.Context
 	logger                      log.Logger
-	bkt                         objstore.Bucket
+	bkt                         objstore.InstrumentedBucket
 	acceptMalformedIndex        bool
 	enableVerticalCompaction    bool
 	reg                         prometheus.Registerer
@@ -58,7 +58,7 @@ type ShuffleShardingGrouper struct {
 func NewShuffleShardingGrouper(
 	ctx context.Context,
 	logger log.Logger,
-	bkt objstore.Bucket,
+	bkt objstore.InstrumentedBucket,
 	acceptMalformedIndex bool,
 	enableVerticalCompaction bool,
 	reg prometheus.Registerer,
@@ -224,7 +224,12 @@ mainLoop:
 		groupKey := createGroupKey(groupHash, group)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "group", group.String())
-		markBlocksVisited(g.ctx, g.bkt, g.logger, group.blocks, g.ringLifecyclerID, g.blockVisitMarkerWriteFailed)
+		blockVisitMarker := BlockVisitMarker{
+			VisitTime:   time.Now().Unix(),
+			CompactorID: g.ringLifecyclerID,
+			Version:     VisitMarkerVersion1,
+		}
+		markBlocksVisited(g.ctx, g.bkt, g.logger, group.blocks, blockVisitMarker, g.blockVisitMarkerWriteFailed)
 
 		// All the blocks within the same group have the same downsample
 		// resolution and external labels.
@@ -275,7 +280,7 @@ mainLoop:
 func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta, compactorID string) (bool, error) {
 	for _, block := range blocks {
 		blockID := block.ULID.String()
-		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, blockID, g.blockVisitMarkerReadFailed)
+		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, g.logger, blockID, g.blockVisitMarkerReadFailed)
 		if err != nil {
 			if errors.Is(err, ErrorBlockVisitMarkerNotFound) {
 				level.Debug(g.logger).Log("msg", "no visit marker file for block", "blockID", blockID)

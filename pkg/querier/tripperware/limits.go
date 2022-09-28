@@ -18,4 +18,7 @@ type Limits interface {
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
 	MaxCacheFreshness(string) time.Duration
+
+	// QueryVerticalShardSize returns the maximum number of queriers that can handle requests for this user.
+	QueryVerticalShardSize(userID string) int
 }

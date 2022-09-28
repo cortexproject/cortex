@@ -95,6 +95,7 @@ pkg/ring/ring.pb.go: pkg/ring/ring.proto
 pkg/frontend/v1/frontendv1pb/frontend.pb.go: pkg/frontend/v1/frontendv1pb/frontend.proto
 pkg/frontend/v2/frontendv2pb/frontend.pb.go: pkg/frontend/v2/frontendv2pb/frontend.proto
 pkg/querier/tripperware/queryrange/queryrange.pb.go: pkg/querier/tripperware/queryrange/queryrange.proto
+pkg/querier/tripperware/instantquery/instantquery.pb.go: pkg/querier/tripperware/instantquery/instantquery.proto
 pkg/querier/tripperware/query.pb.go: pkg/querier/tripperware/query.proto
 pkg/querier/stats/stats.pb.go: pkg/querier/stats/stats.proto
 pkg/distributor/ha_tracker.pb.go: pkg/distributor/ha_tracker.proto
@@ -202,6 +203,7 @@ lint:
 		./pkg/frontend/... \
 		./pkg/querier/tenantfederation/... \
 		./pkg/querier/tripperware/... \
+		./pkg/querier/tripperware/instantquery/... \
 		./pkg/querier/tripperware/queryrange/...
 
 	# Ensure packages that no longer use a global logger don't reintroduce it

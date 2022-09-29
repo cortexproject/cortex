@@ -1027,6 +1027,9 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			if err != nil {
 				return nil, err
 			}
+			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+				return nil, err
+			}
 			ms := ingester_client.FromMetricsForLabelMatchersResponse(resp)
 			for _, m := range ms {
 				if err := queryLimiter.AddSeries(cortexpb.FromMetricsToLabelAdapters(m)); err != nil {
@@ -1055,6 +1058,9 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 			defer stream.CloseSend() //nolint:errcheck
 			for {
 				resp, err := stream.Recv()
+				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+					return nil, err
+				}
 
 				if err == io.EOF {
 					break

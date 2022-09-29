@@ -60,10 +60,11 @@ type Handler struct {
 	roundTripper http.RoundTripper
 
 	// Metrics.
-	querySeconds *prometheus.CounterVec
-	querySeries  *prometheus.CounterVec
-	queryBytes   *prometheus.CounterVec
-	activeUsers  *util.ActiveUsersCleanupService
+	querySeconds   *prometheus.CounterVec
+	querySeries    *prometheus.CounterVec
+	queryBytes     *prometheus.CounterVec
+	queryDataBytes *prometheus.CounterVec
+	activeUsers    *util.ActiveUsersCleanupService
 }
 
 // NewHandler creates a new frontend handler.
@@ -90,10 +91,16 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all chunks fetched to execute a query in bytes.",
 		}, []string{"user"})
 
+		h.queryDataBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_fetched_data_bytes_total",
+			Help: "Size of all data fetched to execute a query in bytes.",
+		}, []string{"user"})
+
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
 			h.queryBytes.DeleteLabelValues(user)
+			h.queryDataBytes.DeleteLabelValues(user)
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
@@ -186,11 +193,13 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	wallTime := stats.LoadWallTime()
 	numSeries := stats.LoadFetchedSeries()
 	numBytes := stats.LoadFetchedChunkBytes()
+	numDataBytes := stats.LoadFetchedDataBytes()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
 	f.queryBytes.WithLabelValues(userID).Add(float64(numBytes))
+	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
@@ -203,6 +212,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"query_wall_time_seconds", wallTime.Seconds(),
 		"fetched_series_count", numSeries,
 		"fetched_chunks_bytes", numBytes,
+		"fetched_data_bytes", numDataBytes,
 	}, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)

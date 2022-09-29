@@ -104,6 +104,15 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 			}(),
 			expectedErr: nil,
 		},
+		"should failed with invalid kv store": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+				cfg.KVStore.Store = "memberlist"
+				return cfg
+			}(),
+			expectedErr: fmt.Errorf("invalid HATracker KV store type: %s", "memberlist"),
+		},
 	}
 
 	for testName, testData := range tests {

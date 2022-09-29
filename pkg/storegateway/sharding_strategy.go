@@ -9,7 +9,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -27,7 +26,7 @@ type ShardingStrategy interface {
 	// FilterBlocks filters metas in-place keeping only blocks that should be loaded by the store-gateway.
 	// The provided loaded map contains blocks which have been previously returned by this function and
 	// are now loaded or loading in the store-gateway.
-	FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error
+	FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error
 }
 
 // ShardingLimits is the interface that should be implemented by the limits provider,
@@ -47,7 +46,7 @@ func (s *NoShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []
 	return userIDs
 }
 
-func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[ulid.ULID]*metadata.Meta, _ map[ulid.ULID]struct{}, _ *extprom.TxGaugeVec) error {
+func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[ulid.ULID]*metadata.Meta, _ map[ulid.ULID]struct{}, _ block.GaugeVec) error {
 	return nil
 }
 
@@ -74,7 +73,7 @@ func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *DefaultShardingStrategy) FilterBlocks(_ context.Context, _ string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
+func (s *DefaultShardingStrategy) FilterBlocks(_ context.Context, _ string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
 	filterBlocksByRingSharding(s.r, s.instanceAddr, metas, loaded, synced, s.logger)
 	return nil
 }
@@ -117,13 +116,13 @@ func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
+func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
 	subRing := GetShuffleShardingSubring(s.r, userID, s.limits)
 	filterBlocksByRingSharding(subRing, s.instanceAddr, metas, loaded, synced, s.logger)
 	return nil
 }
 
-func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec, logger log.Logger) {
+func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec, logger log.Logger) {
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
 
 	for blockID := range metas {
@@ -203,7 +202,7 @@ func NewShardingMetadataFilterAdapter(userID string, strategy ShardingStrategy) 
 
 // Filter implements block.MetadataFilter.
 // This function is NOT safe for use by multiple goroutines concurrently.
-func (a *shardingMetadataFilterAdapter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced *extprom.TxGaugeVec, _ *extprom.TxGaugeVec) error {
+func (a *shardingMetadataFilterAdapter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced block.GaugeVec, _ block.GaugeVec) error {
 	if err := a.strategy.FilterBlocks(ctx, a.userID, metas, a.lastBlocks, synced); err != nil {
 		return err
 	}

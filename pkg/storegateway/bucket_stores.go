@@ -574,8 +574,8 @@ func NewReplicaLabelRemover(logger log.Logger, replicaLabels []string) *ReplicaL
 	return &ReplicaLabelRemover{logger: logger, replicaLabels: replicaLabels}
 }
 
-// Modify modifies external labels of existing blocks, it removes given replica labels from the metadata of blocks that have it.
-func (r *ReplicaLabelRemover) Filter(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, _ *extprom.TxGaugeVec, _ *extprom.TxGaugeVec) error {
+// Filter implements block.MetadataFilter.
+func (r *ReplicaLabelRemover) Filter(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, _ block.GaugeVec, _ block.GaugeVec) error {
 	for u, meta := range metas {
 		l := meta.Thanos.Labels
 		for _, replicaLabel := range r.replicaLabels {

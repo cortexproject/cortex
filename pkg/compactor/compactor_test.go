@@ -1295,8 +1295,8 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		if blockCount < 2 {
 			assert.False(t, found)
 		} else {
+			assert.True(t, found)
 			assert.Contains(t, l.String(), fmt.Sprintf(`msg="found compactable group for user" group_hash=%d`, groupHash))
-
 		}
 	}
 }
@@ -1321,7 +1321,7 @@ func checkLogsForCompaction(compactors []*Compactor, logs []*concurrency.SyncBuf
 		}
 	}
 
-	// Return an false if we've not been able to find it
+	// Return false if we've not been able to find it
 	if log == nil {
 		return nil, false, nil
 	}

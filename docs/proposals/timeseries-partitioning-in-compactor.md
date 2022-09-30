@@ -129,12 +129,13 @@ T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having 
 3. Grouper generates partitioned compaction groups:
    1. Grouper groups source blocks into unpartitioned groups.
    2. For each unpartitioned group:
-      1. Calculates partition number. Partition number indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
-      2. Assign source blocks into each partition with partition ID (value is in range from 0 to Partition Number - 1). Note that one source block could be used in multiple partitions. So multiple partition ID could be assigned to same source block. Check the examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
-      3. Generates partitioned compaction group that indicates which partition ID each blocks got assigned.
-      4. Generates partitioned compaction group ID which is the hash of min and max time of result block.
-      5. Partitioned compaction group information would be stored in block storage under the tenant directory it belongs to and the stored file can be picked up by cleaner later. Partitioned compaction group information contains partitioned compaction group ID, number of partitions, list of partitions which has partition ID and list of source blocks.
-      6. Store partitioned compaction group ID in block storage under each blocks' directory that are used by the generated partitioned compaction group.
+      1. Generates partitioned compaction group ID which is hash of min and max time of result block.
+      2. If the ID exists under the tenant directory in block storage, continue on next unpartitioned group.
+      3. Calculates partition number. Partition number indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
+      4. Assign source blocks into each partition with partition ID (value is in range from 0 to Partition Number - 1). Note that one source block could be used in multiple partitions. So multiple partition ID could be assigned to same source block. Check the examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
+      5. Generates partitioned compaction group that indicates which partition ID each blocks got assigned.
+      6. Partitioned compaction group information would be stored in block storage under the tenant directory it belongs to and the stored file can be picked up by cleaner later. Partitioned compaction group information contains partitioned compaction group ID, number of partitions, list of partitions which has partition ID and list of source blocks.
+      7. Store partitioned compaction group ID in block storage under each blocks' directory that are used by the generated partitioned compaction group.
 4. Grouper returns partitioned compaction groups to Compactor. Each returned group would have partition ID, partition number, and list of source blocks in memory.
 5. Compactor iterates over each partitioned compaction group. For each iteration, calls Planner to make sure the group is ready for compaction.
 6. Planner collects partitioned compaction group which is ready for compaction.

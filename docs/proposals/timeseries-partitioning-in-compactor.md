@@ -126,27 +126,31 @@ T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having 
 
 1. Compactor initializes Grouper and Planner.
 2. Compactor retrieves block's meta.json and call Grouper to group blocks for compaction.
-3. Grouper generates compaction groups:
+3. Grouper generates partitioned compaction groups:
    1. Grouper groups source blocks into unpartitioned groups.
    2. For each unpartitioned group:
       1. Calculates partition number. Partition number indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
       2. Assign source blocks into each partition with partition ID (value is in range from 0 to Partition Number - 1). Note that one source block could be used in multiple partitions. So multiple partition ID could be assigned to same source block. Check the examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
-      3. Generates compaction group that indicates which partition ID each blocks got assigned.
-      4. Partitioned compaction group information would be stored in block storage in order for cleaner to pick it up later.
-4. Grouper returns compaction groups to Compactor.
+      3. Generates partitioned compaction group that indicates which partition ID each blocks got assigned.
+      4. Generates partitioned compaction group ID which is the hash of min and max time of result block.
+      5. Partitioned compaction group information would be stored in block storage under the tenant directory it belongs to and the stored file can be picked up by cleaner later. Partitioned compaction group information contains partitioned compaction group ID, number of partitions, list of partitions which has partition ID and list of source blocks.
+      6. Store partitioned compaction group ID in block storage under each blocks' directory that are used by the generated partitioned compaction group.
+4. Grouper returns partitioned compaction groups to Compactor. Each returned group would have partition ID, partition number, and list of source blocks in memory.
 5. Compactor iterates over each partitioned compaction group. For each iteration, calls Planner to make sure the group is ready for compaction.
-6. Planner collects all compaction groups which are ready for compaction.
-   1. For each compaction group and for each blocks in the plan:
-      1. Make sure the source block fits within the time range of the group.
-      2. Make sure the source block with assigned partition ID is currently not used by another ongoing compaction. This could utilize visit marker file that is introduced in #4805 by expanding it for each partition ID of the source block.
-   2. If all blocks in the group are ready to be compacted, mark status of those blocks along with assigned partition ID as `pending`.
-   3. The status information of each partition ID would be stored in block storage in order for cleaner to pick it up later.
-7. Return all ready compaction groups to Compactor.
-8. Compactor starts compacting partitioned blocks from compaction groups. Once compaction completed, Compactor would upload deletion marker for the source blocks in the plan. Also, it would mark status of all blocks along with assigned partition ID in the group as `completed`.
+6. Planner collects partitioned compaction group which is ready for compaction.
+   1. For each partitions in the group and for each blocks in the partition:
+      1. Make sure all source blocks fit within the time range of the group.
+      2. Make sure each source block with assigned partition IDs is currently not used by another ongoing compaction. This could utilize visit marker file that is introduced in #4805 by expanding it for each partition ID of the source block.
+      3. If all blocks in the partition are ready to be compacted,
+         1. mark status of those blocks with assigned partition ID as `pending`.
+         2. The status information of each partition ID would be stored in block storage under the corresponding block directory in order for cleaner to pick it up later.
+      4. If not all blocks in the partition are ready, continue on next partition
+7. Return all ready partitions to Compactor.
+8. Compactor starts compacting partitioned blocks. Once compaction completed, Compactor would upload deletion marker for the source blocks in the plan. Also, it would mark status of all blocks along with assigned partition ID in the group as `completed`.
 
 ### Clean up Workflow
 
-Cleaner would periodically check any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should retrieve compaction group information from block storage to get all partition IDs assigned to this block as well as status information of each partition ID. If this source block's all assigned partition ID have status set to `completed`, this source block can be deleted. Otherwise, skip deletion.
+Cleaner would periodically check any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should retrieve partitioned compaction group ID under current block directory in block storage and use the ID to retrieve partitioned compaction group information from block storage to get all partition IDs assigned to this block. Then, retrieve status information of each partition ID this block got assigned under current block directory in block storage. If all assigned partition ID have status set to `completed`, this source block can be deleted. Otherwise, skip deletion.
 
 ## Performance
 
@@ -330,8 +334,7 @@ Partitioning:
     * B13 (index 6 in the time range) can be grouped with other blocks having N % 4 == 2.
     * B14 (index 7 in the time range) can be grouped with other blocks having N % 4 == 3.
 
-Compaction Groups:
-
+Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
   Partition Number: 4 \
   Blocks: B1, B3, B7, B11
@@ -366,8 +369,7 @@ Partition Number = (100G / 64G = 1.5625) => round up to next 2^x = 2
 
 Partitioning: There is only one time range from all source blocks which means it is compacting level 1 blocks. Partitioning needs to include all source blocks in each partition.
 
-Compaction Groups:
-
+Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
   Partition Number: 2 \
   Blocks: B1, B2, B3
@@ -401,8 +403,7 @@ Partitioning:
 * For T2, there is only one source block. Include B2 in all partitions.
 * For T3, there is only one source block. Include B3 in all partitions.
 
-Compaction Groups:
-
+Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
   Partition Number: 2 \
   Blocks: B1, B2, B3
@@ -442,8 +443,7 @@ Partitioning:
     * B6 (index 2 in the time range) can be grouped with other blocks having N % 2 == 0.
     * B7 (index 3 in the time range) can be grouped with other blocks having N % 2 == 1.
 
-Compaction Groups:
-
+Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
   Partition Number: 2 \
   Blocks: B1, B2, B4, B6

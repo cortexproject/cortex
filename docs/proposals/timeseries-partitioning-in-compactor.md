@@ -126,25 +126,27 @@ T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having 
 
 1. Compactor initializes Grouper and Planner.
 2. Compactor retrieves block's meta.json and call Grouper to group blocks for compaction.
-3. Grouper generates compaction plans:
+3. Grouper generates compaction groups:
    1. Grouper groups source blocks into unpartitioned groups.
    2. For each unpartitioned group:
       1. Calculates partition number. Partition number indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
       2. Assign source blocks into each partition with partition ID (value is in range from 0 to Partition Number - 1). Note that one source block could be used in multiple partitions. So multiple partition ID could be assigned to same source block. Check the examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
-      3. Generates compaction plan that indicates which partition ID each blocks got assigned.
-4. Grouper returns compaction plans to Compactor.
-5. Compactor iterates over each compaction plan (partitioned group). For each iteration, calls Planner to make sure the group is ready for compaction.
-6. Planner collects all compaction plans which are ready for compaction.
-   1. For each compaction plan and for each blocks in the plan:
+      3. Generates compaction group that indicates which partition ID each blocks got assigned.
+      4. Partitioned compaction group information would be stored in block storage in order for cleaner to pick it up later.
+4. Grouper returns compaction groups to Compactor.
+5. Compactor iterates over each partitioned compaction group. For each iteration, calls Planner to make sure the group is ready for compaction.
+6. Planner collects all compaction groups which are ready for compaction.
+   1. For each compaction group and for each blocks in the plan:
       1. Make sure the source block fits within the time range of the group.
-      2. Make sure the source block with assigned partition ID is currently not used by another ongoing compaction.
+      2. Make sure the source block with assigned partition ID is currently not used by another ongoing compaction. This could utilize visit marker file that is introduced in #4805 by expanding it for each partition ID of the source block.
    2. If all blocks in the group are ready to be compacted, mark status of those blocks along with assigned partition ID as `pending`.
-7. Return all ready compaction plans to Compactor.
-8. Compactor starts compacting partitioned blocks from compaction plans. Once compaction completed, Compactor would upload deletion marker for the source blocks in the plan. Also, it would mark status of all blocks along with assigned partition ID in the group as `completed`.
+   3. The status information of each partition ID would be stored in block storage in order for cleaner to pick it up later.
+7. Return all ready compaction groups to Compactor.
+8. Compactor starts compacting partitioned blocks from compaction groups. Once compaction completed, Compactor would upload deletion marker for the source blocks in the plan. Also, it would mark status of all blocks along with assigned partition ID in the group as `completed`.
 
 ### Clean up Workflow
 
-Cleaner would periodically check any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should retrieve compaction plan to get all partition IDs assigned to this block. If this source block's all assigned partition ID have status set to `completed`, this source block can be deleted. Otherwise, skip deletion.
+Cleaner would periodically check any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should retrieve compaction group information from block storage to get all partition IDs assigned to this block as well as status information of each partition ID. If this source block's all assigned partition ID have status set to `completed`, this source block can be deleted. Otherwise, skip deletion.
 
 ## Performance
 
@@ -292,10 +294,10 @@ T3 partition 8 - Hash(timeseries label) % 8 == 7
 
 #### Scenario: All source blocks were compacted by partitioning compaction (Idea case)
 
-All source blocks were previously compacted through partitioning compaction. In this case for each time interval, the number of blocks belong to same time interval would be 2^x if multiplier is set to 2.
+All source blocks were previously compacted through partitioning compaction. In this case for each time range, the number of blocks belong to same time range would be 2^x if multiplier is set to 2.
 
 ```
-Time intervals:
+Time ranges:
 T1, T2, T3
 
 Source blocks:
@@ -311,24 +313,24 @@ Partition Number = (200G / 64G = 3.125) => round up to next 2^x = 4
 
 Partitioning:
 * For T1, there are only 2 blocks which is < 4. So
-    * B1 (index 0 in the time interval) can be grouped with other blocks having N % 4 == 0 or 2. Because 0 % 2 == 0.
-    * B2 (index 1 in the time interval) can be grouped with other blocks having N % 4 == 1 or 3. Because 1 % 2 == 1.
+    * B1 (index 0 in the time range) can be grouped with other blocks having N % 4 == 0 or 2. Because 0 % 2 == 0.
+    * B2 (index 1 in the time range) can be grouped with other blocks having N % 4 == 1 or 3. Because 1 % 2 == 1.
 * For T2,
-    * B3 (index 0 in the time interval) can be grouped with other blocks having N % 4 == 0.
-    * B4 (index 1 in the time interval) can be grouped with other blocks having N % 4 == 1.
-    * B5 (index 2 in the time interval) can be grouped with other blocks having N % 4 == 2.
-    * B6 (index 3 in the time interval) can be grouped with other blocks having N % 4 == 3.
+    * B3 (index 0 in the time range) can be grouped with other blocks having N % 4 == 0.
+    * B4 (index 1 in the time range) can be grouped with other blocks having N % 4 == 1.
+    * B5 (index 2 in the time range) can be grouped with other blocks having N % 4 == 2.
+    * B6 (index 3 in the time range) can be grouped with other blocks having N % 4 == 3.
 * For T3,
-    * B7 (index 0 in the time interval) can be grouped with other blocks having N % 4 == 0.
-    * B8 (index 1 in the time interval) can be grouped with other blocks having N % 4 == 1.
-    * B9 (index 2 in the time interval) can be grouped with other blocks having N % 4 == 2.
-    * B10 (index 3 in the time interval) can be grouped with other blocks having N % 4 == 3.
-    * B11 (index 4 in the time interval) can be grouped with other blocks having N % 4 == 0.
-    * B12 (index 5 in the time interval) can be grouped with other blocks having N % 4 == 1.
-    * B13 (index 6 in the time interval) can be grouped with other blocks having N % 4 == 2.
-    * B14 (index 7 in the time interval) can be grouped with other blocks having N % 4 == 3.
+    * B7 (index 0 in the time range) can be grouped with other blocks having N % 4 == 0.
+    * B8 (index 1 in the time range) can be grouped with other blocks having N % 4 == 1.
+    * B9 (index 2 in the time range) can be grouped with other blocks having N % 4 == 2.
+    * B10 (index 3 in the time range) can be grouped with other blocks having N % 4 == 3.
+    * B11 (index 4 in the time range) can be grouped with other blocks having N % 4 == 0.
+    * B12 (index 5 in the time range) can be grouped with other blocks having N % 4 == 1.
+    * B13 (index 6 in the time range) can be grouped with other blocks having N % 4 == 2.
+    * B14 (index 7 in the time range) can be grouped with other blocks having N % 4 == 3.
 
-Compaction Plans:
+Compaction Groups:
 
 * Partition ID: 0 \
   Partition Number: 4 \
@@ -347,10 +349,10 @@ Compaction Plans:
 
 #### Scenario: All source blocks are level 1 blocks
 
-All source blocks are level 1 blocks. Since number of level 1 blocks in one time interval is not guaranteed to be 2^x, all blocks need to be included in each partition.
+All source blocks are level 1 blocks. Since number of level 1 blocks in one time range is not guaranteed to be 2^x, all blocks need to be included in each partition.
 
 ```
-Time intervals:
+Time ranges:
 T1
 
 Source blocks:
@@ -362,9 +364,9 @@ Total indices size of all source blocks:
 
 Partition Number = (100G / 64G = 1.5625) => round up to next 2^x = 2
 
-Partitioning: There is only one time interval from all source blocks which means it is compacting level 1 blocks. Partitioning needs to include all source blocks in each partition.
+Partitioning: There is only one time range from all source blocks which means it is compacting level 1 blocks. Partitioning needs to include all source blocks in each partition.
 
-Compaction Plans:
+Compaction Groups:
 
 * Partition ID: 0 \
   Partition Number: 2 \
@@ -377,10 +379,10 @@ Compaction Plans:
 
 #### Scenario: All source blocks are with compaction level > 1 and were generated by compactor without partitioning compaction
 
-If source block was generated by compactor without partitioning compaction, there should be only one block per time interval. Since there is only one block in one time interval, that one block would be included in all partitions.
+If source block was generated by compactor without partitioning compaction, there should be only one block per time range. Since there is only one block in one time range, that one block would be included in all partitions.
 
 ```
-Time intervals:
+Time ranges:
 T1, T2, T3
 
 Source blocks:
@@ -399,7 +401,7 @@ Partitioning:
 * For T2, there is only one source block. Include B2 in all partitions.
 * For T3, there is only one source block. Include B3 in all partitions.
 
-Compaction Plans:
+Compaction Groups:
 
 * Partition ID: 0 \
   Partition Number: 2 \
@@ -415,7 +417,7 @@ Compaction Plans:
 Blocks generated by compactor without partitioning compaction would be included in all partitions. Blocks generated with partitioning compaction would be partitioned based on multiplier.
 
 ```
-Time intervals:
+Time ranges:
 T1, T2, T3
 
 Source blocks:
@@ -432,15 +434,15 @@ Partition Number = (100G / 64G = 1.5625) => round up to next 2^x = 2
 Partitioning:
 * For T1, there is only one source block. Include B1 in all partitions.
 * For T2,
-    * B2 (index 0 in the time interval) can be grouped with other blocks having N % 2 == 0.
-    * B3 (index 1 in the time interval) can be grouped with other blocks having N % 2 == 1.
+    * B2 (index 0 in the time range) can be grouped with other blocks having N % 2 == 0.
+    * B3 (index 1 in the time range) can be grouped with other blocks having N % 2 == 1.
 * For T3,
-    * B4 (index 0 in the time interval) can be grouped with other blocks having N % 2 == 0.
-    * B5 (index 1 in the time interval) can be grouped with other blocks having N % 2 == 1.
-    * B6 (index 2 in the time interval) can be grouped with other blocks having N % 2 == 0.
-    * B7 (index 3 in the time interval) can be grouped with other blocks having N % 2 == 1.
+    * B4 (index 0 in the time range) can be grouped with other blocks having N % 2 == 0.
+    * B5 (index 1 in the time range) can be grouped with other blocks having N % 2 == 1.
+    * B6 (index 2 in the time range) can be grouped with other blocks having N % 2 == 0.
+    * B7 (index 3 in the time range) can be grouped with other blocks having N % 2 == 1.
 
-Compaction Plans:
+Compaction Groups:
 
 * Partition ID: 0 \
   Partition Number: 2 \

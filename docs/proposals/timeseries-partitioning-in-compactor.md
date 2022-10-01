@@ -131,12 +131,12 @@ T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having 
    2. For each unpartitioned group:
       1. Generates partitioned compaction group ID which is hash of min and max time of result block.
       2. If the ID exists under the tenant directory in block storage, continue on next unpartitioned group.
-      3. Calculates partition number. Partition number indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
-      4. Assign source blocks into each partition with partition ID (value is in range from 0 to Partition Number - 1). Note that one source block could be used in multiple partitions. So multiple partition ID could be assigned to same source block. Check the examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
+      3. Calculates number of partitions. Number of partitions indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.
+      4. Assign source blocks into each partition with partition ID (value is in range from 0 to number_of_partitions - 1). Note that one source block could be used in multiple partitions (explanation in [Planning the compaction](#planning-the-compaction) and [Compaction](#compaction)). So multiple partition ID could be assigned to same source block. Check more partitioning examples in [Compaction Partitioning Examples](#compaction-partitioning-examples)
       5. Generates partitioned compaction group that indicates which partition ID each blocks got assigned.
       6. Partitioned compaction group information would be stored in block storage under the tenant directory it belongs to and the stored file can be picked up by cleaner later. Partitioned compaction group information contains partitioned compaction group ID, number of partitions, list of partitions which has partition ID and list of source blocks.
       7. Store partitioned compaction group ID in block storage under each blocks' directory that are used by the generated partitioned compaction group.
-4. Grouper returns partitioned compaction groups to Compactor. Each returned group would have partition ID, partition number, and list of source blocks in memory.
+4. Grouper returns partitioned compaction groups to Compactor. Each returned group would have partition ID, number of partitions, and list of source blocks in memory.
 5. Compactor iterates over each partitioned compaction group. For each iteration, calls Planner to make sure the group is ready for compaction.
 6. Planner collects partitioned compaction group which is ready for compaction.
    1. For each partitions in the group and for each blocks in the partition:
@@ -314,7 +314,7 @@ Total indices size of all source blocks:
 200G
 ```
 
-Partition Number = (200G / 64G = 3.125) => round up to next 2^x = 4
+Number of Partitions = (200G / 64G = 3.125) => round up to next 2^x = 4
 
 Partitioning:
 * For T1, there are only 2 blocks which is < 4. So
@@ -337,16 +337,16 @@ Partitioning:
 
 Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
-  Partition Number: 4 \
+  Number of Partitions: 4 \
   Blocks: B1, B3, B7, B11
 * Partition ID: 1 \
-  Partition Number: 4 \
+  Number of Partitions: 4 \
   Blocks: B2, B4, B8, B12
 * Partition ID: 2 \
-  Partition Number: 4 \
+  Number of Partitions: 4 \
   Blocks: B1, B5, B9, B13
 * Partition ID: 3 \
-  Partition Number: 4 \
+  Number of Partitions: 4 \
   Blocks: B2, B6, B10, B14
 
 ---
@@ -366,16 +366,16 @@ Total indices size of all source blocks:
 100G
 ```
 
-Partition Number = (100G / 64G = 1.5625) => round up to next 2^x = 2
+Number of Partitions = (100G / 64G = 1.5625) => round up to next 2^x = 2
 
 Partitioning: There is only one time range from all source blocks which means it is compacting level 1 blocks. Partitioning needs to include all source blocks in each partition.
 
 Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
-  Partition Number: 2 \
+  Number of Partitions: 2 \
   Blocks: B1, B2, B3
 * Partition ID: 1 \
-  Partition Number: 2 \
+  Number of Partitions: 2 \
   Blocks: B1, B2, B3
 
 ---
@@ -397,7 +397,7 @@ Total indices size of all source blocks:
 100G
 ```
 
-Partition Number = (100G / 64G = 1.5625) => round up to next 2^x = 2
+Number of Partitions = (100G / 64G = 1.5625) => round up to next 2^x = 2
 
 Partitioning:
 * For T1, there is only one source block. Include B1 in all partitions.
@@ -406,10 +406,10 @@ Partitioning:
 
 Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
-  Partition Number: 2 \
+  Number of Partitions: 2 \
   Blocks: B1, B2, B3
 * Partition ID: 1 \
-  Partition Number: 2 \
+  Number of Partitions: 2 \
   Blocks: B1, B2, B3
 
 ---
@@ -431,7 +431,7 @@ Total indices size of all source blocks:
 100G
 ```
 
-Partition Number = (100G / 64G = 1.5625) => round up to next 2^x = 2
+Number of Partitions = (100G / 64G = 1.5625) => round up to next 2^x = 2
 
 Partitioning:
 * For T1, there is only one source block. Include B1 in all partitions.
@@ -446,9 +446,9 @@ Partitioning:
 
 Partitions in Partitioned Compaction Group:
 * Partition ID: 0 \
-  Partition Number: 2 \
+  Number of Partitions: 2 \
   Blocks: B1, B2, B4, B6
 * Partition ID: 1 \
-  Partition Number: 2 \
+  Number of Partitions: 2 \
   Blocks: B1, B3, B5, B7
 

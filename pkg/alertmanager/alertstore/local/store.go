@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	Name = "local"
+	Name         = "local"
+	templatesDir = "templates"
 )
 
 var (
@@ -148,9 +149,36 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		// The file name must correspond to the user tenant ID
 		user := strings.TrimSuffix(info.Name(), ext)
 
+		// Load template files
+		userTemplateDir := filepath.Join(f.cfg.Path, user, templatesDir)
+		var templates []*alertspb.TemplateDesc
+
+		if _, e := os.Stat(userTemplateDir); e == nil {
+			err = filepath.Walk(filepath.Join(f.cfg.Path, user, templatesDir), func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return errors.Wrapf(err, "unable to walk file path at %s", path)
+				}
+				// Ignore files that are directories
+				if info.IsDir() {
+					return nil
+				}
+				content, err := os.ReadFile(path)
+				if err != nil {
+					return errors.Wrapf(err, "unable to read alertmanager templates %s", path)
+				}
+
+				templates = append(templates, &alertspb.TemplateDesc{
+					Body:     string(content),
+					Filename: info.Name(),
+				})
+				return nil
+			})
+		}
+
 		configs[user] = alertspb.AlertConfigDesc{
 			User:      user,
 			RawConfig: string(content),
+			Templates: templates,
 		}
 		return nil
 	})

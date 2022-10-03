@@ -81,17 +81,22 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 	// The storage contains some configs.
 	{
 		user1Cfg := prepareAlertmanagerConfig("user-1")
-		require.NoError(t, os.WriteFile(filepath.Join(storeDir, "user-1.yaml"), []byte(user1Cfg), os.ModePerm))
+		user1Dir, user1TemplateDir := prepareUserDir(storeDir, "user-1")
+		require.NoError(t, os.WriteFile(filepath.Join(user1Dir, "user-1.yaml"), []byte(user1Cfg), os.ModePerm))
+
+		require.NoError(t, os.WriteFile(filepath.Join(user1TemplateDir, "template.tpl"), []byte("testTemplate"), os.ModePerm))
 
 		configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
 		require.NoError(t, err)
 		assert.Contains(t, configs, "user-1")
 		assert.NotContains(t, configs, "user-2")
 		assert.Equal(t, user1Cfg, configs["user-1"].RawConfig)
+		assert.Equal(t, "testTemplate", configs["user-1"].Templates[0].Body)
 
 		// Add another user config.
 		user2Cfg := prepareAlertmanagerConfig("user-2")
-		require.NoError(t, os.WriteFile(filepath.Join(storeDir, "user-2.yaml"), []byte(user2Cfg), os.ModePerm))
+		user2Dir, _ := prepareUserDir(storeDir, "user-2")
+		require.NoError(t, os.WriteFile(filepath.Join(user2Dir, "user-2.yaml"), []byte(user2Cfg), os.ModePerm))
 
 		configs, err = store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
 		require.NoError(t, err)
@@ -100,6 +105,14 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 		assert.Equal(t, user1Cfg, configs["user-1"].RawConfig)
 		assert.Equal(t, user2Cfg, configs["user-2"].RawConfig)
 	}
+}
+
+func prepareUserDir(storeDir string, user string) (userDir string, templateDir string) {
+	userDir = filepath.Join(storeDir, user)
+	templateDir = filepath.Join(userDir, templatesDir)
+	os.MkdirAll(userDir, os.ModePerm)
+	os.MkdirAll(templateDir, os.ModePerm)
+	return
 }
 
 func prepareLocalStore(t *testing.T) (store *Store, storeDir string) {

@@ -173,6 +173,10 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 				})
 				return nil
 			})
+
+			if err != nil {
+				return errors.Wrapf(err, "unable to load alertmanager config %s", path)
+			}
 		}
 
 		configs[user] = alertspb.AlertConfigDesc{

@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/go-kit/log"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
@@ -42,6 +41,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -178,8 +178,8 @@ receivers:
     from: test@example.com
     smarthost: smtp:2525
 `
-	user1Dir, user1TemplateDir := prepareUserDir(storeDir, "user-1")
-	user2Dir, _ := prepareUserDir(storeDir, "user-2")
+	user1Dir, user1TemplateDir := prepareUserDir(t, storeDir, "user-1")
+	user2Dir, _ := prepareUserDir(t, storeDir, "user-2")
 	require.NoError(t, os.WriteFile(filepath.Join(user1Dir, "user-1.yaml"), []byte(config), os.ModePerm))
 	require.NoError(t, os.WriteFile(filepath.Join(user2Dir, "user-2.yaml"), []byte(config), os.ModePerm))
 	require.NoError(t, os.WriteFile(filepath.Join(user1TemplateDir, "template.tpl"), []byte("testTemplate"), os.ModePerm))
@@ -1930,11 +1930,11 @@ func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
 }
 
-func prepareUserDir(storeDir string, user string) (userDir string, templateDir string) {
+func prepareUserDir(t *testing.T, storeDir string, user string) (userDir string, templateDir string) {
 	userDir = filepath.Join(storeDir, user)
 	templateDir = filepath.Join(userDir, templatesDir)
-	os.MkdirAll(userDir, os.ModePerm)
-	os.MkdirAll(templateDir, os.ModePerm)
+	require.NoError(t, os.MkdirAll(userDir, os.ModePerm))
+	require.NoError(t, os.MkdirAll(templateDir, os.ModePerm))
 	return
 }
 

@@ -154,17 +154,17 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 		var templates []*alertspb.TemplateDesc
 
 		if _, e := os.Stat(userTemplateDir); e == nil {
-			err = filepath.Walk(filepath.Join(f.cfg.Path, user, templatesDir), func(path string, info os.FileInfo, err error) error {
+			err = filepath.Walk(userTemplateDir, func(templatePath string, info os.FileInfo, err error) error {
 				if err != nil {
-					return errors.Wrapf(err, "unable to walk file path at %s", path)
+					return errors.Wrapf(err, "unable to walk file path at %s", templatePath)
 				}
 				// Ignore files that are directories
 				if info.IsDir() {
 					return nil
 				}
-				content, err := os.ReadFile(path)
+				content, err := os.ReadFile(templatePath)
 				if err != nil {
-					return errors.Wrapf(err, "unable to read alertmanager templates %s", path)
+					return errors.Wrapf(err, "unable to read alertmanager templates %s", templatePath)
 				}
 
 				templates = append(templates, &alertspb.TemplateDesc{
@@ -175,8 +175,10 @@ func (f *Store) reloadConfigs() (map[string]alertspb.AlertConfigDesc, error) {
 			})
 
 			if err != nil {
-				return errors.Wrapf(err, "unable to load alertmanager config %s", path)
+				return errors.Wrapf(err, "unable to list alertmanager templates: %s", userTemplateDir)
 			}
+		} else if !os.IsNotExist(e) {
+			return errors.Wrapf(e, "unable to read alertmanager templates %s", path)
 		}
 
 		configs[user] = alertspb.AlertConfigDesc{

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.13.1 / 2022-10-03
+## 1.13.1 2022-10-03
 [BUGFIX] AlertManager: fixed issue introduced by #4495 where templates files were being deleted when using alertmanager local store. #4890
 
 ## 1.13.0 2022-07-14

@@ -330,6 +330,8 @@ FPM_OPTS := fpm -s dir -v $(VERSION) -n cortex -f \
 	--url "https://github.com/cortexproject/cortex"
 
 PACKAGE_IN_CONTAINER := true
+
+# The fpm image can be built from packaging/fpm//Dockerfile
 PACKAGE_IMAGE ?= $(IMAGE_PREFIX)fpm
 ifeq ($(PACKAGE_IN_CONTAINER), true)
 

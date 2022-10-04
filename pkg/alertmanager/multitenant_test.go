@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -40,6 +41,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/local"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -156,6 +158,49 @@ func TestMultitenantAlertmanagerConfig_Validate(t *testing.T) {
 			testData.setup(t, cfg, &storageCfg)
 			assert.Equal(t, testData.expected, cfg.Validate(storageCfg))
 		})
+	}
+}
+
+func TestMultitenantAlertmanager_loadAndSyncConfigsLocalStorage(t *testing.T) {
+	storeDir := t.TempDir()
+	store, _ := local.NewStore(local.StoreConfig{Path: storeDir})
+	config := `global:
+  resolve_timeout: 1m
+  smtp_require_tls: false
+
+route:
+  receiver: 'email'
+
+receivers:
+- name: 'email'
+  email_configs:
+  - to: test@example.com
+    from: test@example.com
+    smarthost: smtp:2525
+`
+	user1Dir, user1TemplateDir := prepareUserDir(t, storeDir, "user-1")
+	user2Dir, _ := prepareUserDir(t, storeDir, "user-2")
+	require.NoError(t, os.WriteFile(filepath.Join(user1Dir, "user-1.yaml"), []byte(config), os.ModePerm))
+	require.NoError(t, os.WriteFile(filepath.Join(user2Dir, "user-2.yaml"), []byte(config), os.ModePerm))
+	require.NoError(t, os.WriteFile(filepath.Join(user1TemplateDir, "template.tpl"), []byte("testTemplate"), os.ModePerm))
+
+	originalFiles, err := listFiles(storeDir)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(originalFiles))
+
+	cfg := mockAlertmanagerConfig(t)
+	cfg.DataDir = storeDir
+	reg := prometheus.NewPedanticRegistry()
+	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	for i := 0; i < 5; i++ {
+		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+		require.NoError(t, err)
+		require.Len(t, am.alertmanagers, 2)
+		files, err := listFiles(storeDir)
+		require.NoError(t, err)
+		// Verify if the files were not deleted
+		require.Equal(t, originalFiles, files)
 	}
 }
 
@@ -1883,6 +1928,27 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 // prepareInMemoryAlertStore builds and returns an in-memory alert store.
 func prepareInMemoryAlertStore() alertstore.AlertStore {
 	return bucketclient.NewBucketAlertStore(objstore.NewInMemBucket(), nil, log.NewNopLogger())
+}
+
+func prepareUserDir(t *testing.T, storeDir string, user string) (userDir string, templateDir string) {
+	userDir = filepath.Join(storeDir, user)
+	templateDir = filepath.Join(userDir, templatesDir)
+	require.NoError(t, os.MkdirAll(userDir, os.ModePerm))
+	require.NoError(t, os.MkdirAll(templateDir, os.ModePerm))
+	return
+}
+
+func listFiles(dir string) ([]string, error) {
+	var r []string
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			r = append(r, path)
+		}
+		return nil
+	})
+	sort.Strings(r)
+
+	return r, err
 }
 
 func TestSafeTemplateFilepath(t *testing.T) {

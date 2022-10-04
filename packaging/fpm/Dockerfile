@@ -1,4 +1,4 @@
-FROM alpine:3.8
+FROM alpine:3.13
 
 RUN apk add --no-cache \
         ruby \
@@ -11,7 +11,7 @@ RUN apk add --no-cache \
         make \
         rpm \
         tar \
-        && gem install --no-ri --no-rdoc fpm
+        && gem install --no-document fpm
 
 COPY package.sh /
 ENTRYPOINT ["/package.sh"]

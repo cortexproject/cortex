@@ -70,16 +70,19 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric" json:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery            int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
-	MaxFetchedSeriesPerQuery     int            `yaml:"max_fetched_series_per_query" json:"max_fetched_series_per_query"`
-	MaxFetchedChunkBytesPerQuery int            `yaml:"max_fetched_chunk_bytes_per_query" json:"max_fetched_chunk_bytes_per_query"`
-	MaxFetchedDataBytesPerQuery  int            `yaml:"max_fetched_data_bytes_per_query" json:"max_fetched_data_bytes_per_query"`
-	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
-	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
+	MaxChunksPerQuery                int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
+	MaxFetchedSeriesPerQuery         int            `yaml:"max_fetched_series_per_query" json:"max_fetched_series_per_query"`
+	MaxFetchedChunkBytesPerQuery     int            `yaml:"max_fetched_chunk_bytes_per_query" json:"max_fetched_chunk_bytes_per_query"`
+	MaxFetchedDataBytesPerQuery      int            `yaml:"max_fetched_data_bytes_per_query" json:"max_fetched_data_bytes_per_query"`
+	MaxQueryLookback                 model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength                   model.Duration `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryParallelism              int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	MaxCacheFreshness                model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
+	MaxQueriersPerTenant             int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	QueryVerticalShardSize           int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
+	QueryDataBytesRatePerUser        float64        `yaml:"query_data_bytes_rate_limit_per_user" json:"query_data_bytes_rate_limit_per_user"`
+	QueryDataBytesBurstSizePerUser   int            `yaml:"query_data_bytes_burst_size_per_user" json:"query_data_bytes_burst_size_per_user"`
+	QueryDataBytesReservationPerUser int            `yaml:"query_data_bytes_reservation_per_user" json:"query_data_bytes_reservation_per_user"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -160,6 +163,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
+	f.Float64Var(&l.QueryDataBytesRatePerUser, "frontend.query-data-bytes-rate-limit-per-user", 0, "[Experimental] Per-user query rate limit in data bytes fetched per second.")
+	f.IntVar(&l.QueryDataBytesBurstSizePerUser, "frontend.query-data-bytes-burst-size-per-user", 0, "[Experimental] Per-user query burst size (in data bytes fetched).")
+	f.IntVar(&l.QueryDataBytesReservationPerUser, "frontend.query-data-bytes-reservation-per-user", 0, "[Experimental] Minimum units reserved per query (in data bytes fetched).")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -438,6 +444,21 @@ func (o *Overrides) MaxQueriersPerUser(userID string) int {
 // QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
 func (o *Overrides) QueryVerticalShardSize(userID string) int {
 	return o.getOverridesForUser(userID).QueryVerticalShardSize
+}
+
+// QueryDataBytesRate returns the limit on query rate (data bytes fetched per second).
+func (o *Overrides) QueryDataBytesRatePerUser(userID string) float64 {
+	return o.getOverridesForUser(userID).QueryDataBytesRatePerUser
+}
+
+// QueryDataBytesBurstSizePerUser returns the burst size for query data bytes rate.
+func (o *Overrides) QueryDataBytesBurstSizePerUser(userID string) int {
+	return o.getOverridesForUser(userID).QueryDataBytesBurstSizePerUser
+}
+
+// QueryDataBytesBurstSizePerUser returns the burst size for query data bytes rate.
+func (o *Overrides) QueryDataBytesReservationPerUser(userID string) int {
+	return o.getOverridesForUser(userID).QueryDataBytesReservationPerUser
 }
 
 // MaxQueryParallelism returns the limit to the number of split queries the

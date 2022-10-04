@@ -659,6 +659,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					}
 					chunksSize := countChunkBytes(s)
 					dataSize := countDataBytes(s)
+					reqStats.AddFetchedDataBytes(uint64(dataSize))
 					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
 						return validation.LimitError(chunkBytesLimitErr.Error())
 					}
@@ -695,7 +696,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			reqStats.AddFetchedSeries(uint64(numSeries))
 			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
-			reqStats.AddFetchedDataBytes(uint64(dataBytes))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),

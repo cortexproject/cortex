@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -274,11 +275,14 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 		frontendv1pb.RegisterFrontendServer(grpcServer, v1)
 	}
 
+	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
 	r := mux.NewRouter()
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},
-	).Wrap(transport.NewHandler(config.Handler, rt, logger, nil)))
+	).Wrap(transport.NewHandler(config.Handler, overrides, rt, logger, nil)))
 
 	httpServer := http.Server{
 		Handler: r,

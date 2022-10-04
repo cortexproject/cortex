@@ -320,6 +320,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				return nil, err
 			}
 
+			reqStats.AddFetchedDataBytes(uint64(resp.Size()))
+
 			// Enforce the max chunks limits.
 			if chunkLimitErr := queryLimiter.AddChunks(resp.ChunksCount()); chunkLimitErr != nil {
 				return nil, validation.LimitError(chunkLimitErr.Error())
@@ -396,7 +398,6 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
 	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
-	reqStats.AddFetchedDataBytes(uint64(resp.Size()))
 
 	return resp, nil
 }

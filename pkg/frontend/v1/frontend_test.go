@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -262,12 +263,15 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	handlerCfg := transport.HandlerConfig{}
 	flagext.DefaultValues(&handlerCfg)
 
+	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
 	rt := transport.AdaptGrpcRoundTripperToHTTPRoundTripper(v1)
 	r := mux.NewRouter()
 	r.PathPrefix("/").Handler(middleware.Merge(
 		middleware.AuthenticateUser,
 		middleware.Tracer{},
-	).Wrap(transport.NewHandler(handlerCfg, rt, logger, nil)))
+	).Wrap(transport.NewHandler(handlerCfg, overrides, rt, logger, nil)))
 
 	httpServer := http.Server{
 		Handler: r,

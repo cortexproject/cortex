@@ -24,7 +24,9 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -58,6 +60,8 @@ type Handler struct {
 	cfg          HandlerConfig
 	log          log.Logger
 	roundTripper http.RoundTripper
+	rateLimiter  limiter.RateLimiter
+	limits       *validation.Overrides
 
 	// Metrics.
 	querySeconds   *prometheus.CounterVec
@@ -68,11 +72,13 @@ type Handler struct {
 }
 
 // NewHandler creates a new frontend handler.
-func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
+func NewHandler(cfg HandlerConfig, limits *validation.Overrides, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
 	h := &Handler{
 		cfg:          cfg,
 		log:          log,
 		roundTripper: roundTripper,
+		limits:       limits,
+		rateLimiter:  *limiter.NewRateLimiter(newLocalQueryDataBytesRateStrategy(limits), 10*time.Second),
 	}
 
 	if cfg.QueryStatsEnabled {
@@ -133,6 +139,18 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(io.TeeReader(r.Body, &buf))
 
 	startTime := time.Now()
+	userID := f.getUserID(r)
+	minReservation := f.limits.QueryDataBytesReservationPerUser(userID)
+
+	// Must Allow at-least some.
+	if !f.rateLimiter.AllowN(startTime, userID, int(minReservation)) {
+		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "cannot reserve minimum", "minReservation", minReservation)
+		body := io.NopCloser(
+			strings.NewReader(
+				fmt.Sprintf("query limit (%v)cannot reserve minimum %d", f.rateLimiter.Limit(startTime, userID), minReservation)))
+		f.sendResponse(r.Context(), w, http.StatusTooManyRequests, body)
+		return
+	}
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
@@ -150,11 +168,14 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
-	w.WriteHeader(resp.StatusCode)
-	// log copy response body error so that we will know even though success response code returned
-	bytesCopied, err := io.Copy(w, resp.Body)
-	if err != nil && !errors.Is(err, syscall.EPIPE) {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
+	if !f.rateLimiter.AllowN(startTime, userID, int(stats.FetchedDataBytes)-minReservation) {
+		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "too many data bytes fetched", "dataBytes", stats.FetchedDataBytes)
+		body := io.NopCloser(
+			strings.NewReader(
+				fmt.Sprintf("query limit (%v) exceeded while executing query fetching %d data bytes", f.rateLimiter.Limit(startTime, userID), stats.FetchedChunkBytes)))
+		f.sendResponse(r.Context(), w, http.StatusTooManyRequests, body)
+	} else {
+		f.sendResponse(r.Context(), w, resp.StatusCode, resp.Body)
 	}
 
 	// Check whether we should parse the query string.
@@ -168,6 +189,15 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if f.cfg.QueryStatsEnabled {
 		f.reportQueryStats(r, queryString, queryResponseTime, stats)
+	}
+}
+
+func (f *Handler) sendResponse(ctx context.Context, w http.ResponseWriter, statusCode int, body io.ReadCloser) {
+	w.WriteHeader(statusCode)
+	// log copy response body error so that we will know even though success response code returned
+	bytesCopied, err := io.Copy(w, body)
+	if err != nil && !errors.Is(err, syscall.EPIPE) {
+		level.Error(util_log.WithContext(ctx, f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
 }
 
@@ -185,11 +215,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 }
 
 func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
-	tenantIDs, err := tenant.TenantIDs(r.Context())
-	if err != nil {
-		return
-	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
+	userID := f.getUserID(r)
 	wallTime := stats.LoadWallTime()
 	numSeries := stats.LoadFetchedSeries()
 	numBytes := stats.LoadFetchedChunkBytes()
@@ -216,6 +242,15 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	}, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+}
+
+func (f *Handler) getUserID(r *http.Request) string {
+	tenantIDs, err := tenant.TenantIDs(r.Context())
+	if err != nil {
+		return ""
+	}
+
+	return tenant.JoinTenantIDs(tenantIDs)
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {

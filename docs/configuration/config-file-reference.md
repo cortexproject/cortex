@@ -2720,6 +2720,18 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
+# [Experimental] Per-user query rate limit in data bytes fetched per second.
+# CLI flag: -frontend.query-data-bytes-rate-limit-per-user
+[query_data_bytes_rate_limit_per_user: <float> | default = 0]
+
+# [Experimental] Per-user query burst size (in data bytes fetched).
+# CLI flag: -frontend.query-data-bytes-burst-size-per-user
+[query_data_bytes_burst_size_per_user: <int> | default = 0]
+
+# [Experimental] Minimum units reserved per query (in data bytes fetched).
+# CLI flag: -frontend.query-data-bytes-reservation-per-user
+[query_data_bytes_reservation_per_user: <int> | default = 0]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration

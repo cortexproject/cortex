@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -68,7 +69,9 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			})
 
 			reg := prometheus.NewPedanticRegistry()
-			handler := NewHandler(tt.cfg, roundTripper, log.NewNopLogger(), reg)
+			overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+			require.NoError(t, err)
+			handler := NewHandler(tt.cfg, overrides, roundTripper, log.NewNopLogger(), reg)
 
 			ctx := user.InjectOrgID(context.Background(), "12345")
 			req := httptest.NewRequest("GET", "/", nil)

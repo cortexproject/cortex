@@ -59,5 +59,6 @@ func newS3Config(cfg Config) (s3.Config, error) {
 		// Enforce signature version 2 if CLI flag is set
 		SignatureV2:      cfg.SignatureVersion == SignatureVersionV2,
 		BucketLookupType: bucketLookupType,
+		AWSSDKAuth:       cfg.AccessKeyID == "",
 	}, nil
 }

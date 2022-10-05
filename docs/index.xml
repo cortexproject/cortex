@@ -4385,11 +4385,24 @@ func (m *Manager) InitModuleServices(target string) (map[string]services.Service
 &lt;p>This document defines project governance for the project.&lt;/p>
 &lt;h2 id="voting">Voting&lt;/h2>
 &lt;p>The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote. To avoid having a single company dominate the project, at most two votes from maintainers working for the same company will count.&lt;/p>
-&lt;p>For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.
-Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time, the votes will be tallied and the outcome noted.&lt;/p>
+&lt;p>For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.&lt;/p>
+&lt;p>Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Maintainers who do not cast a vote, after a suitable period of time, are not included in the majority calculation.&lt;/p>
+&lt;h2 id="maintainer-duties">Maintainer duties&lt;/h2>
+&lt;p>Maintainers are required to participate in the project, by joining discussions, submitting and reviewing pull requests, answering user questions, among others.&lt;/p>
+&lt;p>Besides that, we have one concrete activity in which maintainers have to engage from time to time: releasing new versions of Cortex. This process ideally takes only a couple of hours, but requires coordination on different fronts. Even though the process is well documented, it is not without eventual glitches, so, each release needs a &amp;ldquo;Release shepherd&amp;rdquo;. How it works is described in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RELEASE.md">RELEASE.md&lt;/a> file.&lt;/p>
 &lt;h2 id="changes-in-maintainership">Changes in Maintainership&lt;/h2>
-&lt;p>New maintainers are proposed by an existing maintainer and are elected by a 2/3 majority vote.&lt;/p>
-&lt;p>Maintainers can be removed by a 2/3 majority vote.&lt;/p>
+&lt;p>Contributors who are interested in becoming a maintainer, if performing relevant responsibilities, should discuss their interest with the existing maintainers. New maintainers must be nominated by an existing maintainer and must be elected by 2/3 majority vote.&lt;/p>
+&lt;p>We do not expect anyone to make a permanent commitment to be a Cortex maintainer forever. After all, circumstances change,
+people get new jobs, new interests, and may not be able to continue contributing to the project. At the same time, we need
+to keep the list of maintainers current in order to have effective governance. People may be removed from the current list
+of maintainers via one of the following ways:&lt;/p>
+&lt;ul>
+&lt;li>They can resign&lt;/li>
+&lt;li>If they stop contributing to the project for a period of 6 months or more&lt;/li>
+&lt;li>By a 2/3 majority vote from active maintainers&lt;/li>
+&lt;/ul>
+&lt;p>Former maintainers are recognized with an honorary &lt;em>Emeritus Maintainer&lt;/em> status, and have their names permanently
+listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/README.md">README&lt;/a> as a form of gratitude for their contributions.&lt;/p>
 &lt;h2 id="approving-prs">Approving PRs&lt;/h2>
 &lt;p>PRs may be merged after receiving at least two positive votes. If the PR author is a maintainer, this counts as a vote.&lt;/p>
 &lt;h2 id="github-project-administration">Github Project Administration&lt;/h2>

@@ -21,7 +21,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.10.0"
+	"go.opentelemetry.io/otel/semconv/v1.12.0"
 
 	"github.com/cortexproject/cortex/pkg/tracing/migration"
 	"github.com/cortexproject/cortex/pkg/tracing/sampler"
@@ -103,7 +103,13 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 			return nil, fmt.Errorf("creating OTLP trace exporter: %w", err)
 		}
 
-		tracerProvider := newTraceProvider(name, c, exporter)
+		r, err := newResource(ctx, name)
+
+		if err != nil {
+			return nil, fmt.Errorf("creating tracing resource: %w", err)
+		}
+
+		tracerProvider := newTraceProvider(r, c, exporter)
 
 		bridge, wrappedProvider := migration.NewCortexBridgeTracerWrapper(tracerProvider.Tracer("github.com/cortexproject/cortex/cmd/cortex"))
 		bridge.SetTextMapPropagator(propagation.TraceContext{})
@@ -118,10 +124,10 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 	}, nil
 }
 
-func newTraceProvider(name string, c Config, exporter *otlptrace.Exporter) *sdktrace.TracerProvider {
+func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Exporter) *sdktrace.TracerProvider {
 	options := []sdktrace.TracerProviderOption{
 		sdktrace.WithBatcher(exporter),
-		sdktrace.WithResource(newResource(name)),
+		sdktrace.WithResource(r),
 	}
 
 	switch strings.ToLower(c.Otel.ExporterType) {
@@ -135,9 +141,15 @@ func newTraceProvider(name string, c Config, exporter *otlptrace.Exporter) *sdkt
 	return sdktrace.NewTracerProvider(options...)
 }
 
-func newResource(target string) *resource.Resource {
-	return resource.NewWithAttributes(
+func newResource(ctx context.Context, target string) (*resource.Resource, error) {
+	r, err := resource.New(ctx, resource.WithContainer(), resource.WithHost())
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resource.Merge(r, resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceNameKey.String(target),
-	)
+	))
 }

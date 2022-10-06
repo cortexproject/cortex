@@ -3,7 +3,6 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"fmt"
 	io "io"
 	"math"
 	"net/http"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gogo/status"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -169,12 +167,12 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
 	if err != nil {
-		return nil, decorateWithParamName(err, "start")
+		return nil, tripperware.DecorateWithParamName(err, "start")
 	}
 
 	result.End, err = util.ParseTime(r.FormValue("end"))
 	if err != nil {
-		return nil, decorateWithParamName(err, "end")
+		return nil, tripperware.DecorateWithParamName(err, "end")
 	}
 
 	if result.End < result.Start {
@@ -183,7 +181,7 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 
 	result.Step, err = parseDurationMs(r.FormValue("step"))
 	if err != nil {
-		return nil, decorateWithParamName(err, "step")
+		return nil, tripperware.DecorateWithParamName(err, "step")
 	}
 
 	if result.Step <= 0 {
@@ -423,12 +421,4 @@ func parseDurationMs(s string) (int64, error) {
 
 func encodeDurationMs(d int64) string {
 	return strconv.FormatFloat(float64(d)/float64(time.Second/time.Millisecond), 'f', -1, 64)
-}
-
-func decorateWithParamName(err error, field string) error {
-	errTmpl := "invalid parameter %q; %v"
-	if status, ok := status.FromError(err); ok {
-		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
-	}
-	return fmt.Errorf(errTmpl, field, err)
 }

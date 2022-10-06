@@ -64,6 +64,7 @@
 * [FEATURE] QueryFrontend: Implement experimental vertical sharding at query frontend for range/instant queries. #4863
 * [FEATURE] Querier: Added a new limit `-querier.max-fetched-data-bytes-per-query` allowing to limit the maximum size of all data in bytes that a query can fetch from each ingester and storage. #4854
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-compression` and `-querier.store-gateway-client.grpc-compression` to configure compression methods for grpc clients. #4889
+* [FEATURE] QueryFrontend: Implement experimental sharding for `/api/v1/series` API. #4900
 * [BUGFIX] Storage/Bucket: Enable AWS SDK for go authentication for s3 to fix IMDSv1 authentication. #4897
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767

@@ -1032,6 +1032,18 @@ The `query_range_config` configures the query splitting and caching in the Corte
 # CLI flag: -querier.split-queries-by-interval
 [split_queries_by_interval: <duration> | default = 0s]
 
+# Split metadata APIs by an interval and execute in parallel, 0 disables it. You
+# should use an a multiple of 24 hours (same as the storage bucketing scheme),
+# to avoid queriers downloading and processing the same series. Right now, only
+# the /api/v1/series API will be split.
+# CLI flag: -querier.split-metadata-by-interval
+[split_metadata_by_interval: <duration> | default = 0s]
+
+# Dictates how long into the past should the metadata be queried when the
+# `start` parameter in the API is not specified.
+# CLI flag: -querier.split-metadata-lookback
+[split_metadata_lookback: <duration> | default = 1h]
+
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]

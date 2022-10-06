@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package metadata;
+
+option go_package = "metadata";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/querier/tripperware/query.proto";
+
+message PrometheusSeriesResponse {
+  string Status = 1 [(gogoproto.jsontag) = "status"];
+  string ErrorType = 2 [(gogoproto.jsontag) = "errorType,omitempty"];
+  string Error = 3 [(gogoproto.jsontag) = "error,omitempty"];
+  repeated Metric Data = 4 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data"];
+  repeated tripperware.PrometheusResponseHeader Headers = 5 [(gogoproto.jsontag) = "-"];
+}
+
+message Metric {
+  map<string, string> Metric = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "-"];
+}

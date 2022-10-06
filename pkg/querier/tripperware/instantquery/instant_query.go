@@ -8,23 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
-	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
@@ -129,9 +125,9 @@ func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
 func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Time, err = parseTimeParam(r, "time", c.now().Unix())
+	result.Time, err = tripperware.ParseTimeParam(r, "time", c.now().Unix())
 	if err != nil {
-		return nil, decorateWithParamName(err, "time")
+		return nil, tripperware.DecorateWithParamName(err, "time")
 	}
 
 	result.Query = r.FormValue("query")
@@ -366,14 +362,6 @@ func statsMerge(resps []*PrometheusInstantQueryResponse) *tripperware.Prometheus
 	return tripperware.StatsMerge(output)
 }
 
-func decorateWithParamName(err error, field string) error {
-	errTmpl := "invalid parameter %q; %v"
-	if status, ok := status.FromError(err); ok {
-		return httpgrpc.Errorf(int(status.Code()), errTmpl, field, status.Message())
-	}
-	return fmt.Errorf(errTmpl, field, err)
-}
-
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *Sample) UnmarshalJSON(data []byte) error {
 	var sample struct {
@@ -450,16 +438,4 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 	default:
 		return s.Result.GetRawBytes(), nil
 	}
-}
-
-func parseTimeParam(r *http.Request, paramName string, defaultValue int64) (int64, error) {
-	val := r.FormValue(paramName)
-	if val == "" {
-		val = strconv.FormatInt(defaultValue, 10)
-	}
-	result, err := util.ParseTime(val)
-	if err != nil {
-		return 0, errors.Wrapf(err, "Invalid time value for '%s'", paramName)
-	}
-	return result, nil
 }

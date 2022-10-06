@@ -45,7 +45,7 @@ type splitByInterval struct {
 func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
-	reqs, err := splitQuery(r, s.interval(r))
+	reqs, err := SplitQuery(r, s.interval(r))
 	if err != nil {
 		return nil, err
 	}
@@ -68,27 +68,39 @@ func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripper
 	return response, nil
 }
 
-func splitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Request, error) {
+func SplitQuery(r tripperware.Request, interval time.Duration) ([]tripperware.Request, error) {
 	// If Start == end we should just run the original request
 	if r.GetStart() == r.GetEnd() {
 		return []tripperware.Request{r}, nil
 	}
 
-	// Replace @ modifier function to their respective constant values in the query.
-	// This way subqueries will be evaluated at the same time as the parent query.
-	query, err := evaluateAtModifierFunction(r.GetQuery(), r.GetStart(), r.GetEnd())
-	if err != nil {
-		return nil, err
-	}
 	var reqs []tripperware.Request
-	for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
-		end := nextIntervalBoundary(start, r.GetStep(), interval)
-		if end+r.GetStep() >= r.GetEnd() {
-			end = r.GetEnd()
+	if _, ok := r.(*PrometheusRequest); ok {
+		// Replace @ modifier function to their respective constant values in the query.
+		// This way subqueries will be evaluated at the same time as the parent query.
+		query, err := evaluateAtModifierFunction(r.GetQuery(), r.GetStart(), r.GetEnd())
+		if err != nil {
+			return nil, err
 		}
+		for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundary(start, r.GetStep(), interval) + r.GetStep() {
+			end := nextIntervalBoundary(start, r.GetStep(), interval)
+			if end+r.GetStep() >= r.GetEnd() {
+				end = r.GetEnd()
+			}
 
-		reqs = append(reqs, r.WithQuery(query).WithStartEnd(start, end))
+			reqs = append(reqs, r.WithQuery(query).WithStartEnd(start, end))
+		}
+	} else {
+		for start := r.GetStart(); start < r.GetEnd(); start = nextIntervalBoundaryForMetadata(start, interval) {
+			end := nextIntervalBoundaryForMetadata(start, interval)
+			if end > r.GetEnd() {
+				end = r.GetEnd()
+			}
+
+			reqs = append(reqs, r.WithStartEnd(start, end))
+		}
 	}
+
 	return reqs, nil
 }
 
@@ -125,4 +137,10 @@ func nextIntervalBoundary(t, step int64, interval time.Duration) int64 {
 		target -= step
 	}
 	return target
+}
+
+func nextIntervalBoundaryForMetadata(t int64, interval time.Duration) int64 {
+	msPerInterval := int64(interval / time.Millisecond)
+	startOfNextInterval := ((t / msPerInterval) + 1) * msPerInterval
+	return startOfNextInterval
 }

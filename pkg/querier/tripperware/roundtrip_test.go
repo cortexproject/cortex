@@ -91,6 +91,8 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		middlewares,
 		middlewares,
+		middlewares,
+		mockCodec{},
 		mockCodec{},
 		mockCodec{},
 	)

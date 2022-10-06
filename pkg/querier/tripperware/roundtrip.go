@@ -96,8 +96,10 @@ func NewQueryTripperware(
 	forwardHeaders []string,
 	queryRangeMiddleware []Middleware,
 	instantRangeMiddleware []Middleware,
+	seriesMiddelware []Middleware,
 	queryRangeCodec Codec,
 	instantQueryCodec Codec,
+	seriesCodec Codec,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -116,15 +118,21 @@ func NewQueryTripperware(
 	_ = activeUsers.StartAsync(context.Background())
 	return func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query middleware, stitch it in.
-		if len(queryRangeMiddleware) > 0 || len(instantRangeMiddleware) > 0 {
+		if len(queryRangeMiddleware) > 0 || len(instantRangeMiddleware) > 0 || len(seriesMiddelware) > 0 {
 			queryrange := NewRoundTripper(next, queryRangeCodec, forwardHeaders, queryRangeMiddleware...)
 			instantQuery := NewRoundTripper(next, instantQueryCodec, forwardHeaders, instantRangeMiddleware...)
+			series := NewRoundTripper(next, seriesCodec, forwardHeaders, seriesMiddelware...)
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
+				isSeries := strings.HasSuffix(r.URL.Path, "/series")
 				op := "query"
 				if isQueryRange {
 					op = "query_range"
+				}
+
+				if isSeries {
+					op = "series"
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())
@@ -140,6 +148,8 @@ func NewQueryTripperware(
 					return queryrange.RoundTrip(r)
 				} else if isQuery && len(instantRangeMiddleware) > 0 {
 					return instantQuery.RoundTrip(r)
+				} else if isSeries {
+					return series.RoundTrip(r)
 				}
 				return next.RoundTrip(r)
 			})

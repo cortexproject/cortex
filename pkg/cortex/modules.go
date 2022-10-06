@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/metadata"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -453,13 +454,21 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
+	seriesMiddlewares, err := metadata.SeriesMiddlewares(t.Cfg.QueryRange, util_log.Logger, t.Overrides, prometheus.DefaultRegisterer)
+
+	if err != nil {
+		return nil, err
+	}
+
 	t.QueryFrontendTripperware = tripperware.NewQueryTripperware(util_log.Logger,
 		prometheus.DefaultRegisterer,
 		t.Cfg.QueryRange.ForwardHeaders,
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
+		seriesMiddlewares,
 		queryrange.PrometheusCodec,
 		instantquery.InstantQueryCodec,
+		metadata.NewSeriesCodec(t.Cfg.QueryRange),
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

@@ -40,11 +40,12 @@ type Config struct {
 }
 
 type Otel struct {
-	OltpEndpoint string           `yaml:"oltp_endpoint" json:"oltp_endpoint"`
-	ExporterType string           `yaml:"exporter_type" json:"exporter_type"`
-	SampleRatio  float64          `yaml:"sample_ratio" json:"sample_ratio"`
-	TLSEnabled   bool             `yaml:"tls_enabled"`
-	TLS          tls.ClientConfig `yaml:"tls"`
+	OltpEndpoint   string              `yaml:"oltp_endpoint" json:"oltp_endpoint"`
+	ExporterType   string              `yaml:"exporter_type" json:"exporter_type"`
+	SampleRatio    float64             `yaml:"sample_ratio" json:"sample_ratio"`
+	TLSEnabled     bool                `yaml:"tls_enabled"`
+	TLS            tls.ClientConfig    `yaml:"tls"`
+	ExtraDetectors []resource.Detector `yaml:"-"`
 }
 
 // RegisterFlags registers flag.
@@ -103,7 +104,7 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 			return nil, fmt.Errorf("creating OTLP trace exporter: %w", err)
 		}
 
-		r, err := newResource(ctx, name)
+		r, err := newResource(ctx, name, c.Otel.ExtraDetectors)
 
 		if err != nil {
 			return nil, fmt.Errorf("creating tracing resource: %w", err)
@@ -141,8 +142,8 @@ func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Export
 	return sdktrace.NewTracerProvider(options...)
 }
 
-func newResource(ctx context.Context, target string) (*resource.Resource, error) {
-	r, err := resource.New(ctx, resource.WithContainer(), resource.WithHost())
+func newResource(ctx context.Context, target string, detectors []resource.Detector) (*resource.Resource, error) {
+	r, err := resource.New(ctx, resource.WithHost(), resource.WithDetectors(detectors...))
 
 	if err != nil {
 		return nil, err

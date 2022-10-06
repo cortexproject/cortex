@@ -48,6 +48,7 @@
 * [ENHANCEMENT] Ingester: Prevent ingesters to become unhealthy during wall replay. #4847
 * [ENHANCEMENT] Compactor: Introduced visit marker file for blocks so blocks are under compaction will not be picked up by another compactor. #4805
 * [ENHANCEMENT] Distributor: Add label name to labelValueTooLongError. #4855
+* [ENHANCEMENT] Enhance traces with hostname information. #4898
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818

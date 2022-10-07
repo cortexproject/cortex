@@ -582,7 +582,7 @@ type failFirstGetBucket struct {
 }
 
 func (f *failFirstGetBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	if f.firstGet.CAS(false, true) {
+	if f.firstGet.CompareAndSwap(false, true) {
 		return nil, errors.New("Get() request mocked error")
 	}
 

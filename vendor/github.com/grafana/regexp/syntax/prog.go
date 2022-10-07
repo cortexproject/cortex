@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Compiled program.
@@ -101,7 +102,7 @@ func EmptyOpContext(r1, r2 rune) EmptyOp {
 	return op
 }
 
-// IsWordChar reports whether r is consider a ``word character''
+// IsWordChar reports whether r is considered a “word character”
 // during the evaluation of the \b and \B zero-width assertions.
 // These assertions are ASCII-only: the word characters are [A-Za-z0-9_].
 func IsWordChar(r rune) bool {
@@ -145,20 +146,37 @@ func (i *Inst) op() InstOp {
 // regexp must start with. Complete is true if the prefix
 // is the entire match.
 func (p *Prog) Prefix() (prefix string, complete bool) {
-	i := p.skipNop(uint32(p.Start))
+	prefix, complete, foldCase := p.PrefixAndCase()
+	if foldCase {
+		return "", false
+	}
+	return prefix, complete
+}
+
+// Prefix returns a literal string that all matches for the
+// regexp must start with. Complete is true if the prefix
+// is the entire match. FoldCase is true if the string should
+// match in upper or lower case.
+func (p *Prog) PrefixAndCase() (prefix string, complete bool, foldCase bool) {
+	i := &p.Inst[p.Start]
+	// Skip any no-op, capturing or begin-text instructions
+	for i.Op == InstNop || i.Op == InstCapture || (i.Op == InstEmptyWidth && EmptyOp(i.Arg)&EmptyBeginText != 0) {
+		i = &p.Inst[i.Out]
+	}
 
 	// Avoid allocation of buffer if prefix is empty.
 	if i.op() != InstRune || len(i.Rune) != 1 {
-		return "", i.Op == InstMatch
+		return "", i.Op == InstMatch, false
 	}
 
 	// Have prefix; gather characters.
 	var buf strings.Builder
-	for i.op() == InstRune && len(i.Rune) == 1 && Flags(i.Arg)&FoldCase == 0 {
+	foldCase = (Flags(i.Arg)&FoldCase != 0)
+	for i.op() == InstRune && len(i.Rune) == 1 && (Flags(i.Arg)&FoldCase != 0) == foldCase && i.Rune[0] != utf8.RuneError {
 		buf.WriteRune(i.Rune[0])
 		i = p.skipNop(i.Out)
 	}
-	return buf.String(), i.Op == InstMatch
+	return buf.String(), i.Op == InstMatch, foldCase
 }
 
 // StartCond returns the leading empty-width conditions that must

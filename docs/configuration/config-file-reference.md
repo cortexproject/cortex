@@ -2668,22 +2668,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_fetched_chunks_per_query: <int> | default = 2000000]
 
 # The maximum number of unique series for which a query can fetch samples from
-# each ingesters and blocks storage. This limit is enforced in the querier only
-# when running Cortex with blocks storage. 0 to disable
+# each ingesters and blocks storage. This limit is enforced in the querier,
+# ruler and store-gateway. 0 to disable
 # CLI flag: -querier.max-fetched-series-per-query
 [max_fetched_series_per_query: <int> | default = 0]
 
 # Deprecated (user max-fetched-data-bytes-per-query instead): The maximum size
 # of all chunks in bytes that a query can fetch from each ingester and storage.
-# This limit is enforced in the querier and ruler only when running Cortex with
-# blocks storage. 0 to disable.
+# This limit is enforced in the querier, ruler and store-gateway. 0 to disable.
 # CLI flag: -querier.max-fetched-chunk-bytes-per-query
 [max_fetched_chunk_bytes_per_query: <int> | default = 0]
 
 # The maximum combined size of all data that a query can fetch from each
-# ingester and storage. This limit is only applied for `query`, `query_range`
-# and `series` APIs. This limit is enforced in the querier and ruler only when
-# running Cortex with blocks storage. 0 to disable.
+# ingester and storage. This limit is enforced in the querier and ruler for
+# `query`, `query_range` and `series` APIs. 0 to disable.
 # CLI flag: -querier.max-fetched-data-bytes-per-query
 [max_fetched_data_bytes_per_query: <int> | default = 0]
 

@@ -625,6 +625,11 @@ func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
 	return o.getOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
 }
 
+// GetOverridesForUser returns the per-tenant limits with overrides.
+func (o *Overrides) GetOverridesForUser(userID string) *Limits {
+	return o.getOverridesForUser(userID)
+}
+
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.ByUserID(userID)

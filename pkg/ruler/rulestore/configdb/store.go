@@ -37,7 +37,7 @@ func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	m, err := c.ListAllRuleGroups(ctx)
 
 	// TODO: this should be optimized, if possible.
-	result := []string(nil)
+	result := make([]string, 0, len(m))
 	for u := range m {
 		result = append(result, u)
 	}

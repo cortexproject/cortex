@@ -477,7 +477,7 @@ func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
-func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string, limits *validation.Overrides) (removeReplicaLabel bool, _ error) {
+func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string, limits *validation.Limits) (removeReplicaLabel bool, _ error) {
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
@@ -485,7 +485,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	}
 
 	// If replica label is too long, don't use it. We accept the sample here, but it will fail validation later anyway.
-	if len(replica) > limits.MaxLabelValueLength(userID) {
+	if len(replica) > limits.MaxLabelValueLength {
 		return false, nil
 	}
 
@@ -503,7 +503,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
 // The returned error may retain the series labels.
-func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Overrides) (cortexpb.PreallocTimeseries, validation.ValidationError) {
+func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
 	if err := validation.ValidateLabels(limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
@@ -600,10 +600,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	validatedExemplars := 0
 
 	// Cache user limit with overrides.
-	limits, _ := validation.NewOverrides(*(d.limits.GetOverridesForUser(userID)), nil)
+	limits := d.limits.GetOverridesForUser(userID)
 
-	if limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
-		cluster, replica := findHALabels(limits.HAReplicaLabel(userID), limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
+	if limits.AcceptHASamples && len(req.Timeseries) > 0 {
+		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
 			// Ensure the request slice is reused if the series get deduped.
@@ -646,7 +646,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			latestSampleTimestampMs = util_math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
-		if mrc := limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
+		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
 			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if len(l) == 0 {
 				// all labels are gone, samples will be discarded
@@ -663,10 +663,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
 		if removeReplica {
-			removeLabel(limits.HAReplicaLabel(userID), &ts.Labels)
+			removeLabel(limits.HAReplicaLabel, &ts.Labels)
 		}
 
-		for _, labelName := range limits.DropLabels(userID) {
+		for _, labelName := range limits.DropLabels {
 			removeLabel(labelName, &ts.Labels)
 		}
 
@@ -760,7 +760,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	// Obtain a subring if required.
 	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize(userID))
+		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
 	}
 
 	keys := append(seriesKeys, metadataKeys...)

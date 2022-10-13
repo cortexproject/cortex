@@ -1,3 +1,7 @@
+> **Note**     
+> **Kubecon NA - October 24 to 28**    
+> The maintainers will be at Kubecon NA. Come say hi at the [Project Meeting](https://kccncna2022.sched.com/event/1C8PD?iframe=no) and the [Maintainer Talk](https://sched.co/18ocw)
+
 <p align="center"><img src="images/logo.png" alt="Cortex Logo"></p>
 
 [![CI](https://github.com/cortexproject/cortex/workflows/ci/badge.svg)](https://github.com/cortexproject/cortex/actions)

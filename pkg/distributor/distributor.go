@@ -599,7 +599,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	validatedSamples := 0
 	validatedExemplars := 0
 
-	// Cache user limit with overrides.
+	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
 	if limits.AcceptHASamples && len(req.Timeseries) > 0 {

@@ -103,15 +103,15 @@ func init() {
 
 // ValidateSample returns an err if the sample is invalid.
 // The returned error may retain the provided series labels.
-func ValidateSample(cfg *Limits, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
+func ValidateSample(limits *Limits, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
 	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
 
-	if cfg.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-time.Duration(cfg.RejectOldSamplesMaxAge)) {
+	if limits.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return newSampleTimestampTooOldError(unsafeMetricName, s.TimestampMs)
 	}
 
-	if model.Time(s.TimestampMs) > model.Now().Add(time.Duration(cfg.CreationGracePeriod)) {
+	if model.Time(s.TimestampMs) > model.Now().Add(time.Duration(limits.CreationGracePeriod)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
 	}
@@ -158,8 +158,8 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
-func ValidateLabels(cfg *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
-	if cfg.EnforceMetricName {
+func ValidateLabels(limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
+	if limits.EnforceMetricName {
 		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {
 			DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
@@ -173,15 +173,15 @@ func ValidateLabels(cfg *Limits, userID string, ls []cortexpb.LabelAdapter, skip
 	}
 
 	numLabelNames := len(ls)
-	if numLabelNames > cfg.MaxLabelNamesPerSeries {
+	if numLabelNames > limits.MaxLabelNamesPerSeries {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return newTooManyLabelsError(ls, cfg.MaxLabelNamesPerSeries)
+		return newTooManyLabelsError(ls, limits.MaxLabelNamesPerSeries)
 	}
 
-	maxLabelNameLength := cfg.MaxLabelNameLength
-	maxLabelValueLength := cfg.MaxLabelValueLength
+	maxLabelNameLength := limits.MaxLabelNameLength
+	maxLabelValueLength := limits.MaxLabelValueLength
 	lastLabelName := ""
-	maxLabelsSizeBytes := cfg.MaxLabelsSizeBytes
+	maxLabelsSizeBytes := limits.MaxLabelsSizeBytes
 	labelsSizeBytes := 0
 
 	for _, l := range ls {

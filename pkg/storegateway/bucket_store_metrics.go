@@ -67,7 +67,7 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 		blocksLoaded: prometheus.NewDesc(
 			"cortex_bucket_store_blocks_loaded",
 			"Number of currently loaded blocks.",
-			nil, nil),
+			[]string{"user"}, nil),
 		seriesDataTouched: prometheus.NewDesc(
 			"cortex_bucket_store_series_data_touched",
 			"How many items of a data type in a block were touched for a single series request.",
@@ -212,7 +212,7 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.blockDrops, "thanos_bucket_store_block_drops_total")
 	data.SendSumOfCounters(out, m.blockDropFailures, "thanos_bucket_store_block_drop_failures_total")
 
-	data.SendSumOfGauges(out, m.blocksLoaded, "thanos_bucket_store_blocks_loaded")
+	data.SendSumOfGaugesPerUser(out, m.blocksLoaded, "thanos_bucket_store_blocks_loaded")
 
 	data.SendSumOfSummariesWithLabels(out, m.seriesDataTouched, "thanos_bucket_store_series_data_touched", "data_type")
 	data.SendSumOfSummariesWithLabels(out, m.seriesDataFetched, "thanos_bucket_store_series_data_fetched", "data_type")

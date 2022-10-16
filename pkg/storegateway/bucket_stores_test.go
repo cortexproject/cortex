@@ -90,7 +90,8 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
 			# TYPE cortex_bucket_store_blocks_loaded gauge
-			cortex_bucket_store_blocks_loaded 2
+        	cortex_bucket_store_blocks_loaded{user="user-1"} 1
+        	cortex_bucket_store_blocks_loaded{user="user-2"} 1
 
 			# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
 			# TYPE cortex_bucket_store_block_loads_total counter
@@ -158,7 +159,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 
 			# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
 			# TYPE cortex_bucket_store_blocks_loaded gauge
-			cortex_bucket_store_blocks_loaded 1
+			cortex_bucket_store_blocks_loaded{user="user-1"} 1
 
 			# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
 			# TYPE cortex_bucket_store_block_loads_total counter
@@ -219,7 +220,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
 			# TYPE cortex_bucket_store_blocks_loaded gauge
-			cortex_bucket_store_blocks_loaded 2
+			cortex_bucket_store_blocks_loaded{user="user-1"} 2
 
 			# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
 			# TYPE cortex_bucket_store_block_loads_total counter
@@ -486,7 +487,8 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
         	            	cortex_bucket_store_block_loads_total 2
         	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
         	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded 2
+        	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
+        	            	cortex_bucket_store_blocks_loaded{user="user-2"} 1
 	`), metricNames...))
 
 	// Single user left in shard.
@@ -503,7 +505,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
         	            	cortex_bucket_store_block_loads_total 2
         	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
         	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded 1
+        	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
 	`), metricNames...))
 
 	// No users left in this shard.
@@ -518,9 +520,6 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
         	            	# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
         	            	# TYPE cortex_bucket_store_block_loads_total counter
         	            	cortex_bucket_store_block_loads_total 2
-        	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
-        	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded 0
 	`), metricNames...))
 
 	// We can always get user back.
@@ -537,7 +536,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
         	            	cortex_bucket_store_block_loads_total 3
         	            	# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
         	            	# TYPE cortex_bucket_store_blocks_loaded gauge
-        	            	cortex_bucket_store_blocks_loaded 1
+        	            	cortex_bucket_store_blocks_loaded{user="user-1"} 1
 	`), metricNames...))
 }
 

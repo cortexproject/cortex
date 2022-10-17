@@ -16,7 +16,6 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
@@ -158,7 +157,7 @@ func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
-	engine *promql.Engine,
+	engine v1.QueryEngine,
 	distributor Distributor,
 	tombstonesLoader purger.TombstonesLoader,
 	reg prometheus.Registerer,

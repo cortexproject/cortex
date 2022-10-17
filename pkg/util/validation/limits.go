@@ -282,7 +282,7 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 
 // IngestionRate returns the limit on ingester rate (samples per second).
 func (o *Overrides) IngestionRate(userID string) float64 {
-	return o.getOverridesForUser(userID).IngestionRate
+	return o.GetOverridesForUser(userID).IngestionRate
 }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
@@ -294,263 +294,263 @@ func (o *Overrides) IngestionRateStrategy() string {
 
 // IngestionBurstSize returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSize(userID string) int {
-	return o.getOverridesForUser(userID).IngestionBurstSize
+	return o.GetOverridesForUser(userID).IngestionBurstSize
 }
 
 // AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
 func (o *Overrides) AcceptHASamples(userID string) bool {
-	return o.getOverridesForUser(userID).AcceptHASamples
+	return o.GetOverridesForUser(userID).AcceptHASamples
 }
 
 // HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAClusterLabel(userID string) string {
-	return o.getOverridesForUser(userID).HAClusterLabel
+	return o.GetOverridesForUser(userID).HAClusterLabel
 }
 
 // HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAReplicaLabel(userID string) string {
-	return o.getOverridesForUser(userID).HAReplicaLabel
+	return o.GetOverridesForUser(userID).HAReplicaLabel
 }
 
 // DropLabels returns the list of labels to be dropped when ingesting HA samples for the user.
 func (o *Overrides) DropLabels(userID string) flagext.StringSlice {
-	return o.getOverridesForUser(userID).DropLabels
+	return o.GetOverridesForUser(userID).DropLabels
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
 func (o *Overrides) MaxLabelNameLength(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelNameLength
+	return o.GetOverridesForUser(userID).MaxLabelNameLength
 }
 
 // MaxLabelValueLength returns maximum length a label value can be. This also is
 // the maximum length of a metric name.
 func (o *Overrides) MaxLabelValueLength(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelValueLength
+	return o.GetOverridesForUser(userID).MaxLabelValueLength
 }
 
 // MaxLabelNamesPerSeries returns maximum number of label/value pairs timeseries.
 func (o *Overrides) MaxLabelNamesPerSeries(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelNamesPerSeries
+	return o.GetOverridesForUser(userID).MaxLabelNamesPerSeries
 }
 
 // MaxLabelsSizeBytes returns maximum number of label/value pairs timeseries.
 func (o *Overrides) MaxLabelsSizeBytes(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelsSizeBytes
+	return o.GetOverridesForUser(userID).MaxLabelsSizeBytes
 }
 
 // MaxMetadataLength returns maximum length metadata can be. Metadata refers
 // to the Metric Name, HELP and UNIT.
 func (o *Overrides) MaxMetadataLength(userID string) int {
-	return o.getOverridesForUser(userID).MaxMetadataLength
+	return o.GetOverridesForUser(userID).MaxMetadataLength
 }
 
 // RejectOldSamples returns true when we should reject samples older than certain
 // age.
 func (o *Overrides) RejectOldSamples(userID string) bool {
-	return o.getOverridesForUser(userID).RejectOldSamples
+	return o.GetOverridesForUser(userID).RejectOldSamples
 }
 
 // RejectOldSamplesMaxAge returns the age at which samples should be rejected.
 func (o *Overrides) RejectOldSamplesMaxAge(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).RejectOldSamplesMaxAge)
+	return time.Duration(o.GetOverridesForUser(userID).RejectOldSamplesMaxAge)
 }
 
 // CreationGracePeriod is misnamed, and actually returns how far into the future
 // we should accept samples.
 func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).CreationGracePeriod)
+	return time.Duration(o.GetOverridesForUser(userID).CreationGracePeriod)
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
 func (o *Overrides) MaxSeriesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxSeriesPerQuery
+	return o.GetOverridesForUser(userID).MaxSeriesPerQuery
 }
 
 // MaxLocalSeriesPerUser returns the maximum number of series a user is allowed to store in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalSeriesPerUser
+	return o.GetOverridesForUser(userID).MaxLocalSeriesPerUser
 }
 
 // MaxLocalSeriesPerMetric returns the maximum number of series allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalSeriesPerMetric
+	return o.GetOverridesForUser(userID).MaxLocalSeriesPerMetric
 }
 
 // MaxGlobalSeriesPerUser returns the maximum number of series a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalSeriesPerUser
+	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
 }
 
 // MaxGlobalSeriesPerMetric returns the maximum number of series allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalSeriesPerMetric
+	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerMetric
 }
 
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching
 // chunks from the long-term storage.
 func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int {
-	return o.getOverridesForUser(userID).MaxChunksPerQuery
+	return o.GetOverridesForUser(userID).MaxChunksPerQuery
 }
 
 func (o *Overrides) MaxChunksPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxChunksPerQuery
+	return o.GetOverridesForUser(userID).MaxChunksPerQuery
 }
 
 // MaxFetchedSeriesPerQuery returns the maximum number of series allowed per query when fetching
 // chunks from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedSeriesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxFetchedSeriesPerQuery
+	return o.GetOverridesForUser(userID).MaxFetchedSeriesPerQuery
 }
 
 // MaxFetchedChunkBytesPerQuery returns the maximum number of bytes for chunks allowed per query when fetching
 // chunks from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedChunkBytesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxFetchedChunkBytesPerQuery
+	return o.GetOverridesForUser(userID).MaxFetchedChunkBytesPerQuery
 }
 
 // MaxFetchedDataBytesPerQuery returns the maximum number of bytes for all data allowed per query when fetching
 // from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedDataBytesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxFetchedDataBytesPerQuery
+	return o.GetOverridesForUser(userID).MaxFetchedDataBytesPerQuery
 }
 
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
+	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLookback)
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
+	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLength)
 }
 
 // MaxCacheFreshness returns the period after which results are cacheable,
 // to prevent caching of very recent results.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
+	return time.Duration(o.GetOverridesForUser(userID).MaxCacheFreshness)
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+	return o.GetOverridesForUser(userID).MaxQueriersPerTenant
 }
 
 // QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
 func (o *Overrides) QueryVerticalShardSize(userID string) int {
-	return o.getOverridesForUser(userID).QueryVerticalShardSize
+	return o.GetOverridesForUser(userID).QueryVerticalShardSize
 }
 
 // MaxQueryParallelism returns the limit to the number of split queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
-	return o.getOverridesForUser(userID).MaxQueryParallelism
+	return o.GetOverridesForUser(userID).MaxQueryParallelism
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.
 func (o *Overrides) EnforceMetricName(userID string) bool {
-	return o.getOverridesForUser(userID).EnforceMetricName
+	return o.GetOverridesForUser(userID).EnforceMetricName
 }
 
 // EnforceMetadataMetricName whether to enforce the presence of a metric name on metadata.
 func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
-	return o.getOverridesForUser(userID).EnforceMetadataMetricName
+	return o.GetOverridesForUser(userID).EnforceMetadataMetricName
 }
 
 // MaxLocalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store in a single ingester.
 func (o *Overrides) MaxLocalMetricsWithMetadataPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalMetricsWithMetadataPerUser
+	return o.GetOverridesForUser(userID).MaxLocalMetricsWithMetadataPerUser
 }
 
 // MaxLocalMetadataPerMetric returns the maximum number of metadata allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalMetadataPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalMetadataPerMetric
+	return o.GetOverridesForUser(userID).MaxLocalMetadataPerMetric
 }
 
 // MaxGlobalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalMetricsWithMetadataPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalMetricsWithMetadataPerUser
+	return o.GetOverridesForUser(userID).MaxGlobalMetricsWithMetadataPerUser
 }
 
 // MaxGlobalMetadataPerMetric returns the maximum number of metadata allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalMetadataPerMetric
+	return o.GetOverridesForUser(userID).MaxGlobalMetadataPerMetric
 }
 
 // IngestionTenantShardSize returns the ingesters shard size for a given user.
 func (o *Overrides) IngestionTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).IngestionTenantShardSize
+	return o.GetOverridesForUser(userID).IngestionTenantShardSize
 }
 
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).RulerEvaluationDelay)
+	return time.Duration(o.GetOverridesForUser(userID).RulerEvaluationDelay)
 }
 
 // CompactorBlocksRetentionPeriod returns the retention period for a given user.
 func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).CompactorBlocksRetentionPeriod)
+	return time.Duration(o.GetOverridesForUser(userID).CompactorBlocksRetentionPeriod)
 }
 
 // CompactorTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) CompactorTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).CompactorTenantShardSize
+	return o.GetOverridesForUser(userID).CompactorTenantShardSize
 }
 
 // MetricRelabelConfigs returns the metric relabel configs for a given user.
 func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
-	return o.getOverridesForUser(userID).MetricRelabelConfigs
+	return o.GetOverridesForUser(userID).MetricRelabelConfigs
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) RulerTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).RulerTenantShardSize
+	return o.GetOverridesForUser(userID).RulerTenantShardSize
 }
 
 // RulerMaxRulesPerRuleGroup returns the maximum number of rules per rule group for a given user.
 func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
-	return o.getOverridesForUser(userID).RulerMaxRulesPerRuleGroup
+	return o.GetOverridesForUser(userID).RulerMaxRulesPerRuleGroup
 }
 
 // RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
 func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
-	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
+	return o.GetOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
 func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).StoreGatewayTenantShardSize
+	return o.GetOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
 // MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
 func (o *Overrides) MaxHAClusters(user string) int {
-	return o.getOverridesForUser(user).HAMaxClusters
+	return o.GetOverridesForUser(user).HAMaxClusters
 }
 
 // S3SSEType returns the per-tenant S3 SSE type.
 func (o *Overrides) S3SSEType(user string) string {
-	return o.getOverridesForUser(user).S3SSEType
+	return o.GetOverridesForUser(user).S3SSEType
 }
 
 // S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id.
 func (o *Overrides) S3SSEKMSKeyID(user string) string {
-	return o.getOverridesForUser(user).S3SSEKMSKeyID
+	return o.GetOverridesForUser(user).S3SSEKMSKeyID
 }
 
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
-	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+	return o.GetOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
 // AlertmanagerReceiversBlockCIDRNetworks returns the list of network CIDRs that should be blocked
 // in the Alertmanager receivers for the given user.
 func (o *Overrides) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
-	return o.getOverridesForUser(user).AlertmanagerReceiversBlockCIDRNetworks
+	return o.GetOverridesForUser(user).AlertmanagerReceiversBlockCIDRNetworks
 }
 
 // AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
 // in the Alertmanager receivers for the given user.
 func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
-	return o.getOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
+	return o.GetOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
 }
 
 // Notification limits are special. Limits are returned in following order:
@@ -559,7 +559,7 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 // 3. per-tenant limits
 // 4. default limits
 func (o *Overrides) getNotificationLimitForUser(user, integration string) float64 {
-	u := o.getOverridesForUser(user)
+	u := o.GetOverridesForUser(user)
 	if n, ok := u.NotificationRateLimitPerIntegration[integration]; ok {
 		return n
 	}
@@ -602,30 +602,31 @@ func (o *Overrides) NotificationBurstSize(user string, integration string) int {
 }
 
 func (o *Overrides) AlertmanagerMaxConfigSize(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxConfigSizeBytes
+	return o.GetOverridesForUser(userID).AlertmanagerMaxConfigSizeBytes
 }
 
 func (o *Overrides) AlertmanagerMaxTemplatesCount(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxTemplatesCount
+	return o.GetOverridesForUser(userID).AlertmanagerMaxTemplatesCount
 }
 
 func (o *Overrides) AlertmanagerMaxTemplateSize(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxTemplateSizeBytes
+	return o.GetOverridesForUser(userID).AlertmanagerMaxTemplateSizeBytes
 }
 
 func (o *Overrides) AlertmanagerMaxDispatcherAggregationGroups(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxDispatcherAggregationGroups
+	return o.GetOverridesForUser(userID).AlertmanagerMaxDispatcherAggregationGroups
 }
 
 func (o *Overrides) AlertmanagerMaxAlertsCount(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxAlertsCount
+	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsCount
 }
 
 func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
+	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
 }
 
-func (o *Overrides) getOverridesForUser(userID string) *Limits {
+// GetOverridesForUser returns the per-tenant limits with overrides.
+func (o *Overrides) GetOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.ByUserID(userID)
 		if l != nil {

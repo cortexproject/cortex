@@ -477,7 +477,7 @@ func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
-func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string) (removeReplicaLabel bool, _ error) {
+func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica string, limits *validation.Limits) (removeReplicaLabel bool, _ error) {
 	// If the sample doesn't have either HA label, accept it.
 	// At the moment we want to accept these samples by default.
 	if cluster == "" || replica == "" {
@@ -485,7 +485,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 	}
 
 	// If replica label is too long, don't use it. We accept the sample here, but it will fail validation later anyway.
-	if len(replica) > d.limits.MaxLabelValueLength(userID) {
+	if len(replica) > limits.MaxLabelValueLength {
 		return false, nil
 	}
 
@@ -503,9 +503,10 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 // any are configured to be dropped for the user ID.
 // Returns the validated series with it's labels/samples, and any error.
 // The returned error may retain the series labels.
-func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool) (cortexpb.PreallocTimeseries, validation.ValidationError) {
+func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
-	if err := validation.ValidateLabels(d.limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
+
+	if err := validation.ValidateLabels(limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -514,7 +515,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		// Only alloc when data present
 		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := validation.ValidateSample(d.limits, userID, ts.Labels, s); err != nil {
+			if err := validation.ValidateSample(limits, userID, ts.Labels, s); err != nil {
 				return emptyPreallocSeries, err
 			}
 			samples = append(samples, s)
@@ -598,9 +599,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	validatedSamples := 0
 	validatedExemplars := 0
 
-	if d.limits.AcceptHASamples(userID) && len(req.Timeseries) > 0 {
-		cluster, replica := findHALabels(d.limits.HAReplicaLabel(userID), d.limits.HAClusterLabel(userID), req.Timeseries[0].Labels)
-		removeReplica, err = d.checkSample(ctx, userID, cluster, replica)
+	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
+	limits := d.limits.GetOverridesForUser(userID)
+
+	if limits.AcceptHASamples && len(req.Timeseries) > 0 {
+		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
+		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
 			// Ensure the request slice is reused if the series get deduped.
 			cortexpb.ReuseSlice(req.Timeseries)
@@ -634,13 +638,15 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
+
+	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
 			latestSampleTimestampMs = util_math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
 
-		if mrc := d.limits.MetricRelabelConfigs(userID); len(mrc) > 0 {
+		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
 			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if len(l) == 0 {
 				// all labels are gone, samples will be discarded
@@ -657,10 +663,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
 		// series we're trying to dedupe when HA tracking moves over to a different replica.
 		if removeReplica {
-			removeLabel(d.limits.HAReplicaLabel(userID), &ts.Labels)
+			removeLabel(limits.HAReplicaLabel, &ts.Labels)
 		}
 
-		for _, labelName := range d.limits.DropLabels(userID) {
+		for _, labelName := range limits.DropLabels {
 			removeLabel(labelName, &ts.Labels)
 		}
 
@@ -686,9 +692,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		if err != nil {
 			return nil, err
 		}
-
-		skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation)
+		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
@@ -710,7 +714,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	for _, m := range req.Metadata {
-		err := validation.ValidateMetadata(d.limits, userID, m)
+		err := validation.ValidateMetadata(limits, userID, m)
 
 		if err != nil {
 			if firstPartialErr == nil {
@@ -756,7 +760,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	// Obtain a subring if required.
 	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		subRing = d.ingestersRing.ShuffleShard(userID, d.limits.IngestionTenantShardSize(userID))
+		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
 	}
 
 	keys := append(seriesKeys, metadataKeys...)

@@ -313,6 +313,7 @@ type Compactor struct {
 
 	// Metrics.
 	compactionRunsStarted          prometheus.Counter
+	compactionRunsInterrupted      prometheus.Counter
 	compactionRunsCompleted        prometheus.Counter
 	compactionRunsFailed           prometheus.Counter
 	compactionRunsLastSuccess      prometheus.Gauge
@@ -398,6 +399,10 @@ func newCompactor(
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
 			Help: "Total number of compaction runs started.",
+		}),
+		compactionRunsInterrupted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_compactor_runs_interrupted_total",
+			Help: "Total number of compaction runs interrupted.",
 		}),
 		compactionRunsCompleted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_completed_total",
@@ -598,16 +603,23 @@ func (c *Compactor) running(ctx context.Context) error {
 }
 
 func (c *Compactor) compactUsers(ctx context.Context) {
-	succeeded := false
-	compactionErrorCount := 0
+	failed := false
+	interrupted := false
 
 	c.compactionRunsStarted.Inc()
 
 	defer func() {
-		if succeeded && compactionErrorCount == 0 {
+		// interruptions and successful runs are considered
+		// mutually exclusive but we consider a run failed if any
+		// tenant runs failed even if later runs are interrupted
+		if !interrupted && !failed {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
-		} else {
+		}
+		if interrupted {
+			c.compactionRunsInterrupted.Inc()
+		}
+		if failed {
 			c.compactionRunsFailed.Inc()
 		}
 
@@ -621,6 +633,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
 	users, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
+		failed = true
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
 		return
 	}
@@ -640,7 +653,8 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
-			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
+			interrupted = true
+			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "user", userID)
 			return
 		}
 
@@ -670,8 +684,15 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		level.Info(c.logger).Log("msg", "starting compaction of user blocks", "user", userID)
 
 		if err = c.compactUserWithRetries(ctx, userID); err != nil {
+			// TODO: patch thanos error types to support errors.Is(err, context.Canceled) here
+			if ctx.Err() != nil && ctx.Err() == context.Canceled {
+				interrupted = true
+				level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "user", userID)
+				return
+			}
+
 			c.compactionRunFailedTenants.Inc()
-			compactionErrorCount++
+			failed = true
 			level.Error(c.logger).Log("msg", "failed to compact user blocks", "user", userID, "err", err)
 			continue
 		}
@@ -706,8 +727,6 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 			}
 		}
 	}
-
-	succeeded = true
 }
 
 func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) error {

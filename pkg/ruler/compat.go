@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -138,15 +139,31 @@ type RulesLimits interface {
 	RulerMaxRulesPerRuleGroup(userID string) int
 }
 
-// EngineQueryFunc returns a new query function using the rules.EngineQueryFunc function
-// and passing an altered timestamp.
-func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
+// EngineQueryFunc returns a new engine query function by passing an altered timestamp.
+// Modified from Prometheus rules.EngineQueryFunc
+// https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
+func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		orig := rules.EngineQueryFunc(engine, q)
-		// Delay the evaluation of all rules by a set interval to give a buffer
-		// to metric that haven't been forwarded to cortex yet.
 		evaluationDelay := overrides.EvaluationDelay(userID)
-		return orig(ctx, qs, t.Add(-evaluationDelay))
+		q, err := engine.NewInstantQuery(q, nil, qs, t.Add(-evaluationDelay))
+		if err != nil {
+			return nil, err
+		}
+		res := q.Exec(ctx)
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		switch v := res.Value.(type) {
+		case promql.Vector:
+			return v, nil
+		case promql.Scalar:
+			return promql.Vector{promql.Sample{
+				Point:  promql.Point(v),
+				Metric: labels.Labels{},
+			}}, nil
+		default:
+			return nil, errors.New("rule result is not a vector or scalar")
+		}
 	}
 }
 
@@ -227,7 +244,7 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
 	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_total",
 		Help: "Number of write requests to ingesters.",

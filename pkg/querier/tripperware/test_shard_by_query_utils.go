@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -162,12 +163,12 @@ sum by (container) (
 		{
 			name:           "binary expression with without vector matching and grouping",
 			expression:     `sum without (cluster, pod) (http_requests_total{code="400"}) / ignoring (pod) sum without (cluster, pod) (http_requests_total)`,
-			shardingLabels: []string{"pod", "cluster"},
+			shardingLabels: []string{"pod", "cluster", model.MetricNameLabel},
 		},
 		{
 			name:           "multiple binary expressions with without grouping",
 			expression:     `(http_requests_total{code="400"} + ignoring (pod) http_requests_total{code="500"}) / ignoring (cluster, pod) http_requests_total`,
-			shardingLabels: []string{"cluster", "pod"},
+			shardingLabels: []string{"cluster", "pod", model.MetricNameLabel},
 		},
 		{
 			name: "multiple binary expressions with without vector matchers",
@@ -175,7 +176,7 @@ sum by (container) (
 (http_requests_total{code="400"} + ignoring (cluster, pod) http_requests_total{code="500"})
 / ignoring (pod)
 http_requests_total`,
-			shardingLabels: []string{"cluster", "pod"},
+			shardingLabels: []string{"cluster", "pod", model.MetricNameLabel},
 		},
 	}
 

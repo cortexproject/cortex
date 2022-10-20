@@ -147,11 +147,11 @@ T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having 
          2. The status information of each partition ID would be stored in block storage under the corresponding block directory in order for cleaner to pick it up later.
       4. If not all blocks in the partition are ready, continue on next partition
 7. Return all ready partitions to Compactor.
-8. Compactor starts compacting partitioned blocks. Once compaction completed, Compactor would upload deletion marker for the source blocks in the plan. Also, it would mark status of all blocks along with assigned partition ID in the group as `completed`.
+8. Compactor starts compacting partitioned blocks. Once compaction completed, Compactor would mark status of all blocks along with assigned partition ID in the group as `completed`. Compactor should use partitioned compaction group ID to retrieve partitioned compaction group information from block storage to get all partition IDs assigned to each block. Then, retrieve status information of each partition ID this assigned to block under current block directory in block storage. If all assigned partition ID of the block have status set to `completed`, upload deletion marker for this block. Otherwise, no deletion marker would be uploaded.
 
 ### Clean up Workflow
 
-Cleaner would periodically check any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should retrieve partitioned compaction group ID under current block directory in block storage and use the ID to retrieve partitioned compaction group information from block storage to get all partition IDs assigned to this block. Then, retrieve status information of each partition ID this block got assigned under current block directory in block storage. If all assigned partition ID have status set to `completed`, this source block can be deleted. Otherwise, skip deletion.
+Cleaner would periodically check any tenants having deletion marker. If there is a deletion marker for the tenant, Cleaner should remove all blocks and then clean up other files including partitioned group information files after tenant clean up delay. If there is no deletion marker for tenant, Clean should scan any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should delete it.
 
 ## Performance
 

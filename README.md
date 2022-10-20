@@ -174,6 +174,9 @@ in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/ove
 * Peter Štibraný @pstibrany
 * Marco Pracucci @pracucci
 * Bryan Boreham @bboreham
+* Goutham Veeramachaneni @gouthamve
+* Jacob Lisi @jtlisi
+* Tom Wilkie @tomwilkie
 
 ## History of Cortex
 The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016.

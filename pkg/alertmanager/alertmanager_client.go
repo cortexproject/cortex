@@ -34,15 +34,17 @@ type Client interface {
 
 // ClientConfig is the configuration struct for the alertmanager client.
 type ClientConfig struct {
-	RemoteTimeout time.Duration    `yaml:"remote_timeout"`
-	TLSEnabled    bool             `yaml:"tls_enabled"`
-	TLS           tls.ClientConfig `yaml:",inline"`
+	RemoteTimeout   time.Duration    `yaml:"remote_timeout"`
+	TLSEnabled      bool             `yaml:"tls_enabled"`
+	TLS             tls.ClientConfig `yaml:",inline"`
+	GRPCCompression string           `yaml:"grpc_compression"`
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
 	f.DurationVar(&cfg.RemoteTimeout, prefix+".remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
+	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", "Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 }
 
@@ -55,7 +57,7 @@ func newAlertmanagerClientsPool(discovery client.PoolServiceDiscovery, amClientC
 	grpcCfg := grpcclient.Config{
 		MaxRecvMsgSize:      16 * 1024 * 1024,
 		MaxSendMsgSize:      4 * 1024 * 1024,
-		GRPCCompression:     "",
+		GRPCCompression:     amClientCfg.GRPCCompression,
 		RateLimit:           0,
 		RateLimitBurst:      0,
 		BackoffOnRatelimits: false,

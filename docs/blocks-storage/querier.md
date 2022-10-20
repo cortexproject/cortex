@@ -207,6 +207,11 @@ querier:
     # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
 
+    # Use compression when sending messages. Supported values are: 'gzip',
+    # 'snappy' and '' (disable compression)
+    # CLI flag: -querier.store-gateway-client.grpc-compression
+    [grpc_compression: <string> | default = ""]
+
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required
   # ingesters, selecting only ingesters which may have received series since

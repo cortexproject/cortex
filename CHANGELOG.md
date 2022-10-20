@@ -52,7 +52,7 @@
 * [ENHANCEMENT] Improve the documentation around limits. #4905
 * [ENHANCEMENT] Distributor: cache user overrides to reduce lock contention. #4904
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
-* [FEATURE] Compactor: Added -compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
+* [FEATURE] Compactor: Added `-compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
 * [FEATURE] Ruler: Add support to pass custom implementations of queryable and pusher. #4782
 * [FEATURE] Create OpenTelemetry Bridge for Tracing. Now cortex can send traces to multiple destinations using OTEL Collectors. #4834
@@ -61,6 +61,7 @@
 * [FEATURE] Storage/Bucket: Added `-*.s3.bucket-lookup-type` allowing to configure the s3 bucket lookup type. #4794
 * [FEATURE] QueryFrontend: Implement experimental vertical sharding at query frontend for range/instant queries. #4863
 * [FEATURE] Querier: Added a new limit `-querier.max-fetched-data-bytes-per-query` allowing to limit the maximum size of all data in bytes that a query can fetch from each ingester and storage. #4854
+* [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-compression` and `-querier.store-gateway-client.grpc-compression` to configure compression methods for grpc clients. #4889
 * [BUGFIX] Storage/Bucket: Enable AWS SDK for go authentication for s3 to fix IMDSv1 authentication. #4897
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767

@@ -2102,7 +2102,6 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
 	// run the shipper in such state we could end up with race conditions.
-	level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state")
 	if i.lifecycler != nil {
 		if ingesterState := i.lifecycler.GetState(); ingesterState == ring.PENDING || ingesterState == ring.JOINING {
 			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks shipping has been skipped because of the current ingester state", "state", ingesterState)

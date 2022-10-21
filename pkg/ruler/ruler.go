@@ -65,8 +65,9 @@ const (
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
 
 	// errors
-	errListAllUser          = "unable to list the ruler users"
-	errUnableToObtainQuorum = "unable to obtain quorum result for rule group"
+	errListAllUser           = "unable to list the ruler users"
+	errUnableToObtainQuorum  = "unable to obtain quorum result for rule group"
+	errUnableToRetrieveRules = "unable to retrieve rules from rulers"
 )
 
 type QuorumType uint8
@@ -833,7 +834,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 	numErrors := 0
 	maxErrors := len(rulers.Instances)
 	if quorumType == Strong {
-		maxErrors -= quorum - 1
+		maxErrors = quorum
 	}
 
 	for !enough {
@@ -908,7 +909,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 	}
 
 	if numErrors >= maxErrors {
-		return nil, errors.New("unable to retrieve rules from rulers")
+		return nil, errors.New(errUnableToRetrieveRules)
 	}
 
 	merged := make(map[string]*GroupStateDesc)

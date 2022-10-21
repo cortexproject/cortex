@@ -654,7 +654,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
 		},
 		{
-			name:              "Default Sharding, replicationFactor = 3, weak quorum, unavailibility with quorum",
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, unavailability with quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -671,7 +671,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
 		},
 		{
-			name:              "Default Sharding, replicationFactor = 3, weak quorum, unavailibility no quorum",
+			name:              "Default Sharding, replicationFactor = 3, weak quorum, unavailability no quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -752,7 +752,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
 		},
 		{
-			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailibility with quorum",
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailability with quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyShuffle,
 			shuffleShardSize:  6,
@@ -771,7 +771,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F++"},
 		},
 		{
-			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailibility no quorum",
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, weak quorum, unavailability no quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyShuffle,
 			shuffleShardSize:  6,
@@ -855,7 +855,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A", "B", "C", "D", "E", "F"},
 		},
 		{
-			name:              "Default Sharding, replicationFactor = 3, strongweak quorum, sparse",
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, sparse",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -873,7 +873,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
 		},
 		{
-			name:              "Default Sharding, replicationFactor = 3, strong quorum, unavailibility with quorum",
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, unavailability with quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -892,7 +892,7 @@ func TestGetRules(t *testing.T) {
 			expectedError:     errUnableToObtainQuorum,
 		},
 		{
-			name:              "Default Sharding, replicationFactor = 3, strong quorum, unavailibility no quorum",
+			name:              "Default Sharding, replicationFactor = 3, strong quorum, unavailability no quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyDefault,
 			replicationFactor: 3,
@@ -982,7 +982,7 @@ func TestGetRules(t *testing.T) {
 			expectedGroups:    []string{"A+", "B+", "C", "D", "E", "F+"},
 		},
 		{
-			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailibility with quorum",
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailability with quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyShuffle,
 			shuffleShardSize:  6,
@@ -1003,7 +1003,7 @@ func TestGetRules(t *testing.T) {
 			expectedError:     errUnableToObtainQuorum,
 		},
 		{
-			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailibility no quorum",
+			name:              "Shuffle Sharding, ShardSize = 6, replicationFactor = 3, strong quorum, unavailability no quorum",
 			sharding:          true,
 			shardingStrategy:  util.ShardingStrategyShuffle,
 			shuffleShardSize:  6,
@@ -1011,7 +1011,7 @@ func TestGetRules(t *testing.T) {
 			quorum:            Strong,
 			user:              "user16",
 			unavailableRulers: []string{"ruler3", "ruler4"},
-			expectedError:     errUnableToObtainQuorum,
+			expectedError:     errUnableToRetrieveRules,
 		},
 	}
 

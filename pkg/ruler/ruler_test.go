@@ -22,7 +22,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/objectclient"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 
 	"github.com/go-kit/log"

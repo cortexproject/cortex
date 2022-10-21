@@ -4,7 +4,7 @@ title = "Cortex"
 enableRobotsTXT = true
 
 # Hugo allows theme composition (and inheritance). The precedence is from left to right.
-theme = ["docsy"]
+theme = ["github.com/google/docsy", "github.com/google/docsy/dependencies"]
 
 # Will give values to .Lastmod etc.
 enableGitInfo = true
@@ -46,7 +46,7 @@ anchor = "smart"
 
 [services]
 [services.googleAnalytics]
-id = "UA-63872299-2"
+id = "G-SRR0DSREGX"
 
 # Language configuration
 

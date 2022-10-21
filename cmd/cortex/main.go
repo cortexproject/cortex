@@ -1,10 +1,11 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"os"
 	"runtime"
@@ -16,10 +17,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/tracing"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/cortex"
+	"github.com/cortexproject/cortex/pkg/tracing"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -149,7 +150,8 @@ func main() {
 
 	util.InitEvents(eventSampleRate)
 
-	// In testing mode skip JAEGER setup to avoid panic due to
+	ctx, cancelFn := context.WithCancel(context.Background())
+	// In testing mode skip tracing setup to avoid panic due to
 	// "duplicate metrics collector registration attempted"
 	if !testMode {
 		name := "cortex"
@@ -157,11 +159,10 @@ func main() {
 			name += "-" + cfg.Target[0]
 		}
 
-		// Setting the environment variable JAEGER_AGENT_HOST enables tracing.
-		if trace, err := tracing.NewFromEnv(name); err != nil {
+		if close, err := tracing.SetupTracing(ctx, name, cfg.Tracing); err != nil {
 			level.Error(util_log.Logger).Log("msg", "Failed to setup tracing", "err", err.Error())
 		} else {
-			defer trace.Close()
+			defer close(ctx) // nolint:errcheck
 		}
 	}
 
@@ -193,6 +194,7 @@ func main() {
 	level.Info(util_log.Logger).Log("msg", "Starting Cortex", "version", version.Info())
 
 	err = t.Run()
+	cancelFn()
 
 	runtime.KeepAlive(ballast)
 	util_log.CheckFatal("running cortex", err)
@@ -202,7 +204,7 @@ func main() {
 func parseConfigFileParameter(args []string) (configFile string, expandEnv bool) {
 	// ignore errors and any output here. Any flag errors will be reported by main flag.Parse() call.
 	fs := flag.NewFlagSet("", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
+	fs.SetOutput(io.Discard)
 
 	// usage not used in these functions.
 	fs.StringVar(&configFile, configFileOption, "", "")
@@ -221,7 +223,7 @@ func parseConfigFileParameter(args []string) (configFile string, expandEnv bool)
 
 // LoadConfig read YAML-formatted config from filename into cfg.
 func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
-	buf, err := ioutil.ReadFile(filename)
+	buf, err := os.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")
 	}

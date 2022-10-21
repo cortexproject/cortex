@@ -1,10 +1,11 @@
+//go:build requires_docker
 // +build requires_docker
 
 package integration
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"testing"
 
@@ -22,7 +23,7 @@ func TestIndexAPIEndpoint(t *testing.T) {
 	defer s.Close()
 
 	// Start Cortex in single binary mode, reading the config from file.
-	require.NoError(t, copyFileToSharedDir(s, "docs/chunks-storage/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
 
 	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, nil, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex1))
@@ -44,7 +45,7 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	defer s.Close()
 
 	// Start Cortex in single binary mode, reading the config from file.
-	require.NoError(t, copyFileToSharedDir(s, "docs/chunks-storage/single-process-config.yaml", cortexConfigFile))
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
 
 	cortex1 := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, nil, "", 9009, 9095)
 	require.NoError(t, s.StartAndWaitReady(cortex1))
@@ -54,7 +55,7 @@ func TestConfigAPIEndpoint(t *testing.T) {
 	require.NoError(t, err)
 
 	defer runutil.ExhaustCloseWithErrCapture(&err, res.Body, "config API response")
-	body, err := ioutil.ReadAll(res.Body)
+	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 

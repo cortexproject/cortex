@@ -3,14 +3,14 @@ package bucketclient
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -186,7 +186,7 @@ func (s *BucketAlertStore) get(ctx context.Context, bkt objstore.Bucket, name st
 
 	defer runutil.CloseWithLogOnErr(s.logger, readCloser, "close bucket reader")
 
-	buf, err := ioutil.ReadAll(readCloser)
+	buf, err := io.ReadAll(readCloser)
 	if err != nil {
 		return errors.Wrapf(err, "failed to read alertmanager config for user %s", name)
 	}

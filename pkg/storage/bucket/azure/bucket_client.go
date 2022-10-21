@@ -3,8 +3,8 @@ package azure
 import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/azure"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/providers/azure"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -15,6 +15,8 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		ContainerName:      cfg.ContainerName,
 		Endpoint:           cfg.Endpoint,
 		MaxRetries:         cfg.MaxRetries,
+		MSIResource:        cfg.MSIResource,
+		UserAssignedID:     cfg.UserAssignedID,
 		HTTPConfig: azure.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.ResponseHeaderTimeout),

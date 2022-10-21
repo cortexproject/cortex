@@ -323,6 +323,9 @@ func (api *API) Register(r *route.Router) {
 	r.Get("/query_exemplars", wrapAgent(api.queryExemplars))
 	r.Post("/query_exemplars", wrapAgent(api.queryExemplars))
 
+	r.Get("/format_query", wrapAgent(api.formatQuery))
+	r.Post("/format_query", wrapAgent(api.formatQuery))
+
 	r.Get("/labels", wrapAgent(api.labelNames))
 	r.Post("/labels", wrapAgent(api.labelNames))
 	r.Get("/label/:name/values", wrapAgent(api.labelValues))
@@ -426,6 +429,15 @@ func (api *API) query(r *http.Request) (result apiFuncResult) {
 		Result:     res.Value,
 		Stats:      qs,
 	}, nil, res.Warnings, qry.Close}
+}
+
+func (api *API) formatQuery(r *http.Request) (result apiFuncResult) {
+	expr, err := parser.ParseExpr(r.FormValue("query"))
+	if err != nil {
+		return invalidParamError(err, "query")
+	}
+
+	return apiFuncResult{expr.Pretty(0), nil, nil, nil}
 }
 
 func extractQueryOpts(r *http.Request) *promql.QueryOpts {
@@ -553,7 +565,12 @@ func returnAPIError(err error) *apiError {
 		return nil
 	}
 
-	switch errors.Cause(err).(type) {
+	cause := errors.Unwrap(err)
+	if cause == nil {
+		cause = err
+	}
+
+	switch cause.(type) {
 	case promql.ErrQueryCanceled:
 		return &apiError{errorCanceled, err}
 	case promql.ErrQueryTimeout:
@@ -751,15 +768,21 @@ func (api *API) series(r *http.Request) (result apiFuncResult) {
 		End:   timestamp.FromTime(end),
 		Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
 	}
+	var set storage.SeriesSet
 
-	var sets []storage.SeriesSet
-	for _, mset := range matcherSets {
-		// We need to sort this select results to merge (deduplicate) the series sets later.
-		s := q.Select(true, hints, mset...)
-		sets = append(sets, s)
+	if len(matcherSets) > 1 {
+		var sets []storage.SeriesSet
+		for _, mset := range matcherSets {
+			// We need to sort this select results to merge (deduplicate) the series sets later.
+			s := q.Select(true, hints, mset...)
+			sets = append(sets, s)
+		}
+		set = storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+	} else {
+		// At this point at least one match exists.
+		set = q.Select(false, hints, matcherSets[0]...)
 	}
 
-	set := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 	metrics := []labels.Labels{}
 	for set.Next() {
 		metrics = append(metrics, set.At().Labels())
@@ -1317,8 +1340,8 @@ func (api *API) serveFlags(_ *http.Request) apiFuncResult {
 	return apiFuncResult{api.flagsMap, nil, nil, nil}
 }
 
-// stat holds the information about individual cardinality.
-type stat struct {
+// TSDBStat holds the information about individual cardinality.
+type TSDBStat struct {
 	Name  string `json:"name"`
 	Value uint64 `json:"value"`
 }
@@ -1332,26 +1355,27 @@ type HeadStats struct {
 	MaxTime       int64  `json:"maxTime"`
 }
 
-// tsdbStatus has information of cardinality statistics from postings.
-type tsdbStatus struct {
-	HeadStats                   HeadStats `json:"headStats"`
-	SeriesCountByMetricName     []stat    `json:"seriesCountByMetricName"`
-	LabelValueCountByLabelName  []stat    `json:"labelValueCountByLabelName"`
-	MemoryInBytesByLabelName    []stat    `json:"memoryInBytesByLabelName"`
-	SeriesCountByLabelValuePair []stat    `json:"seriesCountByLabelValuePair"`
+// TSDBStatus has information of cardinality statistics from postings.
+type TSDBStatus struct {
+	HeadStats                   HeadStats  `json:"headStats"`
+	SeriesCountByMetricName     []TSDBStat `json:"seriesCountByMetricName"`
+	LabelValueCountByLabelName  []TSDBStat `json:"labelValueCountByLabelName"`
+	MemoryInBytesByLabelName    []TSDBStat `json:"memoryInBytesByLabelName"`
+	SeriesCountByLabelValuePair []TSDBStat `json:"seriesCountByLabelValuePair"`
 }
 
-func convertStats(stats []index.Stat) []stat {
-	result := make([]stat, 0, len(stats))
+// TSDBStatsFromIndexStats converts a index.Stat slice to a TSDBStat slice.
+func TSDBStatsFromIndexStats(stats []index.Stat) []TSDBStat {
+	result := make([]TSDBStat, 0, len(stats))
 	for _, item := range stats {
-		item := stat{Name: item.Name, Value: item.Count}
+		item := TSDBStat{Name: item.Name, Value: item.Count}
 		result = append(result, item)
 	}
 	return result
 }
 
 func (api *API) serveTSDBStatus(*http.Request) apiFuncResult {
-	s, err := api.db.Stats("__name__")
+	s, err := api.db.Stats(labels.MetricName)
 	if err != nil {
 		return apiFuncResult{nil, &apiError{errorInternal, err}, nil, nil}
 	}
@@ -1369,7 +1393,7 @@ func (api *API) serveTSDBStatus(*http.Request) apiFuncResult {
 			}
 		}
 	}
-	return apiFuncResult{tsdbStatus{
+	return apiFuncResult{TSDBStatus{
 		HeadStats: HeadStats{
 			NumSeries:     s.NumSeries,
 			ChunkCount:    chunkCount,
@@ -1377,10 +1401,10 @@ func (api *API) serveTSDBStatus(*http.Request) apiFuncResult {
 			MaxTime:       s.MaxTime,
 			NumLabelPairs: s.IndexPostingStats.NumLabelPairs,
 		},
-		SeriesCountByMetricName:     convertStats(s.IndexPostingStats.CardinalityMetricsStats),
-		LabelValueCountByLabelName:  convertStats(s.IndexPostingStats.CardinalityLabelStats),
-		MemoryInBytesByLabelName:    convertStats(s.IndexPostingStats.LabelValueStats),
-		SeriesCountByLabelValuePair: convertStats(s.IndexPostingStats.LabelValuePairsStats),
+		SeriesCountByMetricName:     TSDBStatsFromIndexStats(s.IndexPostingStats.CardinalityMetricsStats),
+		LabelValueCountByLabelName:  TSDBStatsFromIndexStats(s.IndexPostingStats.CardinalityLabelStats),
+		MemoryInBytesByLabelName:    TSDBStatsFromIndexStats(s.IndexPostingStats.LabelValueStats),
+		SeriesCountByLabelValuePair: TSDBStatsFromIndexStats(s.IndexPostingStats.LabelValuePairsStats),
 	}, nil, nil, nil}
 }
 
@@ -1646,11 +1670,12 @@ func marshalPointJSONIsEmpty(ptr unsafe.Pointer) bool {
 }
 
 // marshalExemplarJSON writes.
-// {
-//    labels: <labels>,
-//    value: "<string>",
-//    timestamp: <float>
-// }
+//
+//	{
+//	   labels: <labels>,
+//	   value: "<string>",
+//	   timestamp: <float>
+//	}
 func marshalExemplarJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	p := *((*exemplar.Exemplar)(ptr))
 	stream.WriteObjectStart()

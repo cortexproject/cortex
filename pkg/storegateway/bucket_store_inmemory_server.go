@@ -10,7 +10,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
-// bucketStoreSeriesServer is an fake in-memory gRPC server used to
+// bucketStoreSeriesServer is a fake in-memory gRPC server used to
 // call Thanos BucketStore.Series() without having to go through the
 // gRPC networking stack.
 type bucketStoreSeriesServer struct {

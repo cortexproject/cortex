@@ -4,12 +4,15 @@ output:
 linters:
   enable:
     - goimports
-    - golint
+    - revive
     - gofmt
     - misspell
     - depguard
 
 linters-settings:
+  staticcheck:
+    checks:
+      - all
   errcheck:
     # path to a file containing a list of functions to exclude from checking
     # see https://github.com/kisielk/errcheck#excluding-functions for details

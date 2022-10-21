@@ -329,6 +329,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.signature-version
     [signature_version: <string> | default = "v4"]
 
+    # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+    # path.
+    # CLI flag: -blocks-storage.s3.bucket-lookup-type
+    [bucket_lookup_type: <string> | default = "auto"]
+
     # The s3_sse_config configures the S3 server-side encryption.
     # The CLI flags prefix for this block config is: blocks-storage
     [sse: <s3_sse_config>]
@@ -403,6 +408,15 @@ blocks_storage:
     # Number of retries for recoverable errors
     # CLI flag: -blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
+
+    # Azure storage MSI resource. Either this or account key must be set.
+    # CLI flag: -blocks-storage.azure.msi-resource
+    [msi_resource: <string> | default = ""]
+
+    # Azure storage MSI resource managed identity client Id. If not supplied
+    # system assigned identity is used
+    # CLI flag: -blocks-storage.azure.user-assigned-id
+    [user_assigned_id: <string> | default = ""]
 
     http:
       # The time an idle connection will remain idle before closing.

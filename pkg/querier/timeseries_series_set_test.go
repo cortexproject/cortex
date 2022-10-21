@@ -27,7 +27,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 		},
 	}
 
-	ss := newTimeSeriesSeriesSet(timeseries)
+	ss := newTimeSeriesSeriesSet(true, timeseries)
 
 	require.True(t, ss.Next())
 	series := ss.At()
@@ -47,7 +47,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 		Value:       1.618,
 		TimestampMs: 2345,
 	})
-	ss = newTimeSeriesSeriesSet(timeseries)
+	ss = newTimeSeriesSeriesSet(true, timeseries)
 
 	require.True(t, ss.Next())
 	it = ss.At().Iterator()

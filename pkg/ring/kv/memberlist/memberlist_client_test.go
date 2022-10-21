@@ -789,6 +789,39 @@ func TestMemberlistFailsToJoin(t *testing.T) {
 	require.Equal(t, mkv.FailureCase(), errFailedToJoinCluster)
 }
 
+func TestMemberlistJoinOnStarting(t *testing.T) {
+	ports, err := getFreePorts(2)
+	require.NoError(t, err)
+
+	var cfg1 KVConfig
+	flagext.DefaultValues(&cfg1)
+	cfg1.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  ports[0],
+	}
+
+	cfg1.RandomizeNodeName = true
+	cfg1.Codecs = []codec.Codec{dataCodec{}}
+	cfg1.AbortIfJoinFails = false
+
+	cfg2 := cfg1
+	cfg2.TCPTransport.BindPort = ports[1]
+	cfg2.JoinMembers = []string{fmt.Sprintf("localhost:%d", ports[0])}
+	cfg2.RejoinInterval = 1 * time.Second
+
+	mkv1 := NewKV(cfg1, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, mkv1.starting(context.Background()))
+
+	mkv2 := NewKV(cfg2, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, mkv2.starting(context.Background()))
+
+	membersFunc := func() interface{} {
+		return mkv2.memberlist.NumMembers()
+	}
+
+	poll(t, 5*time.Second, 2, membersFunc)
+}
+
 func getFreePorts(count int) ([]int, error) {
 	var ports []int
 	for i := 0; i < count; i++ {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -39,11 +39,12 @@ func NewS3Client(cfg s3.Config) (*S3Client, error) {
 
 func NewS3ClientForMinio(minio *e2e.HTTPService, bucketName string) (*S3Client, error) {
 	return NewS3Client(s3.Config{
-		Endpoint:        minio.HTTPEndpoint(),
-		BucketName:      bucketName,
-		SecretAccessKey: flagext.Secret{Value: e2edb.MinioSecretKey},
-		AccessKeyID:     e2edb.MinioAccessKey,
-		Insecure:        true,
+		Endpoint:         minio.HTTPEndpoint(),
+		BucketName:       bucketName,
+		SecretAccessKey:  flagext.Secret{Value: e2edb.MinioSecretKey},
+		AccessKeyID:      e2edb.MinioAccessKey,
+		Insecure:         true,
+		BucketLookupType: s3.BucketAutoLookup,
 	})
 }
 

@@ -16,8 +16,11 @@ type timeSeriesSeriesSet struct {
 	i  int
 }
 
-func newTimeSeriesSeriesSet(series []cortexpb.TimeSeries) *timeSeriesSeriesSet {
-	sort.Sort(byTimeSeriesLabels(series))
+func newTimeSeriesSeriesSet(sortSeries bool, series []cortexpb.TimeSeries) *timeSeriesSeriesSet {
+	if sortSeries {
+		sort.Sort(byTimeSeriesLabels(series))
+	}
+
 	return &timeSeriesSeriesSet{
 		ts: series,
 		i:  -1,

@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/types"
@@ -30,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -406,9 +410,8 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	}
 
 	var (
-		convertedMatchers = convertMatchersToLabelMatcher(matchers)
-		resSeriesSets     = []storage.SeriesSet(nil)
-		resWarnings       = storage.Warnings(nil)
+		resSeriesSets = []storage.SeriesSet(nil)
+		resWarnings   = storage.Warnings(nil)
 
 		maxChunksLimit  = q.limits.MaxChunksPerQueryFromStore(q.userID)
 		leftChunksLimit = maxChunksLimit
@@ -417,8 +420,9 @@ func (q *blocksStoreQuerier) selectSorted(sp *storage.SelectHints, matchers ...*
 	)
 
 	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error) {
-		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, convertedMatchers, maxChunksLimit, leftChunksLimit)
+		seriesSets, queriedBlocks, warnings, numChunks, err := q.fetchSeriesFromStores(spanCtx, sp, clients, minT, maxT, matchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
+
 			return nil, err
 		}
 
@@ -558,7 +562,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 	minT int64,
 	maxT int64,
 	matchers []*labels.Matcher,
-	convertedMatchers []storepb.LabelMatcher,
 	maxChunksLimit int,
 	leftChunksLimit int,
 ) ([]storage.SeriesSet, []ulid.ULID, storage.Warnings, int, error) {
@@ -574,6 +577,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 		reqStats      = stats.FromContext(ctx)
 	)
+	matchers, shardingInfo, err := querysharding.ExtractShardingInfo(matchers)
+
+	if err != nil {
+		return nil, nil, nil, 0, err
+
+	}
+	convertedMatchers := convertMatchersToLabelMatcher(matchers)
 
 	// Concurrently fetch series from all clients.
 	for c, blockIDs := range clients {
@@ -586,15 +596,22 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			// TODO(goutham): we should ideally be passing the hints down to the storage layer
 			// and let the TSDB return us data with no chunks as in prometheus#8050.
 			// But this is an acceptable workaround for now.
+
+			// Only fail the function if we have validation error. We should return blocks that were successfully
+			// retrieved.
 			skipChunks := sp != nil && sp.Func == "series"
 
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, skipChunks, blockIDs)
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
 
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
@@ -613,6 +630,12 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if err == io.EOF {
 					break
 				}
+
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to receive series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
+
 				if err != nil {
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
@@ -635,11 +658,15 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 						}
 					}
 					chunksSize := countChunkBytes(s)
+					dataSize := countDataBytes(s)
 					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
 						return validation.LimitError(chunkBytesLimitErr.Error())
 					}
 					if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks)); chunkLimitErr != nil {
 						return validation.LimitError(chunkLimitErr.Error())
+					}
+					if dataBytesLimitErr := queryLimiter.AddDataBytes(dataSize); dataBytesLimitErr != nil {
+						return validation.LimitError(dataBytesLimitErr.Error())
 					}
 				}
 
@@ -664,14 +691,17 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			numSeries := len(mySeries)
 			chunkBytes := countChunkBytes(mySeries...)
+			dataBytes := countDataBytes(mySeries...)
 
 			reqStats.AddFetchedSeries(uint64(numSeries))
 			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
+			reqStats.AddFetchedDataBytes(uint64(dataBytes))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
 				"fetched series", numSeries,
 				"fetched chunk bytes", chunkBytes,
+				"fetched data bytes", dataBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 
@@ -725,6 +755,10 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
@@ -802,6 +836,10 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
+				if isRetryableError(err) {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					return nil
+				}
 				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
 			}
 
@@ -850,7 +888,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	return valueSets, warnings, queriedBlocks, nil
 }
 
-func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -874,6 +912,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, skip
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
+		ShardInfo:               shardingInfo,
 	}, nil
 }
 
@@ -966,4 +1005,23 @@ func countChunkBytes(series ...*storepb.Series) (count int) {
 	}
 
 	return count
+}
+
+// countDataBytes returns the combined size of the all series
+func countDataBytes(series ...*storepb.Series) (count int) {
+	for _, s := range series {
+		count += s.Size()
+	}
+
+	return count
+}
+
+// only retry connection issues
+func isRetryableError(err error) bool {
+	switch status.Code(err) {
+	case codes.Unavailable:
+		return true
+	default:
+		return false
+	}
 }

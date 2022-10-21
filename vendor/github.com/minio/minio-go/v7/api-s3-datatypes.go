@@ -121,8 +121,8 @@ func (l *ListVersionsResult) UnmarshalXML(d *xml.Decoder, start xml.StartElement
 			return err
 		}
 
-		switch se := t.(type) {
-		case xml.StartElement:
+		se, ok := t.(xml.StartElement)
+		if ok {
 			tagName := se.Name.Local
 			switch tagName {
 			case "Name", "Prefix",
@@ -261,6 +261,12 @@ type ObjectPart struct {
 
 	// Size of the uploaded part data.
 	Size int64
+
+	// Checksum values of each part.
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // ListObjectPartsResult container for ListObjectParts response.
@@ -299,6 +305,12 @@ type completeMultipartUploadResult struct {
 	Bucket   string
 	Key      string
 	ETag     string
+
+	// Checksum values, hash of hashes of parts.
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // CompletePart sub container lists individual part numbers and their
@@ -309,6 +321,12 @@ type CompletePart struct {
 	// Part number identifies the part.
 	PartNumber int
 	ETag       string
+
+	// Checksum values
+	ChecksumCRC32  string
+	ChecksumCRC32C string
+	ChecksumSHA1   string
+	ChecksumSHA256 string
 }
 
 // completeMultipartUpload container for completing multipart upload.
@@ -335,7 +353,7 @@ type deletedObject struct {
 	VersionID string `xml:"VersionId,omitempty"`
 	// These fields are ignored.
 	DeleteMarker          bool
-	DeleteMarkerVersionID string
+	DeleteMarkerVersionID string `xml:"DeleteMarkerVersionId,omitempty"`
 }
 
 // nonDeletedObject container for Error element (failed deletion) in MultiObjects Delete XML response

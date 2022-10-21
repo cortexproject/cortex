@@ -88,7 +88,14 @@ func (cfg *HATrackerConfig) Validate() error {
 		return fmt.Errorf(errInvalidFailoverTimeout, cfg.FailoverTimeout, minFailureTimeout)
 	}
 
-	return nil
+	// Tracker kv store only supports consul and etcd.
+	storeAllowedList := []string{"consul", "etcd"}
+	for _, as := range storeAllowedList {
+		if cfg.KVStore.Store == as {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid HATracker KV store type: %s", cfg.KVStore.Store)
 }
 
 func GetReplicaDescCodec() codec.Proto {

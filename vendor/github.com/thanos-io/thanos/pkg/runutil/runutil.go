@@ -9,36 +9,36 @@
 //
 // For repeat executes, use Repeat:
 //
-// 	err := runutil.Repeat(10*time.Second, stopc, func() error {
-// 		// ...
-// 	})
+//	err := runutil.Repeat(10*time.Second, stopc, func() error {
+//		// ...
+//	})
 //
 // Retry starts executing closure function f until no error is returned from f:
 //
-// 	err := runutil.Retry(10*time.Second, stopc, func() error {
-// 		// ...
-// 	})
+//	err := runutil.Retry(10*time.Second, stopc, func() error {
+//		// ...
+//	})
 //
 // For logging an error on each f error, use RetryWithLog:
 //
-// 	err := runutil.RetryWithLog(logger, 10*time.Second, stopc, func() error {
-// 		// ...
-// 	})
+//	err := runutil.RetryWithLog(logger, 10*time.Second, stopc, func() error {
+//		// ...
+//	})
 //
 // Another use case for runutil package is when you want to close a `Closer` interface. As we all know, we should close all implements of `Closer`, such as *os.File. Commonly we will use:
 //
-// 	defer closer.Close()
+//	defer closer.Close()
 //
 // The problem is that Close() usually can return important error e.g for os.File the actual file flush might happen (and fail) on `Close` method. It's important to *always* check error. Thanos provides utility functions to log every error like those, allowing to put them in convenient `defer`:
 //
-// 	defer runutil.CloseWithLogOnErr(logger, closer, "log format message")
+//	defer runutil.CloseWithLogOnErr(logger, closer, "log format message")
 //
 // For capturing error, use CloseWithErrCapture:
 //
-// 	var err error
-// 	defer runutil.CloseWithErrCapture(&err, closer, "log format message")
+//	var err error
+//	defer runutil.CloseWithErrCapture(&err, closer, "log format message")
 //
-// 	// ...
+//	// ...
 //
 // If Close() returns error, err will capture it and return by argument.
 //
@@ -52,7 +52,6 @@ package runutil
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,7 +127,7 @@ func CloseWithLogOnErr(logger log.Logger, closer io.Closer, format string, a ...
 
 // ExhaustCloseWithLogOnErr closes the io.ReadCloser with a log message on error but exhausts the reader before.
 func ExhaustCloseWithLogOnErr(logger log.Logger, r io.ReadCloser, format string, a ...interface{}) {
-	_, err := io.Copy(ioutil.Discard, r)
+	_, err := io.Copy(io.Discard, r)
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to exhaust reader, performance may be impeded", "err", err)
 	}
@@ -149,7 +148,7 @@ func CloseWithErrCapture(err *error, closer io.Closer, format string, a ...inter
 
 // ExhaustCloseWithErrCapture closes the io.ReadCloser with error capture but exhausts the reader before.
 func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ...interface{}) {
-	_, copyErr := io.Copy(ioutil.Discard, r)
+	_, copyErr := io.Copy(io.Discard, r)
 
 	CloseWithErrCapture(err, r, format, a...)
 
@@ -165,7 +164,7 @@ func ExhaustCloseWithErrCapture(err *error, r io.ReadCloser, format string, a ..
 // dir except for the ignoreDirs directories.
 // NOTE: DeleteAll is not idempotent.
 func DeleteAll(dir string, ignoreDirs ...string) error {
-	entries, err := ioutil.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil
 	}

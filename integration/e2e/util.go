@@ -2,7 +2,6 @@ package e2e
 
 import (
 	"context"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net/http"
@@ -157,7 +156,7 @@ func GetTempDirectory() (string, error) {
 		}
 	}
 
-	tmpDir, err := ioutil.TempDir(dir, "e2e_integration_test")
+	tmpDir, err := os.MkdirTemp(dir, "e2e_integration_test")
 	if err != nil {
 		return "", err
 	}

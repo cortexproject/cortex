@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -19,11 +18,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -429,16 +428,13 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// the consistency check done on the querier. The duplicate filter removes redundant blocks
 		// but if the store-gateway removes redundant blocks before the querier discovers them, the
 		// consistency check on the querier will fail.
-	}...)
-
-	modifiers := []block.MetadataModifier{
-		// Remove Cortex external labels so that they're not injected when querying blocks.
 		NewReplicaLabelRemover(userLogger, []string{
 			tsdb.TenantIDExternalLabel,
 			tsdb.IngesterIDExternalLabel,
 			tsdb.ShardIDExternalLabel,
 		}),
-	}
+		// Remove Cortex external labels so that they're not injected when querying blocks.
+	}...)
 
 	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
 	var fetcher block.MetadataFetcher
@@ -450,8 +446,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			u.limits,
 			u.logger,
 			fetcherReg,
-			filters,
-			modifiers)
+			filters)
 	} else {
 		// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
 		// belong to the store-gateway shard. We need to run the BucketStore synching anyway
@@ -468,7 +463,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			u.syncDirForUser(userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 			fetcherReg,
 			filters,
-			modifiers,
 		)
 		if err != nil {
 			return nil, err
@@ -516,7 +510,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 // deleteLocalFilesForExcludedTenants removes local "sync" directories for tenants that are not included in the current
 // shard.
 func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[string]struct{}) {
-	files, err := ioutil.ReadDir(u.cfg.BucketStore.SyncDir)
+	files, err := os.ReadDir(u.cfg.BucketStore.SyncDir)
 	if err != nil {
 		return
 	}
@@ -580,8 +574,8 @@ func NewReplicaLabelRemover(logger log.Logger, replicaLabels []string) *ReplicaL
 	return &ReplicaLabelRemover{logger: logger, replicaLabels: replicaLabels}
 }
 
-// Modify modifies external labels of existing blocks, it removes given replica labels from the metadata of blocks that have it.
-func (r *ReplicaLabelRemover) Modify(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, modified *extprom.TxGaugeVec) error {
+// Filter implements block.MetadataFilter.
+func (r *ReplicaLabelRemover) Filter(_ context.Context, metas map[ulid.ULID]*thanos_metadata.Meta, _ block.GaugeVec, _ block.GaugeVec) error {
 	for u, meta := range metas {
 		l := meta.Thanos.Labels
 		for _, replicaLabel := range r.replicaLabels {

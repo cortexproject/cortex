@@ -554,7 +554,7 @@ func TestPush_QuorumError(t *testing.T) {
 		_, err := d.Push(ctx, request)
 		status, ok := status.FromError(err)
 		require.True(t, ok)
-		require.True(t, status.Code() == 429 || status.Code() == 500)
+		require.Equal(t, codes.Code(429), status.Code())
 	}
 
 	// Simulating 1 error -> Should return 2xx
@@ -1032,7 +1032,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 		limits:           limits,
 	})
 
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0, maxChunksLimit))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0, maxChunksLimit, 0))
 
 	// Push a number of series below the max chunks limit. Each series has 1 sample,
 	// so expect 1 chunk per series when querying back.
@@ -1077,7 +1077,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 	ctx := user.InjectOrgID(context.Background(), "user")
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0, 0))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(maxSeriesLimit, 0, 0, 0))
 
 	// Prepare distributors.
 	ds, _, _, _ := prepare(t, prepConfig{
@@ -1161,7 +1161,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	var maxBytesLimit = (seriesToAdd) * responseChunkSize
 
 	// Update the limiter with the calculated limits.
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit, 0))
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, maxBytesLimit, 0, 0))
 
 	// Push a number of series below the max chunk bytes limit. Subtract one for the series added above.
 	writeReq = makeWriteRequest(0, seriesToAdd-1, 0)
@@ -1190,6 +1190,75 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
 	require.Error(t, err)
 	assert.Equal(t, err, validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, maxBytesLimit)))
+}
+
+func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsReached(t *testing.T) {
+	const seriesToAdd = 10
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	// Prepare distributors.
+	// Use replication factor of 2 to always read all the chunks from both ingesters,
+	// this guarantees us to always read the same chunks and have a stable test.
+	ds, _, _, _ := prepare(t, prepConfig{
+		numIngesters:      2,
+		happyIngesters:    2,
+		numDistributors:   1,
+		shardByAllLabels:  true,
+		limits:            limits,
+		replicationFactor: 2,
+	})
+
+	allSeriesMatchers := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, ".+"),
+	}
+	// Push a single series to allow us to calculate the label size to calculate the limit for the test.
+	writeReq := &cortexpb.WriteRequest{}
+	writeReq.Timeseries = append(writeReq.Timeseries,
+		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series"}}, 0, 0),
+	)
+	writeRes, err := ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+	dataSizeResponse, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
+
+	// Use the resulting chunks size to calculate the limit as (series to add + our test series) * the response chunk size.
+	var dataSize = dataSizeResponse.Size()
+	var maxBytesLimit = (seriesToAdd) * dataSize * 2 // Multiplying by RF because the limit is applied before de-duping.
+
+	// Update the limiter with the calculated limits.
+	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(0, 0, 0, maxBytesLimit))
+
+	// Push a number of series below the max chunk bytes limit. Subtract one for the series added above.
+	writeReq = makeWriteRequest(0, seriesToAdd-1, 0)
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the number of chunk bytes is equal to the limit (but doesn't
+	// exceed it), we expect a query running on all series to succeed.
+	queryRes, err := ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.NoError(t, err)
+	assert.Len(t, queryRes.Chunkseries, seriesToAdd)
+
+	// Push another series to exceed the chunk bytes limit once we'll query back all series.
+	writeReq = &cortexpb.WriteRequest{}
+	writeReq.Timeseries = append(writeReq.Timeseries,
+		makeWriteRequestTimeseries([]cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "another_series_1"}}, 0, 0),
+	)
+
+	writeRes, err = ds[0].Push(ctx, writeReq)
+	assert.Equal(t, &cortexpb.WriteResponse{}, writeRes)
+	assert.Nil(t, err)
+
+	// Since the aggregated chunk size is exceeding the limit, we expect
+	// a query running on all series to fail.
+	_, err = ds[0].QueryStream(ctx, math.MinInt32, math.MaxInt32, allSeriesMatchers...)
+	require.Error(t, err)
+	assert.Equal(t, err, validation.LimitError(fmt.Sprintf(limiter.ErrMaxDataBytesHit, maxBytesLimit)))
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
@@ -1562,7 +1631,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1588,7 +1657,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1613,7 +1682,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1641,7 +1710,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long name.
 					lbls.Set(fmt.Sprintf("xxx_%0.2000d", 1), "xxx")
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1669,7 +1738,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long value.
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1679,6 +1748,34 @@ func BenchmarkDistributor_Push(b *testing.B) {
 				return metrics, samples
 			},
 			expectedErr: "label value too long",
+		},
+		"max label size bytes per series limit reached": {
+			prepareConfig: func(limits *validation.Limits) {
+				limits.MaxLabelsSizeBytes = 1024
+			},
+			prepareSeries: func() ([]labels.Labels, []cortexpb.Sample) {
+				metrics := make([]labels.Labels, numSeriesPerRequest)
+				samples := make([]cortexpb.Sample, numSeriesPerRequest)
+
+				for i := 0; i < numSeriesPerRequest; i++ {
+					lbls := labels.NewBuilder(labels.Labels{{Name: model.MetricNameLabel, Value: "foo"}})
+					for i := 0; i < 10; i++ {
+						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
+					}
+
+					// Add a label with a very long value.
+					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
+
+					metrics[i] = lbls.Labels(nil)
+					samples[i] = cortexpb.Sample{
+						Value:       float64(i),
+						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
+					}
+				}
+
+				return metrics, samples
+			},
+			expectedErr: "labels size bytes exceeded",
 		},
 		"timestamp too old": {
 			prepareConfig: func(limits *validation.Limits) {
@@ -1695,7 +1792,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
@@ -1720,7 +1817,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
@@ -1770,7 +1867,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			limits := validation.Limits{}
 			flagext.DefaultValues(&distributorCfg, &clientConfig, &limits)
 
-			limits.IngestionRate = 0 // Unlimited.
+			limits.IngestionRate = 10000000 // Unlimited.
 			testData.prepareConfig(&limits)
 
 			distributorCfg.ShardByAllLabels = true
@@ -1902,7 +1999,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			},
 			expectedResult:    []metric.Metric{},
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
 		},
 		"should filter metrics by single matcher": {
@@ -1914,7 +2011,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
 			},
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
 		},
 		"should filter metrics by multiple matchers": {
@@ -1926,7 +2023,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				{Metric: util.LabelsToMetric(fixtures[0].lbls)},
 			},
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
 		},
 		"should return all matching metrics even if their FastFingerprint collide": {
@@ -1938,7 +2035,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				{Metric: util.LabelsToMetric(fixtures[4].lbls)},
 			},
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
 		},
 		"should query only ingesters belonging to tenant's subring if shuffle sharding is enabled": {
@@ -1952,7 +2049,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
 			},
 			expectedIngesters: 3,
-			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
 		},
 		"should query all ingesters if shuffle sharding is enabled but shard size is 0": {
@@ -1966,7 +2063,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				{Metric: util.LabelsToMetric(fixtures[1].lbls)},
 			},
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 0),
 			expectedErr:       nil,
 		},
 		"should return err if series limit is exhausted": {
@@ -1977,8 +2074,19 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			},
 			expectedResult:    nil,
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(1, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(1, 0, 0, 0),
 			expectedErr:       validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, 1)),
+		},
+		"should return err if data bytes limit is exhausted": {
+			shuffleShardEnabled: true,
+			shuffleShardSize:    0,
+			matchers: []*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_1"),
+			},
+			expectedResult:    nil,
+			expectedIngesters: numIngesters,
+			queryLimiter:      limiter.NewQueryLimiter(0, 0, 0, 1),
+			expectedErr:       validation.LimitError(fmt.Sprintf(limiter.ErrMaxDataBytesHit, 1)),
 		},
 		"should not exhaust series limit when only one series is fetched": {
 			matchers: []*labels.Matcher{
@@ -1988,7 +2096,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				{Metric: util.LabelsToMetric(fixtures[2].lbls)},
 			},
 			expectedIngesters: numIngesters,
-			queryLimiter:      limiter.NewQueryLimiter(1, 0, 0),
+			queryLimiter:      limiter.NewQueryLimiter(1, 0, 0, 0),
 			expectedErr:       nil,
 		},
 	}
@@ -2076,7 +2184,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels()
+					metrics[i] = lbls.Labels(nil)
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -2088,7 +2196,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 			matchers: []*labels.Matcher{
 				mustNewMatcher(labels.MatchRegexp, model.MetricNameLabel, "foo.+"),
 			},
-			queryLimiter: limiter.NewQueryLimiter(100, 0, 0),
+			queryLimiter: limiter.NewQueryLimiter(100, 0, 0, 0),
 			expectedErr:  nil,
 		},
 	}
@@ -2638,7 +2746,10 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			continue
 		}
 
-		c := encoding.New()
+		c, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
+		if err != nil {
+			return nil, err
+		}
 		chunks := []encoding.Chunk{c}
 		for _, sample := range ts.Samples {
 			newChunk, err := c.Add(model.SamplePair{

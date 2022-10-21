@@ -14,10 +14,10 @@ import (
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
-	"github.com/thanos-io/thanos/pkg/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
@@ -93,12 +93,13 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 	}
 
 	synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{Name: "synced"}, []string{"state"})
+	modified := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{Name: "modified"}, []string{"state"})
 	f := NewIgnoreDeletionMarkFilter(logger, objstore.WithNoopInstr(userBkt), 48*time.Hour, 32)
 
 	if bucketIndexEnabled {
 		require.NoError(t, f.FilterWithBucketIndex(ctx, inputMetas, idx, synced))
 	} else {
-		require.NoError(t, f.Filter(ctx, inputMetas, synced))
+		require.NoError(t, f.Filter(ctx, inputMetas, synced, modified))
 	}
 
 	assert.Equal(t, 1.0, promtest.ToFloat64(synced.WithLabelValues(block.MarkedForDeletionMeta)))

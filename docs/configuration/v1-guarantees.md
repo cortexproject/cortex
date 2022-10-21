@@ -23,7 +23,6 @@ The Cortex maintainers commit to ensuring future version of Cortex can read data
 
 Cortex strives to be 100% API compatible with Prometheus (under `/prometheus/*` and `/api/prom/*`); any deviation from this is considered a bug, except:
 
-- Requiring the `__name__` label on queries when querying the [chunks storage](../chunks-storage/_index.md) (queries to ingesters or clusters running the blocks storage are not affected).
 - For queries to the `/api/v1/series`, `/api/v1/labels` and `/api/v1/label/{name}/values` endpoints, query's time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
 - Additional API endpoints for creating, removing and modifying alerts and recording rules.
 - Additional API around pushing metrics (under `/api/push`).
@@ -52,7 +51,7 @@ Currently experimental features are:
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - Blocksconvert tools
-- OpenStack Swift storage support (both in blocks and chunks storage).
+- OpenStack Swift storage support.
 - Metric relabeling in the distributor.
 - Scalable query-frontend (when using query-scheduler)
 - Querying store for series, labels APIs (`-querier.query-store-for-labels-enabled`)
@@ -66,7 +65,7 @@ Currently experimental features are:
 - Querier: tenant federation
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
-- Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed when feature is tested:
+- Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed on next release:
   - `-ingester.stream-chunks-when-using-blocks` CLI flag
   - `-ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
 - Instance limits in ingester and distributor
@@ -97,3 +96,6 @@ Currently experimental features are:
   - `-store-gateway.sharding-ring.heartbeat-period=0`
 - Compactor shuffle sharding
   - Enabled via `-compactor.sharding-enabled=true`, `-compactor.sharding-strategy=shuffle-sharding`, and `-compactor.tenant-shard-size` set to a value larger than 0.
+- Vertical sharding at query frontend for range/instant queries
+  - `-frontend.query-vertical-shard-size` (int) CLI flag
+  - `query_vertical_shard_size` (int) field in runtime config file

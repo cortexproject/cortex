@@ -19,7 +19,10 @@ package minio
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -42,7 +45,7 @@ var DefaultRetryCap = time.Second
 
 // newRetryTimer creates a timer with exponentially increasing
 // delays until the maximum retry attempts are reached.
-func (c Client) newRetryTimer(ctx context.Context, maxRetry int, unit time.Duration, cap time.Duration, jitter float64) <-chan int {
+func (c *Client) newRetryTimer(ctx context.Context, maxRetry int, unit time.Duration, cap time.Duration, jitter float64) <-chan int {
 	attemptCh := make(chan int)
 
 	// computes the exponential backoff duration according to
@@ -56,7 +59,7 @@ func (c Client) newRetryTimer(ctx context.Context, maxRetry int, unit time.Durat
 			jitter = MaxJitter
 		}
 
-		//sleep = random_between(0, min(cap, base * 2 ** attempt))
+		// sleep = random_between(0, min(cap, base * 2 ** attempt))
 		sleep := unit * time.Duration(1<<uint(attempt))
 		if sleep > cap {
 			sleep = cap
@@ -110,6 +113,7 @@ func isS3CodeRetryable(s3Code string) (ok bool) {
 // List of HTTP status codes which are retryable.
 var retryableHTTPStatusCodes = map[int]struct{}{
 	429:                            {}, // http.StatusTooManyRequests is not part of the Go 1.5 library, yet
+	499:                            {}, // client closed request, retry. A non-standard status code introduced by nginx.
 	http.StatusInternalServerError: {},
 	http.StatusBadGateway:          {},
 	http.StatusServiceUnavailable:  {},
@@ -121,4 +125,24 @@ var retryableHTTPStatusCodes = map[int]struct{}{
 func isHTTPStatusRetryable(httpStatusCode int) (ok bool) {
 	_, ok = retryableHTTPStatusCodes[httpStatusCode]
 	return ok
+}
+
+// For now, all http Do() requests are retriable except some well defined errors
+func isRequestErrorRetryable(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if ue, ok := err.(*url.Error); ok {
+		e := ue.Unwrap()
+		switch e.(type) {
+		// x509: certificate signed by unknown authority
+		case x509.UnknownAuthorityError:
+			return false
+		}
+		switch e.Error() {
+		case "http: server gave HTTP response to HTTPS client":
+			return false
+		}
+	}
+	return true
 }

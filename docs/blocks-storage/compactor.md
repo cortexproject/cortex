@@ -152,6 +152,16 @@ compactor:
   # CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
   [skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
 
+  # Number of goroutines to use when fetching/uploading block files from object
+  # storage.
+  # CLI flag: -compactor.block-files-concurrency
+  [block_files_concurrency: <int> | default = 10]
+
+  # Number of goroutines to use when fetching blocks from object storage when
+  # compacting.
+  # CLI flag: -compactor.blocks-fetch-concurrency
+  [blocks_fetch_concurrency: <int> | default = 3]
+
   # When enabled, at compactor startup the bucket will be scanned and all found
   # deletion marks inside the block location will be copied to the markers
   # global location too. This option can (and should) be safely disabled as soon
@@ -244,4 +254,14 @@ compactor:
     # Timeout for waiting on compactor to become ACTIVE in the ring.
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]
+
+  # How long block visit marker file should be considered as expired and able to
+  # be picked up by compactor again.
+  # CLI flag: -compactor.block-visit-marker-timeout
+  [block_visit_marker_timeout: <duration> | default = 5m]
+
+  # How frequently block visit marker file should be updated duration
+  # compaction.
+  # CLI flag: -compactor.block-visit-marker-file-update-interval
+  [block_visit_marker_file_update_interval: <duration> | default = 1m]
 ```

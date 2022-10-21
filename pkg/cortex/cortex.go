@@ -14,8 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -24,15 +24,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
-	chunk_util "github.com/cortexproject/cortex/pkg/chunk/util"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
@@ -40,9 +36,11 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
@@ -52,6 +50,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/tracing"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -92,6 +91,9 @@ type Config struct {
 	PrintConfig bool                   `yaml:"-"`
 	HTTPPrefix  string                 `yaml:"http_prefix"`
 
+	ExternalQueryable prom_storage.Queryable `yaml:"-"`
+	ExternalPusher    ruler.Pusher           `yaml:"-"`
+
 	API              api.Config                      `yaml:"api"`
 	Server           server.Config                   `yaml:"server"`
 	Distributor      distributor.Config              `yaml:"distributor"`
@@ -100,19 +102,14 @@ type Config struct {
 	Ingester         ingester.Config                 `yaml:"ingester"`
 	Flusher          flusher.Config                  `yaml:"flusher"`
 	Storage          storage.Config                  `yaml:"storage"`
-	ChunkStore       chunk.StoreConfig               `yaml:"chunk_store"`
-	Schema           chunk.SchemaConfig              `yaml:"schema" doc:"hidden"` // Doc generation tool doesn't support it because part of the SchemaConfig doesn't support CLI flags (needs manual documentation)
 	LimitsConfig     validation.Limits               `yaml:"limits"`
 	Prealloc         cortexpb.PreallocConfig         `yaml:"prealloc" doc:"hidden"`
 	Worker           querier_worker.Config           `yaml:"frontend_worker"`
 	Frontend         frontend.CombinedFrontendConfig `yaml:"frontend"`
 	QueryRange       queryrange.Config               `yaml:"query_range"`
-	TableManager     chunk.TableManagerConfig        `yaml:"table_manager"`
-	Encoding         encoding.Config                 `yaml:"-"` // No yaml for this, it only works with flags.
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
-	PurgerConfig     purger.Config                   `yaml:"purger"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
 	Ruler               ruler.Config                               `yaml:"ruler"`
@@ -123,6 +120,8 @@ type Config struct {
 	RuntimeConfig       runtimeconfig.Config                       `yaml:"runtime_config"`
 	MemberlistKV        memberlist.KVConfig                        `yaml:"memberlist"`
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
+
+	Tracing tracing.Config `yaml:"tracing"`
 }
 
 // RegisterFlags registers flag.
@@ -149,19 +148,14 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Ingester.RegisterFlags(f)
 	c.Flusher.RegisterFlags(f)
 	c.Storage.RegisterFlags(f)
-	c.ChunkStore.RegisterFlags(f)
-	c.Schema.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
 	c.Prealloc.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.QueryRange.RegisterFlags(f)
-	c.TableManager.RegisterFlags(f)
-	c.Encoding.RegisterFlags(f)
 	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
-	c.PurgerConfig.RegisterFlags(f)
 	c.TenantFederation.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
@@ -172,9 +166,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.RuntimeConfig.RegisterFlags(f)
 	c.MemberlistKV.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
-
-	// These don't seem to have a home.
-	f.IntVar(&chunk_util.QueryParallelism, "querier.query-parallelism", 100, "Max subqueries run in parallel per higher-level query.")
+	c.Tracing.RegisterFlags(f)
 }
 
 // Validate the cortex config and returns an error if the validation
@@ -188,17 +180,8 @@ func (c *Config) Validate(log log.Logger) error {
 		return errInvalidHTTPPrefix
 	}
 
-	if err := c.Schema.Validate(); err != nil {
-		return errors.Wrap(err, "invalid schema config")
-	}
-	if err := c.Encoding.Validate(); err != nil {
-		return errors.Wrap(err, "invalid encoding config")
-	}
 	if err := c.Storage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid storage config")
-	}
-	if err := c.ChunkStore.Validate(log); err != nil {
-		return errors.Wrap(err, "invalid chunk store config")
 	}
 	if err := c.RulerStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid rulestore config")
@@ -227,9 +210,6 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
-	if err := c.TableManager.Validate(); err != nil {
-		return errors.Wrap(err, "invalid table-manager config")
-	}
 	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
@@ -243,8 +223,8 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
-	if c.Storage.Engine == storage.StorageEngineBlocks && c.Querier.SecondStoreEngine != storage.StorageEngineChunks && len(c.Schema.Configs) > 0 {
-		level.Warn(log).Log("schema configuration is not used by the blocks storage engine, and will have no effect")
+	if err := c.Tracing.Validate(); err != nil {
+		return errors.Wrap(err, "invalid tracing config")
 	}
 
 	return nil
@@ -318,17 +298,13 @@ type Cortex struct {
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Flusher                  *flusher.Flusher
-	Store                    chunk.Store
-	DeletesStore             *purger.DeleteStore
 	Frontend                 *frontendv1.Frontend
-	TableManager             *chunk.TableManager
 	RuntimeConfig            *runtimeconfig.Manager
-	Purger                   *purger.Purger
-	TombstonesLoader         *purger.TombstonesLoader
+	TombstonesLoader         purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
-	QuerierEngine            *promql.Engine
-	QueryFrontendTripperware queryrange.Tripperware
+	QuerierEngine            v1.QueryEngine
+	QueryFrontendTripperware tripperware.Tripperware
 
 	Ruler        *ruler.Ruler
 	RulerStorage rulestore.RuleStore
@@ -378,6 +354,7 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	cortex.setupThanosTracing()
+	cortex.setupGRPCHeaderForwarding()
 
 	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
@@ -391,6 +368,15 @@ func New(cfg Config) (*Cortex, error) {
 func (t *Cortex) setupThanosTracing() {
 	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, ThanosTracerUnaryInterceptor)
 	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, ThanosTracerStreamInterceptor)
+}
+
+// setupGRPCHeaderForwarding appends a gRPC middleware used to enable the propagation of
+// HTTP Headers through child gRPC calls
+func (t *Cortex) setupGRPCHeaderForwarding() {
+	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor)
+		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor)
+	}
 }
 
 // Run starts Cortex running, and blocks until a Cortex stops.

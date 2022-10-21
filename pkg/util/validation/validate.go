@@ -44,6 +44,7 @@ const (
 	duplicateLabelNames     = "duplicate_label_names"
 	labelsNotSorted         = "labels_not_sorted"
 	labelValueTooLong       = "label_value_too_long"
+	labelsSizeBytesExceeded = "labels_size_bytes_exceeded"
 
 	// Exemplar-specific validation reasons
 	exemplarLabelsMissing    = "exemplar_labels_missing"
@@ -100,24 +101,17 @@ func init() {
 	prometheus.MustRegister(DiscardedMetadata)
 }
 
-// SampleValidationConfig helps with getting required config to validate sample.
-type SampleValidationConfig interface {
-	RejectOldSamples(userID string) bool
-	RejectOldSamplesMaxAge(userID string) time.Duration
-	CreationGracePeriod(userID string) time.Duration
-}
-
 // ValidateSample returns an err if the sample is invalid.
 // The returned error may retain the provided series labels.
-func ValidateSample(cfg SampleValidationConfig, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
+func ValidateSample(limits *Limits, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
 	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
 
-	if cfg.RejectOldSamples(userID) && model.Time(s.TimestampMs) < model.Now().Add(-cfg.RejectOldSamplesMaxAge(userID)) {
+	if limits.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
 		DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
 		return newSampleTimestampTooOldError(unsafeMetricName, s.TimestampMs)
 	}
 
-	if model.Time(s.TimestampMs) > model.Now().Add(cfg.CreationGracePeriod(userID)) {
+	if model.Time(s.TimestampMs) > model.Now().Add(time.Duration(limits.CreationGracePeriod)) {
 		DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
 		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
 	}
@@ -162,18 +156,10 @@ func ValidateExemplar(userID string, ls []cortexpb.LabelAdapter, e cortexpb.Exem
 	return nil
 }
 
-// LabelValidationConfig helps with getting required config to validate labels.
-type LabelValidationConfig interface {
-	EnforceMetricName(userID string) bool
-	MaxLabelNamesPerSeries(userID string) int
-	MaxLabelNameLength(userID string) int
-	MaxLabelValueLength(userID string) int
-}
-
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
-func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
-	if cfg.EnforceMetricName(userID) {
+func ValidateLabels(limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
+	if limits.EnforceMetricName {
 		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {
 			DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
@@ -187,14 +173,17 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 	}
 
 	numLabelNames := len(ls)
-	if numLabelNames > cfg.MaxLabelNamesPerSeries(userID) {
+	if numLabelNames > limits.MaxLabelNamesPerSeries {
 		DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
-		return newTooManyLabelsError(ls, cfg.MaxLabelNamesPerSeries(userID))
+		return newTooManyLabelsError(ls, limits.MaxLabelNamesPerSeries)
 	}
 
-	maxLabelNameLength := cfg.MaxLabelNameLength(userID)
-	maxLabelValueLength := cfg.MaxLabelValueLength(userID)
+	maxLabelNameLength := limits.MaxLabelNameLength
+	maxLabelValueLength := limits.MaxLabelValueLength
 	lastLabelName := ""
+	maxLabelsSizeBytes := limits.MaxLabelsSizeBytes
+	labelsSizeBytes := 0
+
 	for _, l := range ls {
 		if !skipLabelNameValidation && !model.LabelName(l.Name).IsValid() {
 			DiscardedSamples.WithLabelValues(invalidLabel, userID).Inc()
@@ -204,7 +193,7 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 			return newLabelNameTooLongError(ls, l.Name, maxLabelNameLength)
 		} else if len(l.Value) > maxLabelValueLength {
 			DiscardedSamples.WithLabelValues(labelValueTooLong, userID).Inc()
-			return newLabelValueTooLongError(ls, l.Value, maxLabelValueLength)
+			return newLabelValueTooLongError(ls, l.Name, l.Value, maxLabelValueLength)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp >= 0 {
 			if cmp == 0 {
 				DiscardedSamples.WithLabelValues(duplicateLabelNames, userID).Inc()
@@ -216,24 +205,23 @@ func ValidateLabels(cfg LabelValidationConfig, userID string, ls []cortexpb.Labe
 		}
 
 		lastLabelName = l.Name
+		labelsSizeBytes += l.Size()
+	}
+	if maxLabelsSizeBytes > 0 && labelsSizeBytes > maxLabelsSizeBytes {
+		DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID).Inc()
+		return labelSizeBytesExceededError(ls, labelsSizeBytes, maxLabelsSizeBytes)
 	}
 	return nil
 }
 
-// MetadataValidationConfig helps with getting required config to validate metadata.
-type MetadataValidationConfig interface {
-	EnforceMetadataMetricName(userID string) bool
-	MaxMetadataLength(userID string) int
-}
-
 // ValidateMetadata returns an err if a metric metadata is invalid.
-func ValidateMetadata(cfg MetadataValidationConfig, userID string, metadata *cortexpb.MetricMetadata) error {
-	if cfg.EnforceMetadataMetricName(userID) && metadata.GetMetricFamilyName() == "" {
+func ValidateMetadata(cfg *Limits, userID string, metadata *cortexpb.MetricMetadata) error {
+	if cfg.EnforceMetadataMetricName && metadata.GetMetricFamilyName() == "" {
 		DiscardedMetadata.WithLabelValues(missingMetricName, userID).Inc()
 		return httpgrpc.Errorf(http.StatusBadRequest, errMetadataMissingMetricName)
 	}
 
-	maxMetadataValueLength := cfg.MaxMetadataLength(userID)
+	maxMetadataValueLength := cfg.MaxMetadataLength
 	var reason string
 	var cause string
 	var metadataType string

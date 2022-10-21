@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -50,9 +49,10 @@ func TestRuler_rules(t *testing.T) {
 		},
 	}
 
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	store := newMockRuleStore(mockRules)
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
@@ -70,7 +70,7 @@ func TestRuler_rules(t *testing.T) {
 			}
 
 			// Check status code and status response
-			body, _ := ioutil.ReadAll(resp.Body)
+			body, _ := io.ReadAll(resp.Body)
 			responseJSON := response{}
 			err := json.Unmarshal(body, &responseJSON)
 			require.NoError(t, err)
@@ -112,9 +112,10 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockSpecialCharRules))
+	store := newMockRuleStore(mockSpecialCharRules)
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
@@ -124,7 +125,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	a.PrometheusRules(w, req)
 
 	resp := w.Result()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
 	responseJSON := response{}
@@ -190,9 +191,10 @@ func TestRuler_alerts(t *testing.T) {
 		},
 	}
 
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+	store := newMockRuleStore(mockRules)
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer r.StopAsync()
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
@@ -210,7 +212,7 @@ func TestRuler_alerts(t *testing.T) {
 			}
 
 			// Check status code and status response
-			body, _ := ioutil.ReadAll(resp.Body)
+			body, _ := io.ReadAll(resp.Body)
 			responseJSON := response{}
 			err := json.Unmarshal(body, &responseJSON)
 			require.NoError(t, err)
@@ -232,9 +234,10 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
@@ -321,9 +324,10 @@ rules:
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRulesNamespaces))
+	store := newMockRuleStore(mockRulesNamespaces)
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	a := NewAPI(r, r.store, log.NewNopLogger())
@@ -358,9 +362,10 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_LimitsPerGroup(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}
@@ -411,9 +416,10 @@ rules:
 }
 
 func TestRuler_RulerGroupLimits(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(make(map[string]rulespb.RuleGroupList)))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	cfg := defaultRulerConfig(t)
 
-	r := newTestRuler(t, cfg, nil)
+	r := newTestRuler(t, cfg, store, nil)
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	r.limits = ruleLimits{maxRuleGroups: 1, maxRulesPerRuleGroup: 1}

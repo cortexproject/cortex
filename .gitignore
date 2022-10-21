@@ -1,12 +1,12 @@
 cmd/test-exporter/test-exporter
 cmd/cortex/cortex
 cmd/query-tee/query-tee
-cmd/blocksconvert/blocksconvert
 cmd/thanosconvert/thanosconvert
 .uptodate
 .pkg
 .cache
 docker-images/
+website/.hugo_build.lock
 website/public
 website/resources
 website/content/en/docs
@@ -24,5 +24,6 @@ dist/
 Makefile.local
 
 .idea
+.vscode
 compose
 compose-simple

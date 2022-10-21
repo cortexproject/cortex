@@ -13,11 +13,11 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/cache"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
@@ -108,7 +108,7 @@ func (cfg *MetadataCacheConfig) Validate() error {
 }
 
 func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
-	cfg := storecache.NewCachingBucketConfig()
+	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false
 
 	chunksCache, err := createCache("chunks-cache", chunksConfig.Backend, chunksConfig.Memcached, logger, reg)
@@ -206,7 +206,7 @@ func isChunksDir(name string) bool {
 }
 
 type snappyIterCodec struct {
-	storecache.IterCodec
+	cache.IterCodec
 }
 
 func (i snappyIterCodec) Encode(files []string) ([]byte, error) {

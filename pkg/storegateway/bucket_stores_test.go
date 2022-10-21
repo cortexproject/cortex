@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"path/filepath"
@@ -24,9 +23,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/extprom"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
@@ -543,7 +542,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 }
 
 func getUsersInDir(t *testing.T, dir string) []string {
-	fs, err := ioutil.ReadDir(dir)
+	fs, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
 	var result []string
@@ -564,7 +563,7 @@ func (u *userShardingStrategy) FilterUsers(ctx context.Context, userIDs []string
 	return u.users
 }
 
-func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, loaded map[ulid.ULID]struct{}, synced *extprom.TxGaugeVec) error {
+func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
 	if util.StringsContain(u.users, userID) {
 		return nil
 	}
@@ -583,7 +582,7 @@ type failFirstGetBucket struct {
 }
 
 func (f *failFirstGetBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	if f.firstGet.CAS(false, true) {
+	if f.firstGet.CompareAndSwap(false, true) {
 		return nil, errors.New("Get() request mocked error")
 	}
 

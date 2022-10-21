@@ -13,21 +13,19 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
-	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
-	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/configs"
 	config_client "github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/cortex"
+	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
@@ -37,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/tracing"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -100,24 +99,14 @@ var (
 			desc:       "The alertmanager_storage_config configures the Cortex alertmanager storage backend.",
 		},
 		{
-			name:       "table_manager_config",
-			structType: reflect.TypeOf(chunk.TableManagerConfig{}),
-			desc:       "The table_manager_config configures the Cortex table-manager.",
-		},
-		{
 			name:       "storage_config",
 			structType: reflect.TypeOf(storage.Config{}),
-			desc:       "The storage_config configures where Cortex stores the data (chunks storage engine).",
+			desc:       "The storage_config configures the storage type Cortex uses.",
 		},
 		{
 			name:       "flusher_config",
 			structType: reflect.TypeOf(flusher.Config{}),
 			desc:       "The flusher_config configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.",
-		},
-		{
-			name:       "chunk_store_config",
-			structType: reflect.TypeOf(chunk.StoreConfig{}),
-			desc:       "The chunk_store_config configures how Cortex stores the data (chunks storage engine).",
 		},
 		{
 			name:       "ingester_client_config",
@@ -195,14 +184,14 @@ var (
 			desc:       "The store_gateway_config configures the store-gateway service used by the blocks storage.",
 		},
 		{
-			name:       "purger_config",
-			structType: reflect.TypeOf(purger.Config{}),
-			desc:       "The purger_config configures the purger which takes care of delete requests.",
-		},
-		{
 			name:       "s3_sse_config",
 			structType: reflect.TypeOf(s3.SSEConfig{}),
 			desc:       "The s3_sse_config configures the S3 server-side encryption.",
+		},
+		{
+			name:       "tracing_config",
+			structType: reflect.TypeOf(tracing.Config{}),
+			desc:       "The tracing_config configures backends cortex uses.",
 		},
 	}
 )

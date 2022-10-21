@@ -3,7 +3,7 @@ package alertmanager
 import (
 	"context"
 	"hash/fnv"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"path"
@@ -164,7 +164,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	var body []byte
 	var err error
 	if r.Body != nil {
-		body, err = ioutil.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
+		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
 		if err != nil {
 			if util.IsRequestBodyTooLarge(err) {
 				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
@@ -181,7 +181,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
 	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
-		localCtx := user.InjectOrgID(context.Background(), userID)
+		localCtx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), userID), opentracing.SpanFromContext(r.Context()))
 		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorum")
 		defer sp.Finish()
 
@@ -233,7 +233,7 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	body, err := ioutil.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, d.maxRecvMsgSize))
 	if err != nil {
 		if util.IsRequestBodyTooLarge(err) {
 			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
@@ -254,14 +254,36 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 	defer sp.Finish()
 	// Until we have a mechanism to combine the results from multiple alertmanagers,
 	// we forward the request to only only of the alertmanagers.
-	amDesc := replicationSet.Instances[rand.Intn(len(replicationSet.Instances))]
-	resp, err := d.doRequest(ctx, amDesc, req)
-	if err != nil {
-		respondFromError(err, w, logger)
-		return
+
+	var instances []ring.InstanceDesc
+	if req.GetMethod() == "GET" && d.isUnaryReadPath(r.URL.Path) {
+		instances = replicationSet.Instances
+		// Randomize the list of instances to not always query the same one.
+		rand.Shuffle(len(instances), func(i, j int) {
+			instances[i], instances[j] = instances[j], instances[i]
+		})
+	} else {
+		//Picking 1 instance at Random for Non-Get Unary Read requests, as shuffling through large number of instances might increase complexity
+		randN := rand.Intn(len(replicationSet.Instances))
+		instances = replicationSet.Instances[randN : randN+1]
 	}
 
-	respondFromHTTPGRPCResponse(w, resp)
+	var lastErr error
+	for _, instance := range instances {
+		resp, err := d.doRequest(ctx, instance, req)
+		// storing the last error message
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		// Return on the first succeeded request
+		respondFromHTTPGRPCResponse(w, resp)
+		return
+	}
+	// throwing the last error if the for loop finish without succeeding
+	if lastErr != nil {
+		respondFromError(lastErr, w, logger)
+	}
 }
 
 func respondFromError(err error, w http.ResponseWriter, logger log.Logger) {

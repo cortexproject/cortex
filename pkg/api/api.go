@@ -6,20 +6,17 @@ import (
 	"net/http"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
-	"github.com/cortexproject/cortex/pkg/chunk/purger"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -29,6 +26,7 @@ import (
 	frontendv2 "github.com/cortexproject/cortex/pkg/frontend/v2"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ruler"
@@ -36,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -63,11 +62,15 @@ type Config struct {
 	// initialized, the custom config handler will be used instead of
 	// DefaultConfigHandler.
 	CustomConfigHandler ConfigHandler `yaml:"-"`
+
+	// Allows and is used to configure the addition of HTTP Header fields to logs
+	HTTPRequestHeadersToLog flagext.StringSlice `yaml:"http_request_headers_to_log"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
+	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -87,13 +90,13 @@ func (cfg *Config) wrapDistributorPush(d *distributor.Distributor) push.Func {
 }
 
 type API struct {
-	AuthMiddleware middleware.Interface
-
-	cfg       Config
-	server    *server.Server
-	logger    log.Logger
-	sourceIPs *middleware.SourceIPExtractor
-	indexPage *IndexPageContent
+	AuthMiddleware       middleware.Interface
+	cfg                  Config
+	server               *server.Server
+	logger               log.Logger
+	sourceIPs            *middleware.SourceIPExtractor
+	indexPage            *IndexPageContent
+	HTTPHeaderMiddleware *HTTPHeaderMiddleware
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -123,6 +126,9 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 	if cfg.HTTPAuthMiddleware == nil {
 		api.AuthMiddleware = middleware.AuthenticateUser
 	}
+	if len(cfg.HTTPRequestHeadersToLog) > 0 {
+		api.HTTPHeaderMiddleware = &HTTPHeaderMiddleware{TargetHeaders: cfg.HTTPRequestHeadersToLog}
+	}
 
 	return api, nil
 }
@@ -141,6 +147,9 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	if a.cfg.ResponseCompression {
 		handler = gziphandler.GzipHandler(handler)
 	}
+	if a.HTTPHeaderMiddleware != nil {
+		handler = a.HTTPHeaderMiddleware.Wrap(handler)
+	}
 
 	if len(methods) == 0 {
 		a.server.HTTP.Path(path).Handler(handler)
@@ -157,6 +166,9 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 
 	if a.cfg.ResponseCompression {
 		handler = gziphandler.GzipHandler(handler)
+	}
+	if a.HTTPHeaderMiddleware != nil {
+		handler = a.HTTPHeaderMiddleware.Wrap(handler)
 	}
 
 	if len(methods) == 0 {
@@ -263,22 +275,6 @@ func (a *API) RegisterIngester(i Ingester, pushConfig distributor.Config) {
 	a.RegisterRoute("/push", push.Handler(pushConfig.MaxRecvMsgSize, a.sourceIPs, i.Push), true, "POST") // For testing and debugging.
 }
 
-// RegisterChunksPurger registers the endpoints associated with the Purger/DeleteStore. They do not exactly
-// match the Prometheus API but mirror it closely enough to justify their routing under the Prometheus
-// component/
-func (a *API) RegisterChunksPurger(store *purger.DeleteStore, deleteRequestCancelPeriod time.Duration) {
-	deleteRequestHandler := purger.NewDeleteRequestHandler(store, deleteRequestCancelPeriod, prometheus.DefaultRegisterer)
-
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
-
-	// Legacy Routes
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.AddDeleteRequestHandler), true, "PUT", "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/delete_series"), http.HandlerFunc(deleteRequestHandler.GetAllDeleteRequestsHandler), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/admin/tsdb/cancel_delete_request"), http.HandlerFunc(deleteRequestHandler.CancelDeleteRequestHandler), true, "PUT", "POST")
-}
-
 func (a *API) RegisterTenantDeletion(api *purger.TenantDeletionAPI) {
 	a.RegisterRoute("/purger/delete_tenant", http.HandlerFunc(api.DeleteTenant), true, "POST")
 	a.RegisterRoute("/purger/delete_tenant_status", http.HandlerFunc(api.DeleteTenantStatus), true, "GET")
@@ -364,10 +360,8 @@ func (a *API) RegisterQueryable(
 ) {
 	// these routes are always registered to the default server
 	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
-	a.RegisterRoute("/api/v1/chunks", querier.ChunksHandler(queryable), true, "GET")
 
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/user_stats"), http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/chunks"), querier.ChunksHandler(queryable), true, "GET")
 }
 
 // RegisterQueryAPI registers the Prometheus API routes with the provided handler.

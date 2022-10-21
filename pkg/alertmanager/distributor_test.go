@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -197,6 +198,24 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			expectedTotalCalls: 1,
 			route:              "/status",
 		}, {
+			name:               "Read /status should try all alert managers on error",
+			numAM:              3,
+			numHappyAM:         0,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusInternalServerError,
+			expectedTotalCalls: 3,
+			route:              "/status",
+		}, {
+			name:               "Read /status is sent to 3 AM when 2 are not happy",
+			numAM:              3,
+			numHappyAM:         1,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/status",
+		}, {
 			name:                "Write /status not supported",
 			numAM:               5,
 			numHappyAM:          5,
@@ -315,11 +334,9 @@ func TestDistributor_IsPathSupported(t *testing.T) {
 
 func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBody []byte) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
-	for i := 0; i < numHappyAM; i++ {
-		ams = append(ams, newMockAlertmanager(i, true, responseBody))
-	}
-	for i := numHappyAM; i < numAM; i++ {
-		ams = append(ams, newMockAlertmanager(i, false, responseBody))
+	remainingFailure := atomic.NewInt32(int32(numAM - numHappyAM))
+	for i := 0; i < numAM; i++ {
+		ams = append(ams, newMockAlertmanager(i, remainingFailure, responseBody))
 	}
 
 	// Use a real ring with a mock KV store to test ring RF logic.
@@ -381,15 +398,15 @@ type mockAlertmanager struct {
 	receivedRequests map[string]map[int]int
 	mtx              sync.Mutex
 	myAddr           string
-	happy            bool
+	remainingError   *atomic.Int32
 	responseBody     []byte
 }
 
-func newMockAlertmanager(idx int, happy bool, responseBody []byte) *mockAlertmanager {
+func newMockAlertmanager(idx int, remainingError *atomic.Int32, responseBody []byte) *mockAlertmanager {
 	return &mockAlertmanager{
 		receivedRequests: make(map[string]map[int]int),
 		myAddr:           fmt.Sprintf("127.0.0.1:%05d", 10000+idx),
-		happy:            happy,
+		remainingError:   remainingError,
 		responseBody:     responseBody,
 	}
 }
@@ -409,7 +426,7 @@ func (am *mockAlertmanager) HandleRequest(_ context.Context, in *httpgrpc.HTTPRe
 		am.receivedRequests[path] = m
 	}
 
-	if am.happy {
+	if am.remainingError.Dec() < 0 {
 		m[http.StatusOK]++
 		return &httpgrpc.HTTPResponse{
 			Code: http.StatusOK,

@@ -3,8 +3,8 @@ package s3
 import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/thanos-io/thanos/pkg/objstore"
-	"github.com/thanos-io/thanos/pkg/objstore/s3"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/providers/s3"
 )
 
 // NewBucketClient creates a new S3 bucket client
@@ -32,6 +32,10 @@ func newS3Config(cfg Config) (s3.Config, error) {
 	if err != nil {
 		return s3.Config{}, err
 	}
+	bucketLookupType, err := cfg.bucketLookupType()
+	if err != nil {
+		return s3.Config{}, err
+	}
 
 	return s3.Config{
 		Bucket:    cfg.BucketName,
@@ -53,6 +57,8 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			Transport:             cfg.HTTP.Transport,
 		},
 		// Enforce signature version 2 if CLI flag is set
-		SignatureV2: cfg.SignatureVersion == SignatureVersionV2,
+		SignatureV2:      cfg.SignatureVersion == SignatureVersionV2,
+		BucketLookupType: bucketLookupType,
+		AWSSDKAuth:       cfg.AccessKeyID == "",
 	}, nil
 }

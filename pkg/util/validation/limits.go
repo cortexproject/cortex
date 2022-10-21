@@ -46,6 +46,7 @@ type Limits struct {
 	MaxLabelNameLength        int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
 	MaxLabelValueLength       int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
 	MaxLabelNamesPerSeries    int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	MaxLabelsSizeBytes        int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
 	MaxMetadataLength         int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
 	RejectOldSamples          bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
 	RejectOldSamplesMaxAge    model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
@@ -58,12 +59,10 @@ type Limits struct {
 	// Ingester enforced limits.
 	// Series
 	MaxSeriesPerQuery        int `yaml:"max_series_per_query" json:"max_series_per_query"`
-	MaxSamplesPerQuery       int `yaml:"max_samples_per_query" json:"max_samples_per_query"`
 	MaxLocalSeriesPerUser    int `yaml:"max_series_per_user" json:"max_series_per_user"`
 	MaxLocalSeriesPerMetric  int `yaml:"max_series_per_metric" json:"max_series_per_metric"`
 	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	MinChunkLength           int `yaml:"min_chunk_length" json:"min_chunk_length"`
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
 	MaxLocalMetadataPerMetric           int `yaml:"max_metadata_per_metric" json:"max_metadata_per_metric"`
@@ -71,16 +70,16 @@ type Limits struct {
 	MaxGlobalMetadataPerMetric          int `yaml:"max_global_metadata_per_metric" json:"max_global_metadata_per_metric"`
 
 	// Querier enforced limits.
-	MaxChunksPerQueryFromStore   int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"` // TODO Remove in Cortex 1.12.
 	MaxChunksPerQuery            int            `yaml:"max_fetched_chunks_per_query" json:"max_fetched_chunks_per_query"`
 	MaxFetchedSeriesPerQuery     int            `yaml:"max_fetched_series_per_query" json:"max_fetched_series_per_query"`
 	MaxFetchedChunkBytesPerQuery int            `yaml:"max_fetched_chunk_bytes_per_query" json:"max_fetched_chunk_bytes_per_query"`
+	MaxFetchedDataBytesPerQuery  int            `yaml:"max_fetched_data_bytes_per_query" json:"max_fetched_data_bytes_per_query"`
 	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	CardinalityLimit             int            `yaml:"cardinality_limit" json:"cardinality_limit"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -130,6 +129,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
+	f.IntVar(&l.MaxLabelsSizeBytes, "validation.max-labels-size-bytes", 0, "Maximum combined size in bytes of all labels and label values accepted for a series. 0 to disable the limit.")
 	f.IntVar(&l.MaxMetadataLength, "validation.max-metadata-length", 1024, "Maximum length accepted for metric metadata. Metadata refers to Metric Name, HELP and UNIT.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	_ = l.RejectOldSamplesMaxAge.Set("14d")
@@ -140,28 +140,26 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 
 	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series for which a query can fetch samples from each ingester. This limit is enforced only in the ingesters (when querying samples not flushed to the storage yet) and it's a per-instance limit. This limit is ignored when running the Cortex blocks storage. When running Cortex with blocks storage use -querier.max-fetched-series-per-query limit instead.")
-	f.IntVar(&l.MaxSamplesPerQuery, "ingester.max-samples-per-query", 1000000, "The maximum number of samples that a query can return. This limit only applies when running the Cortex chunks storage with -querier.ingester-streaming=false.")
 	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
-	f.IntVar(&l.MinChunkLength, "ingester.min-chunk-length", 0, "Minimum number of samples in an idle chunk to flush it to the store. Use with care, if chunks are less than this size they will be discarded. This option is ignored when running the Cortex blocks storage. 0 to disable.")
 
 	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalMetricsWithMetadataPerUser, "ingester.max-global-metadata-per-user", 0, "The maximum number of active metrics with metadata per user, across the cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalMetadataPerMetric, "ingester.max-global-metadata-per-metric", 0, "The maximum number of metadata per metric, across the cluster. 0 to disable.")
-	f.IntVar(&l.MaxChunksPerQueryFromStore, "store.query-chunk-limit", 2e6, "Deprecated. Use -querier.max-fetched-chunks-per-query CLI flag and its respective YAML config option instead. Maximum number of chunks that can be fetched in a single query. This limit is enforced when fetching chunks from the long-term storage only. When running the Cortex chunks storage, this limit is enforced in the querier and ruler, while when running the Cortex blocks storage this limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
-	f.IntVar(&l.MaxChunksPerQuery, "querier.max-fetched-chunks-per-query", 0, "Maximum number of chunks that can be fetched in a single query from ingesters and long-term storage. This limit is enforced in the querier, ruler and store-gateway. Takes precedence over the deprecated -store.query-chunk-limit. 0 to disable.")
-	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier only when running Cortex with blocks storage. 0 to disable")
-	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler only when running Cortex with blocks storage. 0 to disable.")
-	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query), in the querier (on the query possibly split by the query-frontend) and in the chunks storage. 0 to disable.")
+	f.IntVar(&l.MaxChunksPerQuery, "querier.max-fetched-chunks-per-query", 2000000, "Maximum number of chunks that can be fetched in a single query from ingesters and long-term storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
+	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable")
+	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "Deprecated (user max-fetched-data-bytes-per-query instead): The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
+	f.IntVar(&l.MaxFetchedDataBytesPerQuery, "querier.max-fetched-data-bytes-per-query", 0, "The maximum combined size of all data that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler for `query`, `query_range` and `series` APIs. 0 to disable.")
+	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query) and in the querier (on the query possibly split by the query-frontend). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
-	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries. This limit is ignored when running the Cortex blocks storage. 0 to disable.")
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -284,7 +282,7 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 
 // IngestionRate returns the limit on ingester rate (samples per second).
 func (o *Overrides) IngestionRate(userID string) float64 {
-	return o.getOverridesForUser(userID).IngestionRate
+	return o.GetOverridesForUser(userID).IngestionRate
 }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
@@ -296,268 +294,263 @@ func (o *Overrides) IngestionRateStrategy() string {
 
 // IngestionBurstSize returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSize(userID string) int {
-	return o.getOverridesForUser(userID).IngestionBurstSize
+	return o.GetOverridesForUser(userID).IngestionBurstSize
 }
 
 // AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
 func (o *Overrides) AcceptHASamples(userID string) bool {
-	return o.getOverridesForUser(userID).AcceptHASamples
+	return o.GetOverridesForUser(userID).AcceptHASamples
 }
 
 // HAClusterLabel returns the cluster label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAClusterLabel(userID string) string {
-	return o.getOverridesForUser(userID).HAClusterLabel
+	return o.GetOverridesForUser(userID).HAClusterLabel
 }
 
 // HAReplicaLabel returns the replica label to look for when deciding whether to accept a sample from a Prometheus HA replica.
 func (o *Overrides) HAReplicaLabel(userID string) string {
-	return o.getOverridesForUser(userID).HAReplicaLabel
+	return o.GetOverridesForUser(userID).HAReplicaLabel
 }
 
 // DropLabels returns the list of labels to be dropped when ingesting HA samples for the user.
 func (o *Overrides) DropLabels(userID string) flagext.StringSlice {
-	return o.getOverridesForUser(userID).DropLabels
+	return o.GetOverridesForUser(userID).DropLabels
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
 func (o *Overrides) MaxLabelNameLength(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelNameLength
+	return o.GetOverridesForUser(userID).MaxLabelNameLength
 }
 
 // MaxLabelValueLength returns maximum length a label value can be. This also is
 // the maximum length of a metric name.
 func (o *Overrides) MaxLabelValueLength(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelValueLength
+	return o.GetOverridesForUser(userID).MaxLabelValueLength
 }
 
 // MaxLabelNamesPerSeries returns maximum number of label/value pairs timeseries.
 func (o *Overrides) MaxLabelNamesPerSeries(userID string) int {
-	return o.getOverridesForUser(userID).MaxLabelNamesPerSeries
+	return o.GetOverridesForUser(userID).MaxLabelNamesPerSeries
+}
+
+// MaxLabelsSizeBytes returns maximum number of label/value pairs timeseries.
+func (o *Overrides) MaxLabelsSizeBytes(userID string) int {
+	return o.GetOverridesForUser(userID).MaxLabelsSizeBytes
 }
 
 // MaxMetadataLength returns maximum length metadata can be. Metadata refers
 // to the Metric Name, HELP and UNIT.
 func (o *Overrides) MaxMetadataLength(userID string) int {
-	return o.getOverridesForUser(userID).MaxMetadataLength
+	return o.GetOverridesForUser(userID).MaxMetadataLength
 }
 
 // RejectOldSamples returns true when we should reject samples older than certain
 // age.
 func (o *Overrides) RejectOldSamples(userID string) bool {
-	return o.getOverridesForUser(userID).RejectOldSamples
+	return o.GetOverridesForUser(userID).RejectOldSamples
 }
 
 // RejectOldSamplesMaxAge returns the age at which samples should be rejected.
 func (o *Overrides) RejectOldSamplesMaxAge(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).RejectOldSamplesMaxAge)
+	return time.Duration(o.GetOverridesForUser(userID).RejectOldSamplesMaxAge)
 }
 
 // CreationGracePeriod is misnamed, and actually returns how far into the future
 // we should accept samples.
 func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).CreationGracePeriod)
+	return time.Duration(o.GetOverridesForUser(userID).CreationGracePeriod)
 }
 
 // MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
 func (o *Overrides) MaxSeriesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxSeriesPerQuery
-}
-
-// MaxSamplesPerQuery returns the maximum number of samples in a query (from the ingester).
-func (o *Overrides) MaxSamplesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxSamplesPerQuery
+	return o.GetOverridesForUser(userID).MaxSeriesPerQuery
 }
 
 // MaxLocalSeriesPerUser returns the maximum number of series a user is allowed to store in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalSeriesPerUser
+	return o.GetOverridesForUser(userID).MaxLocalSeriesPerUser
 }
 
 // MaxLocalSeriesPerMetric returns the maximum number of series allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalSeriesPerMetric
+	return o.GetOverridesForUser(userID).MaxLocalSeriesPerMetric
 }
 
 // MaxGlobalSeriesPerUser returns the maximum number of series a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalSeriesPerUser
+	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
 }
 
 // MaxGlobalSeriesPerMetric returns the maximum number of series allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalSeriesPerMetric
+	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerMetric
 }
 
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching
 // chunks from the long-term storage.
 func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int {
-	// If the new config option is set, then it should take precedence.
-	if value := o.getOverridesForUser(userID).MaxChunksPerQuery; value > 0 {
-		return value
-	}
-
-	// Fallback to the deprecated config option.
-	return o.getOverridesForUser(userID).MaxChunksPerQueryFromStore
+	return o.GetOverridesForUser(userID).MaxChunksPerQuery
 }
 
 func (o *Overrides) MaxChunksPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxChunksPerQuery
+	return o.GetOverridesForUser(userID).MaxChunksPerQuery
 }
 
 // MaxFetchedSeriesPerQuery returns the maximum number of series allowed per query when fetching
 // chunks from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedSeriesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxFetchedSeriesPerQuery
+	return o.GetOverridesForUser(userID).MaxFetchedSeriesPerQuery
 }
 
 // MaxFetchedChunkBytesPerQuery returns the maximum number of bytes for chunks allowed per query when fetching
 // chunks from ingesters and blocks storage.
 func (o *Overrides) MaxFetchedChunkBytesPerQuery(userID string) int {
-	return o.getOverridesForUser(userID).MaxFetchedChunkBytesPerQuery
+	return o.GetOverridesForUser(userID).MaxFetchedChunkBytesPerQuery
+}
+
+// MaxFetchedDataBytesPerQuery returns the maximum number of bytes for all data allowed per query when fetching
+// from ingesters and blocks storage.
+func (o *Overrides) MaxFetchedDataBytesPerQuery(userID string) int {
+	return o.GetOverridesForUser(userID).MaxFetchedDataBytesPerQuery
 }
 
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
+	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLookback)
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
 func (o *Overrides) MaxQueryLength(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
+	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLength)
 }
 
 // MaxCacheFreshness returns the period after which results are cacheable,
 // to prevent caching of very recent results.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
+	return time.Duration(o.GetOverridesForUser(userID).MaxCacheFreshness)
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxQueriersPerTenant
+	return o.GetOverridesForUser(userID).MaxQueriersPerTenant
+}
+
+// QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
+func (o *Overrides) QueryVerticalShardSize(userID string) int {
+	return o.GetOverridesForUser(userID).QueryVerticalShardSize
 }
 
 // MaxQueryParallelism returns the limit to the number of split queries the
 // frontend will process in parallel.
 func (o *Overrides) MaxQueryParallelism(userID string) int {
-	return o.getOverridesForUser(userID).MaxQueryParallelism
+	return o.GetOverridesForUser(userID).MaxQueryParallelism
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.
 func (o *Overrides) EnforceMetricName(userID string) bool {
-	return o.getOverridesForUser(userID).EnforceMetricName
+	return o.GetOverridesForUser(userID).EnforceMetricName
 }
 
 // EnforceMetadataMetricName whether to enforce the presence of a metric name on metadata.
 func (o *Overrides) EnforceMetadataMetricName(userID string) bool {
-	return o.getOverridesForUser(userID).EnforceMetadataMetricName
-}
-
-// CardinalityLimit returns the maximum number of timeseries allowed in a query.
-func (o *Overrides) CardinalityLimit(userID string) int {
-	return o.getOverridesForUser(userID).CardinalityLimit
-}
-
-// MinChunkLength returns the minimum size of chunk that will be saved by ingesters
-func (o *Overrides) MinChunkLength(userID string) int {
-	return o.getOverridesForUser(userID).MinChunkLength
+	return o.GetOverridesForUser(userID).EnforceMetadataMetricName
 }
 
 // MaxLocalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store in a single ingester.
 func (o *Overrides) MaxLocalMetricsWithMetadataPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalMetricsWithMetadataPerUser
+	return o.GetOverridesForUser(userID).MaxLocalMetricsWithMetadataPerUser
 }
 
 // MaxLocalMetadataPerMetric returns the maximum number of metadata allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalMetadataPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxLocalMetadataPerMetric
+	return o.GetOverridesForUser(userID).MaxLocalMetadataPerMetric
 }
 
 // MaxGlobalMetricsWithMetadataPerUser returns the maximum number of metrics with metadata a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalMetricsWithMetadataPerUser(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalMetricsWithMetadataPerUser
+	return o.GetOverridesForUser(userID).MaxGlobalMetricsWithMetadataPerUser
 }
 
 // MaxGlobalMetadataPerMetric returns the maximum number of metadata allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalMetadataPerMetric(userID string) int {
-	return o.getOverridesForUser(userID).MaxGlobalMetadataPerMetric
+	return o.GetOverridesForUser(userID).MaxGlobalMetadataPerMetric
 }
 
 // IngestionTenantShardSize returns the ingesters shard size for a given user.
 func (o *Overrides) IngestionTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).IngestionTenantShardSize
+	return o.GetOverridesForUser(userID).IngestionTenantShardSize
 }
 
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).RulerEvaluationDelay)
+	return time.Duration(o.GetOverridesForUser(userID).RulerEvaluationDelay)
 }
 
 // CompactorBlocksRetentionPeriod returns the retention period for a given user.
 func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration {
-	return time.Duration(o.getOverridesForUser(userID).CompactorBlocksRetentionPeriod)
+	return time.Duration(o.GetOverridesForUser(userID).CompactorBlocksRetentionPeriod)
 }
 
 // CompactorTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) CompactorTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).CompactorTenantShardSize
+	return o.GetOverridesForUser(userID).CompactorTenantShardSize
 }
 
 // MetricRelabelConfigs returns the metric relabel configs for a given user.
 func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
-	return o.getOverridesForUser(userID).MetricRelabelConfigs
+	return o.GetOverridesForUser(userID).MetricRelabelConfigs
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
 func (o *Overrides) RulerTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).RulerTenantShardSize
+	return o.GetOverridesForUser(userID).RulerTenantShardSize
 }
 
 // RulerMaxRulesPerRuleGroup returns the maximum number of rules per rule group for a given user.
 func (o *Overrides) RulerMaxRulesPerRuleGroup(userID string) int {
-	return o.getOverridesForUser(userID).RulerMaxRulesPerRuleGroup
+	return o.GetOverridesForUser(userID).RulerMaxRulesPerRuleGroup
 }
 
 // RulerMaxRuleGroupsPerTenant returns the maximum number of rule groups for a given user.
 func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
-	return o.getOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
+	return o.GetOverridesForUser(userID).RulerMaxRuleGroupsPerTenant
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
 func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
-	return o.getOverridesForUser(userID).StoreGatewayTenantShardSize
+	return o.GetOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
 // MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
 func (o *Overrides) MaxHAClusters(user string) int {
-	return o.getOverridesForUser(user).HAMaxClusters
+	return o.GetOverridesForUser(user).HAMaxClusters
 }
 
 // S3SSEType returns the per-tenant S3 SSE type.
 func (o *Overrides) S3SSEType(user string) string {
-	return o.getOverridesForUser(user).S3SSEType
+	return o.GetOverridesForUser(user).S3SSEType
 }
 
 // S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id.
 func (o *Overrides) S3SSEKMSKeyID(user string) string {
-	return o.getOverridesForUser(user).S3SSEKMSKeyID
+	return o.GetOverridesForUser(user).S3SSEKMSKeyID
 }
 
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
-	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+	return o.GetOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
 // AlertmanagerReceiversBlockCIDRNetworks returns the list of network CIDRs that should be blocked
 // in the Alertmanager receivers for the given user.
 func (o *Overrides) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagext.CIDR {
-	return o.getOverridesForUser(user).AlertmanagerReceiversBlockCIDRNetworks
+	return o.GetOverridesForUser(user).AlertmanagerReceiversBlockCIDRNetworks
 }
 
 // AlertmanagerReceiversBlockPrivateAddresses returns true if private addresses should be blocked
 // in the Alertmanager receivers for the given user.
 func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
-	return o.getOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
+	return o.GetOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
 }
 
 // Notification limits are special. Limits are returned in following order:
@@ -566,7 +559,7 @@ func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool
 // 3. per-tenant limits
 // 4. default limits
 func (o *Overrides) getNotificationLimitForUser(user, integration string) float64 {
-	u := o.getOverridesForUser(user)
+	u := o.GetOverridesForUser(user)
 	if n, ok := u.NotificationRateLimitPerIntegration[integration]; ok {
 		return n
 	}
@@ -609,30 +602,31 @@ func (o *Overrides) NotificationBurstSize(user string, integration string) int {
 }
 
 func (o *Overrides) AlertmanagerMaxConfigSize(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxConfigSizeBytes
+	return o.GetOverridesForUser(userID).AlertmanagerMaxConfigSizeBytes
 }
 
 func (o *Overrides) AlertmanagerMaxTemplatesCount(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxTemplatesCount
+	return o.GetOverridesForUser(userID).AlertmanagerMaxTemplatesCount
 }
 
 func (o *Overrides) AlertmanagerMaxTemplateSize(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxTemplateSizeBytes
+	return o.GetOverridesForUser(userID).AlertmanagerMaxTemplateSizeBytes
 }
 
 func (o *Overrides) AlertmanagerMaxDispatcherAggregationGroups(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxDispatcherAggregationGroups
+	return o.GetOverridesForUser(userID).AlertmanagerMaxDispatcherAggregationGroups
 }
 
 func (o *Overrides) AlertmanagerMaxAlertsCount(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxAlertsCount
+	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsCount
 }
 
 func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
-	return o.getOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
+	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
 }
 
-func (o *Overrides) getOverridesForUser(userID string) *Limits {
+// GetOverridesForUser returns the per-tenant limits with overrides.
+func (o *Overrides) GetOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.ByUserID(userID)
 		if l != nil {

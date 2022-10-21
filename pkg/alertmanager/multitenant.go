@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -58,7 +57,6 @@ const (
 
 var (
 	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
-	errShardingLegacyStorage               = errors.New("deprecated -alertmanager.storage.* not supported with -alertmanager.sharding-enabled, use -alertmanager-storage.*")
 	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
 )
@@ -78,8 +76,7 @@ type MultitenantAlertmanagerConfig struct {
 	FallbackConfigFile string `yaml:"fallback_config_file"`
 	AutoWebhookRoot    string `yaml:"auto_webhook_root"`
 
-	Store   alertstore.LegacyConfig `yaml:"storage" doc:"description=Deprecated. Use -alertmanager-storage.* CLI flags and their respective YAML config options instead."`
-	Cluster ClusterConfig           `yaml:"cluster"`
+	Cluster ClusterConfig `yaml:"cluster"`
 
 	EnableAPI bool `yaml:"enable_api"`
 
@@ -123,7 +120,6 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
 	cfg.ShardingRing.RegisterFlags(f)
-	cfg.Store.RegisterFlags(f)
 	cfg.Cluster.RegisterFlags(f)
 }
 
@@ -143,18 +139,11 @@ func (cfg *MultitenantAlertmanagerConfig) Validate(storageCfg alertstore.Config)
 		return errInvalidExternalURL
 	}
 
-	if err := cfg.Store.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
-
 	if err := cfg.Persister.Validate(); err != nil {
 		return err
 	}
 
 	if cfg.ShardingEnabled {
-		if !cfg.Store.IsDefaults() {
-			return errShardingLegacyStorage
-		}
 		if !storageCfg.IsFullStateSupported() {
 			return errShardingUnsupportedStorage
 		}
@@ -301,7 +290,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 
 	var fallbackConfig []byte
 	if cfg.FallbackConfigFile != "" {
-		fallbackConfig, err = ioutil.ReadFile(cfg.FallbackConfigFile)
+		fallbackConfig, err = os.ReadFile(cfg.FallbackConfigFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read fallback config %q: %s", cfg.FallbackConfigFile, err)
 		}
@@ -477,7 +466,7 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 		am.subservicesWatcher.WatchManager(am.subservices)
 
 		// We wait until the instance is in the JOINING state, once it does we know that tokens are assigned to this instance and we'll be ready to perform an initial sync of configs.
-		level.Info(am.logger).Log("waiting until alertmanager is JOINING in the ring")
+		level.Info(am.logger).Log("msg", "waiting until alertmanager is JOINING in the ring")
 		if err = ring.WaitInstanceState(ctx, am.ring, am.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
 			return err
 		}
@@ -570,7 +559,7 @@ type obsoleteStateFiles struct {
 
 // getObsoleteFilesPerUser returns per-user set of files that should be migrated from old structure to new structure.
 func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsoleteStateFiles, error) {
-	files, err := ioutil.ReadDir(am.cfg.DataDir)
+	files, err := os.ReadDir(am.cfg.DataDir)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to list dir %v", am.cfg.DataDir)
 	}
@@ -594,7 +583,7 @@ func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsolet
 				continue
 			}
 
-			templateDirs, err := ioutil.ReadDir(fullPath)
+			templateDirs, err := os.ReadDir(fullPath)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to list dir %v", fullPath)
 			}
@@ -826,7 +815,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	var pathsToRemove = make(map[string]struct{})
 
 	// List existing files to keep track the ones to be removed
-	if oldTemplateFiles, err := ioutil.ReadDir(userTemplateDir); err == nil {
+	if oldTemplateFiles, err := os.ReadDir(userTemplateDir); err == nil {
 		for _, file := range oldTemplateFiles {
 			pathsToRemove[filepath.Join(userTemplateDir, file.Name())] = struct{}{}
 		}
@@ -1248,7 +1237,7 @@ func (am *MultitenantAlertmanager) deleteUnusedLocalUserState() {
 // getPerUserDirectories returns map of users to their directories (full path). Only users with local
 // directory are returned.
 func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
-	files, err := ioutil.ReadDir(am.cfg.DataDir)
+	files, err := os.ReadDir(am.cfg.DataDir)
 	if err != nil {
 		level.Warn(am.logger).Log("msg", "failed to list local dir", "dir", am.cfg.DataDir, "err", err)
 		return nil
@@ -1356,13 +1345,13 @@ func storeTemplateFile(templateFilepath, content string) (bool, error) {
 	}
 
 	// Check if the template file already exists and if it has changed
-	if tmpl, err := ioutil.ReadFile(templateFilepath); err == nil && string(tmpl) == content {
+	if tmpl, err := os.ReadFile(templateFilepath); err == nil && string(tmpl) == content {
 		return false, nil
 	} else if err != nil && !os.IsNotExist(err) {
 		return false, err
 	}
 
-	if err := ioutil.WriteFile(templateFilepath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(templateFilepath, []byte(content), 0644); err != nil {
 		return false, fmt.Errorf("unable to create Alertmanager template file %q: %s", templateFilepath, err)
 	}
 

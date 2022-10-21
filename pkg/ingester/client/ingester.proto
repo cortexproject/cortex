@@ -26,9 +26,6 @@ service Ingester {
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
   rpc MetricsForLabelMatchersStream(MetricsForLabelMatchersRequest) returns (stream MetricsForLabelMatchersStreamResponse) {};
   rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
-
-  // TransferChunks allows leaving ingester (client) to stream chunks directly to joining ingesters (server).
-  rpc TransferChunks(stream TimeSeriesChunk) returns (TransferChunksResponse) {};
 }
 
 message ReadRequest {
@@ -144,9 +141,6 @@ message Chunk {
   int64 end_timestamp_ms = 2;
   int32 encoding = 3;
   bytes data = 4;
-}
-
-message TransferChunksResponse {
 }
 
 message LabelMatchers {

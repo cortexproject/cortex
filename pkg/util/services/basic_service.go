@@ -15,7 +15,7 @@ import (
 type StartingFn func(serviceContext context.Context) error
 
 // RunningFn function is called when service enters Running state. When it returns, service will move to Stopping state.
-// If RunningFn or Stopping return error, Service will end in Failed state, otherwise if both functions return without
+// If RunningFn or StoppingFn return error, Service will end in Failed state, otherwise if both functions return without
 // error, service will end in Terminated state.
 type RunningFn func(serviceContext context.Context) error
 
@@ -255,20 +255,20 @@ func (b *BasicService) StopAsync() {
 //
 // Example:
 //
-//		func (s *exampleService) Send(msg string) bool {
-//			ctx := s.ServiceContext()
-//			if ctx == nil {
-//				// Service is not yet started
-//				return false
-//			}
-//			select {
-//			case s.ch <- msg:
-//				return true
-//			case <-ctx.Done():
-//				// Service is not running anymore.
-//				return false
-//			}
+//	func (s *exampleService) Send(msg string) bool {
+//		ctx := s.ServiceContext()
+//		if ctx == nil {
+//			// Service is not yet started
+//			return false
 //		}
+//		select {
+//		case s.ch <- msg:
+//			return true
+//		case <-ctx.Done():
+//			// Service is not running anymore.
+//			return false
+//		}
+//	}
 //
 // This is not part of Service interface, and clients of the Service should not use it.
 func (b *BasicService) ServiceContext() context.Context {

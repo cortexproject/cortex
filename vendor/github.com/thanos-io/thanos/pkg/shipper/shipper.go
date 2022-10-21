@@ -8,7 +8,6 @@ package shipper
 import (
 	"context"
 	"encoding/json"
-	"io/ioutil"
 	"math"
 	"os"
 	"path"
@@ -25,9 +24,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
+	"github.com/thanos-io/objstore"
+
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"github.com/thanos-io/thanos/pkg/objstore"
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
 
@@ -290,14 +290,10 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 			continue
 		}
 
-		if m.Compaction.Level > 1 {
+		// Skip overlap check if out of order uploads is enabled.
+		if m.Compaction.Level > 1 && !s.allowOutOfOrderUploads {
 			if err := checker.IsOverlapping(ctx, m.BlockMeta); err != nil {
-				if !s.allowOutOfOrderUploads {
-					return 0, errors.Errorf("Found overlap or error during sync, cannot upload compacted block, details: %v", err)
-				}
-				level.Error(s.logger).Log("msg", "found overlap or error during sync, cannot upload compacted block", "err", err)
-				uploadErrs++
-				continue
+				return 0, errors.Errorf("Found overlap or error during sync, cannot upload compacted block, details: %v", err)
 			}
 		}
 
@@ -373,7 +369,7 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 // blockMetasFromOldest returns the block meta of each block found in dir
 // sorted by minTime asc.
 func (s *Shipper) blockMetasFromOldest() (metas []*metadata.Meta, _ error) {
-	fis, err := ioutil.ReadDir(s.dir)
+	fis, err := os.ReadDir(s.dir)
 	if err != nil {
 		return nil, errors.Wrap(err, "read dir")
 	}
@@ -413,7 +409,7 @@ func hardlinkBlock(src, dst string) error {
 		return errors.Wrap(err, "create chunks dir")
 	}
 
-	fis, err := ioutil.ReadDir(filepath.Join(src, block.ChunksDirname))
+	fis, err := os.ReadDir(filepath.Join(src, block.ChunksDirname))
 	if err != nil {
 		return errors.Wrap(err, "read chunk dir")
 	}
@@ -474,14 +470,15 @@ func WriteMetaFile(logger log.Logger, dir string, meta *Meta) error {
 
 // ReadMetaFile reads the given meta from <dir>/thanos.shipper.json.
 func ReadMetaFile(dir string) (*Meta, error) {
-	b, err := ioutil.ReadFile(filepath.Join(dir, filepath.Clean(MetaFilename)))
+	fpath := filepath.Join(dir, filepath.Clean(MetaFilename))
+	b, err := os.ReadFile(fpath)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to read %s", fpath)
 	}
-	var m Meta
 
+	var m Meta
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to parse %s as JSON: %q", fpath, string(b))
 	}
 	if m.Version != MetaVersion1 {
 		return nil, errors.Errorf("unexpected meta file version %d", m.Version)

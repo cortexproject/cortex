@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
@@ -51,7 +54,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		metricNameLabel  = labels.Label{Name: labels.MetricName, Value: metricName}
 		series1Label     = labels.Label{Name: "series", Value: "1"}
 		series2Label     = labels.Label{Name: "series", Value: "2"}
-		noOpQueryLimiter = limiter.NewQueryLimiter(0, 0, 0)
+		noOpQueryLimiter = limiter.NewQueryLimiter(0, 0, 0, 0)
 	)
 
 	type valueResult struct {
@@ -469,7 +472,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:       &blocksStoreLimitsMock{},
-			queryLimiter: limiter.NewQueryLimiter(0, 0, 1),
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 1, 0),
 			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunksPerQueryLimit, 1)),
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts": {
@@ -545,7 +548,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:       &blocksStoreLimitsMock{},
-			queryLimiter: limiter.NewQueryLimiter(0, 0, 3),
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 3, 0),
 			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunksPerQueryLimit, 3)),
 		},
 		"max series per query limit hit while fetching chunks": {
@@ -563,7 +566,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:       &blocksStoreLimitsMock{},
-			queryLimiter: limiter.NewQueryLimiter(1, 0, 0),
+			queryLimiter: limiter.NewQueryLimiter(1, 0, 0, 0),
 			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, 1)),
 		},
 		"max chunk bytes per query limit hit while fetching chunks": {
@@ -581,8 +584,87 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
-			queryLimiter: limiter.NewQueryLimiter(0, 8, 0),
+			queryLimiter: limiter.NewQueryLimiter(0, 8, 0, 0),
 			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxChunkBytesHit, 8)),
+		},
+		"max data bytes per query limit hit while fetching chunks": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+				{ID: block2},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 1),
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT+1, 2),
+						mockHintsResponse(block1, block2),
+					}}: {block1, block2},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{maxChunksPerQuery: 1},
+			queryLimiter: limiter.NewQueryLimiter(0, 0, 0, 1),
+			expectedErr:  validation.LimitError(fmt.Sprintf(limiter.ErrMaxDataBytesHit, 1)),
+		},
+		"multiple store-gateways has the block, but one of them fails to return": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: status.Error(codes.Unavailable, "unavailable"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
+		"multiple store-gateways has the block, but one of them fails to return on stream": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:            "1.1.1.1",
+						mockedSeriesStreamErr: status.Error(codes.Unavailable, "unavailable"),
+						mockedSeriesResponses: []*storepb.SeriesResponse{
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+							mockHintsResponse(block1),
+						}}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
 		},
 	}
 
@@ -1059,6 +1141,41 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				cortex_querier_storegateway_refetches_per_query_count 1
 			`,
 		},
+		"multiple store-gateways has the block, but one of them fails to return": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesErr: status.Error(codes.Unavailable, "unavailable"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedLabelNamesResponse: &storepb.LabelNamesResponse{
+							Names:    namesFromSeries(series1),
+							Warnings: []string{},
+							Hints:    mockNamesHints(block1),
+						},
+						mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+							Values:   valuesFromSeries(labels.MetricName, series1),
+							Warnings: []string{},
+							Hints:    mockValuesHints(block1),
+						},
+					}: {block1},
+				},
+			},
+			expectedLabelNames:  namesFromSeries(series1),
+			expectedLabelValues: valuesFromSeries(labels.MetricName, series1),
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1361,16 +1478,20 @@ func (m *blocksFinderMock) GetBlocks(ctx context.Context, userID string, minT, m
 type storeGatewayClientMock struct {
 	remoteAddr                string
 	mockedSeriesResponses     []*storepb.SeriesResponse
+	mockedSeriesErr           error
+	mockedSeriesStreamErr     error
 	mockedLabelNamesResponse  *storepb.LabelNamesResponse
 	mockedLabelValuesResponse *storepb.LabelValuesResponse
+	mockedLabelValuesErr      error
 }
 
 func (m *storeGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesRequest, opts ...grpc.CallOption) (storegatewaypb.StoreGateway_SeriesClient, error) {
 	seriesClient := &storeGatewaySeriesClientMock{
-		mockedResponses: m.mockedSeriesResponses,
+		mockedResponses:       m.mockedSeriesResponses,
+		mockedSeriesStreamErr: m.mockedSeriesStreamErr,
 	}
 
-	return seriesClient, nil
+	return seriesClient, m.mockedSeriesErr
 }
 
 func (m *storeGatewayClientMock) LabelNames(context.Context, *storepb.LabelNamesRequest, ...grpc.CallOption) (*storepb.LabelNamesResponse, error) {
@@ -1378,7 +1499,7 @@ func (m *storeGatewayClientMock) LabelNames(context.Context, *storepb.LabelNames
 }
 
 func (m *storeGatewayClientMock) LabelValues(context.Context, *storepb.LabelValuesRequest, ...grpc.CallOption) (*storepb.LabelValuesResponse, error) {
-	return m.mockedLabelValuesResponse, nil
+	return m.mockedLabelValuesResponse, m.mockedLabelValuesErr
 }
 
 func (m *storeGatewayClientMock) RemoteAddress() string {
@@ -1388,7 +1509,8 @@ func (m *storeGatewayClientMock) RemoteAddress() string {
 type storeGatewaySeriesClientMock struct {
 	grpc.ClientStream
 
-	mockedResponses []*storepb.SeriesResponse
+	mockedResponses       []*storepb.SeriesResponse
+	mockedSeriesStreamErr error
 }
 
 func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
@@ -1401,7 +1523,7 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 
 	res := m.mockedResponses[0]
 	m.mockedResponses = m.mockedResponses[1:]
-	return res, nil
+	return res, m.mockedSeriesStreamErr
 }
 
 type blocksStoreLimitsMock struct {

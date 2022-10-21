@@ -91,8 +91,6 @@ type Config struct {
 	EvaluationInterval time.Duration `yaml:"evaluation_interval"`
 	// How frequently to poll for updated rules.
 	PollInterval time.Duration `yaml:"poll_interval"`
-	// Rule Storage and Polling configuration.
-	StoreConfig RuleStoreConfig `yaml:"storage" doc:"description=Deprecated. Use -ruler-storage.* CLI flags and their respective YAML config options instead."`
 	// Path to store rule files for prom manager.
 	RulePath string `yaml:"rule_path"`
 
@@ -148,9 +146,6 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errInvalidTenantShardSize
 	}
 
-	if err := cfg.StoreConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid storage config")
-	}
 	if err := cfg.ClientTLSConfig.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid ruler gRPC client config")
 	}
@@ -160,7 +155,6 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
-	cfg.StoreConfig.RegisterFlags(f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
 
@@ -218,6 +212,7 @@ type MultiTenantManager interface {
 }
 
 // Ruler evaluates rules.
+//
 //	+---------------------------------------------------------------+
 //	|                                                               |
 //	|                   Query       +-------------+                 |
@@ -1047,7 +1042,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	iter := make(chan interface{})
 
 	go func() {
-		util.StreamWriteYAMLResponse(w, iter, logger)
+		util.StreamWriteYAMLV3Response(w, iter, logger)
 		close(done)
 	}()
 

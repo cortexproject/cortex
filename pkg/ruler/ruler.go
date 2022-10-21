@@ -646,8 +646,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 // filterRuleGroups returns map of rule groups that given instance "owns" based on supplied ring.
 // This function only uses User, Namespace, and Name fields of individual RuleGroups.
 //
-// Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
-// but only ring passed as parameter.
+// NOTE: this method operates on a ring passed as a parameter, not on Ruler.ring
 func (r *Ruler) filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
@@ -827,12 +826,12 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 
 	groupCounterMap := make(map[string]*[]*groupCounter)
 
-	enough := false
-	quorum := (rulerRing.ReplicationFactor() / 2) + 1
-	numSucceeded := 0
-	minSucceededForQuorum := len(rulers.Instances) - quorum + 1
-	numErrors := 0
-	maxErrors := len(rulers.Instances)
+	enough := false                                             // loop termination flag
+	quorum := (rulerRing.ReplicationFactor() / 2) + 1           // size of quorum within a replication set
+	numSucceeded := 0                                           // number of successful calls
+	minSucceededForQuorum := len(rulers.Instances) - quorum + 1 // number of successful responses needed to guarantee a quorum
+	numErrors := 0                                              // number of calls with errors
+	maxErrors := len(rulers.Instances)                          // maximum errors we can accept before we stop waiting for calls
 	if quorumType == Strong {
 		maxErrors = quorum
 	}
@@ -851,7 +850,6 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 					if oldGroupCounters, ok := groupCounterMap[key]; ok {
 						wasGroupCounted := false
 						for _, oldGroupCounter := range *oldGroupCounters {
-							//if oldGroupCounter.group.Group.Equal(groupStateDesc.Group) {
 							if groupStateDescEquals(oldGroupCounter.group.Group, groupStateDesc.Group) {
 								oldGroupCounter.count++
 								wasGroupCounted = true

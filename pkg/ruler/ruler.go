@@ -954,7 +954,7 @@ func (r *Ruler) getDelegateRules(ctx context.Context, instance *ring.InstanceDes
 		return nil, errors.Wrapf(err, "unable to get client for ruler %s", instance.Addr)
 	}
 
-	groupStates, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{})
+	groupStates, err := grpcClient.Rules(ctx, &RulesRequest{})
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", instance.Addr)
 	}

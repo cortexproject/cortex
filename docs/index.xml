@@ -5809,6 +5809,50 @@ T3 - Partition 8-8
 &lt;p>Now that the planner has produced a compaction plan for the T1-T3 compaction groups, the compactor can start downloading the necessary blocks. Using compaction group 1-8 from above as example.
 &lt;img src="/images/proposals/timeseries-partitioning-in-compactor-compact.png" alt="Grouping">
 T1 - Partition 1-2 was created with hash % 2 == 0, and in order to avoid having duplication information in blocks produced by compaction group 3-8, compaction group 5-8, and compaction group 7-8, we need apply the filter the &lt;code>%8 == 0&lt;/code> hash, as that’s the hash of the highest partition count.&lt;/p>
+&lt;h3 id="compaction-workflow">Compaction Workflow&lt;/h3>
+&lt;ol>
+&lt;li>Compactor initializes Grouper and Planner.&lt;/li>
+&lt;li>Compactor retrieves block&amp;rsquo;s meta.json and call Grouper to group blocks for compaction.&lt;/li>
+&lt;li>Grouper generates partitioned compaction groups:
+&lt;ol>
+&lt;li>Grouper groups source blocks into unpartitioned groups.&lt;/li>
+&lt;li>For each unpartitioned group:
+&lt;ol>
+&lt;li>Generates partitioned compaction group ID which is hash of min and max time of result block.&lt;/li>
+&lt;li>If the ID exists under the tenant directory in block storage, continue on next unpartitioned group.&lt;/li>
+&lt;li>Calculates number of partitions. Number of partitions indicates how many partitions one unpartitioned group would be partitioned into based on the total size of indices and number of time series from each source blocks in the unpartitioned group.&lt;/li>
+&lt;li>Assign source blocks into each partition with partition ID (value is in range from 0 to number_of_partitions - 1). Note that one source block could be used in multiple partitions (explanation in &lt;a href="#planning-the-compaction">Planning the compaction&lt;/a> and &lt;a href="#compaction">Compaction&lt;/a>). So multiple partition ID could be assigned to same source block. Check more partitioning examples in &lt;a href="#compaction-partitioning-examples">Compaction Partitioning Examples&lt;/a>&lt;/li>
+&lt;li>Generates partitioned compaction group that indicates which partition ID each blocks got assigned.&lt;/li>
+&lt;li>Partitioned compaction group information would be stored in block storage under the tenant directory it belongs to and the stored file can be picked up by cleaner later. Partitioned compaction group information contains partitioned compaction group ID, number of partitions, list of partitions which has partition ID and list of source blocks.&lt;/li>
+&lt;li>Store partitioned compaction group ID in block storage under each blocks&amp;rsquo; directory that are used by the generated partitioned compaction group.&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>Grouper returns partitioned compaction groups to Compactor. Each returned group would have partition ID, number of partitions, and list of source blocks in memory.&lt;/li>
+&lt;li>Compactor iterates over each partitioned compaction group. For each iteration, calls Planner to make sure the group is ready for compaction.&lt;/li>
+&lt;li>Planner collects partitioned compaction group which is ready for compaction.
+&lt;ol>
+&lt;li>For each partitions in the group and for each blocks in the partition:
+&lt;ol>
+&lt;li>Make sure all source blocks fit within the time range of the group.&lt;/li>
+&lt;li>Make sure each source block with assigned partition IDs is currently not used by another ongoing compaction. This could utilize visit marker file that is introduced in #4805 by expanding it for each partition ID of the source block.&lt;/li>
+&lt;li>If all blocks in the partition are ready to be compacted,
+&lt;ol>
+&lt;li>mark status of those blocks with assigned partition ID as &lt;code>pending&lt;/code>.&lt;/li>
+&lt;li>The status information of each partition ID would be stored in block storage under the corresponding block directory in order for cleaner to pick it up later.&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>If not all blocks in the partition are ready, continue on next partition&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;/ol>
+&lt;/li>
+&lt;li>Return all ready partitions to Compactor.&lt;/li>
+&lt;li>Compactor starts compacting partitioned blocks. Once compaction completed, Compactor would mark status of all blocks along with assigned partition ID in the group as &lt;code>completed&lt;/code>. Compactor should use partitioned compaction group ID to retrieve partitioned compaction group information from block storage to get all partition IDs assigned to each block. Then, retrieve status information of each partition ID this assigned to block under current block directory in block storage. If all assigned partition ID of the block have status set to &lt;code>completed&lt;/code>, upload deletion marker for this block. Otherwise, no deletion marker would be uploaded.&lt;/li>
+&lt;/ol>
+&lt;h3 id="clean-up-workflow">Clean up Workflow&lt;/h3>
+&lt;p>Cleaner would periodically check any tenants having deletion marker. If there is a deletion marker for the tenant, Cleaner should remove all blocks and then clean up other files including partitioned group information files after tenant clean up delay. If there is no deletion marker for tenant, Clean should scan any source blocks having a deletion marker. If there is a deletion marker for the block, Cleaner should delete it.&lt;/p>
 &lt;h2 id="performance">Performance&lt;/h2>
 &lt;p>Currently a 400M timeseries takes 12 hours to compact, without taking block download into consideration. If we have a partition count of 2, we can reduce this down to 6 hours, and a partition count of 10 is 3 hours. The scaling is not linear, and I’m still attempting to find out why. The initial result is promising enough to continue though.&lt;/p>
 &lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
@@ -5913,7 +5957,148 @@ T3 partition 7 - Hash(timeseries label) % 8 == 6
 T1 partition 2 - Hash(timeseries label) % 2 == 1 &amp;amp;&amp;amp; % 8 == 7
 T2 partition 4 - Hash(timeseries label) % 4 == 3 &amp;amp;&amp;amp; % 8 == 7
 T3 partition 8 - Hash(timeseries label) % 8 == 7
-&lt;/code>&lt;/pre></description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture/</guid><description>
+&lt;/code>&lt;/pre>&lt;h3 id="compaction-partitioning-examples">Compaction Partitioning Examples&lt;/h3>
+&lt;h4 id="scenario-all-source-blocks-were-compacted-by-partitioning-compaction-idea-case">Scenario: All source blocks were compacted by partitioning compaction (Idea case)&lt;/h4>
+&lt;p>All source blocks were previously compacted through partitioning compaction. In this case for each time range, the number of blocks belong to same time range would be 2^x if multiplier is set to 2.&lt;/p>
+&lt;pre tabindex="0">&lt;code>Time ranges:
+T1, T2, T3
+Source blocks:
+T1: B1, B2
+T2: B3, B4, B5, B6
+T3: B7, B8, B9, B10, B11, B12, B13, B14
+Total indices size of all source blocks:
+200G
+&lt;/code>&lt;/pre>&lt;p>Number of Partitions = (200G / 64G = 3.125) =&amp;gt; round up to next 2^x = 4&lt;/p>
+&lt;p>Partitioning:&lt;/p>
+&lt;ul>
+&lt;li>For T1, there are only 2 blocks which is &amp;lt; 4. So
+&lt;ul>
+&lt;li>B1 (index 0 in the time range) can be grouped with other blocks having N % 4 == 0 or 2. Because 0 % 2 == 0.&lt;/li>
+&lt;li>B2 (index 1 in the time range) can be grouped with other blocks having N % 4 == 1 or 3. Because 1 % 2 == 1.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>For T2,
+&lt;ul>
+&lt;li>B3 (index 0 in the time range) can be grouped with other blocks having N % 4 == 0.&lt;/li>
+&lt;li>B4 (index 1 in the time range) can be grouped with other blocks having N % 4 == 1.&lt;/li>
+&lt;li>B5 (index 2 in the time range) can be grouped with other blocks having N % 4 == 2.&lt;/li>
+&lt;li>B6 (index 3 in the time range) can be grouped with other blocks having N % 4 == 3.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>For T3,
+&lt;ul>
+&lt;li>B7 (index 0 in the time range) can be grouped with other blocks having N % 4 == 0.&lt;/li>
+&lt;li>B8 (index 1 in the time range) can be grouped with other blocks having N % 4 == 1.&lt;/li>
+&lt;li>B9 (index 2 in the time range) can be grouped with other blocks having N % 4 == 2.&lt;/li>
+&lt;li>B10 (index 3 in the time range) can be grouped with other blocks having N % 4 == 3.&lt;/li>
+&lt;li>B11 (index 4 in the time range) can be grouped with other blocks having N % 4 == 0.&lt;/li>
+&lt;li>B12 (index 5 in the time range) can be grouped with other blocks having N % 4 == 1.&lt;/li>
+&lt;li>B13 (index 6 in the time range) can be grouped with other blocks having N % 4 == 2.&lt;/li>
+&lt;li>B14 (index 7 in the time range) can be grouped with other blocks having N % 4 == 3.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>Partitions in Partitioned Compaction Group:&lt;/p>
+&lt;ul>
+&lt;li>Partition ID: 0 &lt;br>
+Number of Partitions: 4 &lt;br>
+Blocks: B1, B3, B7, B11&lt;/li>
+&lt;li>Partition ID: 1 &lt;br>
+Number of Partitions: 4 &lt;br>
+Blocks: B2, B4, B8, B12&lt;/li>
+&lt;li>Partition ID: 2 &lt;br>
+Number of Partitions: 4 &lt;br>
+Blocks: B1, B5, B9, B13&lt;/li>
+&lt;li>Partition ID: 3 &lt;br>
+Number of Partitions: 4 &lt;br>
+Blocks: B2, B6, B10, B14&lt;/li>
+&lt;/ul>
+&lt;hr>
+&lt;h4 id="scenario-all-source-blocks-are-level-1-blocks">Scenario: All source blocks are level 1 blocks&lt;/h4>
+&lt;p>All source blocks are level 1 blocks. Since number of level 1 blocks in one time range is not guaranteed to be 2^x, all blocks need to be included in each partition.&lt;/p>
+&lt;pre tabindex="0">&lt;code>Time ranges:
+T1
+Source blocks:
+T1: B1, B2, B3
+Total indices size of all source blocks:
+100G
+&lt;/code>&lt;/pre>&lt;p>Number of Partitions = (100G / 64G = 1.5625) =&amp;gt; round up to next 2^x = 2&lt;/p>
+&lt;p>Partitioning: There is only one time range from all source blocks which means it is compacting level 1 blocks. Partitioning needs to include all source blocks in each partition.&lt;/p>
+&lt;p>Partitions in Partitioned Compaction Group:&lt;/p>
+&lt;ul>
+&lt;li>Partition ID: 0 &lt;br>
+Number of Partitions: 2 &lt;br>
+Blocks: B1, B2, B3&lt;/li>
+&lt;li>Partition ID: 1 &lt;br>
+Number of Partitions: 2 &lt;br>
+Blocks: B1, B2, B3&lt;/li>
+&lt;/ul>
+&lt;hr>
+&lt;h4 id="scenario-all-source-blocks-are-with-compaction-level--1-and-were-generated-by-compactor-without-partitioning-compaction">Scenario: All source blocks are with compaction level &amp;gt; 1 and were generated by compactor without partitioning compaction&lt;/h4>
+&lt;p>If source block was generated by compactor without partitioning compaction, there should be only one block per time range. Since there is only one block in one time range, that one block would be included in all partitions.&lt;/p>
+&lt;pre tabindex="0">&lt;code>Time ranges:
+T1, T2, T3
+Source blocks:
+T1: B1
+T2: B2
+T3: B3
+Total indices size of all source blocks:
+100G
+&lt;/code>&lt;/pre>&lt;p>Number of Partitions = (100G / 64G = 1.5625) =&amp;gt; round up to next 2^x = 2&lt;/p>
+&lt;p>Partitioning:&lt;/p>
+&lt;ul>
+&lt;li>For T1, there is only one source block. Include B1 in all partitions.&lt;/li>
+&lt;li>For T2, there is only one source block. Include B2 in all partitions.&lt;/li>
+&lt;li>For T3, there is only one source block. Include B3 in all partitions.&lt;/li>
+&lt;/ul>
+&lt;p>Partitions in Partitioned Compaction Group:&lt;/p>
+&lt;ul>
+&lt;li>Partition ID: 0 &lt;br>
+Number of Partitions: 2 &lt;br>
+Blocks: B1, B2, B3&lt;/li>
+&lt;li>Partition ID: 1 &lt;br>
+Number of Partitions: 2 &lt;br>
+Blocks: B1, B2, B3&lt;/li>
+&lt;/ul>
+&lt;hr>
+&lt;h4 id="scenario-all-source-blocks-are-with-compaction-level--1-and-some-of-them-were-generated-by-compactor-with-partitioning-compaction">Scenario: All source blocks are with compaction level &amp;gt; 1 and some of them were generated by compactor with partitioning compaction&lt;/h4>
+&lt;p>Blocks generated by compactor without partitioning compaction would be included in all partitions. Blocks generated with partitioning compaction would be partitioned based on multiplier.&lt;/p>
+&lt;pre tabindex="0">&lt;code>Time ranges:
+T1, T2, T3
+Source blocks:
+T1: B1 (unpartitioned)
+T2: B2, B3
+T3: B4, B5, B6, B7
+Total indices size of all source blocks:
+100G
+&lt;/code>&lt;/pre>&lt;p>Number of Partitions = (100G / 64G = 1.5625) =&amp;gt; round up to next 2^x = 2&lt;/p>
+&lt;p>Partitioning:&lt;/p>
+&lt;ul>
+&lt;li>For T1, there is only one source block. Include B1 in all partitions.&lt;/li>
+&lt;li>For T2,
+&lt;ul>
+&lt;li>B2 (index 0 in the time range) can be grouped with other blocks having N % 2 == 0.&lt;/li>
+&lt;li>B3 (index 1 in the time range) can be grouped with other blocks having N % 2 == 1.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>For T3,
+&lt;ul>
+&lt;li>B4 (index 0 in the time range) can be grouped with other blocks having N % 2 == 0.&lt;/li>
+&lt;li>B5 (index 1 in the time range) can be grouped with other blocks having N % 2 == 1.&lt;/li>
+&lt;li>B6 (index 2 in the time range) can be grouped with other blocks having N % 2 == 0.&lt;/li>
+&lt;li>B7 (index 3 in the time range) can be grouped with other blocks having N % 2 == 1.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>Partitions in Partitioned Compaction Group:&lt;/p>
+&lt;ul>
+&lt;li>Partition ID: 0 &lt;br>
+Number of Partitions: 2 &lt;br>
+Blocks: B1, B2, B4, B6&lt;/li>
+&lt;li>Partition ID: 1 &lt;br>
+Number of Partitions: 2 &lt;br>
+Blocks: B1, B3, B5, B7&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture/</guid><description>
 &lt;p>Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the &lt;a href="#ingester">ingesters&lt;/a>) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex&amp;rsquo;s architecture.&lt;/p>
 &lt;p align="center">&lt;img src="/images/architecture.png" alt="Cortex Architecture">&lt;/p>
 &lt;h2 id="the-role-of-prometheus">The role of Prometheus&lt;/h2>

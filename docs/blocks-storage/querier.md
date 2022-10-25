@@ -136,10 +136,6 @@ querier:
   # CLI flag: -querier.query-store-for-labels-enabled
   [query_store_for_labels_enabled: <boolean> | default = false]
 
-  # Enable the @ modifier in PromQL.
-  # CLI flag: -querier.at-modifier-enabled
-  [at_modifier_enabled: <boolean> | default = false]
-
   # Enable returning samples stats per steps in query response.
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]

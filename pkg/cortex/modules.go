@@ -533,14 +533,15 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 		engine := promql.NewEngine(promql.EngineOpts{
-			Logger:             util_log.Logger,
-			Reg:                rulerRegisterer,
-			ActiveQueryTracker: createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
-			MaxSamples:         t.Cfg.Querier.MaxSamples,
-			Timeout:            t.Cfg.Querier.Timeout,
-			LookbackDelta:      t.Cfg.Querier.LookbackDelta,
-			EnablePerStepStats: t.Cfg.Querier.EnablePerStepStats,
-			EnableAtModifier:   t.Cfg.Querier.AtModifierEnabled,
+			Logger:               util_log.Logger,
+			Reg:                  rulerRegisterer,
+			ActiveQueryTracker:   createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
+			MaxSamples:           t.Cfg.Querier.MaxSamples,
+			Timeout:              t.Cfg.Querier.Timeout,
+			LookbackDelta:        t.Cfg.Querier.LookbackDelta,
+			EnablePerStepStats:   t.Cfg.Querier.EnablePerStepStats,
+			EnableAtModifier:     true,
+			EnableNegativeOffset: true,
 			NoStepSubqueryIntervalFn: func(int64) int64 {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},

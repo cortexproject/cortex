@@ -9786,7 +9786,7 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;/ul></description></item><item><title>Docs: v1.x Guarantees</title><link>/docs/configuration/v1guarantees/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/configuration/v1guarantees/</guid><description>
 &lt;p>For the v1.0 release, we want to provide the following guarantees:&lt;/p>
 &lt;h2 id="flags-config-and-minor-version-upgrades">Flags, Config and minor version upgrades&lt;/h2>
-&lt;p>Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code>cortex_deprecated_flags_inuse_total&lt;/code>) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p>
+&lt;p>Upgrading cortex from one minor version to the next should &amp;ldquo;just work&amp;rdquo;; that being said, we don&amp;rsquo;t want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release. There is a metric (&lt;code>deprecated_flags_inuse_total&lt;/code>) you can alert on to find out if you&amp;rsquo;re using a deprecated flag.&lt;/p>
 &lt;p>Similarly to flags, minor version upgrades using config files should &amp;ldquo;just work&amp;rdquo;. If we do need to change config, we will keep the old way working for two minor version. There will be a metric you can alert on for this too.&lt;/p>
 &lt;p>These guarantees don&amp;rsquo;t apply for &lt;a href="#experimental-features">experimental features&lt;/a>.&lt;/p>
 &lt;h2 id="reading-old-data">Reading old data&lt;/h2>

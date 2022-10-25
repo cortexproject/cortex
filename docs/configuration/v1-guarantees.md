@@ -9,7 +9,7 @@ For the v1.0 release, we want to provide the following guarantees:
 
 ## Flags, Config and minor version upgrades
 
-Upgrading cortex from one minor version to the next should "just work"; that being said, we don't want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release.  There is a metric (`cortex_deprecated_flags_inuse_total`) you can alert on to find out if you're using a deprecated  flag.
+Upgrading cortex from one minor version to the next should "just work"; that being said, we don't want to bump the major version every time we remove a flag, so we will will keep deprecated flags around for 2 minor release.  There is a metric (`deprecated_flags_inuse_total`) you can alert on to find out if you're using a deprecated  flag.
 
 Similarly to flags, minor version upgrades using config files should "just work".  If we do need to change config, we will keep the old way working for two minor version.  There will be a metric you can alert on for this too.
 

@@ -70,6 +70,7 @@
 * [BUGFIX] Respecting `-tracing.otel.sample-ratio` configuration when enabling OpenTelemetry tracing with X-ray. #4862
 * [BUGFIX] QueryFrontend: fixed query_range requests when query has `start` equals to `end`. #4877
 * [BUGFIX] AlertManager: fixed issue introduced by #4495 where templates files were being deleted when using alertmanager local store. #4890
+* [BUGFIX] Ingester: fixed incorrect logging at the start of ingester block shipping logic. #4934
 
 ## 1.13.0 2022-07-14
 

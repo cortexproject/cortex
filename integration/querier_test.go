@@ -186,7 +186,9 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			// we don't known which store-gateway instance will synch the blocks, so we need to wait on
 			// metrics extracted from all instances.
 			if testCfg.blocksShardingStrategy != "" {
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "cortex_bucket_store_blocks_loaded"))
+				// If shuffle sharding is enabled and we have tenant shard size set to 1,
+				// then the metric only appears in one store gateway instance.
+				require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_bucket_store_blocks_loaded"}, e2e.SkipMissingMetrics))
 			} else {
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(2*storeGateways.NumInstances())), "cortex_bucket_store_blocks_loaded"))
 			}

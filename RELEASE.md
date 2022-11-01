@@ -97,6 +97,19 @@ To publish a release candidate:
    - Build binaries with `make dist` and attach them to the release
    - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
 
+### Sign the release artifacts
+1. Create and `cd` to an empty directory
+1. Download the artifacts you just attached:
+   ```bash
+   curl -H "Authorization: Bearer <your GitHub API token>" -s https://api.github.com/repos/cortexproject/cortex/releases/tags/<release name> \
+   | grep "browser_download_url" \
+   | cut -d: -f2- \
+   | tr -d "\"" \
+   | wget -qi -
+   ```
+1. Sign the files with your PGP key: `ls | xargs -L 1 gpg --armor --detach-sign`
+1. Attach the generated `.asc` files to the release
+
 ### Publish a stable release
 
 To publish a stable release:

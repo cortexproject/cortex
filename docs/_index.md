@@ -6,11 +6,6 @@ menu:
   main:
     weight: 1
 ---
-> **Note** <br />
-> **Kubecon NA - October 24 to 28** <br />
-> The maintainers will be at Kubecon NA. Come say hi at the [Project Meeting](https://kccncna2022.sched.com/event/1C8PD?iframe=no) and the [Maintainer Talk](https://sched.co/18ocw)
-<p align="center"><img width="200px" src="https://cncf-branding.netlify.com/img/projects/cortex/stacked/color/cortex-stacked-color.png" alt="Cortex Logo"></p>
-
 [![CI](https://github.com/cortexproject/cortex/workflows/ci/badge.svg)](https://github.com/cortexproject/cortex/actions)
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
 <a href="https://goreportcard.com/report/github.com/cortexproject/cortex"><img src="https://goreportcard.com/badge/github.com/cortexproject/cortex" alt="Go Report Card" /></a>

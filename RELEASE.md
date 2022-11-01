@@ -109,7 +109,7 @@ To publish a release candidate:
    ```
 1. Sign the files with your PGP key: `ls | xargs -L 1 gpg --armor --detach-sign`
 1. Attach the generated `.asc` files to the release
-1. Attach the the public key of the PGP key you used to sign the binaries
+1. Attach `sign.pub` which contains the the public key of the PGP key you used to sign the binaries
    * You can get the public key by doing `gpg --armor --export <your@email.address>`
 
 ### Publish a stable release

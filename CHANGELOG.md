@@ -13,6 +13,7 @@
 * [ENHANCEMENT] Query Frontend: Log Vertical sharding information when `query_stats_enabled` is enabled. #5037
 * [ENHANCEMENT] Ingester: The metadata APIs should honour `querier.query-ingesters-within` when `querier.query-store-for-labels-enabled` is true. #5027
 * [ENHANCEMENT] Query Frontend: Skip instant query roundtripper if sharding is not applicable. #5062
+* [ENHANCEMENT] Push reduce one hash operation of Labels. #4945 #5114
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000

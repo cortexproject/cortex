@@ -967,7 +967,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// has sorted labels once hit the ingester).
 
 		// Look up a reference for this series.
-		ref, copiedLabels := app.GetRef(cortexpb.FromLabelAdaptersToLabels(ts.Labels))
+		tsLabels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
+		tsLabelsHash := tsLabels.Hash()
+		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
@@ -1037,7 +1039,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 
 		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
-			db.activeSeries.UpdateSeries(cortexpb.FromLabelAdaptersToLabels(ts.Labels), startAppend, func(l labels.Labels) labels.Labels {
+			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, func(l labels.Labels) labels.Labels {
 				// we must already have copied the labels if succeededSamplesCount has been incremented.
 				return copiedLabels
 			})

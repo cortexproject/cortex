@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
@@ -15,20 +16,25 @@ import (
 
 func copyFn(l labels.Labels) labels.Labels { return l }
 
+func fromLabelToLabels(ls []labels.Label) labels.Labels {
+	return *(*labels.Labels)(unsafe.Pointer(&ls))
+}
+
 func TestActiveSeries_UpdateSeries(t *testing.T) {
 	ls1 := []labels.Label{{Name: "a", Value: "1"}}
 	ls2 := []labels.Label{{Name: "a", Value: "2"}}
 
 	c := NewActiveSeries()
 	assert.Equal(t, 0, c.Active())
-
-	c.UpdateSeries(ls1, time.Now(), copyFn)
+	labels1Hash := fromLabelToLabels(ls1).Hash()
+	labels2Hash := fromLabelToLabels(ls2).Hash()
+	c.UpdateSeries(ls1, labels1Hash, time.Now(), copyFn)
 	assert.Equal(t, 1, c.Active())
 
-	c.UpdateSeries(ls1, time.Now(), copyFn)
+	c.UpdateSeries(ls1, labels1Hash, time.Now(), copyFn)
 	assert.Equal(t, 1, c.Active())
 
-	c.UpdateSeries(ls2, time.Now(), copyFn)
+	c.UpdateSeries(ls2, labels2Hash, time.Now(), copyFn)
 	assert.Equal(t, 2, c.Active())
 }
 
@@ -46,7 +52,7 @@ func TestActiveSeries_Purge(t *testing.T) {
 		c := NewActiveSeries()
 
 		for i := 0; i < len(series); i++ {
-			c.UpdateSeries(series[i], time.Unix(int64(i), 0), copyFn)
+			c.UpdateSeries(series[i], fromLabelToLabels(series[i]).Hash(), time.Unix(int64(i), 0), copyFn)
 		}
 
 		c.Purge(time.Unix(int64(ttl+1), 0))
@@ -62,24 +68,23 @@ func TestActiveSeries_PurgeOpt(t *testing.T) {
 	metric := labels.NewBuilder(labels.FromStrings("__name__", "logs"))
 	ls1 := metric.Set("_", "ypfajYg2lsv").Labels(nil)
 	ls2 := metric.Set("_", "KiqbryhzUpn").Labels(nil)
-
 	c := NewActiveSeries()
 
 	now := time.Now()
-	c.UpdateSeries(ls1, now.Add(-2*time.Minute), copyFn)
-	c.UpdateSeries(ls2, now, copyFn)
+	c.UpdateSeries(ls1, ls1.Hash(), now.Add(-2*time.Minute), copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), now, copyFn)
 	c.Purge(now)
 
 	assert.Equal(t, 1, c.Active())
 
-	c.UpdateSeries(ls1, now.Add(-1*time.Minute), copyFn)
-	c.UpdateSeries(ls2, now, copyFn)
+	c.UpdateSeries(ls1, ls1.Hash(), now.Add(-1*time.Minute), copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), now, copyFn)
 	c.Purge(now)
 
 	assert.Equal(t, 1, c.Active())
 
 	// This will *not* update the series, since there is already newer timestamp.
-	c.UpdateSeries(ls2, now.Add(-1*time.Minute), copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), now.Add(-1*time.Minute), copyFn)
 	c.Purge(now)
 
 	assert.Equal(t, 1, c.Active())
@@ -105,7 +110,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 	wg := &sync.WaitGroup{}
 	start := make(chan struct{})
 	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
-
+	labelhash := series.Hash()
 	for i := 0; i < goroutines; i++ {
 		wg.Add(1)
 		go func() {
@@ -116,7 +121,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 
 			for ix := 0; ix < max; ix++ {
 				now = now.Add(time.Duration(ix) * time.Millisecond)
-				c.UpdateSeries(series, now, copyFn)
+				c.UpdateSeries(series, labelhash, now, copyFn)
 			}
 		}()
 	}
@@ -137,15 +142,17 @@ func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
 	name := nameBuf.String()
 
 	series := make([]labels.Labels, b.N)
+	labelhash := make([]uint64, b.N)
 	for s := 0; s < b.N; s++ {
 		series[s] = labels.Labels{{Name: name, Value: name + strconv.Itoa(s)}}
+		labelhash[s] = series[s].Hash()
 	}
 
 	now := time.Now().UnixNano()
 
 	b.ResetTimer()
 	for ix := 0; ix < b.N; ix++ {
-		c.UpdateSeries(series[ix], time.Unix(0, now+int64(ix)), copyFn)
+		c.UpdateSeries(series[ix], labelhash[ix], time.Unix(0, now+int64(ix)), copyFn)
 	}
 }
 
@@ -165,8 +172,10 @@ func benchmarkPurge(b *testing.B, twice bool) {
 	c := NewActiveSeries()
 
 	series := [numSeries]labels.Labels{}
+	labelhash := [numSeries]uint64{}
 	for s := 0; s < numSeries; s++ {
 		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+		labelhash[s] = series[s].Hash()
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -175,9 +184,9 @@ func benchmarkPurge(b *testing.B, twice bool) {
 		// Prepare series
 		for ix, s := range series {
 			if ix < numExpiresSeries {
-				c.UpdateSeries(s, now.Add(-time.Minute), copyFn)
+				c.UpdateSeries(s, labelhash[ix], now.Add(-time.Minute), copyFn)
 			} else {
-				c.UpdateSeries(s, now, copyFn)
+				c.UpdateSeries(s, labelhash[ix], now, copyFn)
 			}
 		}
 

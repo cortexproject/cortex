@@ -125,13 +125,13 @@ To publish a stable release:
 
 ### <a name="sing-and-sbom"></a>Sign the release artifacts and generate SBOM
 1. Make sure you have the release brnach checked out, and you don't have any local modifications
-1. Create and `cd` to an empty directory not within the project directory 
+1. Create and `cd` to an empty directory not within the project directory
 1. Run `mkdir sbom`
 1. Generate SBOMs using https://github.com/kubernetes-sigs/bom
    1. `bom generate -o sbom/go-mod.spdx -n https://github.com/cortexproject/cortex -d <cortex repo>`
    1. `bom generate -o sbom/cortex-container-image.spdx -n https://github.com/cortexproject/cortex -i quay.io/cortexproject/cortex:<release tag>`
    1. `bom generate -o sbom/query-tee-container-image.spdx -n https://github.com/cortexproject/cortex -i quay.io/cortexproject/query-tee:<release tag>`
-   1. `tar -zcvf  sbom.tar.gz sbom` 
+   1. `tar -zcvf  sbom.tar.gz sbom`
 1. Download the artifacts attached to the published release
    ```bash
    curl -H "Authorization: Bearer <your GitHub API token>" -s https://api.github.com/repos/cortexproject/cortex/releases/tags/<release tag> \
@@ -141,7 +141,7 @@ To publish a stable release:
    | wget -qi -
    ```
 1. Sign the files with your PGP key: `find . -maxdepth 1 -type f | xargs -L 1 gpg --armor --detach-sign`
-1. Attach `sbom.tar.gz` to the release 
+1. Attach `sbom.tar.gz` to the release
 1. Attach the generated `.asc` files to the release
 1. Attach `sign.pub` which contains the the public key of the PGP key you used to sign the binaries
    * You can get the public key by doing `gpg --armor --export <your@email.address>`

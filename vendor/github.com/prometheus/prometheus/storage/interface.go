@@ -237,7 +237,7 @@ type GetRef interface {
 	// Returns reference number that can be used to pass to Appender.Append(),
 	// and a set of labels that will not cause another copy when passed to Appender.Append().
 	// 0 means the appender does not have a reference to this series.
-	GetRef(lset labels.Labels) (SeriesRef, labels.Labels)
+	GetRef(lset labels.Labels, hash uint64) (SeriesRef, labels.Labels)
 }
 
 // ExemplarAppender provides an interface for adding samples to exemplar storage, which

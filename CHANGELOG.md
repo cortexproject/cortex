@@ -54,6 +54,7 @@
 * [ENHANCEMENT] Enhance traces with hostname information. #4898
 * [ENHANCEMENT] Improve the documentation around limits. #4905
 * [ENHANCEMENT] Distributor: cache user overrides to reduce lock contention. #4904
+* [ENHANCEMENT] Push reduce one hash operation of Labels. #4945
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added `-compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818

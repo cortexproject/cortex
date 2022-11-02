@@ -96,21 +96,7 @@ To publish a release candidate:
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release
    - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
-
-### Sign the release artifacts
-1. Create and `cd` to an empty directory
-1. Download the artifacts you just attached:
-   ```bash
-   curl -H "Authorization: Bearer <your GitHub API token>" -s https://api.github.com/repos/cortexproject/cortex/releases/tags/<release name> \
-   | grep "browser_download_url" \
-   | cut -d: -f2- \
-   | tr -d "\"" \
-   | wget -qi -
-   ```
-1. Sign the files with your PGP key: `ls | xargs -L 1 gpg --armor --detach-sign`
-1. Attach the generated `.asc` files to the release
-1. Attach `sign.pub` which contains the the public key of the PGP key you used to sign the binaries
-   * You can get the public key by doing `gpg --armor --export <your@email.address>`
+1. [Sign the artifact and generate SBOM for the release](#sing-and-sbom)
 
 ### Publish a stable release
 
@@ -127,6 +113,7 @@ To publish a stable release:
    - Write the release notes (including a copy-paste of the changelog)
    - Build binaries with `make dist` and attach them to the release
    - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
+1. [Sign the artifact and generate SBOM for the release](#sing-and-sbom)
 1. Merge the release branch `release-x.y` to `master`
    - Create `merge-release-X.Y-to-master` branch **from `release-X.Y` branch** locally
    - Merge upstream `master` branch into your `merge-release-X.Y-to-master` and resolve conflicts
@@ -135,6 +122,29 @@ To publish a stable release:
      - This can either be done by temporarily enabling "Allow merge commits" option in "Settings > Options".
      - Alternatively, this can be done locally by merging `merge-release-X.Y-to-master` branch into `master`, and pushing resulting `master` to upstream repository. This doesn't break `master` branch protection, since PR has been approved already, and it also doesn't require removing the protection.
 1. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)
+
+### <a name="sing-and-sbom"></a>Sign the release artifacts and generate SBOM
+1. Make sure you have the release brnach checked out, and you don't have any local modifications
+1. Create and `cd` to an empty directory not within the project directory
+1. Run `mkdir sbom`
+1. Generate SBOMs using https://github.com/kubernetes-sigs/bom
+   1. `bom generate -o sbom/go-mod.spdx -n https://github.com/cortexproject/cortex -d <cortex repo>`
+   1. `bom generate -o sbom/cortex-container-image.spdx -n https://github.com/cortexproject/cortex -i quay.io/cortexproject/cortex:<release tag>`
+   1. `bom generate -o sbom/query-tee-container-image.spdx -n https://github.com/cortexproject/cortex -i quay.io/cortexproject/query-tee:<release tag>`
+   1. `tar -zcvf  sbom.tar.gz sbom`
+1. Download the artifacts attached to the published release
+   ```bash
+   curl -H "Authorization: Bearer <your GitHub API token>" -s https://api.github.com/repos/cortexproject/cortex/releases/tags/<release tag> \
+   | grep "browser_download_url" \
+   | cut -d: -f2- \
+   | tr -d "\"" \
+   | wget -qi -
+   ```
+1. Sign the files with your PGP key: `find . -maxdepth 1 -type f | xargs -L 1 gpg --armor --detach-sign`
+1. Attach `sbom.tar.gz` to the release
+1. Attach the generated `.asc` files to the release
+1. Attach `sign.pub` which contains the the public key of the PGP key you used to sign the binaries
+   * You can get the public key by doing `gpg --armor --export <your@email.address>`
 
 ### How to tag a release
 

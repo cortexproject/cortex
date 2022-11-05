@@ -44,6 +44,7 @@
 * [CHANGE] Compactor: Added `cortex_compactor_runs_interrupted_total` to separate compaction interruptions from failures
 * [CHANGE] Enable PromQL `@` modifier, negative offset always. #4927
 * [CHANGE] Store-gateway: Add user label to `cortex_bucket_store_blocks_loaded` metric. #4918
+* [CHANGE] AlertManager: include `status` label in `cortex_alertmanager_alerts_received_total`. #4907
 * [ENHANCEMENT] AlertManager: Retrying AlertManager Get Requests (Get Alertmanager status, Get Alertmanager Receivers) on next replica on error #4840
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783

@@ -48,9 +48,12 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_alerts_invalid_total{user="user3"} 200
 		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
 		# TYPE cortex_alertmanager_alerts_received_total counter
-		cortex_alertmanager_alerts_received_total{user="user1"} 10
-		cortex_alertmanager_alerts_received_total{user="user2"} 100
-		cortex_alertmanager_alerts_received_total{user="user3"} 1000
+		cortex_alertmanager_alerts_received_total{status="firing",user="user1"} 4
+		cortex_alertmanager_alerts_received_total{status="resolved",user="user1"} 6
+		cortex_alertmanager_alerts_received_total{status="firing",user="user2"} 40
+		cortex_alertmanager_alerts_received_total{status="resolved",user="user2"} 60
+		cortex_alertmanager_alerts_received_total{status="firing",user="user3"} 400
+		cortex_alertmanager_alerts_received_total{status="resolved",user="user3"} 600
 		# HELP cortex_alertmanager_config_hash Hash of the currently loaded alertmanager configuration.
 		# TYPE cortex_alertmanager_config_hash gauge
 		cortex_alertmanager_config_hash{user="user1"} 0
@@ -327,9 +330,12 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 
         	            # HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
         	            # TYPE cortex_alertmanager_alerts_received_total counter
-        	            cortex_alertmanager_alerts_received_total{user="user1"} 10
-        	            cortex_alertmanager_alerts_received_total{user="user2"} 100
-        	            cortex_alertmanager_alerts_received_total{user="user3"} 1000
+        	            cortex_alertmanager_alerts_received_total{status="firing",user="user1"} 4
+						cortex_alertmanager_alerts_received_total{status="resolved",user="user1"} 6
+						cortex_alertmanager_alerts_received_total{status="firing",user="user2"} 40
+						cortex_alertmanager_alerts_received_total{status="resolved",user="user2"} 60
+						cortex_alertmanager_alerts_received_total{status="firing",user="user3"} 400
+						cortex_alertmanager_alerts_received_total{status="resolved",user="user3"} 600
 
         	            # HELP cortex_alertmanager_config_hash Hash of the currently loaded alertmanager configuration.
         	            # TYPE cortex_alertmanager_config_hash gauge
@@ -611,8 +617,10 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
 
     		# HELP cortex_alertmanager_alerts_received_total The total number of received alerts.
     		# TYPE cortex_alertmanager_alerts_received_total counter
-    		cortex_alertmanager_alerts_received_total{user="user1"} 10
-    		cortex_alertmanager_alerts_received_total{user="user2"} 100
+    		cortex_alertmanager_alerts_received_total{status="firing",user="user1"} 4
+			cortex_alertmanager_alerts_received_total{status="resolved",user="user1"} 6
+			cortex_alertmanager_alerts_received_total{status="firing",user="user2"} 40
+			cortex_alertmanager_alerts_received_total{status="resolved",user="user2"} 60
 
     		# HELP cortex_alertmanager_config_hash Hash of the currently loaded alertmanager configuration.
     		# TYPE cortex_alertmanager_config_hash gauge

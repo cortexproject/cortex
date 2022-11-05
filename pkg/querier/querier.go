@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,10 +16,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
@@ -30,7 +30,9 @@ import (
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -46,7 +48,7 @@ type Config struct {
 	MaxSamples                int           `yaml:"max_samples"`
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
 	QueryStoreForLabels       bool          `yaml:"query_store_for_labels_enabled"`
-	AtModifierEnabled         bool          `yaml:"at_modifier_enabled"`
+	AtModifierEnabled         bool          `yaml:"at_modifier_enabled" doc:"hidden"`
 	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
@@ -82,6 +84,9 @@ var (
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.at-modifier-enabled", "This flag is no longer functional; at-modifier is always enabled now.", util_log.Logger)
+
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
@@ -92,7 +97,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Query long-term store for series, label values and label names APIs. Works only with blocks engine.")
-	f.BoolVar(&cfg.AtModifierEnabled, "querier.at-modifier-enabled", false, "Enable the @ modifier in PromQL.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
@@ -139,7 +143,7 @@ func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, *promql.Engine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, v1.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin)
@@ -163,14 +167,15 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             logger,
-		Reg:                reg,
-		ActiveQueryTracker: createActiveQueryTracker(cfg, logger),
-		MaxSamples:         cfg.MaxSamples,
-		Timeout:            cfg.Timeout,
-		LookbackDelta:      cfg.LookbackDelta,
-		EnablePerStepStats: cfg.EnablePerStepStats,
-		EnableAtModifier:   cfg.AtModifierEnabled,
+		Logger:               logger,
+		Reg:                  reg,
+		ActiveQueryTracker:   createActiveQueryTracker(cfg, logger),
+		MaxSamples:           cfg.MaxSamples,
+		Timeout:              cfg.Timeout,
+		LookbackDelta:        cfg.LookbackDelta,
+		EnablePerStepStats:   cfg.EnablePerStepStats,
+		EnableAtModifier:     true,
+		EnableNegativeOffset: true,
 		NoStepSubqueryIntervalFn: func(int64) int64 {
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},

@@ -113,7 +113,7 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 
 	if !entryTimeSet {
 		if prev := e.Load(); nowNanos > prev {
-			entryTimeSet = e.CAS(prev, nowNanos)
+			entryTimeSet = e.CompareAndSwap(prev, nowNanos)
 		}
 	}
 
@@ -121,7 +121,7 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 		for prevOldest := s.oldestEntryTs.Load(); nowNanos < prevOldest; {
 			// If recent purge already removed entries older than "oldest entry timestamp", setting this to 0 will make
 			// sure that next purge doesn't take the shortcut route.
-			if s.oldestEntryTs.CAS(prevOldest, 0) {
+			if s.oldestEntryTs.CompareAndSwap(prevOldest, 0) {
 				break
 			}
 		}

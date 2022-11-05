@@ -25,7 +25,9 @@ func TestBucketStoreMetrics(t *testing.T) {
 	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
 			# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
 			# TYPE cortex_bucket_store_blocks_loaded gauge
-			cortex_bucket_store_blocks_loaded 22519
+        	cortex_bucket_store_blocks_loaded{user="user1"} 5328
+        	cortex_bucket_store_blocks_loaded{user="user2"} 6908
+        	cortex_bucket_store_blocks_loaded{user="user3"} 10283
 
 			# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
 			# TYPE cortex_bucket_store_block_loads_total counter

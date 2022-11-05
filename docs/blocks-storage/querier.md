@@ -136,10 +136,6 @@ querier:
   # CLI flag: -querier.query-store-for-labels-enabled
   [query_store_for_labels_enabled: <boolean> | default = false]
 
-  # Enable the @ modifier in PromQL.
-  # CLI flag: -querier.at-modifier-enabled
-  [at_modifier_enabled: <boolean> | default = false]
-
   # Enable returning samples stats per steps in query response.
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]
@@ -206,6 +202,11 @@ querier:
     # Skip validating server certificate.
     # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+
+    # Use compression when sending messages. Supported values are: 'gzip',
+    # 'snappy' and '' (disable compression)
+    # CLI flag: -querier.store-gateway-client.grpc-compression
+    [grpc_compression: <string> | default = ""]
 
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required

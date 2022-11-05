@@ -19,15 +19,14 @@ Cortex can also make use of external Memcacheds and Redis for caching.
 
 ## Single instance, single process
 
-For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config-blocks.yaml) with no dependencies.
-You can reconfigure the config to use GCS, Azure storage or local storage as shown in the file's comments.
+For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config-blocks-local.yaml) with no dependencies.
+You can reconfigure the config to use S3, GCS or Azure storage as shown in the file's comments.
 
 ```sh
 $ go build ./cmd/cortex
-$ ./cortex -config.file=./docs/configuration/single-process-config-blocks.yaml
+$ ./cortex -config.file=./docs/configuration/single-process-config-blocks-local.yaml
 ```
 
-Unless reconfigured this starts a single Cortex node storing blocks to S3 in bucket `cortex`.
 It is not intended for production use.
 
 Clone and build prometheus
@@ -78,17 +77,17 @@ Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks.yaml:/etc/single-process-config-blocks.yaml \
+    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
     -p 9001:9009 \
     quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks.yaml \
+    -config.file=/etc/single-process-config-blocks-local.yaml \
     -ring.store=consul \
     -consul.hostname=consul:8500
 $ docker run -d --name=cortex2 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks.yaml:/etc/single-process-config-blocks.yaml \
+    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
     -p 9002:9009 \
     quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks.yaml \
+    -config.file=/etc/single-process-config-blocks-local.yaml \
     -ring.store=consul \
     -consul.hostname=consul:8500
 ```
@@ -142,26 +141,26 @@ Then, launch 3 Cortex nodes with replication factor 3:
 
 ```sh
 $ docker run -d --name=cortex1 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks.yaml:/etc/single-process-config-blocks.yaml \
+    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
     -p 9001:9009 \
     quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks.yaml \
+    -config.file=/etc/single-process-config-blocks-local.yaml \
     -ring.store=consul \
     -consul.hostname=consul:8500 \
     -distributor.replication-factor=3
 $ docker run -d --name=cortex2 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks.yaml:/etc/single-process-config-blocks.yaml \
+    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
     -p 9002:9009 \
     quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks.yaml \
+    -config.file=/etc/single-process-config-blocks-local.yaml \
     -ring.store=consul \
     -consul.hostname=consul:8500 \
     -distributor.replication-factor=3
 $ docker run -d --name=cortex3 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks.yaml:/etc/single-process-config-blocks.yaml \
+    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
     -p 9003:9009 \
     quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks.yaml \
+    -config.file=/etc/single-process-config-blocks-local.yaml \
     -ring.store=consul \
     -consul.hostname=consul:8500 \
     -distributor.replication-factor=3

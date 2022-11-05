@@ -814,10 +814,6 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.query-store-for-labels-enabled
 [query_store_for_labels_enabled: <boolean> | default = false]
 
-# Enable the @ modifier in PromQL.
-# CLI flag: -querier.at-modifier-enabled
-[at_modifier_enabled: <boolean> | default = false]
-
 # Enable returning samples stats per steps in query response.
 # CLI flag: -querier.per-step-stats-enabled
 [per_step_stats_enabled: <boolean> | default = false]
@@ -884,6 +880,11 @@ store_gateway_client:
   # Skip validating server certificate.
   # CLI flag: -querier.store-gateway-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -querier.store-gateway-client.grpc-compression
+  [grpc_compression: <string> | default = ""]
 
 # When distributor's sharding strategy is shuffle-sharding and this setting is >
 # 0, queriers fetch in-memory series from the minimum set of required ingesters,
@@ -1790,6 +1791,11 @@ alertmanager_client:
   # CLI flag: -alertmanager.alertmanager-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -alertmanager.alertmanager-client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
 # The interval between persisting the current alertmanager state (notification
 # log and silences) to object storage. This is only used when sharding is
 # enabled. This state is read when all replicas for a shard can not be
@@ -2668,22 +2674,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [max_fetched_chunks_per_query: <int> | default = 2000000]
 
 # The maximum number of unique series for which a query can fetch samples from
-# each ingesters and blocks storage. This limit is enforced in the querier only
-# when running Cortex with blocks storage. 0 to disable
+# each ingesters and blocks storage. This limit is enforced in the querier,
+# ruler and store-gateway. 0 to disable
 # CLI flag: -querier.max-fetched-series-per-query
 [max_fetched_series_per_query: <int> | default = 0]
 
 # Deprecated (user max-fetched-data-bytes-per-query instead): The maximum size
 # of all chunks in bytes that a query can fetch from each ingester and storage.
-# This limit is enforced in the querier and ruler only when running Cortex with
-# blocks storage. 0 to disable.
+# This limit is enforced in the querier, ruler and store-gateway. 0 to disable.
 # CLI flag: -querier.max-fetched-chunk-bytes-per-query
 [max_fetched_chunk_bytes_per_query: <int> | default = 0]
 
 # The maximum combined size of all data that a query can fetch from each
-# ingester and storage. This limit is only applied for `query`, `query_range`
-# and `series` APIs. This limit is enforced in the querier and ruler only when
-# running Cortex with blocks storage. 0 to disable.
+# ingester and storage. This limit is enforced in the querier and ruler for
+# `query`, `query_range` and `series` APIs. 0 to disable.
 # CLI flag: -querier.max-fetched-data-bytes-per-query
 [max_fetched_data_bytes_per_query: <int> | default = 0]
 

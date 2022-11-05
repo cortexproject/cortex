@@ -1796,3 +1796,64 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 		`level=error component=compactor msg="compactor failed to become ACTIVE in the ring" err="context deadline exceeded"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
+
+func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
+	bucketClient := objstore.NewInMemBucket()
+	id := ulid.MustNew(ulid.Now(), rand.Reader)
+	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+
+	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
+	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+
+	c, tsdbCompactor, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	tsdbCompactor.On("Compact", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ulid.ULID{}, context.Canceled).Run(func(args mock.Arguments) {
+		cancel()
+	})
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    b1,
+				MinTime: 10,
+				MaxTime: 20,
+			},
+		},
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    b2,
+				MinTime: 20,
+				MaxTime: 30,
+			},
+		},
+	}, nil)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+
+	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactionRunsInterrupted)
+	})
+
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+		# TYPE cortex_compactor_runs_completed_total counter
+		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
+		cortex_compactor_runs_completed_total 0
+
+		# TYPE cortex_compactor_runs_interrupted_total counter
+		# HELP cortex_compactor_runs_interrupted_total Total number of compaction runs interrupted.
+		cortex_compactor_runs_interrupted_total 1
+
+		# TYPE cortex_compactor_runs_failed_total counter
+		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
+		cortex_compactor_runs_failed_total 0
+	`),
+		"cortex_compactor_runs_completed_total",
+		"cortex_compactor_runs_interrupted_total",
+		"cortex_compactor_runs_failed_total",
+	))
+
+	lines := strings.Split(logs.String(), "\n")
+	require.Contains(t, lines, `level=info component=compactor msg="interrupting compaction of user blocks" user=user-1`)
+	require.NotContains(t, logs.String(), `level=error`)
+}

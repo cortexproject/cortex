@@ -16,56 +16,15 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
-type validateLabelsCfg struct {
-	enforceMetricName      bool
-	maxLabelNamesPerSeries int
-	maxLabelNameLength     int
-	maxLabelValueLength    int
-	maxLabelsSizeBytes     int
-}
-
-func (v validateLabelsCfg) EnforceMetricName(userID string) bool {
-	return v.enforceMetricName
-}
-
-func (v validateLabelsCfg) MaxLabelNamesPerSeries(userID string) int {
-	return v.maxLabelNamesPerSeries
-}
-
-func (v validateLabelsCfg) MaxLabelNameLength(userID string) int {
-	return v.maxLabelNameLength
-}
-
-func (v validateLabelsCfg) MaxLabelValueLength(userID string) int {
-	return v.maxLabelValueLength
-}
-
-func (v validateLabelsCfg) MaxLabelsSizeBytes(userID string) int {
-	return v.maxLabelsSizeBytes
-}
-
-type validateMetadataCfg struct {
-	enforceMetadataMetricName bool
-	maxMetadataLength         int
-}
-
-func (vm validateMetadataCfg) EnforceMetadataMetricName(userID string) bool {
-	return vm.enforceMetadataMetricName
-}
-
-func (vm validateMetadataCfg) MaxMetadataLength(userID string) int {
-	return vm.maxMetadataLength
-}
-
 func TestValidateLabels(t *testing.T) {
-	var cfg validateLabelsCfg
+	cfg := new(Limits)
 	userID := "testUser"
 
-	cfg.maxLabelValueLength = 25
-	cfg.maxLabelNameLength = 25
-	cfg.maxLabelNamesPerSeries = 2
-	cfg.maxLabelsSizeBytes = 90
-	cfg.enforceMetricName = true
+	cfg.MaxLabelValueLength = 25
+	cfg.MaxLabelNameLength = 25
+	cfg.MaxLabelNamesPerSeries = 2
+	cfg.MaxLabelsSizeBytes = 90
+	cfg.EnforceMetricName = true
 
 	for _, c := range []struct {
 		metric                  model.Metric
@@ -101,7 +60,7 @@ func TestValidateLabels(t *testing.T) {
 			newLabelNameTooLongError([]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "badLabelName"},
 				{Name: "this_is_a_really_really_long_name_that_should_cause_an_error", Value: "test_value_please_ignore"},
-			}, "this_is_a_really_really_long_name_that_should_cause_an_error", cfg.maxLabelNameLength),
+			}, "this_is_a_really_really_long_name_that_should_cause_an_error", cfg.MaxLabelNameLength),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "badLabelValue", "much_shorter_name": "test_value_please_ignore_no_really_nothing_to_see_here"},
@@ -109,7 +68,7 @@ func TestValidateLabels(t *testing.T) {
 			newLabelValueTooLongError([]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "badLabelValue"},
 				{Name: "much_shorter_name", Value: "test_value_please_ignore_no_really_nothing_to_see_here"},
-			}, "much_shorter_name", "test_value_please_ignore_no_really_nothing_to_see_here", cfg.maxLabelValueLength),
+			}, "much_shorter_name", "test_value_please_ignore_no_really_nothing_to_see_here", cfg.MaxLabelValueLength),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "bar": "baz", "blip": "blop"},
@@ -126,7 +85,7 @@ func TestValidateLabels(t *testing.T) {
 			labelSizeBytesExceededError([]cortexpb.LabelAdapter{
 				{Name: model.MetricNameLabel, Value: "exactly_twenty_five_chars"},
 				{Name: "exactly_twenty_five_chars", Value: "exactly_twenty_five_chars"},
-			}, 91, cfg.maxLabelsSizeBytes),
+			}, 91, cfg.MaxLabelsSizeBytes),
 		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "foo", "invalid%label&name": "bar"},
@@ -209,10 +168,11 @@ func TestValidateExemplars(t *testing.T) {
 }
 
 func TestValidateMetadata(t *testing.T) {
+	cfg := new(Limits)
+	cfg.EnforceMetadataMetricName = true
+	cfg.MaxMetadataLength = 22
+
 	userID := "testUser"
-	var cfg validateMetadataCfg
-	cfg.enforceMetadataMetricName = true
-	cfg.maxMetadataLength = 22
 
 	for _, c := range []struct {
 		desc     string
@@ -274,10 +234,10 @@ func TestValidateMetadata(t *testing.T) {
 }
 
 func TestValidateLabelOrder(t *testing.T) {
-	var cfg validateLabelsCfg
-	cfg.maxLabelNameLength = 10
-	cfg.maxLabelNamesPerSeries = 10
-	cfg.maxLabelValueLength = 10
+	cfg := new(Limits)
+	cfg.MaxLabelNameLength = 10
+	cfg.MaxLabelNamesPerSeries = 10
+	cfg.MaxLabelValueLength = 10
 
 	userID := "testUser"
 
@@ -295,10 +255,10 @@ func TestValidateLabelOrder(t *testing.T) {
 }
 
 func TestValidateLabelDuplication(t *testing.T) {
-	var cfg validateLabelsCfg
-	cfg.maxLabelNameLength = 10
-	cfg.maxLabelNamesPerSeries = 10
-	cfg.maxLabelValueLength = 10
+	cfg := new(Limits)
+	cfg.MaxLabelNameLength = 10
+	cfg.MaxLabelNamesPerSeries = 10
+	cfg.MaxLabelValueLength = 10
 
 	userID := "testUser"
 

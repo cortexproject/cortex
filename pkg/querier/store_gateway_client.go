@@ -72,7 +72,7 @@ func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConf
 	clientCfg := grpcclient.Config{
 		MaxRecvMsgSize:      100 << 20,
 		MaxSendMsgSize:      16 << 20,
-		GRPCCompression:     "",
+		GRPCCompression:     clientConfig.GRPCCompression,
 		RateLimit:           0,
 		RateLimitBurst:      0,
 		BackoffOnRatelimits: false,
@@ -96,11 +96,13 @@ func newStoreGatewayClientPool(discovery client.PoolServiceDiscovery, clientConf
 }
 
 type ClientConfig struct {
-	TLSEnabled bool             `yaml:"tls_enabled"`
-	TLS        tls.ClientConfig `yaml:",inline"`
+	TLSEnabled      bool             `yaml:"tls_enabled"`
+	TLS             tls.ClientConfig `yaml:",inline"`
+	GRPCCompression string           `yaml:"grpc_compression"`
 }
 
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.TLSEnabled, prefix+".tls-enabled", cfg.TLSEnabled, "Enable TLS for gRPC client connecting to store-gateway.")
+	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", "Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
 }

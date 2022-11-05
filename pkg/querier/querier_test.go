@@ -336,7 +336,7 @@ func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int
 	opts := tsdb.DefaultHeadOptions()
 	opts.ChunkDirRoot = t.TempDir()
 	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
-	head, err := tsdb.NewHead(nil, nil, nil, opts, nil)
+	head, err := tsdb.NewHead(nil, nil, nil, nil, opts, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = head.Close()

@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware/utils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -253,12 +254,28 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 		promResponses = append(promResponses, resp.(*PrometheusInstantQueryResponse))
 	}
 
-	var r isPrometheusInstantQueryResult_Result
+	var data PrometheusInstantQueryData
 	// For now, we only shard queries that returns a vector.
 	switch promResponses[0].Data.ResultType {
 	case model.ValVector.String():
-		r = &PrometheusInstantQueryResult_Vector{
-			Vector: vectorMerge(promResponses),
+		data = PrometheusInstantQueryData{
+			ResultType: model.ValVector.String(),
+			Result: PrometheusInstantQueryResult{
+				Result: &PrometheusInstantQueryResult_Vector{
+					Vector: vectorMerge(promResponses),
+				},
+			},
+			Stats: statsMerge(promResponses),
+		}
+	case model.ValMatrix.String():
+		data = PrometheusInstantQueryData{
+			ResultType: model.ValMatrix.String(),
+			Result: PrometheusInstantQueryResult{
+				Result: &PrometheusInstantQueryResult_Matrix{
+					Matrix: matrixMerge(promResponses),
+				},
+			},
+			Stats: statsMerge(promResponses),
 		}
 	default:
 		return nil, fmt.Errorf("unexpected result type on instant query: %s", promResponses[0].Data.ResultType)
@@ -266,13 +283,7 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 
 	res := &PrometheusInstantQueryResponse{
 		Status: queryrange.StatusSuccess,
-		Data: PrometheusInstantQueryData{
-			ResultType: model.ValVector.String(),
-			Result: PrometheusInstantQueryResult{
-				Result: r,
-			},
-			Stats: statsMerge(promResponses),
-		},
+		Data:   data,
 	}
 	return res, nil
 }
@@ -321,6 +332,59 @@ func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 	for _, key := range keys {
 		result.Samples = append(result.Samples, output[key])
 	}
+	return result
+}
+
+func matrixMerge(resps []*PrometheusInstantQueryResponse) *Matrix {
+	output := map[string]*tripperware.SampleStream{}
+	for _, resp := range resps {
+		if resp == nil {
+			continue
+		}
+		// Merge vector result samples only. Skip other types such as
+		// string, scalar as those are not sharable.
+		if resp.Data.Result.GetMatrix() == nil {
+			continue
+		}
+		for _, stream := range resp.Data.Result.GetMatrix().SampleStreams {
+			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
+			existing, ok := output[metric]
+			if !ok {
+				existing = &tripperware.SampleStream{
+					Labels: stream.Labels,
+				}
+			}
+			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
+			// The prometheus API is inclusive of start and end timestamps.
+			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
+				existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
+				if existingEndTs == stream.Samples[0].TimestampMs {
+					// Typically this the cases where only 1 sample point overlap,
+					// so optimize with simple code.
+					stream.Samples = stream.Samples[1:]
+				} else if existingEndTs > stream.Samples[0].TimestampMs {
+					// Overlap might be big, use heavier algorithm to remove overlap.
+					stream.Samples = utils.SliceSamples(stream.Samples, existingEndTs)
+				} // else there is no overlap, yay!
+			}
+			existing.Samples = append(existing.Samples, stream.Samples...)
+			output[metric] = existing
+		}
+	}
+
+	keys := make([]string, 0, len(output))
+	for key := range output {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := &Matrix{
+		SampleStreams: make([]*tripperware.SampleStream, 0, len(output)),
+	}
+	for _, key := range keys {
+		result.SampleStreams = append(result.SampleStreams, output[key])
+	}
+
 	return result
 }
 
@@ -425,6 +489,18 @@ func (s *PrometheusInstantQueryData) UnmarshalJSON(data []byte) error {
 				Samples: result.Samples,
 			}},
 		}
+	case model.ValMatrix.String():
+		var result struct {
+			SampleStreams []*tripperware.SampleStream `json:"result"`
+		}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+		s.Result = PrometheusInstantQueryResult{
+			Result: &PrometheusInstantQueryResult_Matrix{Matrix: &Matrix{
+				SampleStreams: result.SampleStreams,
+			}},
+		}
 	default:
 		s.Result = PrometheusInstantQueryResult{
 			Result: &PrometheusInstantQueryResult_RawBytes{data},
@@ -444,6 +520,17 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 		}{
 			ResultType: s.ResultType,
 			Data:       s.Result.GetVector().Samples,
+			Stats:      s.Stats,
+		}
+		return json.Marshal(res)
+	case model.ValMatrix.String():
+		res := struct {
+			ResultType string                               `json:"resultType"`
+			Data       []*tripperware.SampleStream          `json:"result"`
+			Stats      *tripperware.PrometheusResponseStats `json:"stats,omitempty"`
+		}{
+			ResultType: s.ResultType,
+			Data:       s.Result.GetMatrix().SampleStreams,
 			Stats:      s.Stats,
 		}
 		return json.Marshal(res)

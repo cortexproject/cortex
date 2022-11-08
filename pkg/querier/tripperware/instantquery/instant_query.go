@@ -340,7 +340,7 @@ func matrixMerge(resps []*PrometheusInstantQueryResponse) *Matrix {
 		if resp == nil {
 			continue
 		}
-		// Merge vector result samples only. Skip other types such as
+		// Merge matrix result samples only. Skip other types such as
 		// string, scalar as those are not sharable.
 		if resp.Data.Result.GetMatrix() == nil {
 			continue

@@ -271,7 +271,9 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 			ResultType: model.ValMatrix.String(),
 			Result: PrometheusInstantQueryResult{
 				Result: &PrometheusInstantQueryResult_Matrix{
-					Matrix: matrixMerge(promResponses),
+					Matrix: &Matrix{
+						SampleStreams: matrixMerge(promResponses),
+					},
 				},
 			},
 			Stats: statsMerge(promResponses),
@@ -334,41 +336,16 @@ func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 	return result
 }
 
-func matrixMerge(resps []*PrometheusInstantQueryResponse) *Matrix {
-	output := map[string]*tripperware.SampleStream{}
+func matrixMerge(resps []*PrometheusInstantQueryResponse) []tripperware.SampleStream {
+	output := make(map[string]tripperware.SampleStream)
 	for _, resp := range resps {
 		if resp == nil {
 			continue
 		}
-		// Merge matrix result samples only. Skip other types such as
-		// string, scalar as those are not sharable.
 		if resp.Data.Result.GetMatrix() == nil {
 			continue
 		}
-		for _, stream := range resp.Data.Result.GetMatrix().SampleStreams {
-			metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
-			existing, ok := output[metric]
-			if !ok {
-				existing = &tripperware.SampleStream{
-					Labels: stream.Labels,
-				}
-			}
-			// We need to make sure we don't repeat samples. This causes some visualisations to be broken in Grafana.
-			// The prometheus API is inclusive of start and end timestamps.
-			if len(existing.Samples) > 0 && len(stream.Samples) > 0 {
-				existingEndTs := existing.Samples[len(existing.Samples)-1].TimestampMs
-				if existingEndTs == stream.Samples[0].TimestampMs {
-					// Typically this the cases where only 1 sample point overlap,
-					// so optimize with simple code.
-					stream.Samples = stream.Samples[1:]
-				} else if existingEndTs > stream.Samples[0].TimestampMs {
-					// Overlap might be big, use heavier algorithm to remove overlap.
-					stream.Samples = tripperware.SliceSamples(stream.Samples, existingEndTs)
-				} // else there is no overlap, yay!
-			}
-			existing.Samples = append(existing.Samples, stream.Samples...)
-			output[metric] = existing
-		}
+		tripperware.MergeSampleStreams(output, resp.Data.Result.GetMatrix().GetSampleStreams())
 	}
 
 	keys := make([]string, 0, len(output))
@@ -377,11 +354,9 @@ func matrixMerge(resps []*PrometheusInstantQueryResponse) *Matrix {
 	}
 	sort.Strings(keys)
 
-	result := &Matrix{
-		SampleStreams: make([]*tripperware.SampleStream, 0, len(output)),
-	}
+	result := make([]tripperware.SampleStream, 0, len(output))
 	for _, key := range keys {
-		result.SampleStreams = append(result.SampleStreams, output[key])
+		result = append(result, output[key])
 	}
 
 	return result
@@ -490,7 +465,7 @@ func (s *PrometheusInstantQueryData) UnmarshalJSON(data []byte) error {
 		}
 	case model.ValMatrix.String():
 		var result struct {
-			SampleStreams []*tripperware.SampleStream `json:"result"`
+			SampleStreams []tripperware.SampleStream `json:"result"`
 		}
 		if err := json.Unmarshal(data, &result); err != nil {
 			return err
@@ -525,7 +500,7 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 	case model.ValMatrix.String():
 		res := struct {
 			ResultType string                               `json:"resultType"`
-			Data       []*tripperware.SampleStream          `json:"result"`
+			Data       []tripperware.SampleStream           `json:"result"`
 			Stats      *tripperware.PrometheusResponseStats `json:"stats,omitempty"`
 		}{
 			ResultType: s.ResultType,

@@ -23,7 +23,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware/utils"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
@@ -366,7 +365,7 @@ func matrixMerge(resps []*PrometheusResponse) []tripperware.SampleStream {
 					stream.Samples = stream.Samples[1:]
 				} else if existingEndTs > stream.Samples[0].TimestampMs {
 					// Overlap might be big, use heavier algorithm to remove overlap.
-					stream.Samples = utils.SliceSamples(stream.Samples, existingEndTs)
+					stream.Samples = tripperware.SliceSamples(stream.Samples, existingEndTs)
 				} // else there is no overlap, yay!
 			}
 			existing.Samples = append(existing.Samples, stream.Samples...)

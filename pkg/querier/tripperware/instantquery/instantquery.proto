@@ -44,5 +44,5 @@ message Sample {
 }
 
 message Matrix {
-  repeated tripperware.SampleStream sampleStreams = 1;
+  repeated tripperware.SampleStream sampleStreams = 1 [(gogoproto.nullable) = false];
 }

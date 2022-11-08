@@ -1,9 +1,11 @@
 package tripperware
 
 import (
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestSliceSamples(t *testing.T) {

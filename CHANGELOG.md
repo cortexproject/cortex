@@ -64,6 +64,7 @@
 * [FEATURE] Distributor: Added a new limit `-validation.max-labels-size-bytes` allowing to limit the combined size of labels for each timeseries. #4848
 * [FEATURE] Storage/Bucket: Added `-*.s3.bucket-lookup-type` allowing to configure the s3 bucket lookup type. #4794
 * [FEATURE] QueryFrontend: Implement experimental vertical sharding at query frontend for range/instant queries. #4863
+* [FEATURE] QueryFrontend: Support vertical sharding for subqueries. #4955
 * [FEATURE] Querier: Added a new limit `-querier.max-fetched-data-bytes-per-query` allowing to limit the maximum size of all data in bytes that a query can fetch from each ingester and storage. #4854
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-compression` and `-querier.store-gateway-client.grpc-compression` to configure compression methods for grpc clients. #4889
 * [BUGFIX] Storage/Bucket: Enable AWS SDK for go authentication for s3 to fix IMDSv1 authentication. #4897

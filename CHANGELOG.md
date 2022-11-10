@@ -75,6 +75,7 @@
 * [BUGFIX] AlertManager: fixed issue introduced by #4495 where templates files were being deleted when using alertmanager local store. #4890
 * [BUGFIX] Ingester: fixed incorrect logging at the start of ingester block shipping logic. #4934
 * [BUGFIX] Storage/Bucket: fixed global mark missing on deletion. #4949
+* [BUGFIX] QueryFrontend/Querier: fixed regression added by #4863 where we stopped compressing the response between querier and query frontend. #4960
 
 ## 1.13.0 2022-07-14
 

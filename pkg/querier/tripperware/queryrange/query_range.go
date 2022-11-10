@@ -243,6 +243,9 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 		}
 	}
 
+	// Always ask gzip to the querier
+	h.Set("Accept-Encoding", "gzip")
+
 	req := &http.Request{
 		Method:     "GET",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.

@@ -2,11 +2,14 @@ package tripperware
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -146,19 +149,34 @@ type Buffer interface {
 }
 
 func BodyBuffer(res *http.Response) ([]byte, error) {
+	var buf *bytes.Buffer
+
 	// Attempt to cast the response body to a Buffer and use it if possible.
 	// This is because the frontend may have already read the body and buffered it.
 	if buffer, ok := res.Body.(Buffer); ok {
-		return buffer.Bytes(), nil
+		buf = bytes.NewBuffer(buffer.Bytes())
+	} else {
+		// Preallocate the buffer with the exact size so we don't waste allocations
+		// while progressively growing an initial small buffer. The buffer capacity
+		// is increased by MinRead to avoid extra allocations due to how ReadFrom()
+		// internally works.
+		buf = bytes.NewBuffer(make([]byte, 0, res.ContentLength+bytes.MinRead))
+		if _, err := buf.ReadFrom(res.Body); err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
 	}
-	// Preallocate the buffer with the exact size so we don't waste allocations
-	// while progressively growing an initial small buffer. The buffer capacity
-	// is increased by MinRead to avoid extra allocations due to how ReadFrom()
-	// internally works.
-	buf := bytes.NewBuffer(make([]byte, 0, res.ContentLength+bytes.MinRead))
-	if _, err := buf.ReadFrom(res.Body); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+
+	// if the response is gziped, lets unzip it here
+	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
+		gReader, err := gzip.NewReader(buf)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return io.ReadAll(gReader)
 	}
+
 	return buf.Bytes(), nil
 }
 

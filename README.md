@@ -4,6 +4,7 @@
 [![GoDoc](https://godoc.org/github.com/cortexproject/cortex?status.svg)](https://godoc.org/github.com/cortexproject/cortex)
 <a href="https://goreportcard.com/report/github.com/cortexproject/cortex"><img src="https://goreportcard.com/badge/github.com/cortexproject/cortex" alt="Go Report Card" /></a>
 <a href="https://cloud-native.slack.com/messages/cortex/"><img src="https://img.shields.io/badge/join%20slack-%23cortex-brightgreen.svg" alt="Slack" /></a>
+<a href="https://bestpractices.coreinfrastructure.org/projects/6681"><img src="https://bestpractices.coreinfrastructure.org/projects/6681/badge"></a>
 
 # Cortex: horizontally scalable, highly available, multi-tenant, long term storage for Prometheus.
 

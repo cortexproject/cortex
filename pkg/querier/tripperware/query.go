@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -166,6 +166,7 @@ func BodyBuffer(res *http.Response) ([]byte, error) {
 		}
 	}
 
+	// if the response is gziped, lets unzip it here
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
 		gReader, err := gzip.NewReader(buf)
 
@@ -173,7 +174,7 @@ func BodyBuffer(res *http.Response) ([]byte, error) {
 			return nil, err
 		}
 
-		return ioutil.ReadAll(gReader)
+		return io.ReadAll(gReader)
 	}
 
 	return buf.Bytes(), nil

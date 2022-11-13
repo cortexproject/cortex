@@ -3036,7 +3036,6 @@ func TestDistributorValidation(t *testing.T) {
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past),
 		},
-
 		// Test validation fails for samples from the future.
 		{
 			labels: []labels.Labels{{{Name: labels.MetricName, Value: "testmetric"}, {Name: "foo", Value: "bar"}}},

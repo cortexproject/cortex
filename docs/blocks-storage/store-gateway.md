@@ -1304,4 +1304,9 @@ blocks_storage:
     # down.
     # CLI flag: -blocks-storage.tsdb.memory-snapshot-on-shutdown
     [memory_snapshot_on_shutdown: <boolean> | default = false]
+
+    # [EXPERIMENTAL] Configures the maximum number of samples per chunk that can
+    # be out-of-order.
+    # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
+    [out_of_order_cap_max: <int> | default = 32]
 ```

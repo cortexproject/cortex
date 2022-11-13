@@ -341,6 +341,7 @@ func TestIngester_Push(t *testing.T) {
 		additionalMetrics         []string
 		disableActiveSeries       bool
 		maxExemplars              int
+		oooTimeWindow             time.Duration
 	}{
 		"should succeed on valid series and metadata": {
 			reqs: []*cortexpb.WriteRequest{
@@ -553,7 +554,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 			`,
 		},
-		"should soft fail on sample out of order": {
+		"ooo disabled, should soft fail on sample out of order": {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
@@ -597,7 +598,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 			`,
 		},
-		"should soft fail on sample out of bound": {
+		"ooo disabled, should soft fail on sample out of bound": {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
@@ -636,6 +637,92 @@ func TestIngester_Push(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"ooo enabled, should soft fail on sample too old": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
+					nil,
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (600 * 1000)}},
+					nil,
+					cortexpb.API),
+			},
+			oooTimeWindow: 5 * time.Minute,
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 1
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 1
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="sample-too-old",user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
+		"ooo enabled, should succeed": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
+					nil,
+					cortexpb.API),
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}},
+					nil,
+					cortexpb.API),
+			},
+			oooTimeWindow: 5 * time.Minute,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}, {Value: 2, TimestampMs: 1575043969}}},
+			},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 2
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -777,6 +864,7 @@ func TestIngester_Push(t *testing.T) {
 
 			limits := defaultLimitsTestConfig()
 			limits.MaxExemplars = testData.maxExemplars
+			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
 			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))

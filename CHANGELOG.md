@@ -24,6 +24,7 @@
 * [FEATURE] AlertManager/Ruler: Added support for  `keep_firing_for` on alerting rulers.
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 * [FEATURE] Added `snappy-block` as an option for grpc compression #5215
+* [FEATURE] Enable experimental out-of-order samples support. Added 2 new configs `ingester.out_of_order_time_window` and `blocks-storage.tsdb.out_of_order_cap_max`. #4964
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
 * [ENHANCEMENT] Query-tee: Add `/api/v1/query_exemplars` API endpoint support. #5010

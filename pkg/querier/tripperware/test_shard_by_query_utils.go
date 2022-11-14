@@ -140,7 +140,7 @@ sum by (container) (
 		{
 			name:           "multiple binary expressions with grouping",
 			expression:     `(http_requests_total{code="400"} + on (pod) http_requests_total{code="500"}) / on (cluster, pod) http_requests_total`,
-			shardingLabels: []string{"cluster", "pod"},
+			shardingLabels: []string{"pod"},
 		},
 		{
 			name:           "histogram quantile",
@@ -160,6 +160,11 @@ sum by (container) (
 			name:           "subquery with function",
 			expression:     "increase(sum(http_requests_total) by (pod, cluster) [1h:1m])",
 			shardingLabels: []string{"cluster", "pod"},
+		},
+		{
+			name:           "ignore vector matching with 2 aggregations",
+			expression:     `sum(rate(node_cpu_seconds_total[3h])) by (cluster_id, mode) / ignoring(mode) group_left sum(rate(node_cpu_seconds_total[3h])) by (cluster_id)`,
+			shardingLabels: []string{"cluster_id"},
 		},
 	}
 

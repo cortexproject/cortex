@@ -44,11 +44,11 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 			expression: "count(sum without (pod) (http_requests_total))",
 		},
 		{
-			name:       "aggregate expression with subquery",
+			name:       "aggregate expression with label_replace",
 			expression: `sum by (pod) (label_replace(metric, "dst_label", "$1", "src_label", "re"))`,
 		},
 		{
-			name:       "aggregate without expression with subquery",
+			name:       "aggregate without expression with label_replace",
 			expression: `sum without (pod) (label_replace(metric, "dst_label", "$1", "src_label", "re"))`,
 		},
 		{
@@ -68,7 +68,7 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 			expression: `sum by (pod) (http_requests_total{code="400"}) / sum by (cluster) (http_requests_total)`,
 		},
 		{
-			name:       "binary expression with vector matching and subquery",
+			name:       "binary expression with vector matching and label_replace",
 			expression: `http_requests_total{code="400"} / on (pod) label_replace(metric, "dst_label", "$1", "src_label", "re")`,
 		},
 		{
@@ -149,6 +149,20 @@ sum by (container) (
 		},
 	}
 
+	// Shardable by labels instant queries with matrix response
+	shardableByLabelsMatrix := []queries{
+		{
+			name:           "subquery",
+			expression:     "sum(http_requests_total) by (pod, cluster) [1h:1m]",
+			shardingLabels: []string{"cluster", "pod"},
+		},
+		{
+			name:           "subquery with function",
+			expression:     "increase(sum(http_requests_total) by (pod, cluster) [1h:1m])",
+			shardingLabels: []string{"cluster", "pod"},
+		},
+	}
+
 	shardableWithoutLabels := []queries{
 		{
 			name:           "aggregation without grouping",
@@ -218,7 +232,7 @@ http_requests_total`,
 			response: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
 		},
 		{
-			name:        "shold not shard if shard size is 1",
+			name:        "should not shard if shard size is 1",
 			path:        `/api/v1/query?time=120&query=sum(metric) by (pod,cluster_name)`,
 			codec:       instantQueryCodec,
 			shardSize:   1,
@@ -278,6 +292,22 @@ http_requests_total`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"b"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
 			},
 			response: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]},{"metric":{"__job__":"b","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":12,"totalQueryableSamplesPerStep":[[1,2],[2,4],[3,6]]}}}}`,
+		})
+	}
+
+	for _, query := range shardableByLabelsMatrix {
+		tests = append(tests, testCase{
+			name:           fmt.Sprintf("shardable query: %s", query.name),
+			path:           fmt.Sprintf(`/api/v1/query?time=120&query=%s`, url.QueryEscape(query.expression)),
+			codec:          instantQueryCodec,
+			isShardable:    true,
+			shardSize:      2,
+			shardingLabels: query.shardingLabels,
+			responses: []string{
+				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up","job":"foo"},"values":[[1,"1"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up","job":"bar"},"values":[[2,"2"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			},
+			response: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up","job":"bar"},"values":[[2,"2"]]},{"metric":{"__name__":"up","job":"foo"},"values":[[1,"1"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
 		})
 	}
 

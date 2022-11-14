@@ -203,6 +203,9 @@ func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
+	// Always ask gzip to the querier
+	h.Set("Accept-Encoding", "gzip")
+
 	req := &http.Request{
 		Method:     "GET",
 		RequestURI: u.String(), // This is what the httpgrpc code looks at.
@@ -253,12 +256,30 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 		promResponses = append(promResponses, resp.(*PrometheusInstantQueryResponse))
 	}
 
-	var r isPrometheusInstantQueryResult_Result
+	var data PrometheusInstantQueryData
 	// For now, we only shard queries that returns a vector.
 	switch promResponses[0].Data.ResultType {
 	case model.ValVector.String():
-		r = &PrometheusInstantQueryResult_Vector{
-			Vector: vectorMerge(promResponses),
+		data = PrometheusInstantQueryData{
+			ResultType: model.ValVector.String(),
+			Result: PrometheusInstantQueryResult{
+				Result: &PrometheusInstantQueryResult_Vector{
+					Vector: vectorMerge(promResponses),
+				},
+			},
+			Stats: statsMerge(promResponses),
+		}
+	case model.ValMatrix.String():
+		data = PrometheusInstantQueryData{
+			ResultType: model.ValMatrix.String(),
+			Result: PrometheusInstantQueryResult{
+				Result: &PrometheusInstantQueryResult_Matrix{
+					Matrix: &Matrix{
+						SampleStreams: matrixMerge(promResponses),
+					},
+				},
+			},
+			Stats: statsMerge(promResponses),
 		}
 	default:
 		return nil, fmt.Errorf("unexpected result type on instant query: %s", promResponses[0].Data.ResultType)
@@ -266,13 +287,7 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 
 	res := &PrometheusInstantQueryResponse{
 		Status: queryrange.StatusSuccess,
-		Data: PrometheusInstantQueryData{
-			ResultType: model.ValVector.String(),
-			Result: PrometheusInstantQueryResult{
-				Result: r,
-			},
-			Stats: statsMerge(promResponses),
-		},
+		Data:   data,
 	}
 	return res, nil
 }
@@ -321,6 +336,32 @@ func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 	for _, key := range keys {
 		result.Samples = append(result.Samples, output[key])
 	}
+	return result
+}
+
+func matrixMerge(resps []*PrometheusInstantQueryResponse) []tripperware.SampleStream {
+	output := make(map[string]tripperware.SampleStream)
+	for _, resp := range resps {
+		if resp == nil {
+			continue
+		}
+		if resp.Data.Result.GetMatrix() == nil {
+			continue
+		}
+		tripperware.MergeSampleStreams(output, resp.Data.Result.GetMatrix().GetSampleStreams())
+	}
+
+	keys := make([]string, 0, len(output))
+	for key := range output {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make([]tripperware.SampleStream, 0, len(output))
+	for _, key := range keys {
+		result = append(result, output[key])
+	}
+
 	return result
 }
 
@@ -425,6 +466,18 @@ func (s *PrometheusInstantQueryData) UnmarshalJSON(data []byte) error {
 				Samples: result.Samples,
 			}},
 		}
+	case model.ValMatrix.String():
+		var result struct {
+			SampleStreams []tripperware.SampleStream `json:"result"`
+		}
+		if err := json.Unmarshal(data, &result); err != nil {
+			return err
+		}
+		s.Result = PrometheusInstantQueryResult{
+			Result: &PrometheusInstantQueryResult_Matrix{Matrix: &Matrix{
+				SampleStreams: result.SampleStreams,
+			}},
+		}
 	default:
 		s.Result = PrometheusInstantQueryResult{
 			Result: &PrometheusInstantQueryResult_RawBytes{data},
@@ -444,6 +497,17 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 		}{
 			ResultType: s.ResultType,
 			Data:       s.Result.GetVector().Samples,
+			Stats:      s.Stats,
+		}
+		return json.Marshal(res)
+	case model.ValMatrix.String():
+		res := struct {
+			ResultType string                               `json:"resultType"`
+			Data       []tripperware.SampleStream           `json:"result"`
+			Stats      *tripperware.PrometheusResponseStats `json:"stats,omitempty"`
+		}{
+			ResultType: s.ResultType,
+			Data:       s.Result.GetMatrix().SampleStreams,
 			Stats:      s.Stats,
 		}
 		return json.Marshal(res)

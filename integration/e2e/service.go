@@ -523,7 +523,10 @@ func (s *HTTPService) Metrics() (_ string, err error) {
 	localPort := s.networkPortsContainerToLocal[s.httpPort]
 
 	// Fetch metrics.
-	res, err := GetRequest(fmt.Sprintf("http://localhost:%d/metrics", localPort))
+	// We use IPv4 ports from Dokcer for e2e tests, so lt's use 127.0.0.1 to force IPv4; localhost may map to IPv6.
+	// It's possible that same port number map to IPv4 for serviceA and IPv6 for servieB, so using localhost makes
+	// tests flaky because you  connect to serviceB while you want to connec to serviceA.
+	res, err := GetRequest(fmt.Sprintf("http://127.0.0.1:%d/metrics", localPort))
 	if err != nil {
 		return "", err
 	}

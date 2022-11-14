@@ -30,6 +30,7 @@ message PrometheusInstantQueryResult {
   oneof result {
     Vector vector = 1;
     bytes rawBytes = 2;
+    Matrix matrix = 3;
   }
 }
 
@@ -40,4 +41,8 @@ message Vector {
 message Sample {
   repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   cortexpb.Sample sample = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "value"];
+}
+
+message Matrix {
+  repeated tripperware.SampleStream sampleStreams = 1 [(gogoproto.nullable) = false];
 }

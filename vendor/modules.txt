@@ -775,7 +775,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.29.1-0.20221111094505-b2badad930d6
+# github.com/thanos-io/thanos v0.29.1-0.20221115064008-fe45cfc66b7d
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

@@ -48,7 +48,7 @@ require (
 	github.com/spf13/afero v1.6.0
 	github.com/stretchr/testify v1.8.0
 	github.com/thanos-io/objstore v0.0.0-20221006135717-79dcec7fe604
-	github.com/thanos-io/thanos v0.29.1-0.20221111094505-b2badad930d6
+	github.com/thanos-io/thanos v0.29.1-0.20221115064008-fe45cfc66b7d
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20220706100410-67d27ed40fae
 	go.etcd.io/etcd/api/v3 v3.5.4

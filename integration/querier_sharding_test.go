@@ -55,7 +55,7 @@ func TestQuerierNoShardingWithQueryScheduler(t *testing.T) {
 
 func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 	// Going to high starts hitting file descriptor limit, since we run all queriers concurrently.
-	const batch = 100
+	const batchSize = 100
 	const numQueries = 500
 
 	s, err := e2e.NewScenario(networkName)
@@ -142,7 +142,7 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 		require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(2), "cortex_query_frontend_connected_clients"))
 	}
 
-	batches := generateBatches(batch, numQueries)
+	batches := generateBatches(batchSize, numQueries)
 
 	wg := sync.WaitGroup{}
 

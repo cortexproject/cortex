@@ -71,6 +71,7 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 		"-querier.query-ingesters-within":              "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":                "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-querier.max-outstanding-requests-per-tenant": strconv.Itoa(numQueries), // To avoid getting errors.
+		"-querier.max-concurrent":                      strconv.Itoa(numQueries),
 	})
 
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])

@@ -18,8 +18,6 @@ import (
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
-
-	"golang.org/x/time/rate"
 )
 
 type querierShardingTestConfig struct {
@@ -56,6 +54,8 @@ func TestQuerierNoShardingWithQueryScheduler(t *testing.T) {
 }
 
 func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
+	// Going to high starts hitting file descriptor limit, since we run all queriers concurrently.
+	const batch = 100
 	const numQueries = 500
 
 	s, err := e2e.NewScenario(networkName)
@@ -142,31 +142,29 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 		require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(2), "cortex_query_frontend_connected_clients"))
 	}
 
+	batches := generateBatches(batch, numQueries)
+
 	wg := sync.WaitGroup{}
 
-	// Going to high starts hitting file descriptor limit, since we run all queriers concurrently.
-	const qps = 100
-	limiter := rate.NewLimiter(rate.Limit(qps), qps)
-
 	// Run all queries concurrently to get better distribution of requests between queriers.
-	for i := 0; i < numQueries; i++ {
-		reservation := limiter.Reserve()
-		time.Sleep(reservation.Delay())
-		wg.Add(1)
+	for _, concurrentQueries := range batches {
+		for i := 0; i < concurrentQueries; i++ {
+			wg.Add(1)
 
-		go func() {
-			defer wg.Done()
-			c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", userID)
-			require.NoError(t, err)
+			go func() {
+				defer wg.Done()
+				c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", userID)
+				require.NoError(t, err)
 
-			result, err := c.Query("series_1", now)
-			require.NoError(t, err)
-			require.Equal(t, model.ValVector, result.Type())
-			assert.Equal(t, expectedVector, result.(model.Vector))
-		}()
+				result, err := c.Query("series_1", now)
+				require.NoError(t, err)
+				require.Equal(t, model.ValVector, result.Type())
+				assert.Equal(t, expectedVector, result.(model.Vector))
+			}()
+		}
+
+		wg.Wait()
 	}
-
-	wg.Wait()
 
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numQueries), "cortex_query_frontend_queries_total"))
 
@@ -200,4 +198,20 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 	assertServiceMetricsPrefixes(t, Querier, querier2)
 	assertServiceMetricsPrefixes(t, QueryFrontend, queryFrontend)
 	assertServiceMetricsPrefixes(t, QueryScheduler, queryScheduler)
+}
+
+func generateBatches(batchSize, total int) []int {
+	remain := total
+	batches := []int{}
+	for remain != 0 {
+		if remain > batchSize {
+			batches = append(batches, batchSize)
+			remain -= batchSize
+		} else {
+			batches = append(batches, remain)
+			remain = 0
+		}
+	}
+
+	return batches
 }

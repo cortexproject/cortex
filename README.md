@@ -42,8 +42,9 @@ For a guide to contributing to Cortex, see the [contributor guidelines](https://
 
 To learn more about Cortex, consult the following talks and articles.
 
-### Recent talks and articles
-
+### Talks and articles
+- Oct 2022 KubeCon talk "Current State and the Future of Cortex" ([video](https://youtu.be/u1SfBAGWHgQ), [slides](https://static.sched.com/hosted_files/kccncna2022/93/KubeCon%20%2B%20CloudNativeCon%20NA%202022%20PowerPoint%20-%20Cortex.pdf))
+- Oct 2021 KubeCon talk "Cortex: Intro and Production Tips" ([video](https://youtu.be/zNE_kGcUGuI), [slides](https://static.sched.com/hosted_files/kccncna2021/8e/KubeCon%202021%20NA%20Cortex%20Maintainer.pdf))
 - Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"
 - Oct 2020 blog post "[How to switch Cortex from chunks to blocks storage (and why you won’t look back)](https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/)"
 - Oct 2020 blog post "[Now GA: Cortex blocks storage for running Prometheus at scale with reduced operational complexity](https://grafana.com/blog/2020/10/06/now-ga-cortex-blocks-storage-for-running-prometheus-at-scale-with-reduced-operational-complexity/)"
@@ -54,12 +55,7 @@ To learn more about Cortex, consult the following talks and articles.
 - Jul 2020 PromCon talk "Sharing is Caring: Leveraging Open Source to Improve Cortex & Thanos" ([video](https://www.youtube.com/watch?v=2oTLouUvsac), [slides](https://docs.google.com/presentation/d/1OuKYD7-k9Grb7unppYycdmVGWN0Bo0UwdJRySOoPdpg/edit))
 - Mar 2020 blog post "[Cortex: Zone Aware Replication](https://kenhaines.net/cortex-zone-aware-replication/)"
 - Mar 2020 blog post "[How we're using gossip to improve Cortex and Loki availability](https://grafana.com/blog/2020/03/25/how-were-using-gossip-to-improve-cortex-and-loki-availability/)"
-- Jan 2020 blog post "[The Future of Cortex: Into the Next Decade][future-of-cortex-blog]"
-
-[future-of-cortex-blog]: https://grafana.com/blog/2020/01/21/the-future-of-cortex-into-the-next-decade/
-
-### Previous talks and articles
-
+- Jan 2020 blog post "[The Future of Cortex: Into the Next Decade][https://grafana.com/blog/2020/01/21/the-future-of-cortex-into-the-next-decade/]"
 - Nov 2019 KubeCon talks "[Cortex 101: Horizontally Scalable Long Term Storage for Prometheus][kubecon-cortex-101]" ([video][kubecon-cortex-101-video], [slides][kubecon-cortex-101-slides]), "[Configuring Cortex for Max
 Performance][kubecon-cortex-201]" ([video][kubecon-cortex-201-video], [slides][kubecon-cortex-201-slides], [write up][kubecon-cortex-201-writeup]) and "[Blazin’ Fast PromQL][kubecon-blazin]" ([slides][kubecon-blazin-slides], [video][kubecon-blazin-video], [write up][kubecon-blazin-writeup])
 - Nov 2019 PromCon talk "[Two Households, Both Alike in Dignity: Cortex and Thanos][promcon-two-households]" ([video][promcon-two-households-video], [slides][promcon-two-households-slides], [write up][promcon-two-households-writeup])

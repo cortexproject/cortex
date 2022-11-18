@@ -258,10 +258,6 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 }
 
 func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
-	if r.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(r.Body)
-		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
-	}
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -269,6 +265,9 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	if err != nil {
 		log.Error(err)
 		return nil, err
+	}
+	if r.StatusCode/100 != 2 {
+		return nil, httpgrpc.Errorf(r.StatusCode, string(buf))
 	}
 	log.LogFields(otlog.Int("bytes", len(buf)))
 

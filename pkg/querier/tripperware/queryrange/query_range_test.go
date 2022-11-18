@@ -2,7 +2,9 @@ package queryrange
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
+	"fmt"
 	io "io"
 	"net/http"
 	"strconv"
@@ -654,6 +656,62 @@ func TestMergeAPIResponses(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})
+	}
+}
+
+func TestGzippedResponse(t *testing.T) {
+	for _, tc := range []struct {
+		body   string
+		status int
+		err    error
+	}{
+		{
+			body:   `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`,
+			status: 200,
+		},
+		{
+			body:   `error generic 400`,
+			status: 400,
+			err:    httpgrpc.Errorf(400, `error generic 400`),
+		},
+		{
+			status: 400,
+			err:    httpgrpc.Errorf(400, ""),
+		},
+	} {
+		for _, c := range []bool{true, false} {
+			t.Run(fmt.Sprintf("compressed %t [%s]", c, tc.body), func(t *testing.T) {
+				h := http.Header{
+					"Content-Type": []string{"application/json"},
+				}
+
+				responseBody := bytes.NewBuffer([]byte(tc.body))
+				if c {
+					h.Set("Content-Encoding", "gzip")
+					var buf bytes.Buffer
+					w := gzip.NewWriter(&buf)
+					_, err := w.Write([]byte(tc.body))
+					require.NoError(t, err)
+					w.Close()
+					responseBody = &buf
+				}
+
+				response := &http.Response{
+					StatusCode: tc.status,
+					Header:     h,
+					Body:       io.NopCloser(responseBody),
+				}
+				r, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+				require.Equal(t, tc.err, err)
+
+				if err == nil {
+					resp, err := json.Marshal(r)
+					require.NoError(t, err)
+
+					require.Equal(t, tc.body, string(resp))
+				}
+			})
+		}
 	}
 }
 

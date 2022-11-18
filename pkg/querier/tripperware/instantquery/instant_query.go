@@ -152,11 +152,6 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 }
 
 func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
-	if r.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(r.Body)
-		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
-	}
-
 	log, ctx := spanlogger.New(ctx, "PrometheusInstantQueryResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -165,6 +160,10 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 		log.Error(err)
 		return nil, err
 	}
+	if r.StatusCode/100 != 2 {
+		return nil, httpgrpc.Errorf(r.StatusCode, string(buf))
+	}
+
 	var resp PrometheusInstantQueryResponse
 	if err := json.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)

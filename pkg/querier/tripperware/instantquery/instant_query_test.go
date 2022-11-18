@@ -126,7 +126,8 @@ func TestGzippedResponse(t *testing.T) {
 					h.Set("Content-Encoding", "gzip")
 					var buf bytes.Buffer
 					w := gzip.NewWriter(&buf)
-					w.Write([]byte(tc.body))
+					_, err := w.Write([]byte(tc.body))
+					require.NoError(t, err)
 					w.Close()
 					responseBody = &buf
 				}

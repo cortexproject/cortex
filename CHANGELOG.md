@@ -2,6 +2,7 @@
 
 ## master / unreleased
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
+* [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not been specified. #4976
 
 ## 1.14.0 in progress
 

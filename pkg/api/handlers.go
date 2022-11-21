@@ -213,9 +213,12 @@ func NewQuerierHandler(
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{
-			Version:  version.Version,
-			Branch:   version.Branch,
-			Revision: version.Revision,
+			Version:   version.Version,
+			Branch:    version.Branch,
+			Revision:  version.Revision,
+			BuildUser: version.BuildUser,
+			BuildDate: version.BuildDate,
+			GoVersion: version.GoVersion,
 		},
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),

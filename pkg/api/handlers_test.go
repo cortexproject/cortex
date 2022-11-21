@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -210,8 +211,10 @@ func TestBuildInfoAPI(t *testing.T) {
 		expected buildInfo
 	}{
 		{
-			name:     "empty",
-			expected: buildInfo{Status: "success"},
+			name: "empty",
+			expected: buildInfo{Status: "success", Data: v1.PrometheusVersion{
+				GoVersion: runtime.Version(),
+			}},
 		},
 		{
 			name:     "set versions",
@@ -219,9 +222,10 @@ func TestBuildInfoAPI(t *testing.T) {
 			branch:   "test",
 			revision: "foo",
 			expected: buildInfo{Status: "success", Data: v1.PrometheusVersion{
-				Version:  "v0.14.0",
-				Branch:   "test",
-				Revision: "foo",
+				Version:   "v0.14.0",
+				Branch:    "test",
+				Revision:  "foo",
+				GoVersion: runtime.Version(),
 			}},
 		},
 	} {

@@ -169,7 +169,7 @@ Queriers are **stateless** and can be scaled up and down as needed.
 
 ### Compactor
 
-The **compactor** is an service which is responsible to:
+The **compactor** is a service which is responsible to:
 
 - Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).
 - Keep the per-tenant bucket index updated. The [bucket index](./blocks-storage/bucket-index.md) is used by [queriers](./blocks-storage/querier.md), [store-gateways](#store-gateway) and rulers to discover new blocks in the storage.

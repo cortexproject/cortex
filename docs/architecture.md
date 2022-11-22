@@ -7,7 +7,7 @@ slug: architecture
 
 Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the [ingesters](#ingester)) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex's architecture.
 
-The following digaram does not include all the Cortex services, but does represnet a typical deployment topology.
+The following diagram does not include all the Cortex services, but does represent a typical deployment topology.
 
 <p align="center"><img src="../images/architecture.png" alt="Cortex Architecture"></p>
 

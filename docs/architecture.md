@@ -7,6 +7,8 @@ slug: architecture
 
 Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the [ingesters](#ingester)) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex's architecture.
 
+The following diagram does not include all the Cortex services, but does represent a typical deployment topology.
+
 <p align="center"><img src="../images/architecture.png" alt="Cortex Architecture"></p>
 
 ## The role of Prometheus
@@ -17,11 +19,7 @@ Cortex requires that each HTTP request bear a header specifying a tenant ID for 
 
 Incoming samples (writes from Prometheus) are handled by the [distributor](#distributor) while incoming reads (PromQL queries) are handled by the [querier](#querier) or optionally by the [query frontend](#query-frontend).
 
-## Storage
-
-Cortex currently supports the `blocks` storage engine to store and query time series. It used to support `chunks` storage in the past.
-
-### Blocks storage
+## Blocks storage
 
 The blocks storage is based on [Prometheus TSDB](https://prometheus.io/docs/prometheus/latest/storage/): it stores each tenant's time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by a few files storing the chunks and the block index.
 
@@ -41,21 +39,20 @@ For more information, please check out the [Blocks storage](./blocks-storage/_in
 
 Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task. These components run separately and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.
 
-Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don't coordinate or communicate with each other within that layer.
-
 The Cortex services are:
 
 - [Distributor](#distributor)
 - [Ingester](#ingester)
 - [Querier](#querier)
-- [Compactor](./blocks-storage/compactor.md) (required for blocks storage)
-- [Store gateway](./blocks-storage/store-gateway.md) (required for blocks storage)
+- [Compactor](#compactor)
+- [Store gateway](#store-gateway)
 - [Alertmanager](#alertmanager) (optional)
 - [Configs API](#configs-api) (optional)
 - [Overrides exporter](./guides/overrides-exporter.md) (optional)
 - [Query frontend](#query-frontend) (optional)
 - [Query scheduler](./operations/scalable-query-frontend.md#query-scheduler) (optional)
 - [Ruler](#ruler) (optional)
+
 
 ### Distributor
 
@@ -169,6 +166,27 @@ The **querier** service handles queries using the [PromQL](https://prometheus.io
 Queriers fetch series samples both from the ingesters and long-term storage: the ingesters hold the in-memory series which have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples; to resolve this, for a given time series the querier internally **deduplicates** samples with the same exact timestamp.
 
 Queriers are **stateless** and can be scaled up and down as needed.
+
+### Compactor
+
+The **compactor** is a service which is responsible to:
+
+- Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).
+- Keep the per-tenant bucket index updated. The [bucket index](./blocks-storage/bucket-index.md) is used by [queriers](./blocks-storage/querier.md), [store-gateways](#store-gateway) and rulers to discover new blocks in the storage.
+
+For more information, see the [compactor documentation](./blocks-storage/compactor.md).
+
+The compactor is **stateless**.
+
+### Store gateway
+The **store gateway** is the Cortex service responsible to query series from blocks, it needs to have an almost up-to-date view over the storage bucket. In order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:
+
+1. Periodically scanning the bucket (default)
+2. Periodically downloading the [bucket index](./blocks-storage/bucket-index.md)
+
+For more information, see the [store gateway documentation](./blocks-storage/store-gateway.md).
+
+The store gateway is **semi-stateful**.
 
 ### Query frontend
 

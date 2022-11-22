@@ -6096,14 +6096,13 @@ Number of Partitions: 2 &lt;br>
 Blocks: B1, B3, B5, B7&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Cortex Architecture</title><link>/docs/architecture/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/architecture/</guid><description>
 &lt;p>Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the &lt;a href="#ingester">ingesters&lt;/a>) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex&amp;rsquo;s architecture.&lt;/p>
+&lt;p>The following diagram does not include all the Cortex services, but does represent a typical deployment topology.&lt;/p>
 &lt;p align="center">&lt;img src="/images/architecture.png" alt="Cortex Architecture">&lt;/p>
 &lt;h2 id="the-role-of-prometheus">The role of Prometheus&lt;/h2>
 &lt;p>Prometheus instances scrape samples from various targets and then push them to Cortex (using Prometheus&amp;rsquo; &lt;a href="https://prometheus.io/docs/prometheus/latest/storage/#remote-storage-integrations">remote write API&lt;/a>). That remote write API emits batched &lt;a href="https://google.github.io/snappy/">Snappy&lt;/a>-compressed &lt;a href="https://developers.google.com/protocol-buffers/">Protocol Buffer&lt;/a> messages inside the body of an HTTP &lt;code>PUT&lt;/code> request.&lt;/p>
 &lt;p>Cortex requires that each HTTP request bear a header specifying a tenant ID for the request. Request authentication and authorization are handled by an external reverse proxy.&lt;/p>
 &lt;p>Incoming samples (writes from Prometheus) are handled by the &lt;a href="#distributor">distributor&lt;/a> while incoming reads (PromQL queries) are handled by the &lt;a href="#querier">querier&lt;/a> or optionally by the &lt;a href="#query-frontend">query frontend&lt;/a>.&lt;/p>
-&lt;h2 id="storage">Storage&lt;/h2>
-&lt;p>Cortex currently supports the &lt;code>blocks&lt;/code> storage engine to store and query time series. It used to support &lt;code>chunks&lt;/code> storage in the past.&lt;/p>
-&lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
+&lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
 &lt;p>The blocks storage is based on &lt;a href="https://prometheus.io/docs/prometheus/latest/storage/">Prometheus TSDB&lt;/a>: it stores each tenant&amp;rsquo;s time series into their own TSDB which write out their series to a on-disk Block (defaults to 2h block range periods). Each Block is composed by a few files storing the chunks and the block index.&lt;/p>
 &lt;p>The TSDB chunk files contain the samples for multiple series. The series inside the Chunks are then indexed by a per-block index, which indexes metric names and labels to time series in the chunk files.&lt;/p>
 &lt;p>The blocks storage doesn&amp;rsquo;t require a dedicated storage backend for the index. The only requirement is an object store for the Block files, which can be:&lt;/p>
@@ -6117,14 +6116,13 @@ Blocks: B1, B3, B5, B7&lt;/li>
 &lt;p>For more information, please check out the &lt;a href="/docs/blocks-storage/">Blocks storage&lt;/a> documentation.&lt;/p>
 &lt;h2 id="services">Services&lt;/h2>
 &lt;p>Cortex has a service-based architecture, in which the overall system is split up into a variety of components that perform a specific task. These components run separately and in parallel. Cortex can alternatively run in a single process mode, where all components are executed within a single process. The single process mode is particularly handy for local testing and development.&lt;/p>
-&lt;p>Cortex is, for the most part, a shared-nothing system. Each layer of the system can run multiple instances of each component and they don&amp;rsquo;t coordinate or communicate with each other within that layer.&lt;/p>
 &lt;p>The Cortex services are:&lt;/p>
 &lt;ul>
 &lt;li>&lt;a href="#distributor">Distributor&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#ingester">Ingester&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#querier">Querier&lt;/a>&lt;/li>
-&lt;li>&lt;a href="/docs/blocks-storage/compactor/">Compactor&lt;/a> (required for blocks storage)&lt;/li>
-&lt;li>&lt;a href="/docs/blocks-storage/store-gateway/">Store gateway&lt;/a> (required for blocks storage)&lt;/li>
+&lt;li>&lt;a href="#compactor">Compactor&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#store-gateway">Store gateway&lt;/a>&lt;/li>
 &lt;li>&lt;a href="#alertmanager">Alertmanager&lt;/a> (optional)&lt;/li>
 &lt;li>&lt;a href="#configs-api">Configs API&lt;/a> (optional)&lt;/li>
 &lt;li>&lt;a href="/docs/guides/overrides-exporter/">Overrides exporter&lt;/a> (optional)&lt;/li>
@@ -6209,6 +6207,22 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;p>The &lt;strong>querier&lt;/strong> service handles queries using the &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/basics/">PromQL&lt;/a> query language.&lt;/p>
 &lt;p>Queriers fetch series samples both from the ingesters and long-term storage: the ingesters hold the in-memory series which have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples; to resolve this, for a given time series the querier internally &lt;strong>deduplicates&lt;/strong> samples with the same exact timestamp.&lt;/p>
 &lt;p>Queriers are &lt;strong>stateless&lt;/strong> and can be scaled up and down as needed.&lt;/p>
+&lt;h3 id="compactor">Compactor&lt;/h3>
+&lt;p>The &lt;strong>compactor&lt;/strong> is a service which is responsible to:&lt;/p>
+&lt;ul>
+&lt;li>Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).&lt;/li>
+&lt;li>Keep the per-tenant bucket index updated. The &lt;a href="/docs/blocks-storage/bucket-index/">bucket index&lt;/a> is used by &lt;a href="/docs/blocks-storage/querier/">queriers&lt;/a>, &lt;a href="#store-gateway">store-gateways&lt;/a> and rulers to discover new blocks in the storage.&lt;/li>
+&lt;/ul>
+&lt;p>For more information, see the &lt;a href="/docs/blocks-storage/compactor/">compactor documentation&lt;/a>.&lt;/p>
+&lt;p>The compactor is &lt;strong>stateless&lt;/strong>.&lt;/p>
+&lt;h3 id="store-gateway">Store gateway&lt;/h3>
+&lt;p>The &lt;strong>store gateway&lt;/strong> is the Cortex service responsible to query series from blocks, it needs to have an almost up-to-date view over the storage bucket. In order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:&lt;/p>
+&lt;ol>
+&lt;li>Periodically scanning the bucket (default)&lt;/li>
+&lt;li>Periodically downloading the &lt;a href="/docs/blocks-storage/bucket-index/">bucket index&lt;/a>&lt;/li>
+&lt;/ol>
+&lt;p>For more information, see the &lt;a href="/docs/blocks-storage/store-gateway/">store gateway documentation&lt;/a>.&lt;/p>
+&lt;p>The store gateway is &lt;strong>semi-stateful&lt;/strong>.&lt;/p>
 &lt;h3 id="query-frontend">Query frontend&lt;/h3>
 &lt;p>The &lt;strong>query frontend&lt;/strong> is an &lt;strong>optional service&lt;/strong> providing the querier&amp;rsquo;s API endpoints and can be used to accelerate the read path. When the query frontend is in place, incoming query requests should be directed to the query frontend instead of the queriers. The querier service will be still required within the cluster, in order to execute the actual queries.&lt;/p>
 &lt;p>The query frontend internally performs some query adjustments and holds queries in an internal queue. In this setup, queriers act as workers which pull jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address (via the &lt;code>-querier.frontend-address&lt;/code> CLI flag) in order to allow them to connect to the query frontends.&lt;/p>

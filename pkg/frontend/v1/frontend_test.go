@@ -116,6 +116,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 }
 
 func TestFrontendCheckReady(t *testing.T) {
+	limits := MockLimits{MockLimits: queue.MockLimits{MaxOutstanding: 100}}
 	for _, tt := range []struct {
 		name             string
 		connectedClients int
@@ -131,6 +132,7 @@ func TestFrontendCheckReady(t *testing.T) {
 				requestQueue: queue.NewRequestQueue(5, 0,
 					prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 					prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+					limits,
 				),
 			}
 			for i := 0; i < tt.connectedClients; i++ {
@@ -243,7 +245,8 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	v1, err := New(config, limits{}, logger, reg)
+	limits := MockLimits{MockLimits: queue.MockLimits{MaxOutstanding: 100}}
+	v1, err := New(config, limits, logger, reg)
 	require.NoError(t, err)
 	require.NotNil(t, v1)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))
@@ -291,12 +294,4 @@ func defaultFrontendConfig() Config {
 	config := Config{}
 	flagext.DefaultValues(&config)
 	return config
-}
-
-type limits struct {
-	queriers int
-}
-
-func (l limits) MaxQueriersPerUser(_ string) int {
-	return l.queriers
 }

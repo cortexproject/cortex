@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
+	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	querier_worker "github.com/cortexproject/cortex/pkg/querier/worker"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -253,7 +254,7 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	rt, v1, v2, err := InitFrontend(config, limits{}, 0, logger, nil)
+	rt, v1, v2, err := InitFrontend(config, frontendv1.MockLimits{}, 0, logger, nil)
 	require.NoError(t, err)
 	require.NotNil(t, rt)
 	// v1 will be nil if DownstreamURL is defined.
@@ -305,12 +306,4 @@ func defaultFrontendConfig() CombinedFrontendConfig {
 	flagext.DefaultValues(&config.FrontendV1)
 	flagext.DefaultValues(&config.FrontendV2)
 	return config
-}
-
-type limits struct {
-	queriers int
-}
-
-func (l limits) MaxQueriersPerUser(_ string) int {
-	return l.queriers
 }

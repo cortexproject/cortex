@@ -13,7 +13,7 @@ import (
 )
 
 func TestQueues(t *testing.T) {
-	uq := newUserQueues(0, 0)
+	uq := newUserQueues(0, 0, MockLimits{})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -68,7 +68,7 @@ func TestQueues(t *testing.T) {
 }
 
 func TestQueuesWithQueriers(t *testing.T) {
-	uq := newUserQueues(0, 0)
+	uq := newUserQueues(0, 0, MockLimits{})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -145,7 +145,7 @@ func TestQueuesConsistency(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			uq := newUserQueues(0, testData.forgetDelay)
+			uq := newUserQueues(0, testData.forgetDelay, MockLimits{})
 			assert.NotNil(t, uq)
 			assert.NoError(t, isConsistent(uq))
 
@@ -194,7 +194,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetDelay)
+	uq := newUserQueues(0, forgetDelay, MockLimits{})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -286,7 +286,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetDelay)
+	uq := newUserQueues(0, forgetDelay, MockLimits{})
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 

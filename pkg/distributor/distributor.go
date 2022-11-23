@@ -1189,10 +1189,13 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 		totalStats.APIIngestionRate += r.ApiIngestionRate
 		totalStats.RuleIngestionRate += r.RuleIngestionRate
 		totalStats.NumSeries += r.NumSeries
+		totalStats.ActiveSeries += r.ActiveSeries
 	}
 
-	totalStats.IngestionRate /= float64(d.ingestersRing.ReplicationFactor())
-	totalStats.NumSeries /= uint64(d.ingestersRing.ReplicationFactor())
+	factor := d.ingestersRing.ReplicationFactor()
+	totalStats.IngestionRate /= float64(factor)
+	totalStats.NumSeries /= uint64(factor)
+	totalStats.ActiveSeries /= uint64(factor)
 
 	return totalStats, nil
 }
@@ -1231,6 +1234,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 			s.APIIngestionRate += u.Data.ApiIngestionRate
 			s.RuleIngestionRate += u.Data.RuleIngestionRate
 			s.NumSeries += u.Data.NumSeries
+			s.ActiveSeries += u.Data.ActiveSeries
 			perUserTotals[u.UserId] = s
 		}
 	}
@@ -1245,6 +1249,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]UserIDStats, error) {
 				APIIngestionRate:  stats.APIIngestionRate,
 				RuleIngestionRate: stats.RuleIngestionRate,
 				NumSeries:         stats.NumSeries,
+				ActiveSeries:      stats.ActiveSeries,
 			},
 		})
 	}

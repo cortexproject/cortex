@@ -1553,7 +1553,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return &client.UserStatsResponse{}, nil
 	}
 
-	return createUserStats(db), nil
+	return createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled), nil
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
@@ -1573,20 +1573,27 @@ func (i *Ingester) AllUserStats(_ context.Context, _ *client.UserStatsRequest) (
 	for userID, db := range users {
 		response.Stats = append(response.Stats, &client.UserIDStatsResponse{
 			UserId: userID,
-			Data:   createUserStats(db),
+			Data:   createUserStats(db, i.cfg.ActiveSeriesMetricsEnabled),
 		})
 	}
 	return response, nil
 }
 
-func createUserStats(db *userTSDB) *client.UserStatsResponse {
+func createUserStats(db *userTSDB, activeSeriesMetricsEnabled bool) *client.UserStatsResponse {
 	apiRate := db.ingestedAPISamples.Rate()
 	ruleRate := db.ingestedRuleSamples.Rate()
+
+	var activeSeries uint64
+	if activeSeriesMetricsEnabled {
+		activeSeries = uint64(db.activeSeries.Active())
+	}
+
 	return &client.UserStatsResponse{
 		IngestionRate:     apiRate + ruleRate,
 		ApiIngestionRate:  apiRate,
 		RuleIngestionRate: ruleRate,
 		NumSeries:         db.Head().NumSeries(),
+		ActiveSeries:      activeSeries,
 	}
 }
 

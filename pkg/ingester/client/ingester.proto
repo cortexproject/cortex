@@ -97,6 +97,7 @@ message UserStatsResponse {
   uint64 num_series = 2;
   double api_ingestion_rate = 3;
   double rule_ingestion_rate = 4;
+  uint64 active_series = 5;
 }
 
 message UserIDStatsResponse {

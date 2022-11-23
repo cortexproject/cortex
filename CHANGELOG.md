@@ -4,6 +4,8 @@
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 
+* [FEATURE] Ingester: Add active series to all_user_stats page. #4972
+
 ## 1.14.0 in progress
 
   **This release removes support for chunks storage. See below for more.**

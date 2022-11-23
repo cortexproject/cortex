@@ -352,7 +352,7 @@ type Distributor interface {
 	UserStatsHandler(w http.ResponseWriter, r *http.Request)
 }
 
-// RegisterQueryable registers the the default routes associated with the querier
+// RegisterQueryable registers the default routes associated with the querier
 // module.
 func (a *API) RegisterQueryable(
 	queryable storage.SampleAndChunkQueryable,
@@ -374,6 +374,7 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/metadata"), handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/status/buildinfo"), handler, true, "GET")
 
 	// Register Legacy Routers
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/read"), handler, true, "POST")
@@ -384,6 +385,7 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/metadata"), handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/status/buildinfo"), handler, true, "GET")
 }
 
 // RegisterQueryFrontend registers the Prometheus routes supported by the

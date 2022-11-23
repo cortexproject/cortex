@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 
 ## 1.14.0 in progress
 

@@ -870,6 +870,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
     [close_idle_tsdb_timeout: <duration> | default = 0s]
 
+    # The size of the in-memory queue used before flushing chunks to the disk.
+    # CLI flag: -blocks-storage.tsdb.head-chunks-write-queue-size
+    [head_chunks_write_queue_size: <int> | default = 0]
+
     # limit the number of concurrently opening TSDB's on startup
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]

@@ -5,6 +5,7 @@
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
+* [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
 
 ## 1.14.0 in progress
 

@@ -223,9 +223,10 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		} else {
 			logMessage = append(logMessage, "error", s.Message())
 		}
+		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	} else {
+		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
-
-	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {

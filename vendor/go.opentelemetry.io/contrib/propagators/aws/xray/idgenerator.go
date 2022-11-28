@@ -47,7 +47,8 @@ func (gen *IDGenerator) NewSpanID(ctx context.Context, traceID trace.TraceID) tr
 
 // NewIDs returns a non-zero trace ID and a non-zero span ID.
 // trace ID returned is based on AWS X-Ray TraceID format.
-// 	- https://docs.aws.amazon.com/xray/latest/devguide/xray-api-sendingdata.html#xray-api-traceids
+//   - https://docs.aws.amazon.com/xray/latest/devguide/xray-api-sendingdata.html#xray-api-traceids
+//
 // span ID is from a randomly-chosen sequence.
 func (gen *IDGenerator) NewIDs(ctx context.Context) (trace.TraceID, trace.SpanID) {
 	gen.Lock()

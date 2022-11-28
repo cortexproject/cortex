@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -127,10 +128,20 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
+				limits := DefaultLimitsConfig()
+				overrides, err := validation.NewOverrides(limits, nil)
+				require.NoError(t, err)
+
+				start, end, err := validateQueryTimeRange(ctx, "test", testData.queryMinT, testData.queryMaxT, overrides, 0)
+				require.NoError(t, err)
 				// Select hints are passed by Prometheus when querying /series.
 				var hints *storage.SelectHints
 				if testData.querySeries {
-					hints = &storage.SelectHints{Func: "series"}
+					hints = &storage.SelectHints{
+						Start: start,
+						End:   end,
+						Func:  "series",
+					}
 				}
 
 				seriesSet := querier.Select(true, hints)

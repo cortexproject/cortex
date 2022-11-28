@@ -3,6 +3,7 @@
 ## master / unreleased
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
+* [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not been specified. #4976
 
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 

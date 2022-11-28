@@ -341,7 +341,9 @@ GET,POST <prometheus-http-prefix>/api/v1/series
 GET,POST <legacy-http-prefix>/api/v1/series
 ```
 
-Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, Cortex currently ignores the `start` and `end` request parameters and always fetches the series from in-memory data stored in the ingesters. There is experimental support to query the long-term store with the *blocks* storage engine when `-querier.query-store-for-labels-enabled` is set.
+Find series by label matchers. Differently than Prometheus and due to scalability and performances reasons, if `-querier.query-store-for-labels-enabled` is not set or if `start` param is not specified, Cortex currently always fetches series from data stored in the ingesters.
+
+If `-querier.query-store-for-labels-enabled` is configured, Cortex also queries the long-term store with the *blocks* storage engine.
 
 _For more information, please check out the Prometheus [series endpoint](https://prometheus.io/docs/prometheus/latest/querying/api/#finding-series-by-label-matchers) documentation._
 

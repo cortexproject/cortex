@@ -108,9 +108,9 @@ func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, ma
 		)
 
 		if q.streamingMetadata {
-			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 		} else {
-			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
+			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), matchers...)
 		}
 
 		if err != nil {

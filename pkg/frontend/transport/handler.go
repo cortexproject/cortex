@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"google.golang.org/grpc/status"
 	"io"
 	"net/http"
 	"net/url"
@@ -146,7 +147,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
 	if f.cfg.QueryStatsEnabled {
-		f.reportQueryStats(r, queryString, queryResponseTime, stats)
+		f.reportQueryStats(r, queryString, queryResponseTime, stats, err)
 	}
 
 	if err != nil {
@@ -184,7 +185,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats, error error) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -214,6 +215,15 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_chunks_bytes", numBytes,
 		"fetched_data_bytes", numDataBytes,
 	}, formatQueryString(queryString)...)
+
+	if error != nil {
+		s, ok := status.FromError(error)
+		if !ok {
+			logMessage = append(logMessage, "error", error)
+		} else {
+			logMessage = append(logMessage, "error", s.Message())
+		}
+	}
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }

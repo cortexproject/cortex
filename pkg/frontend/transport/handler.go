@@ -136,6 +136,19 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
+	// Check whether we should parse the query string.
+	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
+	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
+		queryString = f.parseRequestQueryString(r, buf)
+	}
+
+	if shouldReportSlowQuery {
+		f.reportSlowQuery(r, queryString, queryResponseTime)
+	}
+	if f.cfg.QueryStatsEnabled {
+		f.reportQueryStats(r, queryString, queryResponseTime, stats)
+	}
+
 	if err != nil {
 		writeError(w, err)
 		return
@@ -155,19 +168,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	bytesCopied, err := io.Copy(w, resp.Body)
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
-	}
-
-	// Check whether we should parse the query string.
-	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
-	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
-		queryString = f.parseRequestQueryString(r, buf)
-	}
-
-	if shouldReportSlowQuery {
-		f.reportSlowQuery(r, queryString, queryResponseTime)
-	}
-	if f.cfg.QueryStatsEnabled {
-		f.reportQueryStats(r, queryString, queryResponseTime, stats)
 	}
 }
 

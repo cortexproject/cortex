@@ -117,8 +117,8 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 
 	if uq == nil {
 		queueSize := q.limits.MaxOutstandingPerTenant(userID)
-		// 0 is the default value. If the flag is set then we
-		// use the old flag for compatibility reason.
+		// 0 is the default value of the flag. If the old flag is set
+		// then we use its value for compatibility reason.
 		if q.maxUserQueueSize != 0 {
 			queueSize = q.maxUserQueueSize
 		}

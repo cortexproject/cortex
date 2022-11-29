@@ -172,10 +172,10 @@ runtime_config:
 [memberlist: <memberlist_config>]
 
 query_scheduler:
-  # Deprecated (user frontend.max-outstanding-requests-per-tenant instead):
-  # Maximum number of outstanding requests per tenant per query-scheduler.
-  # In-flight requests above this limit will fail with HTTP response status code
-  # 429.
+  # Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and
+  # will be removed in v1.17.0: Maximum number of outstanding requests per
+  # tenant per query-scheduler. In-flight requests above this limit will fail
+  # with HTTP response status code 429.
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
   [max_outstanding_requests_per_tenant: <int> | default = 0]
 
@@ -917,9 +917,9 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 
-# Deprecated (user frontend.max-outstanding-requests-per-tenant instead):
-# Maximum number of outstanding requests per tenant per frontend; requests
-# beyond this error with HTTP 429.
+# Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and will
+# be removed in v1.17.0: Maximum number of outstanding requests per tenant per
+# frontend; requests beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
 [max_outstanding_per_tenant: <int> | default = 0]
 

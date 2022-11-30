@@ -59,7 +59,7 @@ func main() {
 
 	converter, err := thanosconvert.NewThanosBlockConverter(ctx, cfg, dryRun, logger)
 	if err != nil {
-		fatal("couldn't initilize converter: %v", err)
+		fatal("couldn't initialize converter: %v", err)
 	}
 
 	iterCtx := context.Background()

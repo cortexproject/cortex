@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
+	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -136,6 +137,19 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
+	// Check whether we should parse the query string.
+	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
+	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
+		queryString = f.parseRequestQueryString(r, buf)
+	}
+
+	if shouldReportSlowQuery {
+		f.reportSlowQuery(r, queryString, queryResponseTime)
+	}
+	if f.cfg.QueryStatsEnabled {
+		f.reportQueryStats(r, queryString, queryResponseTime, stats, err)
+	}
+
 	if err != nil {
 		writeError(w, err)
 		return
@@ -156,19 +170,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
-
-	// Check whether we should parse the query string.
-	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
-	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
-		queryString = f.parseRequestQueryString(r, buf)
-	}
-
-	if shouldReportSlowQuery {
-		f.reportSlowQuery(r, queryString, queryResponseTime)
-	}
-	if f.cfg.QueryStatsEnabled {
-		f.reportQueryStats(r, queryString, queryResponseTime, stats)
-	}
 }
 
 // reportSlowQuery reports slow queries.
@@ -184,7 +185,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats, error error) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -215,7 +216,17 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_data_bytes", numDataBytes,
 	}, formatQueryString(queryString)...)
 
-	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	if error != nil {
+		s, ok := status.FromError(error)
+		if !ok {
+			logMessage = append(logMessage, "error", error)
+		} else {
+			logMessage = append(logMessage, "error", s.Message())
+		}
+		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	} else {
+		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	}
 }
 
 func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer) url.Values {

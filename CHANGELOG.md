@@ -8,6 +8,7 @@
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
 * [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
+* [BUGFIX] Updated `golang.org/x/text` dependency to fix CVE-2022-32149. #5007
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 
 ## 1.14.0 in progress

@@ -12,6 +12,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/compact/downsample"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -95,6 +96,12 @@ func (c ThanosBlockConverter) convertUser(ctx context.Context, user string) (Per
 		if err != nil {
 			level.Error(c.logger).Log("msg", "download block meta", "block", blockID.String(), "user", user, "err", err.Error())
 			results.AddFailed(blockID.String())
+			return nil
+		}
+
+		// Cortex only supports undownsampled block so we ignore downsampled blocks for now.
+		if meta.Thanos.Downsample.Resolution != downsample.ResLevel0 {
+			level.Info(c.logger).Log("msg", "skip downsampled block", "block", blockID.String(), "user", user, "resolution", meta.Thanos.Downsample.Resolution)
 			return nil
 		}
 

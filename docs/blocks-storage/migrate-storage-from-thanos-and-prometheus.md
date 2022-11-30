@@ -106,6 +106,10 @@ For example, when migrating a block from Thanos for the tenant `user-1`, the `th
 }
 ```
 
+Right now Cortex doesn't support downsampling so Thanos downsampled blocks are not supported. Downsampled blocks will be simply skipped by the `thanosconvert` tool.
+
+If downsampled blocks are uploaded to the Cortex bucket, they cannot be queried so please exclude them when migrating TSDB blocks.
+
 ##### When migrating from Prometheus
 
 When migrating from Prometheus, the `meta.json` file will not contain any `thanos` root-level entry and, for this reason, it would need to be generated:

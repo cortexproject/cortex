@@ -112,6 +112,10 @@ func (bqs *blockQuerierSeries) Iterator() chunkenc.Iterator {
 	its := make([]chunkenc.Iterator, 0, len(bqs.chunks))
 
 	for _, c := range bqs.chunks {
+		// Ignore if the current chunk is not XOR chunk.
+		if c.Raw == nil {
+			continue
+		}
 		ch, err := chunkenc.FromData(chunkenc.EncXOR, c.Raw.Data)
 		if err != nil {
 			return series.NewErrIterator(errors.Wrapf(err, "failed to initialize chunk from XOR encoded raw data (series: %v min time: %d max time: %d)", bqs.Labels(), c.MinTime, c.MaxTime))

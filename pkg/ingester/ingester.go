@@ -1846,6 +1846,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableExemplarStorage:     enableExemplars,
 		IsolationDisabled:         true,
 		MaxExemplars:              int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
+		HeadChunksWriteQueueSize:  i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

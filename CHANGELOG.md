@@ -5,6 +5,7 @@
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
+* [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
 * [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
 
 ## 1.14.0 in progress

@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
+	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -23,7 +24,8 @@ import (
 func setupFrontend(t *testing.T, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{queriers: 3}, logger, nil)
+	limits := MockLimits{Queriers: 3, MockLimits: queue.MockLimits{MaxOutstanding: 100}}
+	frontend, err := New(config, limits, logger, nil)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

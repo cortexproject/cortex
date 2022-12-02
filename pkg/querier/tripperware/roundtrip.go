@@ -122,6 +122,7 @@ func NewQueryTripperware(
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
+
 				op := "query"
 				if isQueryRange {
 					op = "query_range"

@@ -95,10 +95,6 @@ func TestRoundTrip(t *testing.T) {
 		mockCodec{},
 	)
 
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	for _, tc := range []struct {
 		path, expectedBody string
 	}{

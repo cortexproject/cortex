@@ -50,6 +50,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 	)
+	require.NoError(t, err)
 
 	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 		nil,
@@ -59,10 +60,6 @@ func TestRoundTrip(t *testing.T) {
 		PrometheusCodec,
 		nil,
 	)
-
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	for i, tc := range []struct {
 		path, expectedBody string

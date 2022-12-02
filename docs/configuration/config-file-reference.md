@@ -3725,6 +3725,11 @@ tsdb:
   # be stored. 0 or less means disabled.
   # CLI flag: -blocks-storage.tsdb.max-exemplars
   [max_exemplars: <int> | default = 0]
+
+  # True to enable snapshotting of in-memory TSDB data on disk when shutting
+  # down.
+  # CLI flag: -blocks-storage.tsdb.memory-snapshot-on-shutdown
+  [memory_snapshot_on_shutdown: <boolean> | default = false]
 ```
 
 ### `compactor_config`

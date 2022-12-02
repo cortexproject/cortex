@@ -452,8 +452,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
-	buildInfoRoundTripper := tripperware.NewBuildInfoRoundTripper()
-
 	t.QueryFrontendTripperware = tripperware.NewQueryTripperware(util_log.Logger,
 		prometheus.DefaultRegisterer,
 		t.Cfg.QueryRange.ForwardHeaders,
@@ -461,7 +459,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		instantQueryMiddlewares,
 		queryrange.PrometheusCodec,
 		instantquery.InstantQueryCodec,
-		buildInfoRoundTripper,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

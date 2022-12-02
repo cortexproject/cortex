@@ -6,13 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime"
 	"strconv"
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/common/version"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -55,23 +52,6 @@ func TestRoundTrip(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	version.Version = "v1.14.0"
-	type buildInfoResponse struct {
-		Status string                `json:"status"`
-		Data   *v1.PrometheusVersion `json:"data"`
-	}
-	resp := &buildInfoResponse{
-		Status: "success",
-		Data: &v1.PrometheusVersion{
-			Version:   version.Version,
-			GoVersion: runtime.Version(),
-		},
-	}
-	expectedResp, err := json.Marshal(resp)
-	require.NoError(t, err)
-
-	buildInfoRoundTripper := tripperware.NewBuildInfoRoundTripper()
-
 	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
 		nil,
 		nil,
@@ -79,16 +59,13 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		PrometheusCodec,
 		nil,
-		buildInfoRoundTripper,
 	)
-	require.NoError(t, err)
 
 	for i, tc := range []struct {
 		path, expectedBody string
 	}{
 		{"/foo", "bar"},
 		{query, responseBody},
-		{"/api/v1/status/buildinfo", string(expectedResp)},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)

@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"path"
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
@@ -281,4 +283,37 @@ func NewQuerierHandler(
 
 	// Track execution time.
 	return stats.NewWallTimeMiddleware().Wrap(router)
+}
+
+type buildInfoHandler struct {
+	logger log.Logger
+}
+
+type buildInfoResponse struct {
+	Status string                `json:"status"`
+	Data   *v1.PrometheusVersion `json:"data"`
+}
+
+func (h *buildInfoHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
+	infoResponse := buildInfoResponse{
+		Status: "success",
+		Data: &v1.PrometheusVersion{
+			Version:   version.Version,
+			Branch:    version.Branch,
+			Revision:  version.Revision,
+			BuildUser: version.BuildUser,
+			BuildDate: version.BuildDate,
+			GoVersion: version.GoVersion,
+		},
+	}
+	output, err := json.Marshal(infoResponse)
+	if err != nil {
+		level.Error(h.logger).Log("msg", "marshal build info response", "error", err)
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.WriteHeader(http.StatusOK)
+	if _, err := writer.Write(output); err != nil {
+		level.Error(h.logger).Log("msg", "write build info response", "error", err)
+	}
 }

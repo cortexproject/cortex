@@ -98,7 +98,6 @@ func NewQueryTripperware(
 	instantRangeMiddleware []Middleware,
 	queryRangeCodec Codec,
 	instantQueryCodec Codec,
-	buildInfoRoundTripper http.RoundTripper,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -123,11 +122,6 @@ func NewQueryTripperware(
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
-				isBuildInfo := strings.HasSuffix(r.URL.Path, "/status/buildinfo")
-				// Build info is a static value, so we return here without sending to querier.
-				if isBuildInfo {
-					return buildInfoRoundTripper.RoundTrip(r)
-				}
 
 				op := "query"
 				if isQueryRange {

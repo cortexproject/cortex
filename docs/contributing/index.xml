@@ -88,7 +88,20 @@ Additionally, any maintainer may request that any change require a 2/3 majority 
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
 &lt;p>To upgrade the Golang version:&lt;/p>
 &lt;ol>
-&lt;li>Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/">here&lt;/a>&lt;/li>
+&lt;li>Upgrade build image version
+&lt;ul>
+&lt;li>Upgrade Golang version in &lt;code>build-image/Dockerfile&lt;/code>&lt;/li>
+&lt;li>Build new image &lt;code>make build-image/.uptodate&lt;/code>&lt;/li>
+&lt;li>Publish the new image to &lt;code>quay.io&lt;/code> (requires a maintainer)&lt;/li>
+&lt;li>Update the Docker image tag in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Upgrade integration tests version
+&lt;ul>
+&lt;li>Update the Golang version installed in the &lt;code>integration&lt;/code> job in &lt;code>.github/workflows/*&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Upgrade the reference to the latest build image called &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code> in &lt;code>Makefile&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;p>If the minimum support Golang version should be upgraded as well:&lt;/p>
 &lt;ol>
@@ -120,10 +133,9 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;p>Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p></description></item><item><title>Docs: How to update the build image</title><link>/docs/contributing/how-to-update-the-build-image/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-update-the-build-image/</guid><description>
 &lt;p>The build image currently can only be updated by a Cortex maintainer. If you&amp;rsquo;re not a maintainer you can still open a PR with the changes, asking a maintainer to assist you publishing the updated image. The procedure is:&lt;/p>
 &lt;ol>
-&lt;li>Update &lt;code>build-image/Dockerfile&lt;/code>&lt;/li>
+&lt;li>Update &lt;code>build-image/Docker&lt;/code>.&lt;/li>
 &lt;li>Run &lt;code>go env&lt;/code> and make sure &lt;code>GOPROXY=https://proxy.golang.org,direct&lt;/code> (Go&amp;rsquo;s default). Some environment may required &lt;code>GOPROXY=direct&lt;/code>, and if you push a build image with this, build workflow on GitHub will take a lot longer to download modules.&lt;/li>
-&lt;li>&lt;code>docker login quay.io&lt;/code>. Note that pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer.&lt;/li>
-&lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
+&lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer. Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>

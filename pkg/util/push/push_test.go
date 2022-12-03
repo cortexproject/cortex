@@ -3,6 +3,7 @@ package push
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -32,6 +33,28 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 	handler := Handler(100000, sourceIPs, verifyWriteRequestHandler(t, cortexpb.RULE))
 	handler.ServeHTTP(resp, req)
 	assert.Equal(t, 200, resp.Code)
+}
+
+func TestHandler_contextCanceledRequest(t *testing.T) {
+	req := createRequest(t, createCortexWriteRequestProtobuf(t, false))
+	resp := httptest.NewRecorder()
+	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
+	handler := Handler(100000, sourceIPs, func(_ context.Context, _ *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		return nil, fmt.Errorf("the request failed: %w", context.Canceled)
+	})
+	handler.ServeHTTP(resp, req)
+	assert.Equal(t, 499, resp.Code)
+}
+
+func TestHandler_contextDeadlineExceededRequest(t *testing.T) {
+	req := createRequest(t, createCortexWriteRequestProtobuf(t, false))
+	resp := httptest.NewRecorder()
+	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
+	handler := Handler(100000, sourceIPs, func(_ context.Context, _ *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		return nil, fmt.Errorf("the request failed: %w", context.DeadlineExceeded)
+	})
+	handler.ServeHTTP(resp, req)
+	assert.Equal(t, 500, resp.Code)
 }
 
 func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {

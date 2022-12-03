@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/go-kit/log/level"
@@ -12,6 +13,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
+
+const statusClientCanceledRequest = 499
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
@@ -42,6 +45,12 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 		}
 
 		if _, err := push(ctx, &req.WriteRequest); err != nil {
+			if errors.Is(err, context.Canceled) {
+				http.Error(w, err.Error(), statusClientCanceledRequest)
+				level.Warn(logger).Log("msg", "push request canceled", "err", err)
+				return
+			}
+
 			resp, ok := httpgrpc.HTTPResponseFromError(err)
 			if !ok {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

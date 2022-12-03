@@ -290,6 +290,34 @@ func TestDistributor_Push(t *testing.T) {
 	}
 }
 
+func TestDistributor_ContextCanceledRequest(t *testing.T) {
+	t.Cleanup(func() {
+		_ = func() time.Time { return time.Now() }
+	})
+
+	ds, ings, _, _ := prepare(t, prepConfig{
+		numIngesters:    3,
+		happyIngesters:  3,
+		numDistributors: 1,
+	})
+
+	// Lock all mockIngester instances, so they will be waiting
+	for i := range ings {
+		ings[i].Lock()
+		defer func(ing *mockIngester) {
+			ing.Unlock()
+		}(ings[i])
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	request := makeWriteRequest(123456789000, 1, 1)
+	_, err := ds[0].Push(ctx, request)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestDistributor_MetricsCleanup(t *testing.T) {
 	dists, _, regs, _ := prepare(t, prepConfig{
 		numDistributors: 1,

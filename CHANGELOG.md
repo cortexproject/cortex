@@ -10,6 +10,7 @@
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
 * [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
+* [BUGFIX] Fix canceled distributor push requests as 499 instead of 500. #5018
 
 ## 1.14.0 2022-12-02
 

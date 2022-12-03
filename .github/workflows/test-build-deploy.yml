@@ -132,6 +132,8 @@ jobs:
           docker pull quay.io/cortexproject/cortex:v1.9.0
           docker pull quay.io/cortexproject/cortex:v1.10.0
           docker pull quay.io/cortexproject/cortex:v1.11.1
+          docker pull quay.io/cortexproject/cortex:v1.13.1
+          docker pull quay.io/cortexproject/cortex:v1.14.0
           docker pull shopify/bigtable-emulator:0.1.0
           docker pull memcached:1.6.1
           docker pull bouncestorage/swift-aio:55ba4331

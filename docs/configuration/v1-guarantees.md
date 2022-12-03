@@ -101,3 +101,6 @@ Currently experimental features are:
   - `query_vertical_shard_size` (int) field in runtime config file
 - Snapshotting of in-memory TSDB on disk during shutdown
   - `-blocks-storage.tsdb.memory-snapshot-on-shutdown` (boolean) CLI flag
+- Distributor: added per-tenant request limit
+  - `distributor.request-rate-limit` (int) CLI flag
+  - `distributor.request-burst-limit` (int) CLI flag

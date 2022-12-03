@@ -68,6 +68,15 @@ const (
 	ExemplarMaxLabelSetLength = 128
 )
 
+// DiscardedRequests is a metric of the number of discarded requests.
+var DiscardedRequests = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "cortex_discarded_requests_total",
+		Help: "The total number of requests that were discarded due to rate limiting.",
+	},
+	[]string{discardReasonLabel, "user"},
+)
+
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
 var DiscardedSamples = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
@@ -249,6 +258,10 @@ func ValidateMetadata(cfg *Limits, userID string, metadata *cortexpb.MetricMetad
 
 func DeletePerUserValidationMetrics(userID string, log log.Logger) {
 	filter := map[string]string{"user": userID}
+
+	if err := util.DeleteMatchingLabels(DiscardedRequests, filter); err != nil {
+		level.Warn(log).Log("msg", "failed to remove cortex_discarded_requests_total metric for user", "user", userID, "err", err)
+	}
 
 	if err := util.DeleteMatchingLabels(DiscardedSamples, filter); err != nil {
 		level.Warn(log).Log("msg", "failed to remove cortex_discarded_samples_total metric for user", "user", userID, "err", err)

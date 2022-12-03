@@ -8,6 +8,10 @@
 * [ENHANCEMENT] Query Frontend/Query Scheduler: Increase upper bound to 60s for queue duration histogram metric. #5029
 * [ENHANCEMENT] Query Frontend: Log Vertical sharding information when `query_stats_enabled` is enabled. #5037
 * [ENHANCEMENT] Ingester: The metadata APIs should honour `querier.query-ingesters-within` when `querier.query-store-for-labels-enabled` is true. #5027
+* [ENHANCEMENT] Distributor: added per-tenant request limit: #5024
+  - `distributor.request-rate-limit`
+  - `distributor.request-burst-limit`
+  - `cortex_discarded_requests_total`
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
@@ -17,6 +21,7 @@
 * [FEATURE] Build ARM docker images. #5041
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
+
 
 ## 1.14.0 2022-12-02
 

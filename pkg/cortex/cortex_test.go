@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -82,6 +83,14 @@ func TestCortex(t *testing.T) {
 				IndexCache: tsdb.IndexCacheConfig{
 					Backend: tsdb.IndexCacheBackendInMemory,
 				},
+			},
+		},
+		Distributor: distributor.Config{
+			DistributorRing: distributor.RingConfig{
+				KVStore: kv.Config{
+					Store: "inmemory",
+				},
+				InstanceInterfaceNames: []string{"en0", "eth0", "lo0", "lo"},
 			},
 		},
 		RulerStorage: rulestore.Config{

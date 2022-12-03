@@ -35,6 +35,8 @@ func (e LimitError) Error() string {
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
+	RequestRate               float64             `yaml:"request_rate" json:"request_rate" category:"experimental"`
+	RequestBurstSize          int                 `yaml:"request_burst_size" json:"request_burst_size" category:"experimental"`
 	IngestionRate             float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
 	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
 	IngestionBurstSize        int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
@@ -121,8 +123,10 @@ type Limits struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
-	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
+	f.Float64Var(&l.RequestRate, "distributor.request-rate-limit", 0, "Per-tenant request rate limit in requests per second. 0 to disable.")
+	f.IntVar(&l.RequestBurstSize, "distributor.request-burst-size", 0, "Per-tenant allowed request burst size. 0 to disable.")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
+	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
@@ -283,6 +287,16 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,
 	}, nil
+}
+
+// RequestRate returns the limit on request rate (requests per second).
+func (o *Overrides) RequestRate(userID string) float64 {
+	return o.GetOverridesForUser(userID).RequestRate
+}
+
+// RequestBurstSize returns the burst size for request rate.
+func (o *Overrides) RequestBurstSize(userID string) int {
+	return o.GetOverridesForUser(userID).RequestBurstSize
 }
 
 // IngestionRate returns the limit on ingester rate (samples per second).

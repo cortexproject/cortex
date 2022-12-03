@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"net/http"
 	"path"
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
@@ -15,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/route"
+	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
@@ -211,7 +214,14 @@ func NewQuerierHandler(
 		false,
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
-		&v1.PrometheusVersion{},
+		&v1.PrometheusVersion{
+			Version:   version.Version,
+			Branch:    version.Branch,
+			Revision:  version.Revision,
+			BuildUser: version.BuildUser,
+			BuildDate: version.BuildDate,
+			GoVersion: version.GoVersion,
+		},
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
@@ -255,6 +265,7 @@ func NewQuerierHandler(
 	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Methods("GET").Handler(promRouter)
+	router.Path(path.Join(prefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(promRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
@@ -268,7 +279,41 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Methods("GET").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(legacyPromRouter)
 
 	// Track execution time.
 	return stats.NewWallTimeMiddleware().Wrap(router)
+}
+
+type buildInfoHandler struct {
+	logger log.Logger
+}
+
+type buildInfoResponse struct {
+	Status string                `json:"status"`
+	Data   *v1.PrometheusVersion `json:"data"`
+}
+
+func (h *buildInfoHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
+	infoResponse := buildInfoResponse{
+		Status: "success",
+		Data: &v1.PrometheusVersion{
+			Version:   version.Version,
+			Branch:    version.Branch,
+			Revision:  version.Revision,
+			BuildUser: version.BuildUser,
+			BuildDate: version.BuildDate,
+			GoVersion: version.GoVersion,
+		},
+	}
+	output, err := json.Marshal(infoResponse)
+	if err != nil {
+		level.Error(h.logger).Log("msg", "marshal build info response", "error", err)
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.WriteHeader(http.StatusOK)
+	if _, err := writer.Write(output); err != nil {
+		level.Error(h.logger).Log("msg", "write build info response", "error", err)
+	}
 }

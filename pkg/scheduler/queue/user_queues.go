@@ -8,6 +8,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
+// Limits needed for the Query Scheduler - interface used for decoupling.
+type Limits interface {
+	// MaxOutstandingPerTenant returns the limit to the maximum number
+	// of outstanding requests per tenant per request queue.
+	MaxOutstandingPerTenant(user string) int
+}
+
 // querier holds information about a querier registered in the queue.
 type querier struct {
 	// Number of active connections.
@@ -41,6 +48,8 @@ type queues struct {
 
 	// Sorted list of querier names, used when creating per-user shard.
 	sortedQueriers []string
+
+	limits Limits
 }
 
 type userQueue struct {
@@ -59,7 +68,7 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration) *queues {
+func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *queues {
 	return &queues{
 		userQueues:       map[string]*userQueue{},
 		users:            nil,
@@ -67,6 +76,7 @@ func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration) *queues {
 		forgetDelay:      forgetDelay,
 		queriers:         map[string]*querier{},
 		sortedQueriers:   nil,
+		limits:           limits,
 	}
 }
 
@@ -106,8 +116,14 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 	uq := q.userQueues[userID]
 
 	if uq == nil {
+		queueSize := q.limits.MaxOutstandingPerTenant(userID)
+		// 0 is the default value of the flag. If the old flag is set
+		// then we use its value for compatibility reason.
+		if q.maxUserQueueSize != 0 {
+			queueSize = q.maxUserQueueSize
+		}
 		uq = &userQueue{
-			ch:    make(chan Request, q.maxUserQueueSize),
+			ch:    make(chan Request, queueSize),
 			seed:  util.ShuffleShardSeed(userID, ""),
 			index: -1,
 		}
@@ -302,4 +318,13 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	}
 
 	return result
+}
+
+// MockLimits implements the Limits interface. Used in tests only.
+type MockLimits struct {
+	MaxOutstanding int
+}
+
+func (l MockLimits) MaxOutstandingPerTenant(_ string) int {
+	return l.MaxOutstanding
 }

@@ -8,35 +8,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
-
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/tsdb"
-	"github.com/stretchr/testify/mock"
-
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/purger"
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -693,6 +690,19 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 			queryEndTime:     now.Add(-thirtyDays).Add(-90 * time.Hour),
 			expectedSkipped:  true,
 		},
+		"negative start time with max query lookback": {
+			maxQueryLookback:          model.Duration(thirtyDays),
+			queryStartTime:            time.Unix(-1000, 0),
+			queryEndTime:              now,
+			expectedMetadataStartTime: now.Add(-thirtyDays),
+			expectedMetadataEndTime:   now,
+		},
+		"negative start time without max query lookback": {
+			queryStartTime:            time.Unix(-1000, 0),
+			queryEndTime:              now,
+			expectedMetadataStartTime: time.Unix(0, 0),
+			expectedMetadataEndTime:   now,
+		},
 	}
 
 	// Create the PromQL engine to execute the queries.
@@ -733,6 +743,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 
 				t.Run("query range", func(t *testing.T) {
+					if testData.query == "" {
+						return
+					}
 					distributor := &MockDistributor{}
 					distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 					distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
@@ -756,7 +769,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						assert.InDelta(t, util.TimeToMillis(testData.expectedQueryStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedQueryEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
-						// Ensure no query has been executed executed (because skipped).
+						// Ensure no query has been executed (because skipped).
 						assert.Len(t, distributor.Calls, 0)
 					}
 				})
@@ -770,9 +783,17 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
+					// We apply the validation here again since when initializing querier we change the start/end time,
+					// but when querying series we don't validate again. So we should pass correct hints here.
+					start, end, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime), overrides, 0)
+					// Skipped query will hit errEmptyTimeRange during validation.
+					if !testData.expectedSkipped {
+						require.NoError(t, err)
+					}
+
 					hints := &storage.SelectHints{
-						Start: util.TimeToMillis(testData.queryStartTime),
-						End:   util.TimeToMillis(testData.queryEndTime),
+						Start: start,
+						End:   end,
 						Func:  "series",
 					}
 					matcher := labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test")
@@ -789,7 +810,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
-						// Ensure no query has been executed executed (because skipped).
+						// Ensure no query has been executed (because skipped).
 						assert.Len(t, distributor.Calls, 0)
 					}
 				})
@@ -814,7 +835,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
 						assert.InDelta(t, util.TimeToMillis(testData.expectedMetadataEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
 					} else {
-						// Ensure no query has been executed executed (because skipped).
+						// Ensure no query has been executed (because skipped).
 						assert.Len(t, distributor.Calls, 0)
 					}
 				})
@@ -875,6 +896,62 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				})
 			})
 		}
+	}
+}
+
+// Test max query length limit works with new validateQueryTimeRange function.
+func TestValidateMaxQueryLength(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+	for _, tc := range []struct {
+		name              string
+		start             time.Time
+		end               time.Time
+		expectedStartMs   int64
+		expectedEndMs     int64
+		maxQueryLength    time.Duration
+		exceedQueryLength bool
+	}{
+		{
+			name:              "normal params, not hit max query length",
+			start:             now.Add(-time.Hour),
+			end:               now,
+			expectedStartMs:   util.TimeToMillis(now.Add(-time.Hour)),
+			expectedEndMs:     util.TimeToMillis(now),
+			maxQueryLength:    24 * time.Hour,
+			exceedQueryLength: false,
+		},
+		{
+			name:              "normal params, hit max query length",
+			start:             now.Add(-100 * time.Hour),
+			end:               now,
+			expectedStartMs:   util.TimeToMillis(now.Add(-100 * time.Hour)),
+			expectedEndMs:     util.TimeToMillis(now),
+			maxQueryLength:    24 * time.Hour,
+			exceedQueryLength: true,
+		},
+		{
+			name:              "negative start",
+			start:             time.Unix(-1000, 0),
+			end:               now,
+			expectedStartMs:   0,
+			expectedEndMs:     util.TimeToMillis(now),
+			maxQueryLength:    24 * time.Hour,
+			exceedQueryLength: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := DefaultLimitsConfig()
+			overrides, err := validation.NewOverrides(limits, nil)
+			require.NoError(t, err)
+			startMs, endMs, err := validateQueryTimeRange(ctx, "test", util.TimeToMillis(tc.start), util.TimeToMillis(tc.end), overrides, 0)
+			require.NoError(t, err)
+			startTime := model.Time(startMs)
+			endTime := model.Time(endMs)
+			if tc.maxQueryLength > 0 {
+				require.Equal(t, tc.exceedQueryLength, endTime.Sub(startTime) > tc.maxQueryLength)
+			}
+		})
 	}
 }
 

@@ -1,14 +1,21 @@
 package api
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/prometheus/common/version"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/purger"
 )
 
 func TestIndexHandlerPrefix(t *testing.T) {
@@ -188,4 +195,57 @@ func TestConfigOverrideHandler(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("config"), body)
+}
+
+func TestBuildInfoAPI(t *testing.T) {
+	type buildInfo struct {
+		Status string               `json:"status"`
+		Data   v1.PrometheusVersion `json:"data"`
+	}
+
+	for _, tc := range []struct {
+		name     string
+		version  string
+		branch   string
+		revision string
+		expected buildInfo
+	}{
+		{
+			name: "empty",
+			expected: buildInfo{Status: "success", Data: v1.PrometheusVersion{
+				GoVersion: runtime.Version(),
+			}},
+		},
+		{
+			name:     "set versions",
+			version:  "v0.14.0",
+			branch:   "test",
+			revision: "foo",
+			expected: buildInfo{Status: "success", Data: v1.PrometheusVersion{
+				Version:   "v0.14.0",
+				Branch:    "test",
+				Revision:  "foo",
+				GoVersion: runtime.Version(),
+			}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{}
+			version.Version = tc.version
+			version.Branch = tc.branch
+			version.Revision = tc.revision
+			handler := NewQuerierHandler(cfg, nil, nil, nil, nil, purger.NewNoopTombstonesLoader(), nil, &FakeLogger{})
+			writer := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/api/v1/status/buildinfo", nil)
+			req = req.WithContext(user.InjectOrgID(req.Context(), "test"))
+			handler.ServeHTTP(writer, req)
+			out, err := io.ReadAll(writer.Body)
+			require.NoError(t, err)
+
+			var info buildInfo
+			err = json.Unmarshal(out, &info)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, info)
+		})
+	}
 }

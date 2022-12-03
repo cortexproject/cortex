@@ -448,7 +448,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 	}
 
 	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides)
-
 	if err != nil {
 		return nil, err
 	}

@@ -172,11 +172,12 @@ runtime_config:
 [memberlist: <memberlist_config>]
 
 query_scheduler:
-  # Maximum number of outstanding requests per tenant per query-scheduler.
-  # In-flight requests above this limit will fail with HTTP response status code
-  # 429.
+  # Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and
+  # will be removed in v1.17.0: Maximum number of outstanding requests per
+  # tenant per query-scheduler. In-flight requests above this limit will fail
+  # with HTTP response status code 429.
   # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
-  [max_outstanding_requests_per_tenant: <int> | default = 100]
+  [max_outstanding_requests_per_tenant: <int> | default = 0]
 
   # If a querier disconnects without sending notification about graceful
   # shutdown, the query-scheduler will keep the querier in the tenant's shard
@@ -916,10 +917,11 @@ The `query_frontend_config` configures the Cortex query-frontend.
 # CLI flag: -frontend.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 
-# Maximum number of outstanding requests per tenant per frontend; requests
-# beyond this error with HTTP 429.
+# Deprecated (use frontend.max-outstanding-requests-per-tenant instead) and will
+# be removed in v1.17.0: Maximum number of outstanding requests per tenant per
+# frontend; requests beyond this error with HTTP 429.
 # CLI flag: -querier.max-outstanding-requests-per-tenant
-[max_outstanding_per_tenant: <int> | default = 100]
+[max_outstanding_per_tenant: <int> | default = 0]
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-frontend will keep the querier in the tenant's shard until the
@@ -2724,6 +2726,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-queriers-per-tenant
 [max_queriers_per_tenant: <int> | default = 0]
 
+# Maximum number of outstanding requests per tenant per request queue (either
+# query frontend or query scheduler); requests beyond this error with HTTP 429.
+# CLI flag: -frontend.max-outstanding-requests-per-tenant
+[max_outstanding_requests_per_tenant: <int> | default = 100]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -3705,6 +3712,10 @@ tsdb:
   # disables closing of idle TSDB.
   # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
   [close_idle_tsdb_timeout: <duration> | default = 0s]
+
+  # The size of the in-memory queue used before flushing chunks to the disk.
+  # CLI flag: -blocks-storage.tsdb.head-chunks-write-queue-size
+  [head_chunks_write_queue_size: <int> | default = 0]
 
   # limit the number of concurrently opening TSDB's on startup
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup

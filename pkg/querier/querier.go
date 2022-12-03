@@ -335,6 +335,12 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 	sp.Start = startMs
 	sp.End = endMs
 
+	// For series queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if sp.Func == "series" && startMs == 0 {
+		return q.metadataQuerier.Select(true, sp, matchers...)
+	}
+
 	startTime := model.Time(startMs)
 	endTime := model.Time(endMs)
 
@@ -390,7 +396,7 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 	return seriesSet
 }
 
-// LabelsValue implements storage.Querier.
+// LabelValues implements storage.Querier.
 func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	if !q.queryStoreForLabels {
 		return q.metadataQuerier.LabelValues(name, matchers...)
@@ -637,6 +643,11 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 		if endTime.Before(startTime) {
 			return 0, 0, errEmptyTimeRange
 		}
+	}
+
+	// start time should be at least non-negative to avoid int64 overflow.
+	if startTime < 0 {
+		startTime = 0
 	}
 
 	return int64(startTime), int64(endTime), nil

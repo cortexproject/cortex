@@ -12,6 +12,7 @@ type UserStats struct {
 	NumSeries         uint64  `json:"numSeries"`
 	APIIngestionRate  float64 `json:"APIIngestionRate"`
 	RuleIngestionRate float64 `json:"RuleIngestionRate"`
+	ActiveSeries      uint64  `json:"activeSeries"`
 }
 
 // UserStatsHandler handles user stats to the Distributor.

@@ -3193,6 +3193,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				NumSeries:         3,
 				ApiIngestionRate:  0.2,
 				RuleIngestionRate: 0,
+				ActiveSeries:      3,
 			},
 		},
 		{
@@ -3202,6 +3203,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 				NumSeries:         2,
 				ApiIngestionRate:  0.13333333333333333,
 				RuleIngestionRate: 0,
+				ActiveSeries:      2,
 			},
 		},
 	}

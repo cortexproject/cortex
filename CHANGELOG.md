@@ -11,7 +11,7 @@
 * [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 
-## 1.14.0 in progress
+## 1.14.0 2022-12-02
 
   **This release removes support for chunks storage. See below for more.**
 * [CHANGE] Remove support for chunks storage entirely. If you are using chunks storage on a previous version, you must [migrate your data](https://github.com/cortexproject/cortex/blob/v1.13.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md) on version 1.13.1 or earlier. Before upgrading to this release, you should also remove any deprecated chunks-related configuration, as this release will no longer accept that. The following flags are gone:
@@ -56,16 +56,6 @@
 * [CHANGE] Enable PromQL `@` modifier, negative offset always. #4927
 * [CHANGE] Store-gateway: Add user label to `cortex_bucket_store_blocks_loaded` metric. #4918
 * [CHANGE] AlertManager: include `status` label in `cortex_alertmanager_alerts_received_total`. #4907
-* [ENHANCEMENT] AlertManager: Retrying AlertManager Get Requests (Get Alertmanager status, Get Alertmanager Receivers) on next replica on error #4840
-* [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
-* [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
-* [ENHANCEMENT] Cortex now built with Go 1.18. #4829
-* [ENHANCEMENT] Ingester: Prevent ingesters to become unhealthy during wall replay. #4847
-* [ENHANCEMENT] Compactor: Introduced visit marker file for blocks so blocks are under compaction will not be picked up by another compactor. #4805
-* [ENHANCEMENT] Distributor: Add label name to labelValueTooLongError. #4855
-* [ENHANCEMENT] Enhance traces with hostname information. #4898
-* [ENHANCEMENT] Improve the documentation around limits. #4905
-* [ENHANCEMENT] Distributor: cache user overrides to reduce lock contention. #4904
 * [FEATURE] Compactor: Added `-compactor.block-files-concurrency` allowing to configure number of go routines for download/upload block files during compaction. #4784
 * [FEATURE] Compactor: Added `-compactor.blocks-fetch-concurrency` allowing to configure number of go routines for blocks during compaction. #4787
 * [FEATURE] Compactor: Added configurations for Azure MSI in blocks-storage, ruler-storage and alertmanager-storage. #4818
@@ -79,6 +69,16 @@
 * [FEATURE] Querier: Added a new limit `-querier.max-fetched-data-bytes-per-query` allowing to limit the maximum size of all data in bytes that a query can fetch from each ingester and storage. #4854
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-compression` and `-querier.store-gateway-client.grpc-compression` to configure compression methods for grpc clients. #4889
 * [BUGFIX] Storage/Bucket: Enable AWS SDK for go authentication for s3 to fix IMDSv1 authentication. #4897
+* [ENHANCEMENT] AlertManager: Retrying AlertManager Get Requests (Get Alertmanager status, Get Alertmanager Receivers) on next replica on error #4840
+* [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
+* [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
+* [ENHANCEMENT] Cortex now built with Go 1.18. #4829
+* [ENHANCEMENT] Ingester: Prevent ingesters to become unhealthy during wall replay. #4847
+* [ENHANCEMENT] Compactor: Introduced visit marker file for blocks so blocks are under compaction will not be picked up by another compactor. #4805
+* [ENHANCEMENT] Distributor: Add label name to labelValueTooLongError. #4855
+* [ENHANCEMENT] Enhance traces with hostname information. #4898
+* [ENHANCEMENT] Improve the documentation around limits. #4905
+* [ENHANCEMENT] Distributor: cache user overrides to reduce lock contention. #4904
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767
 * [BUGFIX] Respecting `-tracing.otel.sample-ratio` configuration when enabling OpenTelemetry tracing with X-ray. #4862

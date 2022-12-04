@@ -763,6 +763,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
 	}
 
+	// Use a background context to make sure all ingesters get samples even if we return early
+	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	localCtx = user.InjectOrgID(localCtx, userID)
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		localCtx = opentracing.ContextWithSpan(localCtx, sp)
+	}
+	// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
+	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
+	}
+	// Get clientIP(s) from Context and add it to localCtx
+	localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
+
 	keys := append(seriesKeys, metadataKeys...)
 	initialMetadataIndex := len(seriesKeys)
 
@@ -783,23 +796,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			}
 		}
 
-		// Use a background context to make sure all ingesters get samples even if we return early
-		localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-		defer cancel()
-		localCtx = user.InjectOrgID(localCtx, userID)
-		if sp := opentracing.SpanFromContext(ctx); sp != nil {
-			localCtx = opentracing.ContextWithSpan(localCtx, sp)
-		}
-		// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
-		if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-			localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
-		}
-
-		// Get clientIP(s) from Context and add it to localCtx
-		localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
-
 		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
-	}, func() { cortexpb.ReuseSlice(req.Timeseries) })
+	}, func() {
+		cortexpb.ReuseSlice(req.Timeseries)
+		cancel()
+	})
+
 	if err != nil {
 		return nil, err
 	}

@@ -967,7 +967,7 @@ go.opentelemetry.io/otel/exporters/otlp/internal/retry
 go.opentelemetry.io/otel/exporters/otlp/otlptrace
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/otlpconfig
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform
-# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.0
+# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.1
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 # go.opentelemetry.io/otel/metric v0.32.0

@@ -1833,20 +1833,21 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
-		RetentionDuration:         i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
-		MinBlockDuration:          blockRanges[0],
-		MaxBlockDuration:          blockRanges[len(blockRanges)-1],
-		NoLockfile:                true,
-		StripeSize:                i.cfg.BlocksStorageConfig.TSDB.StripeSize,
-		HeadChunksWriteBufferSize: i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteBufferSize,
-		WALCompression:            i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
-		WALSegmentSize:            i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
-		SeriesLifecycleCallback:   userDB,
-		BlocksToDelete:            userDB.blocksToDelete,
-		EnableExemplarStorage:     enableExemplars,
-		IsolationDisabled:         true,
-		MaxExemplars:              int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
-		HeadChunksWriteQueueSize:  i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
+		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
+		MinBlockDuration:               blockRanges[0],
+		MaxBlockDuration:               blockRanges[len(blockRanges)-1],
+		NoLockfile:                     true,
+		StripeSize:                     i.cfg.BlocksStorageConfig.TSDB.StripeSize,
+		HeadChunksWriteBufferSize:      i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteBufferSize,
+		WALCompression:                 i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
+		WALSegmentSize:                 i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
+		SeriesLifecycleCallback:        userDB,
+		BlocksToDelete:                 userDB.blocksToDelete,
+		EnableExemplarStorage:          enableExemplars,
+		IsolationDisabled:              true,
+		MaxExemplars:                   int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
+		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
+		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

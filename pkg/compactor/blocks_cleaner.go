@@ -2,7 +2,10 @@ package compactor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"path"
 	"time"
 
 	"github.com/go-kit/log"
@@ -21,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -57,9 +61,11 @@ type BlocksCleaner struct {
 	tenantBlocksMarkedForNoCompaction *prometheus.GaugeVec
 	tenantPartialBlocks               *prometheus.GaugeVec
 	tenantBucketIndexLastUpdate       *prometheus.GaugeVec
+	compactorPartitionError           *prometheus.CounterVec
+	partitionedGroupInfoReadFailed    prometheus.Counter
 }
 
-func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer) *BlocksCleaner {
+func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, usersScanner *cortex_tsdb.UsersScanner, cfgProvider ConfigProvider, logger log.Logger, reg prometheus.Registerer, partitionedGroupInfoReadFailed prometheus.Counter) *BlocksCleaner {
 	c := &BlocksCleaner{
 		cfg:          cfg,
 		bucketClient: bucketClient,
@@ -119,6 +125,12 @@ func NewBlocksCleaner(cfg BlocksCleanerConfig, bucketClient objstore.Bucket, use
 			Name: "cortex_bucket_index_last_successful_update_timestamp_seconds",
 			Help: "Timestamp of the last successful update of a tenant's bucket index.",
 		}, []string{"user"}),
+		compactorPartitionError: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name:        compactorPartitionErrorCountName,
+			Help:        compactorPartitionErrorCountHelp,
+			ConstLabels: prometheus.Labels{"reason": "parent-block-mismatch"},
+		}, []string{"user"}),
+		partitionedGroupInfoReadFailed: partitionedGroupInfoReadFailed,
 	}
 
 	c.Service = services.NewTimerService(cfg.CleanupInterval, c.starting, c.ticker, nil)
@@ -283,6 +295,13 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 		level.Info(userLogger).Log("msg", "deleted files under "+block.DebugMetas+" for tenant marked for deletion", "count", deleted)
 	}
 
+	// Clean up partitioned group info files
+	if deleted, err := bucket.DeletePrefix(ctx, userBucket, PartitionedGroupDirectory, userLogger); err != nil {
+		return errors.Wrap(err, "failed to delete "+PartitionedGroupDirectory)
+	} else if deleted > 0 {
+		level.Info(userLogger).Log("msg", "deleted files under "+PartitionedGroupDirectory+" for tenant marked for deletion", "count", deleted)
+	}
+
 	// Tenant deletion mark file is inside Markers as well.
 	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
 		return errors.Wrap(err, "failed to delete marker files")
@@ -373,6 +392,8 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		return err
 	}
 
+	c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID, idx)
+
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
 	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
@@ -380,6 +401,125 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
 
 	return nil
+}
+
+func (c *BlocksCleaner) findResultBlocksForPartitionedGroup(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, index *bucketindex.Index, partitionedGroupInfo *PartitionedGroupInfo) map[int]ulid.ULID {
+	partitionedGroupID := partitionedGroupInfo.PartitionedGroupID
+	deletionMarkMap := index.BlockDeletionMarks.GetULIDSet()
+	var possibleResultBlocks []ulid.ULID
+	for _, b := range index.Blocks {
+		if b.MinTime >= partitionedGroupInfo.RangeStart && b.MaxTime <= partitionedGroupInfo.RangeEnd {
+			if _, ok := deletionMarkMap[b.ID]; !ok {
+				level.Info(userLogger).Log("msg", "found possible result block", "partitioned_group_id", partitionedGroupID, "block", b.ID.String())
+				possibleResultBlocks = append(possibleResultBlocks, b.ID)
+			}
+		}
+	}
+
+	resultBlocks := make(map[int]ulid.ULID)
+	for _, b := range possibleResultBlocks {
+		reader, err := userBucket.Get(ctx, path.Join(b.String(), block.PartitionInfoFilename))
+		if err != nil {
+			level.Info(userLogger).Log("msg", "unable to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
+			continue
+		}
+		partitionInfo, err := block.ReadPartitionInfo(reader)
+		if err != nil {
+			level.Info(userLogger).Log("msg", "unable to parse partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
+			continue
+		}
+		if partitionInfo.PartitionedGroupID == partitionedGroupID {
+			level.Info(userLogger).Log("msg", "found result block", "partitioned_group_id", partitionedGroupID, "partition_id", partitionInfo.PartitionID, "block", b.String())
+			resultBlocks[partitionInfo.PartitionID] = b
+		}
+		level.Info(userLogger).Log("msg", fmt.Sprintf("block does not belong to this partitioned group: %d", partitionedGroupID), "partitioned_group_id", partitionInfo.PartitionedGroupID, "partition_id", partitionInfo.PartitionID, "block", b.String())
+	}
+
+	return resultBlocks
+}
+
+func (c *BlocksCleaner) validatePartitionedResultBlock(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string, resultBlock ulid.ULID, partition Partition, partitionedGroupID uint32) error {
+	meta, err := readMeta(ctx, userBucket, userLogger, resultBlock)
+	if err != nil {
+		level.Warn(userLogger).Log("msg", "unable to read meta of result block", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String())
+		return err
+	}
+	expectedSourceBlocks := partition.getBlocksSet()
+	if len(expectedSourceBlocks) != len(meta.Compaction.Parents) {
+		c.compactorPartitionError.WithLabelValues(userID).Inc()
+		level.Warn(userLogger).Log("msg", "result block has different number of parent blocks as partitioned group info", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String())
+		return fmt.Errorf("result block %s has different number of parent blocks as partitioned group info with partitioned group id %d, partition id %d", resultBlock.String(), partitionedGroupID, partition.PartitionID)
+	}
+	for _, parentBlock := range meta.Compaction.Parents {
+		if _, ok := expectedSourceBlocks[parentBlock.ULID]; !ok {
+			c.compactorPartitionError.WithLabelValues(userID).Inc()
+			level.Warn(userLogger).Log("msg", "parent blocks of result block does not match partitioned group info", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String())
+			return fmt.Errorf("parent blocks of result block %s does not match partitioned group info with partitioned group id %d, partition id %d", resultBlock.String(), partitionedGroupID, partition.PartitionID)
+		}
+	}
+	return nil
+}
+
+func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string, index *bucketindex.Index) {
+	var deletePartitionedGroupInfo []string
+	userBucket.Iter(ctx, PartitionedGroupDirectory, func(file string) error {
+		partitionedGroupInfo, err := ReadPartitionedGroupInfoFile(ctx, userBucket, userLogger, file, c.partitionedGroupInfoReadFailed)
+		if err != nil {
+			level.Warn(userLogger).Log("msg", "failed to read partitioned group info", "partitioned_group_info", file)
+			return nil
+		}
+		resultBlocks := c.findResultBlocksForPartitionedGroup(ctx, userBucket, userLogger, index, partitionedGroupInfo)
+		partitionedGroupID := partitionedGroupInfo.PartitionedGroupID
+		for _, partition := range partitionedGroupInfo.Partitions {
+			if resultBlock, ok := resultBlocks[partition.PartitionID]; !ok {
+				level.Info(userLogger).Log("msg", "unable to find result block for partition in partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID)
+				return nil
+			} else {
+				err := c.validatePartitionedResultBlock(ctx, userBucket, userLogger, userID, resultBlock, partition, partitionedGroupID)
+				if err != nil {
+					level.Warn(userLogger).Log("msg", "validate result block failed", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String(), "err", err)
+					return nil
+				}
+				level.Info(userLogger).Log("msg", "result block has expected parent blocks", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String())
+			}
+		}
+
+		// since the partitioned group were all complete, we can make sure
+		// all source blocks would be deleted.
+		blocks := partitionedGroupInfo.getAllBlocks()
+		for _, blockID := range blocks {
+			metaExists, err := userBucket.Exists(ctx, path.Join(blockID.String(), metadata.MetaFilename))
+			if err != nil {
+				level.Info(userLogger).Log("msg", "block already deleted", "partitioned_group_id", partitionedGroupID, "block", blockID.String())
+				continue
+			}
+			if metaExists {
+				deletionMarkerExists, err := userBucket.Exists(ctx, path.Join(blockID.String(), metadata.DeletionMarkFilename))
+				if err == nil && deletionMarkerExists {
+					level.Info(userLogger).Log("msg", "block already marked for deletion", "partitioned_group_id", partitionedGroupID, "block", blockID.String())
+					continue
+				}
+				if err := block.MarkForDeletion(ctx, userLogger, userBucket, blockID, "delete block during partitioned group completion check", c.blocksMarkedForDeletion); err != nil {
+					level.Warn(userLogger).Log("msg", "unable to mark block for deletion", "partitioned_group_id", partitionedGroupID, "block", blockID.String())
+					// if one block can not be marked for deletion, we should
+					// skip delete this partitioned group. next iteration
+					// would try it again.
+					return nil
+				}
+				level.Info(userLogger).Log("msg", "marked block for deletion during partitioned group info clean up", "partitioned_group_id", partitionedGroupID, "block", blockID.String())
+			}
+		}
+		level.Info(userLogger).Log("msg", "partitioned group info can be cleaned up", "partitioned_group_id", partitionedGroupID)
+		deletePartitionedGroupInfo = append(deletePartitionedGroupInfo, file)
+		return nil
+	})
+	for _, partitionedGroupInfoFile := range deletePartitionedGroupInfo {
+		if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
+			level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+		} else {
+			level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+		}
+	}
 }
 
 // cleanUserPartialBlocks delete partial blocks which are safe to be deleted. The provided partials map
@@ -459,4 +599,21 @@ func listBlocksOutsideRetentionPeriod(idx *bucketindex.Index, threshold time.Tim
 	}
 
 	return
+}
+
+func readMeta(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blockID ulid.ULID) (*metadata.Meta, error) {
+	metaReader, err := userBucket.Get(ctx, path.Join(blockID.String(), block.MetaFilename))
+	if err != nil {
+		return nil, err
+	}
+	defer runutil.CloseWithLogOnErr(userLogger, metaReader, "close meta reader")
+	b, err := io.ReadAll(metaReader)
+	if err != nil {
+		return nil, err
+	}
+	meta := metadata.Meta{}
+	if err = json.Unmarshal(b, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
 }

@@ -3,10 +3,12 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"github.com/go-kit/log/level"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -52,6 +54,10 @@ func NewShuffleShardingPlanner(
 }
 
 func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error) {
+	return nil, errors.New("not support without partitioning")
+}
+
+func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, partitionID int, errChan chan error) ([]*metadata.Meta, error) {
 	// Ensure all blocks fits within the largest range. This is a double check
 	// to ensure there's no bug in the previous blocks grouping, given this Plan()
 	// is just a pass-through.
@@ -62,6 +68,7 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 	noCompactMarked := p.noCompBlocksFunc()
 	resultMetas := make([]*metadata.Meta, 0, len(metasByMinTime))
 
+	var partitionGroupID uint32
 	for _, b := range metasByMinTime {
 		blockID := b.ULID.String()
 		if _, excluded := noCompactMarked[b.ULID]; excluded {
@@ -72,24 +79,29 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
 		}
 
-		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, p.logger, blockID, p.blockVisitMarkerReadFailed)
+		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, p.logger, blockID, partitionID, p.blockVisitMarkerReadFailed)
 		if err != nil {
 			// shuffle_sharding_grouper should put visit marker file for blocks ready for
 			// compaction. So error should be returned if visit marker file does not exist.
-			return nil, fmt.Errorf("unable to get visit marker file for block %s: %s", blockID, err.Error())
+			return nil, fmt.Errorf("unable to get visit marker file for block %s with partition ID %d: %s", blockID, partitionID, err.Error())
 		}
-		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, p.ringLifecyclerID) {
-			return nil, fmt.Errorf("block %s is not visited by current compactor %s", blockID, p.ringLifecyclerID)
+		if blockVisitMarker.isCompleted() {
+			return nil, fmt.Errorf("block %s with partition ID %d is in completed status", blockID, partitionID)
+		}
+		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, partitionID, p.ringLifecyclerID) {
+			return nil, fmt.Errorf("block %s with partition ID %d is not visited by current compactor %s", blockID, partitionID, p.ringLifecyclerID)
 		}
 
+		partitionGroupID = blockVisitMarker.PartitionedGroupID
 		resultMetas = append(resultMetas, b)
 	}
 
 	if len(resultMetas) < 2 {
+		level.Info(p.logger).Log("msg", "result meta size is less than 2", "partitioned_group_id", partitionGroupID, "partition_id", partitionID, "size", len(resultMetas))
 		return nil, nil
 	}
 
-	go markBlocksVisitedHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, p.ringLifecyclerID, p.blockVisitMarkerFileUpdateInterval, p.blockVisitMarkerWriteFailed)
+	go markBlocksVisitedHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, partitionGroupID, partitionID, p.ringLifecyclerID, p.blockVisitMarkerFileUpdateInterval, p.blockVisitMarkerWriteFailed, errChan)
 
 	return resultMetas, nil
 }

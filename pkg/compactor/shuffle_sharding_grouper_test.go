@@ -1387,7 +1387,8 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 			PartitionID: partitionID,
 		}
 		partitionInfoContent, _ := json.Marshal(partitionInfo)
-		bkt.Upload(context.Background(), getBlockPartitionInfoFile(block.ULID), bytes.NewReader(partitionInfoContent))
+		err := bkt.Upload(context.Background(), getBlockPartitionInfoFile(block.ULID), bytes.NewReader(partitionInfoContent))
+		require.NoError(t, err)
 	}
 	testGroup := blocksGroup{
 		rangeStart: testRangeStart,

@@ -782,7 +782,7 @@ type Compactor interface {
 	//  * Returns empty ulid.ULID{}.
 	Compact(dest string, dirs []string, open []*tsdb.Block) (ulid.ULID, error)
 
-	CompactWithPartition(dest string, dirs []string, open []*tsdb.Block, partitionCount int, partitionId int) (ulid.ULID, error)
+	CompactWithPartition(dest string, dirs []string, open []*tsdb.Block, partitionCount int, partitionID int) (ulid.ULID, error)
 }
 
 // Compact plans and runs a single compaction against the group. The compacted result

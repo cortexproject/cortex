@@ -462,7 +462,7 @@ func (c *BlocksCleaner) validatePartitionedResultBlock(ctx context.Context, user
 
 func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string, index *bucketindex.Index) {
 	var deletePartitionedGroupInfo []string
-	userBucket.Iter(ctx, PartitionedGroupDirectory, func(file string) error {
+	err := userBucket.Iter(ctx, PartitionedGroupDirectory, func(file string) error {
 		partitionedGroupInfo, err := ReadPartitionedGroupInfoFile(ctx, userBucket, userLogger, file, c.partitionedGroupInfoReadFailed)
 		if err != nil {
 			level.Warn(userLogger).Log("msg", "failed to read partitioned group info", "partitioned_group_info", file)
@@ -471,17 +471,17 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		resultBlocks := c.findResultBlocksForPartitionedGroup(ctx, userBucket, userLogger, index, partitionedGroupInfo)
 		partitionedGroupID := partitionedGroupInfo.PartitionedGroupID
 		for _, partition := range partitionedGroupInfo.Partitions {
-			if resultBlock, ok := resultBlocks[partition.PartitionID]; !ok {
+			if _, ok := resultBlocks[partition.PartitionID]; !ok {
 				level.Info(userLogger).Log("msg", "unable to find result block for partition in partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID)
 				return nil
-			} else {
-				err := c.validatePartitionedResultBlock(ctx, userBucket, userLogger, userID, resultBlock, partition, partitionedGroupID)
-				if err != nil {
-					level.Warn(userLogger).Log("msg", "validate result block failed", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String(), "err", err)
-					return nil
-				}
-				level.Info(userLogger).Log("msg", "result block has expected parent blocks", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String())
 			}
+			resultBlock := resultBlocks[partition.PartitionID]
+			err := c.validatePartitionedResultBlock(ctx, userBucket, userLogger, userID, resultBlock, partition, partitionedGroupID)
+			if err != nil {
+				level.Warn(userLogger).Log("msg", "validate result block failed", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String(), "err", err)
+				return nil
+			}
+			level.Info(userLogger).Log("msg", "result block has expected parent blocks", "partitioned_group_id", partitionedGroupID, "partition_id", partition.PartitionID, "block", resultBlock.String())
 		}
 
 		// since the partitioned group were all complete, we can make sure
@@ -513,6 +513,9 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		deletePartitionedGroupInfo = append(deletePartitionedGroupInfo, file)
 		return nil
 	})
+	if err != nil {
+		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
+	}
 	for _, partitionedGroupInfoFile := range deletePartitionedGroupInfo {
 		if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
 			level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)

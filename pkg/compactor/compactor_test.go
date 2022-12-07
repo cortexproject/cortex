@@ -1652,8 +1652,8 @@ func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Blo
 	return args.Get(0).(ulid.ULID), args.Error(1)
 }
 
-func (m *tsdbCompactorMock) CompactWithPartition(dest string, dirs []string, open []*tsdb.Block, partitionCount int, partitionId int) (ulid.ULID, error) {
-	args := m.Called(dest, dirs, open, partitionCount, partitionId)
+func (m *tsdbCompactorMock) CompactWithPartition(dest string, dirs []string, open []*tsdb.Block, partitionCount int, partitionID int) (ulid.ULID, error) {
+	args := m.Called(dest, dirs, open, partitionCount, partitionID)
 	return args.Get(0).(ulid.ULID), args.Error(1)
 }
 
@@ -1726,9 +1726,12 @@ func mockBlockGroup(userID string, ids []string, bkt *bucket.ClientMock) *compac
 	)
 	for _, id := range ids {
 		meta := mockBlockMeta(id)
-		group.AppendMeta(&metadata.Meta{
+		err := group.AppendMeta(&metadata.Meta{
 			BlockMeta: meta,
 		})
+		if err != nil {
+			continue
+		}
 	}
 	return group
 }

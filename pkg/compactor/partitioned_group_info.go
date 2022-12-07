@@ -5,16 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/runutil"
+	"io"
+	"path"
+	"strings"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	"io"
-	"path"
-	"strings"
+
+	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
 const (
@@ -73,7 +75,7 @@ func (p *PartitionedGroupInfo) getAllBlocks() []ulid.ULID {
 	}
 	blocks := make([]ulid.ULID, len(uniqueBlocks))
 	i := 0
-	for block, _ := range uniqueBlocks {
+	for block := range uniqueBlocks {
 		blocks[i] = block
 		i++
 	}
@@ -124,7 +126,7 @@ func ReadPartitionedGroupInfoFile(ctx context.Context, bkt objstore.Instrumented
 }
 
 func UpdatePartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, partitionedGroupInfo PartitionedGroupInfo, partitionedGroupInfoReadFailed prometheus.Counter, partitionedGroupInfoWriteFailed prometheus.Counter) (*PartitionedGroupInfo, error) {
-	existingPartitionedGroup, err := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo.PartitionedGroupID, partitionedGroupInfoReadFailed)
+	existingPartitionedGroup, _ := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo.PartitionedGroupID, partitionedGroupInfoReadFailed)
 	if existingPartitionedGroup != nil {
 		level.Warn(logger).Log("msg", "partitioned group info already exists", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 		return existingPartitionedGroup, nil

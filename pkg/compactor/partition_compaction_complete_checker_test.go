@@ -3,15 +3,17 @@ package compactor
 import (
 	"context"
 	"encoding/json"
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"testing"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/compact"
-	"testing"
-	"time"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
 func TestPartitionCompactionCompleteChecker(t *testing.T) {

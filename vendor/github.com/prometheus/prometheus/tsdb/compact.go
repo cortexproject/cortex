@@ -397,7 +397,7 @@ func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) (u
 	return c.CompactWithPartition(dest, dirs, open, 1, 0)
 }
 
-func (c *LeveledCompactor) CompactWithPartition(dest string, dirs []string, open []*Block, partitionCount int, partitionId int) (uid ulid.ULID, err error) {
+func (c *LeveledCompactor) CompactWithPartition(dest string, dirs []string, open []*Block, partitionCount int, partitionID int) (uid ulid.ULID, err error) {
 	var (
 		blocks []BlockReader
 		bs     []*Block
@@ -441,7 +441,7 @@ func (c *LeveledCompactor) CompactWithPartition(dest string, dirs []string, open
 	uid = ulid.MustNew(ulid.Now(), rand.Reader)
 
 	meta := CompactBlockMetas(uid, metas...)
-	err = c.write(dest, meta, partitionId, partitionCount, blocks...)
+	err = c.write(dest, meta, partitionID, partitionCount, blocks...)
 	if err == nil {
 		if meta.Stats.NumSamples == 0 {
 			for _, b := range bs {

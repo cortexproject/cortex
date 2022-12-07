@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"fmt"
-	thanosblock "github.com/thanos-io/thanos/pkg/block"
 	"hash/fnv"
 	"math"
 	"path"
@@ -19,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	thanosblock "github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 
@@ -549,11 +549,10 @@ func createBlocksGroup(blocks map[ulid.ULID]*metadata.Meta, blockIDs []ulid.ULID
 	group.rangeStart = rangeStart
 	group.rangeEnd = rangeEnd
 	for _, blockID := range blockIDs {
-		if m, ok := blocks[blockID]; !ok {
+		if _, ok := blocks[blockID]; !ok {
 			return nil, errors.New(fmt.Sprintf("block not found: %s", blockID))
-		} else {
-			group.blocks = append(group.blocks, m)
 		}
+		group.blocks = append(group.blocks, blocks[blockID])
 	}
 	return &group, nil
 }
@@ -602,12 +601,6 @@ func (g blocksGroup) String() string {
 
 func (g blocksGroup) rangeLength() int64 {
 	return g.rangeEnd - g.rangeStart
-}
-
-// minTime returns the MinTime across all blocks in the group.
-func (g blocksGroup) minTime() int64 {
-	// Blocks are expected to be sorted by MinTime.
-	return g.blocks[0].MinTime
 }
 
 // maxTime returns the MaxTime across all blocks in the group.

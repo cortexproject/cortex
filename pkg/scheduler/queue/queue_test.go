@@ -27,6 +27,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 			MockLimits{MaxOutstanding: 100},
+			nil,
 		)
 		queues = append(queues, queue)
 
@@ -85,6 +86,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 			prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 			prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 			MockLimits{MaxOutstanding: 100},
+			nil,
 		)
 
 		for ix := 0; ix < queriers; ix++ {
@@ -119,6 +121,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 		MockLimits{MaxOutstanding: 100},
+		nil,
 	)
 
 	// Start the queue service.

@@ -133,6 +133,7 @@ func TestFrontendCheckReady(t *testing.T) {
 					prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 					prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 					limits,
+					nil,
 				),
 			}
 			for i := 0; i < tt.connectedClients; i++ {

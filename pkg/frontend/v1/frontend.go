@@ -77,6 +77,7 @@ type Frontend struct {
 	// Metrics.
 	queueLength       *prometheus.GaugeVec
 	discardedRequests *prometheus.CounterVec
+	totalRequests     *prometheus.CounterVec
 	numClients        prometheus.GaugeFunc
 	queueDuration     prometheus.Histogram
 }
@@ -112,7 +113,7 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, f.queueLength, f.discardedRequests, f.limits)
+	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, f.queueLength, f.discardedRequests, f.limits, registerer)
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
 	var err error

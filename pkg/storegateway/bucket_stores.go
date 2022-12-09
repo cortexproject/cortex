@@ -431,7 +431,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		NewReplicaLabelRemover(userLogger, []string{
 			tsdb.TenantIDExternalLabel,
 			tsdb.IngesterIDExternalLabel,
-			tsdb.ShardIDExternalLabel,
 		}),
 		// Remove Cortex external labels so that they're not injected when querying blocks.
 	}...)

@@ -826,7 +826,6 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 			Labels: map[string]string{
 				cortex_tsdb.TenantIDExternalLabel:   userID,
 				cortex_tsdb.IngesterIDExternalLabel: fmt.Sprintf("ingester-%d", idx),
-				cortex_tsdb.ShardIDExternalLabel:    fmt.Sprintf("shard-%d", idx),
 			},
 			Source: metadata.TestSource,
 		}

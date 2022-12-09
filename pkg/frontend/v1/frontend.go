@@ -77,7 +77,6 @@ type Frontend struct {
 	// Metrics.
 	queueLength       *prometheus.GaugeVec
 	discardedRequests *prometheus.CounterVec
-	totalRequests     *prometheus.CounterVec
 	numClients        prometheus.GaugeFunc
 	queueDuration     prometheus.Histogram
 }

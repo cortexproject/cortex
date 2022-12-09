@@ -59,7 +59,6 @@ type Scheduler struct {
 
 	// Metrics.
 	queueLength              *prometheus.GaugeVec
-	totalRequests            *prometheus.CounterVec
 	discardedRequests        *prometheus.CounterVec
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc

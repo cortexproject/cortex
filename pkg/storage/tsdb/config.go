@@ -24,10 +24,6 @@ const (
 	// set when shipping blocks to the storage.
 	IngesterIDExternalLabel = "__ingester_id__"
 
-	// ShardIDExternalLabel is the external label containing the shard ID
-	// and can be used to shard blocks.
-	ShardIDExternalLabel = "__shard_id__"
-
 	// How often are open TSDBs checked for being idle and closed.
 	DefaultCloseIdleTSDBInterval = 5 * time.Minute
 

@@ -10,6 +10,7 @@
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
 * [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
 * [FEATURE] Ingester: Enable snapshotting of In-memory TSDB on disk during shutdown via `-blocks-storage.tsdb.memory-snapshot-on-shutdown`. #5011
+* [FEATURE] Query Frontend/Scheduler: Add a new counter metric `cortex_request_queue_requests_total` for total requests going to queue. #5030
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 
 ## 1.14.0 2022-12-02

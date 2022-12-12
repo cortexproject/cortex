@@ -7,6 +7,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -58,15 +59,20 @@ type RequestQueue struct {
 	stopped bool
 
 	queueLength       *prometheus.GaugeVec   // Per user and reason.
+	totalRequests     *prometheus.CounterVec // Per user.
 	discardedRequests *prometheus.CounterVec // Per user.
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec, limits Limits) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec, limits Limits, registerer prometheus.Registerer) *RequestQueue {
 	q := &RequestQueue{
 		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay, limits),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		queueLength:             queueLength,
-		discardedRequests:       discardedRequests,
+		totalRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_request_queue_requests_total",
+			Help: "Total number of query requests going to the request queue.",
+		}, []string{"user"}),
+		discardedRequests: discardedRequests,
 	}
 
 	q.cond = sync.NewCond(&q.mtx)
@@ -94,6 +100,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		return errors.New("no queue found")
 	}
 
+	q.totalRequests.WithLabelValues(userID).Inc()
 	select {
 	case queue <- req:
 		q.queueLength.WithLabelValues(userID).Inc()

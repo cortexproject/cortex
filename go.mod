@@ -30,9 +30,9 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.5.0
 	github.com/json-iterator/go v1.1.12
-	github.com/lib/pq v1.3.0
+	github.com/lib/pq v1.10.7
 	github.com/minio/minio-go/v7 v7.0.37
-	github.com/mitchellh/go-wordwrap v1.0.0
+	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/oklog/ulid v1.3.1
 	github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
 	github.com/opentracing-contrib/go-stdlib v1.0.0
@@ -45,8 +45,8 @@ require (
 	github.com/prometheus/prometheus v0.39.1
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.5.0
-	github.com/spf13/afero v1.6.0
-	github.com/stretchr/testify v1.8.0
+	github.com/spf13/afero v1.9.3
+	github.com/stretchr/testify v1.8.1
 	github.com/thanos-io/objstore v0.0.0-20221006135717-79dcec7fe604
 	github.com/thanos-io/thanos v0.29.1-0.20221115064008-fe45cfc66b7d
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
@@ -180,7 +180,7 @@ require (
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749 // indirect
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
-	github.com/stretchr/objx v0.4.0 // indirect
+	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/vimeo/galaxycache v0.0.0-20210323154928-b7e5d71c067a // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect

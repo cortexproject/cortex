@@ -49,6 +49,9 @@ const (
 	msgXtrimInvalidLimit    = "ERR syntax error, LIMIT cannot be used without the special ~ option"
 	msgDBIndexOutOfRange    = "ERR DB index is out of range"
 	msgLimitCombination     = "ERR syntax error, LIMIT is only supported in combination with either BYSCORE or BYLEX"
+	msgRankIsZero           = "ERR RANK can't be zero: use 1 to start from the first match, 2 from the second ... or use negative to start from the end of the list"
+	msgCountIsNegative      = "ERR COUNT can't be negative"
+	msgMaxLengthIsNegative  = "ERR MAXLEN can't be negative"
 )
 
 func errWrongNumber(cmd string) string {
@@ -134,14 +137,19 @@ func blocking(
 	m.Lock()
 	defer m.Unlock()
 	for {
-		done := cb(c, ctx)
-		if done {
+		if c.Closed() {
 			return
 		}
 
 		if m.Ctx.Err() != nil {
 			return
 		}
+
+		done := cb(c, ctx)
+		if done {
+			return
+		}
+
 		if timedOut {
 			onTimeout(c)
 			return

@@ -217,6 +217,8 @@ func redisToLua(l *lua.LState, res []interface{}) *lua.LTable {
 			v = lua.LFalse
 		} else {
 			switch et := e.(type) {
+			case int:
+				v = lua.LNumber(et)
 			case int64:
 				v = lua.LNumber(et)
 			case []uint8:

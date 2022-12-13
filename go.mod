@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
-	github.com/alicebob/miniredis/v2 v2.22.0
+	github.com/alicebob/miniredis/v2 v2.23.1
 	github.com/armon/go-metrics v0.4.0
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
@@ -55,17 +55,17 @@ require (
 	go.etcd.io/etcd/client/pkg/v3 v3.5.6
 	go.etcd.io/etcd/client/v3 v3.5.4
 	go.opentelemetry.io/contrib/propagators/aws v1.11.1
-	go.opentelemetry.io/otel v1.11.1
+	go.opentelemetry.io/otel v1.11.2
 	go.opentelemetry.io/otel/bridge/opentracing v1.11.1-0.20221013154440-84e28fd3bdb1
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.1
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.0
-	go.opentelemetry.io/otel/sdk v1.11.1
-	go.opentelemetry.io/otel/trace v1.11.1
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.2
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.2
+	go.opentelemetry.io/otel/sdk v1.11.2
+	go.opentelemetry.io/otel/trace v1.11.2
 	go.uber.org/atomic v1.10.0
 	golang.org/x/net v0.2.0
 	golang.org/x/sync v0.0.0-20220907140024-f12130a52804
 	golang.org/x/time v0.0.0-20220920022843-2ce7c2934d45
-	google.golang.org/grpc v1.50.1
+	google.golang.org/grpc v1.51.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	sigs.k8s.io/yaml v1.3.0
@@ -99,7 +99,7 @@ require (
 	github.com/aws/smithy-go v1.11.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
-	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
+	github.com/cenkalti/backoff/v4 v4.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
@@ -184,7 +184,7 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/vimeo/galaxycache v0.0.0-20210323154928-b7e5d71c067a // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
-	github.com/yuin/gopher-lua v0.0.0-20210529063254-f4c35e4016d9 // indirect
+	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
 	go.mongodb.org/mongo-driver v1.10.2 // indirect
 	go.opencensus.io v0.23.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.36.0 // indirect
@@ -192,7 +192,7 @@ require (
 	go.opentelemetry.io/contrib/propagators/b3 v1.9.0 // indirect
 	go.opentelemetry.io/contrib/propagators/jaeger v1.9.0 // indirect
 	go.opentelemetry.io/contrib/propagators/ot v1.9.0 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.1 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.2 // indirect
 	go.opentelemetry.io/otel/metric v0.32.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	go.uber.org/goleak v1.2.0 // indirect

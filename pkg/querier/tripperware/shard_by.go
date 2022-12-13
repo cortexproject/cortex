@@ -10,6 +10,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	cquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -37,6 +38,7 @@ type shardBy struct {
 
 func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
+	stats := querier_stats.FromContext(ctx)
 
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -53,6 +55,12 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	if err != nil {
 		level.Warn(logger).Log("msg", "error analyzing query", "q", r.GetQuery(), "err", err)
 	}
+
+	stats.AddExtraFields(
+		"shard_by.is_shardable", analysis.IsShardable(),
+		"shard_by.num_shards", numShards,
+		"shard_by.sharding_labels", analysis.ShardingLabels(),
+	)
 
 	if err != nil || !analysis.IsShardable() {
 		return s.next.Do(ctx, r)

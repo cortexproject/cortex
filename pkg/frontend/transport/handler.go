@@ -112,7 +112,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 
 func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var (
-		stats       *querier_stats.Stats
+		stats       *querier_stats.QueryStats
 		queryString url.Values
 	)
 
@@ -185,7 +185,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.Stats, error error) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -214,7 +214,9 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_series_count", numSeries,
 		"fetched_chunks_bytes", numBytes,
 		"fetched_data_bytes", numDataBytes,
-	}, formatQueryString(queryString)...)
+	}, stats.LoadExtraFields()...)
+
+	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	if error != nil {
 		s, ok := status.FromError(error)
@@ -264,7 +266,7 @@ func writeError(w http.ResponseWriter, err error) {
 	server.WriteError(w, err)
 }
 
-func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.Stats) {
+func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.QueryStats) {
 	if stats != nil {
 		parts := make([]string, 0)
 		parts = append(parts, statsValue("querier_wall_time", stats.LoadWallTime()))

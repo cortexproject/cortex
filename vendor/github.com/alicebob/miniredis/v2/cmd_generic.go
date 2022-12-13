@@ -13,8 +13,8 @@ import (
 
 // commandsGeneric handles EXPIRE, TTL, PERSIST, &c.
 func commandsGeneric(m *Miniredis) {
+	m.srv.Register("COPY", m.cmdCopy)
 	m.srv.Register("DEL", m.cmdDel)
-	m.srv.Register("UNLINK", m.cmdDel)
 	// DUMP
 	m.srv.Register("EXISTS", m.cmdExists)
 	m.srv.Register("EXPIRE", makeCmdExpire(m, false, time.Second))
@@ -31,12 +31,12 @@ func commandsGeneric(m *Miniredis) {
 	m.srv.Register("RENAME", m.cmdRename)
 	m.srv.Register("RENAMENX", m.cmdRenamenx)
 	// RESTORE
-	// SORT
 	m.srv.Register("TOUCH", m.cmdTouch)
 	m.srv.Register("TTL", m.cmdTTL)
 	m.srv.Register("TYPE", m.cmdType)
 	m.srv.Register("SCAN", m.cmdScan)
-	m.srv.Register("COPY", m.cmdCopy)
+	// SORT
+	m.srv.Register("UNLINK", m.cmdDel)
 }
 
 // generic expire command for EXPIRE, PEXPIRE, EXPIREAT, PEXPIREAT
@@ -56,12 +56,12 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 			return
 		}
 
-		key := args[0]
-		value := args[1]
-		i, err := strconv.Atoi(value)
-		if err != nil {
-			setDirty(c)
-			c.WriteError(msgInvalidInt)
+		var opts struct {
+			key   string
+			value int
+		}
+		opts.key = args[0]
+		if ok := optInt(c, args[1], &opts.value); !ok {
 			return
 		}
 
@@ -69,17 +69,17 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 			db := m.db(ctx.selectedDB)
 
 			// Key must be present.
-			if _, ok := db.keys[key]; !ok {
+			if _, ok := db.keys[opts.key]; !ok {
 				c.WriteInt(0)
 				return
 			}
 			if unix {
-				db.ttl[key] = m.at(i, d)
+				db.ttl[opts.key] = m.at(opts.value, d)
 			} else {
-				db.ttl[key] = time.Duration(i) * d
+				db.ttl[opts.key] = time.Duration(opts.value) * d
 			}
-			db.keyVersion[key]++
-			db.checkTTL(key)
+			db.keyVersion[opts.key]++
+			db.checkTTL(opts.key)
 			c.WriteInt(1)
 		})
 	}
@@ -318,21 +318,23 @@ func (m *Miniredis) cmdMove(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	key := args[0]
-	targetDB, err := strconv.Atoi(args[1])
-	if err != nil {
-		targetDB = 0
+	var opts struct {
+		key      string
+		targetDB int
 	}
 
+	opts.key = args[0]
+	opts.targetDB, _ = strconv.Atoi(args[1])
+
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		if ctx.selectedDB == targetDB {
+		if ctx.selectedDB == opts.targetDB {
 			c.WriteError("ERR source and destination objects are the same")
 			return
 		}
 		db := m.db(ctx.selectedDB)
-		targetDB := m.db(targetDB)
+		targetDB := m.db(opts.targetDB)
 
-		if !db.move(key, targetDB) {
+		if !db.move(opts.key, targetDB) {
 			c.WriteInt(0)
 			return
 		}
@@ -413,17 +415,23 @@ func (m *Miniredis) cmdRename(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	from, to := args[0], args[1]
+	opts := struct {
+		from string
+		to   string
+	}{
+		from: args[0],
+		to:   args[1],
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(from) {
+		if !db.exists(opts.from) {
 			c.WriteError(msgKeyNotFound)
 			return
 		}
 
-		db.rename(from, to)
+		db.rename(opts.from, opts.to)
 		c.WriteOK()
 	})
 }
@@ -442,22 +450,28 @@ func (m *Miniredis) cmdRenamenx(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	from, to := args[0], args[1]
+	opts := struct {
+		from string
+		to   string
+	}{
+		from: args[0],
+		to:   args[1],
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		if !db.exists(from) {
+		if !db.exists(opts.from) {
 			c.WriteError(msgKeyNotFound)
 			return
 		}
 
-		if db.exists(to) {
+		if db.exists(opts.to) {
 			c.WriteInt(0)
 			return
 		}
 
-		db.rename(from, to)
+		db.rename(opts.from, opts.to)
 		c.WriteInt(1)
 	})
 }
@@ -476,22 +490,20 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	cursor, err := strconv.Atoi(args[0])
-	if err != nil {
-		setDirty(c)
-		c.WriteError(msgInvalidCursor)
+	var opts struct {
+		cursor    int
+		withMatch bool
+		match     string
+		withType  bool
+		_type     string
+	}
+
+	if ok := optIntErr(c, args[0], &opts.cursor, msgInvalidCursor); !ok {
 		return
 	}
 	args = args[1:]
 
 	// MATCH, COUNT and TYPE options
-	var (
-		withMatch bool
-		match     string
-		withType  bool
-		_type     string
-	)
-
 	for len(args) > 0 {
 		if strings.ToLower(args[0]) == "count" {
 			// we do nothing with count
@@ -514,8 +526,8 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			withMatch = true
-			match, args = args[1], args[2:]
+			opts.withMatch = true
+			opts.match, args = args[1], args[2:]
 			continue
 		}
 		if strings.ToLower(args[0]) == "type" {
@@ -524,8 +536,8 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			withType = true
-			_type, args = strings.ToLower(args[1]), args[2:]
+			opts.withType = true
+			opts._type, args = strings.ToLower(args[1]), args[2:]
 			continue
 		}
 		setDirty(c)
@@ -537,7 +549,7 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 		db := m.db(ctx.selectedDB)
 		// We return _all_ (matched) keys every time.
 
-		if cursor != 0 {
+		if opts.cursor != 0 {
 			// Invalid cursor.
 			c.WriteLen(2)
 			c.WriteBulk("0") // no next cursor
@@ -547,11 +559,11 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 
 		var keys []string
 
-		if withType {
+		if opts.withType {
 			keys = make([]string, 0)
 			for k, t := range db.keys {
 				// type must be given exactly; no pattern matching is performed
-				if t == _type {
+				if t == opts._type {
 					keys = append(keys, k)
 				}
 			}
@@ -560,8 +572,8 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 			keys = db.allKeys()
 		}
 
-		if withMatch {
-			keys, _ = matchKeys(keys, match)
+		if opts.withMatch {
+			keys, _ = matchKeys(keys, opts.match)
 		}
 
 		c.WriteLen(2)

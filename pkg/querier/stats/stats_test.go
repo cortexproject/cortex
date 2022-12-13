@@ -48,14 +48,14 @@ func TestQueryStats_AddExtraFields(t *testing.T) {
 		stats.AddExtraFields("a", "b")
 		stats.AddExtraFields("c")
 
-		assert.ElementsMatch(t, []interface{}{"a", "b", "c", ""}, stats.LoadExtraFields())
+		checkExtraFields(t, []interface{}{"a", "b", "c", ""}, stats.LoadExtraFields())
 	})
 
 	t.Run("add and load extra fields nil receiver", func(t *testing.T) {
 		var stats *QueryStats
 		stats.AddExtraFields("a", "b")
 
-		assert.ElementsMatch(t, []interface{}{}, stats.LoadExtraFields())
+		checkExtraFields(t, []interface{}{}, stats.LoadExtraFields())
 	})
 }
 
@@ -116,7 +116,7 @@ func TestStats_Merge(t *testing.T) {
 		assert.Equal(t, uint64(110), stats1.LoadFetchedSeries())
 		assert.Equal(t, uint64(142), stats1.LoadFetchedChunkBytes())
 		assert.Equal(t, uint64(201), stats1.LoadFetchedDataBytes())
-		assert.ElementsMatch(t, []interface{}{"a", "b", "d", "c"}, stats1.LoadExtraFields())
+		checkExtraFields(t, []interface{}{"a", "b", "c", "d"}, stats1.LoadExtraFields())
 	})
 
 	t.Run("merge two nil stats objects", func(t *testing.T) {
@@ -129,6 +129,19 @@ func TestStats_Merge(t *testing.T) {
 		assert.Equal(t, uint64(0), stats1.LoadFetchedSeries())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedChunkBytes())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedDataBytes())
-		assert.Equal(t, []interface{}{}, stats1.LoadExtraFields())
+		checkExtraFields(t, []interface{}{}, stats1.LoadExtraFields())
 	})
+}
+
+func checkExtraFields(t *testing.T, expected, actual []interface{}) {
+	assert.Equal(t, len(expected), len(actual))
+	expectedMap := map[string]string{}
+	actualMap := map[string]string{}
+
+	for i := 0; i < len(expected); i += 2 {
+		expectedMap[expected[i].(string)] = expected[i+1].(string)
+		actualMap[actual[i].(string)] = actual[i+1].(string)
+	}
+
+	assert.Equal(t, expectedMap, actualMap)
 }

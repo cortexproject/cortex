@@ -48,7 +48,7 @@ func TestQueryStats_AddExtraFields(t *testing.T) {
 		stats.AddExtraFields("a", "b")
 		stats.AddExtraFields("c")
 
-		assert.Equal(t, []interface{}{"a", "b", "c", ""}, stats.LoadExtraFields())
+		assert.ElementsMatch(t, []interface{}{"a", "b", "c", ""}, stats.LoadExtraFields())
 	})
 
 	t.Run("add and load extra fields nil receiver", func(t *testing.T) {

@@ -929,7 +929,7 @@ go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 # go.opentelemetry.io/contrib/propagators/autoprop v0.34.0
 ## explicit; go 1.17
 go.opentelemetry.io/contrib/propagators/autoprop
-# go.opentelemetry.io/contrib/propagators/aws v1.11.1
+# go.opentelemetry.io/contrib/propagators/aws v1.12.0
 ## explicit; go 1.18
 go.opentelemetry.io/contrib/propagators/aws/xray
 # go.opentelemetry.io/contrib/propagators/b3 v1.9.0

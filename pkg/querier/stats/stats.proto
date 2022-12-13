@@ -6,6 +6,7 @@ option go_package = "stats";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/any.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -19,4 +20,6 @@ message Stats {
   uint64 fetched_chunk_bytes = 3;
   // The number of bytes of data fetched for the query
   uint64 fetched_data_bytes = 4;
+  // Extra fields to be reported on the stats log
+  map<string, string> extra_fields = 5;
 }

@@ -152,7 +152,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 }
 
 func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
-	var stats *querier_stats.Stats
+	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}

@@ -39,7 +39,7 @@ message FrontendToClient {
 message ClientToFrontend {
   httpgrpc.HTTPResponse httpResponse = 1;
   string clientID = 2;
-  stats.Stats stats = 3;
+  stats.Stats stats = 3[(gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/querier/stats.QueryStats"];
 }
 
 message NotifyClientShutdownRequest {

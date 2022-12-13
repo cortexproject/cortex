@@ -88,7 +88,7 @@ func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, quer
 	_, _ = f.QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 		QueryID:      queryID,
 		HttpResponse: resp,
-		Stats:        &stats.Stats{},
+		Stats:        &stats.QueryStats{},
 	})
 }
 

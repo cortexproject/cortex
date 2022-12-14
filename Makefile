@@ -9,6 +9,9 @@
 VERSION=$(shell cat "./VERSION" 2> /dev/null)
 GOPROXY_VALUE=$(shell go env GOPROXY)
 
+# ARCHS
+ARCHS       = amd64 arm64
+
 # Boiler plate for building Docker containers.
 # All this must go at top of file I'm afraid.
 IMAGE_PREFIX ?= quay.io/cortexproject/
@@ -160,8 +163,11 @@ else
 exes: $(EXES)
 
 $(EXES):
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@-amd64 ./$(@D)
-	CGO_ENABLED=0 GOARCH=arm64 GOOS=linux go build $(GO_FLAGS) -o $@-arm64 ./$(@D)
+	@for arch in $(ARCHS); do \
+  		echo "Building $@ for $$arch";\
+  		CGO_ENABLED=0 GOARCH=$$arch GOOS=linux go build $(GO_FLAGS) -o $@-$$arch ./$(@D); \
+  	done
+
 
 protos: $(PROTO_GOS)
 
@@ -273,18 +279,20 @@ clean-protos:
 
 save-images:
 	@mkdir -p docker-images
-	for image_name in $(IMAGE_NAMES); do \
+	@for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker save $$image_name:$(IMAGE_TAG)-amd64 -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-amd64; \
-			docker save $$image_name:$(IMAGE_TAG)-arm64 -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-arm64; \
+		  	for arch in $(ARCHS); do \
+				docker save $$image_name:$(IMAGE_TAG)-$$arch -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-$$arch; \
+			done;\
 		fi \
 	done
 
 load-images:
-	for image_name in $(IMAGE_NAMES); do \
+	@for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-amd64; \
-			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-arm64; \
+		  	for arch in $(ARCHS); do \
+				docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-$$arch; \
+			done;\
 		fi \
 	done
 

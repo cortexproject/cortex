@@ -37,13 +37,14 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streaming bool, streamingMetdata bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streaming bool, streamingMetdata bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, queryStoreForLabels bool) QueryableWithFilter {
 	return distributorQueryable{
 		distributor:          distributor,
 		streaming:            streaming,
 		streamingMetdata:     streamingMetdata,
 		iteratorFn:           iteratorFn,
 		queryIngestersWithin: queryIngestersWithin,
+		queryStoreForLabels:  queryStoreForLabels,
 	}
 }
 
@@ -53,6 +54,7 @@ type distributorQueryable struct {
 	streamingMetdata     bool
 	iteratorFn           chunkIteratorFunc
 	queryIngestersWithin time.Duration
+	queryStoreForLabels  bool
 }
 
 func (d distributorQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
@@ -65,6 +67,7 @@ func (d distributorQueryable) Querier(ctx context.Context, mint, maxt int64) (st
 		streamingMetadata:    d.streamingMetdata,
 		chunkIterFn:          d.iteratorFn,
 		queryIngestersWithin: d.queryIngestersWithin,
+		queryStoreForLabels:  d.queryStoreForLabels,
 	}, nil
 }
 
@@ -81,6 +84,7 @@ type distributorQuerier struct {
 	streamingMetadata    bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration
+	queryStoreForLabels  bool
 }
 
 // Select implements storage.Querier interface.
@@ -95,11 +99,33 @@ func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, ma
 	}
 
 	// If the querier receives a 'series' query, it means only metadata is needed.
-	// For this specific case we shouldn't apply the queryIngestersWithin
-	// time range manipulation, otherwise we'll end up returning no series at all for
+	// For the specific case where queryStoreForLabels is disabled
+	// we shouldn't apply the queryIngestersWithin time range manipulation.
+	// Otherwise we'll end up returning no series at all for
 	// older time ranges (while in Cortex we do ignore the start/end and always return
 	// series in ingesters).
-	// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
+	shouldNotQueryStoreForMetadata := (sp != nil && sp.Func == "series" && !q.queryStoreForLabels)
+
+	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
+	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
+	// optimization is particularly important for the blocks storage where the blocks retention in the
+	// ingesters could be way higher than queryIngestersWithin.
+	if q.queryIngestersWithin > 0 && !shouldNotQueryStoreForMetadata {
+		now := time.Now()
+		origMinT := minT
+		minT = math.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+
+		if origMinT != minT {
+			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)
+		}
+
+		if minT > maxT {
+			level.Debug(log).Log("msg", "empty query time range after min time manipulation")
+			return storage.EmptySeriesSet()
+		}
+	}
+
+	// In the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
 	if sp != nil && sp.Func == "series" {
 		var (
@@ -117,25 +143,6 @@ func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, ma
 			return storage.ErrSeriesSet(err)
 		}
 		return series.MetricsToSeriesSet(sortSeries, ms)
-	}
-
-	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
-	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
-	// optimization is particularly important for the blocks storage where the blocks retention in the
-	// ingesters could be way higher than queryIngestersWithin.
-	if q.queryIngestersWithin > 0 {
-		now := time.Now()
-		origMinT := minT
-		minT = math.Max64(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
-
-		if origMinT != minT {
-			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)
-		}
-
-		if minT > maxT {
-			level.Debug(log).Log("msg", "empty query time range after min time manipulation")
-			return storage.EmptySeriesSet()
-		}
 	}
 
 	if q.streaming {

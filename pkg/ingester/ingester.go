@@ -106,6 +106,10 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
+	// Injected at runtime and read from querier config.
+	QueryStoreForLabels  bool          `yaml:"-"`
+	QueryIngestersWithin time.Duration `yaml:"-"`
+
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
@@ -1303,7 +1307,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 		return &client.LabelValuesResponse{}, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, err
 	}
@@ -1364,7 +1368,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 		return &client.LabelNamesResponse{}, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, err
 	}
@@ -1432,7 +1436,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 		return nil, err
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, err
 	}
@@ -2564,7 +2568,13 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.
-func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB) (mint, maxt int64, err error) {
+func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryStoreForLabels bool, queryIngestersWithin time.Duration) (mint, maxt int64, err error) {
+	if queryIngestersWithin > 0 && queryStoreForLabels {
+		// If the feature for querying metadata from store-gateway is enabled,
+		// then we don't want to manipulate the mint and maxt.
+		return
+	}
+
 	// Ingesters are run with limited retention and we don't support querying the store-gateway for labels yet.
 	// This means if someone loads a dashboard that is outside the range of the ingester, and we only return the
 	// data for the timerange requested (which will be empty), the dashboards will break. To fix this we should

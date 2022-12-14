@@ -38,10 +38,12 @@ push_image() {
 
     # remove the quay prefix and push to docker hub
     docker_hub_image=${image#$QUAY_PREFIX}
-    docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}
+    for arch in amd64 arm64; do \
+      docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}-$arch
 
-    echo "Pushing ${docker_hub_image}:${IMAGE_TAG}"
-    docker push ${docker_hub_image}:${IMAGE_TAG}
+      echo "Pushing ${docker_hub_image}:${IMAGE_TAG}-$arch"
+      docker push ${docker_hub_image}:${IMAGE_TAG}-$arch
+    done;
 }
 
 for image in ${IMAGES}; do

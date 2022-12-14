@@ -1733,10 +1733,12 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		from     int64
-		to       int64
-		matchers []*client.LabelMatchers
-		expected []*cortexpb.Metric
+		from                 int64
+		to                   int64
+		matchers             []*client.LabelMatchers
+		expected             []*cortexpb.Metric
+		queryStoreForLabels  bool
+		queryIngestersWithin time.Duration
 	}{
 		"should return an empty response if no metric match": {
 			from: math.MinInt64,
@@ -1793,6 +1795,18 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[1].lbls)},
 			},
+		},
+		"should filter metrics by time range if queryStoreForLabels and queryIngestersWithin is enabled": {
+			from: 100,
+			to:   1000,
+			matchers: []*client.LabelMatchers{{
+				Matchers: []*client.LabelMatcher{
+					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
+				},
+			}},
+			expected:             []*cortexpb.Metric{},
+			queryStoreForLabels:  true,
+			queryIngestersWithin: time.Hour,
 		},
 		"should not return duplicated metrics on overlapping matchers": {
 			from: math.MinInt64,
@@ -1860,7 +1874,8 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				EndTimestampMs:   testData.to,
 				MatchersSet:      testData.matchers,
 			}
-
+			i.cfg.QueryStoreForLabels = testData.queryStoreForLabels
+			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)

@@ -1,6 +1,7 @@
-FROM       --platform=$BUILDPLATFORM alpine:3.14
+FROM       alpine:3.14
+ARG TARGETARCH
 RUN        apk add --no-cache ca-certificates
-COPY       test-exporter /
+COPY       test-exporter-$TARGETARCH /test-exporter
 ENTRYPOINT ["/test-exporter"]
 
 ARG revision

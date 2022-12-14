@@ -37,7 +37,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # Dependencies (i.e. things that go in the image) still need to be explicitly
 # declared.
 %/$(UPTODATE): %/Dockerfile
-	$(SUDO) docker buildx build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG) $(@D)/
+	$(SUDO) docker buildx build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-amd64 $(@D)/
 	$(SUDO) docker buildx build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-arm64 $(@D)/
 	@echo
 	@echo Please use push-multiarch-build-image to build and push build image for all supported architectures.
@@ -160,7 +160,8 @@ else
 exes: $(EXES)
 
 $(EXES):
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@-amd64 ./$(@D)
+	CGO_ENABLED=0 GOARCH=arm64 GOOS=linux go build $(GO_FLAGS) -o $@-arm64 ./$(@D)
 
 protos: $(PROTO_GOS)
 
@@ -274,7 +275,7 @@ save-images:
 	@mkdir -p docker-images
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker save $$image_name:$(IMAGE_TAG) -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker save $$image_name:$(IMAGE_TAG)-amd64 -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-amd64; \
 			docker save $$image_name:$(IMAGE_TAG)-arm64 -o docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-arm64; \
 		fi \
 	done
@@ -282,7 +283,7 @@ save-images:
 load-images:
 	for image_name in $(IMAGE_NAMES); do \
 		if ! echo $$image_name | grep build; then \
-			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG); \
+			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-amd64; \
 			docker load -i docker-images/$$(echo $$image_name | tr "/" _):$(IMAGE_TAG)-arm64; \
 		fi \
 	done

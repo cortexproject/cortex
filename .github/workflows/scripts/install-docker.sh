@@ -8,3 +8,4 @@ mkdir -vp ~/.docker/cli-plugins/
 curl --silent -L "https://github.com/docker/buildx/releases/download/v0.3.0/buildx-v0.3.0.linux-amd64" > ~/.docker/cli-plugins/docker-buildx
 chmod a+x ~/.docker/cli-plugins/docker-buildx
 mv /tmp/docker/* /usr/bin
+docker run --privileged --rm tonistiigi/binfmt --install all

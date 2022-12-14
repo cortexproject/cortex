@@ -1,6 +1,7 @@
-FROM       --platform=$BUILDPLATFORM alpine:3.14
+FROM       alpine:3.14
+ARG TARGETARCH
 RUN        apk add --no-cache ca-certificates
-COPY       thanosconvert /
+COPY       thanosconvert-$TARGETARCH /thanosconvert
 ENTRYPOINT ["/thanosconvert"]
 
 ARG revision

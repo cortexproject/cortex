@@ -1,4 +1,4 @@
-FROM       alpine:3.14
+FROM       --platform=$BUILDPLATFORM alpine:3.14
 RUN        apk add --no-cache ca-certificates
 COPY       test-exporter /
 ENTRYPOINT ["/test-exporter"]

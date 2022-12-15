@@ -125,7 +125,7 @@ Current object storage client implementations:
 | [OpenStack Swift](#openstack-swift)                                                       | Beta (working PoC) | Production Usage      | yes               | @FUSAKLA                         |
 | [Tencent COS](#tencent-cos)                                                               | Beta               | Production Usage      | no                | @jojohappy,@hanjm                |
 | [AliYun OSS](#aliyun-oss)                                                                 | Beta               | Production Usage      | no                | @shaulboozhiao,@wujinhu          |
-| [Baidu BOS](#baidu-bos)                                                                   | Beta               | Production Usage      | no                | ??                               |
+| [Baidu BOS](#baidu-bos)                                                                   | Beta               | Production Usage      | no                | @yahaa                           |
 | [Local Filesystem](#filesystem)                                                           | Stable             | Testing and Demo only | yes               | @bwplotka                        |
 | [Oracle Cloud Infrastructure Object Storage](#oracle-cloud-infrastructure-object-storage) | Beta               | Production Usage      | yes               | @aarontams,@gaurav-05,@ericrrath |
 
@@ -473,6 +473,9 @@ config:
   password: ""
   domain_id: ""
   domain_name: ""
+  application_credential_id: ""
+  application_credential_name: ""
+  application_credential_secret: ""
   project_id: ""
   project_name: ""
   project_domain_id: ""

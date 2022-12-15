@@ -43,7 +43,7 @@ func getContainerClient(conf Config) (*azblob.ContainerClient, error) {
 		if err != nil {
 			return nil, err
 		}
-		containerClient, err := azblob.NewContainerClientWithSharedKey(containerURL, cred, nil)
+		containerClient, err := azblob.NewContainerClientWithSharedKey(containerURL, cred, opt)
 		if err != nil {
 			return nil, err
 		}

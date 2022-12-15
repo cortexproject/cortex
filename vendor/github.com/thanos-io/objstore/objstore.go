@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/logerrcapture"
+	"github.com/efficientgo/core/logerrcapture"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"

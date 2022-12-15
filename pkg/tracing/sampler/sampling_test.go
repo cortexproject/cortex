@@ -52,16 +52,16 @@ func Test_ShouldSample(t *testing.T) {
 			totalSampled := 0
 			s := NewRandomRatioBased(tt.fraction)
 			for i := 0; i < totalIterations; i++ {
-				traceId, _ := generator.NewIDs(context.Background())
+				traceID, _ := generator.NewIDs(context.Background())
 				r := s.ShouldSample(
 					sdktrace.SamplingParameters{
 						ParentContext: parentCtx,
-						TraceID:       traceId,
+						TraceID:       traceID,
 						Name:          "test",
 						Kind:          trace.SpanKindServer,
 					})
 				if r.Decision == sdktrace.RecordAndSample {
-					totalSampled += 1
+					totalSampled++
 				}
 			}
 

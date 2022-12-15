@@ -1,6 +1,8 @@
 FROM       alpine:3.14
+ARG TARGETARCH
+
 RUN        apk add --no-cache ca-certificates
-COPY       query-tee /
+COPY       query-tee-$TARGETARCH /query-tee
 ENTRYPOINT ["/query-tee"]
 
 ARG revision

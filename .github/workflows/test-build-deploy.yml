@@ -207,8 +207,8 @@ jobs:
           GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
 
   deploy:
-    needs: [build]
-    if: github.repository == 'cortexproject/cortex'
+    needs: [build, test, lint, integration, integration-configs-db]
+    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
       image: quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0

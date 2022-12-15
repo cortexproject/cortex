@@ -1,6 +1,8 @@
 # Changelog
 
 ## master / unreleased
+## 1.14.1 2022-12-18
+* [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 
 ## 1.14.0 2022-12-02
 

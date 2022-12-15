@@ -2,24 +2,15 @@ package sampler
 
 import (
 	"context"
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/contrib/propagators/aws/xray"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
 
-type mockGenerator struct {
-	mockedValue float64
-}
-
-func (g *mockGenerator) Float64() float64 {
-	return g.mockedValue
-}
-
 func Test_ShouldSample(t *testing.T) {
-	traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
 	parentCtx := trace.ContextWithSpanContext(
 		context.Background(),
 		trace.NewSpanContext(trace.SpanContextConfig{
@@ -27,43 +18,41 @@ func Test_ShouldSample(t *testing.T) {
 		}),
 	)
 
+	generator := xray.NewIDGenerator()
+
 	tests := []struct {
-		name             string
-		samplingDecision sdktrace.SamplingDecision
-		fraction         float64
-		generator        randGenerator
+		name     string
+		fraction float64
 	}{
 		{
-			name:             "should always sample",
-			samplingDecision: sdktrace.RecordAndSample,
-			fraction:         1,
-			generator:        rand.New(rand.NewSource(rand.Int63())),
+			name:     "should always sample",
+			fraction: 1,
 		},
 		{
-			name:             "should nerver sample",
-			samplingDecision: sdktrace.Drop,
-			fraction:         0,
-			generator:        rand.New(rand.NewSource(rand.Int63())),
+			name:     "should nerver sample",
+			fraction: 0,
 		},
 		{
-			name:             "should sample when fraction is above generated",
-			samplingDecision: sdktrace.RecordAndSample,
-			fraction:         0.5,
-			generator:        &mockGenerator{0.2},
+			name:     "should sample 50%",
+			fraction: 0.5,
 		},
 		{
-			name:             "should not sample when fraction is not above generated",
-			samplingDecision: sdktrace.Drop,
-			fraction:         0.5,
-			generator:        &mockGenerator{0.8},
+			name:     "should sample 10%",
+			fraction: 0.1,
+		},
+		{
+			name:     "should sample 1%",
+			fraction: 0.01,
 		},
 	}
 
+	totalIterations := 10000
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewRandomRatioBased(tt.fraction, tt.generator)
-			for i := 0; i < 100; i++ {
-
+			totalSampled := 0
+			s := NewXrayTraceIDRatioBased(tt.fraction)
+			for i := 0; i < totalIterations; i++ {
+				traceID, _ := generator.NewIDs(context.Background())
 				r := s.ShouldSample(
 					sdktrace.SamplingParameters{
 						ParentContext: parentCtx,
@@ -71,9 +60,14 @@ func Test_ShouldSample(t *testing.T) {
 						Name:          "test",
 						Kind:          trace.SpanKindServer,
 					})
-
-				require.Equal(t, tt.samplingDecision, r.Decision)
+				if r.Decision == sdktrace.RecordAndSample {
+					totalSampled++
+				}
 			}
+
+			tolerance := 0.1
+			expected := tt.fraction * float64(totalIterations)
+			require.InDelta(t, expected, totalSampled, expected*tolerance)
 		})
 	}
 }

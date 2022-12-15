@@ -2054,10 +2054,10 @@ func testPutObjectWithChecksums() {
 		ChecksumSHA1   string
 		ChecksumSHA256 string
 	}{
-		{header: "x-amz-checksum-crc32", hasher: crc32.NewIEEE(), ChecksumCRC32: "yXTVFQ=="},
-		{header: "x-amz-checksum-crc32c", hasher: crc32.New(crc32.MakeTable(crc32.Castagnoli)), ChecksumCRC32C: "zXqj7Q=="},
-		{header: "x-amz-checksum-sha1", hasher: sha1.New(), ChecksumSHA1: "SwmAs3F75Sw/sE4dHehkvYtn9UE="},
-		{header: "x-amz-checksum-sha256", hasher: sha256.New(), ChecksumSHA256: "8Tlu9msuw/cpmWNEnQx97axliBjiE6gK1doiY0N9WuA="},
+		{header: "x-amz-checksum-crc32", hasher: crc32.NewIEEE()},
+		{header: "x-amz-checksum-crc32c", hasher: crc32.New(crc32.MakeTable(crc32.Castagnoli))},
+		{header: "x-amz-checksum-sha1", hasher: sha1.New()},
+		{header: "x-amz-checksum-sha256", hasher: sha256.New()},
 	}
 
 	for i, test := range tests {
@@ -2113,10 +2113,10 @@ func testPutObjectWithChecksums() {
 			logError(testName, function, args, startTime, "", "PutObject failed", err)
 			return
 		}
-		cmpChecksum(resp.ChecksumSHA256, test.ChecksumSHA256)
-		cmpChecksum(resp.ChecksumSHA1, test.ChecksumSHA1)
-		cmpChecksum(resp.ChecksumCRC32, test.ChecksumCRC32)
-		cmpChecksum(resp.ChecksumCRC32C, test.ChecksumCRC32C)
+		cmpChecksum(resp.ChecksumSHA256, meta["x-amz-checksum-sha256"])
+		cmpChecksum(resp.ChecksumSHA1, meta["x-amz-checksum-sha1"])
+		cmpChecksum(resp.ChecksumCRC32, meta["x-amz-checksum-crc32"])
+		cmpChecksum(resp.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
 
 		// Read the data back
 		gopts := minio.GetObjectOptions{Checksum: true}
@@ -2132,10 +2132,10 @@ func testPutObjectWithChecksums() {
 			return
 		}
 
-		cmpChecksum(st.ChecksumSHA256, test.ChecksumSHA256)
-		cmpChecksum(st.ChecksumSHA1, test.ChecksumSHA1)
-		cmpChecksum(st.ChecksumCRC32, test.ChecksumCRC32)
-		cmpChecksum(st.ChecksumCRC32C, test.ChecksumCRC32C)
+		cmpChecksum(st.ChecksumSHA256, meta["x-amz-checksum-sha256"])
+		cmpChecksum(st.ChecksumSHA1, meta["x-amz-checksum-sha1"])
+		cmpChecksum(st.ChecksumCRC32, meta["x-amz-checksum-crc32"])
+		cmpChecksum(st.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
 
 		if st.Size != int64(bufSize) {
 			logError(testName, function, args, startTime, "", "Number of bytes returned by PutObject does not match GetObject, expected "+string(bufSize)+" got "+string(st.Size), err)
@@ -4204,20 +4204,12 @@ func testPresignedPostPolicy() {
 		logError(testName, function, args, startTime, "", "SetKey did not fail for invalid conditions", err)
 		return
 	}
-	if err := policy.SetKeyStartsWith(""); err == nil {
-		logError(testName, function, args, startTime, "", "SetKeyStartsWith did not fail for invalid conditions", err)
-		return
-	}
 	if err := policy.SetExpires(time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)); err == nil {
 		logError(testName, function, args, startTime, "", "SetExpires did not fail for invalid conditions", err)
 		return
 	}
 	if err := policy.SetContentType(""); err == nil {
 		logError(testName, function, args, startTime, "", "SetContentType did not fail for invalid conditions", err)
-		return
-	}
-	if err := policy.SetContentTypeStartsWith(""); err == nil {
-		logError(testName, function, args, startTime, "", "SetContentTypeStartsWith did not fail for invalid conditions", err)
 		return
 	}
 	if err := policy.SetContentLengthRange(1024*1024, 1024); err == nil {

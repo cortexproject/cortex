@@ -11,10 +11,9 @@ package logerrcapture
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/errors"
 )
 
 // Logger interface compatible with go-kit/logger.
@@ -42,7 +41,7 @@ func Do(logger Logger, doer doFunc, format string, a ...interface{}) {
 
 // ExhaustClose closes the io.ReadCloser with a log message on error but exhausts the reader before.
 func ExhaustClose(logger Logger, r io.ReadCloser, format string, a ...interface{}) {
-	_, err := io.Copy(ioutil.Discard, r)
+	_, err := io.Copy(io.Discard, r)
 	if err != nil {
 		_ = logger.Log("msg", "failed to exhaust reader, performance may be impeded", "err", err)
 	}

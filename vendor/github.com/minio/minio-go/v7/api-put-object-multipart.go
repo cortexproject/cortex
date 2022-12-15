@@ -159,8 +159,9 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 			crcBytes = append(crcBytes, cSum...)
 		}
 
+		p := uploadPartParams{bucketName: bucketName, objectName: objectName, uploadID: uploadID, reader: rd, partNumber: partNumber, md5Base64: md5Base64, sha256Hex: sha256Hex, size: int64(length), sse: opts.ServerSideEncryption, streamSha256: !opts.DisableContentSha256, customHeader: customHeader}
 		// Proceed to upload the part.
-		objPart, uerr := c.uploadPart(ctx, bucketName, objectName, uploadID, rd, partNumber, md5Base64, sha256Hex, int64(length), opts.ServerSideEncryption, !opts.DisableContentSha256, customHeader)
+		objPart, uerr := c.uploadPart(ctx, p)
 		if uerr != nil {
 			return UploadInfo{}, uerr
 		}
@@ -269,57 +270,73 @@ func (c *Client) initiateMultipartUpload(ctx context.Context, bucketName, object
 	return initiateMultipartUploadResult, nil
 }
 
+type uploadPartParams struct {
+	bucketName   string
+	objectName   string
+	uploadID     string
+	reader       io.Reader
+	partNumber   int
+	md5Base64    string
+	sha256Hex    string
+	size         int64
+	sse          encrypt.ServerSide
+	streamSha256 bool
+	customHeader http.Header
+	trailer      http.Header
+}
+
 // uploadPart - Uploads a part in a multipart upload.
-func (c *Client) uploadPart(ctx context.Context, bucketName string, objectName string, uploadID string, reader io.Reader, partNumber int, md5Base64 string, sha256Hex string, size int64, sse encrypt.ServerSide, streamSha256 bool, customHeader http.Header) (ObjectPart, error) {
+func (c *Client) uploadPart(ctx context.Context, p uploadPartParams) (ObjectPart, error) {
 	// Input validation.
-	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
+	if err := s3utils.CheckValidBucketName(p.bucketName); err != nil {
 		return ObjectPart{}, err
 	}
-	if err := s3utils.CheckValidObjectName(objectName); err != nil {
+	if err := s3utils.CheckValidObjectName(p.objectName); err != nil {
 		return ObjectPart{}, err
 	}
-	if size > maxPartSize {
-		return ObjectPart{}, errEntityTooLarge(size, maxPartSize, bucketName, objectName)
+	if p.size > maxPartSize {
+		return ObjectPart{}, errEntityTooLarge(p.size, maxPartSize, p.bucketName, p.objectName)
 	}
-	if size <= -1 {
-		return ObjectPart{}, errEntityTooSmall(size, bucketName, objectName)
+	if p.size <= -1 {
+		return ObjectPart{}, errEntityTooSmall(p.size, p.bucketName, p.objectName)
 	}
-	if partNumber <= 0 {
+	if p.partNumber <= 0 {
 		return ObjectPart{}, errInvalidArgument("Part number cannot be negative or equal to zero.")
 	}
-	if uploadID == "" {
+	if p.uploadID == "" {
 		return ObjectPart{}, errInvalidArgument("UploadID cannot be empty.")
 	}
 
 	// Get resources properly escaped and lined up before using them in http request.
 	urlValues := make(url.Values)
 	// Set part number.
-	urlValues.Set("partNumber", strconv.Itoa(partNumber))
+	urlValues.Set("partNumber", strconv.Itoa(p.partNumber))
 	// Set upload id.
-	urlValues.Set("uploadId", uploadID)
+	urlValues.Set("uploadId", p.uploadID)
 
 	// Set encryption headers, if any.
-	if customHeader == nil {
-		customHeader = make(http.Header)
+	if p.customHeader == nil {
+		p.customHeader = make(http.Header)
 	}
 	// https://docs.aws.amazon.com/AmazonS3/latest/API/mpUploadUploadPart.html
 	// Server-side encryption is supported by the S3 Multipart Upload actions.
 	// Unless you are using a customer-provided encryption key, you don't need
 	// to specify the encryption parameters in each UploadPart request.
-	if sse != nil && sse.Type() == encrypt.SSEC {
-		sse.Marshal(customHeader)
+	if p.sse != nil && p.sse.Type() == encrypt.SSEC {
+		p.sse.Marshal(p.customHeader)
 	}
 
 	reqMetadata := requestMetadata{
-		bucketName:       bucketName,
-		objectName:       objectName,
+		bucketName:       p.bucketName,
+		objectName:       p.objectName,
 		queryValues:      urlValues,
-		customHeader:     customHeader,
-		contentBody:      reader,
-		contentLength:    size,
-		contentMD5Base64: md5Base64,
-		contentSHA256Hex: sha256Hex,
-		streamSha256:     streamSha256,
+		customHeader:     p.customHeader,
+		contentBody:      p.reader,
+		contentLength:    p.size,
+		contentMD5Base64: p.md5Base64,
+		contentSHA256Hex: p.sha256Hex,
+		streamSha256:     p.streamSha256,
+		trailer:          p.trailer,
 	}
 
 	// Execute PUT on each part.
@@ -330,7 +347,7 @@ func (c *Client) uploadPart(ctx context.Context, bucketName string, objectName s
 	}
 	if resp != nil {
 		if resp.StatusCode != http.StatusOK {
-			return ObjectPart{}, httpRespToErrorResponse(resp, bucketName, objectName)
+			return ObjectPart{}, httpRespToErrorResponse(resp, p.bucketName, p.objectName)
 		}
 	}
 	// Once successfully uploaded, return completed part.
@@ -341,8 +358,8 @@ func (c *Client) uploadPart(ctx context.Context, bucketName string, objectName s
 		ChecksumSHA1:   h.Get("x-amz-checksum-sha1"),
 		ChecksumSHA256: h.Get("x-amz-checksum-sha256"),
 	}
-	objPart.Size = size
-	objPart.PartNumber = partNumber
+	objPart.Size = p.size
+	objPart.PartNumber = p.partNumber
 	// Trim off the odd double quotes from ETag in the beginning and end.
 	objPart.ETag = trimEtag(h.Get("ETag"))
 	return objPart, nil
@@ -431,5 +448,10 @@ func (c *Client) completeMultipartUpload(ctx context.Context, bucketName, object
 		Location:         completeMultipartUploadResult.Location,
 		Expiration:       expTime,
 		ExpirationRuleID: ruleID,
+
+		ChecksumSHA256: completeMultipartUploadResult.ChecksumSHA256,
+		ChecksumSHA1:   completeMultipartUploadResult.ChecksumSHA1,
+		ChecksumCRC32:  completeMultipartUploadResult.ChecksumCRC32,
+		ChecksumCRC32C: completeMultipartUploadResult.ChecksumCRC32C,
 	}, nil
 }

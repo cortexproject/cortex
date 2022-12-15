@@ -11,11 +11,15 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 ## Unreleased
 
 ### Fixed
+- [#33](https://github.com/thanos-io/objstore/pull/33) Tracing: Add `ContextWithTracer()` to inject the tracer into the context.
+- [#34](https://github.com/thanos-io/objstore/pull/34) Fix ignored options when creating shared credential Azure client.
 
 ### Added
 - [#15](https://github.com/thanos-io/objstore/pull/15) Add Oracle Cloud Infrastructure Object Storage Bucket support.
 - [#25](https://github.com/thanos-io/objstore/pull/25) S3: Support specifying S3 storage class.
+- [#32](https://github.com/thanos-io/objstore/pull/32) Swift: Support authentication using application credentials.
 
 ### Changed
+- [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.
 
 ### Removed

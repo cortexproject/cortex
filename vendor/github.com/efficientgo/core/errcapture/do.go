@@ -10,11 +10,10 @@ package errcapture
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 
-	"github.com/efficientgo/tools/core/pkg/merrors"
-	"github.com/pkg/errors"
+	"github.com/efficientgo/core/errors"
+	"github.com/efficientgo/core/merrors"
 )
 
 type doFunc func() error
@@ -38,7 +37,7 @@ func Do(err *error, doer doFunc, format string, a ...interface{}) {
 
 // ExhaustClose closes the io.ReadCloser with error capture but exhausts the reader before.
 func ExhaustClose(err *error, r io.ReadCloser, format string, a ...interface{}) {
-	_, copyErr := io.Copy(ioutil.Discard, r)
+	_, copyErr := io.Copy(io.Discard, r)
 
 	Do(err, r.Close, format, a...)
 

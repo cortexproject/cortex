@@ -141,7 +141,7 @@ jobs:
         run: |
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
           export IMAGE_TAG=$(make image-tag)
-          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG"
+          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
           go test -tags=requires_docker -timeout 2400s -v -count=1 ./integration/...

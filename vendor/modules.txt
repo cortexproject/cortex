@@ -259,12 +259,14 @@ github.com/dustin/go-humanize
 # github.com/edsrzf/mmap-go v1.1.0
 ## explicit; go 1.17
 github.com/edsrzf/mmap-go
-# github.com/efficientgo/tools/core v0.0.0-20220817170617-6c25e3b627dd
-## explicit; go 1.15
-github.com/efficientgo/tools/core/pkg/errcapture
-github.com/efficientgo/tools/core/pkg/logerrcapture
-github.com/efficientgo/tools/core/pkg/merrors
-github.com/efficientgo/tools/core/pkg/testutil
+# github.com/efficientgo/core v1.0.0-rc.0.0.20221201130417-ba593f67d2a4
+## explicit; go 1.17
+github.com/efficientgo/core/errcapture
+github.com/efficientgo/core/errors
+github.com/efficientgo/core/logerrcapture
+github.com/efficientgo/core/merrors
+github.com/efficientgo/core/testutil
+github.com/efficientgo/core/testutil/internal
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 ## explicit
 github.com/facette/natsort
@@ -535,7 +537,7 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.37
+# github.com/minio/minio-go/v7 v7.0.45
 ## explicit; go 1.17
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
@@ -667,7 +669,7 @@ github.com/prometheus/common/version
 # github.com/prometheus/common/sigv4 v0.1.0
 ## explicit; go 1.15
 github.com/prometheus/common/sigv4
-# github.com/prometheus/exporter-toolkit v0.7.1
+# github.com/prometheus/exporter-toolkit v0.7.3
 ## explicit; go 1.14
 github.com/prometheus/exporter-toolkit/web
 # github.com/prometheus/procfs v0.8.0
@@ -766,7 +768,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20221006135717-79dcec7fe604
+# github.com/thanos-io/objstore v0.0.0-20221205132204-5aafc0079f06
 ## explicit; go 1.18
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
@@ -776,7 +778,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.29.1-0.20221115064008-fe45cfc66b7d
+# github.com/thanos-io/thanos v0.29.1-0.20221215161655-4054531421b5
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

@@ -132,7 +132,7 @@ func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Export
 	switch strings.ToLower(c.Otel.ExporterType) {
 	case "awsxray":
 		options = append(options, sdktrace.WithIDGenerator(xray.NewIDGenerator()))
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewRandomRatioBased(c.Otel.SampleRatio))))
+		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewXrayTraceIDRatioBased(c.Otel.SampleRatio))))
 		propagator = xray.Propagator{}
 	default:
 		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))

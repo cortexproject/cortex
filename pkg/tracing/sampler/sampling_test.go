@@ -50,7 +50,7 @@ func Test_ShouldSample(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			totalSampled := 0
-			s := NewRandomRatioBased(tt.fraction)
+			s := NewXrayTraceIDRatioBased(tt.fraction)
 			for i := 0; i < totalIterations; i++ {
 				traceID, _ := generator.NewIDs(context.Background())
 				r := s.ShouldSample(

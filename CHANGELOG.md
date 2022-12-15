@@ -16,6 +16,7 @@
 * [FEATURE] Query Frontend/Scheduler: Add a new counter metric `cortex_request_queue_requests_total` for total requests going to queue. #5030
 * [FEATURE] Build ARM docker images. #5041
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
+* [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 
 ## 1.14.0 2022-12-02
 

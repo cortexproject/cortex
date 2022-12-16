@@ -40,10 +40,6 @@ func Test_ShouldSample(t *testing.T) {
 			name:     "should sample 10%",
 			fraction: 0.1,
 		},
-		{
-			name:     "should sample 1%",
-			fraction: 0.01,
-		},
 	}
 
 	totalIterations := 10000

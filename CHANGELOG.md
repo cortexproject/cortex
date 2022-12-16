@@ -2,6 +2,7 @@
 
 ## master / unreleased
 ## 1.14.1 2022-12-18
+* [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 
 ## 1.14.0 2022-12-02

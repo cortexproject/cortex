@@ -3,6 +3,7 @@ package querier
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -71,10 +72,10 @@ func (t *timeseries) Labels() labels.Labels {
 
 // Iterator implements the storage.Series interface
 func (t *timeseries) Iterator() chunkenc.Iterator {
-	return &timeSeriesSeriesIterator{
+	return iterators.NewCompatibleChunksIterator(&timeSeriesSeriesIterator{
 		ts: t,
 		i:  -1,
-	}
+	})
 }
 
 // Seek implements SeriesIterator interface

@@ -1219,7 +1219,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		}
 
 		it := series.Iterator()
-		for it.Next() {
+		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			ts.Samples = append(ts.Samples, cortexpb.Sample{Value: v, TimestampMs: t})
 		}

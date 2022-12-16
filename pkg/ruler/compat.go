@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/value"
@@ -41,6 +42,10 @@ type PusherAppender struct {
 	samples         []cortexpb.Sample
 	userID          string
 	evaluationDelay time.Duration
+}
+
+func (a *PusherAppender) AppendHistogram(storage.SeriesRef, labels.Labels, int64, *histogram.Histogram) (storage.SeriesRef, error) {
+	return 0, errors.New("querying native histograms is not supported")
 }
 
 func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
@@ -158,7 +163,7 @@ func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides Rules
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point(v),
+				Point:  promql.Point{T: v.T, V: v.V},
 				Metric: labels.Labels{},
 			}}, nil
 		default:

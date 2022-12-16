@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
@@ -75,10 +76,10 @@ type iteratorAdapter struct {
 }
 
 func newIteratorAdapter(underlying iterator) chunkenc.Iterator {
-	return &iteratorAdapter{
+	return iterators.NewCompatibleChunksIterator(&iteratorAdapter{
 		batchSize:  1,
 		underlying: underlying,
-	}
+	})
 }
 
 // Seek implements chunkenc.Iterator.

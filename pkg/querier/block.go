@@ -4,6 +4,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -125,7 +126,7 @@ func (bqs *blockQuerierSeries) Iterator() chunkenc.Iterator {
 		its = append(its, it)
 	}
 
-	return newBlockQuerierSeriesIterator(bqs.Labels(), its)
+	return iterators.NewCompatibleChunksIterator(newBlockQuerierSeriesIterator(bqs.Labels(), its))
 }
 
 func newBlockQuerierSeriesIterator(labels labels.Labels, its []chunkenc.Iterator) *blockQuerierSeriesIterator {
@@ -173,7 +174,7 @@ func (it *blockQuerierSeriesIterator) Next() bool {
 		return false
 	}
 
-	if it.iterators[it.i].Next() {
+	if it.iterators[it.i].Next() != chunkenc.ValNone {
 		return true
 	}
 	if it.iterators[it.i].Err() != nil {
@@ -189,7 +190,7 @@ func (it *blockQuerierSeriesIterator) Next() bool {
 
 		// we must advance iterator first, to see if it has any samples.
 		// Seek will call At() as its first operation.
-		if !it.iterators[it.i].Next() {
+		if it.iterators[it.i].Next() == chunkenc.ValNone {
 			if it.iterators[it.i].Err() != nil {
 				return false
 			}

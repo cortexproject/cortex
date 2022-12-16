@@ -1,7 +1,11 @@
 # Changelog
 
+## 1.13.2 2022-12-18
+
+* [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
+
 ## 1.13.1 2022-10-03
-[BUGFIX] AlertManager: fixed issue introduced by #4495 where templates files were being deleted when using alertmanager local store. #4890
+* [BUGFIX] AlertManager: fixed issue introduced by #4495 where templates files were being deleted when using alertmanager local store. #4890
 
 ## 1.13.0 2022-07-14
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539

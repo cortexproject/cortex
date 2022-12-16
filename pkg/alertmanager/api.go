@@ -432,6 +432,9 @@ func validateReceiverTLSConfig(cfg commoncfg.TLSConfig) error {
 // validateGlobalConfig validates the Global config and returns an error if it contains
 // settings now allowed by Cortex.
 func validateGlobalConfig(cfg config.GlobalConfig) error {
+	if cfg.OpsGenieAPIKeyFile != "" {
+		return errOpsGenieAPIKeyFileNotAllowed
+	}
 	if cfg.SlackAPIURLFile != "" {
 		return errSlackAPIURLFileNotAllowed
 	}

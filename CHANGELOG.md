@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+## 1.14.1 2022-12-16
+* [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5046
+
 ## 1.14.0 2022-12-02
 
   **This release removes support for chunks storage. See below for more.**

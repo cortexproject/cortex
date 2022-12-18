@@ -43,6 +43,7 @@ ingester:
     # address: 127.0.0.1
 
     # We want to start immediately and flush on shutdown.
+    join_after: 0
     min_ready_duration: 0s
     final_sleep: 0s
     num_tokens: 512
@@ -52,6 +53,9 @@ ingester:
       kvstore:
         store: inmemory
       replication_factor: 1
+
+storage:
+  engine: blocks
 
 blocks_storage:
   tsdb:
@@ -97,6 +101,7 @@ frontend_worker:
 
 ruler:
   enable_api: true
+  enable_sharding: false
 
 ruler_storage:
   backend: local

@@ -8,7 +8,7 @@ this, but this is not mandatory.&lt;/p>
 &lt;p>If using Kubernetes, each container should specify resource requests
 so that the scheduler can place them on a node with sufficient capacity.&lt;/p>
 &lt;p>For example an ingester might request:&lt;/p>
-&lt;pre tabindex="0">&lt;code> resources:
+&lt;pre>&lt;code> resources:
 requests:
 cpu: 4
 memory: 10Gi
@@ -26,7 +26,7 @@ all replicas at once:&lt;/p>
 applies in your datacenters.&lt;/li>
 &lt;/ul>
 &lt;p>You can ask Kubernetes to avoid running on the same node like this:&lt;/p>
-&lt;pre tabindex="0">&lt;code> affinity:
+&lt;pre>&lt;code> affinity:
 podAntiAffinity:
 preferredDuringSchedulingIgnoredDuringExecution:
 - weight: 100
@@ -37,20 +37,20 @@ matchExpressions:
 operator: In
 values:
 - ingester
-topologyKey: &amp;#34;kubernetes.io/hostname&amp;#34;
+topologyKey: &amp;quot;kubernetes.io/hostname&amp;quot;
 &lt;/code>&lt;/pre>&lt;p>Give plenty of time for an ingester to hand over or flush data to
 store when shutting down; for Kubernetes this looks like:&lt;/p>
-&lt;pre tabindex="0">&lt;code> terminationGracePeriodSeconds: 2400
+&lt;pre>&lt;code> terminationGracePeriodSeconds: 2400
 &lt;/code>&lt;/pre>&lt;p>Ask Kubernetes to limit rolling updates to one ingester at a time, and
 signal the old one to stop before the new one is ready:&lt;/p>
-&lt;pre tabindex="0">&lt;code> strategy:
+&lt;pre>&lt;code> strategy:
 rollingUpdate:
 maxSurge: 0
 maxUnavailable: 1
 &lt;/code>&lt;/pre>&lt;p>Ingesters provide an HTTP hook to signal readiness when all is well;
 this is valuable because it stops a rolling update at the first
 problem:&lt;/p>
-&lt;pre tabindex="0">&lt;code> readinessProbe:
+&lt;pre>&lt;code> readinessProbe:
 httpGet:
 path: /ready
 port: 80
@@ -66,26 +66,26 @@ Storage engine and external storage configuration are not dependant on the ring 
 We will use prepared configuration files (&lt;a href="../../configuration/single-process-config-blocks-gossip-1.yaml">file 1&lt;/a>, &lt;a href="../../configuration/single-process-config-blocks-gossip-2.yaml">file 2&lt;/a>), with no external
 dependencies.&lt;/p>
 &lt;p>Build Cortex first:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>$ go build ./cmd/cortex
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Run two instances of Cortex, each one with its own dedicated config file:&lt;/p>
-&lt;pre tabindex="0">&lt;code>$ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1.yaml
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-sh" data-lang="sh">$ go build ./cmd/cortex
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>Run two instances of Cortex, each one with its own dedicated config file:&lt;/p>
+&lt;pre>&lt;code>$ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-1.yaml
 $ ./cortex -config.file docs/configuration/single-process-config-blocks-gossip-2.yaml
 &lt;/code>&lt;/pre>&lt;p>Download Prometheus and configure it to use our first Cortex instance for remote writes.&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">http://localhost:9109/api/v1/push&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">remote_write&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>- &lt;span style="color:#204a87;font-weight:bold">url&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>http&lt;span style="color:#000;font-weight:bold">:&lt;/span>//localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">9109&lt;/span>/api/v1/push&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>After starting Prometheus, it will now start pushing data to Cortex. Distributor component in Cortex will
 distribute incoming samples between the two instances.&lt;/p>
 &lt;p>To query that data, you can configure your Grafana instance to use http://localhost:9109/prometheus (first Cortex) as a Prometheus data source.&lt;/p>
 &lt;h2 id="how-it-works">How it works&lt;/h2>
 &lt;p>The two instances we started earlier should be able to find each other via memberlist configuration (already present in the config files):&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">memberlist&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># defaults to hostname&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">node_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;Ingester 1&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bind_port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7946&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">join_members&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- &lt;span style="color:#000">localhost:7947&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">abort_if_cluster_join_fails&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This tells memberlist to listen on port 7946, and connect to localhost:7947, which is the second instance.
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">memberlist&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># defaults to hostname&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">node_name&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;Ingester 1&amp;#34;&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">bind_port&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7946&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">join_members&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>- localhost&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#0000cf;font-weight:bold">7947&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">abort_if_cluster_join_fails&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">false&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This tells memberlist to listen on port 7946, and connect to localhost:7947, which is the second instance.
 Port numbers are reversed in the second configuration file.
 We also need to configure &lt;code>node_name&lt;/code> and also ingester ID (&lt;code>ingester.lifecycler.id&lt;/code> field), because default to hostname,
 but we are running both Cortex instances on the same host.&lt;/p>
@@ -104,48 +104,44 @@ being ACTIVE and ready to receive samples.&lt;/p>
 &lt;p>To add another Cortex to the small cluster, copy &lt;code>docs/configuration/single-process-config-blocks-gossip-1.yaml&lt;/code> to a new file,
 and make following modifications. We assume that third Cortex will run on the same machine again, so we change node name and ingester ID as well. Here
 is annotated diff:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-diff" data-lang="diff">&lt;span style="display:flex;">&lt;span>...
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> server:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">+ # These ports need to be unique.
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>&lt;span style="color:#a40000">- http_listen_port: 9109
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">- grpc_listen_port: 9195
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ http_listen_port: 9309
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">+ grpc_listen_port: 9395
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> ingester:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> lifecycler:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> # Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">- id: &amp;#34;Ingester 1&amp;#34;
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ id: &amp;#34;Ingester 3&amp;#34;
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> memberlist:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> # defaults to hostname
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">- node_name: &amp;#34;Ingester 1&amp;#34;
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ node_name: &amp;#34;Ingester 3&amp;#34;
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> # bind_port needs to be unique
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">- bind_port: 7946
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ bind_port: 7948
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">+# Directory names in the `blocks_storage` &amp;gt; `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">+# writing in-progress data to the same directories.
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span> blocks_storage:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> tsdb:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">- dir: /tmp/cortex/tsdb-ing1
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ dir: /tmp/cortex/tsdb-ing3
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span> bucket_store:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">- sync_dir: /tmp/cortex/tsdb-sync-querier1
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ sync_dir: /tmp/cortex/tsdb-sync-querier3
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#00a000">&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-diff" data-lang="diff">...
+server:
+&lt;span style="color:#00a000">+ # These ports need to be unique.
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>&lt;span style="color:#a40000">- http_listen_port: 9109
+&lt;/span>&lt;span style="color:#a40000">- grpc_listen_port: 9195
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ http_listen_port: 9309
+&lt;/span>&lt;span style="color:#00a000">+ grpc_listen_port: 9395
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+ingester:
+lifecycler:
+# Defaults to hostname, but we run both ingesters in this demonstration on the same machine.
+&lt;span style="color:#a40000">- id: &amp;#34;Ingester 1&amp;#34;
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ id: &amp;#34;Ingester 3&amp;#34;
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+memberlist:
+# defaults to hostname
+&lt;span style="color:#a40000">- node_name: &amp;#34;Ingester 1&amp;#34;
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ node_name: &amp;#34;Ingester 3&amp;#34;
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+# bind_port needs to be unique
+&lt;span style="color:#a40000">- bind_port: 7946
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ bind_port: 7948
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+&lt;span style="color:#00a000">+# Directory names in the `blocks_storage` &amp;gt; `tsdb` config ending with `...1` to end with `...3`. This is to avoid different instances
+&lt;/span>&lt;span style="color:#00a000">+# writing in-progress data to the same directories.
+&lt;/span>&lt;span style="color:#00a000">&lt;/span> blocks_storage:
+tsdb:
+&lt;span style="color:#a40000">- dir: /tmp/cortex/tsdb-ing1
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ dir: /tmp/cortex/tsdb-ing3
+&lt;/span>&lt;span style="color:#00a000">&lt;/span> bucket_store:
+&lt;span style="color:#a40000">- sync_dir: /tmp/cortex/tsdb-sync-querier1
+&lt;/span>&lt;span style="color:#a40000">&lt;/span>&lt;span style="color:#00a000">+ sync_dir: /tmp/cortex/tsdb-sync-querier3
+&lt;/span>&lt;span style="color:#00a000">&lt;/span>
+...
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
 will discover other peers through it. When using kubernetes, suggested setup is to have a headless service pointing to all pods
 that want to be part of gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
 &lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is directory where all ingesters will
@@ -166,31 +162,31 @@ and will start receiving samples after it enters into ACTIVE state.&lt;/p></desc
 &lt;p>The following example shows the steps to upload the configuration to Cortex &lt;code>Alertmanager&lt;/code> using &lt;code>cortextool&lt;/code>.&lt;/p>
 &lt;h4 id="1-create-the-alertmanager-configuration-yml-file">1. Create the Alertmanager configuration &lt;code>yml&lt;/code> file.&lt;/h4>
 &lt;p>The following is &lt;code>amconfig.yml&lt;/code>, an example of a configuration for Cortex &lt;code>Alertmanager&lt;/code> to send notification via email:&lt;/p>
-&lt;pre tabindex="0">&lt;code>global:
+&lt;pre>&lt;code>global:
 # The smarthost and SMTP sender used for mail notifications.
-smtp_smarthost: &amp;#39;localhost:25&amp;#39;
-smtp_from: &amp;#39;alertmanager@example.org&amp;#39;
-smtp_auth_username: &amp;#39;alertmanager&amp;#39;
-smtp_auth_password: &amp;#39;password&amp;#39;
+smtp_smarthost: 'localhost:25'
+smtp_from: 'alertmanager@example.org'
+smtp_auth_username: 'alertmanager'
+smtp_auth_password: 'password'
 route:
 # A default receiver.
 receiver: send-email
 receivers:
 - name: send-email
 email_configs:
-- to: &amp;#39;someone@localhost&amp;#39;
+- to: 'someone@localhost'
 &lt;/code>&lt;/pre>&lt;p>&lt;a href="https://grafana.com/blog/2020/02/25/step-by-step-guide-to-setting-up-prometheus-alertmanager-with-slack-pagerduty-and-gmail/#:~:text=To%20set%20up%20alerting%20in,to%20receive%20notifications%20from%20Alertmanager.">Example on how to setup Slack&lt;/a> to support receiving Alertmanager notification.&lt;/p>
 &lt;h4 id="2-upload-the-alertmanager-configuration">2. Upload the Alertmanager configuration&lt;/h4>
 &lt;p>In this example, Cortex &lt;code>Alertmanager&lt;/code> is set to be available via localhost on port 8095 with user/org = 100.&lt;/p>
 &lt;p>To upload the above configuration &lt;code>.yml&lt;/code> file with &lt;code>--key&lt;/code> to be your Basic Authentication or API key:&lt;/p>
-&lt;pre tabindex="0">&lt;code>cortextool alertmanager load ./amconfig.yml \
+&lt;pre>&lt;code>cortextool alertmanager load ./amconfig.yml \
 --address=http://localhost:8095 \
 --id=100 \
 --key=&amp;lt;yourKey&amp;gt;
 &lt;/code>&lt;/pre>&lt;p>If there is no error reported, the upload is successful.&lt;/p>
 &lt;p>To upload the configuration for Cortex &lt;code>Alertmanager&lt;/code> using Cortex API and curl - see Cortex &lt;a href="https://cortexmetrics.io/docs/api/#set-alertmanager-configuration">Set Alertmanager configuration API&lt;/a>.&lt;/p>
 &lt;h4 id="3-ensure-the-configuration-has-been-uploaded-successfully">3. Ensure the configuration has been uploaded successfully&lt;/h4>
-&lt;pre tabindex="0">&lt;code>cortextool alertmanager get \
+&lt;pre>&lt;code>cortextool alertmanager get \
 --address=http://localhost:8095 \
 --id=100 \
 --key=&amp;lt;yourKey&amp;gt;
@@ -210,7 +206,7 @@ auth, or Bearer token, can be used to convey the tenant ID and/or credentials.
 See the &lt;a href="#cortex-tenant">Cortex-Tenant&lt;/a> section below for one way to solve this.&lt;/p>
 &lt;p>In trusted environments, Prometheus can send the &lt;code>X-Scope-OrgID&lt;/code> header itself
 by configuring the &lt;code>headers&lt;/code> field in its &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write">&lt;code>remote_write&lt;/code> configuration&lt;/a>:&lt;/p>
-&lt;pre tabindex="0">&lt;code>remote_write:
+&lt;pre>&lt;code>remote_write:
 - url: http://&amp;lt;cortex&amp;gt;/prometheus/api/v1/push
 headers:
 X-Scope-OrgID: &amp;lt;org&amp;gt;
@@ -229,7 +225,6 @@ label and use its value as &lt;code>X-Scope-OrgID&lt;/code> header when proxying
 &lt;p>This can help to run Cortex in a trusted environment where you want to separate your metrics
 into distinct namespaces by some criteria (e.g. teams, applications, etc).&lt;/p>
 &lt;p>Be advised that &lt;strong>cortex-tenant&lt;/strong> is a third-party community project and it&amp;rsquo;s not maintained by Cortex team.&lt;/p></description></item><item><title>Docs: Capacity Planning</title><link>/docs/guides/capacity-planning/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/capacity-planning/</guid><description>
-&lt;p>&lt;em>This doc is likely out of date. It should be updated for blocks storage.&lt;/em>&lt;/p>
 &lt;p>You will want to estimate how many nodes are required, how many of
 each component to run, and how much storage space will be required.
 In practice, these will vary greatly depending on the metrics being
@@ -292,19 +287,19 @@ for ingester).&lt;/p></description></item><item><title>Docs: Config for horizont
 &lt;p>One option to scale the ruler is by scaling it horizontally. However, with multiple ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the rulers establish a hash ring to divide up the responsibilities of evaluating rules.&lt;/p>
 &lt;h2 id="config">Config&lt;/h2>
 &lt;p>In order to enable sharding in the ruler the following flag needs to be set:&lt;/p>
-&lt;pre tabindex="0">&lt;code> -ruler.enable-sharding=true
+&lt;pre>&lt;code> -ruler.enable-sharding=true
 &lt;/code>&lt;/pre>&lt;p>In addition the ruler requires it&amp;rsquo;s own ring to be configured, for instance:&lt;/p>
-&lt;pre tabindex="0">&lt;code> -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
+&lt;pre>&lt;code> -ruler.ring.consul.hostname=consul.dev.svc.cluster.local:8500
 &lt;/code>&lt;/pre>&lt;p>The only configuration that is required is to enable sharding and configure a key value store. From there the rulers will shard and handle the division of rules automatically.&lt;/p>
 &lt;p>Unlike ingesters, rulers do not hand over responsibility: all rules are re-sharded randomly every time a ruler is added to or removed from the ring.&lt;/p>
 &lt;h2 id="ruler-storage">Ruler Storage&lt;/h2>
 &lt;p>The ruler supports six kinds of storage (configdb, azure, gcs, s3, swift, local). Most kinds of storage work with the sharded ruler configuration in an obvious way. i.e. configure all rulers to use the same backend.&lt;/p>
 &lt;p>The local implementation reads &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/">Prometheus recording rules&lt;/a> off of the local filesystem. This is a read only backend that does not support the creation and deletion of rules through &lt;a href="/docs/api/#ruler">the API&lt;/a>. Despite the fact that it reads the local filesystem this method can still be used in a sharded ruler configuration if the operator takes care to load the same rules to every ruler. For instance this could be accomplished by mounting a &lt;a href="https://kubernetes.io/docs/concepts/configuration/configmap/">Kubernetes ConfigMap&lt;/a> onto every ruler pod.&lt;/p>
 &lt;p>A typical local config may look something like:&lt;/p>
-&lt;pre tabindex="0">&lt;code> -ruler-storage.backend=local
+&lt;pre>&lt;code> -ruler-storage.backend=local
 -ruler-storage.local.directory=/tmp/cortex/rules
 &lt;/code>&lt;/pre>&lt;p>With the above configuration the ruler would expect the following layout:&lt;/p>
-&lt;pre tabindex="0">&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
+&lt;pre>&lt;code>/tmp/cortex/rules/&amp;lt;tenant id&amp;gt;/rules1.yaml
 /rules2.yaml
 &lt;/code>&lt;/pre>&lt;p>Yaml files are expected to be in the &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#recording-rules">Prometheus format&lt;/a>.&lt;/p></description></item><item><title>Docs: Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
@@ -316,10 +311,10 @@ for ingester).&lt;/p></description></item><item><title>Docs: Config for horizont
 &lt;h2 id="config">Config&lt;/h2>
 &lt;h3 id="client-side">Client Side&lt;/h3>
 &lt;p>So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc) and one identifier to identify the replica in the cluster (a or b). The easiest way to do with is by setting external labels, the default labels are &lt;code>cluster&lt;/code> and &lt;code>__replica__&lt;/code>. For example:&lt;/p>
-&lt;pre tabindex="0">&lt;code>cluster: prom-team1
+&lt;pre>&lt;code>cluster: prom-team1
 __replica__: replica1 (or pod-name)
 &lt;/code>&lt;/pre>&lt;p>and&lt;/p>
-&lt;pre tabindex="0">&lt;code>cluster: prom-team1
+&lt;pre>&lt;code>cluster: prom-team1
 __replica__: replica2
 &lt;/code>&lt;/pre>&lt;p>Note: These are external labels and have nothing to do with remote_write config.&lt;/p>
 &lt;p>These two label names are configurable per-tenant within Cortex, and should be set to something sensible. For example, cluster label is already used by some workloads, and you should set the label to be something else but uniquely identifies the cluster. Good examples for this label-name would be &lt;code>team&lt;/code>, &lt;code>cluster&lt;/code>, &lt;code>prometheus&lt;/code>, etc.&lt;/p>
@@ -332,27 +327,27 @@ __replica__: replica2
 &lt;li>Setting the limits configuration to accept samples via &lt;code>-distributor.ha-tracker.enable-for-all-users&lt;/code> (or its YAML config option)&lt;/li>
 &lt;/ul>
 &lt;p>The following configuration snippet shows an example of the HA tracker config via YAML config file:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">accept_ha_samples&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;consul&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;config&amp;gt;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">...&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">limits&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">accept_ha_samples&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">distributor&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">enable_ha_tracker&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">true&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">kvstore&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[store&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;consul&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[consul | etcd&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;config&amp;gt;&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>...&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>For further configuration file documentation, see the &lt;a href="/docs/configuration/configuration-file/#distributor_config">distributor section&lt;/a> and &lt;a href="/docs/configuration/arguments/#ringha-tracker-store">Ring/HA Tracker Store&lt;/a>.&lt;/p>
 &lt;p>For flag configuration, see the &lt;a href="/docs/configuration/arguments/#ha-tracker">distributor flags&lt;/a> having &lt;code>ha-tracker&lt;/code> in them.&lt;/p>
 &lt;h2 id="remote-read">Remote Read&lt;/h2>
 &lt;p>If you plan to use remote_read, you can&amp;rsquo;t have the &lt;code>__replica__&lt;/code> label in the
 external section. Instead, you will need to add it only on the remote_write
 section of your prometheus.yml.&lt;/p>
-&lt;pre tabindex="0">&lt;code>global:
+&lt;pre>&lt;code>global:
 external_labels:
 cluster: prom-team1
 remote_write:
@@ -361,7 +356,7 @@ write_relabel_configs:
 - target_label: __replica__
 replacement: 1
 &lt;/code>&lt;/pre>&lt;p>and&lt;/p>
-&lt;pre tabindex="0">&lt;code>global:
+&lt;pre>&lt;code>global:
 external_labels:
 cluster: prom-team1
 remote_write:
@@ -372,7 +367,43 @@ replacement: replica2
 &lt;/code>&lt;/pre>&lt;p>When Prometheus is executing remote read queries, it will add the external
 labels to the query. In this case, if it asks for the &lt;code>__replica__&lt;/code> label,
 Cortex will not return any data.&lt;/p>
-&lt;p>Therefore, the &lt;code>__replica__&lt;/code> label should only be added for remote write.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
+&lt;p>Therefore, the &lt;code>__replica__&lt;/code> label should only be added for remote write.&lt;/p></description></item><item><title>Docs: Deleting Series</title><link>/docs/guides/deleting-series/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/deleting-series/</guid><description>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage (deprecated).&lt;/em>&lt;/p>
+&lt;p>Cortex supports deletion of series using &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus compatible API&lt;/a>.
+It however does not support &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#clean-tombstones">Prometheuses Clean Tombstones&lt;/a> API because Cortex uses a different mechanism to manage deletions.&lt;/p>
+&lt;h3 id="how-it-works">How it works&lt;/h3>
+&lt;p>A new service called &lt;code>purger&lt;/code> is added which exposes deletion APIs and does the processing of the requests.
+To store the requests, and some additional information while performing deletions, the purger requires configuring an index and object store respectively for it.
+For more information about the &lt;code>purger&lt;/code> configuration, please refer to the &lt;a href="/docs/configuration/configuration-file/#purger_config">config file reference&lt;/a> documentation.&lt;/p>
+&lt;p>All the requests specified below needs to be sent to &lt;code>purger&lt;/code>.&lt;/p>
+&lt;p>&lt;strong>Note:&lt;/strong> If you have enabled multi-tenancy in your Cortex cluster then deletion APIs requests require to have the &lt;code>X-Scope-OrgID&lt;/code> header set like for any other Cortex API.&lt;/p>
+&lt;h4 id="requesting-deletion">Requesting Deletion&lt;/h4>
+&lt;p>By calling the &lt;code>/api/v1/admin/tsdb/delete_series&lt;/code> API like how it is done in &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/api/#delete-series">Prometheus&lt;/a>, you can request the deletion of series.
+Delete Series requests are immediately honored by eliminating series requested for deletion from query responses without actually deleting them from storage.
+The actual data is not deleted from storage until period configured for &lt;code>-purger.delete-request-cancel-period&lt;/code> CLI flag or its respective YAML config option which helps operators take informed decision about continuing with the deletion or cancelling the request.&lt;/p>
+&lt;p>Cortex would keep eliminating series requested for deletion until the &lt;code>purger&lt;/code> is done processing the delete request or the delete request gets cancelled.&lt;/p>
+&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X POST \
+'&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series?match%5B%5D=up&amp;amp;start=1591616227&amp;amp;end=1591619692' \
+-H 'x-scope-orgid: &amp;lt;tenant-id&amp;gt;'
+&lt;/code>&lt;/pre>&lt;h4 id="cancellation-of-delete-request">Cancellation of Delete Request&lt;/h4>
+&lt;p>Cortex allows cancellation of delete requests until they are not picked up for processing, which is controlled by the &lt;code>-purger.delete-request-cancel-period&lt;/code> CLI flag or its respective YAML config option.
+Since Cortex does query time filtering of data request for deletion until it is actually deleted, you can take an informed decision to cancel the delete request by calling the API defined below:&lt;/p>
+&lt;pre>&lt;code>POST /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;
+PUT /api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;
+&lt;/code>&lt;/pre>&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X POST \
+'&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/cancel_delete_request?request_id=&amp;lt;request_id&amp;gt;' \
+-H 'x-scope-orgid: &amp;lt;tenant-id&amp;gt;'
+&lt;/code>&lt;/pre>&lt;p>You can find the id of the request that you want to cancel by using the GET &lt;code>delete_series&lt;/code> API defined below.&lt;/p>
+&lt;h4 id="listing-delete-requests">Listing Delete Requests&lt;/h4>
+&lt;p>You can list the created delete requests using following API:&lt;/p>
+&lt;pre>&lt;code>GET /api/v1/admin/tsdb/delete_series
+&lt;/code>&lt;/pre>&lt;p>&lt;em>Sample cURL command:&lt;/em>&lt;/p>
+&lt;pre>&lt;code>curl -X GET \
+&amp;lt;purger_addr&amp;gt;/api/v1/admin/tsdb/delete_series \
+-H 'x-scope-orgid: &amp;lt;orgid&amp;gt;'
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>NOTE:&lt;/strong> List API returns both processed and un-processed requests except the cancelled ones since they are removed from the store.&lt;/p></description></item><item><title>Docs: Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>
 &lt;p>Cortex supports data encryption at rest for some storage backends.&lt;/p>
 &lt;h2 id="s3">S3&lt;/h2>
 &lt;p>The Cortex S3 client supports the following server-side encryption (SSE) modes:&lt;/p>
@@ -384,20 +415,22 @@ Cortex will not return any data.&lt;/p>
 &lt;p>The &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> S3 server-side encryption can be configured as follows.&lt;/p>
 &lt;h3 id="s3_sse_config">&lt;code>s3_sse_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>s3_sse_config&lt;/code> configures the S3 server-side encryption.&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#204a87;font-weight:bold">sse&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.s3.sse.type&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># KMS Key ID used to encrypt objects in S3&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.s3.sse.kms-key-id&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_key_id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># KMS Encryption Context used for object encryption. It expects JSON formatted&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># string.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.s3.sse.kms-encryption-context&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_encryption_context&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="ruler">Ruler&lt;/h3>
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#204a87;font-weight:bold">sse&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.type&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[type&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># KMS Key ID used to encrypt objects in S3&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-key-id&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_key_id&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># KMS Encryption Context used for object encryption. It expects JSON formatted&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># string.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -s3.sse.kms-encryption-context&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[kms_encryption_context&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&amp;lt;string&amp;gt;&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>|&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>default&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>=&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h3>
+&lt;p>The &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> S3 server-side encryption can be configured similarly to the blocks storage, but &lt;strong>per-tenant overrides are not supported&lt;/strong>.&lt;/p>
+&lt;h3 id="ruler">Ruler&lt;/h3>
 &lt;p>The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-ruler-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
 &lt;h3 id="alertmanager">Alertmanager&lt;/h3>
 &lt;p>The alertmanager S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code>-alertmanager-storage.&lt;/code> flag prefix (or their respective YAML config options).&lt;/p>
@@ -413,25 +446,120 @@ S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not se
 S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set or the type is not &lt;code>SSE-KMS&lt;/code>.&lt;/li>
 &lt;/ul>
 &lt;h2 id="other-storages">Other storages&lt;/h2>
-&lt;p>Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: Ingesters rolling updates</title><link>/docs/guides/ingesters-rolling-updates/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-rolling-updates/</guid><description>
+&lt;p>Other storage backends may support encryption at rest configuring it directly at the storage level.&lt;/p></description></item><item><title>Docs: gRPC storage plugin</title><link>/docs/guides/grpc-based-plugin/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/grpc-based-plugin/</guid><description>
+&lt;p>&lt;em>This feature is currently experimental and is only supported for Chunks storage (deprecated).&lt;/em>&lt;/p>
+&lt;p>Cortex chunks storage supports a &lt;strong>gRPC-based plugin system&lt;/strong> to use alternative backends for the index and chunks store.
+A store plugin is a gRPC-based server which implements the methods required by the index and chunks store. Cortex chunks storage schema is then configured to use the plugin as backend system and gRPC will be used to communicate between Cortex and the plugin.
+For example, if you&amp;rsquo;re deploying your Cortex cluster on Kubernetes, the plugin would run as a sidecar container of your Cortex pods and the Cortex&amp;rsquo;s &lt;code>-grpc-store.server-address&lt;/code> should be configured to the endpoint exposed by the sidecar plugin (eg. &lt;code>localhost:&amp;lt;port&amp;gt;&lt;/code>).&lt;/p>
+&lt;h3 id="how-it-works">How it works&lt;/h3>
+&lt;p>In the cortex configuration file, add &lt;code>store&lt;/code> and &lt;code>object_store&lt;/code> as &lt;code>grpc-store&lt;/code> and configure storage with plugin server endpoint (ie. the address to the gRPC server which implements the cortex chunk store methods).&lt;/p>
+&lt;pre>&lt;code>schema:
+configs:
+- from: 2019-07-29
+store: grpc-store
+object_store: grpc-store
+schema: v10
+index:
+prefix: index_
+period: 168h
+chunks:
+prefix: chunk_
+period: 168h
+storage:
+grpc_store:
+# gRPC server address
+server_address: localhost:6666
+&lt;/code>&lt;/pre>&lt;h2 id="community-plugins">Community plugins&lt;/h2>
+&lt;p>The following list shows Cortex storage plugins built and shared by the community:&lt;/p>
+&lt;ol>
+&lt;li>&lt;a href="https://github.com/VineethReddy02/cortex-mongo-store">gRPC based Cortex chunk store for Mongo&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/VineethReddy02/cortex-mysql-store">gRPC based Cortex chunk store for Mysql&lt;/a>&lt;/li>
+&lt;/ol></description></item><item><title>Docs: Ingesters rolling updates</title><link>/docs/guides/ingesters-rolling-updates/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-rolling-updates/</guid><description>
 &lt;p>Cortex &lt;a href="/docs/architecture/#ingester">ingesters&lt;/a> are semi-stateful.
 A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage.
 When an ingester shutdowns, because of a rolling update or maintenance, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
+&lt;p>In this document we describe the techniques employed to safely handle rolling updates, based on different setups:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="#blocks-storage">Blocks storage&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;em>If you&amp;rsquo;re looking how to scale up / down ingesters, please refer to the &lt;a href="/docs/guides/ingesters-scaling-up-and-down/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
+&lt;h2 id="blocks-storage">Blocks storage&lt;/h2>
 &lt;p>The Cortex &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> requires ingesters to run with a persistent disk where the TSDB WAL and blocks are stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
 &lt;p>During a rolling update, the leaving ingester closes the open TSDBs, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
-The new ingester, which is expected to reuse the same disk of the leaving one, will replay the TSDB WAL on startup in order to load back in memory the time series that have not been compacted into a block yet.&lt;/p></description></item><item><title>Docs: Ingesters scaling up and down</title><link>/docs/guides/ingesters-scaling-up-and-down/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-scaling-up-and-down/</guid><description>
+The new ingester, which is expected to reuse the same disk of the leaving one, will replay the TSDB WAL on startup in order to load back in memory the time series that have not been compacted into a block yet.&lt;/p>
+&lt;p>&lt;em>The blocks storage doesn&amp;rsquo;t support the series &lt;a href="#chunks-storage-with-wal-disabled-hand-over">hand-over&lt;/a>.&lt;/em>&lt;/p>
+&lt;h2 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h2>
+&lt;p>The Cortex chunks storage optionally supports a write-ahead log (WAL).
+The rolling update procedure for a Cortex cluster running the chunks storage depends whether the WAL is enabled or not.&lt;/p>
+&lt;h3 id="chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/h3>
+&lt;p>Similarly to the blocks storage, when Cortex is running the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> with WAL enabled, it requires ingesters to run with a persistent disk where the WAL is stored (eg. a StatefulSet when deployed on Kubernetes).&lt;/p>
+&lt;p>During a rolling update, the leaving ingester closes the WAL, synchronize the data to disk (&lt;code>fsync&lt;/code>) and releases the disk resources.
+The new ingester, which is expected to reuse the same disk of the leaving one, will replay the WAL on startup in order to load back in memory the time series data.&lt;/p>
+&lt;p>&lt;em>For more information about the WAL, please refer to &lt;a href="/docs/chunks-storage/ingesters-with-wal/">Ingesters with WAL&lt;/a>.&lt;/em>&lt;/p>
+&lt;h3 id="chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled (hand-over)&lt;/h3>
+&lt;p>When Cortex is running the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> with WAL disabled, Cortex supports on-the-fly series hand-over between a leaving ingester and a joining one.&lt;/p>
+&lt;p>The hand-over is based on the ingesters state stored in the ring. Each ingester could be in one of the following &lt;strong>states&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>PENDING&lt;/code>&lt;/li>
+&lt;li>&lt;code>JOINING&lt;/code>&lt;/li>
+&lt;li>&lt;code>ACTIVE&lt;/code>&lt;/li>
+&lt;li>&lt;code>LEAVING&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>On startup, an ingester goes into the &lt;strong>&lt;code>PENDING&lt;/code>&lt;/strong> state.
+In this state, the ingester is waiting for a hand-over from another ingester that is &lt;code>LEAVING&lt;/code>.
+If no hand-over occurs within the configured timeout period (&amp;ldquo;auto-join timeout&amp;rdquo;, configurable via &lt;code>-ingester.join-after&lt;/code> option), the ingester will join the ring with a new set of random tokens (eg. during a scale up) and will switch its state to &lt;code>ACTIVE&lt;/code>.&lt;/p>
+&lt;p>When a running ingester in the &lt;strong>&lt;code>ACTIVE&lt;/code>&lt;/strong> state is notified to shutdown via &lt;code>SIGINT&lt;/code> or &lt;code>SIGTERM&lt;/code> Unix signal, the ingester switches to &lt;code>LEAVING&lt;/code> state. In this state it cannot receive write requests anymore, but it can still receive read requests for series it has in memory.&lt;/p>
+&lt;p>A &lt;strong>&lt;code>LEAVING&lt;/code>&lt;/strong> ingester looks for a &lt;code>PENDING&lt;/code> ingester to start a hand-over process with.
+If it finds one, that ingester goes into the &lt;code>JOINING&lt;/code> state and the leaver transfers all its in-memory data over to the joiner.
+On successful transfer the leaver removes itself from the ring and exits, while the joiner changes its state to &lt;code>ACTIVE&lt;/code>, taking over ownership of the leaver&amp;rsquo;s &lt;a href="/docs/architecture/#hashing">ring tokens&lt;/a>. As soon as the joiner switches it state to &lt;code>ACTIVE&lt;/code>, it will start receive both write requests from distributors and queries from queriers.&lt;/p>
+&lt;p>If the &lt;code>LEAVING&lt;/code> ingester does not find a &lt;code>PENDING&lt;/code> ingester after &lt;code>-ingester.max-transfer-retries&lt;/code> retries, it will flush all of its chunks to the long-term storage, then removes itself from the ring and exits. The chunks flushing to the storage may take several minutes to complete.&lt;/p>
+&lt;h4 id="higher-number-of-series--chunks-during-rolling-updates">Higher number of series / chunks during rolling updates&lt;/h4>
+&lt;p>During hand-over, neither the leaving nor joining ingesters will
+accept new samples. Distributors are aware of this, and &amp;ldquo;spill&amp;rdquo; the
+samples to the next ingester in the ring. This creates a set of extra
+&amp;ldquo;spilled&amp;rdquo; series and chunks which will idle out and flush after hand-over is
+complete.&lt;/p>
+&lt;h4 id="observability">Observability&lt;/h4>
+&lt;p>The following metrics can be used to observe this process:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>&lt;code>cortex_member_ring_tokens_owned&lt;/code>&lt;/strong>&lt;br />
+How many tokens each ingester thinks it owns.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ring_tokens_owned&lt;/code>&lt;/strong>&lt;br />
+How many tokens each ingester is seen to own by other components.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ring_member_ownership_percent&lt;/code>&lt;/strong>&lt;br />
+Same as &lt;code>cortex_ring_tokens_owned&lt;/code> but expressed as a percentage.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ring_members&lt;/code>&lt;/strong>&lt;br />
+How many ingesters can be seen in each state, by other components.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ingester_sent_chunks&lt;/code>&lt;/strong>&lt;br />
+Number of chunks sent by leaving ingester.&lt;/li>
+&lt;li>&lt;strong>&lt;code>cortex_ingester_received_chunks&lt;/code>&lt;/strong>&lt;br />
+Number of chunks received by joining ingester.&lt;/li>
+&lt;/ul>
+&lt;p>You can see the current state of the ring via http browser request to
+&lt;code>/ring&lt;/code> on a distributor.&lt;/p></description></item><item><title>Docs: Ingesters scaling up and down</title><link>/docs/guides/ingesters-scaling-up-and-down/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ingesters-scaling-up-and-down/</guid><description>
 &lt;p>This guide explains how to scale up and down ingesters.&lt;/p>
 &lt;p>&lt;em>If you&amp;rsquo;re looking how to run ingesters rolling updates, please refer to the &lt;a href="/docs/guides/ingesters-rolling-updates/">dedicated guide&lt;/a>.&lt;/em>&lt;/p>
 &lt;h2 id="scaling-up">Scaling up&lt;/h2>
 &lt;p>Adding more ingesters to a Cortex cluster is considered a safe operation. When a new ingester starts, it will register to the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a> and the distributors will reshard received series accordingly.
 Ingesters that were previously receiving those series will see data stop arriving and will consider those series &amp;ldquo;idle&amp;rdquo;.&lt;/p>
-&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries. This will happen after the next &amp;ldquo;head compaction&amp;rdquo; (typically every 2 hours).
+&lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=false&lt;/code> (the default), before adding a second ingester you have to wait until data has migrated from idle series to the back-end store, otherwise you will see gaps in queries.
+For chunks storage, this will start after &lt;code>-ingester.max-chunk-idle&lt;/code> time (default 5 minutes), and will finish when the flush queue is clear - how long depends on how fast your back-end store can accept writes.
+For blocks storage, this will happen after the next &amp;ldquo;head compaction&amp;rdquo; (typically every 2 hours).
 If you have set &lt;code>-querier.query-store-after&lt;/code> then that is also a minimum time you have to wait before adding a second ingester.&lt;/p>
 &lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>,
 no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;h2 id="scaling-down">Scaling down&lt;/h2>
 &lt;p>A running ingester holds several hours of time series data in memory, before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down, because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
-&lt;p>Ingesters don&amp;rsquo;t flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.&lt;/p>
+&lt;p>The procedure to adopt when scaling down ingesters depends on your Cortex setup:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="#blocks-storage">Blocks storage&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/a>&lt;/li>
+&lt;li>&lt;a href="#chunks-storage-with-wal-disabled-hand-over">Chunks storage with WAL disabled&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
+&lt;p>When Cortex is running the &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a>, ingesters don&amp;rsquo;t flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.&lt;/p>
 &lt;p>Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven&amp;rsquo;t been discovered yet.&lt;/p>
 &lt;p>The ingesters scale down is deemed an infrequent operation and no automation is currently provided. However, if you need to scale down ingesters, please be aware of the following:&lt;/p>
 &lt;ul>
@@ -461,7 +589,18 @@ no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;li>Before proceeding to the next ingester, wait 2x the maximum between &lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code> and &lt;code>-compactor.cleanup-interval&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;/li>
-&lt;/ul></description></item><item><title>Docs: Overrides Exporter</title><link>/docs/guides/overrides-exporter/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/overrides-exporter/</guid><description>
+&lt;/ul>
+&lt;h3 id="chunks-storage-with-wal-enabled">Chunks storage with WAL enabled&lt;/h3>
+&lt;p>When Cortex is running the &lt;a href="/docs/chunks-storage/">chunks storage&lt;/a> with WAL enabled, ingesters don&amp;rsquo;t flush series chunks to storage at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush chunks to the long-term storage before the ingester terminates.&lt;/p>
+&lt;p>The procedure to scale down ingesters &amp;ndash; one by one &amp;ndash; should be:&lt;/p>
+&lt;ol>
+&lt;li>Call &lt;code>/shutdown&lt;/code> endpoint on the ingester to shutdown&lt;/li>
+&lt;li>Wait until the HTTP call returns successfully or &amp;ldquo;flushing of chunks complete&amp;rdquo; is logged&lt;/li>
+&lt;li>Terminate the ingester process (the &lt;code>/shutdown&lt;/code> will not do it)&lt;/li>
+&lt;/ol>
+&lt;p>&lt;em>For more information about the chunks storage WAL, please refer to &lt;a href="/docs/chunks-storage/ingesters-with-wal/">Ingesters with WAL&lt;/a>.&lt;/em>&lt;/p>
+&lt;h3 id="chunks-storage-with-wal-disabled">Chunks storage with WAL disabled&lt;/h3>
+&lt;p>When Cortex is running the chunks storage with WAL disabled, ingesters flush series chunks to the storage at shutdown if no &lt;code>PENDING&lt;/code> ingester (to transfer series to) is found. Because of this, it&amp;rsquo;s safe to scale down ingesters with no special care in this setup.&lt;/p></description></item><item><title>Docs: Overrides Exporter</title><link>/docs/guides/overrides-exporter/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/overrides-exporter/</guid><description>
 &lt;p>Since Cortex is a multi-tenant system, it supports applying limits to each tenant to prevent
 any single one from using too many resources. In order to help operators understand how close
 to their limits tenants are, the &lt;code>overrides-exporter&lt;/code> module can expose limits as Prometheus metrics.&lt;/p>
@@ -475,33 +614,33 @@ command line flag. This file is used to apply tenant-specific limits.&lt;/p>
 only running a single instance of it in your cluster due to the cardinality of the metrics
 emitted.&lt;/p>
 &lt;p>With a &lt;code>runtime.yaml&lt;/code> file given below&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># file: runtime.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># In this example, we&amp;#39;re overriding ingestion limits for a single tenant.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">overrides&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;user1&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_burst_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_samples_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
-&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows&lt;/p>
-&lt;pre tabindex="0">&lt;code>cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="color:#8f5902;font-style:italic"># file: runtime.yaml&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># In this example, we&amp;#39;re overriding ingestion limits for a single tenant.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">overrides&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#4e9a06">&amp;#34;user1&amp;#34;&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_burst_size&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">ingestion_rate&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">350000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_global_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">300000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_metric&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_user&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">0&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_samples_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">max_series_per_query&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#0000cf;font-weight:bold">100000&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows&lt;/p>
+&lt;pre>&lt;code>cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
 &lt;/code>&lt;/pre>&lt;p>After the &lt;code>overrides-exporter&lt;/code> starts, you can to use &lt;code>curl&lt;/code> to inspect the tenant overrides.&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-text" data-lang="text">&lt;span style="display:flex;">&lt;span>curl -s http://localhost:8080/metrics | grep cortex_overrides
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span># HELP cortex_overrides Resource limit overrides applied to tenants
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span># TYPE cortex_overrides gauge
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;ingestion_burst_size&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;ingestion_rate&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_global_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_global_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_local_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_local_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
+&lt;div class="highlight">&lt;pre style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4">&lt;code class="language-text" data-lang="text">curl -s http://localhost:8080/metrics | grep cortex_overrides
+# HELP cortex_overrides Resource limit overrides applied to tenants
+# TYPE cortex_overrides gauge
+cortex_overrides{limit_name=&amp;#34;ingestion_burst_size&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
+cortex_overrides{limit_name=&amp;#34;ingestion_rate&amp;#34;,user=&amp;#34;user1&amp;#34;} 350000
+cortex_overrides{limit_name=&amp;#34;max_global_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
+cortex_overrides{limit_name=&amp;#34;max_global_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 300000
+cortex_overrides{limit_name=&amp;#34;max_local_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
+cortex_overrides{limit_name=&amp;#34;max_local_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
+cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
+cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
+&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
 before they exceed them.&lt;/p></description></item><item><title>Docs: Securing communication between Cortex components with TLS</title><link>/docs/guides/tls/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tls/</guid><description>
 &lt;p>Cortex is a distributed system with significant traffic between its services.
 To allow for secure communication, Cortex supports TLS between all its
@@ -512,15 +651,15 @@ generating certificates. A Certifying Authority (CA) will be used for this
 purpose which should be private to the organization, as any certificates signed
 by this CA will have permissions to communicate with the cluster.&lt;/p>
 &lt;p>We will use the following script to generate self signed certs for the cluster:&lt;/p>
-&lt;pre tabindex="0">&lt;code># keys
+&lt;pre>&lt;code># keys
 openssl genrsa -out root.key
 openssl genrsa -out client.key
 openssl genrsa -out server.key
 # root cert / certifying authority
-openssl req -x509 -new -nodes -key root.key -subj &amp;#34;/C=US/ST=KY/O=Org/CN=root&amp;#34; -sha256 -days 100000 -out root.crt
+openssl req -x509 -new -nodes -key root.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=root&amp;quot; -sha256 -days 100000 -out root.crt
 # csrs - certificate signing requests
-openssl req -new -sha256 -key client.key -subj &amp;#34;/C=US/ST=KY/O=Org/CN=client&amp;#34; -out client.csr
-openssl req -new -sha256 -key server.key -subj &amp;#34;/C=US/ST=KY/O=Org/CN=localhost&amp;#34; -out server.csr
+openssl req -new -sha256 -key client.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=client&amp;quot; -out client.csr
+openssl req -new -sha256 -key server.key -subj &amp;quot;/C=US/ST=KY/O=Org/CN=localhost&amp;quot; -out server.csr
 # certificates
 openssl x509 -req -in client.csr -CA root.crt -CAkey root.key -CAcreateserial -out client.crt -days 100000 -sha256
 openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 100000 -sha256
@@ -534,40 +673,40 @@ generated as &lt;code>root.crt&lt;/code>.&lt;/p>
 &lt;p>Every HTTP/GRPC link between Cortex components supports TLS configuration
 through the following config parameters:&lt;/p>
 &lt;h4 id="server-flags">Server flags&lt;/h4>
-&lt;pre tabindex="0">&lt;code> # Path to the TLS Cert for the HTTP Server
+&lt;pre>&lt;code> # Path to the TLS Cert for the HTTP Server
 -server.http-tls-cert-path=/path/to/server.crt
 # Path to the TLS Key for the HTTP Server
 -server.http-tls-key-path=/path/to/server.key
 # Type of Client Auth for the HTTP Server
--server.http-tls-client-auth=&amp;#34;RequireAndVerifyClientCert&amp;#34;
+-server.http-tls-client-auth=&amp;quot;RequireAndVerifyClientCert&amp;quot;
 # Path to the Client CA Cert for the HTTP Server
--server.http-tls-ca-path=&amp;#34;/path/to/root.crt&amp;#34;
+-server.http-tls-ca-path=&amp;quot;/path/to/root.crt&amp;quot;
 # Path to the TLS Cert for the GRPC Server
 -server.grpc-tls-cert-path=/path/to/server.crt
 # Path to the TLS Key for the GRPC Server
 -server.grpc-tls-key-path=/path/to/server.key
 # Type of Client Auth for the GRPC Server
--server.grpc-tls-client-auth=&amp;#34;RequireAndVerifyClientCert&amp;#34;
+-server.grpc-tls-client-auth=&amp;quot;RequireAndVerifyClientCert&amp;quot;
 # Path to the Client CA Cert for the GRPC Server
 -server.grpc-tls-ca-path=/path/to/root.crt
 &lt;/code>&lt;/pre>&lt;h4 id="client-flags">Client flags&lt;/h4>
 &lt;p>Client flags are component specific.&lt;/p>
 &lt;p>For an HTTP client in the Alertmanager:&lt;/p>
-&lt;pre tabindex="0">&lt;code> # Path to the TLS Cert for the HTTP Client
+&lt;pre>&lt;code> # Path to the TLS Cert for the HTTP Client
 -alertmanager.configs.tls-cert-path=/path/to/client.crt
 # Path to the TLS Key for the HTTP Client
 -alertmanager.configs.tls-key-path=/path/to/client.key
 # Path to the TLS CA for the HTTP Client
 -alertmanager.configs.tls-ca-path=/path/to/root.crt
 &lt;/code>&lt;/pre>&lt;p>For a GRPC client in the Querier:&lt;/p>
-&lt;pre tabindex="0">&lt;code> # Path to the TLS Cert for the GRPC Client
+&lt;pre>&lt;code> # Path to the TLS Cert for the GRPC Client
 -querier.frontend-client.tls-cert-path=/path/to/client.crt
 # Path to the TLS Key for the GRPC Client
 -querier.frontend-client.tls-key-path=/path/to/client.key
 # Path to the TLS CA for the GRPC Client
 -querier.frontend-client.tls-ca-path=/path/to/root.crt
 &lt;/code>&lt;/pre>&lt;p>Similarly, for the GRPC Ingester Client:&lt;/p>
-&lt;pre tabindex="0">&lt;code> # Path to the TLS Cert for the GRPC Client
+&lt;pre>&lt;code> # Path to the TLS Cert for the GRPC Client
 -ingester.client.tls-cert-path=/path/to/client.crt
 # Path to the TLS Key for the GRPC Client
 -ingester.client.tls-key-path=/path/to/client.key
@@ -646,7 +785,7 @@ When &lt;a href="/docs/guides/zone-aware-replication/">zone-aware replication&lt
 &lt;li>&lt;code>-distributor.sharding-strategy=shuffle-sharding&lt;/code>&lt;/li>
 &lt;li>&lt;code>-distributor.ingestion-tenant-shard-size=&amp;lt;size&amp;gt;&lt;/code>&lt;/li>
 &lt;li>&lt;code>-querier.shuffle-sharding-ingesters-lookback-period=&amp;lt;period&amp;gt;&lt;/code>&lt;br />
-Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since &amp;rsquo;now - lookback period&amp;rsquo;. The configured lookback &lt;code>&amp;lt;period&amp;gt;&lt;/code> should be greater or equal than &lt;code>-querier.query-store-after&lt;/code> and &lt;code>-querier.query-ingesters-within&lt;/code> if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).&lt;/li>
+Queriers and rulers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since &amp;lsquo;now - lookback period&amp;rsquo;. The configured lookback &lt;code>&amp;lt;period&amp;gt;&lt;/code> should be greater or equal than &lt;code>-querier.query-store-after&lt;/code> and &lt;code>-querier.query-ingesters-within&lt;/code> if set, and greater than the estimated minimum time it takes for the oldest samples stored in a block uploaded by ingester to be discovered and available for querying (3h with the default configuration).&lt;/li>
 &lt;/ul>
 &lt;h4 id="rollout-strategy">Rollout strategy&lt;/h4>
 &lt;p>If you&amp;rsquo;re running a Cortex cluster with shuffle-sharding disabled and you want to enable it for ingesters, the following rollout strategy should be used to avoid missing querying any time-series in the ingesters memory:&lt;/p>
@@ -657,7 +796,7 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;/ol>
 &lt;h4 id="limitation-decreasing-the-tenant-shard-size">Limitation: decreasing the tenant shard size&lt;/h4>
 &lt;p>The current shuffle-sharding implementation in Cortex has a limitation which prevents to safely decrease the tenant shard size if the ingesters shuffle-sharding is enabled on the read path.&lt;/p>
-&lt;p>The problem is that if a tenant’s subring decreases in size, there is currently no way for the queriers and rulers to know how big the tenant subring was previously, and hence they will potentially miss an ingester with data for that tenant. In other words, the lookback mechanism to select the ingesters which may have received series since &amp;rsquo;now - lookback period&amp;rsquo; doesn&amp;rsquo;t work correctly if the tenant shard size is decreased.&lt;/p>
+&lt;p>The problem is that if a tenant’s subring decreases in size, there is currently no way for the queriers and rulers to know how big the tenant subring was previously, and hence they will potentially miss an ingester with data for that tenant. In other words, the lookback mechanism to select the ingesters which may have received series since &amp;lsquo;now - lookback period&amp;rsquo; doesn&amp;rsquo;t work correctly if the tenant shard size is decreased.&lt;/p>
 &lt;p>This is deemed an infrequent operation that we considered banning, but a workaround still exists:&lt;/p>
 &lt;ol>
 &lt;li>&lt;strong>Disable&lt;/strong> shuffle-sharding on the read path&lt;/li>
@@ -703,17 +842,16 @@ Queriers and rulers fetch in-memory series from the minimum set of required inge
 &lt;h3 id="does-shuffle-sharding-add-additional-overhead-to-the-kv-store">Does shuffle sharding add additional overhead to the KV store?&lt;/h3>
 &lt;p>No, shuffle sharding subrings are computed client-side and are not stored in the ring. KV store sizing still depends primarily on the number of replicas (of any component that uses the ring, e.g. ingesters) and tokens per replica.&lt;/p>
 &lt;p>However, each tenant&amp;rsquo;s subring is cached in memory on the client-side which may slightly increase the memory footprint of certain components (mostly the distributor).&lt;/p></description></item><item><title>Docs: Tracing</title><link>/docs/guides/tracing/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tracing/</guid><description>
-&lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> or &lt;a href="https://opentelemetry.io/">OpenTelemetry&lt;/a> to implement distributed
-tracing. We have found tracing invaluable for troubleshooting the behavior of
+&lt;p>Cortex uses &lt;a href="https://www.jaegertracing.io/">Jaeger&lt;/a> to implement distributed
+tracing. We have found Jaeger invaluable for troubleshooting the behavior of
 Cortex in production.&lt;/p>
-&lt;h2 id="jaeger">Jaeger&lt;/h2>
-&lt;h3 id="dependencies">Dependencies&lt;/h3>
+&lt;h2 id="dependencies">Dependencies&lt;/h2>
 &lt;p>In order to send traces you will need to set up a Jaeger deployment. A
 deployment includes either the jaeger all-in-one binary, or else a distributed
 system of agents, collectors, and queriers. If running on Kubernetes, &lt;a href="https://github.com/jaegertracing/jaeger-kubernetes">Jaeger
 Kubernetes&lt;/a> is an excellent
 resource.&lt;/p>
-&lt;h3 id="configuration">Configuration&lt;/h3>
+&lt;h2 id="configuration">Configuration&lt;/h2>
 &lt;p>In order to configure Cortex to send traces you must do two things:&lt;/p>
 &lt;ol>
 &lt;li>Set the &lt;code>JAEGER_AGENT_HOST&lt;/code> environment variable in all components to point
@@ -735,21 +873,7 @@ documentation&lt;/a>
 for the full list of environment variables you can configure.&lt;/p>
 &lt;p>Note that you must specify one of &lt;code>JAEGER_AGENT_HOST&lt;/code> or
 &lt;code>JAEGER_SAMPLER_MANAGER_HOST_PORT&lt;/code> in each component for Jaeger to be enabled,
-even if you plan to use the default values.&lt;/p>
-&lt;h2 id="opentelemetry">OpenTelemetry&lt;/h2>
-&lt;h3 id="dependencies-1">Dependencies&lt;/h3>
-&lt;p>In order to send traces you will need to set up an OpenTelemetry Collector. The collector will be able to send traces to
-multiple destinations such &lt;a href="https://aws-otel.github.io/docs/getting-started/x-ray">AWS X-Ray&lt;/a>,
-&lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter">Google Cloud&lt;/a>,
-&lt;a href="https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/">DataDog&lt;/a> and
-&lt;a href="https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter">others&lt;/a>. OpenTelemetry Collector
-provides a &lt;a href="https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces">helm chart&lt;/a>
-to set up the environment.&lt;/p>
-&lt;h3 id="configuration-1">Configuration&lt;/h3>
-&lt;p>See document on the tracing section in &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/">Configuration file&lt;/a>.&lt;/p>
-&lt;h3 id="current-state">Current State&lt;/h3>
-&lt;p>Cortex is maintaining backward compatibility with Jaeger support, Cortex has not fully migrated from OpenTracing to OpenTelemetry and is currently using the
-&lt;a href="https://opentelemetry.io/docs/migration/opentracing/">OpenTracing bridge&lt;/a>.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
+even if you plan to use the default values.&lt;/p></description></item><item><title>Docs: Zone Aware Replication</title><link>/docs/guides/zone-aware-replication/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/zone-aware-replication/</guid><description>
 &lt;p>Cortex supports data replication for different services. By default, data is transparently replicated across the whole pool of service instances, regardless of whether these instances are all running within the same availability zone (or data center, or rack) or in different ones.&lt;/p>
 &lt;p>It is completely possible that all the replicas for the given data are held within the same availability zone, even if the Cortex cluster spans multiple zones. Storing multiple replicas for a given data within the same availability zone poses a risk for data loss if there is an outage affecting various nodes within a zone or a full zone outage.&lt;/p>
 &lt;p>For this reason, Cortex optionally supports zone-aware replication. When zone-aware replication is &lt;strong>enabled&lt;/strong>, replicas for the given data are guaranteed to span across different availability zones. This requires Cortex cluster to run at least in a number of zones equal to the configured replication factor.&lt;/p>
@@ -812,14 +936,19 @@ to set up the environment.&lt;/p>
 &lt;p>All other characters are not safe to use. In particular, slashes &lt;code>/&lt;/code> and whitespaces (&lt;code> &lt;/code>) are &lt;strong>not supported&lt;/strong>.&lt;/p>
 &lt;h3 id="length">Length&lt;/h3>
 &lt;p>The tenant ID length should not exceed 150 bytes/characters.&lt;/p>
+&lt;h2 id="query-without-metric-name">Query without metric name&lt;/h2>
+&lt;p>The Cortex chunks storage doesn&amp;rsquo;t support queries without a metric name, like &lt;code>count({__name__=~&amp;quot;.+&amp;quot;})&lt;/code>. On the contrary, the Cortex &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> supports it.&lt;/p>
 &lt;h2 id="query-series-and-labels">Query series and labels&lt;/h2>
 &lt;p>When running queries to the &lt;code>/api/v1/series&lt;/code>, &lt;code>/api/v1/labels&lt;/code> and &lt;code>/api/v1/label/{name}/values&lt;/code> endpoints, query&amp;rsquo;s time range is ignored and the data is always fetched from ingesters. There is experimental support to query the long-term store with the &lt;em>blocks&lt;/em> storage engine when &lt;code>-querier.query-store-for-labels-enabled&lt;/code> is set.&lt;/p></description></item><item><title>Docs: Glossary</title><link>/docs/guides/glossary/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/glossary/</guid><description>
 &lt;h3 id="blocks-storage">Blocks storage&lt;/h3>
 &lt;p>The blocks storage is a Cortex storage engine based on Prometheus TSDB, which only requires an object store (eg. AWS S3, Google GCS, &amp;hellip;) as backend storage.&lt;/p>
 &lt;p>For more information, please refer to the &lt;a href="/docs/blocks-storage/">Cortex blocks storage&lt;/a> documentation.&lt;/p>
+&lt;h3 id="chunks-storage-deprecated">Chunks storage (deprecated)&lt;/h3>
+&lt;p>The chunks storage is a Cortex storage engine which requires both an index store (eg. AWS DynamoDB, Google BigTable, Cassandra, &amp;hellip;) and an object store (eg. AWS S3, Google GCS, &amp;hellip;) as backend storage.&lt;/p>
+&lt;p>The chunks storage is deprecated. You&amp;rsquo;re encouraged to use the &lt;a href="#blocks-storage">blocks storage&lt;/a> instead.&lt;/p>
 &lt;h3 id="chunk">Chunk&lt;/h3>
 &lt;p>A chunk is an object containing compressed timestamp-value pairs.&lt;/p>
-&lt;p>A single chunk contains timestamp-value pairs for several series.&lt;/p>
+&lt;p>When running Cortex with the chunks storage, a single chunk object contains timestamp-value pairs for a single series, while when running Cortex with the &lt;a href="#blocks-storage">blocks storage&lt;/a> a single chunk contains timestamp-value pairs for several series.&lt;/p>
 &lt;h3 id="churn">Churn&lt;/h3>
 &lt;p>Churn is the frequency at which series become idle.&lt;/p>
 &lt;p>A series become idle once it&amp;rsquo;s not exported anymore by the monitored targets. Typically, series become idle when the monitored target itself disappear (eg. the process or node gets terminated).&lt;/p>
@@ -828,6 +957,9 @@ to set up the environment.&lt;/p>
 &lt;h3 id="ha-tracker">HA Tracker&lt;/h3>
 &lt;p>The HA Tracker is a feature of Cortex distributor which is used to deduplicate received series coming from two (or more) Prometheus servers configured in HA pairs.&lt;/p>
 &lt;p>For more information, please refer to the guide &amp;ldquo;&lt;a href="/docs/guides/ha-pair-handling/">Config for sending HA Pairs data to Cortex&lt;/a>&amp;rdquo;.&lt;/p>
+&lt;h3 id="hand-over">Hand-over&lt;/h3>
+&lt;p>Series hand-over is an operation supported by ingesters to transfer their state, on shutdown, to a new ingester in the &lt;code>JOINING&lt;/code> state. Hand-over is typically used during &lt;a href="/docs/guides/ingesters-rolling-updates/">ingesters rollouts&lt;/a> and is only supported by the Cortex chunks storage.&lt;/p>
+&lt;p>For more information, please refer to the guide &amp;ldquo;&lt;a href="/docs/guides/ingesters-rolling-updates/">Ingesters rolling updates&lt;/a>&amp;rdquo;.&lt;/p>
 &lt;h3 id="hash-ring">Hash ring&lt;/h3>
 &lt;p>The hash ring is a distributed data structure used by Cortex for sharding, replication and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.&lt;/p>
 &lt;p>For more information, please refer to the &lt;a href="/docs/architecture/#the-hash-ring">Architecture&lt;/a> documentation.&lt;/p>
@@ -838,19 +970,22 @@ to set up the environment.&lt;/p>
 &lt;h3 id="sample">Sample&lt;/h3>
 &lt;p>A sample is a single timestamped value in a time series.&lt;/p>
 &lt;p>For example, given the series &lt;code>node_cpu_seconds_total{instance=&amp;quot;10.0.0.1&amp;quot;,mode=&amp;quot;system&amp;quot;}&lt;/code> its stream of values (samples) could be:&lt;/p>
-&lt;pre tabindex="0">&lt;code># Display format: &amp;lt;value&amp;gt; @&amp;lt;timestamp&amp;gt;
+&lt;pre>&lt;code># Display format: &amp;lt;value&amp;gt; @&amp;lt;timestamp&amp;gt;
 11775 @1603812134
 11790 @1603812149
 11805 @1603812164
 11819 @1603812179
 11834 @1603812194
-&lt;/code>&lt;/pre>&lt;h3 id="series">Series&lt;/h3>
+&lt;/code>&lt;/pre>&lt;h3 id="schema-config">Schema config&lt;/h3>
+&lt;p>The schema (or schema config) is a configuration file used by the Cortex chunks storage to configure the backend index and chunks store, and manage storage version upgrades. The schema config is &lt;strong>not&lt;/strong> used by the Cortex &lt;a href="#blocks-storage">blocks storage&lt;/a>.&lt;/p>
+&lt;p>For more information, please refer to the &lt;a href="/docs/chunks-storage/schema-configuration/">Schema config reference&lt;/a>.&lt;/p>
+&lt;h3 id="series">Series&lt;/h3>
 &lt;p>In the Prometheus ecosystem, a series (or time series) is a single stream of timestamped values belonging to the same metric, with the same set of label key-value pairs.&lt;/p>
 &lt;p>For example, given a single metric &lt;code>node_cpu_seconds_total&lt;/code> you may have multiple series, each one uniquely identified by the combination of metric name and unique label key-value pairs:&lt;/p>
-&lt;pre tabindex="0">&lt;code>node_cpu_seconds_total{instance=&amp;#34;10.0.0.1&amp;#34;,mode=&amp;#34;system&amp;#34;}
-node_cpu_seconds_total{instance=&amp;#34;10.0.0.1&amp;#34;,mode=&amp;#34;user&amp;#34;}
-node_cpu_seconds_total{instance=&amp;#34;10.0.0.2&amp;#34;,mode=&amp;#34;system&amp;#34;}
-node_cpu_seconds_total{instance=&amp;#34;10.0.0.2&amp;#34;,mode=&amp;#34;user&amp;#34;}
+&lt;pre>&lt;code>node_cpu_seconds_total{instance=&amp;quot;10.0.0.1&amp;quot;,mode=&amp;quot;system&amp;quot;}
+node_cpu_seconds_total{instance=&amp;quot;10.0.0.1&amp;quot;,mode=&amp;quot;user&amp;quot;}
+node_cpu_seconds_total{instance=&amp;quot;10.0.0.2&amp;quot;,mode=&amp;quot;system&amp;quot;}
+node_cpu_seconds_total{instance=&amp;quot;10.0.0.2&amp;quot;,mode=&amp;quot;user&amp;quot;}
 &lt;/code>&lt;/pre>&lt;h3 id="tenant">Tenant&lt;/h3>
 &lt;p>A tenant (also called &amp;ldquo;user&amp;rdquo; or &amp;ldquo;org&amp;rdquo;) is the owner of a set of series written to and queried from Cortex. Cortex multi-tenancy support allows you to isolate series belonging to different tenants. For example, if you have two tenants &lt;code>team-A&lt;/code> and &lt;code>team-B&lt;/code>, &lt;code>team-A&lt;/code> series will be isolated from &lt;code>team-B&lt;/code>, and each team will be able to query only their own series.&lt;/p>
 &lt;p>For more information, please refer to:&lt;/p>
@@ -863,5 +998,9 @@ node_cpu_seconds_total{instance=&amp;#34;10.0.0.2&amp;#34;,mode=&amp;#34;user&am
 &lt;h3 id="user">User&lt;/h3>
 &lt;p>&lt;em>See &lt;a href="#tenant">Tenant&lt;/a>.&lt;/em>&lt;/p>
 &lt;h3 id="wal">WAL&lt;/h3>
-&lt;p>The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination.&lt;/p>
-&lt;p>For more information, please refer to &lt;a href="/docs/blocks-storage/#the-write-path">Ingesters with WAL&lt;/a>.&lt;/p></description></item></channel></rss>
+&lt;p>The Write-Ahead Log (WAL) is an append only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abruptly termination. Despite the implementation is different, the WAL is supported both by Cortex chunks and blocks storage engines.&lt;/p>
+&lt;p>For more information, please refer to:&lt;/p>
+&lt;ul>
+&lt;li>&lt;a href="/docs/chunks-storage/ingesters-with-wal/">Ingesters with WAL&lt;/a> when running &lt;strong>chunks storage&lt;/strong>.&lt;/li>
+&lt;li>&lt;a href="/docs/blocks-storage/#the-write-path">Ingesters with WAL&lt;/a> when running &lt;strong>blocks storage&lt;/strong>.&lt;/li>
+&lt;/ul></description></item></channel></rss>

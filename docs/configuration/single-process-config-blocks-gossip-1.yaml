@@ -61,9 +61,6 @@ memberlist:
     - localhost:7947
   abort_if_cluster_join_fails: false
 
-storage:
-  engine: blocks
-
 blocks_storage:
   tsdb:
     dir: /tmp/cortex/tsdb-ing1

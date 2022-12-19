@@ -18,6 +18,7 @@
 * [FEATURE] Build ARM docker images. #5041
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
+* [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
 
 ## 1.14.0 2022-12-02
 

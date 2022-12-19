@@ -127,8 +127,9 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			compactorID string
 			isExpired   bool
 		}
-		expected [][]ulid.ULID
-		metrics  string
+		expected        [][]ulid.ULID
+		metrics         string
+		noCompactBlocks map[ulid.ULID]*metadata.NoCompactMark
 	}{
 		"test basic grouping": {
 			concurrency: 3,
@@ -306,6 +307,20 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
         	          cortex_compactor_remaining_planned_compactions 2
 `,
 		},
+		"test should skip block with no compact marker": {
+			concurrency: 2,
+			ranges:      []time.Duration{4 * time.Hour},
+			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid]},
+			expected: [][]ulid.ULID{
+				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
+				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 2
+`,
+			noCompactBlocks: map[ulid.ULID]*metadata.NoCompactMark{block2hto3hExt1Ulid: {}},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -364,6 +379,10 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			bkt.MockUpload(mock.Anything, nil)
 			bkt.MockGet(mock.Anything, "", nil)
 
+			noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+				return testData.noCompactBlocks
+			}
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			g := NewShuffleShardingGrouper(
@@ -390,6 +409,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				blockVisitMarkerTimeout,
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
+				noCompactFilter,
 			)
 			actual, err := g.Groups(testData.blocks)
 			require.NoError(t, err)

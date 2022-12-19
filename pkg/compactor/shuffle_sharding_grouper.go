@@ -53,6 +53,8 @@ type ShuffleShardingGrouper struct {
 	blockVisitMarkerTimeout     time.Duration
 	blockVisitMarkerReadFailed  prometheus.Counter
 	blockVisitMarkerWriteFailed prometheus.Counter
+
+	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark
 }
 
 func NewShuffleShardingGrouper(
@@ -79,6 +81,7 @@ func NewShuffleShardingGrouper(
 	blockVisitMarkerTimeout time.Duration,
 	blockVisitMarkerReadFailed prometheus.Counter,
 	blockVisitMarkerWriteFailed prometheus.Counter,
+	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
 ) *ShuffleShardingGrouper {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -129,17 +132,21 @@ func NewShuffleShardingGrouper(
 		blockVisitMarkerTimeout:     blockVisitMarkerTimeout,
 		blockVisitMarkerReadFailed:  blockVisitMarkerReadFailed,
 		blockVisitMarkerWriteFailed: blockVisitMarkerWriteFailed,
+		noCompBlocksFunc:            noCompBlocksFunc,
 	}
 }
 
 // Groups function modified from https://github.com/cortexproject/cortex/pull/2616
 func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*compact.Group, err error) {
+	noCompactMarked := g.noCompBlocksFunc()
 	// First of all we have to group blocks using the Thanos default
 	// grouping (based on downsample resolution + external labels).
 	mainGroups := map[string][]*metadata.Meta{}
 	for _, b := range blocks {
-		key := b.Thanos.GroupKey()
-		mainGroups[key] = append(mainGroups[key], b)
+		if _, excluded := noCompactMarked[b.ULID]; !excluded {
+			key := b.Thanos.GroupKey()
+			mainGroups[key] = append(mainGroups[key], b)
+		}
 	}
 
 	// For each group, we have to further split it into set of blocks

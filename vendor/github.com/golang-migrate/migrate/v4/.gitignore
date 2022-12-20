@@ -6,3 +6,5 @@ cli/migrate
 .godoc.pid
 vendor/
 .vscode/
+.idea
+dist/

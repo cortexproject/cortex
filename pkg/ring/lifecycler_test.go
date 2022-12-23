@@ -755,10 +755,10 @@ func TestJoinInLeavingState(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	cfg := testLifecyclerConfig(ringConfig, "ing1")
-	cfg.NumTokens = 2
+	cfg.NumTokens = 3
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 
-	// Set state as LEAVING
+	// Set state as LEAVING and 1 less token because of conflict resolution
 	err = r.KVClient.CAS(context.Background(), ringKey, func(in interface{}) (interface{}, bool, error) {
 		r := &Desc{
 			Ingesters: map[string]InstanceDesc{
@@ -767,7 +767,7 @@ func TestJoinInLeavingState(t *testing.T) {
 					Tokens: []uint32{1, 4},
 				},
 				"ing2": {
-					Tokens: []uint32{2, 3},
+					Tokens: []uint32{2, 3, 5},
 				},
 			},
 		}
@@ -789,8 +789,8 @@ func TestJoinInLeavingState(t *testing.T) {
 		return ok &&
 			len(desc.Ingesters) == 2 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
-			len(desc.Ingesters["ing1"].Tokens) == cfg.NumTokens &&
-			len(desc.Ingesters["ing2"].Tokens) == 2
+			len(desc.Ingesters["ing1"].Tokens) == 2 &&
+			len(desc.Ingesters["ing2"].Tokens) == 3
 	})
 }
 

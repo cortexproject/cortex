@@ -17,13 +17,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger) Middleware {
+func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger, queryAnalyzer querysharding.Analyzer) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return shardBy{
-			next:   next,
-			limits: limits,
-			merger: merger,
-			logger: logger,
+			next:          next,
+			limits:        limits,
+			merger:        merger,
+			logger:        logger,
+			queryAnalyzer: queryAnalyzer,
 		}
 	})
 }
@@ -33,7 +34,7 @@ type shardBy struct {
 	limits        Limits
 	logger        log.Logger
 	merger        Merger
-	queryAnalyzer *querysharding.QueryAnalyzer
+	queryAnalyzer querysharding.Analyzer
 }
 
 func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {

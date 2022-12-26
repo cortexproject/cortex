@@ -20,6 +20,7 @@
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
+* [BUGFIX] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
 
 ## 1.14.0 2022-12-02
 

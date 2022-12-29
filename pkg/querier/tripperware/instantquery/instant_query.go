@@ -30,7 +30,8 @@ import (
 
 var (
 	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
-	json                                = jsoniter.Config{
+
+	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
@@ -155,7 +156,7 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	log, ctx := spanlogger.New(ctx, "PrometheusInstantQueryResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := tripperware.BodyBuffer(r)
+	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err

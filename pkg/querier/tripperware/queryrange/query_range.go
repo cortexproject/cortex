@@ -261,7 +261,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := tripperware.BodyBuffer(r)
+	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err

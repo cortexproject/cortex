@@ -34,5 +34,6 @@ run:
     - netgo
     - requires_docker
     - integration
+    - integration_alertmanager
     - integration_backward_compatibility
     - integration_memberlist

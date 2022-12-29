@@ -93,6 +93,7 @@ jobs:
       matrix:
         tags:
         - requires_docker
+        - integration_alertmanager
         - integration_backward_compatibility
         - integration_memberlist
     steps:

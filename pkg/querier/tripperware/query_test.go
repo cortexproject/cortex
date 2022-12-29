@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
 func TestMarshalSampleStream(t *testing.T) {

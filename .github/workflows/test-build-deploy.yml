@@ -88,6 +88,13 @@ jobs:
   integration:
     needs: build
     runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tags:
+        - requires_docker
+        - integration_backward_compatibility
+        - integration_memberlist
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@v2
@@ -144,7 +151,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=requires_docker -timeout 2400s -v -count=1 ./integration/...
+          go test -tags=integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 

@@ -33,3 +33,6 @@ run:
   build-tags:
     - netgo
     - requires_docker
+    - integration
+    - integration_backward_compatibility
+    - integration_memberlist

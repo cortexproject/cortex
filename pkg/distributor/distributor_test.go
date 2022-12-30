@@ -57,6 +57,7 @@ var (
 )
 
 func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		initConfig func(*Config)
 		initLimits func(*validation.Limits)
@@ -109,6 +110,7 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestDistributor_Push(t *testing.T) {
+	t.Parallel()
 	// Metrics to assert on.
 	lastSeenTimestamp := "cortex_distributor_latest_seen_sample_timestamp_seconds"
 	distributorAppend := "cortex_distributor_ingester_appends_total"
@@ -291,6 +293,7 @@ func TestDistributor_Push(t *testing.T) {
 }
 
 func TestDistributor_MetricsCleanup(t *testing.T) {
+	t.Parallel()
 	dists, _, regs, _ := prepare(t, prepConfig{
 		numDistributors: 1,
 	})
@@ -399,6 +402,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
+	t.Parallel()
 	type testPush struct {
 		samples       int
 		metadata      int
@@ -494,6 +498,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 }
 
 func TestPush_QuorumError(t *testing.T) {
+	t.Parallel()
 
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
@@ -604,6 +609,7 @@ func TestPush_QuorumError(t *testing.T) {
 }
 
 func TestDistributor_PushInstanceLimits(t *testing.T) {
+	t.Parallel()
 
 	type testPush struct {
 		samples       int
@@ -754,6 +760,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 }
 
 func TestDistributor_PushHAInstances(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	for i, tc := range []struct {
@@ -841,6 +848,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 }
 
 func TestDistributor_PushQuery(t *testing.T) {
+	t.Parallel()
 	const shuffleShardSize = 5
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1016,6 +1024,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const maxChunksLimit = 30 // Chunks are duplicated due to replication factor.
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1072,6 +1081,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const maxSeriesLimit = 10
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1124,6 +1134,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const seriesToAdd = 10
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1193,6 +1204,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const seriesToAdd = 10
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1262,6 +1274,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
@@ -1350,6 +1363,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 }
 
 func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	type testcase struct {
 		inputSeries    labels.Labels
@@ -1391,6 +1405,7 @@ func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) 
 }
 
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
 		inputSeries    labels.Labels
@@ -1497,6 +1512,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 }
 
 func TestDistributor_Push_LabelNameValidation(t *testing.T) {
+	t.Parallel()
 	inputLabels := labels.Labels{
 		{Name: model.MetricNameLabel, Value: "foo"},
 		{Name: "999.illegal", Value: "baz"},
@@ -1550,6 +1566,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 }
 
 func TestDistributor_Push_ExemplarValidation(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	manyLabels := []string{model.MetricNameLabel, "test"}
 	for i := 1; i < 31; i++ {
@@ -1909,6 +1926,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 }
 
 func TestSlowQueries(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3
@@ -1939,6 +1957,7 @@ func TestSlowQueries(t *testing.T) {
 }
 
 func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
+	t.Parallel()
 	// Create distributor
 	ds, ing, _, _ := prepare(t, prepConfig{
 		numIngesters:        3,
@@ -1969,6 +1988,7 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 }
 
 func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
+	t.Parallel()
 	const numIngesters = 5
 
 	fixtures := []struct {
@@ -2251,6 +2271,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 }
 
 func TestDistributor_MetricsMetadata(t *testing.T) {
+	t.Parallel()
 	const numIngesters = 5
 
 	tests := map[string]struct {
@@ -2956,6 +2977,7 @@ outer:
 }
 
 func TestDistributorValidation(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "1")
 	now := model.Now()
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
@@ -3051,6 +3073,7 @@ func TestDistributorValidation(t *testing.T) {
 }
 
 func TestRemoveReplicaLabel(t *testing.T) {
+	t.Parallel()
 	replicaLabel := "replica"
 	clusterLabel := "cluster"
 	cases := []struct {
@@ -3096,6 +3119,7 @@ func TestRemoveReplicaLabel(t *testing.T) {
 
 // This is not great, but we deal with unsorted labels when validating labels.
 func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
+	t.Parallel()
 	val1 := shardByAllLabels("test", []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -3112,6 +3136,7 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 }
 
 func TestSortLabels(t *testing.T) {
+	t.Parallel()
 	sorted := []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -3139,6 +3164,7 @@ func TestSortLabels(t *testing.T) {
 }
 
 func TestDistributor_Push_Relabel(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
@@ -3244,6 +3270,7 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 }
 
 func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing.T) {
+	t.Parallel()
 	metricRelabelConfigs := []*relabel.Config{
 		{
 			SourceLabels: []model.LabelName{"__name__"},

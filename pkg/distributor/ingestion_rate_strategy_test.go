@@ -13,6 +13,7 @@ import (
 )
 
 func TestIngestionRateStrategy(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		limits        validation.Limits
 		ring          ReadLifecycler
@@ -59,6 +60,7 @@ func TestIngestionRateStrategy(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			var strategy limiter.RateLimiterStrategy
 
 			// Init limits overrides

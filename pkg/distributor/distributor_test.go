@@ -96,7 +96,9 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData // Needed for t.Parallel to work correctly
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			cfg := Config{}
 			limits := validation.Limits{}
 			flagext.DefaultValues(&cfg, &limits)
@@ -258,7 +260,11 @@ func TestDistributor_Push(t *testing.T) {
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
+			tc := tc
+			name := name
+			shardByAllLabels := shardByAllLabels
 			t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v)", name, shardByAllLabels), func(t *testing.T) {
+				t.Parallel()
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
 				limits.IngestionRate = 20
@@ -465,6 +471,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
@@ -719,6 +726,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 
@@ -810,7 +818,10 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
+			tc := tc
+			shardByAllLabels := shardByAllLabels
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
+				t.Parallel()
 				var limits validation.Limits
 				flagext.DefaultValues(&limits)
 				limits.AcceptHASamples = true
@@ -980,7 +991,9 @@ func TestDistributor_PushQuery(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:        tc.numIngesters,
 				happyIngesters:      tc.happyIngesters,
@@ -1483,7 +1496,9 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	limits.AcceptHASamples = true
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:     2,
 				happyIngesters:   2,
@@ -1544,7 +1559,9 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 
 	for testName, tc := range tests {
+		tc := tc
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ds, _, _, _ := prepare(t, prepConfig{
 				numIngesters:            2,
 				happyIngesters:          2,
@@ -1607,7 +1624,9 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 	}
 
 	for testName, tc := range tests {
+		tc := tc
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ds, _, _, _ := prepare(t, prepConfig{
 				numIngesters:     2,
 				happyIngesters:   2,
@@ -1932,7 +1951,10 @@ func TestSlowQueries(t *testing.T) {
 	nIngesters := 3
 	for _, shardByAllLabels := range []bool{true, false} {
 		for happy := 0; happy <= nIngesters; happy++ {
+			shardByAllLabels := shardByAllLabels
+			happy := happy
 			t.Run(fmt.Sprintf("%t/%d", shardByAllLabels, happy), func(t *testing.T) {
+				t.Parallel()
 				var expectedErr error
 				if nIngesters-happy > 1 {
 					expectedErr = errFail
@@ -2122,7 +2144,9 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			now := model.Now()
 
 			// Create distributor
@@ -2296,7 +2320,9 @@ func TestDistributor_MetricsMetadata(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Create distributor
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:        numIngesters,
@@ -3049,7 +3075,9 @@ func TestDistributorValidation(t *testing.T) {
 			err: httpgrpc.Errorf(http.StatusBadRequest, `metadata missing metric name`),
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			var limits validation.Limits
 			flagext.DefaultValues(&limits)
 
@@ -3237,7 +3265,9 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 	}
 
 	for _, tc := range cases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var err error
 			var limits validation.Limits
 			flagext.DefaultValues(&limits)

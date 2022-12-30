@@ -96,6 +96,7 @@ jobs:
         - integration_alertmanager
         - integration_backward_compatibility
         - integration_memberlist
+        - integration_querier
         - integration_ruler
     steps:
       - name: Upgrade golang

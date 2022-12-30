@@ -37,4 +37,5 @@ run:
     - integration_alertmanager
     - integration_backward_compatibility
     - integration_memberlist
+    - integration_querier
     - integration_ruler

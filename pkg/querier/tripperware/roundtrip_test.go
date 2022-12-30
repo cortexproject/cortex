@@ -130,6 +130,11 @@ func TestRoundTrip(t *testing.T) {
 			limits:       defaultOverrides,
 		},
 		{
+			path:         queryNonShardable,
+			expectedBody: "bar",
+			limits:       shardingOverrides,
+		},
+		{
 			path:         query,
 			expectedBody: responseBody,
 			limits:       shardingOverrides,

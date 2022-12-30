@@ -127,7 +127,6 @@ jobs:
         # to a timeout
         run: |
           docker pull minio/minio:RELEASE.2021-10-13T00-23-17Z
-          docker pull amazon/dynamodb-local:1.11.477
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
@@ -140,9 +139,7 @@ jobs:
             docker pull quay.io/cortexproject/cortex:v1.13.1
             docker pull quay.io/cortexproject/cortex:v1.14.0
           fi
-          docker pull shopify/bigtable-emulator:0.1.0
           docker pull memcached:1.6.1
-          docker pull bouncestorage/swift-aio:55ba4331
         env:
           TEST_TAGS: ${{ matrix.tags }}
       - name: Integration Tests

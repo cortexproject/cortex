@@ -117,7 +117,7 @@ func TestDistributor_Push(t *testing.T) {
 	lastSeenTimestamp := "cortex_distributor_latest_seen_sample_timestamp_seconds"
 	distributorAppend := "cortex_distributor_ingester_appends_total"
 	distributorAppendFailure := "cortex_distributor_ingester_append_failures_total"
-	ctx := user.InjectOrgID(context.Background(), "user")
+	ctx := user.InjectOrgID(context.Background(), "userDistributorPush")
 
 	type samplesIn struct {
 		num              int
@@ -149,7 +149,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.004
 			`,
 		},
 		"A push to 2 happy ingesters should succeed": {
@@ -162,7 +162,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.004
 			`,
 		},
 		"A push to 1 happy ingesters should fail": {
@@ -174,7 +174,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.009
 			`,
 		},
 		"A push to 0 happy ingesters should fail": {
@@ -186,7 +186,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.009
 			`,
 		},
 		"A push exceeding burst size should fail": {
@@ -199,7 +199,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.024
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.024
 			`,
 		},
 		"A push to ingesters should report the correct metrics with no metadata": {
@@ -3193,7 +3193,7 @@ func TestSortLabels(t *testing.T) {
 
 func TestDistributor_Push_Relabel(t *testing.T) {
 	t.Parallel()
-	ctx := user.InjectOrgID(context.Background(), "user")
+	ctx := user.InjectOrgID(context.Background(), "userDistributorPushRelabel")
 
 	type testcase struct {
 		name                 string
@@ -3338,7 +3338,7 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 
 	// Push the series to the distributor
 	req := mockWriteRequest(inputSeries, 1, 1)
-	ctx := user.InjectOrgID(context.Background(), "user1")
+	ctx := user.InjectOrgID(context.Background(), "userDistributorPushRelabelDropWillExportMetricOfDroppedSamples")
 	_, err = ds[0].Push(ctx, req)
 	require.NoError(t, err)
 
@@ -3354,10 +3354,10 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	expectedMetrics := `
 		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 		# TYPE cortex_discarded_samples_total counter
-		cortex_discarded_samples_total{reason="relabel_configuration",user="user1"} 1
+		cortex_discarded_samples_total{reason="relabel_configuration",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
-		cortex_distributor_received_samples_total{user="user1"} 1
+		cortex_distributor_received_samples_total{user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
 		`
 
 	require.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...))

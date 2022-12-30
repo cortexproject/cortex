@@ -198,6 +198,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	t.Parallel()
 	replica1 := "replica1"
 	replica2 := "replica2"
+	user := "userCheckReplicaMultiCluster"
 
 	reg := prometheus.NewPedanticRegistry()
 	c, err := newHATracker(HATrackerConfig{
@@ -214,21 +215,21 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	now := time.Now()
 
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica2, now)
 	assert.Error(t, err)
 
 	// We should still accept from replica 1.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// We expect no CAS operation failures.
@@ -249,6 +250,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	t.Parallel()
 	replica1 := "replica1"
 	replica2 := "replica2"
+	user := "userCheckReplicaMultiClusterTimeout"
 
 	reg := prometheus.NewPedanticRegistry()
 	c, err := newHATracker(HATrackerConfig{
@@ -265,39 +267,39 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	now := time.Now()
 
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica2, now)
 	assert.Error(t, err)
 
 	// Accept a sample for replica1 in C2.
 	now = now.Add(500 * time.Millisecond)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica2, now)
 	assert.Error(t, err)
 
 	// Wait more than the failover timeout.
 	now = now.Add(1100 * time.Millisecond)
 
 	// Accept a sample from c1/replica2.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.NoError(t, err)
 
 	// We should still accept from c2/replica1 but reject from c1/replica1.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// We expect no CAS operation failures.
@@ -724,7 +726,7 @@ func TestCheckReplicaCleanup(t *testing.T) {
 	t.Parallel()
 	replica := "r1"
 	cluster := "c1"
-	userID := "user"
+	userID := "userCheckReplicaCleanup"
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	reg := prometheus.NewPedanticRegistry()

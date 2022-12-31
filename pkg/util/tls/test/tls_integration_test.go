@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/gogo/status"
@@ -27,12 +28,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
+var (
+	linux  = "linux"
+	darwin = "darwin"
+)
+
 type tcIntegrationClientServer struct {
 	name            string
 	tlsGrpcEnabled  bool
 	tlsConfig       tls.ClientConfig
 	httpExpectError func(*testing.T, error)
 	grpcExpectError func(*testing.T, error)
+	os              *string
 }
 
 type grpcHealthCheck struct {
@@ -106,11 +113,20 @@ func newIntegrationClientServer(
 	grpcHost := fmt.Sprintf("localhost:%d", grpcPort)
 
 	for _, tc := range tcs {
+		if tc.os != nil {
+			if runtime.GOOS != *tc.os {
+				continue
+			}
+		}
 		tlsClientConfig, err := tc.tlsConfig.GetTLSConfig()
 		require.NoError(t, err)
 
 		// HTTP
-		t.Run("HTTP/"+tc.name, func(t *testing.T) {
+		name := "HTTP/" + tc.name
+		if tc.os != nil {
+			name += "/" + *tc.os
+		}
+		t.Run(name, func(t *testing.T) {
 			transport := &http.Transport{TLSClientConfig: tlsClientConfig}
 			client := &http.Client{Transport: transport}
 
@@ -220,6 +236,15 @@ func TestServerWithLocalhostCertNoClientCertAuth(t *testing.T) {
 				httpExpectError: errorContainsString("x509: certificate signed by unknown authority"),
 				// For GRPC we expect this error as we try to connect without TLS to a TLS enabled server
 				grpcExpectError: unavailableDescErr,
+				os:              &linux,
+			},
+			{
+				name:            "no-config",
+				tlsConfig:       tls.ClientConfig{},
+				httpExpectError: errorContainsString("x509: “server” certificate is not trusted"),
+				// For GRPC we expect this error as we try to connect without TLS to a TLS enabled server
+				grpcExpectError: unavailableDescErr,
+				os:              &darwin,
 			},
 			{
 				name:            "grpc-tls-enabled",
@@ -227,6 +252,15 @@ func TestServerWithLocalhostCertNoClientCertAuth(t *testing.T) {
 				tlsConfig:       tls.ClientConfig{},
 				httpExpectError: errorContainsString("x509: certificate signed by unknown authority"),
 				grpcExpectError: errorContainsString("x509: certificate signed by unknown authority"),
+				os:              &linux,
+			},
+			{
+				name:            "grpc-tls-enabled",
+				tlsGrpcEnabled:  true,
+				tlsConfig:       tls.ClientConfig{},
+				httpExpectError: errorContainsString("x509: “server” certificate is not trusted"),
+				grpcExpectError: errorContainsString("x509: “server” certificate is not trusted"),
+				os:              &darwin,
 			},
 			{
 				name:           "tls-skip-verify",
@@ -285,6 +319,15 @@ func TestServerWithoutLocalhostCertNoClientCertAuth(t *testing.T) {
 				httpExpectError: errorContainsString("x509: certificate is valid for my-other-name, not localhost"),
 				// For GRPC we expect this error as we try to connect without TLS to a TLS enabled server
 				grpcExpectError: unavailableDescErr,
+				os:              &linux,
+			},
+			{
+				name:            "no-config",
+				tlsConfig:       tls.ClientConfig{},
+				httpExpectError: errorContainsString("x509: “server-no-localhost” certificate is not trusted"),
+				// For GRPC we expect this error as we try to connect without TLS to a TLS enabled server
+				grpcExpectError: unavailableDescErr,
+				os:              &darwin,
 			},
 			{
 				name:            "grpc-tls-enabled",
@@ -292,6 +335,15 @@ func TestServerWithoutLocalhostCertNoClientCertAuth(t *testing.T) {
 				tlsConfig:       tls.ClientConfig{},
 				httpExpectError: errorContainsString("x509: certificate is valid for my-other-name, not localhost"),
 				grpcExpectError: errorContainsString("x509: certificate is valid for my-other-name, not localhost"),
+				os:              &linux,
+			},
+			{
+				name:            "grpc-tls-enabled",
+				tlsGrpcEnabled:  true,
+				tlsConfig:       tls.ClientConfig{},
+				httpExpectError: errorContainsString("x509: “server-no-localhost” certificate is not trusted"),
+				grpcExpectError: errorContainsString("x509: “server-no-localhost” certificate is not trusted"),
+				os:              &darwin,
 			},
 			{
 				name:           "ca-path",

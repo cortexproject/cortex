@@ -82,12 +82,12 @@ func newIntegrationClientServer(
 
 	grpcPort, closeGrpcPort, err := getLocalHostPort()
 	require.NoError(t, err)
-	httpPort, closeHttpPort, err := getLocalHostPort()
+	httpPort, closeHTTPPort, err := getLocalHostPort()
 	require.NoError(t, err)
 
 	err = closeGrpcPort()
 	require.NoError(t, err)
-	err = closeHttpPort()
+	err = closeHTTPPort()
 	require.NoError(t, err)
 
 	cfg.HTTPListenPort = httpPort

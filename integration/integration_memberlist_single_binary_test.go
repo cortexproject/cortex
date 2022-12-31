@@ -1,5 +1,5 @@
-//go:build requires_docker
-// +build requires_docker
+//go:build integration_memberlist
+// +build integration_memberlist
 
 package integration
 

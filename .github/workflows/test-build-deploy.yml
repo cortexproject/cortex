@@ -88,6 +88,16 @@ jobs:
   integration:
     needs: build
     runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tags:
+        - requires_docker
+        - integration_alertmanager
+        - integration_backward_compatibility
+        - integration_memberlist
+        - integration_querier
+        - integration_ruler
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@v2
@@ -116,27 +126,22 @@ jobs:
         # locally and the download time doesn't account in the test execution time, which is subject
         # to a timeout
         run: |
-          docker pull minio/minio:RELEASE.2019-12-30T05-45-39Z
-          docker pull amazon/dynamodb-local:1.11.477
+          docker pull minio/minio:RELEASE.2021-10-13T00-23-17Z
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
-          docker pull quay.io/cortexproject/cortex:v1.0.0
-          docker pull quay.io/cortexproject/cortex:v1.1.0
-          docker pull quay.io/cortexproject/cortex:v1.2.0
-          docker pull quay.io/cortexproject/cortex:v1.3.0
-          docker pull quay.io/cortexproject/cortex:v1.4.0
-          docker pull quay.io/cortexproject/cortex:v1.5.0
-          docker pull quay.io/cortexproject/cortex:v1.6.0
-          docker pull quay.io/cortexproject/cortex:v1.7.0
-          docker pull quay.io/cortexproject/cortex:v1.8.0
-          docker pull quay.io/cortexproject/cortex:v1.9.0
-          docker pull quay.io/cortexproject/cortex:v1.10.0
-          docker pull quay.io/cortexproject/cortex:v1.11.1
-          docker pull quay.io/cortexproject/cortex:v1.13.1
-          docker pull quay.io/cortexproject/cortex:v1.14.0
-          docker pull shopify/bigtable-emulator:0.1.0
+          if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
+            docker pull quay.io/cortexproject/cortex:v1.6.0
+            docker pull quay.io/cortexproject/cortex:v1.7.0
+            docker pull quay.io/cortexproject/cortex:v1.8.0
+            docker pull quay.io/cortexproject/cortex:v1.9.0
+            docker pull quay.io/cortexproject/cortex:v1.10.0
+            docker pull quay.io/cortexproject/cortex:v1.11.1
+            docker pull quay.io/cortexproject/cortex:v1.13.1
+            docker pull quay.io/cortexproject/cortex:v1.14.0
+          fi
           docker pull memcached:1.6.1
-          docker pull bouncestorage/swift-aio:55ba4331
+        env:
+          TEST_TAGS: ${{ matrix.tags }}
       - name: Integration Tests
         run: |
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
@@ -144,7 +149,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=requires_docker -timeout 2400s -v -count=1 ./integration/...
+          go test -tags=integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 

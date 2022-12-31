@@ -184,7 +184,7 @@ lint:
 	golangci-lint run
 
 	# Ensure no blocklisted package is imported.
-	GOFLAGS="-tags=requires_docker" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
+	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_memberlist,integration_querier,integration_ruler" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\
 		github.com/prometheus/client_golang/prometheus.{MultiError}=github.com/prometheus/prometheus/tsdb/errors.{NewMulti},\

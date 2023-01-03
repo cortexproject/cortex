@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
-	"path"
 	"sort"
 	"strings"
 	"time"
@@ -58,8 +57,6 @@ type ShuffleShardingGrouper struct {
 	blockVisitMarkerWriteFailed     prometheus.Counter
 	partitionedGroupInfoReadFailed  prometheus.Counter
 	partitionedGroupInfoWriteFailed prometheus.Counter
-
-	blockPartitionInfoMap map[ulid.ULID]*thanosblock.PartitionInfo
 }
 
 func NewShuffleShardingGrouper(
@@ -140,7 +137,6 @@ func NewShuffleShardingGrouper(
 		blockVisitMarkerWriteFailed:     blockVisitMarkerWriteFailed,
 		partitionedGroupInfoReadFailed:  partitionedGroupInfoReadFailed,
 		partitionedGroupInfoWriteFailed: partitionedGroupInfoWriteFailed,
-		blockPartitionInfoMap:           make(map[ulid.ULID]*thanosblock.PartitionInfo),
 	}
 }
 
@@ -152,11 +148,6 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	for _, b := range blocks {
 		key := b.Thanos.GroupKey()
 		mainGroups[key] = append(mainGroups[key], b)
-		_, err := g.getBlockPartitionInfo(b.ULID) // this will put fetched partition info in g.blockPartitionInfoMap
-		if err != nil {
-			level.Warn(g.logger).Log("msg", "unable to get block partition info", "block", b.ULID.String(), "err", err)
-		}
-
 	}
 
 	// For each group, we have to further split it into set of blocks
@@ -181,7 +172,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 
 	var groups []blocksGroup
 	for _, mainBlocks := range mainGroups {
-		groups = append(groups, groupBlocksByCompactableRanges(mainBlocks, g.blockPartitionInfoMap, g.compactorCfg.BlockRanges.ToMilliseconds())...)
+		groups = append(groups, groupBlocksByCompactableRanges(mainBlocks, g.compactorCfg.BlockRanges.ToMilliseconds())...)
 	}
 
 	// Ensure groups are sorted by smallest range, oldest min time first. The rationale
@@ -413,35 +404,6 @@ func (g *ShuffleShardingGrouper) groupBlocksByMinTime(group blocksGroup) map[int
 	return blocksByMinTime
 }
 
-func getBlockPartitionInfoFile(blockID ulid.ULID) string {
-	return path.Join(blockID.String(), thanosblock.PartitionInfoFilename)
-}
-
-func (g *ShuffleShardingGrouper) getBlockPartitionInfo(blockID ulid.ULID) (*thanosblock.PartitionInfo, error) {
-	if _, ok := g.blockPartitionInfoMap[blockID]; ok {
-		return g.blockPartitionInfoMap[blockID], nil
-	}
-	rc, err := g.bkt.ReaderWithExpectedErrs(g.bkt.IsObjNotFoundErr).Get(g.ctx, getBlockPartitionInfoFile(blockID))
-	if err != nil {
-		if g.bkt.IsObjNotFoundErr(err) {
-			defaultPartitionInfo := &thanosblock.PartitionInfo{
-				PartitionedGroupID: 0,
-				PartitionCount:     1,
-				PartitionID:        0,
-			}
-			g.blockPartitionInfoMap[blockID] = defaultPartitionInfo
-			return defaultPartitionInfo, nil
-		}
-		return nil, err
-	}
-	partitionInfo, err := thanosblock.ReadPartitionInfo(rc)
-	if err != nil {
-		return nil, err
-	}
-	g.blockPartitionInfoMap[blockID] = partitionInfo
-	return partitionInfo, nil
-}
-
 func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocksByMinTime map[int64][]*metadata.Meta, rangeStart int64, rangeEnd int64) (map[int]blocksGroup, error) {
 	partitionedGroups := make(map[int]blocksGroup)
 	addToPartitionedGroups := func(blocks []*metadata.Meta, partitionID int) {
@@ -464,9 +426,13 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 			// Case that number of blocks in this time interval is 2^n, should
 			// use modulo calculation to find blocks for each partition ID.
 			for _, block := range blocksInSameTimeInterval {
-				partitionInfo, err := g.getBlockPartitionInfo(block.ULID)
-				if err != nil {
-					return nil, err
+				partitionInfo := block.Thanos.PartitionInfo
+				if partitionInfo == nil {
+					// For legacy blocks with level > 1, treat PartitionID is always 0.
+					// So it can be included in every partition.
+					partitionInfo = &metadata.PartitionInfo{
+						PartitionID: 0,
+					}
 				}
 				if numOfBlocks < partitionCount {
 					for partitionID := partitionInfo.PartitionID; partitionID < partitionCount; partitionID += numOfBlocks {
@@ -620,7 +586,7 @@ func (g blocksGroup) maxTime() int64 {
 // to smaller ranges. If a smaller range contains more than 1 block (and thus it should
 // be compacted), the larger range block group is not generated until each of its
 // smaller ranges have 1 block each at most.
-func groupBlocksByCompactableRanges(blocks []*metadata.Meta, blocksPartitionInfo map[ulid.ULID]*thanosblock.PartitionInfo, ranges []int64) []blocksGroup {
+func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []blocksGroup {
 	if len(blocks) == 0 {
 		return nil
 	}
@@ -648,14 +614,22 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, blocksPartitionInfo
 				}
 			}
 
-			firstBlockPartitionInfo, ok := blocksPartitionInfo[group.blocks[0].ULID]
-			if !ok {
-				continue nextGroup
+			firstBlockPartitionInfo := group.blocks[0].Thanos.PartitionInfo
+			if firstBlockPartitionInfo == nil {
+				firstBlockPartitionInfo = &metadata.PartitionInfo{
+					PartitionedGroupID: 0,
+					PartitionCount:     1,
+					PartitionID:        0,
+				}
 			}
 			for _, block := range group.blocks {
-				blockPartitionInfo, ok := blocksPartitionInfo[block.ULID]
-				if !ok {
-					continue nextGroup
+				blockPartitionInfo := block.Thanos.PartitionInfo
+				if blockPartitionInfo == nil {
+					blockPartitionInfo = &metadata.PartitionInfo{
+						PartitionedGroupID: 0,
+						PartitionCount:     1,
+						PartitionID:        0,
+					}
 				}
 				if blockPartitionInfo.PartitionedGroupID <= 0 || blockPartitionInfo.PartitionedGroupID != firstBlockPartitionInfo.PartitionedGroupID {
 					groups = append(groups, group)

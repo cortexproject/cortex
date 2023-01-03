@@ -358,15 +358,6 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
 			}
-			for _, block := range testData.blocks {
-				partitionInfo := thanosblock.PartitionInfo{
-					PartitionedGroupID: 0,
-					PartitionCount:     1,
-					PartitionID:        0,
-				}
-				partitionInfoContent, _ := json.Marshal(partitionInfo)
-				bkt.MockGet(getBlockPartitionInfoFile(block.ULID), string(partitionInfoContent), nil)
-			}
 			bkt.MockUpload(mock.Anything, nil)
 			bkt.MockGet(mock.Anything, "", nil)
 
@@ -424,45 +415,65 @@ func TestGroupBlocksByCompactableRanges(t *testing.T) {
 	block8Ulid := ulid.MustNew(8, nil)
 	block9Ulid := ulid.MustNew(9, nil)
 
-	defaultPartitionInfo := &thanosblock.PartitionInfo{
+	defaultPartitionInfo := &metadata.PartitionInfo{
 		PartitionedGroupID: 0,
 		PartitionCount:     1,
 		PartitionID:        0,
 	}
 
+	partition3ID0 := &metadata.PartitionInfo{
+		PartitionedGroupID: uint32(12345),
+		PartitionCount:     3,
+		PartitionID:        0,
+	}
+
+	partition3ID1 := &metadata.PartitionInfo{
+		PartitionedGroupID: uint32(12345),
+		PartitionCount:     3,
+		PartitionID:        1,
+	}
+
+	partition3ID2 := &metadata.PartitionInfo{
+		PartitionedGroupID: uint32(12345),
+		PartitionCount:     3,
+		PartitionID:        2,
+	}
+
+	partition2ID0 := &metadata.PartitionInfo{
+		PartitionedGroupID: uint32(54321),
+		PartitionCount:     2,
+		PartitionID:        0,
+	}
+
+	partition2ID1 := &metadata.PartitionInfo{
+		PartitionedGroupID: uint32(54321),
+		PartitionCount:     2,
+		PartitionID:        1,
+	}
+
 	tests := map[string]struct {
-		ranges              []int64
-		blocks              []*metadata.Meta
-		blocksPartitionInfo map[ulid.ULID]*thanosblock.PartitionInfo
-		expected            []blocksGroup
+		ranges   []int64
+		blocks   []*metadata.Meta
+		expected []blocksGroup
 	}{
 		"no input blocks": {
-			ranges:              []int64{20},
-			blocks:              nil,
-			blocksPartitionInfo: nil,
-			expected:            nil,
+			ranges:   []int64{20},
+			blocks:   nil,
+			expected: nil,
 		},
 		"only 1 block in input": {
 			ranges: []int64{20},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: nil,
 		},
 		"only 1 block for each range (single range)": {
 			ranges: []int64{20},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 40, MaxTime: 60}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 40, MaxTime: 60}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: nil,
 		},
@@ -478,229 +489,153 @@ func TestGroupBlocksByCompactableRanges(t *testing.T) {
 		"input blocks can be compacted on the 1st range only": {
 			ranges: []int64{20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 25, MaxTime: 30}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 40, MaxTime: 50}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 50, MaxTime: 60}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block7Ulid, MinTime: 60, MaxTime: 70}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
-				block4Ulid: defaultPartitionInfo,
-				block5Ulid: defaultPartitionInfo,
-				block6Ulid: defaultPartitionInfo,
-				block7Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 25, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 40, MaxTime: 50}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 50, MaxTime: 60}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block7Ulid, MinTime: 60, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 20, rangeEnd: 40, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 25, MaxTime: 30}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 25, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 				{rangeStart: 40, rangeEnd: 60, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 40, MaxTime: 50}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 50, MaxTime: 60}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 40, MaxTime: 50}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 50, MaxTime: 60}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"input blocks can be compacted on the 2nd range only": {
 			ranges: []int64{10, 20},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 30, MaxTime: 40}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 40, MaxTime: 60}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 60, MaxTime: 70}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 70, MaxTime: 80}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
-				block4Ulid: defaultPartitionInfo,
-				block5Ulid: defaultPartitionInfo,
-				block6Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 40, MaxTime: 60}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 60, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 70, MaxTime: 80}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 20, rangeEnd: 40, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 30, MaxTime: 40}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 				{rangeStart: 60, rangeEnd: 80, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 60, MaxTime: 70}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 70, MaxTime: 80}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 60, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 70, MaxTime: 80}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"input blocks can be compacted on a mix of 1st and 2nd ranges, guaranteeing no overlaps and giving preference to smaller ranges": {
 			ranges: []int64{10, 20},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 7, MaxTime: 10}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 10, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 20, MaxTime: 30}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 30, MaxTime: 40}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 40, MaxTime: 60}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block7Ulid, MinTime: 60, MaxTime: 70}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block8Ulid, MinTime: 70, MaxTime: 80}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block9Ulid, MinTime: 75, MaxTime: 80}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
-				block4Ulid: defaultPartitionInfo,
-				block5Ulid: defaultPartitionInfo,
-				block6Ulid: defaultPartitionInfo,
-				block7Ulid: defaultPartitionInfo,
-				block8Ulid: defaultPartitionInfo,
-				block9Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 7, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block6Ulid, MinTime: 40, MaxTime: 60}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block7Ulid, MinTime: 60, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block8Ulid, MinTime: 70, MaxTime: 80}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block9Ulid, MinTime: 75, MaxTime: 80}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 0, rangeEnd: 10, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 7, MaxTime: 10}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 7, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 				{rangeStart: 70, rangeEnd: 80, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block8Ulid, MinTime: 70, MaxTime: 80}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block9Ulid, MinTime: 75, MaxTime: 80}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block8Ulid, MinTime: 70, MaxTime: 80}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block9Ulid, MinTime: 75, MaxTime: 80}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 				{rangeStart: 20, rangeEnd: 40, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 20, MaxTime: 30}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 30, MaxTime: 40}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"input blocks have already been compacted with the largest range": {
 			ranges: []int64{10, 20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 40}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 40, MaxTime: 70}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 80, MaxTime: 120}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 40, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: nil,
 		},
 		"input blocks match the largest range but can be compacted because overlapping": {
 			ranges: []int64{10, 20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 40}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 40, MaxTime: 70}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 80, MaxTime: 120}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
-				block4Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 40, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 80, rangeEnd: 120, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 80, MaxTime: 120}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"a block with time range crossing two 1st level ranges should be NOT considered for 1st level compaction": {
 			ranges: []int64{20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 10, MaxTime: 30}}, // This block spans across two 1st level ranges.
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 30}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
-				block4Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 10, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}}, // This block spans across two 1st level ranges.
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 20, rangeEnd: 40, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 30}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 30, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"a block with time range crossing two 1st level ranges should BE considered for 2nd level compaction": {
 			ranges: []int64{20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 10, MaxTime: 30}}, // This block spans across two 1st level ranges.
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 40}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 10, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}}, // This block spans across two 1st level ranges.
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 0, rangeEnd: 40, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 20}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 10, MaxTime: 30}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 40}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 10, MaxTime: 30}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 20, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"a block with time range larger then the largest compaction range should NOT be considered for compaction": {
 			ranges: []int64{10, 20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 40}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 30, MaxTime: 150}}, // This block is larger then the largest compaction range.
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 40, MaxTime: 70}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 80, MaxTime: 120}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: defaultPartitionInfo,
-				block2Ulid: defaultPartitionInfo,
-				block3Ulid: defaultPartitionInfo,
-				block4Ulid: defaultPartitionInfo,
-				block5Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 40}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 30, MaxTime: 150}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}}, // This block is larger then the largest compaction range.
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 40, MaxTime: 70}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 80, rangeEnd: 120, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 80, MaxTime: 120}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 80, MaxTime: 120}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"a group with all blocks having same partitioned group id should be ignored": {
 			ranges: []int64{10, 20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID0}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID1}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID2}},
 				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20}},
 				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: {
-					PartitionedGroupID: uint32(12345),
-					PartitionCount:     3,
-					PartitionID:        0,
-				},
-				block2Ulid: {
-					PartitionedGroupID: uint32(12345),
-					PartitionCount:     3,
-					PartitionID:        1,
-				},
-				block3Ulid: {
-					PartitionedGroupID: uint32(12345),
-					PartitionCount:     3,
-					PartitionID:        2,
-				},
-				block4Ulid: defaultPartitionInfo,
-				block5Ulid: defaultPartitionInfo,
 			},
 			expected: []blocksGroup{
 				{rangeStart: 10, rangeEnd: 20, blocks: []*metadata.Meta{
@@ -712,86 +647,40 @@ func TestGroupBlocksByCompactableRanges(t *testing.T) {
 		"a group with all blocks having partitioned group id is 0 should not be ignored": {
 			ranges: []int64{10, 20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: {
-					PartitionedGroupID: 0,
-					PartitionCount:     1,
-					PartitionID:        0,
-				},
-				block2Ulid: {
-					PartitionedGroupID: 0,
-					PartitionCount:     1,
-					PartitionID:        0,
-				},
-				block3Ulid: {
-					PartitionedGroupID: 0,
-					PartitionCount:     1,
-					PartitionID:        0,
-				},
-				block4Ulid: defaultPartitionInfo,
-				block5Ulid: defaultPartitionInfo,
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 0, rangeEnd: 10, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 				{rangeStart: 10, rangeEnd: 20, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20}, Thanos: metadata.Thanos{PartitionInfo: defaultPartitionInfo}},
 				}},
 			},
 		},
 		"a group with blocks from two different partitioned groups": {
 			ranges: []int64{10, 20, 40},
 			blocks: []*metadata.Meta{
-				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-			},
-			blocksPartitionInfo: map[ulid.ULID]*thanosblock.PartitionInfo{
-				block1Ulid: {
-					PartitionedGroupID: uint32(12345),
-					PartitionCount:     3,
-					PartitionID:        0,
-				},
-				block2Ulid: {
-					PartitionedGroupID: uint32(12345),
-					PartitionCount:     3,
-					PartitionID:        1,
-				},
-				block3Ulid: {
-					PartitionedGroupID: uint32(12345),
-					PartitionCount:     3,
-					PartitionID:        2,
-				},
-				block4Ulid: {
-					PartitionedGroupID: uint32(54321),
-					PartitionCount:     2,
-					PartitionID:        0,
-				},
-				block5Ulid: {
-					PartitionedGroupID: uint32(54321),
-					PartitionCount:     2,
-					PartitionID:        1,
-				},
+				{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID0}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID1}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID2}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition2ID0}},
+				{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition2ID1}},
 			},
 			expected: []blocksGroup{
 				{rangeStart: 0, rangeEnd: 20, blocks: []*metadata.Meta{
-					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
-					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block1Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID0}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block2Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID1}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block3Ulid, MinTime: 0, MaxTime: 10, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition3ID2}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block4Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition2ID0}},
+					{BlockMeta: tsdb.BlockMeta{ULID: block5Ulid, MinTime: 10, MaxTime: 20, Compaction: tsdb.BlockMetaCompaction{Level: 2}}, Thanos: metadata.Thanos{PartitionInfo: partition2ID1}},
 				}},
 			},
 		},
@@ -799,7 +688,7 @@ func TestGroupBlocksByCompactableRanges(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expected, groupBlocksByCompactableRanges(testData.blocks, testData.blocksPartitionInfo, testData.ranges))
+			assert.Equal(t, testData.expected, groupBlocksByCompactableRanges(testData.blocks, testData.ranges))
 		})
 	}
 }
@@ -1264,11 +1153,10 @@ func TestGroupPartitioning(t *testing.T) {
 				}
 				block.Stats.NumSeries = uint64(testData.seriesCount)
 				testBlocks = append(testBlocks, block)
-				partitionInfo := thanosblock.PartitionInfo{
+				partitionInfo := &metadata.PartitionInfo{
 					PartitionID: partitionID,
 				}
-				partitionInfoContent, _ := json.Marshal(partitionInfo)
-				bkt.MockGet(getBlockPartitionInfoFile(block.ULID), string(partitionInfoContent), nil)
+				block.Thanos.PartitionInfo = partitionInfo
 			}
 			testGroup := blocksGroup{
 				rangeStart: testData.rangeStart,
@@ -1383,12 +1271,10 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 		}
 		block.Stats.NumSeries = uint64(seriesCount)
 		updatedTestBlocks = append(updatedTestBlocks, block)
-		partitionInfo := thanosblock.PartitionInfo{
+		partitionInfo := &metadata.PartitionInfo{
 			PartitionID: partitionID,
 		}
-		partitionInfoContent, _ := json.Marshal(partitionInfo)
-		err := bkt.Upload(context.Background(), getBlockPartitionInfoFile(block.ULID), bytes.NewReader(partitionInfoContent))
-		require.NoError(t, err)
+		block.Thanos.PartitionInfo = partitionInfo
 	}
 	testGroup := blocksGroup{
 		rangeStart: testRangeStart,

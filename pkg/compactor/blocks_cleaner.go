@@ -418,16 +418,16 @@ func (c *BlocksCleaner) findResultBlocksForPartitionedGroup(ctx context.Context,
 
 	resultBlocks := make(map[int]ulid.ULID)
 	for _, b := range possibleResultBlocks {
-		reader, err := userBucket.Get(ctx, path.Join(b.String(), block.PartitionInfoFilename))
+		meta, err := block.DownloadMeta(ctx, userLogger, userBucket, b)
 		if err != nil {
+			level.Info(userLogger).Log("msg", "unable to get meta for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
+			continue
+		}
+		if meta.Thanos.PartitionInfo == nil {
 			level.Info(userLogger).Log("msg", "unable to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
 			continue
 		}
-		partitionInfo, err := block.ReadPartitionInfo(reader)
-		if err != nil {
-			level.Info(userLogger).Log("msg", "unable to parse partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
-			continue
-		}
+		partitionInfo := meta.Thanos.PartitionInfo
 		if partitionInfo.PartitionedGroupID == partitionedGroupID {
 			level.Info(userLogger).Log("msg", "found result block", "partitioned_group_id", partitionedGroupID, "partition_id", partitionInfo.PartitionID, "block", b.String())
 			resultBlocks[partitionInfo.PartitionID] = b

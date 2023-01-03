@@ -394,10 +394,10 @@ func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta {
 // Compact creates a new block in the compactor's directory from the blocks in the
 // provided directories.
 func (c *LeveledCompactor) Compact(dest string, dirs []string, open []*Block) (uid ulid.ULID, err error) {
-	return c.CompactWithPartition(dest, dirs, open, 1, 0)
+	return c.CompactWithAdditionalPostings(dest, dirs, open, nil)
 }
 
-func (c *LeveledCompactor) CompactWithPartition(dest string, dirs []string, open []*Block, partitionCount int, partitionID int) (uid ulid.ULID, err error) {
+func (c *LeveledCompactor) CompactWithAdditionalPostings(dest string, dirs []string, open []*Block, additionalPostingsFunc AdditionalPostingsFunc) (uid ulid.ULID, err error) {
 	var (
 		blocks []BlockReader
 		bs     []*Block
@@ -441,7 +441,7 @@ func (c *LeveledCompactor) CompactWithPartition(dest string, dirs []string, open
 	uid = ulid.MustNew(ulid.Now(), rand.Reader)
 
 	meta := CompactBlockMetas(uid, metas...)
-	err = c.write(dest, meta, partitionID, partitionCount, blocks...)
+	err = c.write(dest, meta, additionalPostingsFunc, blocks...)
 	if err == nil {
 		if meta.Stats.NumSamples == 0 {
 			for _, b := range bs {
@@ -507,7 +507,7 @@ func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, p
 		}
 	}
 
-	err := c.write(dest, meta, 0, 1, b)
+	err := c.write(dest, meta, nil, b)
 	if err != nil {
 		return uid, err
 	}
@@ -552,7 +552,7 @@ func (w *instrumentedChunkWriter) WriteChunks(chunks ...chunks.Meta) error {
 }
 
 // write creates a new block that is the union of the provided blocks into dir.
-func (c *LeveledCompactor) write(dest string, meta *BlockMeta, partitionId int, partitionCount int, blocks ...BlockReader) (err error) {
+func (c *LeveledCompactor) write(dest string, meta *BlockMeta, additionalPostingsFunc AdditionalPostingsFunc, blocks ...BlockReader) (err error) {
 	dir := filepath.Join(dest, meta.ULID.String())
 	tmp := dir + tmpForCreationBlockDirSuffix
 	var closers []io.Closer
@@ -600,7 +600,7 @@ func (c *LeveledCompactor) write(dest string, meta *BlockMeta, partitionId int, 
 	}
 	closers = append(closers, indexw)
 
-	if err := c.populateBlock(blocks, meta, indexw, chunkw, partitionId, partitionCount); err != nil {
+	if err := c.populateBlock(blocks, meta, indexw, chunkw, additionalPostingsFunc); err != nil {
 		return errors.Wrap(err, "populate block")
 	}
 
@@ -668,7 +668,7 @@ func (c *LeveledCompactor) write(dest string, meta *BlockMeta, partitionId int, 
 // populateBlock fills the index and chunk writers with new data gathered as the union
 // of the provided blocks. It returns meta information for the new block.
 // It expects sorted blocks input by mint.
-func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, indexw IndexWriter, chunkw ChunkWriter, partitionId int, partitionCount int) (err error) {
+func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, indexw IndexWriter, chunkw ChunkWriter, additionalPostingsFunc AdditionalPostingsFunc) (err error) {
 	if len(blocks) == 0 {
 		return errors.New("cannot populate block from no readers")
 	}
@@ -736,12 +736,15 @@ func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, 
 		}
 		all = indexr.SortedPostings(all)
 		g.Go(func() error {
-			shardStart := time.Now()
-			shardedPosting := index.NewShardedPosting(all, uint64(partitionCount), uint64(partitionId), indexr.Series)
-			fmt.Printf("finished sharding, duration: %v\n", time.Since(shardStart))
+			if additionalPostingsFunc != nil {
+				all = additionalPostingsFunc.GetPostings(all, indexr)
+			}
+			//shardStart := time.Now()
+			//shardedPosting := index.NewShardedPosting(all, uint64(partitionCount), uint64(partitionId), indexr.Series)
+			//fmt.Printf("finished sharding, duration: %v\n", time.Since(shardStart))
 			// Blocks meta is half open: [min, max), so subtract 1 to ensure we don't hold samples with exact meta.MaxTime timestamp.
 			setsMtx.Lock()
-			sets = append(sets, newBlockChunkSeriesSet(indexr, chunkr, tombsr, shardedPosting, meta.MinTime, meta.MaxTime-1, false))
+			sets = append(sets, newBlockChunkSeriesSet(indexr, chunkr, tombsr, all, meta.MinTime, meta.MaxTime-1, false))
 			setsMtx.Unlock()
 			return nil
 		})
@@ -826,4 +829,8 @@ func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, 
 	}
 
 	return nil
+}
+
+type AdditionalPostingsFunc interface {
+	GetPostings(originalPostings index.Postings, indexReader IndexReader) index.Postings
 }

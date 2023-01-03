@@ -17,23 +17,24 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger) Middleware {
+func ShardByMiddleware(logger log.Logger, limits Limits, merger Merger, queryAnalyzer querysharding.Analyzer) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return shardBy{
-			next:   next,
-			limits: limits,
-			merger: merger,
-			logger: logger,
+			next:     next,
+			limits:   limits,
+			merger:   merger,
+			logger:   logger,
+			analyzer: queryAnalyzer,
 		}
 	})
 }
 
 type shardBy struct {
-	next          Handler
-	limits        Limits
-	logger        log.Logger
-	merger        Merger
-	queryAnalyzer *querysharding.QueryAnalyzer
+	next     Handler
+	limits   Limits
+	logger   log.Logger
+	merger   Merger
+	analyzer querysharding.Analyzer
 }
 
 func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
@@ -51,7 +52,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	logger := util_log.WithContext(ctx, s.logger)
-	analysis, err := s.queryAnalyzer.Analyze(r.GetQuery())
+	analysis, err := s.analyzer.Analyze(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error analyzing query", "q", r.GetQuery(), "err", err)
 	}

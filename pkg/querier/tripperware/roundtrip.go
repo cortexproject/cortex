@@ -27,12 +27,14 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -98,6 +100,8 @@ func NewQueryTripperware(
 	instantRangeMiddleware []Middleware,
 	queryRangeCodec Codec,
 	instantQueryCodec Codec,
+	limits Limits,
+	queryAnalyzer querysharding.Analyzer,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -139,7 +143,18 @@ func NewQueryTripperware(
 
 				if isQueryRange {
 					return queryrange.RoundTrip(r)
-				} else if isQuery && len(instantRangeMiddleware) > 0 {
+				} else if isQuery {
+					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
+					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
+					if numShards <= 1 {
+						return next.RoundTrip(r)
+					}
+					// If the given query is not shardable, use downstream roundtripper.
+					query := r.FormValue("query")
+					analysis, err := queryAnalyzer.Analyze(query)
+					if err != nil || !analysis.IsShardable() {
+						return next.RoundTrip(r)
+					}
 					return instantQuery.RoundTrip(r)
 				}
 				return next.RoundTrip(r)

@@ -755,6 +755,59 @@ func TestJoinInLeavingState(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
 
 	cfg := testLifecyclerConfig(ringConfig, "ing1")
+	cfg.NumTokens = 2
+	cfg.MinReadyDuration = 1 * time.Nanosecond
+
+	// Set state as LEAVING
+	err = r.KVClient.CAS(context.Background(), ringKey, func(in interface{}) (interface{}, bool, error) {
+		r := &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"ing1": {
+					State:  LEAVING,
+					Tokens: []uint32{1, 4},
+				},
+				"ing2": {
+					Tokens: []uint32{2, 3},
+				},
+			},
+		}
+
+		return r, true, nil
+	})
+	require.NoError(t, err)
+
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", ringKey, true, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
+	// Check that the lifecycler was able to join after coming up in LEAVING
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			len(desc.Ingesters) == 2 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == cfg.NumTokens &&
+			len(desc.Ingesters["ing2"].Tokens) == 2
+	})
+}
+
+func TestJoinInLeavingStateAndLessTokens(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	r, err := New(ringConfig, "ingester", ringKey, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	cfg := testLifecyclerConfig(ringConfig, "ing1")
 	cfg.NumTokens = 3
 	cfg.MinReadyDuration = 1 * time.Nanosecond
 
@@ -790,7 +843,7 @@ func TestJoinInLeavingState(t *testing.T) {
 			len(desc.Ingesters) == 2 &&
 			desc.Ingesters["ing1"].State == ACTIVE &&
 			len(desc.Ingesters["ing1"].Tokens) == 2 &&
-			len(desc.Ingesters["ing2"].Tokens) == 3
+			len(desc.Ingesters["ing2"].Tokens) == cfg.NumTokens
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
@@ -422,13 +423,13 @@ func decorateWithParamName(err error, field string) error {
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *Sample) UnmarshalJSON(data []byte) error {
 	var sample struct {
-		Metric model.Metric    `json:"metric"`
+		Metric labels.Labels   `json:"metric"`
 		Value  cortexpb.Sample `json:"value"`
 	}
 	if err := json.Unmarshal(data, &sample); err != nil {
 		return err
 	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(sample.Metric)
+	s.Labels = cortexpb.FromLabelsToLabelAdapters(sample.Metric)
 	s.Sample = sample.Value
 	return nil
 }

@@ -1036,11 +1036,11 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
 				return nil, err
 			}
-			ms := ingester_client.FromMetricsForLabelMatchersResponse(resp)
-			for _, m := range ms {
-				if err := queryLimiter.AddSeries(cortexpb.FromMetricsToLabelAdapters(m)); err != nil {
+			for _, m := range resp.Metric {
+				if err := queryLimiter.AddSeries(m.Labels); err != nil {
 					return nil, err
 				}
+				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
 				fingerprint := m.Fingerprint()
 				mutex.Lock()
 				(*metrics)[fingerprint] = m

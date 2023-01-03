@@ -1117,6 +1117,10 @@ func TestGroupPartitioning(t *testing.T) {
 
 			bkt := &bucket.ClientMock{}
 
+			noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+				return make(map[ulid.ULID]*metadata.NoCompactMark)
+			}
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			g := NewShuffleShardingGrouper(
@@ -1145,6 +1149,7 @@ func TestGroupPartitioning(t *testing.T) {
 				nil,
 				nil,
 				nil,
+				noCompactFilter,
 			)
 			var testBlocks []*metadata.Meta
 			for block, partitionID := range testData.blocks {
@@ -1288,6 +1293,10 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 
 		ring := &RingMock{}
 
+		noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+			return make(map[ulid.ULID]*metadata.NoCompactMark)
+		}
+
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		return NewShuffleShardingGrouper(
@@ -1316,6 +1325,7 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 			nil,
 			nil,
 			nil,
+			noCompactFilter,
 		)
 	}
 

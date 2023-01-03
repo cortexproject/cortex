@@ -797,7 +797,7 @@ type Compactor interface {
 	//  * The source dirs are marked Deletable.
 	//  * Returns empty ulid.ULID{}.
 	Compact(dest string, dirs []string, open []*tsdb.Block) (ulid.ULID, error)
-	CompactWithAdditionalPostings(dest string, dirs []string, open []*tsdb.Block, additionalPostingsProvider tsdb.AdditionalPostingsProvider) (ulid.ULID, error)
+	CompactWithAdditionalPostings(dest string, dirs []string, open []*tsdb.Block, additionalPostingsProvider tsdb.AdditionalPostingsFunc) (ulid.ULID, error)
 }
 
 // Compact plans and runs a single compaction against the group. The compacted result

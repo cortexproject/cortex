@@ -51,21 +51,21 @@ func (h *grpcHealthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_hea
 	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
-func getLocalHostPort() (int, error) {
+func getLocalHostPort() (int, func() error, error) {
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 
-	if err := l.Close(); err != nil {
-		return 0, err
+	closePort := func() error {
+		return l.Close()
 	}
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return l.Addr().(*net.TCPAddr).Port, closePort, nil
 }
 
 func newIntegrationClientServer(
@@ -80,9 +80,14 @@ func newIntegrationClientServer(
 		prometheus.DefaultRegisterer = savedRegistry
 	}()
 
-	grpcPort, err := getLocalHostPort()
+	grpcPort, closeGrpcPort, err := getLocalHostPort()
 	require.NoError(t, err)
-	httpPort, err := getLocalHostPort()
+	httpPort, closeHTTPPort, err := getLocalHostPort()
+	require.NoError(t, err)
+
+	err = closeGrpcPort()
+	require.NoError(t, err)
+	err = closeHTTPPort()
 	require.NoError(t, err)
 
 	cfg.HTTPListenPort = httpPort

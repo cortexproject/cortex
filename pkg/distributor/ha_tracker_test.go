@@ -116,7 +116,9 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expectedErr, testData.cfg.Validate())
 		})
 	}
@@ -124,6 +126,7 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 
 // Test that values are set in the HATracker after WatchPrefix has found it in the KVStore.
 func TestWatchPrefixAssignment(t *testing.T) {
+	t.Parallel()
 	cluster := "c1"
 	replica := "r1"
 
@@ -154,6 +157,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 }
 
 func TestCheckReplicaOverwriteTimeout(t *testing.T) {
+	t.Parallel()
 	replica1 := "replica1"
 	replica2 := "replica2"
 
@@ -191,8 +195,10 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 }
 
 func TestCheckReplicaMultiCluster(t *testing.T) {
+	t.Parallel()
 	replica1 := "replica1"
 	replica2 := "replica2"
+	user := "userCheckReplicaMultiCluster"
 
 	reg := prometheus.NewPedanticRegistry()
 	c, err := newHATracker(HATrackerConfig{
@@ -209,21 +215,21 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 	now := time.Now()
 
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica2, now)
 	assert.Error(t, err)
 
 	// We should still accept from replica 1.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// We expect no CAS operation failures.
@@ -241,8 +247,10 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 }
 
 func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
+	t.Parallel()
 	replica1 := "replica1"
 	replica2 := "replica2"
+	user := "userCheckReplicaMultiClusterTimeout"
 
 	reg := prometheus.NewPedanticRegistry()
 	c, err := newHATracker(HATrackerConfig{
@@ -259,39 +267,39 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 	now := time.Now()
 
 	// Write the first time.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.NoError(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica2, now)
 	assert.Error(t, err)
 
 	// Accept a sample for replica1 in C2.
 	now = now.Add(500 * time.Millisecond)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// Reject samples from replica 2 in each cluster.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica2, now)
 	assert.Error(t, err)
 
 	// Wait more than the failover timeout.
 	now = now.Add(1100 * time.Millisecond)
 
 	// Accept a sample from c1/replica2.
-	err = c.checkReplica(context.Background(), "user", "c1", replica2, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica2, now)
 	assert.NoError(t, err)
 
 	// We should still accept from c2/replica1 but reject from c1/replica1.
-	err = c.checkReplica(context.Background(), "user", "c1", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c1", replica1, now)
 	assert.Error(t, err)
-	err = c.checkReplica(context.Background(), "user", "c2", replica1, now)
+	err = c.checkReplica(context.Background(), user, "c2", replica1, now)
 	assert.NoError(t, err)
 
 	// We expect no CAS operation failures.
@@ -310,6 +318,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 
 // Test that writes only happen every update timeout.
 func TestCheckReplicaUpdateTimeout(t *testing.T) {
+	t.Parallel()
 	replica := "r1"
 	cluster := "c1"
 	user := "user"
@@ -360,6 +369,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 
 // Test that writes only happen every write timeout.
 func TestCheckReplicaMultiUser(t *testing.T) {
+	t.Parallel()
 	replica := "r1"
 	cluster := "c1"
 
@@ -441,7 +451,9 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Init HA tracker
 			codec := GetReplicaDescCodec()
 			kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
@@ -483,6 +495,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 }
 
 func TestFindHALabels(t *testing.T) {
+	t.Parallel()
 	replicaLabel, clusterLabel := "replica", "cluster"
 	type expectedOutput struct {
 		cluster string
@@ -530,6 +543,7 @@ func TestFindHALabels(t *testing.T) {
 }
 
 func TestHATrackerConfig_ShouldCustomizePrefixDefaultValue(t *testing.T) {
+	t.Parallel()
 	haConfig := HATrackerConfig{}
 	ringConfig := ring.Config{}
 	flagext.DefaultValues(&haConfig)
@@ -540,6 +554,7 @@ func TestHATrackerConfig_ShouldCustomizePrefixDefaultValue(t *testing.T) {
 }
 
 func TestHAClustersLimit(t *testing.T) {
+	t.Parallel()
 	const userID = "user"
 
 	codec := GetReplicaDescCodec()
@@ -611,6 +626,7 @@ func waitForClustersUpdate(t *testing.T, expected int, tr *haTracker, userID str
 }
 
 func TestTooManyClustersError(t *testing.T) {
+	t.Parallel()
 	var err error = tooManyClustersError{limit: 10}
 	assert.True(t, errors.Is(err, tooManyClustersError{}))
 	assert.True(t, errors.Is(err, &tooManyClustersError{}))
@@ -625,6 +641,7 @@ func TestTooManyClustersError(t *testing.T) {
 }
 
 func TestReplicasNotMatchError(t *testing.T) {
+	t.Parallel()
 	var err error = replicasNotMatchError{replica: "a", elected: "b"}
 	assert.True(t, errors.Is(err, replicasNotMatchError{}))
 	assert.True(t, errors.Is(err, &replicasNotMatchError{}))
@@ -647,6 +664,7 @@ func (l trackerLimits) MaxHAClusters(_ string) int {
 }
 
 func TestHATracker_MetricsCleanup(t *testing.T) {
+	t.Parallel()
 	reg := prometheus.NewPedanticRegistry()
 	tr, err := newHATracker(HATrackerConfig{EnableHATracker: false}, nil, reg, log.NewNopLogger())
 	require.NoError(t, err)
@@ -705,9 +723,10 @@ func TestHATracker_MetricsCleanup(t *testing.T) {
 }
 
 func TestCheckReplicaCleanup(t *testing.T) {
+	t.Parallel()
 	replica := "r1"
 	cluster := "c1"
-	userID := "user"
+	userID := "userCheckReplicaCleanup"
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	reg := prometheus.NewPedanticRegistry()

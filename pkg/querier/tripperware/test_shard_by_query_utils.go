@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	thanosquerysharding "github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 
@@ -406,7 +407,8 @@ http_requests_total`,
 				next: http.DefaultTransport,
 			}
 
-			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), mockLimits{shardSize: tt.shardSize}, tt.codec))
+			qa := thanosquerysharding.NewQueryAnalyzer()
+			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), mockLimits{shardSize: tt.shardSize}, tt.codec, qa))
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 

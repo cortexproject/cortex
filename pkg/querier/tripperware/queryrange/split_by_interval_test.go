@@ -266,7 +266,7 @@ func TestSplitQuery(t *testing.T) {
 }
 
 func TestSplitByDay(t *testing.T) {
-	mergedResponse, err := PrometheusCodec.MergeResponse(parsedResponse, parsedResponse)
+	mergedResponse, err := PrometheusCodec.MergeResponse(context.Background(), parsedResponse, parsedResponse)
 	require.NoError(t, err)
 
 	mergedHTTPResponse, err := PrometheusCodec.EncodeResponse(context.Background(), mergedResponse)

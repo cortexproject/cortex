@@ -14,6 +14,7 @@ import (
 )
 
 func TestMergeSamplesIntoFirstDuplicates(t *testing.T) {
+	t.Parallel()
 	a := []cortexpb.Sample{
 		{Value: 1.084537996, TimestampMs: 1583946732744},
 		{Value: 1.086111723, TimestampMs: 1583946750366},
@@ -47,6 +48,7 @@ func TestMergeSamplesIntoFirstDuplicates(t *testing.T) {
 }
 
 func TestMergeSamplesIntoFirst(t *testing.T) {
+	t.Parallel()
 	a := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 10},
 		{Value: 2, TimestampMs: 20},
@@ -84,6 +86,7 @@ func TestMergeSamplesIntoFirst(t *testing.T) {
 }
 
 func TestMergeSamplesIntoFirstNilA(t *testing.T) {
+	t.Parallel()
 	b := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 5},
 		{Value: 2, TimestampMs: 15},
@@ -99,6 +102,7 @@ func TestMergeSamplesIntoFirstNilA(t *testing.T) {
 }
 
 func TestMergeSamplesIntoFirstNilB(t *testing.T) {
+	t.Parallel()
 	a := []cortexpb.Sample{
 		{Value: 1, TimestampMs: 10},
 		{Value: 2, TimestampMs: 20},
@@ -113,6 +117,7 @@ func TestMergeSamplesIntoFirstNilB(t *testing.T) {
 }
 
 func TestMergeExemplars(t *testing.T) {
+	t.Parallel()
 	now := timestamp.FromTime(time.Now())
 	exemplar1 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-1")), TimestampMs: now, Value: 1}
 	exemplar2 := cortexpb.Exemplar{Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "trace-2")), TimestampMs: now + 1, Value: 2}
@@ -171,7 +176,9 @@ func TestMergeExemplars(t *testing.T) {
 				{Labels: labels2, Exemplars: []cortexpb.Exemplar{exemplar3, exemplar4}}},
 		},
 	} {
+		c := c
 		t.Run(fmt.Sprint("test", i), func(t *testing.T) {
+			t.Parallel()
 			rA := &ingester_client.ExemplarQueryResponse{Timeseries: c.seriesA}
 			rB := &ingester_client.ExemplarQueryResponse{Timeseries: c.seriesB}
 			e := mergeExemplarQueryResponses([]interface{}{rA, rB})

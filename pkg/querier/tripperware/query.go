@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -20,6 +20,15 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/runutil"
+)
+
+var (
+	json = jsoniter.Config{
+		EscapeHTML:             false, // No HTML in our responses.
+		SortMapKeys:            true,
+		ValidateJsonRawMessage: true,
+	}.Froze()
 )
 
 // Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
@@ -40,7 +49,7 @@ type Codec interface {
 // Merger is used by middlewares making multiple requests to merge back all responses into a single one.
 type Merger interface {
 	// MergeResponse merges responses from multiple requests into a single Response
-	MergeResponse(...Response) (Response, error)
+	MergeResponse(context.Context, ...Response) (Response, error)
 }
 
 // Response represents a query range response.
@@ -73,6 +82,32 @@ type Request interface {
 	WithStats(stats string) Request
 }
 
+func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	ss := (*SampleStream)(ptr)
+	stream.WriteObjectStart()
+
+	stream.WriteObjectField(`metric`)
+	lbls, err := cortexpb.FromLabelAdaptersToLabels(ss.Labels).MarshalJSON()
+	if err != nil {
+		stream.Error = err
+		return
+	}
+	stream.SetBuffer(append(stream.Buffer(), lbls...))
+	stream.WriteMore()
+
+	stream.WriteObjectField(`values`)
+	stream.WriteArrayStart()
+	for i, sample := range ss.Samples {
+		if i != 0 {
+			stream.WriteMore()
+		}
+		cortexpb.SampleJsoniterEncode(unsafe.Pointer(&sample), stream)
+	}
+	stream.WriteArrayEnd()
+
+	stream.WriteObjectEnd()
+}
+
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
@@ -85,18 +120,6 @@ func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
-}
-
-// MarshalJSON implements json.Marshaler.
-func (s *SampleStream) MarshalJSON() ([]byte, error) {
-	stream := struct {
-		Metric model.Metric      `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
-	}{
-		Metric: cortexpb.FromLabelAdaptersToMetric(s.Labels),
-		Values: s.Samples,
-	}
-	return json.Marshal(stream)
 }
 
 func PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
@@ -135,6 +158,7 @@ func PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode(ptr unsafe.Poi
 func init() {
 	jsoniter.RegisterTypeEncoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
 	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
+	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleStream", encodeSampleStream, func(unsafe.Pointer) bool { return false })
 }
 
 func EncodeTime(t int64) string {
@@ -148,7 +172,7 @@ type Buffer interface {
 	Bytes() []byte
 }
 
-func BodyBuffer(res *http.Response) ([]byte, error) {
+func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 	var buf *bytes.Buffer
 
 	// Attempt to cast the response body to a Buffer and use it if possible.
@@ -169,10 +193,10 @@ func BodyBuffer(res *http.Response) ([]byte, error) {
 	// if the response is gziped, lets unzip it here
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
 		gReader, err := gzip.NewReader(buf)
-
 		if err != nil {
 			return nil, err
 		}
+		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
 
 		return io.ReadAll(gReader)
 	}

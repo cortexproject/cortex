@@ -11,6 +11,7 @@ import (
 )
 
 func TestRingConfig_DefaultConfigToLifecyclerConfig(t *testing.T) {
+	t.Parallel()
 	cfg := RingConfig{}
 	expected := ring.LifecyclerConfig{}
 
@@ -30,6 +31,7 @@ func TestRingConfig_DefaultConfigToLifecyclerConfig(t *testing.T) {
 }
 
 func TestRingConfig_CustomConfigToLifecyclerConfig(t *testing.T) {
+	t.Parallel()
 	cfg := RingConfig{}
 	expected := ring.LifecyclerConfig{}
 

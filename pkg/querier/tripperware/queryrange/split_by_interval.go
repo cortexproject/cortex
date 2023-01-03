@@ -61,7 +61,7 @@ func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripper
 		resps = append(resps, reqResp.Response)
 	}
 
-	response, err := s.merger.MergeResponse(resps...)
+	response, err := s.merger.MergeResponse(ctx, resps...)
 	if err != nil {
 		return nil, err
 	}

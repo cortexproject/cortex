@@ -11,14 +11,19 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
-	queryRange    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
-	query         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680"
-	queryExemplar = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
-	responseBody  = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	queryRange        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
+	query             = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680"
+	queryNonShardable = "/api/v1/query?time=1536716898&query=container_memory_rss&start=1536673680"
+	queryExemplar     = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
+	responseBody      = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 type mockRequest struct {
@@ -86,22 +91,54 @@ func TestRoundTrip(t *testing.T) {
 			return mockMiddleware{}
 		}),
 	}
-	tw := NewQueryTripperware(log.NewNopLogger(),
-		nil,
-		nil,
-		middlewares,
-		middlewares,
-		mockCodec{},
-		mockCodec{},
-	)
 
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	defaultOverrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+
+	limitsWithVerticalSharding := validation.Limits{QueryVerticalShardSize: 3}
+	shardingOverrides, err := validation.NewOverrides(limitsWithVerticalSharding, nil)
+	require.NoError(t, err)
 	for _, tc := range []struct {
 		path, expectedBody string
+		limits             Limits
 	}{
-		{"/foo", "bar"},
-		{queryExemplar, "bar"},
-		{queryRange, responseBody},
-		{query, responseBody},
+		{
+			path:         "/foo",
+			expectedBody: "bar",
+			limits:       defaultOverrides,
+		},
+		{
+			path:         queryExemplar,
+			expectedBody: "bar",
+			limits:       defaultOverrides,
+		},
+		{
+			path:         queryRange,
+			expectedBody: responseBody,
+			limits:       defaultOverrides,
+		},
+		{
+			path:         query,
+			expectedBody: "bar",
+			limits:       defaultOverrides,
+		},
+		{
+			path:         queryNonShardable,
+			expectedBody: "bar",
+			limits:       defaultOverrides,
+		},
+		{
+			path:         queryNonShardable,
+			expectedBody: "bar",
+			limits:       shardingOverrides,
+		},
+		{
+			path:         query,
+			expectedBody: responseBody,
+			limits:       shardingOverrides,
+		},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
@@ -115,6 +152,16 @@ func TestRoundTrip(t *testing.T) {
 			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 			require.NoError(t, err)
 
+			tw := NewQueryTripperware(log.NewNopLogger(),
+				nil,
+				nil,
+				middlewares,
+				middlewares,
+				mockCodec{},
+				mockCodec{},
+				tc.limits,
+				querysharding.NewQueryAnalyzer(),
+			)
 			resp, err := tw(downstream).RoundTrip(req)
 			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)

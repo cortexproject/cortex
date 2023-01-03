@@ -30,7 +30,8 @@ import (
 
 var (
 	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
-	json                                = jsoniter.Config{
+
+	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
@@ -155,7 +156,7 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	log, ctx := spanlogger.New(ctx, "PrometheusInstantQueryResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := tripperware.BodyBuffer(r)
+	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -243,7 +244,11 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 	return &resp, nil
 }
 
-func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripperware.Response, error) {
+func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "PrometheusInstantQueryResponse.MergeResponse")
+	sp.SetTag("response_count", len(responses))
+	defer sp.Finish()
+
 	if len(responses) == 0 {
 		return NewEmptyPrometheusInstantQueryResponse(), nil
 	} else if len(responses) == 1 {

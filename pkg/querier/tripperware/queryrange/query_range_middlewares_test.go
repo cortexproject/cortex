@@ -2,7 +2,7 @@ package queryrange
 
 import (
 	"context"
-	io "io"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
@@ -43,12 +44,14 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
+	qa := querysharding.NewQueryAnalyzer()
 	queyrangemiddlewares, _, err := Middlewares(Config{},
 		log.NewNopLogger(),
 		mockLimits{},
 		nil,
 		nil,
 		nil,
+		qa,
 	)
 	require.NoError(t, err)
 
@@ -59,6 +62,8 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		PrometheusCodec,
 		nil,
+		nil,
+		qa,
 	)
 
 	for i, tc := range []struct {

@@ -17,6 +17,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -111,13 +112,13 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *SampleStream) UnmarshalJSON(data []byte) error {
 	var stream struct {
-		Metric model.Metric      `json:"metric"`
+		Metric labels.Labels     `json:"metric"`
 		Values []cortexpb.Sample `json:"values"`
 	}
 	if err := json.Unmarshal(data, &stream); err != nil {
 		return err
 	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(stream.Metric)
+	s.Labels = cortexpb.FromLabelsToLabelAdapters(stream.Metric)
 	s.Samples = stream.Values
 	return nil
 }

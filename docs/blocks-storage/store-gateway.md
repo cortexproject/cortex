@@ -942,11 +942,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-    # Enables support for exemplars in TSDB and sets the maximum number that
-    # will be stored. 0 or less means disabled.
-    # CLI flag: -blocks-storage.tsdb.max-exemplars
-    [max_exemplars: <int> | default = 0]
-
     # True to enable snapshotting of in-memory TSDB data on disk when shutting
     # down.
     # CLI flag: -blocks-storage.tsdb.memory-snapshot-on-shutdown

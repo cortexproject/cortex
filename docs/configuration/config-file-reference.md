@@ -2622,6 +2622,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # e.g. remote_write.write_relabel_configs.
 [metric_relabel_configs: <relabel_config...> | default = ]
 
+# Positive value enables experiemental support for exemplars. 0 or less to disable.
+# CLI flag: -block-storage.tsdb.max-exemplars
+[max_exemplars: <int> | default = 0]
+
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples
 # not flushed to the storage yet) and it's a per-instance limit. This limit is

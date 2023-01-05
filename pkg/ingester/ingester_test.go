@@ -774,9 +774,10 @@ func TestIngester_Push(t *testing.T) {
 			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
-			cfg.BlocksStorageConfig.TSDB.MaxExemplars = testData.maxExemplars
 
-			i, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+			limits := defaultLimitsTestConfig()
+			limits.MaxExemplars = testData.maxExemplars
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck

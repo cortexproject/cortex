@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5016
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976

@@ -1043,7 +1043,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			})
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+		maxExemplarsForUser := i.limits.MaxExemplars(userID)
+		if maxExemplarsForUser > 0 {
 			// app.AppendExemplar currently doesn't create the series, it must
 			// already exist.  If it does not then drop.
 			if ref == 0 && len(ts.Exemplars) > 0 {
@@ -1832,7 +1833,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	enableExemplars := false
-	if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+	maxExemplarsForUser := i.limits.MaxExemplars(userID)
+	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
 	// Create a new user database
@@ -1849,7 +1851,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		BlocksToDelete:                 userDB.blocksToDelete,
 		EnableExemplarStorage:          enableExemplars,
 		IsolationDisabled:              true,
-		MaxExemplars:                   int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
+		MaxExemplars:                   int64(maxExemplarsForUser),
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 	}, nil)

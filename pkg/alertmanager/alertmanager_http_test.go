@@ -29,7 +29,7 @@ func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
 				true,
 				cluster.DefaultPushPullInterval,
 				cluster.DefaultGossipInterval,
-				cluster.DefaultTcpTimeout,
+				cluster.DefaultTCPTimeout,
 				cluster.DefaultProbeTimeout,
 				cluster.DefaultProbeInterval,
 				nil,

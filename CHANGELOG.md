@@ -23,6 +23,7 @@
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
+* [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 
 ## 1.14.0 2022-12-02
 

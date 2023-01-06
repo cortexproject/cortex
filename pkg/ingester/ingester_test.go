@@ -1797,14 +1797,16 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			},
 		},
 		"should filter metrics by time range if queryStoreForLabels and queryIngestersWithin is enabled": {
-			from: 100,
-			to:   1000,
+			from: 99999,
+			to:   100001,
 			matchers: []*client.LabelMatchers{{
 				Matchers: []*client.LabelMatcher{
 					{Type: client.EQUAL, Name: model.MetricNameLabel, Value: "test_1"},
 				},
 			}},
-			expected:             []*cortexpb.Metric{},
+			expected: []*cortexpb.Metric{
+				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
+			},
 			queryStoreForLabels:  true,
 			queryIngestersWithin: time.Hour,
 		},

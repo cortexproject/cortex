@@ -441,7 +441,6 @@ alertmanager_config: |
     - name: default-receiver
       victorops_configs:
         - api_key_file: /secrets
-          api_key: my-key
           routing_key: test
 
   route:

@@ -87,7 +87,12 @@ type PutObjectOptions struct {
 	SendContentMd5          bool
 	DisableContentSha256    bool
 	DisableMultipart        bool
-	Internal                AdvancedPutOptions
+
+	// ConcurrentStreamParts will create NumThreads buffers of PartSize bytes,
+	// fill them serially and upload them in parallel.
+	// This can be used for faster uploads on non-seekable or slow-to-seek input.
+	ConcurrentStreamParts bool
+	Internal              AdvancedPutOptions
 }
 
 // getNumThreads - gets the number of threads to be used in the multipart
@@ -271,6 +276,9 @@ func (c *Client) putObjectCommon(ctx context.Context, bucketName, objectName str
 	if size < 0 {
 		if opts.DisableMultipart {
 			return UploadInfo{}, errors.New("no length provided and multipart disabled")
+		}
+		if opts.ConcurrentStreamParts && opts.NumThreads > 1 {
+			return c.putObjectMultipartStreamParallel(ctx, bucketName, objectName, reader, opts)
 		}
 		return c.putObjectMultipartStreamNoLength(ctx, bucketName, objectName, reader, opts)
 	}

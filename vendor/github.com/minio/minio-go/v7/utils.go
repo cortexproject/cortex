@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -142,7 +141,7 @@ func closeResponse(resp *http.Response) {
 		// Without this closing connection would disallow re-using
 		// the same connection for future uses.
 		//  - http://stackoverflow.com/a/17961593/4465767
-		io.Copy(ioutil.Discard, resp.Body)
+		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
 }

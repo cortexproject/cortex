@@ -725,6 +725,10 @@ lifecycler:
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
 
+# Period with which to update the per-user max exemplars value.
+# CLI flag: -ingester.max-exemplars-update-period
+[max_exemplars_update_period: <duration> | default = 15s]
+
 # Enable tracking of active series and export them as metrics.
 # CLI flag: -ingester.active-series-metrics-enabled
 [active_series_metrics_enabled: <boolean> | default = true]

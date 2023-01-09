@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/prometheus/config"
 	"io"
 	"math"
 	"net/http"
@@ -92,7 +93,8 @@ type Config struct {
 	// Config for metadata purging.
 	MetadataRetainPeriod time.Duration `yaml:"metadata_retain_period"`
 
-	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
+	RateUpdatePeriod         time.Duration `yaml:"rate_update_period"`
+	MaxExemplarsUpdatePeriod time.Duration `yaml:"max_exemplars_update_period"`
 
 	ActiveSeriesMetricsEnabled      bool          `yaml:"active_series_metrics_enabled"`
 	ActiveSeriesMetricsUpdatePeriod time.Duration `yaml:"active_series_metrics_update_period"`
@@ -126,6 +128,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.DurationVar(&cfg.MaxExemplarsUpdatePeriod, "ingester.max-exemplars-update-period", 15*time.Second, "Period with which to update the per-user max exemplars value.")
 	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", true, "Enable tracking of active series and export them as metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
@@ -782,6 +785,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
+	exemplarsUpdateTicker := time.NewTicker(i.cfg.MaxExemplarsUpdatePeriod)
+	defer exemplarsUpdateTicker.Stop()
+
 	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
 	defer ingestionRateTicker.Stop()
 
@@ -812,11 +818,35 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries()
-
+		case <-exemplarsUpdateTicker.C:
+			i.updateTSDBMaxExemplars()
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ingester subservice failed")
+		}
+	}
+}
+
+func (i *Ingester) updateTSDBMaxExemplars() {
+	for _, userID := range i.getTSDBUsers() {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			continue
+		}
+
+		cfg := &config.Config{
+			StorageConfig: config.StorageConfig{
+				ExemplarsConfig: &config.ExemplarsConfig{
+					MaxExemplars: int64(i.limits.MaxExemplars(userID)),
+				},
+			},
+		}
+
+		level.Info(logutil.WithUserID(userID, i.logger)).Log("meg", "updating max exemplars configuration.")
+		err := userDB.db.ApplyConfig(cfg)
+		if err != nil {
+			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update max exemplars configuration.")
 		}
 	}
 }

@@ -38,6 +38,7 @@ type Config struct {
 }
 
 type Otel struct {
+	OltpEndpoint   string              `yaml:"oltp_endpoint" json:"oltp_endpoint"`
 	OtlpEndpoint   string              `yaml:"otlp_endpoint" json:"otlp_endpoint"`
 	ExporterType   string              `yaml:"exporter_type" json:"exporter_type"`
 	SampleRatio    float64             `yaml:"sample_ratio" json:"sample_ratio"`
@@ -51,6 +52,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	p := "tracing"
 	f.StringVar(&c.Type, p+".type", JaegerType, "Tracing type. OTEL and JAEGER are currently supported. For jaeger `JAEGER_AGENT_HOST` environment variable should also be set. See: https://cortexmetrics.io/docs/guides/tracing .")
 	f.Float64Var(&c.Otel.SampleRatio, p+".otel.sample-ratio", 0.001, "Fraction of traces to be sampled. Fractions >= 1 means sampling if off and everything is traced.")
+	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "DEPRECATED: use otel.otlp-endpoint instead.")
 	f.StringVar(&c.Otel.OtlpEndpoint, p+".otel.otlp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance/modify traces/propagators for specific exporter. If empty, OTEL defaults will apply. Supported values are: `awsxray.`")
 	f.BoolVar(&c.Otel.TLSEnabled, p+".otel.tls-enabled", c.Otel.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
@@ -60,8 +62,11 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 func (c *Config) Validate() error {
 	switch strings.ToLower(c.Type) {
 	case OtelType:
-		if c.Otel.OtlpEndpoint == "" {
+		if (c.Otel.OtlpEndpoint == "") && (c.Otel.OltpEndpoint == "") {
 			return errors.New("otlp-endpoint must be defined when using otel exporter")
+		}
+		if len(c.Otel.OltpEndpoint) > 0 {
+			return warning.New("DEPRECATED: otel.oltp-endpoint is deprecated. User otel.otlp-endpoint instead.")
 		}
 	}
 
@@ -82,10 +87,18 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 		}
 	case OtelType:
 		util_log.Logger.Log("msg", "creating otel exporter")
-
-		options := []otlptracegrpc.Option{
-			otlptracegrpc.WithEndpoint(c.Otel.OtlpEndpoint),
+		
+		if (len(c.Otel.OtlpEndpoint) > 0) && len(c.Otel.OltpEndpoint) > 0) {
+			return options := []otlptracegrpc.Option{
+					otlptracegrpc.WithEndpoint(c.Otel.OtlpEndpoint),
+				}
 		}
+
+		if (c.Otel.OtlpEndpoint = "") && len(c.Otel.OltpEndpoint) > 0) {
+                        return options := []otlptracegrpc.Option{
+                                        otlptracegrpc.WithEndpoint(c.Otel.OltpEndpoint),
+                                }
+                }
 
 		if c.Otel.TLSEnabled {
 			tlsConfig, err := c.Otel.TLS.GetTLSConfig()

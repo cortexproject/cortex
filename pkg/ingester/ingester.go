@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/prometheus/prometheus/config"
 	"io"
 	"math"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/prometheus/prometheus/config"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -844,6 +845,8 @@ func (i *Ingester) updateTSDBMaxExemplars() {
 		}
 
 		level.Info(logutil.WithUserID(userID, i.logger)).Log("meg", "updating max exemplars configuration.")
+		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow. Invoking this method
+		// with a 0 value of OutOfOrderTimeWindow simply updates Max Exemplars.
 		err := userDB.db.ApplyConfig(cfg)
 		if err != nil {
 			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update max exemplars configuration.")

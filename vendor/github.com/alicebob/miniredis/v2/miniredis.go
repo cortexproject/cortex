@@ -76,6 +76,7 @@ type dbKey struct {
 }
 
 // connCtx has all state for a single connection.
+// (this struct was named before context.Context existed)
 type connCtx struct {
 	selectedDB       int            // selected DB
 	authenticated    bool           // auth enabled and a valid AUTH seen
@@ -84,6 +85,7 @@ type connCtx struct {
 	watch            map[dbKey]uint // WATCHed keys
 	subscriber       *Subscriber    // client is in PUBSUB mode if not nil
 	nested           bool           // this is called via Lua
+	nestedSHA        string         // set to the SHA of the nesting function
 }
 
 // NewMiniRedis makes a new, non-started, Miniredis object.

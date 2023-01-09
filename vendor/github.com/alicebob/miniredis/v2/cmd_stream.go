@@ -307,25 +307,25 @@ func (m *Miniredis) cmdXgroup(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	subCmd, args := strings.ToUpper(args[0]), args[1:]
+	subCmd, args := strings.ToLower(args[0]), args[1:]
 	switch subCmd {
-	case "CREATE":
+	case "create":
 		m.cmdXgroupCreate(c, cmd, args)
-	case "DESTROY":
+	case "destroy":
 		m.cmdXgroupDestroy(c, cmd, args)
-	case "CREATECONSUMER":
+	case "createconsumer":
 		m.cmdXgroupCreateconsumer(c, cmd, args)
-	case "DELCONSUMER":
+	case "delconsumer":
 		m.cmdXgroupDelconsumer(c, cmd, args)
-	case "HELP",
-		"SETID":
+	case "help",
+		"setid":
 		err := fmt.Sprintf("ERR 'XGROUP %s' not supported", subCmd)
 		setDirty(c)
 		c.WriteError(err)
 	default:
 		setDirty(c)
 		c.WriteError(fmt.Sprintf(
-			"ERR Unknown subcommand or wrong number of arguments for '%s'. Try XGROUP HELP.",
+			"ERR unknown subcommand '%s'. Try XGROUP HELP.",
 			subCmd,
 		))
 	}
@@ -508,7 +508,7 @@ func (m *Miniredis) cmdXinfo(c *server.Peer, cmd string, args []string) {
 	default:
 		setDirty(c)
 		c.WriteError(fmt.Sprintf(
-			"ERR Unknown subcommand or wrong number of arguments for '%s'. Try XINFO HELP.",
+			"ERR unknown subcommand or wrong number of arguments for '%s'. Try XINFO HELP.",
 			subCmd,
 		))
 	}
@@ -567,19 +567,20 @@ func (m *Miniredis) cmdXinfoGroups(c *server.Peer, args []string) {
 
 		c.WriteLen(len(s.groups))
 		for name, g := range s.groups {
-			c.WriteMapLen(4)
+			c.WriteMapLen(6)
 
 			c.WriteBulk("name")
 			c.WriteBulk(name)
-
 			c.WriteBulk("consumers")
 			c.WriteInt(len(g.consumers))
-
 			c.WriteBulk("pending")
-			c.WriteInt(len(g.pending))
-
+			c.WriteInt(len(g.activePending()))
 			c.WriteBulk("last-delivered-id")
 			c.WriteBulk(g.lastID)
+			c.WriteBulk("entries-read")
+			c.WriteNull()
+			c.WriteBulk("lag")
+			c.WriteInt(len(g.stream.entries))
 		}
 	})
 }
@@ -1132,7 +1133,8 @@ func (m *Miniredis) cmdXpending(c *server.Peer, cmd string, args []string) {
 }
 
 func writeXpendingSummary(c *server.Peer, g streamGroup) {
-	if len(g.pending) == 0 {
+	pend := g.activePending()
+	if len(pend) == 0 {
 		c.WriteLen(4)
 		c.WriteInt(0)
 		c.WriteNull()
@@ -1147,9 +1149,9 @@ func writeXpendingSummary(c *server.Peer, g streamGroup) {
 	//  - highest ID
 	//  - all consumers with > 0 pending items
 	c.WriteLen(4)
-	c.WriteInt(len(g.pending))
-	c.WriteBulk(g.pending[0].id)
-	c.WriteBulk(g.pending[len(g.pending)-1].id)
+	c.WriteInt(len(pend))
+	c.WriteBulk(pend[0].id)
+	c.WriteBulk(pend[len(pend)-1].id)
 	cons := map[string]int{}
 	for id := range g.consumers {
 		cnt := g.pendingCount(id)
@@ -1481,7 +1483,7 @@ func xautoclaim(
 }
 
 func writeXautoclaim(c *server.Peer, nextCallId string, res []StreamEntry, justId bool) {
-	c.WriteLen(2)
+	c.WriteLen(3)
 	c.WriteBulk(nextCallId)
 	c.WriteLen(len(res))
 	for _, entry := range res {
@@ -1497,6 +1499,8 @@ func writeXautoclaim(c *server.Peer, nextCallId string, res []StreamEntry, justI
 			c.WriteBulk(v)
 		}
 	}
+	// TODO: see "Redis 7" note
+	c.WriteLen(0)
 }
 
 // XCLAIM
@@ -1649,6 +1653,11 @@ func (m *Miniredis) xclaim(
 			pelEntry.deliveryCount++
 		}
 		pelEntry.lastDelivery = newLastDelivery
+
+		// redis7: don't report entries which are deleted by now
+		if _, e := group.stream.get(id); e == nil {
+			continue
+		}
 
 		claimedEntryIDs = append(claimedEntryIDs, id)
 	}

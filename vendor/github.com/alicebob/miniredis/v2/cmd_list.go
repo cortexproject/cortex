@@ -462,6 +462,11 @@ func (m *Miniredis) cmdXpop(c *server.Peer, cmd string, args []string, lr leftri
 
 		if !db.exists(opts.key) {
 			// non-existing key is fine
+			if opts.withCount && !c.Resp3 {
+				// zero-length list in this specific case. Looks like a redis bug to me.
+				c.WriteLen(-1)
+				return
+			}
 			c.WriteNull()
 			return
 		}
@@ -481,11 +486,7 @@ func (m *Miniredis) cmdXpop(c *server.Peer, cmd string, args []string, lr leftri
 				}
 				opts.count -= 1
 			}
-			if len(popped) == 0 {
-				c.WriteLen(-1)
-			} else {
-				c.WriteStrings(popped)
-			}
+			c.WriteStrings(popped)
 			return
 		}
 

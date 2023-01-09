@@ -1494,10 +1494,9 @@ func (m *Miniredis) cmdZpopmax(reverse bool) server.Cmd {
 		var err error
 		if len(args) > 1 {
 			count, err = strconv.Atoi(args[1])
-
-			if err != nil {
+			if err != nil || count < 0 {
 				setDirty(c)
-				c.WriteError(msgInvalidInt)
+				c.WriteError(msgInvalidRange)
 				return
 			}
 		}

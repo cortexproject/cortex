@@ -794,6 +794,59 @@ func TestJoinInLeavingState(t *testing.T) {
 	})
 }
 
+func TestJoinInLeavingStateAndLessTokens(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	r, err := New(ringConfig, "ingester", ringKey, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r))
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	cfg := testLifecyclerConfig(ringConfig, "ing1")
+	cfg.NumTokens = 3
+	cfg.MinReadyDuration = 1 * time.Nanosecond
+
+	// Set state as LEAVING and 1 less token because of conflict resolution
+	err = r.KVClient.CAS(context.Background(), ringKey, func(in interface{}) (interface{}, bool, error) {
+		r := &Desc{
+			Ingesters: map[string]InstanceDesc{
+				"ing1": {
+					State:  LEAVING,
+					Tokens: []uint32{1, 4},
+				},
+				"ing2": {
+					Tokens: []uint32{2, 3, 5},
+				},
+			},
+		}
+
+		return r, true, nil
+	})
+	require.NoError(t, err)
+
+	l1, err := NewLifecycler(cfg, &nopFlushTransferer{}, "ingester", ringKey, true, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), l1))
+
+	// Check that the lifecycler was able to join after coming up in LEAVING
+	test.Poll(t, 1000*time.Millisecond, true, func() interface{} {
+		d, err := r.KVClient.Get(context.Background(), ringKey)
+		require.NoError(t, err)
+
+		desc, ok := d.(*Desc)
+		return ok &&
+			len(desc.Ingesters) == 2 &&
+			desc.Ingesters["ing1"].State == ACTIVE &&
+			len(desc.Ingesters["ing1"].Tokens) == 2 &&
+			len(desc.Ingesters["ing2"].Tokens) == cfg.NumTokens
+	})
+}
+
 // JoinInJoiningState ensures that if the lifecycler starts up and the ring already has it in a JOINING state that it still is able to auto join
 func TestJoinInJoiningState(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)

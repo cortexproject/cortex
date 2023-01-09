@@ -622,7 +622,7 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 		// OR unregister_on_shutdown=false
 		// if autoJoinOnStartup, move it into ACTIVE to ensure the ingester joins the ring.
 		// else set to PENDING
-		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
+		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) != 0 {
 			if i.autoJoinOnStartup {
 				instanceDesc.State = ACTIVE
 			} else {

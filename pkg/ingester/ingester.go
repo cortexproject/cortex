@@ -2572,7 +2572,7 @@ func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryStoreForL
 	if queryIngestersWithin > 0 && queryStoreForLabels {
 		// If the feature for querying metadata from store-gateway is enabled,
 		// then we don't want to manipulate the mint and maxt.
-		return
+		return queryStart, queryEnd, nil
 	}
 
 	// Ingesters are run with limited retention and we don't support querying the store-gateway for labels yet.

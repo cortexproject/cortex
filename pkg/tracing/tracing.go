@@ -66,7 +66,7 @@ func (c *Config) Validate() error {
 			return errors.New("otlp-endpoint must be defined when using otel exporter")
 		}
 		if len(c.Otel.OltpEndpoint) > 0 {
-			return warning.New("DEPRECATED: otel.oltp-endpoint is deprecated. User otel.otlp-endpoint instead.")
+			level.Warn(util_log.Logger).Log("DEPRECATED: otel.oltp-endpoint is deprecated. User otel.otlp-endpoint instead.")
 		}
 	}
 
@@ -87,18 +87,21 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 		}
 	case OtelType:
 		util_log.Logger.Log("msg", "creating otel exporter")
-		
-		if (len(c.Otel.OtlpEndpoint) > 0) && len(c.Otel.OltpEndpoint) > 0) {
-			return options := []otlptracegrpc.Option{
-					otlptracegrpc.WithEndpoint(c.Otel.OtlpEndpoint),
-				}
+
+		if (len(c.Otel.OtlpEndpoint) > 0) && (len(c.Otel.OltpEndpoint) > 0) {
+			level.Warn(util_log.Logger).Log("msg", "DEPRECATED: otel.otlp and otel.oltp both set, using otel.otlp because otel.oltp is deprecated")
 		}
 
-		if (c.Otel.OtlpEndpoint = "") && len(c.Otel.OltpEndpoint) > 0) {
-                        return options := []otlptracegrpc.Option{
-                                        otlptracegrpc.WithEndpoint(c.Otel.OltpEndpoint),
-                                }
-                }
+		options := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(c.Otel.OtlpEndpoint),
+		}
+
+		if (c.Otel.OtlpEndpoint == "") && (len(c.Otel.OltpEndpoint) > 0) {
+			level.Warn(util_log.Logger).Log("msg", "DEPRECATED: otel.oltp is deprecated use otel.otlp")
+			options = []otlptracegrpc.Option{
+				otlptracegrpc.WithEndpoint(c.Otel.OltpEndpoint),
+			}
+		}
 
 		if c.Otel.TLSEnabled {
 			tlsConfig, err := c.Otel.TLS.GetTLSConfig()

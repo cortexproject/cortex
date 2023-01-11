@@ -22,7 +22,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
@@ -280,7 +279,7 @@ func StreamingSignV4(req *http.Request, accessKeyID, secretAccessKey, sessionTok
 	prepareStreamingRequest(req, sessionToken, dataLen, reqTime)
 
 	if req.Body == nil {
-		req.Body = ioutil.NopCloser(bytes.NewReader([]byte("")))
+		req.Body = io.NopCloser(bytes.NewReader([]byte("")))
 	}
 
 	stReader := &StreamingReader{

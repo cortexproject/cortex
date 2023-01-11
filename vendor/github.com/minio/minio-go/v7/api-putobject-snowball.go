@@ -24,7 +24,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"sync"
@@ -107,7 +106,7 @@ func (c Client) PutObjectsSnowball(ctx context.Context, bucketName string, opts 
 			return nopReadSeekCloser{bytes.NewReader(b.Bytes())}, int64(b.Len()), nil
 		}
 	} else {
-		f, err := ioutil.TempFile("", "s3-putsnowballobjects-*")
+		f, err := os.CreateTemp("", "s3-putsnowballobjects-*")
 		if err != nil {
 			return err
 		}

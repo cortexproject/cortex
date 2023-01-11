@@ -3,6 +3,7 @@ package querier
 import (
 	"testing"
 
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -36,7 +37,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 	require.Equal(t, ss.ts[0].Labels[0].Value, series.Labels()[0].Value)
 
 	it := series.Iterator()
-	require.True(t, it.Next())
+	require.NotEqual(t, it.Next(), chunkenc.ValNone)
 	ts, v := it.At()
 	require.Equal(t, 3.14, v)
 	require.Equal(t, int64(1234), ts)
@@ -51,7 +52,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 
 	require.True(t, ss.Next())
 	it = ss.At().Iterator()
-	require.True(t, it.Seek(2000))
+	require.NotEqual(t, it.Seek(2000), chunkenc.ValNone)
 	ts, v = it.At()
 	require.Equal(t, 1.618, v)
 	require.Equal(t, int64(2345), ts)
@@ -84,25 +85,25 @@ func TestTimeSeriesIterator(t *testing.T) {
 	}
 
 	it := ts.Iterator()
-	require.True(t, it.Seek(1235)) // Seek to middle
+	require.NotEqual(t, it.Seek(1235), chunkenc.ValNone) // Seek to middle
 	i, _ := it.At()
 	require.EqualValues(t, 1235, i)
-	require.True(t, it.Seek(1236)) // Seek to end
+	require.NotEqual(t, it.Seek(1236), chunkenc.ValNone) // Seek to end
 	i, _ = it.At()
 	require.EqualValues(t, 1236, i)
-	require.False(t, it.Seek(1238)) // Seek past end
+	require.Equal(t, it.Seek(1238), chunkenc.ValNone) // Seek past end
 
 	it = ts.Iterator()
-	require.True(t, it.Next())
-	require.True(t, it.Next())
+	require.NotEqual(t, it.Next(), chunkenc.ValNone)
+	require.NotEqual(t, it.Next(), chunkenc.ValNone)
 	i, _ = it.At()
 	require.EqualValues(t, 1235, i)
-	require.True(t, it.Seek(1234)) // Ensure seek doesn't do anything if already past seek target.
+	require.NotEqual(t, it.Seek(1234), chunkenc.ValNone) // Ensure seek doesn't do anything if already past seek target.
 	i, _ = it.At()
 	require.EqualValues(t, 1235, i)
 
 	it = ts.Iterator()
-	for i := 0; it.Next(); {
+	for i := 0; it.Next() != chunkenc.ValNone; {
 		j, _ := it.At()
 		switch i {
 		case 0:

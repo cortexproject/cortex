@@ -4,7 +4,7 @@ package instantquery;
 
 option go_package = "instantquery";
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 import "github.com/cortexproject/cortex/pkg/querier/tripperware/query.proto";
 

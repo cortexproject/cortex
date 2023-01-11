@@ -1,12 +1,13 @@
 package batch
 
 import (
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
 // GenericChunk is a generic chunk used by the batch iterator, in order to make the batch
@@ -75,10 +76,10 @@ type iteratorAdapter struct {
 }
 
 func newIteratorAdapter(underlying iterator) chunkenc.Iterator {
-	return &iteratorAdapter{
+	return iterators.NewCompatibleChunksIterator(&iteratorAdapter{
 		batchSize:  1,
 		underlying: underlying,
-	}
+	})
 }
 
 // Seek implements chunkenc.Iterator.

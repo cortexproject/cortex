@@ -49,6 +49,7 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.3
 	github.com/stretchr/testify v1.8.1
+	github.com/thanos-community/promql-engine v0.0.0-20230111121531-c293f65f5389
 	github.com/thanos-io/objstore v0.0.0-20221205132204-5aafc0079f06
 	github.com/thanos-io/thanos v0.29.1-0.20230103123855-3327c510076a
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
@@ -209,6 +210,7 @@ require (
 	golang.org/x/text v0.5.0 // indirect
 	golang.org/x/tools v0.4.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
+	gonum.org/v1/gonum v0.12.0 // indirect
 	google.golang.org/api v0.102.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20221027153422-115e99e71e1c // indirect

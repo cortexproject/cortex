@@ -791,6 +791,25 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
+# github.com/thanos-community/promql-engine v0.0.0-20230111121531-c293f65f5389
+## explicit; go 1.19
+github.com/thanos-community/promql-engine/api
+github.com/thanos-community/promql-engine/engine
+github.com/thanos-community/promql-engine/execution
+github.com/thanos-community/promql-engine/execution/aggregate
+github.com/thanos-community/promql-engine/execution/binary
+github.com/thanos-community/promql-engine/execution/exchange
+github.com/thanos-community/promql-engine/execution/function
+github.com/thanos-community/promql-engine/execution/model
+github.com/thanos-community/promql-engine/execution/parse
+github.com/thanos-community/promql-engine/execution/remote
+github.com/thanos-community/promql-engine/execution/scan
+github.com/thanos-community/promql-engine/execution/step_invariant
+github.com/thanos-community/promql-engine/execution/storage
+github.com/thanos-community/promql-engine/execution/unary
+github.com/thanos-community/promql-engine/logicalplan
+github.com/thanos-community/promql-engine/query
+github.com/thanos-community/promql-engine/worker
 # github.com/thanos-io/objstore v0.0.0-20221205132204-5aafc0079f06
 ## explicit; go 1.18
 github.com/thanos-io/objstore
@@ -1131,6 +1150,11 @@ golang.org/x/tools/internal/typesinternal
 ## explicit; go 1.17
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
+# gonum.org/v1/gonum v0.12.0
+## explicit; go 1.18
+gonum.org/v1/gonum/floats
+gonum.org/v1/gonum/floats/scalar
+gonum.org/v1/gonum/internal/asm/f64
 # google.golang.org/api v0.102.0
 ## explicit; go 1.19
 google.golang.org/api/googleapi

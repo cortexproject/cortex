@@ -3,7 +3,6 @@ package zstd
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 
 	"github.com/klauspost/compress/zstd"
 	"google.golang.org/grpc/encoding"
@@ -65,7 +64,7 @@ func (z *zstdWriteCloser) Close() error {
 }
 
 func (c *compressor) Decompress(r io.Reader) (io.Reader, error) {
-	compressed, err := ioutil.ReadAll(r)
+	compressed, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
 	}

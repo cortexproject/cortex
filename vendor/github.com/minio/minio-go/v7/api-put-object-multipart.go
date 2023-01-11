@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sort"
@@ -201,7 +200,9 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 
 	// Sort all completed parts.
 	sort.Sort(completedParts(complMultipartUpload.Parts))
-	opts = PutObjectOptions{}
+	opts = PutObjectOptions{
+		ServerSideEncryption: opts.ServerSideEncryption,
+	}
 	if len(crcBytes) > 0 {
 		// Add hash of hashes.
 		crc.Reset()
@@ -412,7 +413,7 @@ func (c *Client) completeMultipartUpload(ctx context.Context, bucketName, object
 
 	// Read resp.Body into a []bytes to parse for Error response inside the body
 	var b []byte
-	b, err = ioutil.ReadAll(resp.Body)
+	b, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return UploadInfo{}, err
 	}

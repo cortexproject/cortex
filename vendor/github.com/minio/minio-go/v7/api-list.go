@@ -897,6 +897,8 @@ func (c *Client) listMultipartUploadsQuery(ctx context.Context, bucketName, keyM
 }
 
 // listObjectParts list all object parts recursively.
+//
+//lint:ignore U1000 Keep this around
 func (c *Client) listObjectParts(ctx context.Context, bucketName, objectName, uploadID string) (partsInfo map[int]ObjectPart, err error) {
 	// Part number marker for the next batch of request.
 	var nextPartNumberMarker int

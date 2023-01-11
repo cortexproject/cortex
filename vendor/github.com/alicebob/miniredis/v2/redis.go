@@ -20,6 +20,7 @@ const (
 	msgInvalidMinMax        = "ERR min or max is not a float"
 	msgInvalidRangeItem     = "ERR min or max not valid string range item"
 	msgInvalidTimeout       = "ERR timeout is not a float or out of range"
+	msgInvalidRange         = "ERR value is out of range, must be positive"
 	msgSyntaxError          = "ERR syntax error"
 	msgKeyNotFound          = "ERR no such key"
 	msgOutOfRange           = "ERR index out of range"
@@ -31,8 +32,10 @@ const (
 	msgInvalidPSETEXTime    = "ERR invalid expire time in psetex"
 	msgInvalidKeysNumber    = "ERR Number of keys can't be greater than number of args"
 	msgNegativeKeysNumber   = "ERR Number of keys can't be negative"
-	msgFScriptUsage         = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try SCRIPT HELP."
-	msgFPubsubUsage         = "ERR Unknown subcommand or wrong number of arguments for '%s'. Try PUBSUB HELP."
+	msgFScriptUsage         = "ERR unknown subcommand or wrong number of arguments for '%s'. Try SCRIPT HELP."
+	msgFScriptUsageSimple   = "ERR unknown subcommand '%s'. Try SCRIPT HELP."
+	msgFPubsubUsage         = "ERR unknown subcommand or wrong number of arguments for '%s'. Try PUBSUB HELP."
+	msgFPubsubUsageSimple   = "ERR unknown subcommand '%s'. Try PUBSUB HELP."
 	msgScriptFlush          = "ERR SCRIPT FLUSH only support SYNC|ASYNC option"
 	msgSingleElementPair    = "ERR INCR option supports a single increment-element pair"
 	msgGTLTandNX            = "ERR GT, LT, and/or NX options at the same time are not compatible"
@@ -41,7 +44,6 @@ const (
 	msgStreamIDZero         = "ERR The ID specified in XADD must be greater than 0-0"
 	msgNoScriptFound        = "NOSCRIPT No matching script. Please use EVAL."
 	msgUnsupportedUnit      = "ERR unsupported unit provided. please use m, km, ft, mi"
-	msgNotFromScripts       = "This Redis command is not allowed from scripts"
 	msgXreadUnbalanced      = "ERR Unbalanced XREAD list of streams: for each stream key an ID or '$' must be specified."
 	msgXgroupKeyNotFound    = "ERR The XGROUP subcommand requires the key to exist. Note that for CREATE you may want to use the MKSTREAM option to create an empty stream automatically."
 	msgXtrimInvalidStrategy = "ERR unsupported XTRIM strategy. Please use MAXLEN, MINID"
@@ -68,6 +70,10 @@ func errReadgroup(key, group string) error {
 
 func errXreadgroup(key, group string) error {
 	return fmt.Errorf("NOGROUP No such key '%s' or consumer group '%s' in XREADGROUP with GROUP option", key, group)
+}
+
+func msgNotFromScripts(sha string) string {
+	return fmt.Sprintf("This Redis command is not allowed from script script: %s, &c", sha)
 }
 
 // withTx wraps the non-argument-checking part of command handling code in

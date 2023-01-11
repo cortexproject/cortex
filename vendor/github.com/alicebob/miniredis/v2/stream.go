@@ -394,6 +394,10 @@ func (g *streamGroup) ack(ids []string) (int, error) {
 		consumer.numPendingEntries--
 
 		g.pending = append(g.pending[:pos], g.pending[pos+1:]...)
+		// don't count deleted entries
+		if _, e := g.stream.get(id); e == nil {
+			continue
+		}
 		count++
 	}
 	return count, nil
@@ -426,12 +430,26 @@ func (g *streamGroup) pendingAfter(id string) []pendingEntry {
 
 func (g *streamGroup) pendingCount(consumer string) int {
 	n := 0
-	for _, p := range g.pending {
+	for _, p := range g.activePending() {
 		if p.consumer == consumer {
 			n++
 		}
 	}
 	return n
+}
+
+// pending entries without the entries deleted from the group
+func (g *streamGroup) activePending() []pendingEntry {
+	var pe []pendingEntry
+	for _, p := range g.pending {
+		// drop deleted ones
+		if _, e := g.stream.get(p.id); e == nil {
+			continue
+		}
+		p := p
+		pe = append(pe, p)
+	}
+	return pe
 }
 
 func (g *streamGroup) copy() *streamGroup {

@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,7 +82,7 @@ func TestDeletedSeriesIterator(t *testing.T) {
 		it := NewDeletedSeriesIterator(NewConcreteSeriesIterator(&cs), c.r)
 		ranges := c.r[:]
 
-		for it.Next() {
+		for it.Next() != chunkenc.ValNone {
 			i++
 			for _, tr := range ranges {
 				if inbound(model.Time(i), tr) {
@@ -139,7 +140,7 @@ func TestDeletedIterator_WithSeek(t *testing.T) {
 	for _, c := range cases {
 		it := NewDeletedSeriesIterator(NewConcreteSeriesIterator(&cs), c.r)
 
-		require.Equal(t, c.ok, it.Seek(c.seek))
+		require.NotEqual(t, c.ok, it.Seek(c.seek), chunkenc.ValNone)
 		if c.ok {
 			ts, _ := it.At()
 			require.Equal(t, c.seekedTs, ts)

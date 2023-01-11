@@ -312,7 +312,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 			true,
 			cfg.Cluster.PushPullInterval,
 			cfg.Cluster.GossipInterval,
-			cluster.DefaultTcpTimeout,
+			cluster.DefaultTCPTimeout,
 			cluster.DefaultProbeTimeout,
 			cluster.DefaultProbeInterval,
 			nil,

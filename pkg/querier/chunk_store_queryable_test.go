@@ -7,9 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-community/promql-engine/engine"
+	"github.com/thanos-community/promql-engine/logicalplan"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -19,14 +24,31 @@ import (
 var _ SeriesWithChunks = &chunkSeries{}
 
 func TestChunkQueryable(t *testing.T) {
-	for _, testcase := range testcases {
-		for _, encoding := range encodings {
-			for _, query := range queries {
-				t.Run(fmt.Sprintf("%s/%s/%s", testcase.name, encoding.name, query.query), func(t *testing.T) {
-					store, from := makeMockChunkStore(t, 24, encoding.e)
-					queryable := newMockStoreQueryable(store, testcase.f)
-					testRangeQuery(t, queryable, from, query)
-				})
+	opts := promql.EngineOpts{
+		Logger:             log.NewNopLogger(),
+		ActiveQueryTracker: promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger()),
+		MaxSamples:         1e6,
+		Timeout:            1 * time.Minute,
+	}
+	for _, thanosEngine := range []bool{false, true} {
+		var queryEngine v1.QueryEngine
+		if thanosEngine {
+			queryEngine = engine.New(engine.Opts{
+				EngineOpts:        opts,
+				LogicalOptimizers: logicalplan.AllOptimizers,
+			})
+		} else {
+			queryEngine = promql.NewEngine(opts)
+		}
+		for _, testcase := range testcases {
+			for _, encoding := range encodings {
+				for _, query := range queries {
+					t.Run(fmt.Sprintf("%s/%s/%s/ thanos engine enabled = %t", testcase.name, encoding.name, query.query, thanosEngine), func(t *testing.T) {
+						store, from := makeMockChunkStore(t, 24, encoding.e)
+						queryable := newMockStoreQueryable(store, testcase.f)
+						testRangeQuery(t, queryable, queryEngine, from, query)
+					})
+				}
 			}
 		}
 	}

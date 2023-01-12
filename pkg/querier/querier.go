@@ -17,6 +17,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/thanos-community/promql-engine/engine"
+	"github.com/thanos-community/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
@@ -74,6 +76,10 @@ type Config struct {
 	StoreGatewayClient    ClientConfig `yaml:"store_gateway_client"`
 
 	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
+
+	// Experimental. Use https://github.com/thanos-community/promql-engine rather than
+	// the Prometheus query engine.
+	ThanosEngine bool `yaml:"thanos_engine"`
 }
 
 var (
@@ -105,6 +111,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
+	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-community/promql-engine rather than the Prometheus promql engine.")
 }
 
 // Validate the config
@@ -166,7 +173,8 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
 
-	engine := promql.NewEngine(promql.EngineOpts{
+	var queryEngine v1.QueryEngine
+	opts := promql.EngineOpts{
 		Logger:               logger,
 		Reg:                  reg,
 		ActiveQueryTracker:   createActiveQueryTracker(cfg, logger),
@@ -179,8 +187,16 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		NoStepSubqueryIntervalFn: func(int64) int64 {
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
-	})
-	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, engine
+	}
+	if cfg.ThanosEngine {
+		queryEngine = engine.New(engine.Opts{
+			EngineOpts:        opts,
+			LogicalOptimizers: logicalplan.AllOptimizers,
+		})
+	} else {
+		queryEngine = promql.NewEngine(opts)
+	}
+	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, queryEngine
 }
 
 // NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a

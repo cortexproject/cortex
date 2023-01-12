@@ -725,9 +725,9 @@ lifecycler:
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
 
-# Period with which to update the per-user max exemplars value.
-# CLI flag: -ingester.max-exemplars-update-period
-[max_exemplars_update_period: <duration> | default = 15s]
+# Period with which to update the per-user tsdb config.
+# CLI flag: -ingester.user-tsdb-configs-update-period
+[user_tsdb_configs_update_period: <duration> | default = 15s]
 
 # Enable tracking of active series and export them as metrics.
 # CLI flag: -ingester.active-series-metrics-enabled

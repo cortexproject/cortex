@@ -31,6 +31,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 		ingesterStreamingEnabled bool
 		indexCacheBackend        string
 		bucketIndexEnabled       bool
+		thanosEngine             bool
 	}{
 		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
 			blocksShardingStrategy:   "",
@@ -71,8 +72,21 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			blocksShardingStrategy:   "shuffle-sharding",
 			tenantShardSize:          1,
 			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
 			bucketIndexEnabled:       true,
+		},
+		"blocks default sharding, ingester gRPC streaming enabled, inmemory index cache, thanos engine": {
+			blocksShardingStrategy:   "default",
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			thanosEngine:             true,
+		},
+		"blocks shuffle sharding, ingester gRPC streaming enabled, memcached index cache, thanos engine": {
+			blocksShardingStrategy:   "shuffle-sharding",
+			tenantShardSize:          1,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			thanosEngine:             true,
 		},
 	}
 
@@ -97,6 +111,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
 				"-querier.ingester-streaming":                       strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 				"-querier.query-store-for-labels-enabled":           "true",
+				"-querier.thanos-engine":                            strconv.FormatBool(testCfg.thanosEngine),
 				"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 			})
 
@@ -263,6 +278,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 		ingesterStreamingEnabled bool
 		indexCacheBackend        string
 		bucketIndexEnabled       bool
+		thanosEngine             bool
 	}{
 		"blocks sharding enabled, ingester gRPC streaming disabled, inmemory index cache": {
 			blocksShardingEnabled:    true,
@@ -292,6 +308,19 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
 			bucketIndexEnabled:       true,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, thanos engine": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			thanosEngine:             true,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled, thanos engine": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			bucketIndexEnabled:       true,
+			thanosEngine:             true,
 		},
 	}
 
@@ -326,6 +355,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				"-blocks-storage.bucket-store.bucket-index.enabled":            strconv.FormatBool(testCfg.bucketIndexEnabled),
 				"-querier.ingester-streaming":                                  strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 				"-querier.query-store-for-labels-enabled":                      "true",
+				"-querier.thanos-engine":                                       strconv.FormatBool(testCfg.thanosEngine),
 				// Ingester.
 				"-ring.store":      "consul",
 				"-consul.hostname": consul.NetworkHTTPEndpoint(),

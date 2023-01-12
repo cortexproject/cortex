@@ -7,13 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/ring/kv/dynamodb"
-
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kv/dynamodb"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )

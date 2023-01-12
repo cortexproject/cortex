@@ -39,14 +39,8 @@ func TestRulerAPI(t *testing.T) {
 	)
 	ruleGroup := createTestRuleGroup(t)
 
-	tests := map[string]struct {
-		thanosEngine bool
-	}{
-		"old engine": {thanosEngine: false},
-		"new engine": {thanosEngine: true},
-	}
-	for testName, tc := range tests {
-		t.Run(testName, func(t *testing.T) {
+	for _, thanosEngine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("thanosEngine=%t", thanosEngine), func(t *testing.T) {
 			s, err := e2e.NewScenario(networkName)
 			require.NoError(t, err)
 			defer s.Close()
@@ -57,7 +51,7 @@ func TestRulerAPI(t *testing.T) {
 			require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 			flags := mergeFlags(BlocksStorageFlags(), RulerFlags(), map[string]string{
-				"-querier.thanos-engine": strconv.FormatBool(tc.thanosEngine),
+				"-querier.thanos-engine": strconv.FormatBool(thanosEngine),
 			})
 
 			// Start Cortex components.

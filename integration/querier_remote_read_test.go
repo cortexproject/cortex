@@ -6,6 +6,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -26,21 +27,14 @@ import (
 )
 
 func TestQuerierRemoteRead(t *testing.T) {
-	tests := map[string]struct {
-		thanosEngine bool
-	}{
-		"old engine": {thanosEngine: false},
-		"new engine": {thanosEngine: true},
-	}
-
-	for testName, tc := range tests {
-		t.Run(testName, func(t *testing.T) {
+	for _, thanosEngine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("thanosEngine=%t", thanosEngine), func(t *testing.T) {
 			s, err := e2e.NewScenario(networkName)
 			require.NoError(t, err)
 			defer s.Close()
 
 			flags := mergeFlags(BlocksStorageFlags(), map[string]string{
-				"-querier.thanos-engine": strconv.FormatBool(tc.thanosEngine),
+				"-querier.thanos-engine": strconv.FormatBool(thanosEngine),
 			})
 
 			// Start dependencies.

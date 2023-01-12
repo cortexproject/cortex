@@ -198,7 +198,8 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"host", r.Host,
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
-	}, append(formatQueryString(queryString), formatGrafanaStatsFields(r)...))
+	}, formatQueryString(queryString)...)
+	logMessage = append(logMessage, formatGrafanaStatsFields(r)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }

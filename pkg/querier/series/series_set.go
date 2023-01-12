@@ -19,13 +19,14 @@ package series
 import (
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/purger"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/purger"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -99,10 +100,10 @@ type concreteSeriesIterator struct {
 
 // NewConcreteSeriesIterator instaniates an in memory chunkenc.Iterator
 func NewConcreteSeriesIterator(series *ConcreteSeries) chunkenc.Iterator {
-	return &concreteSeriesIterator{
+	return iterators.NewCompatibleChunksIterator(&concreteSeriesIterator{
 		cur:    -1,
 		series: series,
-	}
+	})
 }
 
 func (c *concreteSeriesIterator) Seek(t int64) bool {
@@ -128,7 +129,7 @@ func (c *concreteSeriesIterator) Err() error {
 
 // NewErrIterator instantiates an errIterator
 func NewErrIterator(err error) chunkenc.Iterator {
-	return errIterator{err}
+	return iterators.NewCompatibleChunksIterator(errIterator{err})
 }
 
 // errIterator implements chunkenc.Iterator, just returning an error.
@@ -261,14 +262,14 @@ type DeletedSeriesIterator struct {
 }
 
 func NewDeletedSeriesIterator(itr chunkenc.Iterator, deletedIntervals []model.Interval) chunkenc.Iterator {
-	return &DeletedSeriesIterator{
+	return iterators.NewCompatibleChunksIterator(&DeletedSeriesIterator{
 		itr:              itr,
 		deletedIntervals: deletedIntervals,
-	}
+	})
 }
 
 func (d DeletedSeriesIterator) Seek(t int64) bool {
-	if found := d.itr.Seek(t); !found {
+	if found := d.itr.Seek(t); found == chunkenc.ValNone {
 		return false
 	}
 
@@ -286,7 +287,7 @@ func (d DeletedSeriesIterator) At() (t int64, v float64) {
 }
 
 func (d DeletedSeriesIterator) Next() bool {
-	for d.itr.Next() {
+	for d.itr.Next() != chunkenc.ValNone {
 		ts, _ := d.itr.At()
 
 		if d.isDeleted(ts) {
@@ -339,7 +340,7 @@ type emptySeriesIterator struct {
 }
 
 func NewEmptySeriesIterator() chunkenc.Iterator {
-	return emptySeriesIterator{}
+	return iterators.NewCompatibleChunksIterator(emptySeriesIterator{})
 }
 
 func (emptySeriesIterator) Seek(t int64) bool {

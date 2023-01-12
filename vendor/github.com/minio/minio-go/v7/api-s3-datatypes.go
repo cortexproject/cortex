@@ -316,17 +316,15 @@ type completeMultipartUploadResult struct {
 // CompletePart sub container lists individual part numbers and their
 // md5sum, part of completeMultipartUpload.
 type CompletePart struct {
-	XMLName xml.Name `xml:"http://s3.amazonaws.com/doc/2006-03-01/ Part" json:"-"`
-
 	// Part number identifies the part.
 	PartNumber int
 	ETag       string
 
 	// Checksum values
-	ChecksumCRC32  string
-	ChecksumCRC32C string
-	ChecksumSHA1   string
-	ChecksumSHA256 string
+	ChecksumCRC32  string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumSHA1   string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256 string `xml:"ChecksumSHA256,omitempty"`
 }
 
 // completeMultipartUpload container for completing multipart upload.

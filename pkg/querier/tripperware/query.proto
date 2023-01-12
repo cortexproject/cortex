@@ -4,7 +4,7 @@ package tripperware;
 
 option go_package = "tripperware";
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 
 option (gogoproto.marshaler_all) = true;

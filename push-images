@@ -29,8 +29,16 @@ done
 
 push_image() {
     local image="$1"
-    echo "Pushing ${image}:${IMAGE_TAG}"
-    docker push ${image}:${IMAGE_TAG}
+
+    for arch in amd64 arm64; do \
+      echo "Pushing ${image}-linux:${IMAGE_TAG}-$arch"
+      docker tag ${image}:${IMAGE_TAG}-$arch ${image}-linux:${IMAGE_TAG}-$arch
+      docker push ${image}-linux:${IMAGE_TAG}-$arch
+    done;
+
+    docker manifest create ${image}:${IMAGE_TAG} --amend ${image}-linux:${IMAGE_TAG}-amd64 --amend ${image}-linux:${IMAGE_TAG}-arm64
+    docker manifest push ${image}:${IMAGE_TAG}
+
 
     if [ -n "${NO_QUAY}" ]; then
         return
@@ -38,10 +46,15 @@ push_image() {
 
     # remove the quay prefix and push to docker hub
     docker_hub_image=${image#$QUAY_PREFIX}
-    docker tag ${image}:${IMAGE_TAG} ${docker_hub_image}:${IMAGE_TAG}
+    for arch in amd64 arm64; do \
+      docker tag ${image}:${IMAGE_TAG}-$arch ${docker_hub_image}-linux:${IMAGE_TAG}-$arch
 
-    echo "Pushing ${docker_hub_image}:${IMAGE_TAG}"
-    docker push ${docker_hub_image}:${IMAGE_TAG}
+      echo "Pushing ${docker_hub_image}-linux:${IMAGE_TAG}-$arch"
+      docker push ${docker_hub_image}-linux:${IMAGE_TAG}-$arch
+    done;
+
+    docker manifest create ${docker_hub_image}:${IMAGE_TAG} --amend ${docker_hub_image}-linux:${IMAGE_TAG}-amd64 --amend ${docker_hub_image}-linux:${IMAGE_TAG}-arm64
+    docker manifest push ${docker_hub_image}:${IMAGE_TAG}
 }
 
 for image in ${IMAGES}; do

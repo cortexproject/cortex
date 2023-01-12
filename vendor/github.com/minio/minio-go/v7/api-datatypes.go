@@ -45,19 +45,20 @@ type StringMap map[string]string
 // on the first line is initialize it.
 func (m *StringMap) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	*m = StringMap{}
-	type xmlMapEntry struct {
-		XMLName xml.Name
-		Value   string `xml:",chardata"`
+	type Item struct {
+		Key   string
+		Value string
 	}
 	for {
-		var e xmlMapEntry
+		var e Item
 		err := d.Decode(&e)
 		if err == io.EOF {
 			break
-		} else if err != nil {
+		}
+		if err != nil {
 			return err
 		}
-		(*m)[e.XMLName.Local] = e.Value
+		(*m)[e.Key] = e.Value
 	}
 	return nil
 }
@@ -86,6 +87,8 @@ type UploadInfo struct {
 	ExpirationRuleID string
 
 	// Verified checksum values, if any.
+	// Values are base64 (standard) encoded.
+	// For multipart objects this is a checksum of the checksum of each part.
 	ChecksumCRC32  string
 	ChecksumCRC32C string
 	ChecksumSHA1   string
@@ -118,7 +121,7 @@ type ObjectInfo struct {
 	Metadata http.Header `json:"metadata" xml:"-"`
 
 	// x-amz-meta-* headers stripped "x-amz-meta-" prefix containing the first value.
-	UserMetadata StringMap `json:"userMetadata"`
+	UserMetadata StringMap `json:"userMetadata,omitempty"`
 
 	// x-amz-tagging values in their k/v values.
 	UserTags map[string]string `json:"userTags"`
@@ -146,7 +149,8 @@ type ObjectInfo struct {
 	// - FAILED
 	// - REPLICA (on the destination)
 	ReplicationStatus string `xml:"ReplicationStatus"`
-
+	// set to true if delete marker has backing object version on target, and eligible to replicate
+	ReplicationReady bool
 	// Lifecycle expiry-date and ruleID associated with the expiry
 	// not to be confused with `Expires` HTTP header.
 	Expiration       time.Time

@@ -4,17 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"math/rand"
 	"strings"
-	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/weaveworks/common/tracing"
+	"go.opentelemetry.io/contrib/propagators/aws/xray"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/opentracing/opentracing-go"
-	"go.opentelemetry.io/contrib/propagators/aws/xray"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -110,10 +108,10 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 			return nil, fmt.Errorf("creating tracing resource: %w", err)
 		}
 
-		tracerProvider := newTraceProvider(r, c, exporter)
+		propagator, tracerProvider := newTraceProvider(r, c, exporter)
 
 		bridge, wrappedProvider := migration.NewCortexBridgeTracerWrapper(tracerProvider.Tracer("github.com/cortexproject/cortex/cmd/cortex"))
-		bridge.SetTextMapPropagator(propagation.TraceContext{})
+		bridge.SetTextMapPropagator(propagator)
 		opentracing.SetGlobalTracer(bridge)
 		otel.SetTracerProvider(wrappedProvider)
 
@@ -125,21 +123,22 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 	}, nil
 }
 
-func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Exporter) *sdktrace.TracerProvider {
+func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Exporter) (propagation.TextMapPropagator, *sdktrace.TracerProvider) {
 	options := []sdktrace.TracerProviderOption{
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(r),
 	}
-
+	var propagator propagation.TextMapPropagator = propagation.TraceContext{}
 	switch strings.ToLower(c.Otel.ExporterType) {
 	case "awsxray":
 		options = append(options, sdktrace.WithIDGenerator(xray.NewIDGenerator()))
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewRandomRatioBased(c.Otel.SampleRatio, rand.New(rand.NewSource(time.Now().Unix()))))))
+		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewXrayTraceIDRatioBased(c.Otel.SampleRatio))))
+		propagator = xray.Propagator{}
 	default:
 		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 	}
 
-	return sdktrace.NewTracerProvider(options...)
+	return propagator, sdktrace.NewTracerProvider(options...)
 }
 
 func newResource(ctx context.Context, target string, detectors []resource.Detector) (*resource.Resource, error) {

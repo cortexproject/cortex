@@ -52,7 +52,7 @@ var (
 	errInvalidShardingStrategy  = errors.New("invalid sharding strategy")
 	errInvalidTenantShardSize   = errors.New("invalid tenant shard size, the value must be greater than 0")
 
-	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ prometheus.Counter, _ prometheus.Counter, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string) compact.Grouper {
+	DefaultBlocksGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, _ prometheus.Gauge, _ prometheus.Counter, _ prometheus.Counter, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string, _ *compact.GatherNoCompactionMarkFilter) compact.Grouper {
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
@@ -67,7 +67,7 @@ var (
 			cfg.BlocksFetchConcurrency)
 	}
 
-	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string) compact.Grouper {
+	ShuffleShardingGrouperFactory = func(ctx context.Context, cfg Config, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer, blocksMarkedForDeletion, blocksMarkedForNoCompaction, garbageCollectedBlocks prometheus.Counter, remainingPlannedCompactions prometheus.Gauge, blockVisitMarkerReadFailed prometheus.Counter, blockVisitMarkerWriteFailed prometheus.Counter, ring *ring.Ring, ringLifecycle *ring.Lifecycler, limits Limits, userID string, noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter) compact.Grouper {
 		return NewShuffleShardingGrouper(
 			ctx,
 			logger,
@@ -91,7 +91,8 @@ var (
 			cfg.CompactionConcurrency,
 			cfg.BlockVisitMarkerTimeout,
 			blockVisitMarkerReadFailed,
-			blockVisitMarkerWriteFailed)
+			blockVisitMarkerWriteFailed,
+			noCompactionMarkFilter.NoCompactMarkedBlocks)
 	}
 
 	DefaultBlocksCompactorFactory = func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
@@ -138,6 +139,7 @@ type BlocksGrouperFactory func(
 	ringLifecycler *ring.Lifecycler,
 	limit Limits,
 	userID string,
+	noCompactionMarkFilter *compact.GatherNoCompactionMarkFilter,
 ) compact.Grouper
 
 // BlocksCompactorFactory builds and returns the compactor and planner to use to compact a tenant's blocks.
@@ -814,7 +816,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	compactor, err := compact.NewBucketCompactor(
 		ulogger,
 		syncer,
-		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.ring, c.ringLifecycler, c.limits, userID),
+		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter),
 		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed),
 		c.blocksCompactor,
 		path.Join(c.compactorCfg.DataDir, "compact"),

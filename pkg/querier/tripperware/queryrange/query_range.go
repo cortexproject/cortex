@@ -127,7 +127,10 @@ func NewEmptyPrometheusResponse() *PrometheusResponse {
 	}
 }
 
-func (c prometheusCodec) MergeResponse(responses ...tripperware.Response) (tripperware.Response, error) {
+func (c prometheusCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "QueryRangeResponse.MergeResponse")
+	sp.SetTag("response_count", len(responses))
+	defer sp.Finish()
 	if len(responses) == 0 {
 		return NewEmptyPrometheusResponse(), nil
 	}
@@ -261,7 +264,7 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := tripperware.BodyBuffer(r)
+	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err

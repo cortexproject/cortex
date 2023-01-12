@@ -29,7 +29,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
-	"github.com/thanos-io/thanos/pkg/testutil"
+	thanos_testutil "github.com/thanos-io/thanos/pkg/testutil/e2eutil"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -945,7 +945,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
 	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
 
-	err := testutil.PutOutOfOrderIndex(path.Join(tmpDir, "user-1", b1.String()), 10, 20)
+	err := thanos_testutil.PutOutOfOrderIndex(path.Join(tmpDir, "user-1", b1.String()), 10, 20)
 	require.NoError(t, err)
 
 	cfg := prepareConfig()

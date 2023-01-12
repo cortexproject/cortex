@@ -1,7 +1,17 @@
 ## Changelog
 
 
+### v2.30.0
+
+- implement redis 7.0.x (from 6.X). Main changes:
+   - test against 7.0.7
+   - update error messages
+   - support nx|xx|gt|lt options in [P]EXPIRE[AT]
+   - update how deleted items are processed in pending queues in streams
+
+
 ### v2.23.1
+
 - resolve $ to latest ID in XREAD (thanks @josh-hook)
 - handle disconnect in blocking functions (thanks @jgirtakovskis)
 - fix type conversion bug in redisToLua (thanks Sandy Harvie)

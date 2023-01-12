@@ -198,7 +198,7 @@ query_scheduler:
     [max_send_msg_size: <int> | default = 16777216]
 
     # Use compression when sending messages. Supported values are: 'gzip',
-    # 'snappy' and '' (disable compression)
+    # 'snappy', 'zstd' and '' (disable compression)
     # CLI flag: -query-scheduler.grpc-client-config.grpc-compression
     [grpc_compression: <string> | default = ""]
 
@@ -296,6 +296,16 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Maximum number of simultaneous grpc connections, <=0 to disable
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
+
+# Comma-separated list of cipher suites to use. If blank, the default Go cipher
+# suites is used.
+# CLI flag: -server.tls-cipher-suites
+[tls_cipher_suites: <string> | default = ""]
+
+# Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
+# VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
+# CLI flag: -server.tls-min-version
+[tls_min_version: <string> | default = ""]
 
 http_tls_config:
   # HTTP server cert path.
@@ -953,7 +963,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -frontend.grpc-client-config.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -1116,7 +1126,7 @@ ruler_client:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -ruler.client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -2108,7 +2118,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -ingester.client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -2215,7 +2225,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -querier.frontend-client.grpc-compression
   [grpc_compression: <string> | default = ""]
 

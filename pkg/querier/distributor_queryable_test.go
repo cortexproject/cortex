@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -320,13 +321,13 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 
 	it := series.Iterator()
 	for _, s := range samples {
-		require.True(t, it.Next())
+		require.NotEqual(t, it.Next(), chunkenc.ValNone)
 		require.Nil(t, it.Err())
 		ts, v := it.At()
 		require.Equal(t, s.Value, v)
 		require.Equal(t, s.TimestampMs, ts)
 	}
-	require.False(t, it.Next())
+	require.Equal(t, it.Next(), chunkenc.ValNone)
 	require.Nil(t, it.Err())
 }
 func TestDistributorQuerier_LabelNames(t *testing.T) {

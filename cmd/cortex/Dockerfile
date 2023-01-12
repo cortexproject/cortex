@@ -1,7 +1,9 @@
 FROM       alpine:3.14
+ARG TARGETARCH
+
 RUN        apk add --no-cache ca-certificates
 COPY       migrations /migrations/
-COPY       cortex /bin/cortex
+COPY       cortex-$TARGETARCH /bin/cortex
 EXPOSE     80
 ENTRYPOINT [ "/bin/cortex" ]
 

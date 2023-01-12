@@ -27,8 +27,9 @@ import (
 
 // AdvancedGetOptions for internal use by MinIO server - not intended for client use.
 type AdvancedGetOptions struct {
-	ReplicationDeleteMarker bool
-	ReplicationProxyRequest string
+	ReplicationDeleteMarker           bool
+	IsReplicationReadyForDeleteMarker bool
+	ReplicationProxyRequest           string
 }
 
 // GetObjectOptions are used to specify additional headers or options

@@ -7,11 +7,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"github.com/efficientgo/tools/core/pkg/errcapture"
+	"github.com/efficientgo/core/errcapture"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
@@ -67,7 +66,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		return nil
 	}
 
-	files, err := ioutil.ReadDir(absDir)
+	files, err := os.ReadDir(absDir)
 	if err != nil {
 		return err
 	}

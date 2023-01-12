@@ -39,94 +39,102 @@ func TestRulerAPI(t *testing.T) {
 	)
 	ruleGroup := createTestRuleGroup(t)
 
-	s, err := e2e.NewScenario(networkName)
-	require.NoError(t, err)
-	defer s.Close()
+	for _, thanosEngine := range []bool{false, true} {
+		t.Run(fmt.Sprintf("thanosEngine=%t", thanosEngine), func(t *testing.T) {
+			s, err := e2e.NewScenario(networkName)
+			require.NoError(t, err)
+			defer s.Close()
 
-	// Start dependencies.
-	consul := e2edb.NewConsul()
-	minio := e2edb.NewMinio(9000, rulestoreBucketName, bucketName)
-	require.NoError(t, s.StartAndWaitReady(consul, minio))
+			// Start dependencies.
+			consul := e2edb.NewConsul()
+			minio := e2edb.NewMinio(9000, rulestoreBucketName, bucketName)
+			require.NoError(t, s.StartAndWaitReady(consul, minio))
 
-	// Start Cortex components.
-	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(BlocksStorageFlags(), RulerFlags()), "")
-	require.NoError(t, s.StartAndWaitReady(ruler))
+			flags := mergeFlags(BlocksStorageFlags(), RulerFlags(), map[string]string{
+				"-querier.thanos-engine": strconv.FormatBool(thanosEngine),
+			})
 
-	// Create a client with the ruler address configured
-	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
-	require.NoError(t, err)
+			// Start Cortex components.
+			ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+			require.NoError(t, s.StartAndWaitReady(ruler))
 
-	// Set the rule group into the ruler
-	require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceOne))
+			// Create a client with the ruler address configured
+			c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
+			require.NoError(t, err)
 
-	// Wait until the user manager is created
-	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
+			// Set the rule group into the ruler
+			require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceOne))
 
-	// Check to ensure the rules running in the ruler match what was set
-	rgs, err := c.GetRuleGroups()
-	require.NoError(t, err)
+			// Wait until the user manager is created
+			require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
 
-	retrievedNamespace, exists := rgs[namespaceOne]
-	require.True(t, exists)
-	require.Len(t, retrievedNamespace, 1)
-	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
+			// Check to ensure the rules running in the ruler match what was set
+			rgs, err := c.GetRuleGroups()
+			require.NoError(t, err)
 
-	// Add a second rule group with a similar namespace
-	require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceTwo))
-	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(2), "cortex_prometheus_rule_group_rules"))
+			retrievedNamespace, exists := rgs[namespaceOne]
+			require.True(t, exists)
+			require.Len(t, retrievedNamespace, 1)
+			require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
 
-	// Check to ensure the rules running in the ruler match what was set
-	rgs, err = c.GetRuleGroups()
-	require.NoError(t, err)
+			// Add a second rule group with a similar namespace
+			require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceTwo))
+			require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(2), "cortex_prometheus_rule_group_rules"))
 
-	retrievedNamespace, exists = rgs[namespaceOne]
-	require.True(t, exists)
-	require.Len(t, retrievedNamespace, 1)
-	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
+			// Check to ensure the rules running in the ruler match what was set
+			rgs, err = c.GetRuleGroups()
+			require.NoError(t, err)
 
-	retrievedNamespace, exists = rgs[namespaceTwo]
-	require.True(t, exists)
-	require.Len(t, retrievedNamespace, 1)
-	require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
+			retrievedNamespace, exists = rgs[namespaceOne]
+			require.True(t, exists)
+			require.Len(t, retrievedNamespace, 1)
+			require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
 
-	// Test compression by inspecting the response Headers
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/rules", ruler.HTTPEndpoint()), nil)
-	require.NoError(t, err)
+			retrievedNamespace, exists = rgs[namespaceTwo]
+			require.True(t, exists)
+			require.Len(t, retrievedNamespace, 1)
+			require.Equal(t, retrievedNamespace[0].Name, ruleGroup.Name)
 
-	req.Header.Set("X-Scope-OrgID", "user-1")
-	req.Header.Set("Accept-Encoding", "gzip")
+			// Test compression by inspecting the response Headers
+			req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/rules", ruler.HTTPEndpoint()), nil)
+			require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+			req.Header.Set("X-Scope-OrgID", "user-1")
+			req.Header.Set("Accept-Encoding", "gzip")
 
-	// Execute HTTP request
-	res, err := http.DefaultClient.Do(req.WithContext(ctx))
-	require.NoError(t, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 
-	defer res.Body.Close()
-	// We assert on the Vary header as the minimum response size for enabling compression is 1500 bytes.
-	// This is enough to know whenever the handler for compression is enabled or not.
-	require.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
+			// Execute HTTP request
+			res, err := http.DefaultClient.Do(req.WithContext(ctx))
+			require.NoError(t, err)
 
-	// Delete the set rule groups
-	require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
-	require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
+			defer res.Body.Close()
+			// We assert on the Vary header as the minimum response size for enabling compression is 1500 bytes.
+			// This is enough to know whenever the handler for compression is enabled or not.
+			require.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
 
-	// Get the rule group and ensure it returns a 404
-	resp, err := c.GetRuleGroup(namespaceOne, ruleGroup.Name)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+			// Delete the set rule groups
+			require.NoError(t, c.DeleteRuleGroup(namespaceOne, ruleGroup.Name))
+			require.NoError(t, c.DeleteRuleNamespace(namespaceTwo))
 
-	// Wait until the users manager has been terminated
-	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
+			// Get the rule group and ensure it returns a 404
+			resp, err := c.GetRuleGroup(namespaceOne, ruleGroup.Name)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusNotFound, resp.StatusCode)
 
-	// Check to ensure the rule groups are no longer active
-	_, err = c.GetRuleGroups()
-	require.Error(t, err)
+			// Wait until the users manager has been terminated
+			require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(0), "cortex_ruler_managers_total"))
 
-	// Ensure no service-specific metrics prefix is used by the wrong service.
-	assertServiceMetricsPrefixes(t, Ruler, ruler)
+			// Check to ensure the rule groups are no longer active
+			_, err = c.GetRuleGroups()
+			require.Error(t, err)
+
+			// Ensure no service-specific metrics prefix is used by the wrong service.
+			assertServiceMetricsPrefixes(t, Ruler, ruler)
+		})
+	}
 }
 
 func TestRulerAPISingleBinary(t *testing.T) {

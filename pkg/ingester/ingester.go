@@ -844,12 +844,11 @@ func (i *Ingester) updateUserTSDBConfigs() {
 			},
 		}
 
-		level.Info(logutil.WithUserID(userID, i.logger)).Log("meg", "updating max exemplars configuration.")
 		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow. Invoking this method
 		// with a 0 value of OutOfOrderTimeWindow simply updates Max Exemplars.
 		err := userDB.db.ApplyConfig(cfg)
 		if err != nil {
-			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update max exemplars configuration.")
+			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update user tsdb configuration.")
 		}
 	}
 }

@@ -31,6 +31,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.5.0
 	github.com/json-iterator/go v1.1.12
+	github.com/klauspost/compress v1.15.14
 	github.com/lib/pq v1.10.7
 	github.com/minio/minio-go/v7 v7.0.46
 	github.com/mitchellh/go-wordwrap v1.0.1
@@ -150,7 +151,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
-	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.1.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect

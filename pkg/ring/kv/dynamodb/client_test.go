@@ -192,20 +192,23 @@ func Test_WatchPrefix(t *testing.T) {
 	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
 	data := map[string][]byte{}
 	dataKey := []string{"t1", "t2"}
-	data[dataKey[0]] = []byte("data" + dataKey[0])
-	data[dataKey[1]] = []byte("data" + dataKey[1])
+	data[dataKey[0]] = []byte(dataKey[0])
+	data[dataKey[1]] = []byte(dataKey[1])
 	calls := 0
 
-	ddbMock.On("Query").Return(data, nil).Once()
+	ddbMock.On("Query").Return(data, nil)
 	codecMock.On("Decode").Twice()
 
 	c.WatchPrefix(context.TODO(), key, func(key string, i interface{}) bool {
-		ddbMock.AssertNumberOfCalls(t, "Query", 1)
-		require.EqualValues(t, key, dataKey[calls])
-		require.EqualValues(t, string(data[dataKey[calls]]), i)
+		require.EqualValues(t, string(data[key]), i)
+		delete(data, key)
 		calls++
-		return calls < 1
+		return calls < 2
 	})
+
+	require.True(t, len(data) == 0)
+
+	ddbMock.AssertNumberOfCalls(t, "Query", 1)
 }
 
 func Test_UpdateStaleData(t *testing.T) {

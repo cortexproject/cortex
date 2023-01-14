@@ -257,10 +257,11 @@ func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSe
 func mergeExemplarQueryResponses(results []interface{}) *ingester_client.ExemplarQueryResponse {
 	var keys []string
 	exemplarResults := make(map[string]cortexpb.TimeSeries)
+	buf := make([]byte, 0, 1024)
 	for _, result := range results {
 		r := result.(*ingester_client.ExemplarQueryResponse)
 		for _, ts := range r.Timeseries {
-			lbls := cortexpb.FromLabelAdaptersToLabels(ts.Labels).String()
+			lbls := string(cortexpb.FromLabelAdaptersToLabels(ts.Labels).Bytes(buf))
 			e, ok := exemplarResults[lbls]
 			if !ok {
 				exemplarResults[lbls] = ts

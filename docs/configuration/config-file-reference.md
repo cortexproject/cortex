@@ -4051,8 +4051,7 @@ The `tracing_config` configures backends cortex uses.
 
 otel:
 
-  # DEPRECATED: use otel.otlp_endpoint instead
-  # otl collector endpoint that the driver will use to send spans.
+  # DEPRECATED: use otel.otlp_endpoint instead.
   # CLI flag: -tracing.otel.oltp-endpoint
   [oltp_endpoint: <string> | default = ""]
 

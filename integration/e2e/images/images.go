@@ -7,6 +7,7 @@ package images
 
 var (
 	Memcached        = "memcached:1.6.1"
+	Redis            = "docker.io/redis:7.0.4-alpine"
 	Minio            = "minio/minio:RELEASE.2021-10-13T00-23-17Z"
 	KES              = "minio/kes:v0.17.1"
 	Consul           = "consul:1.8.4"

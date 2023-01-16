@@ -4050,7 +4050,6 @@ The `tracing_config` configures backends cortex uses.
 [type: <string> | default = "jaeger"]
 
 otel:
-
   # DEPRECATED: use otel.otlp_endpoint instead.
   # CLI flag: -tracing.otel.oltp-endpoint
   [oltp_endpoint: <string> | default = ""]

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 )
 
 func TestMergeSampleStreams(t *testing.T) {
@@ -34,7 +35,7 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 			},
 			expectedOutput: map[string]SampleStream{
-				lbls.String(): {
+				ingester_client.LabelsToKeyString(lbls): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
 					Samples: []cortexpb.Sample{
 						{Value: 0, TimestampMs: 0},
@@ -63,7 +64,7 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 			},
 			expectedOutput: map[string]SampleStream{
-				lbls.String(): {
+				ingester_client.LabelsToKeyString(lbls): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
 					Samples: []cortexpb.Sample{
 						{Value: 0, TimestampMs: 0},
@@ -109,7 +110,7 @@ func TestMergeSampleStreams(t *testing.T) {
 				},
 			},
 			expectedOutput: map[string]SampleStream{
-				lbls.String(): {
+				ingester_client.LabelsToKeyString(lbls): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
 					Samples: []cortexpb.Sample{
 						{Value: 0, TimestampMs: 0},
@@ -118,7 +119,7 @@ func TestMergeSampleStreams(t *testing.T) {
 						{Value: 4, TimestampMs: 4},
 					},
 				},
-				lbls1.String(): {
+				ingester_client.LabelsToKeyString(lbls1): {
 					Labels: cortexpb.FromLabelsToLabelAdapters(lbls1),
 					Samples: []cortexpb.Sample{
 						{Value: 0, TimestampMs: 0},

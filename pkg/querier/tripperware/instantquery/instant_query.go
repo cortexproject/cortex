@@ -299,6 +299,7 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripper
 
 func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 	output := map[string]*Sample{}
+	buf := make([]byte, 0, 1024)
 	for _, resp := range resps {
 		if resp == nil {
 			continue
@@ -313,7 +314,7 @@ func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 			if s == nil {
 				continue
 			}
-			metric := cortexpb.FromLabelAdaptersToLabels(sample.Labels).String()
+			metric := string(cortexpb.FromLabelAdaptersToLabels(sample.Labels).Bytes(buf))
 			if existingSample, ok := output[metric]; !ok {
 				output[metric] = s
 			} else if existingSample.GetSample().TimestampMs < s.GetSample().TimestampMs {

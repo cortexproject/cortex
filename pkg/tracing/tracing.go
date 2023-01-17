@@ -38,7 +38,7 @@ type Config struct {
 }
 
 type Otel struct {
-	OltpEndpoint   string              `yaml:"oltp_endpoint" json:"oltp_endpoint"`
+	OltpEndpoint   string              `yaml:"oltp_endpoint" json:"oltp_endpoint" doc:"hidden"`
 	OtlpEndpoint   string              `yaml:"otlp_endpoint" json:"otlp_endpoint"`
 	ExporterType   string              `yaml:"exporter_type" json:"exporter_type"`
 	SampleRatio    float64             `yaml:"sample_ratio" json:"sample_ratio"`

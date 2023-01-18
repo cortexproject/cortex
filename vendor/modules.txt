@@ -792,7 +792,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-community/promql-engine v0.0.0-20230111121531-c293f65f5389
+# github.com/thanos-community/promql-engine v0.0.0-20230117172009-3e3e0b3c510b
 ## explicit; go 1.19
 github.com/thanos-community/promql-engine/api
 github.com/thanos-community/promql-engine/engine

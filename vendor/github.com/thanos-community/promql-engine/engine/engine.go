@@ -174,7 +174,7 @@ func (e *compatibilityEngine) NewInstantQuery(q storage.Queryable, opts *promql.
 	}
 
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec},
+		Query:  &Query{exec: exec, opts: opts},
 		engine: e,
 		expr:   expr,
 		ts:     ts,
@@ -211,7 +211,7 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 	}
 
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec},
+		Query:  &Query{exec: exec, opts: opts},
 		engine: e,
 		expr:   expr,
 		t:      RangeQuery,
@@ -220,6 +220,7 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 
 type Query struct {
 	exec model.VectorOperator
+	opts *promql.QueryOpts
 }
 
 // Explain returns human-readable explanation of the created executor.
@@ -378,7 +379,14 @@ func newErrResult(r *promql.Result, err error) *promql.Result {
 
 func (q *compatibilityQuery) Statement() parser.Statement { return nil }
 
-func (q *compatibilityQuery) Stats() *stats.Statistics { return &stats.Statistics{} }
+// Stats always returns empty query stats for now to avoid panic.
+func (q *compatibilityQuery) Stats() *stats.Statistics {
+	var enablePerStepStats bool
+	if q.opts != nil {
+		enablePerStepStats = q.opts.EnablePerStepStats
+	}
+	return &stats.Statistics{Timers: stats.NewQueryTimers(), Samples: stats.NewQuerySamples(enablePerStepStats)}
+}
 
 func (q *compatibilityQuery) Close() { q.Cancel() }
 

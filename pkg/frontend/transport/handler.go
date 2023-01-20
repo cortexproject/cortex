@@ -172,8 +172,26 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func formatGrafanaStatsFields(r *http.Request) []interface{} {
+	grafanaDashboardUID := "-"
+	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
+		grafanaDashboardUID = dashboardUID
+	}
+	grafanaPanelID := "-"
+	if panelID := r.Header.Get("X-Panel-Id"); panelID != "" {
+		grafanaPanelID = panelID
+	}
+
+	return []interface{}{
+		"grafana_dashboard_uid", grafanaDashboardUID,
+		"grafana_panel_id", grafanaPanelID,
+	}
+}
+
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
+	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
+
 	logMessage := append([]interface{}{
 		"msg", "slow query detected",
 		"method", r.Method,
@@ -181,6 +199,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
 	}, formatQueryString(queryString)...)
+	logMessage = append(logMessage, formatGrafanaStatsFields(r)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
@@ -217,6 +236,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	}, stats.LoadExtraFields()...)
 
 	logMessage = append(logMessage, formatQueryString(queryString)...)
+	logMessage = append(logMessage, formatGrafanaStatsFields(r)...)
 
 	if error != nil {
 		s, ok := status.FromError(error)

@@ -467,7 +467,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 			}
 			for _, c := range testCases {
 				cfg.QueryIngestersWithin = c.queryIngestersWithin
-				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,test=%s", cfg.IngesterStreaming, thanosEngine, c.name), func(t *testing.T) {
+				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,queryIngestersWithin=%v, test=%s", cfg.IngesterStreaming, thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
 					chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 					distributor := &errDistributor{}
 

@@ -418,7 +418,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		{
 			name:                 "hit-test2",
 			mint:                 time.Now().Add(-5 * time.Hour),
-			maxt:                 time.Now().Add(-59 * time.Minute),
+			maxt:                 time.Now().Add(-55 * time.Minute),
 			hitIngester:          true,
 			queryIngestersWithin: 1 * time.Hour,
 		},

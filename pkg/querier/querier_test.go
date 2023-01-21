@@ -418,7 +418,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		{
 			name:                 "hit-test2",
 			mint:                 time.Now().Add(-5 * time.Hour),
-			maxt:                 time.Now().Add(-59 * time.Minute),
+			maxt:                 time.Now().Add(-55 * time.Minute),
 			hitIngester:          true,
 			queryIngestersWithin: 1 * time.Hour,
 		},
@@ -467,7 +467,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 			}
 			for _, c := range testCases {
 				cfg.QueryIngestersWithin = c.queryIngestersWithin
-				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,test=%s", cfg.IngesterStreaming, thanosEngine, c.name), func(t *testing.T) {
+				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,queryIngestersWithin=%v, test=%s", cfg.IngesterStreaming, thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
 					chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 					distributor := &errDistributor{}
 

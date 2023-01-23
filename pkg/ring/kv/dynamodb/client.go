@@ -168,20 +168,18 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			continue
 		}
 
+		putRequests := map[dynamodbKey][]byte{}
 		for childKey, bytes := range buf {
-			err := c.kv.Put(ctx, dynamodbKey{primaryKey: key, sortKey: childKey}, bytes)
-			if err != nil {
-				level.Error(c.logger).Log("msg", "error CASing", "key", key, "err", err)
-				continue
-			}
+			putRequests[dynamodbKey{primaryKey: key, sortKey: childKey}] = bytes
 		}
 
+		deleteRequests := []dynamodbKey{}
 		for _, childKey := range toDelete {
-			err := c.kv.Delete(ctx, dynamodbKey{primaryKey: key, sortKey: childKey})
-			if err != nil {
-				level.Error(c.logger).Log("msg", "error CASing", "key", key, "err", err)
-				continue
-			}
+			deleteRequests = append(deleteRequests, dynamodbKey{primaryKey: key, sortKey: childKey})
+		}
+
+		if len(putRequests) > 0 || len(deleteRequests) > 0 {
+			return c.kv.Batch(ctx, putRequests, deleteRequests)
 		}
 
 		return nil

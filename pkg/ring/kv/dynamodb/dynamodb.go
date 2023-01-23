@@ -23,6 +23,7 @@ type dynamoDbClient interface {
 	Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error)
 	Delete(ctx context.Context, key dynamodbKey) error
 	Put(ctx context.Context, key dynamodbKey, data []byte) error
+	Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error
 }
 
 type dynamodbKV struct {
@@ -161,6 +162,55 @@ func (kv dynamodbKV) Delete(ctx context.Context, key dynamodbKey) error {
 }
 
 func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) error {
+	input := &dynamodb.PutItemInput{
+		TableName: kv.tableName,
+		Item:      kv.generatePutItemRequest(key, data),
+	}
+	_, err := kv.ddbClient.PutItemWithContext(ctx, input)
+	return err
+}
+
+func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+	var writeRequests []*dynamodb.WriteRequest
+	for key, data := range put {
+		item := kv.generatePutItemRequest(key, data)
+		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+			PutRequest: &dynamodb.PutRequest{
+				Item: item,
+			},
+		})
+	}
+
+	for _, key := range delete {
+		item := generateItemKey(key)
+
+		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+			DeleteRequest: &dynamodb.DeleteRequest{
+				Key: item,
+			},
+		})
+	}
+
+	if len(writeRequests) == 0 {
+		return nil
+	}
+
+	input := &dynamodb.BatchWriteItemInput{
+		RequestItems: map[string][]*dynamodb.WriteRequest{
+			*kv.tableName: writeRequests,
+		},
+	}
+
+	resp, err := kv.ddbClient.BatchWriteItemWithContext(ctx, input)
+
+	if resp.UnprocessedItems != nil && len(resp.UnprocessedItems) > 0 {
+		return fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
+	}
+
+	return err
+}
+
+func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, data []byte) map[string]*dynamodb.AttributeValue {
 	item := generateItemKey(key)
 	item[contentData] = &dynamodb.AttributeValue{
 		B: data,
@@ -171,12 +221,7 @@ func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) erro
 		}
 	}
 
-	input := &dynamodb.PutItemInput{
-		TableName: kv.tableName,
-		Item:      item,
-	}
-	_, err := kv.ddbClient.PutItemWithContext(ctx, input)
-	return err
+	return item
 }
 
 func generateItemKey(key dynamodbKey) map[string]*dynamodb.AttributeValue {

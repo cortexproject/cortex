@@ -87,24 +87,25 @@ func Test_CAS_Update(t *testing.T) {
 		expectedUpdatedKeys[0]: []byte(expectedUpdatedKeys[0]),
 		expectedUpdatedKeys[1]: []byte(expectedUpdatedKeys[1]),
 	}
+	expectedBatch := map[dynamodbKey][]byte{
+		{primaryKey: key, sortKey: expectedUpdatedKeys[0]}: []byte(expectedUpdatedKeys[0]),
+		{primaryKey: key, sortKey: expectedUpdatedKeys[1]}: []byte(expectedUpdatedKeys[1]),
+	}
 
 	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
 	codecMock.On("DecodeMultiKey").Return(descMock, nil).Once()
 	descMock.On("Clone").Return(descMock).Once()
 	descMock.On("FindDifference", descMock).Return(descMock, []string{}, nil).Once()
 	codecMock.On("EncodeMultiKey").Return(expectedUpdated, nil).Once()
-	ddbMock.On("Put", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedUpdatedKeys[0]}, []byte(expectedUpdatedKeys[0])).Once()
-	ddbMock.On("Put", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedUpdatedKeys[1]}, []byte(expectedUpdatedKeys[1])).Once()
+	ddbMock.On("Batch", context.TODO(), expectedBatch, []dynamodbKey{}).Once()
 
 	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
 		return descMock, true, nil
 	})
 
 	require.NoError(t, err)
-	ddbMock.AssertNumberOfCalls(t, "Put", 2)
-	ddbMock.AssertNumberOfCalls(t, "Delete", 0)
-	ddbMock.AssertCalled(t, "Put", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedUpdatedKeys[0]}, []byte(expectedUpdatedKeys[0]))
-	ddbMock.AssertCalled(t, "Put", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedUpdatedKeys[1]}, []byte(expectedUpdatedKeys[1]))
+	ddbMock.AssertNumberOfCalls(t, "Batch", 1)
+	ddbMock.AssertCalled(t, "Batch", context.TODO(), expectedBatch, []dynamodbKey{})
 }
 
 func Test_CAS_Delete(t *testing.T) {
@@ -113,24 +114,61 @@ func Test_CAS_Delete(t *testing.T) {
 	descMock := &DescMock{}
 	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
 	expectedToDelete := []string{"test", "test2"}
+	expectedBatch := []dynamodbKey{
+		{primaryKey: key, sortKey: expectedToDelete[0]},
+		{primaryKey: key, sortKey: expectedToDelete[1]},
+	}
 
 	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
 	codecMock.On("DecodeMultiKey").Return(descMock, nil).Once()
 	descMock.On("Clone").Return(descMock).Once()
 	descMock.On("FindDifference", descMock).Return(descMock, expectedToDelete, nil).Once()
 	codecMock.On("EncodeMultiKey").Return(map[string][]byte{}, nil).Once()
-	ddbMock.On("Delete", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedToDelete[0]})
-	ddbMock.On("Delete", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedToDelete[1]})
+	ddbMock.On("Batch", context.TODO(), map[dynamodbKey][]byte{}, expectedBatch)
 
 	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
 		return descMock, true, nil
 	})
 
 	require.NoError(t, err)
-	ddbMock.AssertNumberOfCalls(t, "Put", 0)
-	ddbMock.AssertNumberOfCalls(t, "Delete", 2)
-	ddbMock.AssertCalled(t, "Delete", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedToDelete[0]})
-	ddbMock.AssertCalled(t, "Delete", context.TODO(), dynamodbKey{primaryKey: key, sortKey: expectedToDelete[1]})
+	ddbMock.AssertNumberOfCalls(t, "Batch", 1)
+	ddbMock.AssertCalled(t, "Batch", context.TODO(), map[dynamodbKey][]byte{}, expectedBatch)
+}
+
+func Test_CAS_Update_Delete(t *testing.T) {
+	ddbMock := NewDynamodbClientMock()
+	codecMock := &CodecMock{}
+	descMock := &DescMock{}
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	expectedUpdatedKeys := []string{"t1", "t2"}
+	expectedUpdated := map[string][]byte{
+		expectedUpdatedKeys[0]: []byte(expectedUpdatedKeys[0]),
+		expectedUpdatedKeys[1]: []byte(expectedUpdatedKeys[1]),
+	}
+	expectedUpdateBatch := map[dynamodbKey][]byte{
+		{primaryKey: key, sortKey: expectedUpdatedKeys[0]}: []byte(expectedUpdatedKeys[0]),
+		{primaryKey: key, sortKey: expectedUpdatedKeys[1]}: []byte(expectedUpdatedKeys[1]),
+	}
+	expectedToDelete := []string{"test", "test2"}
+	expectedDeleteBatch := []dynamodbKey{
+		{primaryKey: key, sortKey: expectedToDelete[0]},
+		{primaryKey: key, sortKey: expectedToDelete[1]},
+	}
+
+	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
+	codecMock.On("DecodeMultiKey").Return(descMock, nil).Once()
+	descMock.On("Clone").Return(descMock).Once()
+	descMock.On("FindDifference", descMock).Return(descMock, expectedToDelete, nil).Once()
+	codecMock.On("EncodeMultiKey").Return(expectedUpdated, nil).Once()
+	ddbMock.On("Batch", context.TODO(), expectedUpdateBatch, expectedDeleteBatch)
+
+	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+		return descMock, true, nil
+	})
+
+	require.NoError(t, err)
+	ddbMock.AssertNumberOfCalls(t, "Batch", 1)
+	ddbMock.AssertCalled(t, "Batch", context.TODO(), expectedUpdateBatch, expectedDeleteBatch)
 }
 
 func Test_WatchKey(t *testing.T) {
@@ -269,6 +307,10 @@ func (m *mockDynamodbClient) Delete(ctx context.Context, key dynamodbKey) error 
 }
 func (m *mockDynamodbClient) Put(ctx context.Context, key dynamodbKey, data []byte) error {
 	m.Called(ctx, key, data)
+	return nil
+}
+func (m *mockDynamodbClient) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+	m.Called(ctx, put, delete)
 	return nil
 }
 

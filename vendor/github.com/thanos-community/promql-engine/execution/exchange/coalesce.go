@@ -6,6 +6,7 @@ package exchange
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,34 +26,42 @@ func (c errorChan) getError() error {
 	return nil
 }
 
-type coalesceOperator struct {
+// coalesce is a model.VectorOperator that merges input vectors from multiple downstream operators
+// into a single output vector.
+// coalesce guarantees that samples from different input vectors will be added to the output in the same order
+// as the input vectors themselves are provided in NewCoalesce.
+type coalesce struct {
 	once   sync.Once
 	series []labels.Labels
 
-	pool          *model.VectorPool
-	mu            sync.Mutex
-	wg            sync.WaitGroup
-	operators     []model.VectorOperator
+	pool      *model.VectorPool
+	wg        sync.WaitGroup
+	operators []model.VectorOperator
+
+	// inVectors is an internal per-step cache for references to input vectors.
+	inVectors [][]model.StepVector
+	// sampleOffsets holds per-operator offsets needed to map an input sample ID to an output sample ID.
 	sampleOffsets []uint64
 }
 
 func NewCoalesce(pool *model.VectorPool, operators ...model.VectorOperator) model.VectorOperator {
-	return &coalesceOperator{
+	return &coalesce{
 		pool:          pool,
-		operators:     operators,
 		sampleOffsets: make([]uint64, len(operators)),
+		operators:     operators,
+		inVectors:     make([][]model.StepVector, len(operators)),
 	}
 }
 
-func (c *coalesceOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[*coalesceOperator]", c.operators
+func (c *coalesce) Explain() (me string, next []model.VectorOperator) {
+	return "[*coalesce]", c.operators
 }
 
-func (c *coalesceOperator) GetPool() *model.VectorPool {
+func (c *coalesce) GetPool() *model.VectorPool {
 	return c.pool
 }
 
-func (c *coalesceOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
@@ -61,7 +70,7 @@ func (c *coalesceOperator) Series(ctx context.Context) ([]labels.Labels, error) 
 	return c.series, nil
 }
 
-func (c *coalesceOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -74,7 +83,6 @@ func (c *coalesceOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		return nil, err
 	}
 
-	var out []model.StepVector = nil
 	var errChan = make(errorChan, len(c.operators))
 	for idx, o := range c.operators {
 		c.wg.Add(1)
@@ -86,36 +94,14 @@ func (c *coalesceOperator) Next(ctx context.Context) ([]model.StepVector, error)
 				errChan <- err
 				return
 			}
-			if in == nil {
-				return
-			}
 
+			// Map input IDs to output IDs.
 			for _, vector := range in {
 				for i := range vector.SampleIDs {
 					vector.SampleIDs[i] += c.sampleOffsets[opIdx]
 				}
 			}
-
-			c.mu.Lock()
-			defer c.mu.Unlock()
-
-			if len(in) > 0 && out == nil {
-				out = c.pool.GetVectorBatch()
-				for i := 0; i < len(in); i++ {
-					out = append(out, c.pool.GetStepVector(in[i].T))
-				}
-			}
-
-			for i := 0; i < len(in); i++ {
-				if len(in[i].Samples) > 0 {
-					out[i].T = in[i].T
-				}
-
-				out[i].Samples = append(out[i].Samples, in[i].Samples...)
-				out[i].SampleIDs = append(out[i].SampleIDs, in[i].SampleIDs...)
-				o.GetPool().PutStepVector(in[i])
-			}
-			o.GetPool().PutVectors(in)
+			c.inVectors[opIdx] = in
 		}(idx, o)
 	}
 	c.wg.Wait()
@@ -125,6 +111,24 @@ func (c *coalesceOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		return nil, err
 	}
 
+	var out []model.StepVector = nil
+	for opIdx, vector := range c.inVectors {
+		if len(vector) > 0 && out == nil {
+			out = c.pool.GetVectorBatch()
+			for i := 0; i < len(vector); i++ {
+				out = append(out, c.pool.GetStepVector(vector[i].T))
+			}
+		}
+
+		for i := 0; i < len(vector); i++ {
+			out[i].Samples = append(out[i].Samples, vector[i].Samples...)
+			out[i].SampleIDs = append(out[i].SampleIDs, vector[i].SampleIDs...)
+			c.operators[opIdx].GetPool().PutStepVector(vector[i])
+		}
+		c.inVectors[opIdx] = nil
+		c.operators[opIdx].GetPool().PutVectors(vector)
+	}
+
 	if out == nil {
 		return nil, nil
 	}
@@ -132,9 +136,8 @@ func (c *coalesceOperator) Next(ctx context.Context) ([]model.StepVector, error)
 	return out, nil
 }
 
-func (c *coalesceOperator) loadSeries(ctx context.Context) error {
+func (c *coalesce) loadSeries(ctx context.Context) error {
 	var wg sync.WaitGroup
-	var mu sync.Mutex
 	var numSeries uint64
 	allSeries := make([][]labels.Labels, len(c.operators))
 	errChan := make(errorChan, len(c.operators))
@@ -161,9 +164,7 @@ func (c *coalesceOperator) loadSeries(ctx context.Context) error {
 			}
 
 			allSeries[i] = series
-			mu.Lock()
-			numSeries += uint64(len(series))
-			mu.Unlock()
+			atomic.AddUint64(&numSeries, uint64(len(series)))
 		}(i)
 	}
 	wg.Wait()
@@ -172,13 +173,11 @@ func (c *coalesceOperator) loadSeries(ctx context.Context) error {
 		return err
 	}
 
-	var offset uint64
 	c.sampleOffsets = make([]uint64, len(c.operators))
 	c.series = make([]labels.Labels, 0, numSeries)
 	for i, series := range allSeries {
-		c.sampleOffsets[i] = offset
+		c.sampleOffsets[i] = uint64(len(c.series))
 		c.series = append(c.series, series...)
-		offset += uint64(len(series))
 	}
 
 	c.pool.SetStepSize(len(c.series))

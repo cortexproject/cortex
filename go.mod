@@ -11,7 +11,7 @@ require (
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/dustin/go-humanize v1.0.0
-	github.com/efficientgo/core v1.0.0-rc.0.0.20221201130417-ba593f67d2a4
+	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.3
 	github.com/go-kit/log v0.2.1
@@ -49,7 +49,7 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.3
 	github.com/stretchr/testify v1.8.1
-	github.com/thanos-community/promql-engine v0.0.0-20230111121531-c293f65f5389
+	github.com/thanos-community/promql-engine v0.0.0-20230123143605-0ad3f3b2e4b4
 	github.com/thanos-io/objstore v0.0.0-20221205132204-5aafc0079f06
 	github.com/thanos-io/thanos v0.29.1-0.20230103123855-3327c510076a
 	github.com/uber/jaeger-client-go v2.30.0+incompatible

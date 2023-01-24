@@ -493,6 +493,19 @@ ha_tracker:
     # CLI flag: -distributor.ha-tracker.prefix
     [prefix: <string> | default = "ha-tracker/"]
 
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -556,6 +569,19 @@ ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -distributor.ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -626,6 +652,19 @@ lifecycler:
       # The prefix for the keys in the store. Should end with a /.
       # CLI flag: -ring.prefix
       [prefix: <string> | default = "collectors/"]
+
+      dynamodb:
+        # Region to access dynamodb.
+        # CLI flag: -dynamodb.region
+        [region: <string> | default = ""]
+
+        # Table name to use on dynamodb.
+        # CLI flag: -dynamodb.table-name
+        [table_name: <string> | default = ""]
+
+        # Time to expire items on dynamodb.
+        # CLI flag: -dynamodb.ttl-time
+        [ttl: <duration> | default = 0s]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -1299,6 +1338,19 @@ ring:
     # CLI flag: -ruler.ring.prefix
     [prefix: <string> | default = "rulers/"]
 
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
     [consul: <consul_config>]
@@ -1680,6 +1732,19 @@ sharding_ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -alertmanager.sharding-ring.prefix
     [prefix: <string> | default = "alertmanagers/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
@@ -3868,6 +3933,19 @@ sharding_ring:
     # CLI flag: -compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -3954,6 +4032,19 @@ sharding_ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -store-gateway.sharding-ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

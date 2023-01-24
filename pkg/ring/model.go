@@ -100,10 +100,10 @@ func (d *Desc) FindIngestersByState(state InstanceState) []InstanceDesc {
 
 // IsReady returns no error when all instance are ACTIVE and healthy,
 // and the ring has some tokens.
-func (d *Desc) IsReady(now time.Time, heartbeatTimeout time.Duration) error {
+func (d *Desc) IsReady(storageLastUpdated time.Time, heartbeatTimeout time.Duration) error {
 	numTokens := 0
 	for _, instance := range d.Ingesters {
-		if err := instance.IsReady(now, heartbeatTimeout); err != nil {
+		if err := instance.IsReady(storageLastUpdated, heartbeatTimeout); err != nil {
 			return err
 		}
 		numTokens += len(instance.Tokens)
@@ -133,24 +133,24 @@ func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
-func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, now time.Time) bool {
+func (i *InstanceDesc) IsHealthy(op Operation, heartbeatTimeout time.Duration, storageLastUpdated time.Time) bool {
 	healthy := op.IsInstanceInStateHealthy(i.State)
 
-	return healthy && i.IsHeartbeatHealthy(heartbeatTimeout, now)
+	return healthy && i.IsHeartbeatHealthy(heartbeatTimeout, storageLastUpdated)
 }
 
 // IsHeartbeatHealthy returns whether the heartbeat timestamp for the ingester is within the
 // specified timeout period. A timeout of zero disables the timeout; the heartbeat is ignored.
-func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, now time.Time) bool {
+func (i *InstanceDesc) IsHeartbeatHealthy(heartbeatTimeout time.Duration, storageLastUpdated time.Time) bool {
 	if heartbeatTimeout == 0 {
 		return true
 	}
-	return now.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
+	return storageLastUpdated.Sub(time.Unix(i.Timestamp, 0)) <= heartbeatTimeout
 }
 
 // IsReady returns no error if the instance is ACTIVE and healthy.
-func (i *InstanceDesc) IsReady(now time.Time, heartbeatTimeout time.Duration) error {
-	if !i.IsHeartbeatHealthy(heartbeatTimeout, now) {
+func (i *InstanceDesc) IsReady(storageLastUpdated time.Time, heartbeatTimeout time.Duration) error {
+	if !i.IsHeartbeatHealthy(heartbeatTimeout, storageLastUpdated) {
 		return fmt.Errorf("instance %s past heartbeat timeout", i.Addr)
 	}
 	if i.State != ACTIVE {
@@ -439,7 +439,7 @@ func (d *Desc) RemoveTombstones(limit time.Time) (total, removed int) {
 }
 
 // Clone returns a deep copy of the ring state.
-func (d *Desc) Clone() memberlist.Mergeable {
+func (d *Desc) Clone() interface{} {
 	return proto.Clone(d).(*Desc)
 }
 
@@ -648,4 +648,92 @@ func MergeTokensByZone(zones map[string][][]uint32) map[string][]uint32 {
 		out[zone] = MergeTokens(tokens)
 	}
 	return out
+}
+
+func (d *Desc) SplitByID() map[string]interface{} {
+	out := make(map[string]interface{}, len(d.Ingesters))
+	for key := range d.Ingesters {
+		in := d.Ingesters[key]
+		out[key] = &in
+	}
+	return out
+}
+
+func (d *Desc) JoinIds(in map[string]interface{}) {
+	for key, value := range in {
+		d.Ingesters[key] = *(value.(*InstanceDesc))
+	}
+}
+
+func (d *Desc) GetItemFactory() proto.Message {
+	return &InstanceDesc{}
+}
+
+func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
+	out, ok := o.(*Desc)
+	if !ok {
+		// This method only deals with non-nil rings.
+		return nil, nil, fmt.Errorf("expected *ring.Desc, got %T", out)
+	}
+
+	toUpdated := NewDesc()
+	toDelete := make([]string, 0)
+	tokensChanged := false
+
+	// If both are null
+	if d == nil && out == nil {
+		return toUpdated, toDelete, nil
+	}
+
+	// If new data is empty
+	if out == nil {
+		for k := range d.Ingesters {
+			toDelete = append(toDelete, k)
+		}
+		return toUpdated, toDelete, nil
+	}
+
+	//If existent data is empty
+	if d == nil {
+		for key, value := range out.Ingesters {
+			toUpdated.Ingesters[key] = value
+		}
+		return toUpdated, toDelete, nil
+	}
+
+	//If new added
+	for name, oing := range out.Ingesters {
+		if _, ok := d.Ingesters[name]; !ok {
+			tokensChanged = true
+			toUpdated.Ingesters[name] = oing
+		}
+	}
+
+	// If removed or updated
+	for name, ing := range d.Ingesters {
+		oing, ok := out.Ingesters[name]
+		if !ok {
+			toDelete = append(toDelete, name)
+		} else if !ing.Equal(oing) {
+			if !tokensEqual(ing.Tokens, oing.Tokens) {
+				tokensChanged = true
+			}
+			toUpdated.Ingesters[name] = oing
+		}
+	}
+
+	// resolveConflicts allocates a lot of memory, so if we can avoid it, do that.
+	if tokensChanged && conflictingTokensExist(out.Ingesters) {
+		resolveConflicts(out.Ingesters)
+
+		//Recheck if any instance was updated by the resolveConflict
+		for name, oing := range out.Ingesters {
+			ing, ok := d.Ingesters[name]
+			if !ok || !ing.Equal(oing) {
+				toUpdated.Ingesters[name] = oing
+			}
+		}
+	}
+
+	return toUpdated, toDelete, nil
 }

@@ -108,7 +108,7 @@ func benchmarkUpdateRingState(b *testing.B, numInstances, numZones, numTokens in
 
 	// create the ring to set up metrics, but do not start
 	registry := prometheus.NewRegistry()
-	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, nil, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
 	require.NoError(b, err)
 
 	// Make a random ring with N instances, and M tokens per ingests
@@ -257,6 +257,7 @@ func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
 				ringInstanceByToken: r.getTokensInfo(),
 				ringZones:           getZones(r.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			_, bufHosts, bufZones := MakeBuffersForGet()
@@ -349,6 +350,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				ringInstanceByToken: r.getTokensInfo(),
 				ringZones:           getZones(r.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			instances := make([]InstanceDesc, 0, len(r.GetIngesters()))
@@ -443,6 +445,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			set, err := ring.GetAllHealthy(Read)
@@ -573,6 +576,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			set, err := ring.GetReplicationSetForOperation(Read)
@@ -891,6 +895,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			// Check the replication set has the correct settings
@@ -1027,6 +1032,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			shardRing := ring.ShuffleShard("tenant-id", testData.shardSize)
@@ -1079,6 +1085,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
 		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
 	}
 
 	for i := 1; i <= numTenants; i++ {
@@ -1147,6 +1154,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
 		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
 	}
 
 	// Compute the shard for each tenant.
@@ -1246,6 +1254,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			// Compute the initial shard for each tenant.
@@ -1310,6 +1319,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
 		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
 	}
 
 	// Get the replication set with shard size = 3.
@@ -1387,6 +1397,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
 		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
 	}
 
 	// Get the replication set with shard size = 2.
@@ -1646,6 +1657,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 				ringInstanceByToken: ringDesc.getTokensInfo(),
 				ringZones:           getZones(ringDesc.getTokensByZone()),
 				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
 			}
 
 			// Replay the events on the timeline.
@@ -1711,6 +1723,7 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					ringInstanceByToken: ringDesc.getTokensInfo(),
 					ringZones:           getZones(ringDesc.getTokensByZone()),
 					strategy:            NewDefaultReplicationStrategy(),
+					KVClient:            &MockClient{},
 				}
 
 				// The simulation starts with the minimum shard size. Random events can later increase it.
@@ -1865,6 +1878,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
+		KVClient:             &MockClient{},
 	}
 
 	b.ResetTimer()
@@ -1893,6 +1907,7 @@ func BenchmarkRing_Get(b *testing.B) {
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
+		KVClient:             &MockClient{},
 	}
 
 	buf, bufHosts, bufZones := MakeBuffersForGet()
@@ -1921,6 +1936,7 @@ func TestRing_Get_NoMemoryAllocations(t *testing.T) {
 		shuffledSubringCache: map[subringCacheKey]*Ring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
+		KVClient:             &MockClient{},
 	}
 
 	buf, bufHosts, bufZones := MakeBuffersForGet()
@@ -2235,7 +2251,7 @@ func TestUpdateMetrics(t *testing.T) {
 	registry := prometheus.NewRegistry()
 
 	// create the ring to set up metrics, but do not start
-	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, nil, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ringDesc := Desc{
@@ -2287,7 +2303,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 	registry := prometheus.NewRegistry()
 
 	// create the ring to set up metrics, but do not start
-	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, nil, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ringDesc := Desc{

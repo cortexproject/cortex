@@ -247,7 +247,7 @@ func (i *Lifecycler) checkRingHealthForReadiness(ctx context.Context) error {
 	}
 
 	if i.cfg.ReadinessCheckRingHealth {
-		if err := ringDesc.IsReady(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
+		if err := ringDesc.IsReady(i.KVStore.LastUpdateTime(i.RingKey), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
 			level.Warn(i.logger).Log("msg", "found an existing instance(s) with a problem in the ring, "+
 				"this instance cannot become ready until this problem is resolved. "+
 				"The /ring http endpoint on the distributor (or single binary) provides visibility into the ring.",
@@ -260,7 +260,7 @@ func (i *Lifecycler) checkRingHealthForReadiness(ctx context.Context) error {
 			return fmt.Errorf("instance %s not found in the ring", i.ID)
 		}
 
-		if err := instance.IsReady(time.Now(), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
+		if err := instance.IsReady(i.KVStore.LastUpdateTime(i.RingKey), i.cfg.RingConfig.HeartbeatTimeout); err != nil {
 			return err
 		}
 	}
@@ -818,13 +818,13 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	zones := map[string]struct{}{}
 
 	if ringDesc != nil {
-		now := time.Now()
+		lastUpdated := i.KVStore.LastUpdateTime(i.RingKey)
 
 		for _, ingester := range ringDesc.Ingesters {
 			zones[ingester.Zone] = struct{}{}
 
 			// Count the number of healthy instances for Write operation.
-			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, now) {
+			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, lastUpdated) {
 				healthyInstancesCount++
 			}
 		}

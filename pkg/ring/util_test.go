@@ -114,6 +114,7 @@ func createStartingRing() *Ring {
 		ringInstanceByToken: ringDesc.getTokensInfo(),
 		ringZones:           getZones(ringDesc.getTokensByZone()),
 		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
 	}
 
 	return ring

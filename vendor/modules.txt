@@ -265,7 +265,7 @@ github.com/dustin/go-humanize
 # github.com/edsrzf/mmap-go v1.1.0
 ## explicit; go 1.17
 github.com/edsrzf/mmap-go
-# github.com/efficientgo/core v1.0.0-rc.0.0.20221201130417-ba593f67d2a4
+# github.com/efficientgo/core v1.0.0-rc.2
 ## explicit; go 1.17
 github.com/efficientgo/core/errcapture
 github.com/efficientgo/core/errors
@@ -792,7 +792,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-community/promql-engine v0.0.0-20230111121531-c293f65f5389
+# github.com/thanos-community/promql-engine v0.0.0-20230123143605-0ad3f3b2e4b4
 ## explicit; go 1.19
 github.com/thanos-community/promql-engine/api
 github.com/thanos-community/promql-engine/engine

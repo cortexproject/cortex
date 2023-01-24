@@ -6,6 +6,7 @@ package engine
 import (
 	"context"
 
+	"github.com/prometheus/prometheus/model/labels"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 
 	"io"
@@ -63,29 +64,41 @@ func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
 	return o.LogicalOptimizers
 }
 
-type localEngine struct {
-	q      storage.Queryable
-	engine *compatibilityEngine
+type remoteEngine struct {
+	q         storage.Queryable
+	engine    *compatibilityEngine
+	labelSets []labels.Labels
+	maxt      int64
 }
 
-func NewLocalEngine(opts Opts, q storage.Queryable) *localEngine {
-	return &localEngine{
-		q:      q,
-		engine: New(opts),
+func NewRemoteEngine(opts Opts, q storage.Queryable, maxt int64, labelSets []labels.Labels) *remoteEngine {
+	return &remoteEngine{
+		q:         q,
+		labelSets: labelSets,
+		maxt:      maxt,
+		engine:    New(opts),
 	}
 }
 
-func (l localEngine) NewInstantQuery(opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+func (l remoteEngine) MaxT() int64 {
+	return l.maxt
+}
+
+func (l remoteEngine) LabelSets() []labels.Labels {
+	return l.labelSets
+}
+
+func (l remoteEngine) NewInstantQuery(opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
 	return l.engine.NewInstantQuery(l.q, opts, qs, ts)
 }
 
-func (l localEngine) NewRangeQuery(opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
+func (l remoteEngine) NewRangeQuery(opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	return l.engine.NewRangeQuery(l.q, opts, qs, start, end, interval)
 }
 
 type distributedEngine struct {
-	endpoints   api.RemoteEndpoints
-	localEngine *compatibilityEngine
+	endpoints    api.RemoteEndpoints
+	remoteEngine *compatibilityEngine
 }
 
 func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngine {
@@ -94,19 +107,19 @@ func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngi
 		logicalplan.DistributedExecutionOptimizer{Endpoints: endpoints},
 	)
 	return &distributedEngine{
-		endpoints:   endpoints,
-		localEngine: New(opts),
+		endpoints:    endpoints,
+		remoteEngine: New(opts),
 	}
 }
 
 func (l distributedEngine) SetQueryLogger(log promql.QueryLogger) {}
 
 func (l distributedEngine) NewInstantQuery(q storage.Queryable, opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	return l.localEngine.NewInstantQuery(q, opts, qs, ts)
+	return l.remoteEngine.NewInstantQuery(q, opts, qs, ts)
 }
 
 func (l distributedEngine) NewRangeQuery(q storage.Queryable, opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	return l.localEngine.NewRangeQuery(q, opts, qs, start, end, interval)
+	return l.remoteEngine.NewRangeQuery(q, opts, qs, start, end, interval)
 }
 
 func New(opts Opts) *compatibilityEngine {
@@ -174,11 +187,12 @@ func (e *compatibilityEngine) NewInstantQuery(q storage.Queryable, opts *promql.
 	}
 
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec},
-		engine: e,
-		expr:   expr,
-		ts:     ts,
-		t:      InstantQuery,
+		Query:      &Query{exec: exec, opts: opts},
+		engine:     e,
+		expr:       expr,
+		ts:         ts,
+		t:          InstantQuery,
+		resultSort: newResultSort(expr),
 	}, nil
 }
 
@@ -211,7 +225,7 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 	}
 
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec},
+		Query:  &Query{exec: exec, opts: opts},
 		engine: e,
 		expr:   expr,
 		t:      RangeQuery,
@@ -220,6 +234,7 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 
 type Query struct {
 	exec model.VectorOperator
+	opts *promql.QueryOpts
 }
 
 // Explain returns human-readable explanation of the created executor.
@@ -232,12 +247,83 @@ func (q *Query) Profile() {
 	// TODO(bwplotka): Return profile.
 }
 
+type sortOrder bool
+
+const (
+	sortOrderAsc  sortOrder = false
+	sortOrderDesc sortOrder = true
+)
+
+type resultSort struct {
+	sortByValues  bool
+	sortOrder     sortOrder
+	sortingLabels []string
+	groupBy       bool
+}
+
+func newResultSort(expr parser.Expr) resultSort {
+	aggr, ok := expr.(*parser.AggregateExpr)
+	if !ok {
+		return resultSort{}
+	}
+
+	switch aggr.Op {
+	case parser.TOPK:
+		return resultSort{
+			sortByValues:  true,
+			sortingLabels: aggr.Grouping,
+			sortOrder:     sortOrderDesc,
+			groupBy:       !aggr.Without,
+		}
+	case parser.BOTTOMK:
+		return resultSort{
+			sortByValues:  true,
+			sortingLabels: aggr.Grouping,
+			sortOrder:     sortOrderAsc,
+			groupBy:       !aggr.Without,
+		}
+	default:
+		return resultSort{}
+	}
+}
+
+func (s resultSort) comparer(samples *promql.Vector) func(i int, j int) bool {
+	return func(i int, j int) bool {
+		if !s.sortByValues {
+			return i < j
+		}
+
+		var iLbls labels.Labels
+		var jLbls labels.Labels
+		iLb := labels.NewBuilder((*samples)[i].Metric)
+		jLb := labels.NewBuilder((*samples)[j].Metric)
+		if s.groupBy {
+			iLbls = iLb.Keep(s.sortingLabels...).Labels(nil)
+			jLbls = jLb.Keep(s.sortingLabels...).Labels(nil)
+		} else {
+			iLbls = iLb.Del(s.sortingLabels...).Labels(nil)
+			jLbls = jLb.Del(s.sortingLabels...).Labels(nil)
+		}
+
+		lblsCmp := labels.Compare(iLbls, jLbls)
+		if lblsCmp != 0 {
+			return lblsCmp < 0
+		}
+
+		if s.sortOrder == sortOrderAsc {
+			return (*samples)[i].V < (*samples)[j].V
+		}
+		return (*samples)[i].V > (*samples)[j].V
+	}
+}
+
 type compatibilityQuery struct {
 	*Query
-	engine *compatibilityEngine
-	expr   parser.Expr
-	ts     time.Time // Empty for range queries.
-	t      QueryType
+	engine     *compatibilityEngine
+	expr       parser.Expr
+	ts         time.Time // Empty for range queries.
+	t          QueryType
+	resultSort resultSort
 
 	cancel context.CancelFunc
 }
@@ -351,6 +437,7 @@ loop:
 				},
 			})
 		}
+		sort.Slice(vector, q.resultSort.comparer(&vector))
 		result = vector
 	case parser.ValueTypeScalar:
 		v := math.NaN()
@@ -378,7 +465,14 @@ func newErrResult(r *promql.Result, err error) *promql.Result {
 
 func (q *compatibilityQuery) Statement() parser.Statement { return nil }
 
-func (q *compatibilityQuery) Stats() *stats.Statistics { return &stats.Statistics{} }
+// Stats always returns empty query stats for now to avoid panic.
+func (q *compatibilityQuery) Stats() *stats.Statistics {
+	var enablePerStepStats bool
+	if q.opts != nil {
+		enablePerStepStats = q.opts.EnablePerStepStats
+	}
+	return &stats.Statistics{Timers: stats.NewQueryTimers(), Samples: stats.NewQuerySamples(enablePerStepStats)}
+}
 
 func (q *compatibilityQuery) Close() { q.Cancel() }
 

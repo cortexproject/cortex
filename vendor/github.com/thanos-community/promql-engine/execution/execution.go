@@ -18,6 +18,7 @@ package execution
 
 import (
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
@@ -236,7 +237,15 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 		}
 		return step_invariant.NewStepInvariantOperator(model.NewVectorPool(stepsBatch), next, e.Expr, opts, stepsBatch)
 
-	case logicalplan.Coalesce:
+	case logicalplan.Deduplicate:
+		// The Deduplicate operator will deduplicate samples using a last-sample-wins strategy.
+		// Sorting engines by MaxT ensures that samples produced due to
+		// staleness will be overwritten and corrected by samples coming from
+		// engines with a higher max time.
+		sort.Slice(e.Expressions, func(i, j int) bool {
+			return e.Expressions[i].Engine.MaxT() < e.Expressions[j].Engine.MaxT()
+		})
+
 		operators := make([]model.VectorOperator, len(e.Expressions))
 		for i, expr := range e.Expressions {
 			operator, err := newOperator(expr, storage, opts, hints)
@@ -245,9 +254,11 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 			}
 			operators[i] = operator
 		}
-		return exchange.NewCoalesce(model.NewVectorPool(stepsBatch), operators...), nil
+		coalesce := exchange.NewCoalesce(model.NewVectorPool(stepsBatch), operators...)
+		dedup := exchange.NewDedupOperator(model.NewVectorPool(stepsBatch), coalesce)
+		return exchange.NewConcurrent(dedup, 2), nil
 
-	case *logicalplan.RemoteExecution:
+	case logicalplan.RemoteExecution:
 		qry, err := e.Engine.NewRangeQuery(&promql.QueryOpts{}, e.Query, opts.Start, opts.End, opts.Step)
 		if err != nil {
 			return nil, err

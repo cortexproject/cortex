@@ -14,7 +14,18 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/efficientgo/core/errors"
 	"github.com/efficientgo/core/testutil/internal"
+	"github.com/google/go-cmp/cmp"
 )
+
+const limitOfElemChars = 1e3
+
+func withLimitf(f string, v ...interface{}) string {
+	s := fmt.Sprintf(f, v...)
+	if len(s) > limitOfElemChars {
+		return s[:limitOfElemChars] + "...(output trimmed)"
+	}
+	return s
+}
 
 // Assert fails the test if the condition is false.
 func Assert(tb testing.TB, condition bool, v ...interface{}) {
@@ -28,7 +39,7 @@ func Assert(tb testing.TB, condition bool, v ...interface{}) {
 	if len(v) > 0 {
 		msg = fmt.Sprintf(v[0].(string), v[1:]...)
 	}
-	tb.Fatalf("\033[31m%s:%d: "+msg+"\033[39m\n\n", filepath.Base(file), line)
+	tb.Fatalf("\033[31m%s:%d: \"%s\"\033[39m\n\n", filepath.Base(file), line, withLimitf(msg))
 }
 
 // Ok fails the test if an err is not nil.
@@ -43,7 +54,7 @@ func Ok(tb testing.TB, err error, v ...interface{}) {
 	if len(v) > 0 {
 		msg = fmt.Sprintf(v[0].(string), v[1:]...)
 	}
-	tb.Fatalf("\033[31m%s:%d:"+msg+"\n\n unexpected error: %s\033[39m\n\n", filepath.Base(file), line, err.Error())
+	tb.Fatalf("\033[31m%s:%d: \"%s\"\n\n unexpected error: %s\033[39m\n\n", filepath.Base(file), line, withLimitf(msg), withLimitf(err.Error()))
 }
 
 // NotOk fails the test if an err is nil.
@@ -58,7 +69,7 @@ func NotOk(tb testing.TB, err error, v ...interface{}) {
 	if len(v) > 0 {
 		msg = fmt.Sprintf(v[0].(string), v[1:]...)
 	}
-	tb.Fatalf("\033[31m%s:%d:"+msg+"\n\n expected error, got nothing \033[39m\n\n", filepath.Base(file), line)
+	tb.Fatalf("\033[31m%s:%d: \"%s\"\n\n expected error, got nothing \033[39m\n\n", filepath.Base(file), line, withLimitf(msg))
 }
 
 // Equals fails the test if exp is not equal to act.
@@ -67,13 +78,41 @@ func Equals(tb testing.TB, exp, act interface{}, v ...interface{}) {
 	if reflect.DeepEqual(exp, act) {
 		return
 	}
-	_, file, line, _ := runtime.Caller(1)
+	fatalNotEqual(tb, exp, act, v...)
+}
+
+func fatalNotEqual(tb testing.TB, exp, act interface{}, v ...interface{}) {
+	_, file, line, _ := runtime.Caller(2)
 
 	var msg string
 	if len(v) > 0 {
 		msg = fmt.Sprintf(v[0].(string), v[1:]...)
 	}
-	tb.Fatal(sprintfWithLimit("\033[31m%s:%d:"+msg+"\n\n\texp: %#v\n\n\tgot: %#v%s\033[39m\n\n", filepath.Base(file), line, exp, act, diff(exp, act)))
+	tb.Fatalf(
+		"\033[31m%s:%d: \"%s\"\n\n\texp: %s\n\n\tgot: %s%s\033[39m\n\n",
+		filepath.Base(file), line, withLimitf(msg), withLimitf("%#v", exp), withLimitf("%#v", act), withLimitf(diff(exp, act)),
+	)
+}
+
+type goCmp struct {
+	opts cmp.Options
+}
+
+// WithGoCmp allows specifying options and using https://github.com/google/go-cmp
+// for equality comparisons. The compatibility guarantee of this function's arguments
+// are the same as go-cmp (no guarantee due to v0.x).
+func WithGoCmp(opts ...cmp.Option) goCmp {
+	return goCmp{opts: opts}
+}
+
+// Equals uses go-cmp for comparing equality between two structs, and can be used with
+// various options defined in go-cmp/cmp and go-cmp/cmp/cmpopts.
+func (o goCmp) Equals(tb testing.TB, exp, act interface{}, v ...interface{}) {
+	tb.Helper()
+	if cmp.Equal(exp, act, o.opts) {
+		return
+	}
+	fatalNotEqual(tb, exp, act, v...)
 }
 
 // FaultOrPanicToErr returns error if panic of fault was triggered during execution of function.
@@ -98,7 +137,7 @@ func ContainsStringSlice(tb testing.TB, haystack, needle []string) {
 	_, file, line, _ := runtime.Caller(1)
 
 	if !contains(haystack, needle) {
-		tb.Fatalf(sprintfWithLimit("\033[31m%s:%d: %#v does not contain %#v\033[39m\n\n", filepath.Base(file), line, haystack, needle))
+		tb.Fatalf("\033[31m%s:%d: %s does not contain %s\033[39m\n\n", filepath.Base(file), line, withLimitf("%#v", haystack), withLimitf("%#v", needle))
 	}
 }
 
@@ -136,14 +175,6 @@ func contains(haystack, needle []string) bool {
 	}
 
 	return false
-}
-
-func sprintfWithLimit(act string, v ...interface{}) string {
-	s := fmt.Sprintf(act, v...)
-	if len(s) > 10000 {
-		return s[:10000] + "...(output trimmed)"
-	}
-	return s
 }
 
 func typeAndKind(v interface{}) (reflect.Type, reflect.Kind) {

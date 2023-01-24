@@ -176,26 +176,23 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 		return nil
 	}
 
-	writeRequests := make([]*dynamodb.WriteRequest, writeRequestSize)
-	writeRequestsIndex := 0
+	writeRequests := make([]*dynamodb.WriteRequest, 0, writeRequestSize)
 	for key, data := range put {
 		item := kv.generatePutItemRequest(key, data)
-		writeRequests[writeRequestsIndex] = &dynamodb.WriteRequest{
+		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
 			PutRequest: &dynamodb.PutRequest{
 				Item: item,
 			},
-		}
-		writeRequestsIndex++
+		})
 	}
 
 	for _, key := range delete {
 		item := generateItemKey(key)
-		writeRequests[writeRequestsIndex] = &dynamodb.WriteRequest{
+		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
 			DeleteRequest: &dynamodb.DeleteRequest{
 				Key: item,
 			},
-		}
-		writeRequestsIndex++
+		})
 	}
 
 	input := &dynamodb.BatchWriteItemInput{

@@ -173,7 +173,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			putRequests[dynamodbKey{primaryKey: key, sortKey: childKey}] = bytes
 		}
 
-		deleteRequests := []dynamodbKey{}
+		deleteRequests := make([]dynamodbKey, 0, len(toDelete))
 		for _, childKey := range toDelete {
 			deleteRequests = append(deleteRequests, dynamodbKey{primaryKey: key, sortKey: childKey})
 		}

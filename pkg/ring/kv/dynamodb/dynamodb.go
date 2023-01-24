@@ -171,28 +171,31 @@ func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) erro
 }
 
 func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
-	var writeRequests []*dynamodb.WriteRequest
+	writeRequestSize := len(put) + len(delete)
+	if writeRequestSize == 0 {
+		return nil
+	}
+
+	writeRequests := make([]*dynamodb.WriteRequest, writeRequestSize)
+	writeRequestsIndex := 0
 	for key, data := range put {
 		item := kv.generatePutItemRequest(key, data)
-		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+		writeRequests[writeRequestsIndex] = &dynamodb.WriteRequest{
 			PutRequest: &dynamodb.PutRequest{
 				Item: item,
 			},
-		})
+		}
+		writeRequestsIndex++
 	}
 
 	for _, key := range delete {
 		item := generateItemKey(key)
-
-		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+		writeRequests[writeRequestsIndex] = &dynamodb.WriteRequest{
 			DeleteRequest: &dynamodb.DeleteRequest{
 				Key: item,
 			},
-		})
-	}
-
-	if len(writeRequests) == 0 {
-		return nil
+		}
+		writeRequestsIndex++
 	}
 
 	input := &dynamodb.BatchWriteItemInput{
@@ -202,12 +205,15 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 	}
 
 	resp, err := kv.ddbClient.BatchWriteItemWithContext(ctx, input)
+	if err != nil {
+		return err
+	}
 
 	if resp.UnprocessedItems != nil && len(resp.UnprocessedItems) > 0 {
 		return fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
 	}
 
-	return err
+	return nil
 }
 
 func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, data []byte) map[string]*dynamodb.AttributeValue {

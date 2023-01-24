@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -60,13 +61,13 @@ func Test_Batch(t *testing.T) {
 	delete := []dynamodbKey{ddbKeyDelete}
 
 	ddbClientMock := &mockDynamodb{
-		batchWriteItem: func(input *dynamodb.BatchWriteItemInput) *dynamodb.BatchWriteItemOutput {
+		batchWriteItem: func(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error) {
 			require.NotNil(t, input.RequestItems[tableName])
-			require.True(t, len(input.RequestItems[tableName]) == 2)
+			require.EqualValues(t, 2, len(input.RequestItems[tableName]))
 			require.True(t,
 				(checkPutRequestForItem(input.RequestItems[tableName][0], ddbKeyUpdate) || checkPutRequestForItem(input.RequestItems[tableName][1], ddbKeyUpdate)) &&
 					(checkDeleteRequestForItem(input.RequestItems[tableName][0], ddbKeyDelete) || checkDeleteRequestForItem(input.RequestItems[tableName][1], ddbKeyDelete)))
-			return &dynamodb.BatchWriteItemOutput{}
+			return &dynamodb.BatchWriteItemOutput{}, nil
 		},
 	}
 
@@ -84,6 +85,31 @@ func Test_EmptyBatch(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_Batch_UnprocessedItems(t *testing.T) {
+	tableName := "TEST"
+	ddbKeyDelete := dynamodbKey{
+		primaryKey: "PKDelete",
+		sortKey:    "SKDelete",
+	}
+	delete := []dynamodbKey{ddbKeyDelete}
+
+	ddbClientMock := &mockDynamodb{
+		batchWriteItem: func(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error) {
+			return &dynamodb.BatchWriteItemOutput{
+				UnprocessedItems: map[string][]*dynamodb.WriteRequest{
+					tableName: {&dynamodb.WriteRequest{
+						PutRequest: &dynamodb.PutRequest{Item: generateItemKey(ddbKeyDelete)}},
+					},
+				},
+			}, nil
+		},
+	}
+
+	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
+	err := ddb.Batch(context.TODO(), nil, delete)
+	require.Errorf(t, err, "error processing batch dynamodb")
+}
+
 func Test_Batch_Error(t *testing.T) {
 	tableName := "TEST"
 	ddbKeyDelete := dynamodbKey{
@@ -93,20 +119,14 @@ func Test_Batch_Error(t *testing.T) {
 	delete := []dynamodbKey{ddbKeyDelete}
 
 	ddbClientMock := &mockDynamodb{
-		batchWriteItem: func(input *dynamodb.BatchWriteItemInput) *dynamodb.BatchWriteItemOutput {
-			return &dynamodb.BatchWriteItemOutput{
-				UnprocessedItems: map[string][]*dynamodb.WriteRequest{
-					tableName: {&dynamodb.WriteRequest{
-						PutRequest: &dynamodb.PutRequest{Item: generateItemKey(ddbKeyDelete)}},
-					},
-				},
-			}
+		batchWriteItem: func(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error) {
+			return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("mocked error")
 		},
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
 	err := ddb.Batch(context.TODO(), nil, delete)
-	require.Errorf(t, err, "error processing batch dynamodb")
+	require.Errorf(t, err, "mocked error")
 }
 
 func checkPutRequestForItem(request *dynamodb.WriteRequest, key dynamodbKey) bool {
@@ -127,7 +147,7 @@ func checkDeleteRequestForItem(request *dynamodb.WriteRequest, key dynamodbKey) 
 
 type mockDynamodb struct {
 	putItem        func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput
-	batchWriteItem func(input *dynamodb.BatchWriteItemInput) *dynamodb.BatchWriteItemOutput
+	batchWriteItem func(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error)
 
 	dynamodbiface.DynamoDBAPI
 }
@@ -137,7 +157,7 @@ func (m *mockDynamodb) PutItemWithContext(_ context.Context, input *dynamodb.Put
 }
 
 func (m *mockDynamodb) BatchWriteItemWithContext(_ context.Context, input *dynamodb.BatchWriteItemInput, _ ...request.Option) (*dynamodb.BatchWriteItemOutput, error) {
-	return m.batchWriteItem(input), nil
+	return m.batchWriteItem(input)
 }
 
 func newDynamodbClientMock(tableName string, mock *mockDynamodb, ttl time.Duration) *dynamodbKV {

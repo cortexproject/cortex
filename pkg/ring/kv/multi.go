@@ -335,6 +335,11 @@ func (m *MultiClient) WatchPrefix(ctx context.Context, prefix string, f func(str
 	})
 }
 
+func (m *MultiClient) LastUpdateTime(key string) time.Time {
+	_, kv := m.getPrimaryClient()
+	return kv.client.LastUpdateTime(key)
+}
+
 func (m *MultiClient) writeToSecondary(ctx context.Context, primary kvclient, key string, newValue interface{}) {
 	if m.mirrorTimeout > 0 {
 		var cfn context.CancelFunc

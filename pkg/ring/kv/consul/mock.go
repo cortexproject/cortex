@@ -233,6 +233,10 @@ func (m *mockKV) Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, 
 	return nil, nil
 }
 
+func (m *mockKV) LastUpdateTime(_ string) time.Time {
+	return time.Now().UTC()
+}
+
 func (m *mockKV) ResetIndex() {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

@@ -229,6 +229,14 @@ func (c stringCodec) Decode(bb []byte) (interface{}, error) {
 func (c stringCodec) Encode(v interface{}) ([]byte, error) { return []byte(v.(string)), nil }
 func (c stringCodec) CodecID() string                      { return "stringCodec" }
 
+func (stringCodec) EncodeMultiKey(msg interface{}) (map[string][]byte, error) {
+	return nil, errors.New("String codec does not support EncodeMultiKey")
+}
+
+func (stringCodec) DecodeMultiKey(map[string][]byte) (interface{}, error) {
+	return nil, errors.New("String codec does not support DecodeMultiKey")
+}
+
 type watcher struct {
 	values map[string][]interface{}
 }

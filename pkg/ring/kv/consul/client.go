@@ -369,6 +369,10 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return err
 }
 
+func (c *Client) LastUpdateTime(_ string) time.Time {
+	return time.Now().UTC()
+}
+
 func checkLastIndex(index, metaLastIndex uint64) (newIndex uint64, skip bool) {
 	// See https://www.consul.io/api/features/blocking.html#implementation-details for logic behind these checks.
 	if metaLastIndex == 0 {

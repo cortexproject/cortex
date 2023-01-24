@@ -416,3 +416,187 @@ func TestMergeTokensByZone(t *testing.T) {
 		})
 	}
 }
+
+func TestDesc_SplitById_JoinIds(t *testing.T) {
+	tests := map[string]struct {
+		ring  *Desc
+		split map[string]interface{}
+	}{
+		"empty ring": {
+			ring:  &Desc{Ingesters: map[string]InstanceDesc{}},
+			split: map[string]interface{}{},
+		},
+		"single instance": {
+			ring:  &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123}}},
+			split: map[string]interface{}{"ing1": &InstanceDesc{Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123}},
+		},
+		"two instances": {
+			ring: &Desc{Ingesters: map[string]InstanceDesc{
+				"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123},
+				"ing2": {Addr: "addr2", Tokens: []uint32{3, 4, 5}, Timestamp: 5678, State: ACTIVE, Zone: "zone2", RegisteredTimestamp: 567},
+			}},
+			split: map[string]interface{}{
+				"ing1": &InstanceDesc{Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 123456, State: JOINING, Zone: "zone1", RegisteredTimestamp: 123},
+				"ing2": &InstanceDesc{Addr: "addr2", Tokens: []uint32{3, 4, 5}, Timestamp: 5678, State: ACTIVE, Zone: "zone2", RegisteredTimestamp: 567},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			assert.Equal(t, testData.split, testData.ring.SplitByID(), "Error on SplitById")
+
+			r := NewDesc()
+			r.JoinIds(testData.split)
+			assert.Equal(t, testData.ring, r, "Error on JoinIds")
+		})
+	}
+}
+
+func TestDesc_EncodingMultikey(t *testing.T) {
+	codec := GetCodec()
+	ring := &Desc{Ingesters: map[string]InstanceDesc{
+		"ing1": {Addr: "addr1", Timestamp: 123456},
+		"ing2": {Addr: "addr2", Timestamp: 5678},
+		"ing3": {},
+	}}
+	encoded, err := codec.EncodeMultiKey(ring)
+	assert.NoError(t, err)
+	decoded, err := codec.DecodeMultiKey(encoded)
+	assert.NoError(t, err)
+
+	assert.Equal(t, ring, decoded)
+}
+
+func TestDesc_FindDifference(t *testing.T) {
+	tests := map[string]struct {
+		r1       *Desc
+		r2       *Desc
+		toUpdate interface{}
+		toDelete interface{}
+	}{
+		"nil rings": {
+			r1:       nil,
+			r2:       nil,
+			toUpdate: NewDesc(),
+			toDelete: []string{},
+		},
+		"one nil, one empty ring": {
+			r1:       nil,
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{}},
+			toUpdate: NewDesc(),
+			toDelete: []string{},
+		},
+		"one empty, one nil": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{}},
+			r2:       nil,
+			toUpdate: NewDesc(),
+			toDelete: []string{},
+		},
+		"two empty rings": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{}},
+			toUpdate: NewDesc(),
+			toDelete: []string{},
+		},
+		"same single instance": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			toUpdate: NewDesc(),
+			toDelete: []string{},
+		},
+		"one nil, single instance": {
+			r1:       nil,
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			toDelete: []string{},
+		},
+		"one instance, nil": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			r2:       nil,
+			toUpdate: NewDesc(),
+			toDelete: []string{"ing1"},
+		},
+		"same single instance, different timestamp": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 123456}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 789012}}},
+			toDelete: []string{},
+		},
+		"same single instance, different state": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: JOINING}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: JOINING}}},
+			toDelete: []string{},
+		},
+		"same single instance, different registered timestamp": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 1}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2}}},
+			toDelete: []string{},
+		},
+		"instance in different zone": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "one"}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
+			toDelete: []string{},
+		},
+		"same instance, different address": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr2"}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr2"}}},
+			toDelete: []string{},
+		},
+		"more instances in one ring": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}, "ing2": {Addr: "ing2"}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			toUpdate: NewDesc(),
+			toDelete: []string{"ing2"},
+		},
+		"more instances in second ring": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}, "ing2": {Addr: "ing2"}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "ing2"}}},
+			toDelete: []string{},
+		},
+		"different tokens": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			toDelete: []string{},
+		},
+		"different tokens 2": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			toDelete: []string{},
+		},
+		"different instances, conflictTokens new lose": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}, "ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{4}}}},
+			toDelete: []string{},
+		},
+		"different instances, conflictTokens new win": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing5": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing5": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}, "ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}, "ing5": {Addr: "addr1", Tokens: []uint32{3}}}},
+			toDelete: []string{},
+		},
+		"same number of instances, using different IDs": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
+			toDelete: []string{"ing1"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			toUpdate, toDelete, err := testData.r1.FindDifference(testData.r2)
+			assert.Equal(t, testData.toUpdate, toUpdate)
+			assert.Equal(t, testData.toDelete, toDelete)
+			assert.NoError(t, err)
+		})
+	}
+}

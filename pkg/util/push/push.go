@@ -47,7 +47,7 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			if resp.GetCode() != 202 {
+			if resp.GetCode()/100 == 5 {
 				level.Error(logger).Log("msg", "push error", "err", err)
 			}
 			http.Error(w, string(resp.Body), int(resp.Code))

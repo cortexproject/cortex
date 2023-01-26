@@ -49,6 +49,8 @@ func Handler(maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push F
 			}
 			if resp.GetCode()/100 == 5 {
 				level.Error(logger).Log("msg", "push error", "err", err)
+			} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+				level.Warn(logger).Log("msg", "push refused", "err", err)
 			}
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}

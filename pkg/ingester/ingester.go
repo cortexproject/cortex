@@ -839,7 +839,7 @@ func (i *Ingester) updateUserTSDBConfigs() {
 		cfg := &config.Config{
 			StorageConfig: config.StorageConfig{
 				ExemplarsConfig: &config.ExemplarsConfig{
-					MaxExemplars: int64(i.limits.MaxExemplars(userID)),
+					MaxExemplars: i.getMaxExemplars(userID),
 				},
 			},
 		}
@@ -851,6 +851,19 @@ func (i *Ingester) updateUserTSDBConfigs() {
 			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update user tsdb configuration.")
 		}
 	}
+}
+
+// getMaxExemplars returns the maxExemplars value set in limits config.
+// If limits value is set to zero, it falls back to old configuration
+// in block storage config.
+func (i *Ingester) getMaxExemplars(userID string) int64 {
+	maxExemplarsFromLimits := i.limits.MaxExemplars(userID)
+
+	if maxExemplarsFromLimits == 0 {
+		return int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars)
+	}
+
+	return int64(maxExemplarsFromLimits)
 }
 
 func (i *Ingester) updateActiveSeries() {
@@ -1075,7 +1088,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			})
 		}
 
-		maxExemplarsForUser := i.limits.MaxExemplars(userID)
+		maxExemplarsForUser := i.getMaxExemplars(userID)
 		if maxExemplarsForUser > 0 {
 			// app.AppendExemplar currently doesn't create the series, it must
 			// already exist.  If it does not then drop.
@@ -1865,7 +1878,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	enableExemplars := false
-	maxExemplarsForUser := i.limits.MaxExemplars(userID)
+	maxExemplarsForUser := i.getMaxExemplars(userID)
 	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
@@ -1883,7 +1896,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		BlocksToDelete:                 userDB.blocksToDelete,
 		EnableExemplarStorage:          enableExemplars,
 		IsolationDisabled:              true,
-		MaxExemplars:                   int64(maxExemplarsForUser),
+		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 	}, nil)

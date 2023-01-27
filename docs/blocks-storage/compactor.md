@@ -204,6 +204,19 @@ compactor:
       # CLI flag: -compactor.ring.prefix
       [prefix: <string> | default = "collectors/"]
 
+      dynamodb:
+        # Region to access dynamodb.
+        # CLI flag: -compactor.ring.dynamodb.region
+        [region: <string> | default = ""]
+
+        # Table name to use on dynamodb.
+        # CLI flag: -compactor.ring.dynamodb.table-name
+        [table_name: <string> | default = ""]
+
+        # Time to expire items on dynamodb.
+        # CLI flag: -compactor.ring.dynamodb.ttl-time
+        [ttl: <duration> | default = 0s]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is: compactor.ring
       [consul: <consul_config>]

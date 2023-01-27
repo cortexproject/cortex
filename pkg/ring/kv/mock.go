@@ -2,6 +2,7 @@ package kv
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -36,4 +37,8 @@ func (m mockClient) WatchKey(ctx context.Context, key string, f func(interface{}
 }
 
 func (m mockClient) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+}
+
+func (m mockClient) LastUpdateTime(key string) time.Time {
+	return time.Now().UTC()
 }

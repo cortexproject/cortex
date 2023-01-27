@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -119,7 +118,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.45"
+	libraryVersion = "v7.0.46"
 )
 
 // User Agent should always following the below style.
@@ -635,7 +634,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		}
 
 		// Read the body to be saved later.
-		errBodyBytes, err := ioutil.ReadAll(res.Body)
+		errBodyBytes, err := io.ReadAll(res.Body)
 		// res.Body should be closed
 		closeResponse(res)
 		if err != nil {
@@ -644,14 +643,14 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 
 		// Save the body.
 		errBodySeeker := bytes.NewReader(errBodyBytes)
-		res.Body = ioutil.NopCloser(errBodySeeker)
+		res.Body = io.NopCloser(errBodySeeker)
 
 		// For errors verify if its retryable otherwise fail quickly.
 		errResponse := ToErrorResponse(httpRespToErrorResponse(res, metadata.bucketName, metadata.objectName))
 
 		// Save the body back again.
 		errBodySeeker.Seek(0, 0) // Seek back to starting point.
-		res.Body = ioutil.NopCloser(errBodySeeker)
+		res.Body = io.NopCloser(errBodySeeker)
 
 		// Bucket region if set in error response and the error
 		// code dictates invalid region, we can retry the request
@@ -814,7 +813,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 	if metadata.contentLength == 0 {
 		req.Body = nil
 	} else {
-		req.Body = ioutil.NopCloser(metadata.contentBody)
+		req.Body = io.NopCloser(metadata.contentBody)
 	}
 
 	// Set incoming content-length.

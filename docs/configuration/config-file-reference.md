@@ -198,7 +198,7 @@ query_scheduler:
     [max_send_msg_size: <int> | default = 16777216]
 
     # Use compression when sending messages. Supported values are: 'gzip',
-    # 'snappy' and '' (disable compression)
+    # 'snappy', 'zstd' and '' (disable compression)
     # CLI flag: -query-scheduler.grpc-client-config.grpc-compression
     [grpc_compression: <string> | default = ""]
 
@@ -296,6 +296,16 @@ The `server_config` configures the HTTP and gRPC server of the launched service(
 # Maximum number of simultaneous grpc connections, <=0 to disable
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
+
+# Comma-separated list of cipher suites to use. If blank, the default Go cipher
+# suites is used.
+# CLI flag: -server.tls-cipher-suites
+[tls_cipher_suites: <string> | default = ""]
+
+# Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
+# VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
+# CLI flag: -server.tls-min-version
+[tls_min_version: <string> | default = ""]
 
 http_tls_config:
   # HTTP server cert path.
@@ -483,6 +493,19 @@ ha_tracker:
     # CLI flag: -distributor.ha-tracker.prefix
     [prefix: <string> | default = "ha-tracker/"]
 
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -546,6 +569,19 @@ ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -distributor.ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -616,6 +652,19 @@ lifecycler:
       # The prefix for the keys in the store. Should end with a /.
       # CLI flag: -ring.prefix
       [prefix: <string> | default = "collectors/"]
+
+      dynamodb:
+        # Region to access dynamodb.
+        # CLI flag: -dynamodb.region
+        [region: <string> | default = ""]
+
+        # Table name to use on dynamodb.
+        # CLI flag: -dynamodb.table-name
+        [table_name: <string> | default = ""]
+
+        # Time to expire items on dynamodb.
+        # CLI flag: -dynamodb.ttl-time
+        [ttl: <duration> | default = 0s]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -896,6 +945,12 @@ store_gateway_client:
 # is disabled).
 # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
+
+# Experimental. Use Thanos promql engine
+# https://github.com/thanos-community/promql-engine rather than the Prometheus
+# promql engine.
+# CLI flag: -querier.thanos-engine
+[thanos_engine: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -953,7 +1008,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -frontend.grpc-client-config.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -1116,7 +1171,7 @@ ruler_client:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -ruler.client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -1282,6 +1337,19 @@ ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -ruler.ring.prefix
     [prefix: <string> | default = "rulers/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
@@ -1664,6 +1732,19 @@ sharding_ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -alertmanager.sharding-ring.prefix
     [prefix: <string> | default = "alertmanagers/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
@@ -2108,7 +2189,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -ingester.client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -2215,7 +2296,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
+  # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -querier.frontend-client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -3852,6 +3933,19 @@ sharding_ring:
     # CLI flag: -compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -3938,6 +4032,19 @@ sharding_ring:
     # The prefix for the keys in the store. Should end with a /.
     # CLI flag: -store-gateway.sharding-ring.prefix
     [prefix: <string> | default = "collectors/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

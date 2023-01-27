@@ -30,7 +30,7 @@ func NewChunkMergeIterator(cs []chunk.Chunk, _, _ model.Time) chunkenc.Iterator 
 
 	for _, iter := range c.its {
 		if iter.Next() {
-			c.h = append(c.h, iter)
+			c.h = append(c.h, NewCompatibleChunksIterator(iter))
 			continue
 		}
 
@@ -40,7 +40,7 @@ func NewChunkMergeIterator(cs []chunk.Chunk, _, _ model.Time) chunkenc.Iterator 
 	}
 
 	heap.Init(&c.h)
-	return c
+	return NewCompatibleChunksIterator(c)
 }
 
 // Build a list of lists of non-overlapping chunk iterators.
@@ -78,7 +78,7 @@ func (c *chunkMergeIterator) Seek(t int64) bool {
 
 	for _, iter := range c.its {
 		if iter.Seek(t) {
-			c.h = append(c.h, iter)
+			c.h = append(c.h, NewCompatibleChunksIterator(iter))
 			continue
 		}
 
@@ -107,7 +107,7 @@ func (c *chunkMergeIterator) Next() bool {
 	for c.currTime == lastTime && len(c.h) > 0 {
 		c.currTime, c.currValue = c.h[0].At()
 
-		if c.h[0].Next() {
+		if c.h[0].Next() != chunkenc.ValNone {
 			heap.Fix(&c.h, 0)
 			continue
 		}

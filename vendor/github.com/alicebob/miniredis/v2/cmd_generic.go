@@ -3,6 +3,7 @@
 package miniredis
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,7 +45,7 @@ func commandsGeneric(m *Miniredis) {
 // converted to a duration.
 func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, string, []string) {
 	return func(c *server.Peer, cmd string, args []string) {
-		if len(args) != 2 {
+		if len(args) < 2 {
 			setDirty(c)
 			c.WriteError(errWrongNumber(cmd))
 			return
@@ -59,9 +60,41 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 		var opts struct {
 			key   string
 			value int
+			nx    bool
+			xx    bool
+			gt    bool
+			lt    bool
 		}
 		opts.key = args[0]
 		if ok := optInt(c, args[1], &opts.value); !ok {
+			return
+		}
+		args = args[2:]
+		for len(args) > 0 {
+			switch strings.ToLower(args[0]) {
+			case "nx":
+				opts.nx = true
+			case "xx":
+				opts.xx = true
+			case "gt":
+				opts.gt = true
+			case "lt":
+				opts.lt = true
+			default:
+				setDirty(c)
+				c.WriteError(fmt.Sprintf("ERR Unsupported option %s", args[0]))
+				return
+			}
+			args = args[1:]
+		}
+		if opts.gt && opts.lt {
+			setDirty(c)
+			c.WriteError("ERR GT and LT options at the same time are not compatible")
+			return
+		}
+		if opts.nx && (opts.xx || opts.gt || opts.lt) {
+			setDirty(c)
+			c.WriteError("ERR NX and XX, GT or LT options at the same time are not compatible")
 			return
 		}
 
@@ -73,11 +106,38 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 				c.WriteInt(0)
 				return
 			}
+
+			oldTTL, ok := db.ttl[opts.key]
+
+			var newTTL time.Duration
 			if unix {
-				db.ttl[opts.key] = m.at(opts.value, d)
+				newTTL = m.at(opts.value, d)
 			} else {
-				db.ttl[opts.key] = time.Duration(opts.value) * d
+				newTTL = time.Duration(opts.value) * d
 			}
+
+			// > NX -- Set expiry only when the key has no expiry
+			if opts.nx && ok {
+				c.WriteInt(0)
+				return
+			}
+			// > XX -- Set expiry only when the key has an existing expiry
+			if opts.xx && !ok {
+				c.WriteInt(0)
+				return
+			}
+			// > GT -- Set expiry only when the new expiry is greater than current one
+			// (no exp == infinity)
+			if opts.gt && (!ok || newTTL <= oldTTL) {
+				c.WriteInt(0)
+				return
+			}
+			// > LT -- Set expiry only when the new expiry is less than current one
+			if opts.lt && ok && newTTL > oldTTL {
+				c.WriteInt(0)
+				return
+			}
+			db.ttl[opts.key] = newTTL
 			db.keyVersion[opts.key]++
 			db.checkTTL(opts.key)
 			c.WriteInt(1)

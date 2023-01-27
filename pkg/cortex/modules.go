@@ -15,7 +15,11 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
+	"github.com/thanos-community/promql-engine/engine"
+	"github.com/thanos-community/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
+	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/server"
 
@@ -437,6 +441,7 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
+	queryAnalyzer := querysharding.NewQueryAnalyzer()
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
@@ -444,12 +449,13 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryrange.PrometheusResponseExtractor{},
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
+		queryAnalyzer,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides)
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, queryAnalyzer)
 	if err != nil {
 		return nil, err
 	}
@@ -461,6 +467,8 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		instantQueryMiddlewares,
 		queryrange.PrometheusCodec,
 		instantquery.InstantQueryCodec,
+		t.Overrides,
+		queryAnalyzer,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {
@@ -533,7 +541,9 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
-		engine := promql.NewEngine(promql.EngineOpts{
+
+		var queryEngine v1.QueryEngine
+		opts := promql.EngineOpts{
 			Logger:               util_log.Logger,
 			Reg:                  rulerRegisterer,
 			ActiveQueryTracker:   createActiveQueryTracker(t.Cfg.Querier, util_log.Logger),
@@ -546,9 +556,17 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 			NoStepSubqueryIntervalFn: func(int64) int64 {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},
-		})
+		}
+		if t.Cfg.Querier.ThanosEngine {
+			queryEngine = engine.New(engine.Opts{
+				EngineOpts:        opts,
+				LogicalOptimizers: logicalplan.AllOptimizers,
+			})
+		} else {
+			queryEngine = promql.NewEngine(opts)
+		}
 
-		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, engine, t.Overrides, prometheus.DefaultRegisterer)
+		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, queryEngine, t.Overrides, prometheus.DefaultRegisterer)
 		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
 	} else {
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)

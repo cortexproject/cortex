@@ -10,7 +10,7 @@ type ReplicationStrategy interface {
 	// Filter out unhealthy instances and checks if there're enough instances
 	// for an operation to succeed. Returns an error if there are not enough
 	// instances.
-	Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) (healthy []InstanceDesc, maxFailures int, err error)
+	Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool, storageLastUpdate time.Time) (healthy []InstanceDesc, maxFailures int, err error)
 }
 
 type defaultReplicationStrategy struct{}
@@ -25,13 +25,11 @@ func NewDefaultReplicationStrategy() ReplicationStrategy {
 // - Filters out unhealthy instances so the one doesn't even try to write to them.
 // - Checks there are enough instances for an operation to succeed.
 // The instances argument may be overwritten.
-func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool) ([]InstanceDesc, int, error) {
-	now := time.Now()
-
+func (s *defaultReplicationStrategy) Filter(instances []InstanceDesc, op Operation, replicationFactor int, heartbeatTimeout time.Duration, zoneAwarenessEnabled bool, storageLastUpdate time.Time) ([]InstanceDesc, int, error) {
 	// Skip those that have not heartbeated in a while.
 	var unhealthy []string
 	for i := 0; i < len(instances); {
-		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
+		if instances[i].IsHealthy(op, heartbeatTimeout, storageLastUpdate) {
 			i++
 		} else {
 			unhealthy = append(unhealthy, instances[i].Addr)
@@ -74,12 +72,11 @@ func NewIgnoreUnhealthyInstancesReplicationStrategy() ReplicationStrategy {
 	return &ignoreUnhealthyInstancesReplicationStrategy{}
 }
 
-func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []InstanceDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool) (healthy []InstanceDesc, maxFailures int, err error) {
-	now := time.Now()
+func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []InstanceDesc, op Operation, _ int, heartbeatTimeout time.Duration, _ bool, storageLastUpdate time.Time) (healthy []InstanceDesc, maxFailures int, err error) {
 	// Filter out unhealthy instances.
 	var unhealthy []string
 	for i := 0; i < len(instances); {
-		if instances[i].IsHealthy(op, heartbeatTimeout, now) {
+		if instances[i].IsHealthy(op, heartbeatTimeout, storageLastUpdate) {
 			i++
 		} else {
 			unhealthy = append(unhealthy, instances[i].Addr)
@@ -99,8 +96,8 @@ func (r *ignoreUnhealthyInstancesReplicationStrategy) Filter(instances []Instanc
 	return instances, len(instances) - 1, nil
 }
 
-func (r *Ring) IsHealthy(instance *InstanceDesc, op Operation, now time.Time) bool {
-	return instance.IsHealthy(op, r.cfg.HeartbeatTimeout, now)
+func (r *Ring) IsHealthy(instance *InstanceDesc, op Operation, storageLastUpdate time.Time) bool {
+	return instance.IsHealthy(op, r.cfg.HeartbeatTimeout, storageLastUpdate)
 }
 
 // ReplicationFactor of the ring.

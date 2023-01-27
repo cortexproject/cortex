@@ -17,6 +17,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
@@ -30,7 +31,8 @@ import (
 
 var (
 	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
-	json                                = jsoniter.Config{
+
+	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
 		ValidateJsonRawMessage: true,
@@ -155,7 +157,7 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	log, ctx := spanlogger.New(ctx, "PrometheusInstantQueryResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
-	buf, err := tripperware.BodyBuffer(r)
+	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -243,7 +245,11 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 	return &resp, nil
 }
 
-func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripperware.Response, error) {
+func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "PrometheusInstantQueryResponse.MergeResponse")
+	sp.SetTag("response_count", len(responses))
+	defer sp.Finish()
+
 	if len(responses) == 0 {
 		return NewEmptyPrometheusInstantQueryResponse(), nil
 	} else if len(responses) == 1 {
@@ -293,6 +299,7 @@ func (instantQueryCodec) MergeResponse(responses ...tripperware.Response) (tripp
 
 func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 	output := map[string]*Sample{}
+	buf := make([]byte, 0, 1024)
 	for _, resp := range resps {
 		if resp == nil {
 			continue
@@ -307,7 +314,7 @@ func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 			if s == nil {
 				continue
 			}
-			metric := cortexpb.FromLabelAdaptersToLabels(sample.Labels).String()
+			metric := string(cortexpb.FromLabelAdaptersToLabels(sample.Labels).Bytes(buf))
 			if existingSample, ok := output[metric]; !ok {
 				output[metric] = s
 			} else if existingSample.GetSample().TimestampMs < s.GetSample().TimestampMs {
@@ -417,13 +424,13 @@ func decorateWithParamName(err error, field string) error {
 // UnmarshalJSON implements json.Unmarshaler.
 func (s *Sample) UnmarshalJSON(data []byte) error {
 	var sample struct {
-		Metric model.Metric    `json:"metric"`
+		Metric labels.Labels   `json:"metric"`
 		Value  cortexpb.Sample `json:"value"`
 	}
 	if err := json.Unmarshal(data, &sample); err != nil {
 		return err
 	}
-	s.Labels = cortexpb.FromMetricsToLabelAdapters(sample.Metric)
+	s.Labels = cortexpb.FromLabelsToLabelAdapters(sample.Metric)
 	s.Sample = sample.Value
 	return nil
 }

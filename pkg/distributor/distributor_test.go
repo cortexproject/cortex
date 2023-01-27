@@ -57,6 +57,7 @@ var (
 )
 
 func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		initConfig func(*Config)
 		initLimits func(*validation.Limits)
@@ -95,7 +96,9 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData // Needed for t.Parallel to work correctly
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			cfg := Config{}
 			limits := validation.Limits{}
 			flagext.DefaultValues(&cfg, &limits)
@@ -109,11 +112,12 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestDistributor_Push(t *testing.T) {
+	t.Parallel()
 	// Metrics to assert on.
 	lastSeenTimestamp := "cortex_distributor_latest_seen_sample_timestamp_seconds"
 	distributorAppend := "cortex_distributor_ingester_appends_total"
 	distributorAppendFailure := "cortex_distributor_ingester_append_failures_total"
-	ctx := user.InjectOrgID(context.Background(), "user")
+	ctx := user.InjectOrgID(context.Background(), "userDistributorPush")
 
 	type samplesIn struct {
 		num              int
@@ -145,7 +149,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.004
 			`,
 		},
 		"A push to 2 happy ingesters should succeed": {
@@ -158,7 +162,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.004
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.004
 			`,
 		},
 		"A push to 1 happy ingesters should fail": {
@@ -170,7 +174,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.009
 			`,
 		},
 		"A push to 0 happy ingesters should fail": {
@@ -182,7 +186,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.009
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.009
 			`,
 		},
 		"A push exceeding burst size should fail": {
@@ -195,7 +199,7 @@ func TestDistributor_Push(t *testing.T) {
 			expectedMetrics: `
 				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
 				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
-				cortex_distributor_latest_seen_sample_timestamp_seconds{user="user"} 123456789.024
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.024
 			`,
 		},
 		"A push to ingesters should report the correct metrics with no metadata": {
@@ -256,7 +260,11 @@ func TestDistributor_Push(t *testing.T) {
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
+			tc := tc
+			name := name
+			shardByAllLabels := shardByAllLabels
 			t.Run(fmt.Sprintf("[%s](shardByAllLabels=%v)", name, shardByAllLabels), func(t *testing.T) {
+				t.Parallel()
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
 				limits.IngestionRate = 20
@@ -291,6 +299,7 @@ func TestDistributor_Push(t *testing.T) {
 }
 
 func TestDistributor_MetricsCleanup(t *testing.T) {
+	t.Parallel()
 	dists, _, regs, _ := prepare(t, prepConfig{
 		numDistributors: 1,
 	})
@@ -399,6 +408,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 }
 
 func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
+	t.Parallel()
 	type testPush struct {
 		samples       int
 		metadata      int
@@ -461,6 +471,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
@@ -494,6 +505,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 }
 
 func TestPush_QuorumError(t *testing.T) {
+	t.Parallel()
 
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
@@ -604,6 +616,7 @@ func TestPush_QuorumError(t *testing.T) {
 }
 
 func TestDistributor_PushInstanceLimits(t *testing.T) {
+	t.Parallel()
 
 	type testPush struct {
 		samples       int
@@ -713,6 +726,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 
@@ -754,6 +768,7 @@ func TestDistributor_PushInstanceLimits(t *testing.T) {
 }
 
 func TestDistributor_PushHAInstances(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	for i, tc := range []struct {
@@ -803,7 +818,10 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 		},
 	} {
 		for _, shardByAllLabels := range []bool{true, false} {
+			tc := tc
+			shardByAllLabels := shardByAllLabels
 			t.Run(fmt.Sprintf("[%d](shardByAllLabels=%v)", i, shardByAllLabels), func(t *testing.T) {
+				t.Parallel()
 				var limits validation.Limits
 				flagext.DefaultValues(&limits)
 				limits.AcceptHASamples = true
@@ -841,6 +859,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 }
 
 func TestDistributor_PushQuery(t *testing.T) {
+	t.Parallel()
 	const shuffleShardSize = 5
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -972,7 +991,9 @@ func TestDistributor_PushQuery(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:        tc.numIngesters,
 				happyIngesters:      tc.happyIngesters,
@@ -1016,6 +1037,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const maxChunksLimit = 30 // Chunks are duplicated due to replication factor.
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1072,6 +1094,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunksPerQueryLimitIsReac
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const maxSeriesLimit = 10
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1124,6 +1147,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxSeriesPerQueryLimitIsReac
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const seriesToAdd = 10
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1193,6 +1217,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxChunkBytesPerQueryLimitIs
 }
 
 func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsReached(t *testing.T) {
+	t.Parallel()
 	const seriesToAdd = 10
 
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -1262,6 +1287,7 @@ func TestDistributor_QueryStream_ShouldReturnErrorIfMaxDataBytesPerQueryLimitIsR
 }
 
 func TestDistributor_Push_LabelRemoval(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 
 	type testcase struct {
@@ -1350,6 +1376,7 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 }
 
 func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	type testcase struct {
 		inputSeries    labels.Labels
@@ -1391,6 +1418,7 @@ func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) 
 }
 
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	tests := map[string]struct {
 		inputSeries    labels.Labels
@@ -1468,7 +1496,9 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 	limits.AcceptHASamples = true
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:     2,
 				happyIngesters:   2,
@@ -1497,6 +1527,7 @@ func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *
 }
 
 func TestDistributor_Push_LabelNameValidation(t *testing.T) {
+	t.Parallel()
 	inputLabels := labels.Labels{
 		{Name: model.MetricNameLabel, Value: "foo"},
 		{Name: "999.illegal", Value: "baz"},
@@ -1528,7 +1559,9 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 	}
 
 	for testName, tc := range tests {
+		tc := tc
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ds, _, _, _ := prepare(t, prepConfig{
 				numIngesters:            2,
 				happyIngesters:          2,
@@ -1550,6 +1583,7 @@ func TestDistributor_Push_LabelNameValidation(t *testing.T) {
 }
 
 func TestDistributor_Push_ExemplarValidation(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	manyLabels := []string{model.MetricNameLabel, "test"}
 	for i := 1; i < 31; i++ {
@@ -1590,7 +1624,9 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 	}
 
 	for testName, tc := range tests {
+		tc := tc
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ds, _, _, _ := prepare(t, prepConfig{
 				numIngesters:     2,
 				happyIngesters:   2,
@@ -1909,12 +1945,16 @@ func BenchmarkDistributor_Push(b *testing.B) {
 }
 
 func TestSlowQueries(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
 	nameMatcher := mustEqualMatcher(model.MetricNameLabel, "foo")
 	nIngesters := 3
 	for _, shardByAllLabels := range []bool{true, false} {
 		for happy := 0; happy <= nIngesters; happy++ {
+			shardByAllLabels := shardByAllLabels
+			happy := happy
 			t.Run(fmt.Sprintf("%t/%d", shardByAllLabels, happy), func(t *testing.T) {
+				t.Parallel()
 				var expectedErr error
 				if nIngesters-happy > 1 {
 					expectedErr = errFail
@@ -1939,6 +1979,7 @@ func TestSlowQueries(t *testing.T) {
 }
 
 func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
+	t.Parallel()
 	// Create distributor
 	ds, ing, _, _ := prepare(t, prepConfig{
 		numIngesters:        3,
@@ -1969,6 +2010,7 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 }
 
 func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
+	t.Parallel()
 	const numIngesters = 5
 
 	fixtures := []struct {
@@ -2102,7 +2144,9 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			now := model.Now()
 
 			// Create distributor
@@ -2251,6 +2295,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 }
 
 func TestDistributor_MetricsMetadata(t *testing.T) {
+	t.Parallel()
 	const numIngesters = 5
 
 	tests := map[string]struct {
@@ -2275,7 +2320,9 @@ func TestDistributor_MetricsMetadata(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Create distributor
 			ds, ingesters, _, _ := prepare(t, prepConfig{
 				numIngesters:        numIngesters,
@@ -2956,6 +3003,7 @@ outer:
 }
 
 func TestDistributorValidation(t *testing.T) {
+	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "1")
 	now := model.Now()
 	future, past := now.Add(5*time.Hour), now.Add(-25*time.Hour)
@@ -3027,7 +3075,9 @@ func TestDistributorValidation(t *testing.T) {
 			err: httpgrpc.Errorf(http.StatusBadRequest, `metadata missing metric name`),
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			var limits validation.Limits
 			flagext.DefaultValues(&limits)
 
@@ -3051,6 +3101,7 @@ func TestDistributorValidation(t *testing.T) {
 }
 
 func TestRemoveReplicaLabel(t *testing.T) {
+	t.Parallel()
 	replicaLabel := "replica"
 	clusterLabel := "cluster"
 	cases := []struct {
@@ -3096,6 +3147,7 @@ func TestRemoveReplicaLabel(t *testing.T) {
 
 // This is not great, but we deal with unsorted labels when validating labels.
 func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
+	t.Parallel()
 	val1 := shardByAllLabels("test", []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -3112,6 +3164,7 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 }
 
 func TestSortLabels(t *testing.T) {
+	t.Parallel()
 	sorted := []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -3139,7 +3192,8 @@ func TestSortLabels(t *testing.T) {
 }
 
 func TestDistributor_Push_Relabel(t *testing.T) {
-	ctx := user.InjectOrgID(context.Background(), "user")
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "userDistributorPushRelabel")
 
 	type testcase struct {
 		name                 string
@@ -3211,7 +3265,9 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 	}
 
 	for _, tc := range cases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			var err error
 			var limits validation.Limits
 			flagext.DefaultValues(&limits)
@@ -3244,6 +3300,7 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 }
 
 func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing.T) {
+	t.Parallel()
 	metricRelabelConfigs := []*relabel.Config{
 		{
 			SourceLabels: []model.LabelName{"__name__"},
@@ -3281,7 +3338,7 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 
 	// Push the series to the distributor
 	req := mockWriteRequest(inputSeries, 1, 1)
-	ctx := user.InjectOrgID(context.Background(), "user1")
+	ctx := user.InjectOrgID(context.Background(), "userDistributorPushRelabelDropWillExportMetricOfDroppedSamples")
 	_, err = ds[0].Push(ctx, req)
 	require.NoError(t, err)
 
@@ -3297,10 +3354,10 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	expectedMetrics := `
 		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 		# TYPE cortex_discarded_samples_total counter
-		cortex_discarded_samples_total{reason="relabel_configuration",user="user1"} 1
+		cortex_discarded_samples_total{reason="relabel_configuration",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
-		cortex_distributor_received_samples_total{user="user1"} 1
+		cortex_distributor_received_samples_total{user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
 		`
 
 	require.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...))

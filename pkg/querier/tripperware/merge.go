@@ -8,8 +8,9 @@ import (
 
 // MergeSampleStreams deduplicates sample streams using a map.
 func MergeSampleStreams(output map[string]SampleStream, sampleStreams []SampleStream) {
+	buf := make([]byte, 0, 1024)
 	for _, stream := range sampleStreams {
-		metric := cortexpb.FromLabelAdaptersToLabels(stream.Labels).String()
+		metric := string(cortexpb.FromLabelAdaptersToLabels(stream.Labels).Bytes(buf))
 		existing, ok := output[metric]
 		if !ok {
 			existing = SampleStream{

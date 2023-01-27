@@ -70,8 +70,9 @@ func (m *Miniredis) cmdAuth(c *server.Peer, cmd string, args []string) {
 	if m.checkPubsub(c, cmd) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 

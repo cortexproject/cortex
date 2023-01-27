@@ -3,6 +3,7 @@ package kv
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -105,4 +106,8 @@ func (m metrics) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		m.c.WatchPrefix(ctx, prefix, f)
 		return nil
 	})
+}
+
+func (m metrics) LastUpdateTime(key string) time.Time {
+	return m.c.LastUpdateTime(key)
 }

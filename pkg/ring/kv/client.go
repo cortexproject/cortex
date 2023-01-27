@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kv/dynamodb"
 	"github.com/cortexproject/cortex/pkg/ring/kv/etcd"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 )
@@ -40,9 +42,10 @@ var inmemoryStore Client
 // Consul, Etcd, Memberlist or MultiClient. It was extracted from Config to keep
 // single-client config separate from final client-config (with all the wrappers)
 type StoreConfig struct {
-	Consul consul.Config `yaml:"consul"`
-	Etcd   etcd.Config   `yaml:"etcd"`
-	Multi  MultiConfig   `yaml:"multi"`
+	DynamoDB dynamodb.Config `yaml:"dynamodb"`
+	Consul   consul.Config   `yaml:"consul"`
+	Etcd     etcd.Config     `yaml:"etcd"`
+	Multi    MultiConfig     `yaml:"multi"`
 
 	// Function that returns memberlist.KV store to use. By using a function, we can delay
 	// initialization of memberlist.KV until it is actually required.
@@ -69,6 +72,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(flagsPrefix, defaultPrefix string, f 
 	// This needs to be fixed in the future (1.0 release maybe?) when we normalize flags.
 	// At the moment we have consul.<flag-name>, and ring.store, going forward it would
 	// be easier to have everything under ring, so ring.consul.<flag-name>
+	cfg.DynamoDB.RegisterFlags(f, flagsPrefix)
 	cfg.Consul.RegisterFlags(f, flagsPrefix)
 	cfg.Etcd.RegisterFlagsWithPrefix(f, flagsPrefix)
 	cfg.Multi.RegisterFlagsWithPrefix(f, flagsPrefix)
@@ -111,6 +115,9 @@ type Client interface {
 
 	// WatchPrefix calls f whenever any value stored under prefix changes.
 	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
+
+	// LastUpdateTime returns the time a key was last sync by the kv store
+	LastUpdateTime(key string) time.Time
 }
 
 // NewClient creates a new Client (consul, etcd or inmemory) based on the config,
@@ -128,6 +135,9 @@ func createClient(backend string, prefix string, cfg StoreConfig, codec codec.Co
 	var err error
 
 	switch backend {
+	case "dynamodb":
+		client, err = dynamodb.NewClient(cfg.DynamoDB, codec, logger, reg)
+
 	case "consul":
 		client, err = consul.NewClient(cfg.Consul, codec, logger, reg)
 

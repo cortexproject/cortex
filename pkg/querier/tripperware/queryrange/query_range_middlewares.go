@@ -22,6 +22,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/thanos/pkg/querysharding"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier"
@@ -76,6 +77,7 @@ func Middlewares(
 	cacheExtractor Extractor,
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
+	queryAnalyzer querysharding.Analyzer,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -109,7 +111,7 @@ func Middlewares(
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
 	}
 
-	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, ShardedPrometheusCodec))
+	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, ShardedPrometheusCodec, queryAnalyzer))
 
 	return queryRangeMiddleware, c, nil
 }

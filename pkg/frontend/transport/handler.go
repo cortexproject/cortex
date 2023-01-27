@@ -147,7 +147,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
 	if f.cfg.QueryStatsEnabled {
-		f.reportQueryStats(r, queryString, queryResponseTime, stats, err)
+		statusCode := resp.StatusCode
+		if err != nil {
+			statusCode = getStatusCodeFromError(err)
+		}
+
+		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode)
 	}
 
 	if err != nil {
@@ -204,7 +209,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -233,6 +238,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_series_count", numSeries,
 		"fetched_chunks_bytes", numBytes,
 		"fetched_data_bytes", numDataBytes,
+		"status_code", statusCode,
 	}, stats.LoadExtraFields()...)
 
 	logMessage = append(logMessage, formatQueryString(queryString)...)
@@ -298,4 +304,23 @@ func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Head
 func statsValue(name string, d time.Duration) string {
 	durationInMs := strconv.FormatFloat(float64(d)/float64(time.Millisecond), 'f', -1, 64)
 	return name + ";dur=" + durationInMs
+}
+
+// getStatusCodeFromError extracts http status code based on error, similar to how writeError was implemented.
+func getStatusCodeFromError(err error) int {
+	switch err {
+	case context.Canceled:
+		return StatusClientClosedRequest
+	case context.DeadlineExceeded:
+		return http.StatusGatewayTimeout
+	default:
+		if util.IsRequestBodyTooLarge(err) {
+			return http.StatusRequestEntityTooLarge
+		}
+	}
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok {
+		return int(resp.Code)
+	}
+	return http.StatusInternalServerError
 }

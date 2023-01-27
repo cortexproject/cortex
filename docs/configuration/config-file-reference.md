@@ -4158,8 +4158,8 @@ The `tracing_config` configures backends cortex uses.
 
 otel:
   # otl collector endpoint that the driver will use to send spans.
-  # CLI flag: -tracing.otel.oltp-endpoint
-  [oltp_endpoint: <string> | default = ""]
+  # CLI flag: -tracing.otel.otlp-endpoint
+  [otlp_endpoint: <string> | default = ""]
 
   # enhance/modify traces/propagators for specific exporter. If empty, OTEL
   # defaults will apply. Supported values are: `awsxray.`

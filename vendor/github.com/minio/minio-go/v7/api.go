@@ -118,7 +118,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.46"
+	libraryVersion = "v7.0.47"
 )
 
 // User Agent should always following the below style.
@@ -845,7 +845,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		// Additionally, we also look if the initialized client is secure,
 		// if yes then we don't need to perform streaming signature.
 		req = signer.StreamingSignV4(req, accessKeyID,
-			secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC())
+			secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
 	default:
 		// Set sha256 sum for signature calculation only with signature version '4'.
 		shaHeader := unsignedPayload

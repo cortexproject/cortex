@@ -29,6 +29,7 @@
 * [FEATURE] Querier/Ruler: Support the new thanos promql engine. This is an experimental feature and might change in the future. #5093
 * [FEATURE] Added zstd as an option for grpc compression #5092
 * [FEATURE] Ring: Add new kv store option `dynamodb`. #5026
+* [FEATURE] Cache: Support redis as backend for caching bucket and index cache. #5057
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055

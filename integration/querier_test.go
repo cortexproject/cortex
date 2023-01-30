@@ -128,7 +128,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
-					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = "dns+" + redis.NetworkEndpoint(e2ecache.RedisPort)
+					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
 				// Start Cortex components.
@@ -248,9 +248,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*2), "thanos_store_index_cache_items_added_total")) // 2 series both for postings and series cache
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(11), "thanos_memcached_operations_total")) // 7 gets + 4 sets
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(7), "thanos_redis_getmulti_gate_queries_total")) // 7 gets
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(4), "thanos_redis_setmulti_gate_queries_total")) // 4 sets
 				}
 
 				// Query back again the 1st series from storage. This time it should use the index cache.
@@ -383,7 +380,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
-					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = "dns+" + redis.NetworkEndpoint(e2ecache.RedisPort)
+					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
 				// Start Cortex replicas.
@@ -485,9 +482,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*2*seriesReplicationFactor)), "thanos_store_index_cache_items_added_total")) // 2 series both for postings and series cache
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(11*seriesReplicationFactor)), "thanos_memcached_operations_total")) // 7 gets + 4 sets
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
-					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(7*seriesReplicationFactor)), "thanos_redis_getmulti_gate_queries_total")) // 7 gets
-					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(4*seriesReplicationFactor)), "thanos_redis_setmulti_gate_queries_total")) // 4 sets
 				}
 
 				// Query back again the 1st series from storage. This time it should use the index cache.

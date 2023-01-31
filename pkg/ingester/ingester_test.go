@@ -4016,6 +4016,30 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 	require.NoError(t, g.Wait())
 }
 
+func TestIngester_MaxExemplarsFallBack(t *testing.T) {
+	// Create ingester.
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.MaxExemplars = 2
+
+	dir := t.TempDir()
+	blocksDir := filepath.Join(dir, "blocks")
+	limits := defaultLimitsTestConfig()
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, blocksDir, nil)
+	require.NoError(t, err)
+
+	maxExemplars := i.getMaxExemplars("someTenant")
+	require.Equal(t, maxExemplars, int64(2))
+
+	// set max exemplars value in limits, and re-initialize the ingester
+	limits.MaxExemplars = 5
+	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, blocksDir, nil)
+	require.NoError(t, err)
+
+	// validate this value is picked up now
+	maxExemplars = i.getMaxExemplars("someTenant")
+	require.Equal(t, maxExemplars, int64(5))
+}
+
 func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {
 	var lbls = make([]labels.Labels, 0, count)
 	var samples = make([]cortexpb.Sample, 0, count)

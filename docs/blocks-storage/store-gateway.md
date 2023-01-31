@@ -942,9 +942,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-    # Deprecated, use maxExemplars in limits instead. Enables support for
-    # exemplars in TSDB and sets the maximum number that will be stored. 0 or
-    # less means disabled.
+    # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value
+    # in limits is set to zero, cortex will fallback on this value. This setting
+    # enables support for exemplars in TSDB and sets the maximum number that
+    # will be stored. 0 or less means disabled.
     # CLI flag: -blocks-storage.tsdb.max-exemplars
     [max_exemplars: <int> | default = 0]
 

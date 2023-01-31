@@ -2627,7 +2627,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [metric_relabel_configs: <relabel_config...> | default = ]
 
 # Enables support for exemplars in TSDB and sets the maximum number that will be
-# stored. 0 or less means disabled.
+# stored. less than zero means disabled. If the value is set to zero, cortex
+# will fallback to blocks-storage.tsdb.max-exemplars value.
 # CLI flag: -block-storage.tsdb.max-exemplars
 [max_exemplars: <int> | default = 0]
 
@@ -3730,9 +3731,10 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-  # Deprecated, use maxExemplars in limits instead. Enables support for
-  # exemplars in TSDB and sets the maximum number that will be stored. 0 or less
-  # means disabled.
+  # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in
+  # limits is set to zero, cortex will fallback on this value. This setting
+  # enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
   # CLI flag: -blocks-storage.tsdb.max-exemplars
   [max_exemplars: <int> | default = 0]
 

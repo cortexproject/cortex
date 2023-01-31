@@ -17,12 +17,10 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -675,7 +673,6 @@ func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, 
 
 	var (
 		sets        []storage.ChunkSeriesSet
-		setsMtx		sync.Mutex
 		symbols     index.StringIter
 		closers     []io.Closer
 		overlapping bool
@@ -691,8 +688,6 @@ func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, 
 	c.metrics.populatingBlocks.Set(1)
 
 	globalMaxt := blocks[0].Meta().MaxTime
-	g, _:= errgroup.WithContext(c.ctx)
-	g.SetLimit(8)
 	for i, b := range blocks {
 		select {
 		case <-c.ctx.Done():
@@ -735,28 +730,17 @@ func (c *LeveledCompactor) populateBlock(blocks []BlockReader, meta *BlockMeta, 
 			return err
 		}
 		all = indexr.SortedPostings(all)
-		g.Go(func() error {
-			if additionalPostingsFunc != nil {
-				all = additionalPostingsFunc.GetPostings(all, indexr)
-			}
-			//shardStart := time.Now()
-			//shardedPosting := index.NewShardedPosting(all, uint64(partitionCount), uint64(partitionId), indexr.Series)
-			//fmt.Printf("finished sharding, duration: %v\n", time.Since(shardStart))
-			// Blocks meta is half open: [min, max), so subtract 1 to ensure we don't hold samples with exact meta.MaxTime timestamp.
-			setsMtx.Lock()
-			sets = append(sets, newBlockChunkSeriesSet(indexr, chunkr, tombsr, all, meta.MinTime, meta.MaxTime-1, false))
-			setsMtx.Unlock()
-			return nil
-		})
+		if additionalPostingsFunc != nil {
+			all = additionalPostingsFunc.GetPostings(all, indexr)
+		}
+		// Blocks meta is half open: [min, max), so subtract 1 to ensure we don't hold samples with exact meta.MaxTime timestamp.
+		sets = append(sets, newBlockChunkSeriesSet(indexr, chunkr, tombsr, all, meta.MinTime, meta.MaxTime-1, false))
 		syms := indexr.Symbols()
 		if i == 0 {
 			symbols = syms
 			continue
 		}
 		symbols = NewMergedStringIter(symbols, syms)
-	}
-	if err := g.Wait(); err != nil {
-		return err
 	}
 
 	for symbols.Next() {

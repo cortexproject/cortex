@@ -16,7 +16,6 @@ package index
 import (
 	"container/heap"
 	"encoding/binary"
-	"fmt"
 	"runtime"
 	"sort"
 	"sync"
@@ -25,7 +24,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 )
 
 var allPostingsKey = labels.Label{}
@@ -421,55 +419,6 @@ func (e errPostings) Next() bool                  { return false }
 func (e errPostings) Seek(storage.SeriesRef) bool { return false }
 func (e errPostings) At() storage.SeriesRef       { return 0 }
 func (e errPostings) Err() error                  { return e.err }
-
-type shardedPostings struct {
-	//postings Postings
-	//labelsFn func(ref storage.SeriesRef, lset *labels.Labels, chks *[]chunks.Meta) error
-	series []storage.SeriesRef
-	cur    storage.SeriesRef
-	initialized bool
-
-	//bufChks []chunks.Meta
-	//bufLbls labels.Labels
-}
-
-func NewShardedPosting(postings Postings, partitionCount uint64, partitionId uint64, labelsFn func(ref storage.SeriesRef, lset *labels.Labels, chks *[]chunks.Meta) error) *shardedPostings {
-	bufChks := make([]chunks.Meta, 0)
-	bufLbls := make(labels.Labels, 0)
-	series := make([]storage.SeriesRef, 0)
-	for postings.Next() {
-		err := labelsFn(postings.At(), &bufLbls, &bufChks)
-		if err != nil {
-			fmt.Printf("err: %v", err)
-		}
-		if bufLbls.Hash() % partitionCount == partitionId {
-			posting := postings.At()
-			series = append(series, posting)
-		}
-	}
-	return &shardedPostings{series: series, initialized: false}
-}
-
-func (p *shardedPostings) Next() bool {
-	if len(p.series) > 0 {
-		p.cur, p.series = p.series[0], p.series[1:]
-		return true
-	}
-	return false
-}
-
-func (p *shardedPostings) At() storage.SeriesRef {
-	return p.cur
-}
-
-func (p *shardedPostings) Seek(v storage.SeriesRef) bool {
-	fmt.Println("ran seek")
-	return false
-}
-
-func (p *shardedPostings) Err() error {
-	return nil
-}
 
 var emptyPostings = errPostings{}
 

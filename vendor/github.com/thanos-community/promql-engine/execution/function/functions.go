@@ -72,6 +72,15 @@ var Funcs = map[string]FunctionCall{
 	"deg": simpleFunc(func(v float64) float64 {
 		return v * 180 / math.Pi
 	}),
+	"sgn": simpleFunc(func(v float64) float64 {
+		var sign float64
+		if v > 0 {
+			sign = 1
+		} else if v < 0 {
+			sign = -1
+		}
+		return sign
+	}),
 	"timestamp": func(f FunctionArgs) promql.Sample {
 		return promql.Sample{
 			Point: promql.Point{

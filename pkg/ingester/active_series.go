@@ -1,17 +1,12 @@
 package ingester
 
 import (
-	"hash"
 	"math"
 	"sync"
 	"time"
 
-	"github.com/cespare/xxhash"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -53,30 +48,10 @@ func NewActiveSeries() *ActiveSeries {
 }
 
 // Updates series timestamp to 'now'. Function is called to make a copy of labels if entry doesn't exist yet.
-func (c *ActiveSeries) UpdateSeries(series labels.Labels, now time.Time, labelsCopy func(labels.Labels) labels.Labels) {
-	fp := fingerprint(series)
-	stripeID := fp % numActiveSeriesStripes
+func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, now time.Time, labelsCopy func(labels.Labels) labels.Labels) {
+	stripeID := hash % numActiveSeriesStripes
 
-	c.stripes[stripeID].updateSeriesTimestamp(now, series, fp, labelsCopy)
-}
-
-var sep = []byte{model.SeparatorByte}
-
-var hashPool = sync.Pool{New: func() interface{} { return xxhash.New() }}
-
-func fingerprint(series labels.Labels) uint64 {
-	sum := hashPool.Get().(hash.Hash64)
-	defer hashPool.Put(sum)
-
-	sum.Reset()
-	for _, label := range series {
-		_, _ = sum.Write(util.YoloBuf(label.Name))
-		_, _ = sum.Write(sep)
-		_, _ = sum.Write(util.YoloBuf(label.Value))
-		_, _ = sum.Write(sep)
-	}
-
-	return sum.Sum64()
+	c.stripes[stripeID].updateSeriesTimestamp(now, series, hash, labelsCopy)
 }
 
 // Purge removes expired entries from the cache. This function should be called

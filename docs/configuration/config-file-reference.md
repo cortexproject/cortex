@@ -1886,6 +1886,18 @@ alertmanager_client:
 # result in potentially fewer lost silences, and fewer duplicate notifications.
 # CLI flag: -alertmanager.persist-interval
 [persist_interval: <duration> | default = 15m]
+
+# Comma separated list of tenants whose alerts this alertmanager can process. If
+# specified, only these tenants will be handled by alertmanager, otherwise this
+# alertmanager can process alerts from all tenants.
+# CLI flag: -alertmanager.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants whose alerts this alertmanager cannot process.
+# If specified, a alertmanager that would normally pick the specified tenant(s)
+# for processing will ignore them instead.
+# CLI flag: -alertmanager.disabled-tenants
+[disabled_tenants: <string> | default = ""]
 ```
 
 ### `alertmanager_storage_config`

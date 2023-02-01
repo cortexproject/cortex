@@ -118,13 +118,18 @@ func (d *Distributor) isUnaryReadPath(p string) bool {
 // In case of reads, it proxies the request to one of the alertmanagers.
 // DistributeRequest assumes that the caller has verified IsPathSupported returns
 // true for the route.
-func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request) {
+func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request, allowedTenants *util.AllowedTenants) {
 	d.requestsInFlight.Add(1)
 	defer d.requestsInFlight.Done()
 
 	userID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	if !allowedTenants.IsAllowed(userID) {
+		http.Error(w, "Tenant is not allowed", http.StatusUnauthorized)
 		return
 	}
 

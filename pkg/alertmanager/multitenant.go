@@ -1012,7 +1012,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 
 	if am.cfg.ShardingEnabled && am.distributor.IsPathSupported(req.URL.Path) {
-		am.distributor.DistributeRequest(w, req)
+		am.distributor.DistributeRequest(w, req, am.allowedTenants)
 		return
 	}
 
@@ -1031,6 +1031,10 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if !am.allowedTenants.IsAllowed(userID) {
+		http.Error(w, "Tenant is not allowed", http.StatusUnauthorized)
 		return
 	}
 	am.alertmanagersMtx.Lock()

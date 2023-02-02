@@ -85,6 +85,9 @@ type MultitenantAlertmanagerConfig struct {
 
 	// For the state persister.
 	Persister PersisterConfig `yaml:",inline"`
+
+	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
+	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 }
 
 type ClusterConfig struct {
@@ -116,6 +119,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
+	f.Var(&cfg.EnabledTenants, "alertmanager.enabled-tenants", "Comma separated list of tenants whose alerts this alertmanager can process. If specified, only these tenants will be handled by alertmanager, otherwise this alertmanager can process alerts from all tenants.")
+	f.Var(&cfg.DisabledTenants, "alertmanager.disabled-tenants", "Comma separated list of tenants whose alerts this alertmanager cannot process. If specified, a alertmanager that would normally pick the specified tenant(s) for processing will ignore them instead.")
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
@@ -269,6 +274,8 @@ type MultitenantAlertmanager struct {
 
 	limits Limits
 
+	allowedTenants *util.AllowedTenants
+
 	registry          prometheus.Registerer
 	ringCheckErrors   prometheus.Counter
 	tenantsOwned      prometheus.Gauge
@@ -359,6 +366,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 		registry:            registerer,
 		limits:              limits,
+		allowedTenants:      util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 		ringCheckErrors: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_alertmanager_ring_check_errors_total",
 			Help: "Number of errors that have occurred when checking the ring for ownership.",
@@ -416,6 +424,13 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor")
 		}
+	}
+
+	if len(cfg.EnabledTenants) > 0 {
+		level.Info(am.logger).Log("msg", "alertmanager using enabled users", "enabled", strings.Join(cfg.EnabledTenants, ", "))
+	}
+	if len(cfg.DisabledTenants) > 0 {
+		level.Info(am.logger).Log("msg", "alertmanager using disabled users", "disabled", strings.Join(cfg.DisabledTenants, ", "))
 	}
 
 	if registerer != nil {
@@ -735,6 +750,10 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 
 	// Filter out users not owned by this shard.
 	for _, userID := range allUserIDs {
+		if !am.allowedTenants.IsAllowed(userID) {
+			level.Debug(am.logger).Log("msg", "ignoring alertmanager for user, not allowed", "user", userID)
+			continue
+		}
 		if am.isUserOwned(userID) {
 			ownedUserIDs = append(ownedUserIDs, userID)
 		}
@@ -993,7 +1012,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 	}
 
 	if am.cfg.ShardingEnabled && am.distributor.IsPathSupported(req.URL.Path) {
-		am.distributor.DistributeRequest(w, req)
+		am.distributor.DistributeRequest(w, req, am.allowedTenants)
 		return
 	}
 
@@ -1012,6 +1031,10 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if !am.allowedTenants.IsAllowed(userID) {
+		http.Error(w, "Tenant is not allowed", http.StatusUnauthorized)
 		return
 	}
 	am.alertmanagersMtx.Lock()
@@ -1197,6 +1220,10 @@ func (am *MultitenantAlertmanager) deleteUnusedRemoteUserState(ctx context.Conte
 	}
 
 	for _, userID := range usersWithState {
+		if !am.allowedTenants.IsAllowed(userID) {
+			level.Debug(am.logger).Log("msg", "not deleting remote state for user, not allowed", "user", userID)
+			continue
+		}
 		if _, ok := users[userID]; ok {
 			continue
 		}

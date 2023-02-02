@@ -1110,12 +1110,28 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 		configs           int
 		expectedTenants   int
 		withSharding      bool
+		enabledTenants    []string
+		disabledTenants   []string
 	}{
 		{
 			name:            "sharding disabled, 1 instance",
 			instances:       1,
 			configs:         10,
 			expectedTenants: 10,
+		},
+		{
+			name:            "sharding disabled, 1 instance, single user allowed",
+			instances:       1,
+			configs:         10,
+			expectedTenants: 1,
+			enabledTenants:  []string{"u-1"},
+		},
+		{
+			name:            "sharding disabled, 1 instance, single user disabled",
+			instances:       1,
+			configs:         10,
+			expectedTenants: 9,
+			disabledTenants: []string{"u-2"},
 		},
 		{
 			name:            "sharding disabled, 2 instances",
@@ -1130,6 +1146,24 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			replicationFactor: 1,
 			configs:           10,
 			expectedTenants:   10, // same as no sharding and 1 instance
+		},
+		{
+			name:              "sharding enabled, 1 instance, enabled tenants, single user allowed",
+			withSharding:      true,
+			instances:         1,
+			replicationFactor: 1,
+			configs:           10,
+			expectedTenants:   1,
+			enabledTenants:    []string{"u-3"},
+		},
+		{
+			name:              "sharding enabled, 1 instance, enabled tenants, single user disabled",
+			withSharding:      true,
+			instances:         1,
+			replicationFactor: 1,
+			configs:           10,
+			expectedTenants:   9,
+			disabledTenants:   []string{"u-4"},
 		},
 		{
 			name:              "sharding enabled, 2 instances, RF = 1",
@@ -1154,6 +1188,15 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			replicationFactor: 3,
 			configs:           10,
 			expectedTenants:   30, // configs * replication factor
+		},
+		{
+			name:              "sharding enabled, 5 instances, RF = 3, two users disabled",
+			withSharding:      true,
+			instances:         5,
+			replicationFactor: 3,
+			configs:           10,
+			expectedTenants:   24, // (configs - disabled-tenants) * replication factor
+			disabledTenants:   []string{"u-1", "u-2"},
 		},
 	}
 
@@ -1191,6 +1234,9 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 				// Do not check the ring topology changes or poll in an interval in this test (we explicitly sync alertmanagers).
 				amConfig.PollInterval = time.Hour
 				amConfig.ShardingRing.RingCheckPeriod = time.Hour
+
+				amConfig.EnabledTenants = tt.enabledTenants
+				amConfig.DisabledTenants = tt.disabledTenants
 
 				if tt.withSharding {
 					amConfig.ShardingEnabled = true

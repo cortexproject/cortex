@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -152,6 +153,14 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			statusCode = getStatusCodeFromError(err)
 		} else if resp != nil {
 			statusCode = resp.StatusCode
+			// If the response status code is not 2xx, try to get the
+			// error message from response body.
+			if resp.StatusCode/100 != 2 {
+				body, err2 := tripperware.BodyBuffer(resp, f.log)
+				if err2 == nil {
+					err = httpgrpc.Errorf(resp.StatusCode, string(body))
+				}
+			}
 		}
 
 		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode)
@@ -180,19 +189,14 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {
-	grafanaDashboardUID := "-"
+	fields := make([]interface{}, 0, 2)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
-		grafanaDashboardUID = dashboardUID
+		fields = append(fields, dashboardUID)
 	}
-	grafanaPanelID := "-"
 	if panelID := r.Header.Get("X-Panel-Id"); panelID != "" {
-		grafanaPanelID = panelID
+		fields = append(fields, panelID)
 	}
-
-	return []interface{}{
-		"grafana_dashboard_uid", grafanaDashboardUID,
-		"grafana_panel_id", grafanaPanelID,
-	}
+	return fields
 }
 
 // reportSlowQuery reports slow queries.
@@ -206,7 +210,10 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
 	}, formatQueryString(queryString)...)
-	logMessage = append(logMessage, formatGrafanaStatsFields(r)...)
+	grafanaFields := formatGrafanaStatsFields(r)
+	if len(grafanaFields) > 0 {
+		logMessage = append(logMessage, grafanaFields...)
+	}
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
@@ -244,7 +251,10 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	}, stats.LoadExtraFields()...)
 
 	logMessage = append(logMessage, formatQueryString(queryString)...)
-	logMessage = append(logMessage, formatGrafanaStatsFields(r)...)
+	grafanaFields := formatGrafanaStatsFields(r)
+	if len(grafanaFields) > 0 {
+		logMessage = append(logMessage, grafanaFields...)
+	}
 
 	if error != nil {
 		s, ok := status.FromError(error)

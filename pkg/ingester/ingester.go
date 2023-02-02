@@ -1290,48 +1290,15 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	if err := i.checkRunning(); err != nil {
-		return nil, err
-	}
-
-	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
-	if err != nil {
-		return nil, err
-	}
-
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	db := i.getTSDB(userID)
-	if db == nil {
-		return &client.LabelValuesResponse{}, nil
-	}
-
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
-	if err != nil {
-		return nil, err
-	}
-
-	q, err := db.Querier(ctx, mint, maxt)
-	if err != nil {
-		return nil, err
-	}
-	defer q.Close()
-
-	vals, _, err := q.LabelValues(labelName, matchers...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &client.LabelValuesResponse{
-		LabelValues: vals,
-	}, nil
+	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
+	defer cleanup()
+	return resp, err
 }
 
+// LabelValuesStream returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
-	resp, err := i.LabelValues(stream.Context(), req)
+	resp, cleanup, err := i.labelsValuesCommon(stream.Context(), req)
+	defer cleanup()
 
 	if err != nil {
 		return err
@@ -1354,46 +1321,65 @@ func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream clie
 	return nil
 }
 
-// LabelNames return all the label names.
-func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+// labelsValuesCommon returns all label values that are associated with a given label name.
+// this should be used by LabelValues and LabelValuesStream
+// the cleanup function should be called in order to close the querier
+func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, func(), error) {
+	cleanup := func() {}
 	if err := i.checkRunning(); err != nil {
-		return nil, err
+		return nil, cleanup, err
+	}
+
+	labelName, startTimestampMs, endTimestampMs, matchers, err := client.FromLabelValuesRequest(req)
+	if err != nil {
+		return nil, cleanup, err
 	}
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	db := i.getTSDB(userID)
 	if db == nil {
-		return &client.LabelNamesResponse{}, nil
+		return &client.LabelValuesResponse{}, cleanup, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
-	defer q.Close()
 
-	names, _, err := q.LabelNames()
+	cleanup = func() {
+		q.Close()
+	}
+
+	vals, _, err := q.LabelValues(labelName, matchers...)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
-	return &client.LabelNamesResponse{
-		LabelNames: names,
-	}, nil
+	return &client.LabelValuesResponse{
+		LabelValues: vals,
+	}, cleanup, nil
+}
+
+// LabelNames return all the label names.
+func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	resp, cleanup, err := i.labelNamesCommon(ctx, req)
+	defer cleanup()
+	return resp, err
 }
 
 // LabelNamesStream return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
-	resp, err := i.LabelNames(stream.Context(), req)
+	resp, cleanup, err := i.labelNamesCommon(stream.Context(), req)
+	defer cleanup()
 
 	if err != nil {
 		return err
@@ -1416,38 +1402,118 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 	return nil
 }
 
-// MetricsForLabelMatchers returns all the metrics which match a set of matchers.
-func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+// labelNamesCommon return all the label names.
+// this should be used by LabelNames and LabelNamesStream.
+// the cleanup function should be called in order to close the querier
+func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, func(), error) {
+	cleanup := func() {}
 	if err := i.checkRunning(); err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	db := i.getTSDB(userID)
 	if db == nil {
-		return &client.MetricsForLabelMatchersResponse{}, nil
+		return &client.LabelNamesResponse{}, cleanup, nil
+	}
+
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	q, err := db.Querier(ctx, mint, maxt)
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	cleanup = func() {
+		q.Close()
+	}
+
+	names, _, err := q.LabelNames()
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	return &client.LabelNamesResponse{
+		LabelNames: names,
+	}, cleanup, nil
+}
+
+// MetricsForLabelMatchers returns all the metrics which match a set of matchers.
+func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
+	result, cleanup, err := i.metricsForLabelMatchersCommon(ctx, req)
+	defer cleanup()
+	return result, err
+}
+
+func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
+	result, cleanup, err := i.metricsForLabelMatchersCommon(stream.Context(), req)
+	defer cleanup()
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(result.Metric); i += metadataStreamBatchSize {
+		j := i + metadataStreamBatchSize
+		if j > len(result.Metric) {
+			j = len(result.Metric)
+		}
+		resp := &client.MetricsForLabelMatchersStreamResponse{
+			Metric: result.Metric[i:j],
+		}
+		err := client.SendMetricsForLabelMatchersStream(stream, resp)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// metricsForLabelMatchersCommon returns all the metrics which match a set of matchers.
+// this should be used by MetricsForLabelMatchers and MetricsForLabelMatchersStream.
+// the cleanup function should be called in order to close the querier
+func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, func(), error) {
+	cleanup := func() {}
+	if err := i.checkRunning(); err != nil {
+		return nil, cleanup, err
+	}
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, cleanup, err
+	}
+
+	db := i.getTSDB(userID)
+	if db == nil {
+		return &client.MetricsForLabelMatchersResponse{}, cleanup, nil
 	}
 
 	// Parse the request
 	_, _, matchersSet, err := client.FromMetricsForLabelMatchersRequest(req)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
 
 	q, err := db.Querier(ctx, mint, maxt)
 	if err != nil {
-		return nil, err
+		return nil, cleanup, err
 	}
-	defer q.Close()
+
+	cleanup = func() {
+		q.Close()
+	}
 
 	// Run a query for each matchers set and collect all the results.
 	var sets []storage.SeriesSet
@@ -1455,7 +1521,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	for _, matchers := range matchersSet {
 		// Interrupt if the context has been canceled.
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, cleanup, ctx.Err()
 		}
 
 		hints := &storage.SelectHints{
@@ -1477,7 +1543,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	for mergedSet.Next() {
 		// Interrupt if the context has been canceled.
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, cleanup, ctx.Err()
 		}
 
 		result.Metric = append(result.Metric, &cortexpb.Metric{
@@ -1485,30 +1551,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 		})
 	}
 
-	return result, nil
-}
-
-func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
-	result, err := i.MetricsForLabelMatchers(stream.Context(), req)
-	if err != nil {
-		return err
-	}
-
-	for i := 0; i < len(result.Metric); i += metadataStreamBatchSize {
-		j := i + metadataStreamBatchSize
-		if j > len(result.Metric) {
-			j = len(result.Metric)
-		}
-		resp := &client.MetricsForLabelMatchersStreamResponse{
-			Metric: result.Metric[i:j],
-		}
-		err := client.SendMetricsForLabelMatchersStream(stream, resp)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return result, cleanup, nil
 }
 
 // MetricsMetadata returns all the metric metadata of a user.

@@ -1010,15 +1010,15 @@ go.opentelemetry.io/otel/semconv/v1.17.0
 ## explicit; go 1.18
 go.opentelemetry.io/otel/bridge/opentracing
 go.opentelemetry.io/otel/bridge/opentracing/migration
-# go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.2
+# go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.12.0
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/internal/retry
-# go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.2
+# go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.12.0
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/otlptrace
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/otlpconfig
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/tracetransform
-# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.2
+# go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.12.0
 ## explicit; go 1.18
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 # go.opentelemetry.io/otel/metric v0.34.0
@@ -1206,7 +1206,7 @@ google.golang.org/genproto/googleapis/rpc/status
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/protobuf/field_mask
-# google.golang.org/grpc v1.51.0
+# google.golang.org/grpc v1.52.0
 ## explicit; go 1.17
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -1215,7 +1215,7 @@ google.golang.org/grpc/balancer
 google.golang.org/grpc/balancer/base
 google.golang.org/grpc/balancer/grpclb
 google.golang.org/grpc/balancer/grpclb/grpc_lb_v1
-google.golang.org/grpc/balancer/grpclb/state
+google.golang.org/grpc/balancer/grpclb/grpclbstate
 google.golang.org/grpc/balancer/roundrobin
 google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/channelz

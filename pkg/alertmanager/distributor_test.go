@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -40,6 +41,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 		replicationFactor   int
 		isRead              bool
 		isDelete            bool
+		isTenantDisabled    bool
 		expStatusCode       int
 		expectedTotalCalls  int
 		headersNotPreserved bool
@@ -56,6 +58,16 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			expStatusCode:      http.StatusOK,
 			expectedTotalCalls: 3,
 			route:              "/alerts",
+		}, {
+			name:                "Write /alerts, Simple AM request, all AM healthy, not allowed",
+			numAM:               4,
+			numHappyAM:          4,
+			replicationFactor:   3,
+			expStatusCode:       http.StatusUnauthorized,
+			expectedTotalCalls:  0,
+			route:               "/alerts",
+			headersNotPreserved: true,
+			isTenantDisabled:    true,
 		}, {
 			name:                "Write /alerts, Less than quorum AM available",
 			numAM:               1,
@@ -262,9 +274,13 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 				req.Method = http.MethodDelete
 			}
 			req.RequestURI = url
+			var allowedTenants *util.AllowedTenants
+			if c.isTenantDisabled {
+				allowedTenants = util.NewAllowedTenants(nil, []string{"1"})
+			}
 
 			w := httptest.NewRecorder()
-			d.DistributeRequest(w, req)
+			d.DistributeRequest(w, req, allowedTenants)
 			resp := w.Result()
 			require.Equal(t, c.expStatusCode, resp.StatusCode)
 

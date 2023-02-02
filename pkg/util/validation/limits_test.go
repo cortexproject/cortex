@@ -532,3 +532,35 @@ testuser:
 		})
 	}
 }
+
+func TestMaxExemplarsOverridesPerTenant(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{
+		MaxLabelNameLength: 100,
+	})
+
+	baseYAML := `
+max_exemplars: 5`
+	overridesYAML := `
+tenant1:
+  max_exemplars: 1
+tenant2:
+  max_exemplars: 3
+`
+
+	l := Limits{}
+	err := yaml.UnmarshalStrict([]byte(baseYAML), &l)
+	require.NoError(t, err)
+
+	overrides := map[string]*Limits{}
+	err = yaml.Unmarshal([]byte(overridesYAML), &overrides)
+	require.NoError(t, err, "parsing overrides")
+
+	tl := newMockTenantLimits(overrides)
+
+	ov, err := NewOverrides(l, tl)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, ov.MaxExemplars("tenant1"))
+	require.Equal(t, 3, ov.MaxExemplars("tenant2"))
+	require.Equal(t, 5, ov.MaxExemplars("tenant3"))
+}

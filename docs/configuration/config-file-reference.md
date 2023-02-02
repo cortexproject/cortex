@@ -774,6 +774,10 @@ lifecycler:
 # CLI flag: -ingester.rate-update-period
 [rate_update_period: <duration> | default = 15s]
 
+# Period with which to update the per-user tsdb config.
+# CLI flag: -ingester.user-tsdb-configs-update-period
+[user_tsdb_configs_update_period: <duration> | default = 15s]
+
 # Enable tracking of active series and export them as metrics.
 # CLI flag: -ingester.active-series-metrics-enabled
 [active_series_metrics_enabled: <boolean> | default = true]
@@ -2715,6 +2719,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # e.g. remote_write.write_relabel_configs.
 [metric_relabel_configs: <relabel_config...> | default = ]
 
+# Enables support for exemplars in TSDB and sets the maximum number that will be
+# stored. less than zero means disabled. If the value is set to zero, cortex
+# will fallback to blocks-storage.tsdb.max-exemplars value.
+# CLI flag: -block-storage.tsdb.max-exemplars
+[max_exemplars: <int> | default = 0]
+
 # The maximum number of series for which a query can fetch samples from each
 # ingester. This limit is enforced only in the ingesters (when querying samples
 # not flushed to the storage yet) and it's a per-instance limit. This limit is
@@ -3814,7 +3824,9 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-  # Enables support for exemplars in TSDB and sets the maximum number that will
+  # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in
+  # limits is set to zero, cortex will fallback on this value. This setting
+  # enables support for exemplars in TSDB and sets the maximum number that will
   # be stored. 0 or less means disabled.
   # CLI flag: -blocks-storage.tsdb.max-exemplars
   [max_exemplars: <int> | default = 0]

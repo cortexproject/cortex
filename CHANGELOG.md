@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5016
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
 * [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103

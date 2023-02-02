@@ -147,9 +147,11 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
 	if f.cfg.QueryStatsEnabled {
-		statusCode := resp.StatusCode
+		var statusCode int
 		if err != nil {
 			statusCode = getStatusCodeFromError(err)
+		} else if resp != nil {
+			statusCode = resp.StatusCode
 		}
 
 		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode)

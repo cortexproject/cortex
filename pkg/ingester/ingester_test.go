@@ -774,9 +774,10 @@ func TestIngester_Push(t *testing.T) {
 			cfg := defaultIngesterTestConfig(t)
 			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.ActiveSeriesMetricsEnabled = !testData.disableActiveSeries
-			cfg.BlocksStorageConfig.TSDB.MaxExemplars = testData.maxExemplars
 
-			i, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+			limits := defaultLimitsTestConfig()
+			limits.MaxExemplars = testData.maxExemplars
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, "", registry)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -4015,6 +4016,30 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 	})
 
 	require.NoError(t, g.Wait())
+}
+
+func TestIngester_MaxExemplarsFallBack(t *testing.T) {
+	// Create ingester.
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.MaxExemplars = 2
+
+	dir := t.TempDir()
+	blocksDir := filepath.Join(dir, "blocks")
+	limits := defaultLimitsTestConfig()
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, blocksDir, nil)
+	require.NoError(t, err)
+
+	maxExemplars := i.getMaxExemplars("someTenant")
+	require.Equal(t, maxExemplars, int64(2))
+
+	// set max exemplars value in limits, and re-initialize the ingester
+	limits.MaxExemplars = 5
+	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, blocksDir, nil)
+	require.NoError(t, err)
+
+	// validate this value is picked up now
+	maxExemplars = i.getMaxExemplars("someTenant")
+	require.Equal(t, maxExemplars, int64(5))
 }
 
 func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest {

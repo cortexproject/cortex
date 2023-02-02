@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/prometheus/config"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
@@ -92,7 +94,8 @@ type Config struct {
 	// Config for metadata purging.
 	MetadataRetainPeriod time.Duration `yaml:"metadata_retain_period"`
 
-	RateUpdatePeriod time.Duration `yaml:"rate_update_period"`
+	RateUpdatePeriod            time.Duration `yaml:"rate_update_period"`
+	UserTSDBConfigsUpdatePeriod time.Duration `yaml:"user_tsdb_configs_update_period"`
 
 	ActiveSeriesMetricsEnabled      bool          `yaml:"active_series_metrics_enabled"`
 	ActiveSeriesMetricsUpdatePeriod time.Duration `yaml:"active_series_metrics_update_period"`
@@ -126,6 +129,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MetadataRetainPeriod, "ingester.metadata-retain-period", 10*time.Minute, "Period at which metadata we have not seen will remain in memory before being deleted.")
 
 	f.DurationVar(&cfg.RateUpdatePeriod, "ingester.rate-update-period", 15*time.Second, "Period with which to update the per-user ingestion rates.")
+	f.DurationVar(&cfg.UserTSDBConfigsUpdatePeriod, "ingester.user-tsdb-configs-update-period", 15*time.Second, "Period with which to update the per-user tsdb config.")
 	f.BoolVar(&cfg.ActiveSeriesMetricsEnabled, "ingester.active-series-metrics-enabled", true, "Enable tracking of active series and export them as metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
@@ -782,6 +786,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
+	userTSDBConfigTicker := time.NewTicker(i.cfg.UserTSDBConfigsUpdatePeriod)
+	defer userTSDBConfigTicker.Stop()
+
 	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
 	defer ingestionRateTicker.Stop()
 
@@ -812,13 +819,51 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries()
-
+		case <-userTSDBConfigTicker.C:
+			i.updateUserTSDBConfigs()
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ingester subservice failed")
 		}
 	}
+}
+
+func (i *Ingester) updateUserTSDBConfigs() {
+	for _, userID := range i.getTSDBUsers() {
+		userDB := i.getTSDB(userID)
+		if userDB == nil {
+			continue
+		}
+
+		cfg := &config.Config{
+			StorageConfig: config.StorageConfig{
+				ExemplarsConfig: &config.ExemplarsConfig{
+					MaxExemplars: i.getMaxExemplars(userID),
+				},
+			},
+		}
+
+		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow. Invoking this method
+		// with a 0 value of OutOfOrderTimeWindow simply updates Max Exemplars.
+		err := userDB.db.ApplyConfig(cfg)
+		if err != nil {
+			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update user tsdb configuration.")
+		}
+	}
+}
+
+// getMaxExemplars returns the maxExemplars value set in limits config.
+// If limits value is set to zero, it falls back to old configuration
+// in block storage config.
+func (i *Ingester) getMaxExemplars(userID string) int64 {
+	maxExemplarsFromLimits := i.limits.MaxExemplars(userID)
+
+	if maxExemplarsFromLimits == 0 {
+		return int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars)
+	}
+
+	return int64(maxExemplarsFromLimits)
 }
 
 func (i *Ingester) updateActiveSeries() {
@@ -1045,7 +1090,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			})
 		}
 
-		if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+		maxExemplarsForUser := i.getMaxExemplars(userID)
+		if maxExemplarsForUser > 0 {
 			// app.AppendExemplar currently doesn't create the series, it must
 			// already exist.  If it does not then drop.
 			if ref == 0 && len(ts.Exemplars) > 0 {
@@ -1877,7 +1923,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	enableExemplars := false
-	if i.cfg.BlocksStorageConfig.TSDB.MaxExemplars > 0 {
+	maxExemplarsForUser := i.getMaxExemplars(userID)
+	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
 	// Create a new user database
@@ -1894,7 +1941,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		BlocksToDelete:                 userDB.blocksToDelete,
 		EnableExemplarStorage:          enableExemplars,
 		IsolationDisabled:              true,
-		MaxExemplars:                   int64(i.cfg.BlocksStorageConfig.TSDB.MaxExemplars),
+		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 	}, nil)

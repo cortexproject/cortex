@@ -55,6 +55,7 @@ type Limits struct {
 	EnforceMetricName         bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
 	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
 	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
+	MaxExemplars              int                 `yaml:"max_exemplars" json:"max_exemplars"`
 
 	// Ingester enforced limits.
 	// Series
@@ -63,6 +64,7 @@ type Limits struct {
 	MaxLocalSeriesPerMetric  int `yaml:"max_series_per_metric" json:"max_series_per_metric"`
 	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
 	MaxLocalMetadataPerMetric           int `yaml:"max_metadata_per_metric" json:"max_metadata_per_metric"`
@@ -147,6 +149,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
+	f.IntVar(&l.MaxExemplars, "block-storage.tsdb.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 
 	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalMetadataPerMetric, "ingester.max-metadata-per-metric", 10, "The maximum number of metadata per metric, per ingester. 0 to disable.")
@@ -562,6 +565,11 @@ func (o *Overrides) AlertmanagerReceiversBlockCIDRNetworks(user string) []flagex
 // in the Alertmanager receivers for the given user.
 func (o *Overrides) AlertmanagerReceiversBlockPrivateAddresses(user string) bool {
 	return o.GetOverridesForUser(user).AlertmanagerReceiversBlockPrivateAddresses
+}
+
+// MaxExemplars gets the maximum number of exemplars that will be stored per user. 0 or less means disabled.
+func (o *Overrides) MaxExemplars(userID string) int {
+	return o.GetOverridesForUser(userID).MaxExemplars
 }
 
 // Notification limits are special. Limits are returned in following order:

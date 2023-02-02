@@ -1,0 +1,15 @@
+overrides:
+  tenant1:
+    ingestion_rate: 10000
+    max_exemplars: 1
+  tenant2:
+    ingestion_rate: 10000
+    max_exemplars: 0
+
+multi_kv_config:
+  mirror_enabled: false
+  primary: memberlist
+
+ingester_limits:
+  max_ingestion_rate: 42000
+  max_inflight_push_requests: 10000

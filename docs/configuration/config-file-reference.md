@@ -2722,7 +2722,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Enables support for exemplars in TSDB and sets the maximum number that will be
 # stored. less than zero means disabled. If the value is set to zero, cortex
 # will fallback to blocks-storage.tsdb.max-exemplars value.
-# CLI flag: -block-storage.tsdb.max-exemplars
+# CLI flag: -ingester.max-exemplars
 [max_exemplars: <int> | default = 0]
 
 # The maximum number of series for which a query can fetch samples from each

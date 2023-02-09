@@ -35,6 +35,7 @@
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
+* [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

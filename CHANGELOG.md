@@ -16,6 +16,7 @@
 * [ENHANCEMENT] Query Frontend: Skip instant query roundtripper if sharding is not applicable. #5062
 * [ENHANCEMENT] Push reduce one hash operation of Labels. #4945 #5114
 * [ENHANCEMENT] Alertmanager: Added `-alertmanager.enabled-tenants` and `-alertmanager.disabled-tenants` to explicitly enable or disable alertmanager for specific tenants. #5116
+* [ENHANCEMENT] Add retry logic to S3 bucket client. #5135
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
@@ -34,6 +35,7 @@
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
+* [BUGFIX] Compactor: Fixed shuffle sharding planner to not fail the compaction if visit marker file is locked by another compactor. #5135
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

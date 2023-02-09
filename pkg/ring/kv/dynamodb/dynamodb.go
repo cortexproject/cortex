@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -176,38 +177,53 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 		return nil
 	}
 
-	writeRequests := make([]*dynamodb.WriteRequest, 0, writeRequestSize)
+	// Current limit of 25 actions per batch
+	// https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html
+	writeRequestsSlices := make([][]*dynamodb.WriteRequest, int(math.Ceil(float64(writeRequestSize)/25.0)))
+	for i := 0; i < len(writeRequestsSlices); i++ {
+		writeRequestsSlices[i] = make([]*dynamodb.WriteRequest, 0, 25)
+	}
+
+	currIdx := 0
 	for key, data := range put {
 		item := kv.generatePutItemRequest(key, data)
-		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.WriteRequest{
 			PutRequest: &dynamodb.PutRequest{
 				Item: item,
 			},
 		})
+		if len(writeRequestsSlices[currIdx]) == 25 {
+			currIdx++
+		}
 	}
 
 	for _, key := range delete {
 		item := generateItemKey(key)
-		writeRequests = append(writeRequests, &dynamodb.WriteRequest{
+		writeRequestsSlices[currIdx] = append(writeRequestsSlices[currIdx], &dynamodb.WriteRequest{
 			DeleteRequest: &dynamodb.DeleteRequest{
 				Key: item,
 			},
 		})
+		if len(writeRequestsSlices[currIdx]) == 25 {
+			currIdx++
+		}
 	}
 
-	input := &dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]*dynamodb.WriteRequest{
-			*kv.tableName: writeRequests,
-		},
-	}
+	for _, slice := range writeRequestsSlices {
+		input := &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]*dynamodb.WriteRequest{
+				*kv.tableName: slice,
+			},
+		}
 
-	resp, err := kv.ddbClient.BatchWriteItemWithContext(ctx, input)
-	if err != nil {
-		return err
-	}
+		resp, err := kv.ddbClient.BatchWriteItemWithContext(ctx, input)
+		if err != nil {
+			return err
+		}
 
-	if resp.UnprocessedItems != nil && len(resp.UnprocessedItems) > 0 {
-		return fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
+		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems) > 0 {
+			return fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
+		}
 	}
 
 	return nil

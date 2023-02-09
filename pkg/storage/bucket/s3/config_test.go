@@ -18,6 +18,9 @@ import (
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
 	BucketLookupType: BucketAutoLookup,
+	OperationRetries: 5,
+	RetryMinBackoff:  10 * time.Second,
+	RetryMaxBackoff:  time.Minute,
 	HTTP: HTTPConfig{
 		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -55,6 +58,9 @@ access_key_id: test-access-key-id
 insecure: true
 signature_version: test-signature-version
 bucket_lookup_type: virtual-hosted
+operation_retries: 10
+retry_min_backoff: 5s
+retry_max_backoff: 2m
 sse:
   type: test-type
   kms_key_id: test-kms-key-id
@@ -78,6 +84,9 @@ http:
 				Insecure:         true,
 				SignatureVersion: "test-signature-version",
 				BucketLookupType: BucketVirtualHostLookup,
+				OperationRetries: 10,
+				RetryMinBackoff:  5 * time.Second,
+				RetryMaxBackoff:  2 * time.Minute,
 				SSE: SSEConfig{
 					Type:                 "test-type",
 					KMSKeyID:             "test-kms-key-id",

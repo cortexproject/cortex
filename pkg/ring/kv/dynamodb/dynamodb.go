@@ -14,6 +14,12 @@ import (
 	"github.com/go-kit/log"
 )
 
+const (
+	// DdbBatchSizeLimit Current limit of 25 actions per batch
+	// https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html
+	DdbBatchSizeLimit = 25
+)
+
 type dynamodbKey struct {
 	primaryKey string
 	sortKey    string
@@ -177,11 +183,9 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 		return nil
 	}
 
-	// Current limit of 25 actions per batch
-	// https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_BatchWriteItem.html
-	writeRequestsSlices := make([][]*dynamodb.WriteRequest, int(math.Ceil(float64(writeRequestSize)/25.0)))
+	writeRequestsSlices := make([][]*dynamodb.WriteRequest, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
 	for i := 0; i < len(writeRequestsSlices); i++ {
-		writeRequestsSlices[i] = make([]*dynamodb.WriteRequest, 0, 25)
+		writeRequestsSlices[i] = make([]*dynamodb.WriteRequest, 0, DdbBatchSizeLimit)
 	}
 
 	currIdx := 0
@@ -192,7 +196,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 				Item: item,
 			},
 		})
-		if len(writeRequestsSlices[currIdx]) == 25 {
+		if len(writeRequestsSlices[currIdx]) == DdbBatchSizeLimit {
 			currIdx++
 		}
 	}
@@ -204,7 +208,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 				Key: item,
 			},
 		})
-		if len(writeRequestsSlices[currIdx]) == 25 {
+		if len(writeRequestsSlices[currIdx]) == DdbBatchSizeLimit {
 			currIdx++
 		}
 	}

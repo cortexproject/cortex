@@ -1479,7 +1479,7 @@ s3:
 
   # How many times to retry a failed AWS S3 operation.
   # CLI flag: -ruler-storage.s3.operation-retries
-  [operation_retries: <int> | default = 5]
+  [operation_retries: <int> | default = 1]
 
   # The minimum backoff time when retrying failed AWS S3 operation.
   # CLI flag: -ruler-storage.s3.retry-min-backoff
@@ -1968,7 +1968,7 @@ s3:
 
   # How many times to retry a failed AWS S3 operation.
   # CLI flag: -alertmanager-storage.s3.operation-retries
-  [operation_retries: <int> | default = 5]
+  [operation_retries: <int> | default = 1]
 
   # The minimum backoff time when retrying failed AWS S3 operation.
   # CLI flag: -alertmanager-storage.s3.retry-min-backoff
@@ -3244,7 +3244,7 @@ s3:
 
   # How many times to retry a failed AWS S3 operation.
   # CLI flag: -blocks-storage.s3.operation-retries
-  [operation_retries: <int> | default = 5]
+  [operation_retries: <int> | default = 1]
 
   # The minimum backoff time when retrying failed AWS S3 operation.
   # CLI flag: -blocks-storage.s3.retry-min-backoff

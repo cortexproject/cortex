@@ -21,7 +21,7 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
 - **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data. This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
-Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
+Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems.
 Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, exposing a Prometheus-compatible query API.
 
 ## Documentation
@@ -139,18 +139,8 @@ Your feedback is always welcome.
 
 ## Hosted Cortex (Prometheus as a service)
 
-There are several commercial services where you can use Cortex
+These are commercial services where you can use Cortex
 on-demand:
-
-### Weave Cloud
-
-[Weave Cloud](https://cloud.weave.works) from
-[Weaveworks](https://weave.works) lets you deploy, manage, and monitor
-container-based applications. Sign up at https://cloud.weave.works
-and follow the instructions there. Additional help can also be found
-in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/).
-
-[Instrumenting Your App: Best Practices](https://www.weave.works/docs/cloud/latest/tasks/monitor/best-instrumenting/)
 
 ### Amazon Managed Service for Prometheus (AMP)
 [Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/) is a Prometheus-compatible monitoring service that makes it easy to monitor containerized applications at scale. It is a highly available, secure, and managed monitoring for your containers. Get started [here](https://console.aws.amazon.com/prometheus/home). To learn more about the AMP, reference our [documentation](https://docs.aws.amazon.com/prometheus/latest/userguide/what-is-Amazon-Managed-Service-Prometheus.html) and [Getting Started with AMP blog](https://aws.amazon.com/blogs/mt/getting-started-amazon-managed-service-for-prometheus/).

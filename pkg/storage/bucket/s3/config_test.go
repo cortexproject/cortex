@@ -18,7 +18,7 @@ import (
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
 	BucketLookupType: BucketAutoLookup,
-	OperationRetries: 5,
+	OperationRetries: 1,
 	RetryMinBackoff:  10 * time.Second,
 	RetryMaxBackoff:  time.Minute,
 	HTTP: HTTPConfig{

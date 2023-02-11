@@ -22,7 +22,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 
 	"github.com/cortexproject/cortex/pkg/tracing/migration"
-	"github.com/cortexproject/cortex/pkg/tracing/sampler"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -147,11 +146,11 @@ func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Export
 	switch strings.ToLower(c.Otel.ExporterType) {
 	case "awsxray":
 		options = append(options, sdktrace.WithIDGenerator(xray.NewIDGenerator()))
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewXrayTraceIDRatioBased(c.Otel.SampleRatio))))
 		propagator = xray.Propagator{}
 	default:
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 	}
+
+	options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 
 	return propagator, sdktrace.NewTracerProvider(options...)
 }

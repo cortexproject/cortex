@@ -65,8 +65,19 @@ const (
 	errMaxRulesPerRuleGroupPerUserLimitExceeded = "per-user rules per rule group limit (limit: %d actual: %d) exceeded"
 
 	// errors
-	errListAllUser = "unable to list the ruler users"
+	errListAllUser           = "unable to list the ruler users"
+	errUnableToObtainQuorum  = "unable to obtain quorum result for rule group"
+	errUnableToRetrieveRules = "unable to retrieve rules from rulers"
 )
+
+type QuorumType uint8
+
+const (
+	Weak QuorumType = iota
+	Strong
+)
+
+type RuleGroupHashFunc func(g *rulespb.RuleGroupDesc) uint32
 
 // Config is the configuration for the recording rules server.
 type Config struct {
@@ -237,6 +248,10 @@ type Ruler struct {
 	manager    MultiTenantManager
 	limits     RulesLimits
 
+	// Hash function that decides whether a rule owns a rulegroup.
+	// Typically only customized when set up test scenarios.
+	ruleGroupHashFunc RuleGroupHashFunc
+
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
@@ -254,10 +269,10 @@ type Ruler struct {
 
 // NewRuler creates a new ruler from a distributor and chunk store.
 func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*Ruler, error) {
-	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg))
+	return newRuler(cfg, manager, reg, logger, ruleStore, limits, newRulerClientPool(cfg.ClientTLSConfig, logger, reg), tokenForGroup)
 }
 
-func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
+func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool, ruleGroupHashFunc RuleGroupHashFunc) (*Ruler, error) {
 	ruler := &Ruler{
 		cfg:            cfg,
 		store:          ruleStore,
@@ -277,6 +292,8 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 			Name: "cortex_ruler_sync_rules_total",
 			Help: "Total number of times the ruler sync operation triggered.",
 		}, []string{"reason"}),
+
+		ruleGroupHashFunc: ruleGroupHashFunc,
 	}
 
 	if len(cfg.EnabledTenants) > 0 {
@@ -412,15 +429,20 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
-	hash := tokenForGroup(g)
+func (r *Ruler) instanceOwnsRuleGroup(ring ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
+	hash := r.ruleGroupHashFunc(g)
 
-	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
+	rlrs, err := ring.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	return rlrs.Instances[0].Addr == instanceAddr, nil
+	for _, instance := range rlrs.Instances {
+		if instance.Addr == instanceAddr {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -541,7 +563,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := r.filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -599,7 +621,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := r.filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
@@ -619,13 +641,12 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 // filterRuleGroups returns map of rule groups that given instance "owns" based on supplied ring.
 // This function only uses User, Namespace, and Name fields of individual RuleGroups.
 //
-// Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
-// but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+// NOTE: this method operates on a ring passed as a parameter, not on Ruler.ring
+func (r *Ruler) filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
+		owned, err := r.instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
 			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
@@ -645,14 +666,14 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, quorumType QuorumType) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, userID, quorumType)
 	}
 
 	return r.getLocalRules(userID)
@@ -745,52 +766,199 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
-	ring := ring.ReadRing(r.ring)
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType QuorumType) ([]*GroupStateDesc, error) {
+	infoLogger := level.Info(r.logger)
+	debugLogger := level.Debug(r.logger)
 
-	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		ring = r.ring.ShuffleShard(userID, shardSize)
+	type instanceResult struct {
+		res      []*GroupStateDesc
+		err      error
+		instance *ring.InstanceDesc
 	}
 
-	rulers, err := ring.GetReplicationSetForOperation(RingOp)
+	type groupCounter struct {
+		group *GroupStateDesc
+		count int
+	}
+
+	rulerRing := ring.ReadRing(r.ring)
+
+	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		rulerRing = r.ring.ShuffleShard(userID, shardSize)
+	}
+
+	rulers, err := rulerRing.GetReplicationSetForOperation(RingOp)
 	if err != nil {
 		return nil, err
 	}
+
+	if rulerRing.ReplicationFactor() <= 2 {
+		// strong quorums are only supported for RF >= 3
+		quorumType = Weak
+	}
+
+	ch := make(chan instanceResult, len(rulers.Instances))
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	ctx, err = user.InjectIntoGRPCRequest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to inject user ID into grpc request, %v", err)
 	}
 
-	var (
-		mergedMx sync.Mutex
-		merged   []*GroupStateDesc
-	)
+	// Spawn a goroutine for each instance.
+	for i := range rulers.Instances {
+		go func(ruler *ring.InstanceDesc) {
+			result, err := r.getDelegateRules(ctx, ruler)
+			ch <- instanceResult{
+				res:      result,
+				err:      err,
+				instance: ruler,
+			}
+		}(&rulers.Instances[i])
+	}
 
-	// Concurrently fetch rules from all rulers. Since rules are not replicated,
-	// we need all requests to succeed.
-	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
-		addr := job.(string)
+	groupCounterMap := make(map[string]*[]*groupCounter)
 
-		rulerClient, err := r.clientsPool.GetClientFor(addr)
-		if err != nil {
-			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
+	enough := false                                             // loop termination flag
+	quorum := (rulerRing.ReplicationFactor() / 2) + 1           // size of quorum within a replication set
+	numSucceeded := 0                                           // number of successful calls
+	minSucceededForQuorum := len(rulers.Instances) - quorum + 1 // number of successful responses needed to guarantee a quorum
+	numErrors := 0                                              // number of calls with errors
+	maxErrors := len(rulers.Instances)                          // maximum errors we can accept before we stop waiting for calls
+	if quorumType == Strong {
+		maxErrors = quorum
+	}
+
+	for !enough {
+		select {
+		case res := <-ch:
+			if res.err != nil {
+				infoLogger.Log("msg", "Delegated ListRules failed", "instance", res.instance, "err", res.err)
+				numErrors++
+			} else {
+				debugLogger.Log("msg", "Delegated ListRules returned", "instance", res.instance, "groupCount", len(res.res))
+				numSucceeded++
+				for _, groupStateDesc := range res.res {
+					key := fmt.Sprintf("%s:%s", groupStateDesc.Group.Namespace, groupStateDesc.Group.Name)
+					if oldGroupCounters, ok := groupCounterMap[key]; ok {
+						wasGroupCounted := false
+						for _, oldGroupCounter := range *oldGroupCounters {
+							if groupStateDescEquals(oldGroupCounter.group.Group, groupStateDesc.Group) {
+								oldGroupCounter.count++
+								wasGroupCounted = true
+								break
+							}
+						}
+						if !wasGroupCounted {
+							newGroupCounter := groupCounter{
+								group: groupStateDesc,
+								count: 1,
+							}
+							newGroupCounters := append(*oldGroupCounters, &newGroupCounter)
+							groupCounterMap[key] = &newGroupCounters
+						}
+					} else {
+						newGroupCounter := groupCounter{
+							group: groupStateDesc,
+							count: 1,
+						}
+						groupCounters := make([]*groupCounter, 1, rulerRing.ReplicationFactor())
+						groupCounters[0] = &newGroupCounter
+						groupCounterMap[key] = &groupCounters
+					}
+				}
+
+				// only do early loop termination if rf>1
+				if rulerRing.ReplicationFactor() > 1 && numSucceeded >= minSucceededForQuorum {
+					foundQuorum := true
+					for _, groupCounters := range groupCounterMap {
+						maxCount := 0
+						for _, groupCounter := range *groupCounters {
+							if groupCounter.count > maxCount {
+								maxCount = groupCounter.count
+							}
+						}
+						if maxCount < quorum {
+							foundQuorum = false
+							break
+						}
+					}
+					enough = enough || foundQuorum
+				}
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
-		if err != nil {
-			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
+		if numErrors >= maxErrors {
+			infoLogger.Log("msg", "Terminating result loop -- maxErrors reached", "numErrors", numErrors, "maxErrors", maxErrors)
+			enough = true
+		} else if (numErrors + numSucceeded) >= len(rulers.Instances) {
+			debugLogger.Log("msg", "Terminating result loop -- max calls reached", "numErrors", numErrors, "numSucceeded", numSucceeded, "instances", len(rulers.Instances))
+			enough = true
 		}
+	}
 
-		mergedMx.Lock()
-		merged = append(merged, newGrps.Groups...)
-		mergedMx.Unlock()
+	if numErrors >= maxErrors {
+		return nil, errors.New(errUnableToRetrieveRules)
+	}
 
-		return nil
-	})
+	merged := make(map[string]*GroupStateDesc)
+	for groupName, groupCounters := range groupCounterMap {
+		quorumFound := false
+		var mostRecentlyEvaluated *groupCounter = nil
+		for _, groupCounter := range *groupCounters {
+			if mostRecentlyEvaluated == nil || mostRecentlyEvaluated.group.EvaluationTimestamp.Before(groupCounter.group.EvaluationTimestamp) {
+				mostRecentlyEvaluated = groupCounter
+			}
+			if groupCounter.count >= quorum {
+				merged[groupName] = groupCounter.group
+				quorumFound = true
+				break
+			}
+		}
+		if !quorumFound {
+			if quorumType == Strong {
+				debugLogger.Log("msg", "quorum not found -- returning error", "quorumType", quorumType, "group", groupName)
+				return nil, errors.Errorf(errUnableToObtainQuorum+" %s", groupName)
+			}
+			debugLogger.Log("msg", "quorum not found -- using last evaluated", "quorumType", quorumType, "group", groupName, "lastEvaluationTime", mostRecentlyEvaluated.group.EvaluationTimestamp.String())
+			merged[groupName] = mostRecentlyEvaluated.group
+		}
+	}
 
-	return merged, err
+	result := make([]*GroupStateDesc, 0, len(merged))
+
+	for _, r := range merged {
+		result = append(result, r)
+	}
+
+	return result, err
+}
+
+func groupStateDescEquals(a *rulespb.RuleGroupDesc, b *rulespb.RuleGroupDesc) bool {
+	// compares Rules excluding custom Options
+	aWithoutOptions := *a
+	aWithoutOptions.Options = nil
+	bWithoutOptions := *b
+	bWithoutOptions.Options = nil
+	return aWithoutOptions.Equal(bWithoutOptions)
+}
+
+func (r *Ruler) getDelegateRules(ctx context.Context, instance *ring.InstanceDesc) ([]*GroupStateDesc, error) {
+	level.Debug(r.logger).Log("msg", "Delegating ListRules", "targetInstance", instance.Addr)
+	grpcClient, err := r.clientsPool.GetClientFor(instance.Addr)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to get client for ruler %s", instance.Addr)
+	}
+
+	groupStates, err := grpcClient.Rules(ctx, &RulesRequest{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "unable to retrieve rules from ruler %s", instance.Addr)
+	}
+	return groupStates.Groups, nil
 }
 
 // Rules implements the rules service
@@ -852,7 +1020,7 @@ func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Reque
 
 	err = r.store.DeleteNamespace(req.Context(), userID, "") // Empty namespace = delete all rule groups.
 	if err != nil && !errors.Is(err, rulestore.ErrGroupNamespaceNotFound) {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 

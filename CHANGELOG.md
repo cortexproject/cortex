@@ -18,6 +18,7 @@
 * [ENHANCEMENT] Push reduce one hash operation of Labels. #4945 #5114
 * [ENHANCEMENT] Alertmanager: Added `-alertmanager.enabled-tenants` and `-alertmanager.disabled-tenants` to explicitly enable or disable alertmanager for specific tenants. #5116
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.17`. #5132
+* [ENHANCEMENT] Ruler: enable ruler HA by having replication factor more than 3. We will also use the prometheus RuleGroupPostProcessFunc to sync for state before each rule group evaluation. Optional quorum parameter added to Prometheus-compatible ListRules and ListAlerts APIs to control how replicated ruler data is returned.
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000

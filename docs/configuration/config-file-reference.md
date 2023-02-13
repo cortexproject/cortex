@@ -1389,6 +1389,10 @@ ring:
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
+  # The replication factor to use when evaluating rules.
+  # CLI flag: -ruler.ring.replication-factor
+  [replication_factor: <int> | default = 1]
+
   # Name of network interface to read address from.
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]

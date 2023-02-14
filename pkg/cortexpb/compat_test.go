@@ -7,7 +7,6 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/efficientgo/core/testutil"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/textparse"
@@ -99,7 +98,7 @@ func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 	for _, tt := range tc {
 		t.Run(tt.desc, func(t *testing.T) {
 			m := MetricMetadataMetricTypeToMetricType(tt.input)
-			testutil.Equals(t, tt.expected, m)
+			assert.Equal(t, tt.expected, m)
 		})
 	}
 }

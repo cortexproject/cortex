@@ -519,7 +519,8 @@ blocks_storage:
     [consistency_delay: <duration> | default = 0s]
 
     index_cache:
-      # The index cache backend type. Supported values: inmemory, memcached.
+      # The index cache backend type. Supported values: inmemory, memcached,
+      # redis.
       # CLI flag: -blocks-storage.bucket-store.index-cache.backend
       [backend: <string> | default = "inmemory"]
 
@@ -576,6 +577,113 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
 
+      redis:
+        # Comma separated list of redis addresses. Supported prefixes are: dns+
+        # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+        # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+        # that).
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.addresses
+        [addresses: <string> | default = ""]
+
+        # Redis username.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.username
+        [username: <string> | default = ""]
+
+        # Redis password.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.password
+        [password: <string> | default = ""]
+
+        # Database to be selected after connecting to the server.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.db
+        [db: <int> | default = 0]
+
+        # Specifies the master's name. Must be not empty for Redis Sentinel.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.master-name
+        [master_name: <string> | default = ""]
+
+        # Maximum number of socket connections.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.pool-size
+        [pool_size: <int> | default = 100]
+
+        # Specifies the minimum number of idle connections, which is useful when
+        # it is slow to establish new connections.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.min-idle-conns
+        [min_idle_conns: <int> | default = 10]
+
+        # The maximum number of concurrent GetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for mget.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.get-multi-batch-size
+        [get_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent SetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-set-multi-concurrency
+        [max_set_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for pipeline set.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-multi-batch-size
+        [set_multi_batch_size: <int> | default = 100]
+
+        # Client dial timeout.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.dial-timeout
+        [dial_timeout: <duration> | default = 5s]
+
+        # Client read timeout.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.read-timeout
+        [read_timeout: <duration> | default = 3s]
+
+        # Client write timeout.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.write-timeout
+        [write_timeout: <duration> | default = 3s]
+
+        # Amount of time after which client closes idle connections. Should be
+        # less than server's timeout. -1 disables idle timeout check.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.idle-timeout
+        [idle_timeout: <duration> | default = 5m]
+
+        # Connection age at which client retires (closes) the connection.
+        # Default 0 is to not close aged connections.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-conn-age
+        [max_conn_age: <duration> | default = 0s]
+
+        # Whether to enable tls for redis connection.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-enabled
+        [tls_enabled: <boolean> | default = false]
+
+        # Path to the client certificate file, which will be used for
+        # authenticating with the server. Also requires the key path to be
+        # configured.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-cert-path
+        [tls_cert_path: <string> | default = ""]
+
+        # Path to the key file for the client certificate. Also requires the
+        # client certificate to be configured.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-key-path
+        [tls_key_path: <string> | default = ""]
+
+        # Path to the CA certificates file to validate server certificate
+        # against. If not set, the host's root CA certificates are used.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-ca-path
+        [tls_ca_path: <string> | default = ""]
+
+        # Override the expected name on the server certificate.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-server-name
+        [tls_server_name: <string> | default = ""]
+
+        # Skip validating server certificate.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-insecure-skip-verify
+        [tls_insecure_skip_verify: <boolean> | default = false]
+
+        # If not zero then client-side caching is enabled. Client-side caching
+        # is when data is stored in memory instead of fetching data each time.
+        # See https://redis.io/docs/manual/client-side-caching/ for more info.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
+        [cache_size: <int> | default = 0]
+
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
@@ -627,6 +735,113 @@ blocks_storage:
         # like GCP and AWS
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
+
+      redis:
+        # Comma separated list of redis addresses. Supported prefixes are: dns+
+        # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+        # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+        # that).
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.addresses
+        [addresses: <string> | default = ""]
+
+        # Redis username.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.username
+        [username: <string> | default = ""]
+
+        # Redis password.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.password
+        [password: <string> | default = ""]
+
+        # Database to be selected after connecting to the server.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.db
+        [db: <int> | default = 0]
+
+        # Specifies the master's name. Must be not empty for Redis Sentinel.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.master-name
+        [master_name: <string> | default = ""]
+
+        # Maximum number of socket connections.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.pool-size
+        [pool_size: <int> | default = 100]
+
+        # Specifies the minimum number of idle connections, which is useful when
+        # it is slow to establish new connections.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.min-idle-conns
+        [min_idle_conns: <int> | default = 10]
+
+        # The maximum number of concurrent GetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for mget.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.get-multi-batch-size
+        [get_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent SetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-set-multi-concurrency
+        [max_set_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for pipeline set.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-multi-batch-size
+        [set_multi_batch_size: <int> | default = 100]
+
+        # Client dial timeout.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.dial-timeout
+        [dial_timeout: <duration> | default = 5s]
+
+        # Client read timeout.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.read-timeout
+        [read_timeout: <duration> | default = 3s]
+
+        # Client write timeout.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.write-timeout
+        [write_timeout: <duration> | default = 3s]
+
+        # Amount of time after which client closes idle connections. Should be
+        # less than server's timeout. -1 disables idle timeout check.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.idle-timeout
+        [idle_timeout: <duration> | default = 5m]
+
+        # Connection age at which client retires (closes) the connection.
+        # Default 0 is to not close aged connections.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-conn-age
+        [max_conn_age: <duration> | default = 0s]
+
+        # Whether to enable tls for redis connection.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-enabled
+        [tls_enabled: <boolean> | default = false]
+
+        # Path to the client certificate file, which will be used for
+        # authenticating with the server. Also requires the key path to be
+        # configured.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-cert-path
+        [tls_cert_path: <string> | default = ""]
+
+        # Path to the key file for the client certificate. Also requires the
+        # client certificate to be configured.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-key-path
+        [tls_key_path: <string> | default = ""]
+
+        # Path to the CA certificates file to validate server certificate
+        # against. If not set, the host's root CA certificates are used.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-ca-path
+        [tls_ca_path: <string> | default = ""]
+
+        # Override the expected name on the server certificate.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-server-name
+        [tls_server_name: <string> | default = ""]
+
+        # Skip validating server certificate.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-insecure-skip-verify
+        [tls_insecure_skip_verify: <boolean> | default = false]
+
+        # If not zero then client-side caching is enabled. Client-side caching
+        # is when data is stored in memory instead of fetching data each time.
+        # See https://redis.io/docs/manual/client-side-caching/ for more info.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.cache-size
+        [cache_size: <int> | default = 0]
 
       # Size of each subrange that bucket object is split into for better
       # caching.
@@ -698,6 +913,113 @@ blocks_storage:
         # like GCP and AWS
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
+
+      redis:
+        # Comma separated list of redis addresses. Supported prefixes are: dns+
+        # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+        # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+        # that).
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.addresses
+        [addresses: <string> | default = ""]
+
+        # Redis username.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.username
+        [username: <string> | default = ""]
+
+        # Redis password.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.password
+        [password: <string> | default = ""]
+
+        # Database to be selected after connecting to the server.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.db
+        [db: <int> | default = 0]
+
+        # Specifies the master's name. Must be not empty for Redis Sentinel.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.master-name
+        [master_name: <string> | default = ""]
+
+        # Maximum number of socket connections.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.pool-size
+        [pool_size: <int> | default = 100]
+
+        # Specifies the minimum number of idle connections, which is useful when
+        # it is slow to establish new connections.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.min-idle-conns
+        [min_idle_conns: <int> | default = 10]
+
+        # The maximum number of concurrent GetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-get-multi-concurrency
+        [max_get_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for mget.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.get-multi-batch-size
+        [get_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent SetMulti() operations. If set to 0,
+        # concurrency is unlimited.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-set-multi-concurrency
+        [max_set_multi_concurrency: <int> | default = 100]
+
+        # The maximum size per batch for pipeline set.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-multi-batch-size
+        [set_multi_batch_size: <int> | default = 100]
+
+        # Client dial timeout.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.dial-timeout
+        [dial_timeout: <duration> | default = 5s]
+
+        # Client read timeout.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.read-timeout
+        [read_timeout: <duration> | default = 3s]
+
+        # Client write timeout.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.write-timeout
+        [write_timeout: <duration> | default = 3s]
+
+        # Amount of time after which client closes idle connections. Should be
+        # less than server's timeout. -1 disables idle timeout check.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.idle-timeout
+        [idle_timeout: <duration> | default = 5m]
+
+        # Connection age at which client retires (closes) the connection.
+        # Default 0 is to not close aged connections.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-conn-age
+        [max_conn_age: <duration> | default = 0s]
+
+        # Whether to enable tls for redis connection.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-enabled
+        [tls_enabled: <boolean> | default = false]
+
+        # Path to the client certificate file, which will be used for
+        # authenticating with the server. Also requires the key path to be
+        # configured.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-cert-path
+        [tls_cert_path: <string> | default = ""]
+
+        # Path to the key file for the client certificate. Also requires the
+        # client certificate to be configured.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-key-path
+        [tls_key_path: <string> | default = ""]
+
+        # Path to the CA certificates file to validate server certificate
+        # against. If not set, the host's root CA certificates are used.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-ca-path
+        [tls_ca_path: <string> | default = ""]
+
+        # Override the expected name on the server certificate.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-server-name
+        [tls_server_name: <string> | default = ""]
+
+        # Skip validating server certificate.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-insecure-skip-verify
+        [tls_insecure_skip_verify: <boolean> | default = false]
+
+        # If not zero then client-side caching is enabled. Client-side caching
+        # is when data is stored in memory instead of fetching data each time.
+        # See https://redis.io/docs/manual/client-side-caching/ for more info.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.cache-size
+        [cache_size: <int> | default = 0]
 
       # How long to cache list of tenants in the bucket.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl

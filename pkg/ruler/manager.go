@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -359,7 +360,7 @@ func syncAlertsActiveAt(g *promRules.Group, lastEvalTimestamp time.Time, logger 
 			// Series found for the 'for' state.
 			var v float64
 			it := s.Iterator()
-			for it.Next() {
+			for it.Next() != chunkenc.ValNone {
 				_, v = it.At()
 			}
 			if it.Err() != nil {

@@ -922,8 +922,8 @@ github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
-# go.etcd.io/etcd/api/v3 v3.5.6
-## explicit; go 1.16
+# go.etcd.io/etcd/api/v3 v3.5.7
+## explicit; go 1.17
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
 go.etcd.io/etcd/api/v3/membershippb

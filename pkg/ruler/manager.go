@@ -26,6 +26,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -41,6 +42,8 @@ type DefaultMultiTenantManager struct {
 	userManagerMtx     sync.Mutex
 	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
+
+	haTracker *ha.HATracker
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -65,6 +68,15 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		reg.MustRegister(userManagerMetrics)
 	}
 
+	var haTracker *ha.HATracker
+	if cfg.Ring.ReplicationFactor > 1 {
+		haTrackerStatusConfig := ha.HATrackerStatusConfig{
+			Title:             "Cortex Ruler HA Tracker Status",
+			ReplicaGroupLabel: "RuleGroup",
+		}
+		haTracker, err = ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), nil, haTrackerStatusConfig, reg, "ruler-hatracker", logger)
+	}
+
 	return &DefaultMultiTenantManager{
 		cfg:                cfg,
 		notifierCfg:        ncfg,
@@ -73,6 +85,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		mapper:             newMapper(cfg.RulePath, logger),
 		userManagers:       map[string]RulesManager{},
 		userManagerMetrics: userManagerMetrics,
+		haTracker:          haTracker,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -156,6 +169,17 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
+
+		//dedupeEvaluation := func(evalCtx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+		//	replicaGroup := RuleGroupReplicaGroup(g)
+		//	err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
+		//	if err != nil {
+		//		level.Debug(r.logger).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "err", err)
+		//		return
+		//	}
+		//	//promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
+		//}
+
 		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), syncAlertsActiveAt)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -305,6 +329,10 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	return errs
+}
+
+func RuleGroupReplicaGroup(g *promRules.Group) string {
+	return fmt.Sprintf("%s/%s", g.File(), g.Name())
 }
 
 func syncAlertsActiveAt(g *promRules.Group, lastEvalTimestamp time.Time, logger log.Logger) error {

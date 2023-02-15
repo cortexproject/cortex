@@ -134,6 +134,8 @@ type Config struct {
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
+
+	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 }
 
 // Validate config and returns error on failure
@@ -157,6 +159,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 

@@ -26,8 +26,6 @@ type runtimeConfigValues struct {
 
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 
-	IngesterChunkStreaming *bool `yaml:"ingester_stream_chunks_when_using_blocks"`
-
 	IngesterLimits *ingester.InstanceLimits `yaml:"ingester_limits"`
 }
 

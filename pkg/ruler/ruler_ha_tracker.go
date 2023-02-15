@@ -53,7 +53,7 @@ func (cfg *HATrackerConfig) ToHATrackerConfig() ha.HATrackerConfig {
 	haCfg := ha.HATrackerConfig{}
 	flagext.DefaultValues(&haCfg)
 
-	haCfg.EnableHATracker = true
+	haCfg.EnableHATracker = true // HA tracking is enabled automatically if ring.replicationFactor > 1
 	haCfg.UpdateTimeout = cfg.UpdateTimeout
 	haCfg.UpdateTimeoutJitterMax = cfg.UpdateTimeoutJitterMax
 	haCfg.FailoverTimeout = cfg.FailoverTimeout

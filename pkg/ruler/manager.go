@@ -74,7 +74,10 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 			Title:             "Cortex Ruler HA Tracker Status",
 			ReplicaGroupLabel: "RuleGroup",
 		}
-		haTracker, err = ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), nil, haTrackerStatusConfig, reg, "ruler-hatracker", logger)
+		haTracker, err = ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), nil, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler-hatracker", logger)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &DefaultMultiTenantManager{

@@ -197,6 +197,7 @@ func updateFn(name string) func(*data) (*data, bool, error) {
 }
 
 func get(t *testing.T, kv *Client, key string) interface{} {
+	//parallel testing causes data race
 	val, err := kv.Get(context.Background(), key)
 	if err != nil {
 		t.Fatalf("Failed to get value for key %s: %v", key, err)
@@ -245,6 +246,7 @@ func casWithErr(ctx context.Context, t *testing.T, kv *Client, key string, updat
 }
 
 func TestBasicGetAndCas(t *testing.T) {
+	t.Parallel()
 	c := dataCodec{}
 
 	name := "Ing 1"
@@ -322,6 +324,7 @@ func withFixtures(t *testing.T, testFN func(t *testing.T, kv *Client)) {
 }
 
 func TestCASNoOutput(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		// should succeed with single call
 		calls := 0
@@ -335,6 +338,7 @@ func TestCASNoOutput(t *testing.T) {
 }
 
 func TestCASErrorNoRetry(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		calls := 0
 		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
@@ -347,6 +351,7 @@ func TestCASErrorNoRetry(t *testing.T) {
 }
 
 func TestCASErrorWithRetries(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		calls := 0
 		err := casWithErr(context.Background(), t, kv, key, func(d *data) (*data, bool, error) {
@@ -359,6 +364,7 @@ func TestCASErrorWithRetries(t *testing.T) {
 }
 
 func TestCASNoChange(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		cas(t, kv, key, func(in *data) (*data, bool, error) {
 			if in == nil {
@@ -388,6 +394,7 @@ func TestCASNoChange(t *testing.T) {
 }
 
 func TestCASNoChangeShortTimeout(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		cas(t, kv, key, func(in *data) (*data, bool, error) {
 			if in == nil {
@@ -417,6 +424,7 @@ func TestCASNoChangeShortTimeout(t *testing.T) {
 }
 
 func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, kv *Client) {
 		cas(t, kv, key, func(in *data) (*data, bool, error) {
 			return &data{Members: map[string]member{"nonempty": {Timestamp: time.Now().Unix()}}}, true, nil
@@ -449,6 +457,7 @@ func TestCASFailedBecauseOfVersionChanges(t *testing.T) {
 }
 
 func TestMultipleCAS(t *testing.T) {
+	//parallel testing causes data race
 	c := dataCodec{}
 
 	var cfg KVConfig
@@ -528,6 +537,7 @@ func TestMultipleCAS(t *testing.T) {
 }
 
 func TestMultipleClients(t *testing.T) {
+	t.Parallel()
 	c := dataCodec{}
 
 	const members = 10
@@ -654,6 +664,7 @@ func TestMultipleClients(t *testing.T) {
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {
+	t.Parallel()
 	c := dataCodec{}
 
 	const members = 3
@@ -763,6 +774,7 @@ func TestJoinMembersWithRetryBackoff(t *testing.T) {
 }
 
 func TestMemberlistFailsToJoin(t *testing.T) {
+	t.Parallel()
 	c := dataCodec{}
 
 	ports, err := getFreePorts(1)
@@ -798,6 +810,7 @@ func TestMemberlistFailsToJoin(t *testing.T) {
 }
 
 func TestMemberlistJoinOnStarting(t *testing.T) {
+	t.Parallel()
 	ports, err := getFreePorts(2)
 	require.NoError(t, err)
 
@@ -984,6 +997,7 @@ func (d distributedCounterCodec) EncodeMultiKey(interface{}) (map[string][]byte,
 var _ codec.Codec = &distributedCounterCodec{}
 
 func TestMultipleCodecs(t *testing.T) {
+	t.Parallel()
 	var cfg KVConfig
 	flagext.DefaultValues(&cfg)
 	cfg.TCPTransport = TCPTransportConfig{
@@ -1063,6 +1077,7 @@ func TestMultipleCodecs(t *testing.T) {
 }
 
 func TestGenerateRandomSuffix(t *testing.T) {
+	t.Parallel()
 	h1 := generateRandomSuffix(testLogger{})
 	h2 := generateRandomSuffix(testLogger{})
 	h3 := generateRandomSuffix(testLogger{})
@@ -1072,6 +1087,7 @@ func TestGenerateRandomSuffix(t *testing.T) {
 }
 
 func TestRejoin(t *testing.T) {
+	t.Parallel()
 	ports, err := getFreePorts(2)
 	require.NoError(t, err)
 
@@ -1120,6 +1136,7 @@ func TestRejoin(t *testing.T) {
 }
 
 func TestMessageBuffer(t *testing.T) {
+	t.Parallel()
 	buf := []message(nil)
 	size := 0
 
@@ -1137,6 +1154,7 @@ func TestMessageBuffer(t *testing.T) {
 }
 
 func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
+	t.Parallel()
 	codec := dataCodec{}
 
 	cfg := KVConfig{}
@@ -1199,6 +1217,7 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 }
 
 func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
+	t.Parallel()
 	codec := dataCodec{}
 
 	cfg := KVConfig{}
@@ -1260,6 +1279,7 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			//parallel testing causes data race
 			d := getData(t, client, key)
 			if tc.valueBeforeSend == nil {
 				require.True(t, d == nil || len(d.Members) == 0)
@@ -1288,6 +1308,7 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 }
 
 func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, key string, codec dataCodec) *data {
+	//parallel testing causes data race
 	kvp := KeyValuePair{}
 	require.NoError(t, kvp.Unmarshal(marshalledKVP))
 	require.Equal(t, key, kvp.Key)
@@ -1300,6 +1321,7 @@ func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, ke
 }
 
 func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value interface{}) []byte {
+	//parallel testing causes data race
 	data, err := codec.Encode(value)
 	require.NoError(t, err)
 

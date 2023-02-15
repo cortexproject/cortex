@@ -37,6 +37,7 @@ func (i mockClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckReq
 }
 
 func TestHealthCheck(t *testing.T) {
+	t.Parallel()
 	tcs := []struct {
 		client   mockClient
 		hasError bool
@@ -58,6 +59,7 @@ func TestHealthCheck(t *testing.T) {
 }
 
 func TestPoolCache(t *testing.T) {
+	t.Parallel()
 	buildCount := 0
 	factory := func(addr string) (PoolClient, error) {
 		if addr == "bad" {
@@ -120,6 +122,7 @@ func TestPoolCache(t *testing.T) {
 }
 
 func TestCleanUnhealthy(t *testing.T) {
+	t.Parallel()
 	goodAddrs := []string{"good1", "good2"}
 	badAddrs := []string{"bad1", "bad2"}
 	clients := map[string]PoolClient{}

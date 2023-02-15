@@ -14,6 +14,7 @@ import (
 )
 
 func TestParseConfig(t *testing.T) {
+	t.Parallel()
 	conf := `
 store: consul
 consul:
@@ -37,6 +38,7 @@ multi:
 }
 
 func Test_createClient_multiBackend_withSingleRing(t *testing.T) {
+	t.Parallel()
 	storeCfg, testCodec := newConfigsForTest()
 	require.NotPanics(t, func() {
 		_, err := createClient("multi", "/collector", storeCfg, testCodec, Primary, prometheus.NewPedanticRegistry(), testLogger{})
@@ -45,6 +47,7 @@ func Test_createClient_multiBackend_withSingleRing(t *testing.T) {
 }
 
 func Test_createClient_multiBackend_withMultiRing(t *testing.T) {
+	t.Parallel()
 	storeCfg1, testCodec := newConfigsForTest()
 	storeCfg2 := StoreConfig{}
 	reg := prometheus.NewPedanticRegistry()
@@ -60,6 +63,7 @@ func Test_createClient_multiBackend_withMultiRing(t *testing.T) {
 }
 
 func Test_createClient_singleBackend_mustContainRoleAndTypeLabels(t *testing.T) {
+	t.Parallel()
 	storeCfg, testCodec := newConfigsForTest()
 	reg := prometheus.NewPedanticRegistry()
 	client, err := createClient("mock", "/test1", storeCfg, testCodec, Primary, reg, testLogger{})
@@ -76,6 +80,7 @@ func Test_createClient_singleBackend_mustContainRoleAndTypeLabels(t *testing.T) 
 }
 
 func Test_createClient_multiBackend_mustContainRoleAndTypeLabels(t *testing.T) {
+	t.Parallel()
 	storeCfg, testCodec := newConfigsForTest()
 	storeCfg.Multi.MirrorEnabled = true
 	storeCfg.Multi.MirrorTimeout = 10 * time.Second

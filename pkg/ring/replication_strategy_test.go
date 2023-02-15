@@ -9,6 +9,7 @@ import (
 )
 
 func TestRingReplicationStrategy(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		replicationFactor, liveIngesters, deadIngesters int
 		expectedMaxFailure                              int
@@ -87,8 +88,9 @@ func TestRingReplicationStrategy(t *testing.T) {
 		for i := 0; i < tc.deadIngesters; i++ {
 			ingesters = append(ingesters, InstanceDesc{Addr: fmt.Sprintf("dead%d", i+1)})
 		}
-
+		tc := tc
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
+			t.Parallel()
 			strategy := NewDefaultReplicationStrategy()
 			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, tc.replicationFactor, 100*time.Second, false, time.Now().UTC())
 			if tc.expectedError == "" {
@@ -103,6 +105,7 @@ func TestRingReplicationStrategy(t *testing.T) {
 }
 
 func TestIgnoreUnhealthyInstancesReplicationStrategy(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name                         string
 		liveIngesters, deadIngesters int
@@ -149,8 +152,9 @@ func TestIgnoreUnhealthyInstancesReplicationStrategy(t *testing.T) {
 		for i := 0; i < tc.deadIngesters; i++ {
 			ingesters = append(ingesters, InstanceDesc{Addr: fmt.Sprintf("dead%d", i+1)})
 		}
-
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			strategy := NewIgnoreUnhealthyInstancesReplicationStrategy()
 			liveIngesters, maxFailure, err := strategy.Filter(ingesters, Read, 3, 100*time.Second, false, time.Now().UTC())
 			if tc.expectedError == "" {

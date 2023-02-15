@@ -8,6 +8,7 @@ import (
 )
 
 func TestShuffleShardExpectedInstancesPerZone(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		shardSize int
 		numZones  int
@@ -46,6 +47,7 @@ func TestShuffleShardExpectedInstancesPerZone(t *testing.T) {
 }
 
 func TestShuffleShardExpectedInstances(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		shardSize int
 		numZones  int
@@ -84,6 +86,7 @@ func TestShuffleShardExpectedInstances(t *testing.T) {
 }
 
 func TestYoloBuf(t *testing.T) {
+	t.Parallel()
 	s := yoloBuf("hello world")
 
 	require.Equal(t, []byte("hello world"), s)

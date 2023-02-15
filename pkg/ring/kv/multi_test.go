@@ -12,6 +12,7 @@ func boolPtr(b bool) *bool {
 }
 
 func TestMultiRuntimeConfigWithVariousEnabledValues(t *testing.T) {
+	t.Parallel()
 	testcases := map[string]struct {
 		yaml     string
 		expected *bool
@@ -22,7 +23,9 @@ func TestMultiRuntimeConfigWithVariousEnabledValues(t *testing.T) {
 	}
 
 	for name, tc := range testcases {
+		tc := tc
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			c := MultiRuntimeConfig{}
 			err := yaml.Unmarshal([]byte(tc.yaml), &c)
 			assert.NoError(t, err, tc.yaml)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestTokens_Serialization(t *testing.T) {
+	t.Parallel()
 	tokens := make(Tokens, 512)
 	for i := 0; i < 512; i++ {
 		tokens = append(tokens, uint32(rand.Int31()))
@@ -24,6 +25,7 @@ func TestTokens_Serialization(t *testing.T) {
 }
 
 func TestTokens_Equals(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		first    Tokens
 		second   Tokens
@@ -58,6 +60,7 @@ func TestTokens_Equals(t *testing.T) {
 }
 
 func TestLoadTokensFromFile_ShouldGuaranteeSortedTokens(t *testing.T) {
+	t.Parallel()
 	tmpDir := t.TempDir()
 
 	// Store tokens to file.

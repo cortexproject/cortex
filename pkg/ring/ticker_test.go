@@ -6,6 +6,7 @@ import (
 )
 
 func TestNewDisableableTicker_Enabled(t *testing.T) {
+	t.Parallel()
 	stop, ch := newDisableableTicker(10 * time.Millisecond)
 	defer stop()
 
@@ -20,6 +21,7 @@ func TestNewDisableableTicker_Enabled(t *testing.T) {
 }
 
 func TestNewDisableableTicker_Disabled(t *testing.T) {
+	t.Parallel()
 	stop, ch := newDisableableTicker(0)
 	defer stop()
 

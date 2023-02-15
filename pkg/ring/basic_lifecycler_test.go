@@ -23,6 +23,7 @@ const (
 )
 
 func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		initialInstanceID   string
 		initialInstanceDesc *InstanceDesc
@@ -80,7 +81,9 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			cfg := prepareBasicLifecyclerConfig()
 			lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
@@ -157,6 +160,7 @@ func TestBasicLifecycler_RegisterOnStart(t *testing.T) {
 }
 
 func TestBasicLifecycler_UnregisterOnStop(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
@@ -191,6 +195,7 @@ func TestBasicLifecycler_UnregisterOnStop(t *testing.T) {
 }
 
 func TestBasicLifecycler_KeepInTheRingOnStop(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.KeepInstanceInTheRingOnShutdown = true
@@ -231,6 +236,7 @@ func TestBasicLifecycler_KeepInTheRingOnStop(t *testing.T) {
 }
 
 func TestBasicLifecycler_HeartbeatWhileRunning(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = 10 * time.Millisecond
@@ -255,6 +261,7 @@ func TestBasicLifecycler_HeartbeatWhileRunning(t *testing.T) {
 }
 
 func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = 10 * time.Millisecond
@@ -293,6 +300,7 @@ func TestBasicLifecycler_HeartbeatWhileStopping(t *testing.T) {
 }
 
 func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = 10 * time.Millisecond
@@ -329,6 +337,7 @@ func TestBasicLifecycler_HeartbeatAfterBackendRest(t *testing.T) {
 }
 
 func TestBasicLifecycler_ChangeState(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	lifecycler, delegate, store, err := prepareBasicLifecycler(t, cfg)
@@ -354,6 +363,7 @@ func TestBasicLifecycler_ChangeState(t *testing.T) {
 }
 
 func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.NumTokens = 5
@@ -394,6 +404,7 @@ func TestBasicLifecycler_TokensObservePeriod(t *testing.T) {
 }
 
 func TestBasicLifecycler_updateInstance_ShouldAddInstanceToTheRingIfDoesNotExistEvenIfNotChanged(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	cfg := prepareBasicLifecyclerConfig()
 	cfg.HeartbeatPeriod = time.Hour // No heartbeat during the test.

@@ -13,6 +13,7 @@ import (
 )
 
 func TestPage(t *testing.T) {
+	t.Parallel()
 	conf := memberlist.DefaultLANConfig()
 	ml, err := memberlist.Create(conf)
 	require.NoError(t, err)
@@ -55,6 +56,7 @@ func TestPage(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
+	t.Parallel()
 	var cfg KVConfig
 	flagext.DefaultValues(&cfg)
 	kvinit := NewKVInitService(&cfg, nil, &dnsProviderMock{}, prometheus.NewPedanticRegistry())

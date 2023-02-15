@@ -48,6 +48,7 @@ func checkNormalised(d interface{}, id string) bool {
 }
 
 func TestLifecycler_JoinShouldNotBlock(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -76,6 +77,7 @@ func TestLifecycler_JoinShouldNotBlock(t *testing.T) {
 }
 
 func TestLifecycler_DefferedJoin(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -130,6 +132,7 @@ func TestLifecycler_DefferedJoin(t *testing.T) {
 }
 
 func TestLifecycler_HealthyInstancesCount(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -180,6 +183,7 @@ func TestLifecycler_HealthyInstancesCount(t *testing.T) {
 }
 
 func TestLifecycler_ZonesCount(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -223,6 +227,7 @@ func TestLifecycler_ZonesCount(t *testing.T) {
 }
 
 func TestLifecycler_NilFlushTransferer(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -247,6 +252,7 @@ func TestLifecycler_NilFlushTransferer(t *testing.T) {
 }
 
 func TestLifecycler_TwoRingsWithDifferentKeysOnTheSameKVStore(t *testing.T) {
+	t.Parallel()
 	// Create a shared ring
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
@@ -288,6 +294,7 @@ func (f *nopFlushTransferer) TransferOut(_ context.Context) error {
 }
 
 func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -395,6 +402,7 @@ func (m *MockClient) LastUpdateTime(_ string) time.Time {
 
 // Ensure a check ready returns error when consul returns a nil key and the ingester already holds keys. This happens if the ring key gets deleted
 func TestCheckReady_NoRingInKVStore(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	var ringConfig Config
@@ -426,6 +434,7 @@ func TestCheckReady_NoRingInKVStore(t *testing.T) {
 }
 
 func TestCheckReady_MinReadyDuration(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		minReadyDuration time.Duration
 		expectedMinDelay time.Duration
@@ -441,7 +450,9 @@ func TestCheckReady_MinReadyDuration(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 
 			ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
@@ -485,6 +496,7 @@ func TestCheckReady_MinReadyDuration(t *testing.T) {
 }
 
 func TestCheckReady_CheckRingHealth(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		checkRingHealthEnabled bool
 		firstJoinAfter         time.Duration
@@ -509,7 +521,9 @@ func TestCheckReady_CheckRingHealth(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 
 			ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
@@ -570,6 +584,7 @@ func (f *noopFlushTransferer) Flush()                                {}
 func (f *noopFlushTransferer) TransferOut(ctx context.Context) error { return nil }
 
 func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -673,6 +688,7 @@ func TestRestartIngester_DisabledHeartbeat_unregister_on_shutdown_false(t *testi
 }
 
 func TestTokensOnDisk(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -746,6 +762,7 @@ func TestTokensOnDisk(t *testing.T) {
 
 // JoinInLeavingState ensures that if the lifecycler starts up and the ring already has it in a LEAVING state that it still is able to auto join
 func TestJoinInLeavingState(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -799,6 +816,7 @@ func TestJoinInLeavingState(t *testing.T) {
 }
 
 func TestJoinInLeavingStateAndLessTokens(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -853,6 +871,7 @@ func TestJoinInLeavingStateAndLessTokens(t *testing.T) {
 
 // JoinInJoiningState ensures that if the lifecycler starts up and the ring already has it in a JOINING state that it still is able to auto join
 func TestJoinInJoiningState(t *testing.T) {
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -916,7 +935,7 @@ func TestRestoreOfZoneWhenOverwritten(t *testing.T) {
 	// older ingesters do not have the zone field in their ring structs
 	// so it gets removed. The current version of the lifecylcer should
 	// write it back on update during its next heartbeat.
-
+	t.Parallel()
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 

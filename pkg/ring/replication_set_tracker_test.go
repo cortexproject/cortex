@@ -8,6 +8,7 @@ import (
 )
 
 func TestDefaultResultTracker(t *testing.T) {
+	t.Parallel()
 	instance1 := InstanceDesc{Addr: "127.0.0.1"}
 	instance2 := InstanceDesc{Addr: "127.0.0.2"}
 	instance3 := InstanceDesc{Addr: "127.0.0.3"}
@@ -113,13 +114,16 @@ func TestDefaultResultTracker(t *testing.T) {
 	}
 
 	for testName, testCase := range tests {
+		testCase := testCase
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			testCase.run(t, newDefaultResultTracker(testCase.instances, testCase.maxErrors))
 		})
 	}
 }
 
 func TestZoneAwareResultTracker(t *testing.T) {
+	t.Parallel()
 	instance1 := InstanceDesc{Addr: "127.0.0.1", Zone: "zone-a"}
 	instance2 := InstanceDesc{Addr: "127.0.0.2", Zone: "zone-a"}
 	instance3 := InstanceDesc{Addr: "127.0.0.3", Zone: "zone-b"}
@@ -259,7 +263,9 @@ func TestZoneAwareResultTracker(t *testing.T) {
 	}
 
 	for testName, testCase := range tests {
+		testCase := testCase
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			testCase.run(t, newZoneAwareResultTracker(testCase.instances, testCase.maxUnavailableZones))
 		})
 	}

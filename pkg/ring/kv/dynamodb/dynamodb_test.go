@@ -15,6 +15,7 @@ import (
 )
 
 func Test_TTLDisabled(t *testing.T) {
+	t.Parallel()
 	ddbClientMock := &mockDynamodb{
 		putItem: func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput {
 			require.Nil(t, input.Item["ttl"])
@@ -29,6 +30,7 @@ func Test_TTLDisabled(t *testing.T) {
 }
 
 func Test_TTL(t *testing.T) {
+	t.Parallel()
 	ddbClientMock := &mockDynamodb{
 		putItem: func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput {
 			require.NotNil(t, input.Item["ttl"].N)
@@ -46,6 +48,7 @@ func Test_TTL(t *testing.T) {
 }
 
 func Test_Batch(t *testing.T) {
+	t.Parallel()
 	tableName := "TEST"
 	ddbKeyUpdate := dynamodbKey{
 		primaryKey: "PKUpdate",
@@ -77,6 +80,7 @@ func Test_Batch(t *testing.T) {
 }
 
 func Test_BatchSlices(t *testing.T) {
+	t.Parallel()
 	tableName := "TEST"
 	ddbKeyDelete := dynamodbKey{
 		primaryKey: "PKDelete",
@@ -114,6 +118,7 @@ func Test_BatchSlices(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			//parallel testing causes data race
 			numOfCalls = 0
 			delete := make([]dynamodbKey, 0, tc.numOfExecutions)
 			for i := 0; i < tc.numOfExecutions; i++ {
@@ -130,6 +135,7 @@ func Test_BatchSlices(t *testing.T) {
 }
 
 func Test_EmptyBatch(t *testing.T) {
+	t.Parallel()
 	tableName := "TEST"
 	ddbClientMock := &mockDynamodb{}
 
@@ -139,6 +145,7 @@ func Test_EmptyBatch(t *testing.T) {
 }
 
 func Test_Batch_UnprocessedItems(t *testing.T) {
+	t.Parallel()
 	tableName := "TEST"
 	ddbKeyDelete := dynamodbKey{
 		primaryKey: "PKDelete",
@@ -164,6 +171,7 @@ func Test_Batch_UnprocessedItems(t *testing.T) {
 }
 
 func Test_Batch_Error(t *testing.T) {
+	t.Parallel()
 	tableName := "TEST"
 	ddbKeyDelete := dynamodbKey{
 		primaryKey: "PKDelete",

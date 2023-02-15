@@ -10,6 +10,7 @@ import (
 )
 
 func TestNewRingServiceDiscovery(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		ringReplicationSet ring.ReplicationSet
 		ringErr            error
@@ -42,7 +43,9 @@ func TestNewRingServiceDiscovery(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			r := &mockReadRing{}
 			r.mockedReplicationSet = testData.ringReplicationSet
 			r.mockedErr = testData.ringErr

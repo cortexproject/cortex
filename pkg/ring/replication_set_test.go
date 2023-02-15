@@ -12,6 +12,7 @@ import (
 )
 
 func TestReplicationSet_GetAddresses(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		rs       ReplicationSet
 		expected []string
@@ -33,13 +34,16 @@ func TestReplicationSet_GetAddresses(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.ElementsMatch(t, testData.expected, testData.rs.GetAddresses())
 		})
 	}
 }
 
 func TestReplicationSet_GetAddressesWithout(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		rs       ReplicationSet
 		expected []string
@@ -75,7 +79,9 @@ func TestReplicationSet_GetAddressesWithout(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.ElementsMatch(t, testData.expected, testData.rs.GetAddressesWithout(testData.exclude))
 		})
 	}
@@ -110,6 +116,7 @@ func failingFunctionOnZones(zones ...string) func(context.Context, *InstanceDesc
 }
 
 func TestReplicationSet_Do(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                string
 		instances           []InstanceDesc
@@ -213,9 +220,11 @@ func TestReplicationSet_Do(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			// Ensure the test case has been correctly setup (max errors and max unavailable zones are
 			// mutually exclusive).
+			t.Parallel()
 			require.False(t, tt.maxErrors > 0 && tt.maxUnavailableZones > 0)
 
 			r := ReplicationSet{
@@ -293,18 +302,24 @@ var (
 )
 
 func TestHasReplicationSetChanged_IgnoresTimeStamp(t *testing.T) {
+	t.Parallel()
 	// Only testing difference to underlying Equal function
 	for testName, testData := range replicationSetChangesTestCases {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expectHasReplicationSetChanged, HasReplicationSetChanged(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChanged wrong result")
 		})
 	}
 }
 
 func TestHasReplicationSetChangedWithoutState_IgnoresTimeStampAndState(t *testing.T) {
+	t.Parallel()
 	// Only testing difference to underlying Equal function
 	for testName, testData := range replicationSetChangesTestCases {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expectHasReplicationSetChangedWithoutState, HasReplicationSetChangedWithoutState(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChangedWithoutState wrong result")
 		})
 	}

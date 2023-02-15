@@ -9,6 +9,7 @@ import (
 )
 
 func Test_EncodeMultikey_CheckInterface(t *testing.T) {
+	t.Parallel()
 	m := NewProtoCodec("test", newMockMessage)
 
 	_, err := m.EncodeMultiKey(nil)
@@ -17,6 +18,7 @@ func Test_EncodeMultikey_CheckInterface(t *testing.T) {
 }
 
 func Test_DecodeMultikey_CheckInterface(t *testing.T) {
+	t.Parallel()
 	m := NewProtoCodec("test", newMockMessage)
 
 	_, err := m.DecodeMultiKey(nil)
@@ -25,6 +27,7 @@ func Test_DecodeMultikey_CheckInterface(t *testing.T) {
 }
 
 func Test_EncodeMultikey(t *testing.T) {
+	t.Parallel()
 	codec := NewProtoCodec("test", newProtoDescMock)
 	descMock := &DescMock{}
 	expectedSplitKeys := []string{"t1", "t2"}
@@ -46,6 +49,7 @@ func Test_EncodeMultikey(t *testing.T) {
 }
 
 func Test_DecodeMultikey(t *testing.T) {
+	t.Parallel()
 	descMock := &DescMock{}
 	codec := NewProtoCodec("test", func() proto.Message {
 		return descMock

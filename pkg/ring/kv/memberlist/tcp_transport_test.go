@@ -12,6 +12,7 @@ import (
 )
 
 func TestTCPTransport_WriteTo_ShouldNotLogAsWarningExpectedFailures(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		setup          func(t *testing.T, cfg *TCPTransportConfig)
 		remoteAddr     string
@@ -24,6 +25,7 @@ func TestTCPTransport_WriteTo_ShouldNotLogAsWarningExpectedFailures(t *testing.T
 		},
 		"should log 'connection refused' if debug log level is enabled": {
 			setup: func(t *testing.T, cfg *TCPTransportConfig) {
+
 				cfg.TransportDebug = true
 			},
 			remoteAddr:   "localhost:12345",
@@ -32,7 +34,9 @@ func TestTCPTransport_WriteTo_ShouldNotLogAsWarningExpectedFailures(t *testing.T
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			logs := &concurrency.SyncBuffer{}
 			logger := log.NewLogfmtLogger(logs)
 

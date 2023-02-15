@@ -8,8 +8,7 @@ import (
 )
 
 func TestInstanceDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
-	t.Parallel()
-
+	//parallel testing causes data race
 	tests := map[string]struct {
 		ingester       *InstanceDesc
 		timeout        time.Duration
@@ -51,6 +50,7 @@ func TestInstanceDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			actual := testData.ingester.IsHealthy(Write, testData.timeout, time.Now())
 			assert.Equal(t, testData.writeExpected, actual)
 
@@ -64,6 +64,7 @@ func TestInstanceDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 }
 
 func TestInstanceDesc_GetRegisteredAt(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		desc     *InstanceDesc
 		expected time.Time
@@ -87,7 +88,9 @@ func TestInstanceDesc_GetRegisteredAt(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.True(t, testData.desc.GetRegisteredAt().Equal(testData.expected))
 		})
 	}
@@ -112,6 +115,7 @@ func normalizedOutput() *Desc {
 }
 
 func TestClaimTokensFromNormalizedToNormalized(t *testing.T) {
+	t.Parallel()
 	r := normalizedSource()
 	result := r.ClaimTokens("first", "second")
 
@@ -120,6 +124,7 @@ func TestClaimTokensFromNormalizedToNormalized(t *testing.T) {
 }
 
 func TestDesc_Ready(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	r := &Desc{
@@ -172,6 +177,7 @@ func TestDesc_Ready(t *testing.T) {
 }
 
 func TestDesc_getTokensByZone(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		desc     *Desc
 		expected map[string][]uint32
@@ -204,13 +210,16 @@ func TestDesc_getTokensByZone(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expected, testData.desc.getTokensByZone())
 		})
 	}
 }
 
 func TestDesc_TokensFor(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		desc         *Desc
 		expectedMine Tokens
@@ -242,7 +251,9 @@ func TestDesc_TokensFor(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			actualMine, actualAll := testData.desc.TokensFor("instance-1")
 			assert.Equal(t, testData.expectedMine, actualMine)
 			assert.Equal(t, testData.expectedAll, actualAll)
@@ -251,6 +262,7 @@ func TestDesc_TokensFor(t *testing.T) {
 }
 
 func TestDesc_RingsCompare(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		r1, r2   *Desc
 		expected CompareResult
@@ -323,7 +335,9 @@ func TestDesc_RingsCompare(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expected, testData.r1.RingCompare(testData.r2))
 			assert.Equal(t, testData.expected, testData.r2.RingCompare(testData.r1))
 		})
@@ -331,6 +345,7 @@ func TestDesc_RingsCompare(t *testing.T) {
 }
 
 func TestMergeTokens(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		input    [][]uint32
 		expected []uint32
@@ -366,13 +381,16 @@ func TestMergeTokens(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expected, MergeTokens(testData.input))
 		})
 	}
 }
 
 func TestMergeTokensByZone(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		input    map[string][][]uint32
 		expected map[string][]uint32
@@ -411,13 +429,16 @@ func TestMergeTokensByZone(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.expected, MergeTokensByZone(testData.input))
 		})
 	}
 }
 
 func TestDesc_SplitById_JoinIds(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		ring  *Desc
 		split map[string]interface{}
@@ -443,7 +464,9 @@ func TestDesc_SplitById_JoinIds(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, testData.split, testData.ring.SplitByID(), "Error on SplitById")
 
 			r := NewDesc()
@@ -454,6 +477,7 @@ func TestDesc_SplitById_JoinIds(t *testing.T) {
 }
 
 func TestDesc_EncodingMultikey(t *testing.T) {
+	t.Parallel()
 	codec := GetCodec()
 	ring := &Desc{Ingesters: map[string]InstanceDesc{
 		"ing1": {Addr: "addr1", Timestamp: 123456},
@@ -469,6 +493,7 @@ func TestDesc_EncodingMultikey(t *testing.T) {
 }
 
 func TestDesc_FindDifference(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		r1       *Desc
 		r2       *Desc
@@ -592,7 +617,9 @@ func TestDesc_FindDifference(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			toUpdate, toDelete, err := testData.r1.FindDifference(testData.r2)
 			assert.Equal(t, testData.toUpdate, toUpdate)
 			assert.Equal(t, testData.toDelete, toDelete)

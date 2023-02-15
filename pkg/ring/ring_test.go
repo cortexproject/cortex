@@ -151,6 +151,7 @@ func benchmarkUpdateRingState(b *testing.B, numInstances, numZones, numTokens in
 }
 
 func TestDoBatchZeroInstances(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	numKeys := 10
 	keys := make([]uint32, numKeys)
@@ -171,6 +172,7 @@ func TestDoBatchZeroInstances(t *testing.T) {
 }
 
 func TestAddIngester(t *testing.T) {
+	t.Parallel()
 	r := NewDesc()
 
 	const ingName = "ing1"
@@ -187,6 +189,7 @@ func TestAddIngester(t *testing.T) {
 }
 
 func TestAddIngesterReplacesExistingTokens(t *testing.T) {
+	t.Parallel()
 	r := NewDesc()
 
 	const ing1Name = "ing1"
@@ -204,6 +207,7 @@ func TestAddIngesterReplacesExistingTokens(t *testing.T) {
 }
 
 func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
+	t.Parallel()
 	const testCount = 10000
 
 	tests := map[string]struct {
@@ -224,7 +228,9 @@ func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			r := NewDesc()
 			instances := map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE},
@@ -282,6 +288,7 @@ func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
 }
 
 func TestRing_Get_ZoneAwareness(t *testing.T) {
+	t.Parallel()
 	// Number of tests to run.
 	const testCount = 10000
 
@@ -324,7 +331,9 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Add instances to the ring.
 			r := NewDesc()
 			var prevTokens []uint32
@@ -397,6 +406,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 }
 
 func TestRing_GetAllHealthy(t *testing.T) {
+	//parallel testing causes data race
 	const heartbeatTimeout = time.Minute
 	now := time.Now()
 
@@ -430,7 +440,9 @@ func TestRing_GetAllHealthy(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
 			for id, instance := range ringDesc.Ingesters {
@@ -464,6 +476,7 @@ func TestRing_GetAllHealthy(t *testing.T) {
 }
 
 func TestRing_GetReplicationSetForOperation(t *testing.T) {
+	//parallel testing causes data race
 	now := time.Now()
 
 	tests := map[string]struct {
@@ -558,7 +571,9 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
 			for id, instance := range ringDesc.Ingesters {
@@ -595,6 +610,7 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 }
 
 func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		ringInstances               map[string]InstanceDesc
 		unhealthyInstances          []string
@@ -865,7 +881,9 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Ensure the test case has been correctly setup (max errors and max unavailable zones are
 			// mutually exclusive).
 			require.False(t, testData.expectedMaxErrors > 0 && testData.expectedMaxUnavailableZones > 0)
@@ -922,6 +940,7 @@ func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.
 }
 
 func TestRing_ShuffleShard(t *testing.T) {
+	//parallel testing causes data race
 	tests := map[string]struct {
 		ringInstances        map[string]InstanceDesc
 		shardSize            int
@@ -1012,7 +1031,9 @@ func TestRing_ShuffleShard(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
 			for id, instance := range ringDesc.Ingesters {
@@ -1064,6 +1085,7 @@ func TestRing_ShuffleShard(t *testing.T) {
 
 // This test asserts on shard stability across multiple invocations and given the same input ring.
 func TestRing_ShuffleShard_Stability(t *testing.T) {
+	t.Parallel()
 	var (
 		numTenants     = 100
 		numInstances   = 50
@@ -1108,6 +1130,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 }
 
 func TestRing_ShuffleShard_Shuffling(t *testing.T) {
+	t.Parallel()
 	var (
 		numTenants   = 1000
 		numInstances = 90
@@ -1207,6 +1230,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 }
 
 func TestRing_ShuffleShard_Consistency(t *testing.T) {
+	t.Parallel()
 	type change string
 
 	type scenario struct {
@@ -1240,7 +1264,9 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 	}
 
 	for _, s := range scenarios {
+		s := s
 		t.Run(s.name, func(t *testing.T) {
+			t.Parallel()
 			// Initialise the ring.
 			ringDesc := &Desc{Ingesters: generateRingInstances(s.numInstances, s.numZones, 128)}
 			ring := Ring{
@@ -1299,6 +1325,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 }
 
 func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
+	t.Parallel()
 	// Create 30 instances in 3 zones.
 	ringInstances := map[string]InstanceDesc{}
 	for i := 0; i < 30; i++ {
@@ -1377,6 +1404,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 }
 
 func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
+	t.Parallel()
 	// Create 20 instances in 2 zones.
 	ringInstances := map[string]InstanceDesc{}
 	for i := 0; i < 20; i++ {
@@ -1454,6 +1482,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 }
 
 func TestRing_ShuffleShardWithLookback(t *testing.T) {
+	t.Parallel()
 	type eventType int
 
 	const (
@@ -1643,7 +1672,9 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			// Initialise the ring.
 			ringDesc := &Desc{Ingesters: map[string]InstanceDesc{}}
 			ring := Ring{
@@ -1690,6 +1721,7 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	// The goal of this test is NOT to ensure that the minimum required number of instances
 	// are returned at any given time, BUT at least all required instances are returned.
+	t.Parallel()
 	var (
 		numInitialInstances = []int{9, 30, 60, 90}
 		numInitialZones     = []int{1, 3}
@@ -1702,8 +1734,10 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	for _, numInstances := range numInitialInstances {
 		for _, numZones := range numInitialZones {
 			testName := fmt.Sprintf("num instances = %d, num zones = %d", numInstances, numZones)
-
+			numZones := numZones
+			numInstances := numInstances
 			t.Run(testName, func(t *testing.T) {
+				t.Parallel()
 				// Randomise the seed but log it in case we need to reproduce the test on failure.
 				seed := time.Now().UnixNano()
 				rand.Seed(seed)
@@ -1924,6 +1958,7 @@ func BenchmarkRing_Get(b *testing.B) {
 }
 
 func TestRing_Get_NoMemoryAllocations(t *testing.T) {
+	t.Parallel()
 	// Initialise the ring.
 	ringDesc := &Desc{Ingesters: generateRingInstances(3, 3, 128)}
 	ring := Ring{
@@ -2013,6 +2048,7 @@ func compareReplicationSets(first, second ReplicationSet) (added, removed []stri
 
 // This test verifies that ring is getting updates, even after extending check in the loop method.
 func TestRingUpdates(t *testing.T) {
+	t.Parallel()
 	const (
 		numInstances = 3
 		numZones     = 3
@@ -2032,7 +2068,9 @@ func TestRingUpdates(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			inmem, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
@@ -2094,6 +2132,7 @@ func TestRingUpdates(t *testing.T) {
 }
 
 func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
+	//parallel test cause data race
 	lcCfg := LifecyclerConfig{
 		RingConfig:           cfg,
 		NumTokens:            16,
@@ -2126,6 +2165,7 @@ func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecycl
 // This test checks if shuffle-sharded ring can be reused, and whether it receives
 // updates from "main" ring.
 func TestShuffleShardWithCaching(t *testing.T) {
+	t.Parallel()
 	inmem, closer := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
 		MaxCasRetries: 20,
 		CasRetryDelay: 500 * time.Millisecond,
@@ -2241,6 +2281,7 @@ func userToken(user, zone string, skip int) uint32 {
 }
 
 func TestUpdateMetrics(t *testing.T) {
+	t.Parallel()
 	cfg := Config{
 		KVStore:              kv.Config{},
 		HeartbeatTimeout:     0, // get healthy stats
@@ -2293,6 +2334,7 @@ func TestUpdateMetrics(t *testing.T) {
 }
 
 func TestUpdateMetricsWithRemoval(t *testing.T) {
+	t.Parallel()
 	cfg := Config{
 		KVStore:              kv.Config{},
 		HeartbeatTimeout:     0, // get healthy stats

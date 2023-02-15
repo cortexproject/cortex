@@ -15,7 +15,9 @@ import (
 // Quis custodiet ipsos custodes?
 
 func TestMockKv_Get(t *testing.T) {
+	t.Parallel()
 	t.Run("exact match", func(t *testing.T) {
+		t.Parallel()
 		pair := mvccpb.KeyValue{
 			Key:   []byte("/foo"),
 			Value: []byte("1"),
@@ -31,6 +33,7 @@ func TestMockKv_Get(t *testing.T) {
 	})
 
 	t.Run("not exact match", func(t *testing.T) {
+		t.Parallel()
 		pair := mvccpb.KeyValue{
 			Key:   []byte("/foo"),
 			Value: []byte("1"),
@@ -45,6 +48,7 @@ func TestMockKv_Get(t *testing.T) {
 	})
 
 	t.Run("prefix match", func(t *testing.T) {
+		t.Parallel()
 		fooPair := mvccpb.KeyValue{
 			Key:   []byte("/foo"),
 			Value: []byte("1"),
@@ -71,6 +75,7 @@ func TestMockKv_Get(t *testing.T) {
 	})
 
 	t.Run("empty prefix", func(t *testing.T) {
+		t.Parallel()
 		fooPair := mvccpb.KeyValue{
 			Key:   []byte("/foo"),
 			Value: []byte("1"),
@@ -98,7 +103,9 @@ func TestMockKv_Get(t *testing.T) {
 }
 
 func TestMockKV_Put(t *testing.T) {
+	t.Parallel()
 	t.Run("new key", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		_, err := kv.Put(context.Background(), "/foo", "1")
 
@@ -108,6 +115,7 @@ func TestMockKV_Put(t *testing.T) {
 	})
 
 	t.Run("existing key", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:            []byte("/foo"),
@@ -126,7 +134,9 @@ func TestMockKV_Put(t *testing.T) {
 }
 
 func TestMockKV_Delete(t *testing.T) {
+	t.Parallel()
 	t.Run("exact match", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:   []byte("/foo"),
@@ -141,6 +151,8 @@ func TestMockKV_Delete(t *testing.T) {
 	})
 
 	t.Run("prefix match", func(t *testing.T) {
+		t.Parallel()
+
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:   []byte("/foo"),
@@ -164,6 +176,7 @@ func TestMockKV_Delete(t *testing.T) {
 	})
 
 	t.Run("empty prefix", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:   []byte("/foo"),
@@ -189,7 +202,9 @@ func TestMockKV_Delete(t *testing.T) {
 }
 
 func TestMockKV_Txn(t *testing.T) {
+	t.Parallel()
 	t.Run("success compare value", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:            []byte("/foo"),
@@ -210,6 +225,7 @@ func TestMockKV_Txn(t *testing.T) {
 	})
 
 	t.Run("failure compare value", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:            []byte("/foo"),
@@ -231,6 +247,7 @@ func TestMockKV_Txn(t *testing.T) {
 	})
 
 	t.Run("success compare version exists", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:            []byte("/foo"),
@@ -251,6 +268,7 @@ func TestMockKV_Txn(t *testing.T) {
 	})
 
 	t.Run("failure compare version exists", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 		kv.values["/foo"] = mvccpb.KeyValue{
 			Key:            []byte("/foo"),
@@ -271,6 +289,7 @@ func TestMockKV_Txn(t *testing.T) {
 	})
 
 	t.Run("success compare version does not exist", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 
 		res, err := kv.Txn(context.Background()).
@@ -284,6 +303,7 @@ func TestMockKV_Txn(t *testing.T) {
 	})
 
 	t.Run("failure compare version does not exist", func(t *testing.T) {
+		t.Parallel()
 		kv := newMockKV()
 
 		res, err := kv.Txn(context.Background()).
@@ -304,6 +324,7 @@ func TestMockKV_Watch(t *testing.T) {
 	// emitted by a mockKV. Any observed events are sent to callers via the returned channel.
 	// The goroutine can be stopped using the return cancel function and waited for using the
 	// returned wait group.
+	t.Parallel()
 	setupWatchTest := func(key string, prefix bool) (*mockKV, context.CancelFunc, chan *clientv3.Event, *sync.WaitGroup) {
 		kv := newMockKV()
 		// Use a condition to make sure the goroutine has started using the watch before
@@ -341,6 +362,7 @@ func TestMockKV_Watch(t *testing.T) {
 	}
 
 	t.Run("watch stopped by context", func(t *testing.T) {
+		t.Parallel()
 		// Ensure we can use the cancel method of the context given to the watch
 		// to stop the watch
 		_, cancel, _, wg := setupWatchTest("/bar", false)
@@ -349,6 +371,7 @@ func TestMockKV_Watch(t *testing.T) {
 	})
 
 	t.Run("watch stopped by close", func(t *testing.T) {
+		t.Parallel()
 		// Ensure we can use the Close method of the mockKV given to the watch
 		// to stop the watch
 		kv, _, _, wg := setupWatchTest("/bar", false)
@@ -357,6 +380,7 @@ func TestMockKV_Watch(t *testing.T) {
 	})
 
 	t.Run("watch exact key", func(t *testing.T) {
+		t.Parallel()
 		// watch for events with key "/bar" and send them via the channel
 		kv, cancel, ch, wg := setupWatchTest("/bar", false)
 
@@ -375,6 +399,7 @@ func TestMockKV_Watch(t *testing.T) {
 	})
 
 	t.Run("watch prefix match", func(t *testing.T) {
+		t.Parallel()
 		// watch for events with the prefix "/b" and send them via the channel
 		kv, cancel, ch, wg := setupWatchTest("/b", true)
 

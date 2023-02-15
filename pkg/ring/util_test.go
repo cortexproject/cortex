@@ -66,6 +66,7 @@ func (r *RingMock) HasInstance(instanceID string) bool {
 func (r *RingMock) CleanupShuffleShardCache(identifier string) {}
 
 func TestGenerateTokens(t *testing.T) {
+	t.Parallel()
 	tokens := GenerateTokens(1000000, nil)
 
 	dups := make(map[uint32]int)
@@ -80,6 +81,7 @@ func TestGenerateTokens(t *testing.T) {
 }
 
 func TestGenerateTokens_IgnoresOldTokens(t *testing.T) {
+	t.Parallel()
 	first := GenerateTokens(1000000, nil)
 	second := GenerateTokens(1000000, first)
 

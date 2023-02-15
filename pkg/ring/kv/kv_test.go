@@ -33,7 +33,9 @@ func withFixtures(t *testing.T, f func(*testing.T, Client)) {
 			return client, closer, nil
 		}},
 	} {
+		fixture := fixture
 		t.Run(fixture.name, func(t *testing.T) {
+			t.Parallel()
 			client, closer, err := fixture.factory()
 			require.NoError(t, err)
 			t.Cleanup(func() {
@@ -50,6 +52,7 @@ var (
 )
 
 func TestCAS(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, client Client) {
 		// Blindly set key to "0".
 		err := client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
@@ -76,6 +79,7 @@ func TestCAS(t *testing.T) {
 // TestNilCAS ensures we can return nil from the CAS callback when we don't
 // want to modify the value.
 func TestNilCAS(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, client Client) {
 		// Blindly set key to "0".
 		err := client.CAS(ctx, key, func(in interface{}) (interface{}, bool, error) {
@@ -98,6 +102,7 @@ func TestNilCAS(t *testing.T) {
 }
 
 func TestWatchKey(t *testing.T) {
+	t.Parallel()
 	const key = "test"
 	const max = 100
 	const sleep = 15 * time.Millisecond
@@ -170,6 +175,7 @@ func TestWatchKey(t *testing.T) {
 }
 
 func TestWatchPrefix(t *testing.T) {
+	t.Parallel()
 	withFixtures(t, func(t *testing.T, client Client) {
 		const prefix = "test/"
 		const prefix2 = "ignore/"
@@ -264,6 +270,7 @@ func TestWatchPrefix(t *testing.T) {
 
 // TestList makes sure stored keys are listed back.
 func TestList(t *testing.T) {
+	t.Parallel()
 	keysToCreate := []string{"a", "b", "c"}
 
 	withFixtures(t, func(t *testing.T, client Client) {

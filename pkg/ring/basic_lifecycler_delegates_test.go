@@ -17,6 +17,7 @@ import (
 )
 
 func TestLeaveOnStoppingDelegate(t *testing.T) {
+	t.Parallel()
 	onStoppingCalled := false
 
 	ctx := context.Background()
@@ -40,6 +41,7 @@ func TestLeaveOnStoppingDelegate(t *testing.T) {
 
 func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *testing.T) {
 	// Create a temporary file and immediately delete it.
+	t.Parallel()
 	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	require.NoError(t, os.Remove(tokensFile.Name()))
@@ -78,6 +80,7 @@ func TestTokensPersistencyDelegate_ShouldSkipTokensLoadingIfFileDoesNotExist(t *
 }
 
 func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testing.T) {
+	t.Parallel()
 	tokensFile, err := os.CreateTemp("", "tokens-*")
 	require.NoError(t, err)
 	defer os.Remove(tokensFile.Name()) //nolint:errcheck
@@ -119,6 +122,7 @@ func TestTokensPersistencyDelegate_ShouldLoadTokensFromFileIfFileExist(t *testin
 }
 
 func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheRing(t *testing.T) {
+	t.Parallel()
 	storedTokens := Tokens{6, 7, 8, 9, 10}
 	differentTokens := Tokens{1, 2, 3, 4, 5}
 
@@ -144,7 +148,9 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			tokensFile, err := os.CreateTemp("", "tokens-*")
 			require.NoError(t, err)
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
@@ -187,6 +193,7 @@ func TestTokensPersistencyDelegate_ShouldHandleTheCaseTheInstanceIsAlreadyInTheR
 
 // TestDelegatesChain tests chaining all provided delegates together.
 func TestDelegatesChain(t *testing.T) {
+	t.Parallel()
 	onStoppingCalled := false
 
 	// Create a temporary file and immediately delete it.
@@ -232,6 +239,7 @@ func TestDelegatesChain(t *testing.T) {
 }
 
 func TestAutoForgetDelegate(t *testing.T) {
+	t.Parallel()
 	const forgetPeriod = time.Minute
 	registeredAt := time.Now()
 
@@ -264,7 +272,9 @@ func TestAutoForgetDelegate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			cfg := prepareBasicLifecyclerConfig()
 			cfg.HeartbeatPeriod = 100 * time.Millisecond

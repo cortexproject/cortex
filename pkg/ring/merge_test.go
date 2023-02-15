@@ -8,6 +8,7 @@ import (
 )
 
 func TestNormalizationAndConflictResolution(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Unix()
 
 	first := &Desc{
@@ -71,6 +72,7 @@ func merge(ring1, ring2 *Desc) (*Desc, *Desc) {
 }
 
 func TestMerge(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Unix()
 
 	firstRing := func() *Desc {
@@ -198,6 +200,7 @@ func TestMerge(t *testing.T) {
 }
 
 func TestTokensTakeover(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Unix()
 
 	first := func() *Desc {
@@ -259,6 +262,7 @@ func TestTokensTakeover(t *testing.T) {
 }
 
 func TestMergeLeft(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Unix()
 
 	firstRing := func() *Desc {
@@ -386,6 +390,7 @@ func TestMergeLeft(t *testing.T) {
 }
 
 func TestMergeRemoveMissing(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Unix()
 
 	firstRing := func() *Desc {
@@ -453,6 +458,7 @@ func TestMergeRemoveMissing(t *testing.T) {
 }
 
 func TestMergeMissingIntoLeft(t *testing.T) {
+	t.Parallel()
 	now := time.Now().Unix()
 
 	ring1 := func() *Desc {

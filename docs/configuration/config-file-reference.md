@@ -4546,4 +4546,8 @@ otel:
     # Skip validating server certificate.
     # CLI flag: -tracing.otel.tls.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+
+  # If the configured key is specified, Otel sampler will sample the trace.
+  # CLI flag: -tracing.otel.force-tracing-key
+  [force_tracing_key: <string> | default = ""]
 ```

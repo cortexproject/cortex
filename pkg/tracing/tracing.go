@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
 	"strings"
 
 	"github.com/go-kit/log/level"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/opentracing/opentracing-go"
+	thanosmigration "github.com/thanos-io/thanos/pkg/tracing/migration"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -37,13 +39,14 @@ type Config struct {
 }
 
 type Otel struct {
-	OltpEndpoint   string              `yaml:"oltp_endpoint" json:"oltp_endpoint" doc:"hidden"`
-	OtlpEndpoint   string              `yaml:"otlp_endpoint" json:"otlp_endpoint"`
-	ExporterType   string              `yaml:"exporter_type" json:"exporter_type"`
-	SampleRatio    float64             `yaml:"sample_ratio" json:"sample_ratio"`
-	TLSEnabled     bool                `yaml:"tls_enabled"`
-	TLS            tls.ClientConfig    `yaml:"tls"`
-	ExtraDetectors []resource.Detector `yaml:"-"`
+	OltpEndpoint    string              `yaml:"oltp_endpoint" json:"oltp_endpoint" doc:"hidden"`
+	OtlpEndpoint    string              `yaml:"otlp_endpoint" json:"otlp_endpoint"`
+	ExporterType    string              `yaml:"exporter_type" json:"exporter_type"`
+	SampleRatio     float64             `yaml:"sample_ratio" json:"sample_ratio"`
+	TLSEnabled      bool                `yaml:"tls_enabled"`
+	TLS             tls.ClientConfig    `yaml:"tls"`
+	ExtraDetectors  []resource.Detector `yaml:"-"`
+	ForceTracingKey string              `yaml:"force_tracing_key" json:"force_tracing_key"`
 }
 
 // RegisterFlags registers flag.
@@ -150,7 +153,11 @@ func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Export
 	default:
 	}
 
-	options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
+	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))
+	if len(c.Otel.ForceTracingKey) > 0 {
+		sampler = thanosmigration.SamplerWithOverride(sampler, attribute.Key(c.Otel.ForceTracingKey))
+	}
+	options = append(options, sdktrace.WithSampler(sampler))
 
 	return propagator, sdktrace.NewTracerProvider(options...)
 }

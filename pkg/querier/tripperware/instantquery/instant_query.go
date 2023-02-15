@@ -245,7 +245,7 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 	return &resp, nil
 }
 
-func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+func (instantQueryCodec) MergeResponse(ctx context.Context, _ tripperware.Request, responses ...tripperware.Response) (tripperware.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "PrometheusInstantQueryResponse.MergeResponse")
 	sp.SetTag("response_count", len(responses))
 	defer sp.Finish()

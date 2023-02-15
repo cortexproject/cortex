@@ -308,7 +308,7 @@ func TestMergeResponse(t *testing.T) {
 				require.NoError(t, err)
 				resps = append(resps, dr)
 			}
-			resp, err := InstantQueryCodec.MergeResponse(context.Background(), resps...)
+			resp, err := InstantQueryCodec.MergeResponse(context.Background(), nil, resps...)
 			assert.Equal(t, err, tc.expectedErr)
 			if err != nil {
 				return

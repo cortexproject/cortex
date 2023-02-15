@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.opentelemetry.io/otel/attribute"
 	"strings"
 
 	"github.com/go-kit/log/level"
@@ -16,6 +15,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	thanosmigration "github.com/thanos-io/thanos/pkg/tracing/migration"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -57,6 +57,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Otel.OltpEndpoint, p+".otel.oltp-endpoint", "", "DEPRECATED: use otel.otlp-endpoint instead.")
 	f.StringVar(&c.Otel.OtlpEndpoint, p+".otel.otlp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance/modify traces/propagators for specific exporter. If empty, OTEL defaults will apply. Supported values are: `awsxray.`")
+	f.StringVar(&c.Otel.ForceTracingKey, p+".otel.force-tracing-key", "", "If the configured key is specified, Otel sampler will sample the trace.")
 	f.BoolVar(&c.Otel.TLSEnabled, p+".otel.tls-enabled", c.Otel.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
 	c.Otel.TLS.RegisterFlagsWithPrefix(p+".otel.tls", f)
 }

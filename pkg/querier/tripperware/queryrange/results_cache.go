@@ -407,7 +407,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 		return nil, nil, err
 	}
 	if len(requests) == 0 {
-		response, err := s.merger.MergeResponse(context.Background(), responses...)
+		response, err := s.merger.MergeResponse(context.Background(), r, responses...)
 		// No downstream requests so no need to write back to the cache.
 		return response, nil, err
 	}
@@ -469,7 +469,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 		if err != nil {
 			return nil, nil, err
 		}
-		merged, err := s.merger.MergeResponse(ctx, accumulator.Response, currentRes)
+		merged, err := s.merger.MergeResponse(ctx, r, accumulator.Response, currentRes)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -481,7 +481,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 		return nil, nil, err
 	}
 
-	response, err := s.merger.MergeResponse(ctx, responses...)
+	response, err := s.merger.MergeResponse(ctx, r, responses...)
 	return response, mergedExtents, err
 }
 

@@ -38,6 +38,7 @@
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
 * [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
+* [BUGFIX] Query-frontend:  Fix sorted queries do not produce sorted results for shardable queries. #5148
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

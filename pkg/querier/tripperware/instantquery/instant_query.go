@@ -22,6 +22,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
+	promqlparser "github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/queryrange"
@@ -245,7 +247,7 @@ func (instantQueryCodec) EncodeResponse(ctx context.Context, res tripperware.Res
 	return &resp, nil
 }
 
-func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Request, responses ...tripperware.Response) (tripperware.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "PrometheusInstantQueryResponse.MergeResponse")
 	sp.SetTag("response_count", len(responses))
 	defer sp.Finish()
@@ -265,11 +267,15 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripper
 	// For now, we only shard queries that returns a vector.
 	switch promResponses[0].Data.ResultType {
 	case model.ValVector.String():
+		v, err := vectorMerge(req, promResponses)
+		if err != nil {
+			return nil, err
+		}
 		data = PrometheusInstantQueryData{
 			ResultType: model.ValVector.String(),
 			Result: PrometheusInstantQueryResult{
 				Result: &PrometheusInstantQueryResult_Vector{
-					Vector: vectorMerge(promResponses),
+					Vector: v,
 				},
 			},
 			Stats: statsMerge(promResponses),
@@ -297,8 +303,12 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, responses ...tripper
 	return res, nil
 }
 
-func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
+func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryResponse) (*Vector, error) {
 	output := map[string]*Sample{}
+	sortAsc, sortDesc, err := parseQueryForSort(req.GetQuery())
+	if err != nil {
+		return nil, err
+	}
 	buf := make([]byte, 0, 1024)
 	for _, resp := range resps {
 		if resp == nil {
@@ -327,22 +337,66 @@ func vectorMerge(resps []*PrometheusInstantQueryResponse) *Vector {
 	if len(output) == 0 {
 		return &Vector{
 			Samples: make([]*Sample, 0),
+		}, nil
+	}
+
+	type pair struct {
+		metric string
+		s      *Sample
+	}
+
+	samples := make([]*pair, 0, len(output))
+	for k, v := range output {
+		samples = append(samples, &pair{
+			metric: k,
+			s:      v,
+		})
+	}
+
+	sort.Slice(samples, func(i, j int) bool {
+		// Order is determined by the sortFn in the query.
+		if sortAsc {
+			return samples[i].s.Sample.Value < samples[j].s.Sample.Value
+		} else if sortDesc {
+			return samples[i].s.Sample.Value > samples[j].s.Sample.Value
+		} else {
+			// Fallback on sorting by labels.
+			return samples[i].metric < samples[j].metric
 		}
-	}
-
-	keys := make([]string, 0, len(output))
-	for key := range output {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
+	})
 	result := &Vector{
 		Samples: make([]*Sample, 0, len(output)),
 	}
-	for _, key := range keys {
-		result.Samples = append(result.Samples, output[key])
+	for _, p := range samples {
+		result.Samples = append(result.Samples, p.s)
 	}
-	return result
+	return result, nil
+}
+
+func parseQueryForSort(q string) (bool, bool, error) {
+	expr, err := promqlparser.ParseExpr(q)
+	if err != nil {
+		return false, false, err
+	}
+	var sortAsc bool = false
+	var sortDesc bool = false
+	done := errors.New("done")
+	promqlparser.Inspect(expr, func(n promqlparser.Node, _ []promqlparser.Node) error {
+		if n, ok := n.(*promqlparser.Call); ok {
+			if n.Func != nil {
+				if n.Func.Name == "sort" {
+					sortAsc = true
+					return done
+				}
+				if n.Func.Name == "sort_desc" {
+					sortDesc = true
+					return done
+				}
+			}
+		}
+		return nil
+	})
+	return sortAsc, sortDesc, nil
 }
 
 func matrixMerge(resps []*PrometheusInstantQueryResponse) []tripperware.SampleStream {

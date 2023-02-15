@@ -127,7 +127,7 @@ func NewEmptyPrometheusResponse() *PrometheusResponse {
 	}
 }
 
-func (c prometheusCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Request, responses ...tripperware.Response) (tripperware.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "QueryRangeResponse.MergeResponse")
 	sp.SetTag("response_count", len(responses))
 	defer sp.Finish()

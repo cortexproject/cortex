@@ -47,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storegateway"
-	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
@@ -627,16 +626,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	if err != nil {
 		return
 	}
-
-	if t.RuntimeConfig != nil {
-		t.Cfg.Alertmanager.AllowedTenantConfigFn = func() *util.AllowedTenantConfig {
-			val := t.RuntimeConfig.GetConfig()
-			if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
-				return cfg.AllowedTenantConfig.alertManager
-			}
-			return nil
-		}
-	}
+	t.Cfg.Alertmanager.AllowedTenantConfigFn = alertManagerAllowedTenantC(t.RuntimeConfig)
 
 	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {

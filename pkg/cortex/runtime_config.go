@@ -122,6 +122,20 @@ func ingesterInstanceLimits(manager *runtimeconfig.Manager) func() *ingester.Ins
 	}
 }
 
+func alertManagerAllowedTenantC(manager *runtimeconfig.Manager) func() *util.AllowedTenantConfig {
+	if manager == nil {
+		return nil
+	}
+
+	return func() *util.AllowedTenantConfig {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			return cfg.AllowedTenantConfig.alertManager
+		}
+		return nil
+	}
+}
+
 func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimits validation.Limits) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg, ok := runtimeCfgManager.GetConfig().(*runtimeConfigValues)

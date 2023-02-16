@@ -276,7 +276,7 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			req.RequestURI = url
 			var allowedTenants *util.AllowedTenants
 			if c.isTenantDisabled {
-				allowedTenants = util.NewAllowedTenants(nil, []string{"1"})
+				allowedTenants = util.NewAllowedTenants(util.AllowedTenantConfig{DisabledTenants: []string{"1"}}, nil)
 			}
 
 			w := httptest.NewRecorder()

@@ -18,6 +18,10 @@ var (
 	errMultipleDocuments = errors.New("the provided runtime configuration contains multiple documents")
 )
 
+type runtimeAllowedTenantConfig struct {
+	alertManager *util.AllowedTenantConfig `yaml:"alert_manager"`
+}
+
 // runtimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
 // Reloading is done by runtime_config.Manager, which also keeps the currently loaded config.
 // These values are then pushed to the components that are interested in them.
@@ -27,6 +31,8 @@ type runtimeConfigValues struct {
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 
 	IngesterLimits *ingester.InstanceLimits `yaml:"ingester_limits"`
+
+	AllowedTenantConfig runtimeAllowedTenantConfig `yaml:"allowed_tenant"`
 }
 
 // runtimeConfigTenantLimits provides per-tenant limit overrides based on a runtimeconfig.Manager

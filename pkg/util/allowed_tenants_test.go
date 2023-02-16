@@ -7,14 +7,14 @@ import (
 )
 
 func TestAllowedTenants_NoConfig(t *testing.T) {
-	a := NewAllowedTenants(nil, nil)
+	a := NewAllowedTenants(AllowedTenantConfig{}, nil)
 	require.True(t, a.IsAllowed("all"))
 	require.True(t, a.IsAllowed("tenants"))
 	require.True(t, a.IsAllowed("allowed"))
 }
 
 func TestAllowedTenants_Enabled(t *testing.T) {
-	a := NewAllowedTenants([]string{"A", "B"}, nil)
+	a := NewAllowedTenants(AllowedTenantConfig{EnabledTenants: []string{"A", "B"}}, nil)
 	require.True(t, a.IsAllowed("A"))
 	require.True(t, a.IsAllowed("B"))
 	require.False(t, a.IsAllowed("C"))
@@ -22,7 +22,7 @@ func TestAllowedTenants_Enabled(t *testing.T) {
 }
 
 func TestAllowedTenants_Disabled(t *testing.T) {
-	a := NewAllowedTenants(nil, []string{"A", "B"})
+	a := NewAllowedTenants(AllowedTenantConfig{DisabledTenants: []string{"A", "B"}}, nil)
 	require.False(t, a.IsAllowed("A"))
 	require.False(t, a.IsAllowed("B"))
 	require.True(t, a.IsAllowed("C"))
@@ -30,7 +30,7 @@ func TestAllowedTenants_Disabled(t *testing.T) {
 }
 
 func TestAllowedTenants_Combination(t *testing.T) {
-	a := NewAllowedTenants([]string{"A", "B"}, []string{"B", "C"})
+	a := NewAllowedTenants(AllowedTenantConfig{EnabledTenants: []string{"A", "B"}, DisabledTenants: []string{"B", "C"}}, nil)
 	require.True(t, a.IsAllowed("A"))  // enabled, and not disabled
 	require.False(t, a.IsAllowed("B")) // enabled, but also disabled
 	require.False(t, a.IsAllowed("C")) // disabled

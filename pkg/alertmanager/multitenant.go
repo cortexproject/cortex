@@ -86,8 +86,9 @@ type MultitenantAlertmanagerConfig struct {
 	// For the state persister.
 	Persister PersisterConfig `yaml:",inline"`
 
-	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
-	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
+	util.AllowedTenantConfig
+
+	AllowedTenantConfigFn func() *util.AllowedTenantConfig `yaml:"-"`
 }
 
 type ClusterConfig struct {
@@ -366,7 +367,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		logger:              log.With(logger, "component", "MultiTenantAlertmanager"),
 		registry:            registerer,
 		limits:              limits,
-		allowedTenants:      util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		allowedTenants:      util.NewAllowedTenants(cfg.AllowedTenantConfig, nil),
 		ringCheckErrors: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_alertmanager_ring_check_errors_total",
 			Help: "Number of errors that have occurred when checking the ring for ownership.",

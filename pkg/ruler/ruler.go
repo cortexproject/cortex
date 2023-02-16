@@ -116,8 +116,7 @@ type Config struct {
 
 	EnableAPI bool `yaml:"enable_api"`
 
-	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
-	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
+	util.AllowedTenantConfig
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 
@@ -266,7 +265,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		logger:         logger,
 		limits:         limits,
 		clientsPool:    clientPool,
-		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		allowedTenants: util.NewAllowedTenants(cfg.AllowedTenantConfig, nil),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -337,7 +336,7 @@ func (r *Ruler) starting(ctx context.Context) error {
 	if r.cfg.EnableSharding {
 		var err error
 
-		if r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool); err != nil {
+		if r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool, r.allowedTenants); err != nil {
 			return errors.Wrap(err, "unable to start ruler subservices")
 		}
 

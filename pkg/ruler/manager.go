@@ -179,7 +179,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 				replicaGroup := RuleGroupReplicaGroup(g)
 				err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
 				if err != nil {
-					level.Debug(glogger).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "err", err)
+					level.Debug(glogger).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
 					return
 				}
 			}

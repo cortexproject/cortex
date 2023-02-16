@@ -899,8 +899,10 @@ func TestSharding(t *testing.T) {
 						HeartbeatTimeout: 1 * time.Minute,
 					},
 					FlushCheckPeriod: 0,
-					EnabledTenants:   tc.enabledUsers,
-					DisabledTenants:  tc.disabledUsers,
+					AllowedTenantConfig: util.AllowedTenantConfig{
+						EnabledTenants:  tc.enabledUsers,
+						DisabledTenants: tc.disabledUsers,
+					},
 				}
 
 				r := buildRuler(t, cfg, nil, store, nil)

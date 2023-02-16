@@ -65,6 +65,10 @@ func (a *AllowedTenants) running(ctx context.Context) error {
 }
 
 func (a *AllowedTenants) setConfig(cfg *AllowedTenantConfig) {
+	if a == nil {
+		return
+	}
+
 	a.m.Lock()
 	defer a.m.Unlock()
 	if len(cfg.EnabledTenants) > 0 {
@@ -83,11 +87,12 @@ func (a *AllowedTenants) setConfig(cfg *AllowedTenantConfig) {
 }
 
 func (a *AllowedTenants) IsAllowed(tenantID string) bool {
-	a.m.RUnlock()
-	defer a.m.RUnlock()
 	if a == nil {
 		return true
 	}
+
+	a.m.RUnlock()
+	defer a.m.RUnlock()
 
 	if len(a.enabled) > 0 {
 		if _, ok := a.enabled[tenantID]; !ok {

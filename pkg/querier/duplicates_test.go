@@ -17,6 +17,8 @@ import (
 )
 
 func TestDuplicatesSamples(t *testing.T) {
+	t.Parallel()
+
 	ts := cortexpb.TimeSeries{
 		Labels: []cortexpb.LabelAdapter{
 			{

@@ -9,6 +9,7 @@ import (
 )
 
 func TestNonOverlappingIter(t *testing.T) {
+	t.Parallel()
 	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
 		cs := []GenericChunk(nil)
 		for i := int64(0); i < 100; i++ {
@@ -20,6 +21,7 @@ func TestNonOverlappingIter(t *testing.T) {
 }
 
 func TestNonOverlappingIterSparse(t *testing.T) {
+	t.Parallel()
 	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
 		cs := []GenericChunk{
 			mkGenericChunk(t, model.TimeFromUnix(0), 1, enc),

@@ -16,6 +16,7 @@ import (
 )
 
 func TestChunkMergeIterator(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		chunks     []chunk.Chunk
 		mint, maxt int64
@@ -52,7 +53,9 @@ func TestChunkMergeIterator(t *testing.T) {
 			maxt: 200,
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			iter := NewChunkMergeIterator(tc.chunks, 0, 0)
 			for i := tc.mint; i < tc.maxt; i++ {
 				require.NotEqual(t, iter.Next(), chunkenc.ValNone)
@@ -67,6 +70,7 @@ func TestChunkMergeIterator(t *testing.T) {
 }
 
 func TestChunkMergeIteratorSeek(t *testing.T) {
+	t.Parallel()
 	iter := NewChunkMergeIterator([]chunk.Chunk{
 		mkChunk(t, 0, 100, 1*time.Millisecond, promchunk.PrometheusXorChunk),
 		mkChunk(t, 50, 150, 1*time.Millisecond, promchunk.PrometheusXorChunk),

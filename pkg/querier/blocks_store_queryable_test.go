@@ -43,6 +43,8 @@ import (
 )
 
 func TestBlocksStoreQuerier_Select(t *testing.T) {
+	t.Parallel()
+
 	const (
 		metricName = "test_metric"
 		minT       = int64(10)
@@ -672,7 +674,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := limiter.AddQueryLimiterToContext(context.Background(), testData.queryLimiter)
 			reg := prometheus.NewPedanticRegistry()
 			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
@@ -742,6 +747,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 }
 
 func TestBlocksStoreQuerier_Labels(t *testing.T) {
+	t.Parallel()
+
 	const (
 		metricName = "test_metric"
 		minT       = int64(10)
@@ -1183,7 +1190,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			// Splitting it because we need a new registry for names and values.
 			// And also the initial expectedErr checking needs to be done for both.
 			for _, testFunc := range []string{"LabelNames", "LabelValues"} {
@@ -1245,6 +1255,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 }
 
 func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T) {
+
 	now := time.Now()
 
 	tests := map[string]struct {
@@ -1285,7 +1296,10 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			finder := &blocksFinderMock{}
 			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
@@ -1323,6 +1337,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 }
 
 func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
+	t.Parallel()
 	logger := log.NewNopLogger()
 	opts := promql.EngineOpts{
 		Logger:     logger,
@@ -1364,6 +1379,7 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 		}
 
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
+			t.Parallel()
 			// Mock the finder to simulate we need to query two blocks.
 			finder := &blocksFinderMock{
 				Service: services.NewIdleService(nil, nil),

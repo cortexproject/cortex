@@ -8,5 +8,6 @@ import (
 )
 
 func Test_shardQuery(t *testing.T) {
+	t.Parallel()
 	tripperware.TestQueryShardQuery(t, InstantQueryCodec, queryrange.ShardedPrometheusCodec)
 }

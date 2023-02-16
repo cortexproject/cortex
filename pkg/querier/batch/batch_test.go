@@ -56,6 +56,7 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 }
 
 func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
+	t.Parallel()
 	chunkOne := mkChunk(t, model.Time(1*step/time.Millisecond), 1, promchunk.PrometheusXorChunk)
 	chunkTwo := mkChunk(t, model.Time(10*step/time.Millisecond), 1, promchunk.PrometheusXorChunk)
 	chunks := []chunk.Chunk{chunkOne, chunkTwo}

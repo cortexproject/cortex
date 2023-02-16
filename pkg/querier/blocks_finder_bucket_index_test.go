@@ -19,6 +19,8 @@ import (
 )
 
 func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
@@ -115,7 +117,10 @@ func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, testData.minT, testData.maxT)
 			require.NoError(t, err)
 			require.ElementsMatch(t, testData.expectedBlocks, blocks)
@@ -164,6 +169,8 @@ func BenchmarkBucketIndexBlocksFinder_GetBlocks(b *testing.B) {
 }
 
 func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexDoesNotExist(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
@@ -177,6 +184,8 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexDoesNotExist(t *testing.T)
 }
 
 func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
@@ -191,6 +200,8 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) 
 }
 
 func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOld(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()

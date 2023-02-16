@@ -156,6 +156,7 @@ var (
 )
 
 func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
+	//parallel testing causes data race
 	start := time.Now().Add(-2 * time.Hour)
 	end := time.Now()
 	ctx := user.InjectOrgID(context.Background(), "0")
@@ -266,7 +267,9 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 
 	for _, tc := range tCases {
 		for _, thanosEngine := range []bool{false, true} {
+			thanosEngine := thanosEngine
 			t.Run(tc.name+fmt.Sprintf(", thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
+				t.Parallel()
 				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 				var wQueriables []QueryableWithFilter
 				for _, queriable := range tc.storeQueriables {
@@ -309,6 +312,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 }
 
 func TestQuerier(t *testing.T) {
+	t.Parallel()
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
@@ -340,7 +344,9 @@ func TestQuerier(t *testing.T) {
 			for _, encoding := range encodings {
 				for _, streaming := range []bool{false, true} {
 					for _, iterators := range []bool{false, true} {
+						iterators := iterators
 						t.Run(fmt.Sprintf("%s/%s/streaming=%t/iterators=%t", query.query, encoding.name, streaming, iterators), func(t *testing.T) {
+							//parallel testing cause data race
 							cfg.IngesterStreaming = streaming
 							cfg.Iterators = iterators
 
@@ -362,6 +368,7 @@ func TestQuerier(t *testing.T) {
 }
 
 func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) (storage.Queryable, []cortexpb.Sample) {
+	//parallel testing causes data race
 	opts := tsdb.DefaultHeadOptions()
 	opts.ChunkDirRoot = t.TempDir()
 	// We use TSDB head only. By using full TSDB DB, and appending samples to it, closing it would cause unnecessary HEAD compaction, which slows down the test.
@@ -402,6 +409,7 @@ func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
+	//parallel testing causes data race
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time
@@ -468,6 +476,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 			for _, c := range testCases {
 				cfg.QueryIngestersWithin = c.queryIngestersWithin
 				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,queryIngestersWithin=%v, test=%s", cfg.IngesterStreaming, thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
+					//parallel testing causes data race
 					chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 					distributor := &errDistributor{}
 
@@ -502,6 +511,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
+	t.Parallel()
 	const engineLookbackDelta = 5 * time.Minute
 
 	now := time.Now()
@@ -568,6 +578,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 			for name, c := range tests {
 				cfg.MaxQueryIntoFuture = c.maxQueryIntoFuture
 				t.Run(fmt.Sprintf("%s (ingester streaming enabled = %t, thanos engine enabled = %t)", name, cfg.IngesterStreaming, thanosEngine), func(t *testing.T) {
+					//parallel testing causes data race
 					// We don't need to query any data for this test, so an empty store is fine.
 					chunkStore := &emptyChunkStore{}
 					distributor := &MockDistributor{}
@@ -606,6 +617,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
+	//parallel testing causes data race
 	const maxQueryLength = 30 * 24 * time.Hour
 
 	tests := map[string]struct {
@@ -649,6 +661,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 	for testName, testData := range tests {
 		for _, thanosEngine := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s, (thanos engine enabled = %t)", testName, thanosEngine), func(t *testing.T) {
+				//parallel testing causes data race
 				var cfg Config
 				flagext.DefaultValues(&cfg)
 
@@ -691,6 +704,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
+	//parallel testing causes data race
 	const (
 		engineLookbackDelta = 5 * time.Minute
 		thirtyDays          = 30 * 24 * time.Hour
@@ -791,6 +805,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 		for testName, testData := range tests {
 			for _, thanosEngine := range []bool{true, false} {
 				t.Run(fmt.Sprintf("%s, thanos engine enabled = %t", testName, thanosEngine), func(t *testing.T) {
+					//parallel testing causes data race
 					ctx := user.InjectOrgID(context.Background(), "test")
 
 					var cfg Config
@@ -808,6 +823,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 
 					t.Run("query range", func(t *testing.T) {
+						//parallel testing data race
 						if testData.query == "" {
 							return
 						}
@@ -849,6 +865,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					})
 
 					t.Run("series", func(t *testing.T) {
+						//parallel testing causes data race
 						distributor := &MockDistributor{}
 						distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 						distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
@@ -890,6 +907,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					})
 
 					t.Run("label names", func(t *testing.T) {
+						t.Parallel()
 						distributor := &MockDistributor{}
 						distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 						distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
@@ -915,6 +933,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					})
 
 					t.Run("label names with matchers", func(t *testing.T) {
+						//parallel testing causes data race
 						matchers := []*labels.Matcher{
 							labels.MustNewMatcher(labels.MatchNotEqual, "route", "get_user"),
 						}
@@ -945,6 +964,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					})
 
 					t.Run("label values", func(t *testing.T) {
+						//parallel testing causes data race
 						distributor := &MockDistributor{}
 						distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 						distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
@@ -976,6 +996,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 // Test max query length limit works with new validateQueryTimeRange function.
 func TestValidateMaxQueryLength(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	now := time.Now()
 	for _, tc := range []struct {
@@ -1016,6 +1037,7 @@ func TestValidateMaxQueryLength(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			//parallel testing causes data race
 			limits := DefaultLimitsConfig()
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
@@ -1033,6 +1055,7 @@ func TestValidateMaxQueryLength(t *testing.T) {
 // mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
 // so we can test everything is dedupe correctly.
 func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *MockDistributor {
+	//parallel testing causes data race
 	chunks, err := chunkcompat.ToChunks(cs.chunks)
 	require.NoError(t, err)
 
@@ -1238,6 +1261,7 @@ func (q *mockStoreQuerier) Close() error {
 }
 
 func TestShortTermQueryToLTS(t *testing.T) {
+	//parallel testing causes data race
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time
@@ -1293,6 +1317,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 			cfg.QueryIngestersWithin = c.queryIngestersWithin
 			cfg.QueryStoreAfter = c.queryStoreAfter
 			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
+				//parallel testing causes data race
 				chunkStore := &emptyChunkStore{}
 				distributor := &errDistributor{}
 
@@ -1326,6 +1351,7 @@ func TestShortTermQueryToLTS(t *testing.T) {
 }
 
 func TestUseAlwaysQueryable(t *testing.T) {
+	t.Parallel()
 	m := &mockQueryableWithFilter{}
 	qwf := UseAlwaysQueryable(m)
 
@@ -1334,6 +1360,7 @@ func TestUseAlwaysQueryable(t *testing.T) {
 }
 
 func TestUseBeforeTimestamp(t *testing.T) {
+	t.Parallel()
 	m := &mockQueryableWithFilter{}
 	now := time.Now()
 	qwf := UseBeforeTimestampQueryable(m, now.Add(-1*time.Hour))
@@ -1349,6 +1376,7 @@ func TestUseBeforeTimestamp(t *testing.T) {
 }
 
 func TestStoreQueryable(t *testing.T) {
+	t.Parallel()
 	m := &mockQueryableWithFilter{}
 	now := time.Now()
 	sq := storeQueryable{m, time.Hour}
@@ -1364,6 +1392,7 @@ func TestStoreQueryable(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		setup    func(cfg *Config)
 		expected error
@@ -1392,7 +1421,9 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			cfg := &Config{}
 			flagext.DefaultValues(cfg)
 			testData.setup(cfg)

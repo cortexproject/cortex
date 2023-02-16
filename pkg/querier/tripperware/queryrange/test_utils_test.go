@@ -10,6 +10,7 @@ import (
 )
 
 func TestGenLabelsCorrectness(t *testing.T) {
+	t.Parallel()
 	ls := genLabels([]string{"a", "b"}, 2)
 	for _, set := range ls {
 		sort.Sort(set)
@@ -60,6 +61,7 @@ func TestGenLabelsCorrectness(t *testing.T) {
 }
 
 func TestGenLabelsSize(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		set     []string
 		buckets int

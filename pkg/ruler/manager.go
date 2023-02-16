@@ -173,19 +173,24 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			r.userManagers[user] = manager
 		}
 
-		//dedupeEvaluation := func(evalCtx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-		//	if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
-		//		replicaGroup := RuleGroupReplicaGroup(g)
-		//		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
-		//		if err != nil {
-		//			level.Debug(r.logger).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "err", err)
-		//			return
-		//		}
-		//	}
-		//	//promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
-		//}
+		dedupeEvaluation := func(evalCtx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+			glogger := g.Logger()
+			if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
+				replicaGroup := RuleGroupReplicaGroup(g)
+				err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
+				if err != nil {
+					level.Debug(glogger).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "err", err)
+					return
+				}
+			}
+			err = syncAlertsActiveAt(g, g.GetLastEvalTimestamp(), g.Logger())
+			if err != nil {
+				level.Warn(glogger).Log("msg", "error syncing alert states", "err", err)
+			}
+			promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
+		}
 
-		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), syncAlertsActiveAt)
+		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), dedupeEvaluation)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)

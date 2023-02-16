@@ -186,6 +186,9 @@ type Config struct {
 	// Whether the migration of block deletion marks to the global markers location is enabled.
 	BlockDeletionMarksMigrationEnabled bool `yaml:"block_deletion_marks_migration_enabled"`
 
+	// Allowed TenantConfig
+	util.AllowedTenantConfig `yaml:",inline"`
+
 	// Compactors sharding.
 	ShardingEnabled  bool       `yaml:"sharding_enabled"`
 	ShardingStrategy string     `yaml:"sharding_strategy"`
@@ -204,9 +207,6 @@ type Config struct {
 	// Block visit marker file config
 	BlockVisitMarkerTimeout            time.Duration `yaml:"block_visit_marker_timeout"`
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
-
-	// Allowed TenantConfig
-	util.AllowedTenantConfig
 }
 
 // RegisterFlags registers the Compactor flags.

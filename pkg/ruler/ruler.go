@@ -116,7 +116,7 @@ type Config struct {
 
 	EnableAPI bool `yaml:"enable_api"`
 
-	util.AllowedTenantConfig
+	util.AllowedTenantConfig `yaml:",inline"`
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 

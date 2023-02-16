@@ -86,7 +86,7 @@ type MultitenantAlertmanagerConfig struct {
 	// For the state persister.
 	Persister PersisterConfig `yaml:",inline"`
 
-	util.AllowedTenantConfig
+	util.AllowedTenantConfig `yaml:",inline"`
 
 	AllowedTenantConfigFn func() *util.AllowedTenantConfig `yaml:"-"`
 }

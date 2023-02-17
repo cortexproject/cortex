@@ -506,18 +506,34 @@ func (c *HATracker) CleanupHATrackerMetricsForUser(userID string) {
 	}
 }
 
-// Returns a snapshot of the currently elected replicas.  Useful for status display
-func (c *HATracker) SnapshotElectedReplicas() map[string]ReplicaDesc {
+// Performs a best-effort mark-deletion of all KV entries for the given replica.
+// This is mainly used for the Ruler use-case when we want to immediately relinquish leadership on shutdown.
+func (c *HATracker) MarkReplicaDeleted(ctx context.Context, replica string) {
 	c.electedLock.Lock()
 	defer c.electedLock.Unlock()
 
-	electedCopy := make(map[string]ReplicaDesc)
+	now := time.Now()
 	for key, desc := range c.elected {
-		electedCopy[key] = ReplicaDesc{
-			Replica:    desc.Replica,
-			ReceivedAt: desc.ReceivedAt,
-			DeletedAt:  desc.DeletedAt,
+		if desc.Replica == replica {
+			err := c.markReplicaDescDeleted(ctx, key, replica, now)
+			if err != nil {
+				level.Warn(c.logger).Log("msg", "Error marking replica deleted", "key", key, "replica", replica, "err", err)
+			}
 		}
 	}
-	return electedCopy
+}
+
+func (c *HATracker) markReplicaDescDeleted(ctx context.Context, key, replica string, now time.Time) error {
+	return c.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+		desc, ok := in.(*ReplicaDesc)
+		if ok && desc.Replica == replica && desc.DeletedAt == 0 {
+			return &ReplicaDesc{
+				Replica:    replica,
+				ReceivedAt: desc.ReceivedAt,
+				DeletedAt:  timestamp.FromTime(now),
+			}, false, nil
+		}
+		// existing entry either is using a different replica now, or was already marked deleted
+		return nil, false, nil
+	})
 }

@@ -296,6 +296,11 @@ func (r *DefaultMultiTenantManager) Stop() {
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
 
+	if r.haTracker != nil {
+		r.haTracker.MarkReplicaDeleted(nil, r.cfg.HATrackerConfig.ReplicaId)
+		level.Info(r.logger).Log("msg", "marked replica deleted")
+	}
+
 	// cleanup user rules directories
 	r.mapper.cleanup()
 }

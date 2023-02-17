@@ -482,6 +482,10 @@ func newCompactor(
 func (c *Compactor) starting(ctx context.Context) error {
 	var err error
 
+	if err := services.StartAndAwaitRunning(ctx, c.allowedTenants); err != nil {
+		return errors.Wrap(err, "failed to start allowed tenants service")
+	}
+
 	// Create bucket client.
 	c.bucketClient, err = c.bucketClientFactory(ctx)
 	if err != nil {
@@ -578,7 +582,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 func (c *Compactor) stopping(_ error) error {
 	ctx := context.Background()
 
-	services.StopAndAwaitTerminated(ctx, c.blocksCleaner) //nolint:errcheck
+	services.StopAndAwaitTerminated(ctx, c.blocksCleaner)                   //nolint:errcheck
+	services.StopAndAwaitTerminated(context.Background(), c.allowedTenants) //nolint:errcheck
 	if c.ringSubservices != nil {
 		return services.StopManagerAndAwaitStopped(ctx, c.ringSubservices)
 	}

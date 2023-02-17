@@ -334,6 +334,9 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 
 func (r *Ruler) starting(ctx context.Context) error {
 	// If sharding is enabled, start the used subservices.
+	if err := services.StartAndAwaitRunning(ctx, r.allowedTenants); err != nil {
+		return errors.Wrap(err, "failed to start allowed tenants service")
+	}
 	if r.cfg.EnableSharding {
 		var err error
 
@@ -361,6 +364,9 @@ func (r *Ruler) stopping(_ error) error {
 	if r.subservices != nil {
 		_ = services.StopManagerAndAwaitStopped(context.Background(), r.subservices)
 	}
+
+	services.StopAndAwaitTerminated(context.Background(), r.allowedTenants) //nolint:errcheck
+	
 	return nil
 }
 

@@ -454,6 +454,10 @@ func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
+	if err := services.StartAndAwaitRunning(ctx, am.allowedTenants); err != nil {
+		return errors.Wrap(err, "failed to start allowed tenants service")
+	}
+
 	err = am.migrateStateFilesToPerTenantDirectories()
 	if err != nil {
 		return err
@@ -734,6 +738,7 @@ func (am *MultitenantAlertmanager) stopping(_ error) error {
 		// subservices manages ring and lifecycler, if sharding was enabled.
 		_ = services.StopManagerAndAwaitStopped(context.Background(), am.subservices)
 	}
+	services.StopAndAwaitTerminated(context.Background(), am.allowedTenants) //nolint:errcheck
 	return nil
 }
 

@@ -7,12 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/value"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	ot "github.com/opentracing/opentracing-go"
@@ -69,12 +63,12 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 	}
 
 	var haTracker *ha.HATracker
-	if cfg.Ring.ReplicationFactor > 1 {
+	if cfg.HATrackerConfig.EnableHATracker || cfg.Ring.ReplicationFactor > 1 {
 		haTrackerStatusConfig := ha.HATrackerStatusConfig{
 			Title:             "Cortex Ruler HA Tracker Status",
 			ReplicaGroupLabel: "RuleGroup",
 		}
-		haTracker, err = ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), nil, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler-hatracker", logger)
+		haTracker, err = ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(true), nil, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler-hatracker", logger)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +130,9 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
-			r.haTracker.CleanupHATrackerMetricsForUser(userID)
+			if r.haTracker != nil {
+				r.haTracker.CleanupHATrackerMetricsForUser(userID)
+			}
 			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
@@ -175,18 +171,13 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		}
 
 		dedupeEvaluation := func(evalCtx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-			glogger := g.Logger()
 			if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
 				replicaGroup := RuleGroupReplicaGroup(g)
 				err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
 				if err != nil {
-					level.Debug(glogger).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
+					level.Debug(g.Logger()).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
 					return
 				}
-			}
-			err = syncAlertsActiveAt(g, g.GetLastEvalTimestamp(), g.Logger())
-			if err != nil {
-				level.Warn(glogger).Log("msg", "error syncing alert states", "err", err)
 			}
 			promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
 		}
@@ -344,88 +335,4 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 
 func RuleGroupReplicaGroup(g *promRules.Group) string {
 	return fmt.Sprintf("%s/%s", g.File(), g.Name())
-}
-
-func syncAlertsActiveAt(g *promRules.Group, lastEvalTimestamp time.Time, logger log.Logger) error {
-	var returnError error
-
-	maxtMS := int64(model.TimeFromUnixNano(lastEvalTimestamp.UnixNano()))
-	// The time difference between each ruler start up. This should not be more than 10m
-	mint := lastEvalTimestamp.Add(-time.Minute * 10)
-	mintMS := int64(model.TimeFromUnixNano(mint.UnixNano()))
-
-	q, err := g.Queryable().Querier(g.Context(), mintMS, maxtMS)
-	if err != nil {
-		return fmt.Errorf("failed to get Querier, %s", err)
-	}
-	defer func() {
-		if err := q.Close(); err != nil {
-			returnError = fmt.Errorf("failed to close Querier %s", err)
-		}
-	}()
-
-	for _, rule := range g.Rules() {
-		alertRule, ok := rule.(*promRules.AlertingRule)
-		if !ok {
-			continue
-		}
-
-		if !alertRule.Restored() {
-			level.Debug(logger).Log("msg", "Skip the sync 'for' state since the alert hasn't been restore yet",
-				labels.AlertName, alertRule.Name())
-			continue
-		}
-
-		alertRule.ForEachActiveAlert(func(a *promRules.Alert) {
-			var s storage.Series
-			s, err := alertRule.QueryforStateSeries(a, q)
-			if err != nil {
-				// Querier Warnings are ignored. We do not care unless we have an error.
-				level.Error(logger).Log(
-					"msg", "Failed to sync 'for' state",
-					labels.AlertName, alertRule.Name(),
-					"stage", "Select",
-					"err", err,
-				)
-				return
-			}
-
-			if s == nil {
-				level.Debug(logger).Log("msg", "Alert for state series nil",
-					labels.AlertName, alertRule.Name())
-				return
-			}
-
-			// Series found for the 'for' state.
-			var v float64
-			it := s.Iterator()
-			for it.Next() != chunkenc.ValNone {
-				_, v = it.At()
-			}
-			if it.Err() != nil {
-				level.Error(logger).Log("msg", "Failed to sync 'for' state",
-					labels.AlertName, alertRule.Name(), "stage", "Iterator", "err", it.Err())
-				return
-			}
-			if value.IsStaleNaN(v) { // Alert was not active.
-				level.Debug(logger).Log("msg", "Alert not active",
-					labels.AlertName, alertRule.Name())
-				return
-			}
-
-			restoredActiveAt := time.Unix(int64(v), 0).UTC()
-			compare := restoredActiveAt.Sub(a.ActiveAt.UTC())
-
-			if compare <= 0 {
-				// We have another ruler instance evaluating the same rule group earlier
-				a.ActiveAt = restoredActiveAt
-			}
-
-			level.Debug(logger).Log("msg", "'for' state synced",
-				labels.AlertName, alertRule.Name(), "restored_time", a.ActiveAt.Format(time.RFC850),
-				"labels", a.Labels.String())
-		})
-	}
-
-	return returnError
 }

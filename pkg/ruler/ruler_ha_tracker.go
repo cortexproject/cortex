@@ -12,6 +12,7 @@ import (
 )
 
 type HATrackerConfig struct {
+	EnableHATracker bool `yaml:"enable_ha_tracker"`
 	// We should only update the timestamp if the difference
 	// between the stored timestamp and the time we received a sample at
 	// is more than this duration.
@@ -36,6 +37,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 		panic(fmt.Errorf("failed to get hostname, %w", err))
 	}
 
+	f.BoolVar(&cfg.EnableHATracker, "ruler.ha-tracker.enable", false, "Enable the ruler HA tracker. This flag is enabled automatically if ruler replication factor > 1, but it can be enabled explicitly, particularly when transitioning to HA.")
 	f.DurationVar(&cfg.UpdateTimeout, "ruler.ha-tracker.update-timeout", 15*time.Second, "Update the timestamp in the KV store for a given replica only after this amount of time has passed since the current stored timestamp.")
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax, "ruler.ha-tracker.update-timeout-jitter-max", 5*time.Second, "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
 	f.DurationVar(&cfg.FailoverTimeout, "ruler.ha-tracker.failover-timeout", 30*time.Second, "If we don't receive any ticks from the accepted replica in this amount of time we will failover to the next replica. This value must be greater than the update timeout")
@@ -49,11 +51,11 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("ruler.ha-tracker.", "ruler-ha-tracker/", f)
 }
 
-func (cfg *HATrackerConfig) ToHATrackerConfig() ha.HATrackerConfig {
+func (cfg *HATrackerConfig) ToHATrackerConfig(forceEnable bool) ha.HATrackerConfig {
 	haCfg := ha.HATrackerConfig{}
 	flagext.DefaultValues(&haCfg)
 
-	haCfg.EnableHATracker = true // HA tracking is enabled automatically if ring.replicationFactor > 1
+	haCfg.EnableHATracker = cfg.EnableHATracker || forceEnable // HA tracking is enabled automatically if ring.replicationFactor > 1
 	haCfg.UpdateTimeout = cfg.UpdateTimeout
 	haCfg.UpdateTimeoutJitterMax = cfg.UpdateTimeoutJitterMax
 	haCfg.FailoverTimeout = cfg.FailoverTimeout

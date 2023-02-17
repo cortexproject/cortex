@@ -1058,6 +1058,8 @@ func TestGetRules(t *testing.T) {
 				rulerAddrMap = map[string]*Ruler{}
 				rulerAddrMapForClients := map[string]*Ruler{}
 
+				haTrackerKVStore := kv.PrefixClient(kvStore, "ha-test/")
+
 				t.Logf("Creating rulers")
 				for rID := range expectedRules {
 					t.Logf("Creating ruler %s", rID)
@@ -1074,6 +1076,17 @@ func TestGetRules(t *testing.T) {
 							Mock: kvStore,
 						},
 						ReplicationFactor: tc.replicationFactor,
+					}
+
+					cfg.HATrackerConfig = HATrackerConfig{
+						EnableHATracker:        false,
+						UpdateTimeout:          60 * time.Second,
+						UpdateTimeoutJitterMax: 0,
+						FailoverTimeout:        300 * time.Second,
+						KVStore: kv.Config{
+							Mock: haTrackerKVStore,
+						},
+						ReplicaId: rID,
 					}
 
 					testRuleGroupHash := func(g *rulespb.RuleGroupDesc) uint32 {

@@ -340,7 +340,7 @@ func (r *Ruler) starting(ctx context.Context) error {
 	if r.cfg.EnableSharding {
 		var err error
 
-		if r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool, r.allowedTenants); err != nil {
+		if r.subservices, err = services.NewManager(r.lifecycler, r.ring, r.clientsPool); err != nil {
 			return errors.Wrap(err, "unable to start ruler subservices")
 		}
 
@@ -366,7 +366,7 @@ func (r *Ruler) stopping(_ error) error {
 	}
 
 	services.StopAndAwaitTerminated(context.Background(), r.allowedTenants) //nolint:errcheck
-	
+
 	return nil
 }
 

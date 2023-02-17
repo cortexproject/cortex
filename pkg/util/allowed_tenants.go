@@ -34,13 +34,13 @@ type AllowedTenants struct {
 // If there are any enabled tenants, then only those tenants are allowed.
 // If there are any disabled tenants, then tenant from that list, that would normally be allowed, is disabled instead.
 func NewAllowedTenants(cfg AllowedTenantConfig, allowedTenantConfigFn func() *AllowedTenantConfig) *AllowedTenants {
+	if allowedTenantConfigFn == nil {
+		allowedTenantConfigFn = func() *AllowedTenantConfig { return &cfg }
+	}
+
 	a := &AllowedTenants{
 		allowedTenantConfigFn: allowedTenantConfigFn,
 		defaultCfg:            &cfg,
-	}
-
-	if allowedTenantConfigFn == nil {
-		allowedTenantConfigFn = func() *AllowedTenantConfig { return a.defaultCfg }
 	}
 
 	a.setConfig(allowedTenantConfigFn())

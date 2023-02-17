@@ -582,8 +582,8 @@ func (c *Compactor) starting(ctx context.Context) error {
 func (c *Compactor) stopping(_ error) error {
 	ctx := context.Background()
 
-	services.StopAndAwaitTerminated(ctx, c.blocksCleaner)                   //nolint:errcheck
-	services.StopAndAwaitTerminated(context.Background(), c.allowedTenants) //nolint:errcheck
+	services.StopAndAwaitTerminated(ctx, c.blocksCleaner)  //nolint:errcheck
+	services.StopAndAwaitTerminated(ctx, c.allowedTenants) //nolint:errcheck
 	if c.ringSubservices != nil {
 		return services.StopManagerAndAwaitStopped(ctx, c.ringSubservices)
 	}

@@ -5,7 +5,6 @@
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
 * [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103
-* [CHANGE] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5120
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
@@ -35,6 +34,7 @@
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
+* [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5120
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

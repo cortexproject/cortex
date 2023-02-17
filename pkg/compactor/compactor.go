@@ -188,6 +188,7 @@ type Config struct {
 
 	// Allowed TenantConfig
 	util.AllowedTenantConfig `yaml:",inline"`
+	AllowedTenantConfigFn    func() *util.AllowedTenantConfig `yaml:"-"`
 
 	// Compactors sharding.
 	ShardingEnabled  bool       `yaml:"sharding_enabled"`
@@ -395,7 +396,7 @@ func newCompactor(
 		bucketClientFactory:    bucketClientFactory,
 		blocksGrouperFactory:   blocksGrouperFactory,
 		blocksCompactorFactory: blocksCompactorFactory,
-		allowedTenants:         util.NewAllowedTenants(compactorCfg.AllowedTenantConfig, nil),
+		allowedTenants:         util.NewAllowedTenants(compactorCfg.AllowedTenantConfig, compactorCfg.AllowedTenantConfigFn),
 
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",

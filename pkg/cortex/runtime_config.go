@@ -20,6 +20,8 @@ var (
 
 type runtimeAllowedTenantConfig struct {
 	alertManager *util.AllowedTenantConfig `yaml:"alert_manager"`
+	compactor    *util.AllowedTenantConfig `yaml:"compactor"`
+	ruler        *util.AllowedTenantConfig `yaml:"ruler"`
 }
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
@@ -122,7 +124,7 @@ func ingesterInstanceLimits(manager *runtimeconfig.Manager) func() *ingester.Ins
 	}
 }
 
-func alertManagerAllowedTenantC(manager *runtimeconfig.Manager) func() *util.AllowedTenantConfig {
+func alertManagerAllowedTenant(manager *runtimeconfig.Manager) func() *util.AllowedTenantConfig {
 	if manager == nil {
 		return nil
 	}
@@ -131,6 +133,34 @@ func alertManagerAllowedTenantC(manager *runtimeconfig.Manager) func() *util.All
 		val := manager.GetConfig()
 		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
 			return cfg.AllowedTenantConfig.alertManager
+		}
+		return nil
+	}
+}
+
+func compactorAllowedTenant(manager *runtimeconfig.Manager) func() *util.AllowedTenantConfig {
+	if manager == nil {
+		return nil
+	}
+
+	return func() *util.AllowedTenantConfig {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			return cfg.AllowedTenantConfig.compactor
+		}
+		return nil
+	}
+}
+
+func rulerAllowedTenant(manager *runtimeconfig.Manager) func() *util.AllowedTenantConfig {
+	if manager == nil {
+		return nil
+	}
+
+	return func() *util.AllowedTenantConfig {
+		val := manager.GetConfig()
+		if cfg, ok := val.(*runtimeConfigValues); ok && cfg != nil {
+			return cfg.AllowedTenantConfig.ruler
 		}
 		return nil
 	}

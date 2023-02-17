@@ -26,6 +26,7 @@ type AllowedTenants struct {
 	disabled map[string]struct{}
 
 	allowedTenantConfigFn func() *AllowedTenantConfig
+	defaultCfg            *AllowedTenantConfig
 	m                     sync.RWMutex
 }
 
@@ -35,13 +36,14 @@ type AllowedTenants struct {
 func NewAllowedTenants(cfg AllowedTenantConfig, allowedTenantConfigFn func() *AllowedTenantConfig) *AllowedTenants {
 	a := &AllowedTenants{
 		allowedTenantConfigFn: allowedTenantConfigFn,
+		defaultCfg:            &cfg,
 	}
 
 	if allowedTenantConfigFn == nil {
-		a.setConfig(allowedTenantConfigFn())
-	} else {
-		a.setConfig(&cfg)
+		allowedTenantConfigFn = func() *AllowedTenantConfig { return a.defaultCfg }
 	}
+
+	a.setConfig(allowedTenantConfigFn())
 
 	a.Service = services.NewBasicService(nil, a.running, nil)
 
@@ -56,7 +58,11 @@ func (a *AllowedTenants) running(ctx context.Context) error {
 		select {
 		case <-ticker.C:
 			if a.allowedTenantConfigFn == nil {
-				a.setConfig(a.allowedTenantConfigFn())
+				c := a.allowedTenantConfigFn()
+				if c == nil {
+					c = a.defaultCfg
+				}
+				a.setConfig(c)
 			}
 		case <-ctx.Done():
 			return nil
@@ -76,6 +82,8 @@ func (a *AllowedTenants) setConfig(cfg *AllowedTenantConfig) {
 		for _, u := range cfg.EnabledTenants {
 			a.enabled[u] = struct{}{}
 		}
+	} else {
+		cfg.EnabledTenants = nil
 	}
 
 	if len(cfg.DisabledTenants) > 0 {
@@ -83,6 +91,8 @@ func (a *AllowedTenants) setConfig(cfg *AllowedTenantConfig) {
 		for _, u := range cfg.DisabledTenants {
 			a.disabled[u] = struct{}{}
 		}
+	} else {
+		a.disabled = nil
 	}
 }
 
@@ -91,7 +101,7 @@ func (a *AllowedTenants) IsAllowed(tenantID string) bool {
 		return true
 	}
 
-	a.m.RUnlock()
+	a.m.RLock()
 	defer a.m.RUnlock()
 
 	if len(a.enabled) > 0 {

@@ -581,6 +581,8 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		return nil, err
 	}
 
+	t.Cfg.Ruler.AllowedTenantConfigFn = rulerAllowedTenant(t.RuntimeConfig)
+
 	t.Ruler, err = ruler.NewRuler(
 		t.Cfg.Ruler,
 		manager,
@@ -626,7 +628,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	if err != nil {
 		return
 	}
-	t.Cfg.Alertmanager.AllowedTenantConfigFn = alertManagerAllowedTenantC(t.RuntimeConfig)
+	t.Cfg.Alertmanager.AllowedTenantConfigFn = alertManagerAllowedTenant(t.RuntimeConfig)
 
 	t.Alertmanager, err = alertmanager.NewMultitenantAlertmanager(&t.Cfg.Alertmanager, store, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -640,6 +642,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	t.Cfg.Compactor.AllowedTenantConfigFn = compactorAllowedTenant(t.RuntimeConfig)
 	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
 	if err != nil {
 		return

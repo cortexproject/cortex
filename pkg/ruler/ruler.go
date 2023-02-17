@@ -117,6 +117,7 @@ type Config struct {
 	EnableAPI bool `yaml:"enable_api"`
 
 	util.AllowedTenantConfig `yaml:",inline"`
+	AllowedTenantConfigFn    func() *util.AllowedTenantConfig `yaml:"-"`
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 
@@ -265,7 +266,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 		logger:         logger,
 		limits:         limits,
 		clientsPool:    clientPool,
-		allowedTenants: util.NewAllowedTenants(cfg.AllowedTenantConfig, nil),
+		allowedTenants: util.NewAllowedTenants(cfg.AllowedTenantConfig, cfg.AllowedTenantConfigFn),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",

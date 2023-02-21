@@ -27,7 +27,7 @@ Cortex is primarily used as a [remote write](https://prometheus.io/docs/operatin
 
 The chunks storage is deprecated since v1.10.0. You're encouraged to use the [blocks storage](docs/blocks-storage/_index.md).
 
-Chunks storage is scheduled to be removed in release 1.14.0
+Chunks storage was removed in release 1.14.0
 
 ## Documentation
 

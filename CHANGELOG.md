@@ -6,6 +6,7 @@
 * [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103
 * [CHANGE] Tracing: Use the default OTEL trace sampler when `-tracing.otel.exporter-type` is set to `awsxray`. #5141
+* [ENHANCEMENT] Update Go version to 1.20.1. #5147
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005

@@ -500,8 +500,6 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 	// CRC32C is ~50% faster on AMD64 @ 30GB/s
 	var crcBytes []byte
 	crc := crc32.New(crc32.MakeTable(crc32.Castagnoli))
-	md5Hash := c.md5Hasher()
-	defer md5Hash.Close()
 
 	// Total data read and written to server. should be equal to 'size' at the end of the call.
 	var totalUploadedSize int64
@@ -569,9 +567,10 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			var md5Base64 string
 
 			if opts.SendContentMd5 {
-				md5Hash.Reset()
+				md5Hash := c.md5Hasher()
 				md5Hash.Write(buf[:length])
 				md5Base64 = base64.StdEncoding.EncodeToString(md5Hash.Sum(nil))
+				md5Hash.Close()
 			}
 
 			defer wg.Done()
@@ -590,6 +589,7 @@ func (c *Client) putObjectMultipartStreamParallel(ctx context.Context, bucketNam
 			objPart, uerr := c.uploadPart(ctx, p)
 			if uerr != nil {
 				errCh <- uerr
+				return
 			}
 
 			// Save successfully uploaded part metadata.

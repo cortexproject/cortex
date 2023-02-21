@@ -85,12 +85,11 @@ func NewIgnoreNonQueryableBlocksFilter(logger log.Logger, ignoreWithin time.Dura
 }
 
 // IgnoreNonQueryableBlocksFilter ignores blocks that are too new be queried.
-// This has be used in conjuction with `-querier.query-store-after` with some buffer.
+// This has be used in conjunction with `-querier.query-store-after` with some buffer.
 type IgnoreNonQueryableBlocksFilter struct {
-	// Blocks that were created within now() - ignoreWithin will not be added to the index.
+	// Blocks that were created since `now() - ignoreWithin` will not be synced.
 	ignoreWithin time.Duration
 	logger       log.Logger
-	now          *time.Time
 }
 
 // Filter implements block.MetadataFilter.

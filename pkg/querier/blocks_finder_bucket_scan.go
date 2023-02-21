@@ -42,6 +42,7 @@ type BucketScanBlocksFinderConfig struct {
 	CacheDir                 string
 	ConsistencyDelay         time.Duration
 	IgnoreDeletionMarksDelay time.Duration
+	IgnoreBlocksWithin       time.Duration
 }
 
 // BucketScanBlocksFinder is a BlocksFinder implementation periodically scanning the bucket to discover blocks.
@@ -377,6 +378,11 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 	//   discover and load the compacted ones.
 	deletionMarkFilter := block.NewIgnoreDeletionMarkFilter(userLogger, userBucket, d.cfg.IgnoreDeletionMarksDelay, d.cfg.MetasConcurrency)
 	filters := []block.MetadataFilter{deletionMarkFilter}
+
+	// Here we filter out the blocks that are too new to query.
+	if d.cfg.IgnoreBlocksWithin > 0 {
+		filters = append(filters, storegateway.NewIgnoreNonQueryableBlocksFilter(d.logger, d.cfg.IgnoreBlocksWithin))
+	}
 
 	f, err := block.NewMetaFetcher(
 		userLogger,

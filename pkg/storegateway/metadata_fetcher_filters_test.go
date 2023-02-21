@@ -22,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/prometheus/prometheus/tsdb"
 )
 
 func TestIgnoreDeletionMarkFilter_Filter(t *testing.T) {
@@ -105,4 +106,66 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 	assert.Equal(t, 1.0, promtest.ToFloat64(synced.WithLabelValues(block.MarkedForDeletionMeta)))
 	assert.Equal(t, expectedMetas, inputMetas)
 	assert.Equal(t, expectedDeletionMarks, f.DeletionMarkBlocks())
+}
+
+func TestIgnoreNonQueryableBlocksFilter(t *testing.T) {
+	now := time.Now()
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	inputMetas := map[ulid.ULID]*metadata.Meta{
+		ulid.MustNew(1, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-2 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-0 * time.Hour).UnixMilli(),
+			},
+		},
+		ulid.MustNew(2, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-4 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-2 * time.Hour).UnixMilli(),
+			},
+		},
+		ulid.MustNew(3, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-6 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-4 * time.Hour).UnixMilli(),
+			},
+		},
+		ulid.MustNew(4, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-8 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-6 * time.Hour).UnixMilli(),
+			},
+		},
+	}
+
+	expectedMetas := map[ulid.ULID]*metadata.Meta{
+		ulid.MustNew(2, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-4 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-2 * time.Hour).UnixMilli(),
+			},
+		},
+		ulid.MustNew(3, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-6 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-4 * time.Hour).UnixMilli(),
+			},
+		},
+		ulid.MustNew(4, nil): {
+			BlockMeta: tsdb.BlockMeta{
+				MinTime: now.Add(-8 * time.Hour).UnixMilli(),
+				MaxTime: now.Add(-6 * time.Hour).UnixMilli(),
+			},
+		},
+	}
+
+	synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{Name: "synced"}, []string{"state"})
+	modified := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{Name: "modified"}, []string{"state"})
+
+	f := NewIgnoreNonQueryableBlocksFilter(logger, 3*time.Hour)
+
+	require.NoError(t, f.Filter(ctx, inputMetas, synced, modified))
+	assert.Equal(t, expectedMetas, inputMetas)
 }

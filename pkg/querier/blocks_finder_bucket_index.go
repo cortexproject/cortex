@@ -24,6 +24,7 @@ type BucketIndexBlocksFinderConfig struct {
 	IndexLoader              bucketindex.LoaderConfig
 	MaxStalePeriod           time.Duration
 	IgnoreDeletionMarksDelay time.Duration
+	IgnoreBlocksWithin       time.Duration
 }
 
 // BucketIndexBlocksFinder implements BlocksFinder interface and find blocks in the bucket

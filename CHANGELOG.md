@@ -5,6 +5,7 @@
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
 * [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103
+* [CHANGE] Tracing: Use the default OTEL trace sampler when `-tracing.otel.exporter-type` is set to `awsxray`. #5141
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
@@ -29,6 +30,7 @@
 * [FEATURE] Querier/Ruler: Support the new thanos promql engine. This is an experimental feature and might change in the future. #5093
 * [FEATURE] Added zstd as an option for grpc compression #5092
 * [FEATURE] Ring: Add new kv store option `dynamodb`. #5026
+* [FEATURE] Cache: Support redis as backend for caching bucket and index cache. #5057
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
@@ -37,6 +39,8 @@
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
 * [BUGFIX] Compactor: Fixed shuffle sharding planner to not fail the compaction if visit marker file is locked by another compactor. #5135
+* [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
+* [BUGFIX] Query-frontend:  Fix sorted queries do not produce sorted results for shardable queries. #5148
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

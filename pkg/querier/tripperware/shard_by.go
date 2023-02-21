@@ -79,7 +79,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		resps = append(resps, reqResp.Response)
 	}
 
-	return s.merger.MergeResponse(ctx, resps...)
+	return s.merger.MergeResponse(ctx, r, resps...)
 }
 
 func (s shardBy) shardQuery(l log.Logger, numShards int, r Request, analysis querysharding.QueryAnalysis) []Request {

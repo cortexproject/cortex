@@ -76,6 +76,59 @@ func Test_Batch(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func Test_BatchSlices(t *testing.T) {
+	tableName := "TEST"
+	ddbKeyDelete := dynamodbKey{
+		primaryKey: "PKDelete",
+		sortKey:    "SKDelete",
+	}
+	numOfCalls := 0
+	ddbClientMock := &mockDynamodb{
+		batchWriteItem: func(input *dynamodb.BatchWriteItemInput) (*dynamodb.BatchWriteItemOutput, error) {
+			numOfCalls++
+			return &dynamodb.BatchWriteItemOutput{}, nil
+		},
+	}
+	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
+
+	for _, tc := range []struct {
+		name            string
+		numOfExecutions int
+		expectedCalls   int
+	}{
+		// These tests follow each other (end state of KV in state is starting point in the next state).
+		{
+			name:            "Test slice on lower bound",
+			numOfExecutions: 24,
+			expectedCalls:   1,
+		},
+		{
+			name:            "Test slice on exact size",
+			numOfExecutions: 25,
+			expectedCalls:   1,
+		},
+		{
+			name:            "Test slice on upper bound",
+			numOfExecutions: 26,
+			expectedCalls:   2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			numOfCalls = 0
+			delete := make([]dynamodbKey, 0, tc.numOfExecutions)
+			for i := 0; i < tc.numOfExecutions; i++ {
+				delete = append(delete, ddbKeyDelete)
+			}
+
+			err := ddb.Batch(context.TODO(), nil, delete)
+			require.NoError(t, err)
+			require.EqualValues(t, tc.expectedCalls, numOfCalls)
+
+		})
+	}
+
+}
+
 func Test_EmptyBatch(t *testing.T) {
 	tableName := "TEST"
 	ddbClientMock := &mockDynamodb{}
@@ -156,7 +209,7 @@ func (m *mockDynamodb) PutItemWithContext(_ context.Context, input *dynamodb.Put
 	return m.putItem(input), nil
 }
 
-func (m *mockDynamodb) BatchWriteItemWithContext(_ context.Context, input *dynamodb.BatchWriteItemInput, _ ...request.Option) (*dynamodb.BatchWriteItemOutput, error) {
+func (m *mockDynamodb) BatchWriteItemWithContext(ctx context.Context, input *dynamodb.BatchWriteItemInput, opts ...request.Option) (*dynamodb.BatchWriteItemOutput, error) {
 	return m.batchWriteItem(input)
 }
 

@@ -59,6 +59,7 @@ type SnowballObject struct {
 	Size int64
 
 	// Modtime to apply to the object.
+	// If Modtime is the zero value current time will be used.
 	ModTime time.Time
 
 	// Content of the object.
@@ -172,6 +173,10 @@ objectLoop:
 				ModTime:  obj.ModTime,
 				Format:   tar.FormatPAX,
 			}
+			if header.ModTime.IsZero() {
+				header.ModTime = time.Now().UTC()
+			}
+
 			if err := t.WriteHeader(&header); err != nil {
 				closeObj()
 				return err

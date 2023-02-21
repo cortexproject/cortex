@@ -140,6 +140,9 @@ func (i *STSCertificateIdentity) Retrieve() (Value, error) {
 	if err != nil {
 		return Value{}, err
 	}
+	if req.Form == nil {
+		req.Form = url.Values{}
+	}
 	req.Form.Add("DurationSeconds", strconv.FormatUint(uint64(livetime.Seconds()), 10))
 
 	resp, err := i.Client.Do(req)

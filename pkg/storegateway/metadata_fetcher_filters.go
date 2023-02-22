@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -70,6 +71,35 @@ func (f *IgnoreDeletionMarkFilter) FilterWithBucketIndex(_ context.Context, meta
 		if time.Since(time.Unix(mark.DeletionTime, 0)).Seconds() > f.delay.Seconds() {
 			synced.WithLabelValues(block.MarkedForDeletionMeta).Inc()
 			delete(metas, mark.ID)
+		}
+	}
+
+	return nil
+}
+
+func NewIgnoreNonQueryableBlocksFilter(logger log.Logger, ignoreWithin time.Duration) *IgnoreNonQueryableBlocksFilter {
+	return &IgnoreNonQueryableBlocksFilter{
+		logger:       logger,
+		ignoreWithin: ignoreWithin,
+	}
+}
+
+// IgnoreNonQueryableBlocksFilter ignores blocks that are too new be queried.
+// This has be used in conjunction with `-querier.query-store-after` with some buffer.
+type IgnoreNonQueryableBlocksFilter struct {
+	// Blocks that were created since `now() - ignoreWithin` will not be synced.
+	ignoreWithin time.Duration
+	logger       log.Logger
+}
+
+// Filter implements block.MetadataFilter.
+func (f *IgnoreNonQueryableBlocksFilter) Filter(ctx context.Context, metas map[ulid.ULID]*metadata.Meta, synced block.GaugeVec, modified block.GaugeVec) error {
+	ignoreWithin := time.Now().Add(-f.ignoreWithin).UnixMilli()
+
+	for id, m := range metas {
+		if m.MinTime > ignoreWithin {
+			level.Debug(f.logger).Log("msg", "ignoring block because it won't be queried", "id", id)
+			delete(metas, id)
 		}
 	}
 

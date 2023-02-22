@@ -435,6 +435,11 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// Remove Cortex external labels so that they're not injected when querying blocks.
 	}...)
 
+	if u.cfg.BucketStore.IgnoreBlocksWithin > 0 {
+		// Filter out blocks that are too new to be queried.
+		filters = append(filters, NewIgnoreNonQueryableBlocksFilter(userLogger, u.cfg.BucketStore.IgnoreBlocksWithin))
+	}
+
 	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
 	var fetcher block.MetadataFetcher
 	if u.cfg.BucketStore.BucketIndex.Enabled {

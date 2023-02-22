@@ -37,7 +37,7 @@ var (
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
-		ValidateJsonRawMessage: true,
+		ValidateJsonRawMessage: false,
 	}.Froze()
 )
 

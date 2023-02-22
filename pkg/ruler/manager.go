@@ -171,15 +171,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		}
 
 		dedupeEvaluation := func(evalCtx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-			if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
-				replicaGroup := RuleGroupReplicaGroup(g)
-				err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
-				if err != nil {
-					level.Debug(g.Logger()).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
-					return
-				}
-			}
-			promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
+			r.evalIterationFunc(evalCtx, user, g, evalTimestamp)
 		}
 
 		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), dedupeEvaluation)
@@ -336,6 +328,18 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	return errs
+}
+
+func (r *DefaultMultiTenantManager) evalIterationFunc(evalCtx context.Context, user string, g *promRules.Group, evalTimestamp time.Time) {
+	if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
+		replicaGroup := RuleGroupReplicaGroup(g)
+		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
+		if err != nil {
+			level.Debug(g.Logger()).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
+			return
+		}
+	}
+	promRules.DefaultEvalIterationFunc(evalCtx, g, evalTimestamp)
 }
 
 func RuleGroupReplicaGroup(g *promRules.Group) string {

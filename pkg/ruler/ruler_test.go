@@ -22,6 +22,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 
 	"github.com/go-kit/log"
@@ -1053,12 +1054,16 @@ func TestGetRules(t *testing.T) {
 			} else {
 				t.Logf("Configuring rulers")
 
-				kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-				t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
+				ringKVStore, ringKVCleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 				rulerAddrMap = map[string]*Ruler{}
 				rulerAddrMapForClients := map[string]*Ruler{}
 
-				haTrackerKVStore := kv.PrefixClient(kvStore, "ha-test/")
+				haTrackerKVStore, haTrackerKVleanUp := consul.NewInMemoryClient(ha.GetReplicaDescCodec(), log.NewNopLogger(), nil)
+
+				t.Cleanup(func() {
+					assert.NoError(t, ringKVCleanUp.Close())
+					assert.NoError(t, haTrackerKVleanUp.Close())
+				})
 
 				t.Logf("Creating rulers")
 				for rID := range expectedRules {
@@ -1073,7 +1078,7 @@ func TestGetRules(t *testing.T) {
 						InstanceID:   rID,
 						InstanceAddr: rID,
 						KVStore: kv.Config{
-							Mock: kvStore,
+							Mock: ringKVStore,
 						},
 						ReplicationFactor: tc.replicationFactor,
 					}
@@ -1108,7 +1113,7 @@ func TestGetRules(t *testing.T) {
 
 				t.Logf("Mapping ruler addresses")
 				if tc.sharding {
-					err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+					err := ringKVStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
 						d, _ := in.(*ring.Desc)
 						if d == nil {
 							d = ring.NewDesc()

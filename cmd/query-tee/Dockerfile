@@ -1,4 +1,4 @@
-FROM       alpine:3.14
+FROM       alpine:3.17
 ARG TARGETARCH
 
 RUN        apk add --no-cache ca-certificates

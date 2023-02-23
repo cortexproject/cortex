@@ -652,7 +652,7 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		}} {
 		t.Run(tc.name, func(t *testing.T) {
-			output, err := PrometheusCodec.MergeResponse(context.Background(), tc.input...)
+			output, err := PrometheusCodec.MergeResponse(context.Background(), nil, tc.input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
 		})

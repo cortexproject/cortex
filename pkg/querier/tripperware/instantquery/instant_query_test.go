@@ -198,34 +198,43 @@ func TestResponse(t *testing.T) {
 }
 
 func TestMergeResponse(t *testing.T) {
+	defaultReq := &PrometheusRequest{
+		Query: "sum(up)",
+	}
 	for _, tc := range []struct {
 		name         string
+		req          tripperware.Request
 		resps        []string
 		expectedResp string
 		expectedErr  error
 	}{
 		{
 			name:         "empty response",
+			req:          defaultReq,
 			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[]}}`},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[]}}`,
 		},
 		{
 			name:         "empty response with stats",
+			req:          defaultReq,
 			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[],"stats":{"samples":{"totalQueryableSamples":0,"totalQueryableSamplesPerStep":[]}}}}`},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[],"stats":{"samples":{"totalQueryableSamples":0,"totalQueryableSamplesPerStep":[]}}}}`,
 		},
 		{
 			name:         "single response",
+			req:          defaultReq,
 			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
 		},
 		{
 			name:         "single response with stats",
+			req:          defaultReq,
 			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 		},
 		{
 			name: "duplicated response",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
@@ -234,6 +243,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "duplicated response with stats",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
@@ -242,6 +252,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "merge two responses",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}]}}`,
@@ -249,7 +260,26 @@ func TestMergeResponse(t *testing.T) {
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
 		},
 		{
+			name: "merge two responses with sort",
+			req:  &PrometheusRequest{Query: "sort(up)"},
+			resps: []string{
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			},
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+		},
+		{
+			name: "merge two responses with sort_desc",
+			req:  &PrometheusRequest{Query: "sort_desc(up)"},
+			resps: []string{
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			},
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+		},
+		{
 			name: "merge two responses with stats",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
@@ -258,6 +288,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "responses don't contain vector, should return an error",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"string","result":[1662682521.409,"foo"]}}`,
 				`{"status":"success","data":{"resultType":"string","result":[1662682521.409,"foo"]}}`,
@@ -266,6 +297,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "single matrix response",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up"},"values":[[1,"1"],[2,"2"]]}]}}`,
 			},
@@ -273,6 +305,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "multiple matrix responses without duplicated series",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]}]}}`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"foo"},"values":[[3,"3"],[4,"4"]]}]}}`,
@@ -281,6 +314,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "multiple matrix responses with duplicated series, but not same samples",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]}]}}`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[3,"3"]]}]}}`,
@@ -289,6 +323,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "multiple matrix responses with duplicated series and same samples",
+			req:  defaultReq,
 			resps: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]}]}}`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
@@ -308,7 +343,7 @@ func TestMergeResponse(t *testing.T) {
 				require.NoError(t, err)
 				resps = append(resps, dr)
 			}
-			resp, err := InstantQueryCodec.MergeResponse(context.Background(), resps...)
+			resp, err := InstantQueryCodec.MergeResponse(context.Background(), tc.req, resps...)
 			assert.Equal(t, err, tc.expectedErr)
 			if err != nil {
 				return

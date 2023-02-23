@@ -28,7 +28,7 @@ var (
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
-		ValidateJsonRawMessage: true,
+		ValidateJsonRawMessage: false,
 	}.Froze()
 )
 
@@ -50,7 +50,7 @@ type Codec interface {
 // Merger is used by middlewares making multiple requests to merge back all responses into a single one.
 type Merger interface {
 	// MergeResponse merges responses from multiple requests into a single Response
-	MergeResponse(context.Context, ...Response) (Response, error)
+	MergeResponse(context.Context, Request, ...Response) (Response, error)
 }
 
 // Response represents a query range response.

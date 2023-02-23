@@ -383,10 +383,12 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
+	now := time.Now()
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 15)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 12, 20)
 	block3 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 	block4 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 30, 40)
+	block5 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", now.Add(-2*time.Hour).UnixMilli(), now.UnixMilli()) // This block is within ignoreBlocksWithin
 	mark3 := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bucket, "user-1", block3))
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
@@ -451,6 +453,14 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 				block3.ULID: mark3,
 			},
 		},
+		"query range matching all blocks but should ignore non-queryable block": {
+			minT:          0,
+			maxT:          block5.MaxTime,
+			expectedMetas: []tsdb.BlockMeta{block4, block3, block2, block1},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ULID: mark3,
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -488,5 +498,6 @@ func prepareBucketScanBlocksFinderConfig() BucketScanBlocksFinderConfig {
 		TenantsConcurrency:       10,
 		MetasConcurrency:         10,
 		IgnoreDeletionMarksDelay: time.Hour,
+		IgnoreBlocksWithin:       10 * time.Hour, // All blocks created in the last 10 hour shoudn't be scanned.
 	}
 }

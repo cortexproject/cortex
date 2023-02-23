@@ -120,9 +120,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
 	if f.cfg.QueryStatsEnabled {
-		var ctx context.Context
-		stats, ctx = querier_stats.ContextWithEmptyStats(r.Context())
-		r = r.WithContext(ctx)
+		// Check if querier stats is enabled in the context.
+		stats = querier_stats.FromContext(r.Context())
+		if stats == nil {
+			var ctx context.Context
+			stats, ctx = querier_stats.ContextWithEmptyStats(r.Context())
+			r = r.WithContext(ctx)
+		}
 	}
 
 	defer func() {

@@ -19,10 +19,9 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 
 	"github.com/cortexproject/cortex/pkg/tracing/migration"
-	"github.com/cortexproject/cortex/pkg/tracing/sampler"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -119,7 +118,6 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 		}
 
 		r, err := newResource(ctx, name, c.Otel.ExtraDetectors)
-
 		if err != nil {
 			return nil, fmt.Errorf("creating tracing resource: %w", err)
 		}
@@ -148,24 +146,20 @@ func newTraceProvider(r *resource.Resource, c Config, exporter *otlptrace.Export
 	switch strings.ToLower(c.Otel.ExporterType) {
 	case "awsxray":
 		options = append(options, sdktrace.WithIDGenerator(xray.NewIDGenerator()))
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sampler.NewXrayTraceIDRatioBased(c.Otel.SampleRatio))))
 		propagator = xray.Propagator{}
 	default:
-		options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 	}
+
+	options = append(options, sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(c.Otel.SampleRatio))))
 
 	return propagator, sdktrace.NewTracerProvider(options...)
 }
 
 func newResource(ctx context.Context, target string, detectors []resource.Detector) (*resource.Resource, error) {
-	r, err := resource.New(ctx, resource.WithHost(), resource.WithDetectors(detectors...))
-
-	if err != nil {
-		return nil, err
+	opts := []resource.Option{
+		resource.WithHost(),
+		resource.WithDetectors(detectors...),
+		resource.WithAttributes(semconv.ServiceNameKey.String(target)),
 	}
-
-	return resource.Merge(r, resource.NewWithAttributes(
-		semconv.SchemaURL,
-		semconv.ServiceNameKey.String(target),
-	))
+	return resource.New(ctx, opts...)
 }

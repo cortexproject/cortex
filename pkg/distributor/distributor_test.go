@@ -2173,7 +2173,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
 
 				if testData.expectedErr != nil {
-					assert.EqualError(t, err, testData.expectedErr.Error())
+					assert.ErrorIs(t, err, testData.expectedErr)
 					return
 				}
 
@@ -2190,7 +2190,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			{
 				metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
 				if testData.expectedErr != nil {
-					assert.EqualError(t, err, testData.expectedErr.Error())
+					assert.ErrorIs(t, err, testData.expectedErr)
 					return
 				}
 

@@ -1034,11 +1034,11 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 				return nil, err
 			}
 			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-				return nil, err
+				return nil, validation.LimitError(err.Error())
 			}
 			for _, m := range resp.Metric {
 				if err := queryLimiter.AddSeries(m.Labels); err != nil {
-					return nil, err
+					return nil, validation.LimitError(err.Error())
 				}
 				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
 				fingerprint := m.Fingerprint()
@@ -1065,7 +1065,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 			for {
 				resp, err := stream.Recv()
 				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-					return nil, err
+					return nil, validation.LimitError(err.Error())
 				}
 
 				if err == io.EOF {
@@ -1078,7 +1078,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
 
 					if err := queryLimiter.AddSeries(metric.Labels); err != nil {
-						return nil, err
+						return nil, validation.LimitError(err.Error())
 					}
 
 					fingerprint := m.Fingerprint()

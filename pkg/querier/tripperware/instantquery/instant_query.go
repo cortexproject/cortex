@@ -310,6 +310,7 @@ func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryRespons
 	if err != nil {
 		return nil, err
 	}
+	buf := make([]byte, 0, 1024)
 	for _, resp := range resps {
 		if resp == nil {
 			continue
@@ -324,7 +325,7 @@ func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryRespons
 			if s == nil {
 				continue
 			}
-			metric := cortexpb.FromLabelAdaptersToLabels(sample.Labels).String()
+			metric := string(cortexpb.FromLabelAdaptersToLabels(sample.Labels).Bytes(buf))
 			if existingSample, ok := output[metric]; !ok {
 				output[metric] = s
 				metrics = append(metrics, metric) // Preserve the order of metric.

@@ -71,7 +71,7 @@ func (t *timeseries) Labels() labels.Labels {
 }
 
 // Iterator implements the storage.Series interface
-func (t *timeseries) Iterator() chunkenc.Iterator {
+func (t *timeseries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
 	return iterators.NewCompatibleChunksIterator(&timeSeriesSeriesIterator{
 		ts: t,
 		i:  -1,

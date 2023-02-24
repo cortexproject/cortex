@@ -11,6 +11,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing"
 )
 
 // Policy represents an extensibility point for the Pipeline that can mutate the specified
@@ -27,6 +28,9 @@ type Request = exported.Request
 // ClientOptions contains optional settings for a client's pipeline.
 // All zero-value fields will be initialized with default values.
 type ClientOptions struct {
+	// APIVersion overrides the default version requested of the service. Set with caution as this package version has not been tested with arbitrary service versions.
+	APIVersion string
+
 	// Cloud specifies a cloud for the client. The default is Azure Public Cloud.
 	Cloud cloud.Configuration
 
@@ -38,6 +42,10 @@ type ClientOptions struct {
 
 	// Telemetry configures the built-in telemetry policy.
 	Telemetry TelemetryOptions
+
+	// TracingProvider configures the tracing provider.
+	// It defaults to a no-op tracer.
+	TracingProvider tracing.Provider
 
 	// Transport sets the transport for HTTP requests.
 	Transport Transporter
@@ -69,7 +77,8 @@ type LogOptions struct {
 }
 
 // RetryOptions configures the retry policy's behavior.
-// Call NewRetryOptions() to create an instance with default values.
+// Zero-value fields will have their specified default values applied during use.
+// This allows for modification of a subset of fields.
 type RetryOptions struct {
 	// MaxRetries specifies the maximum number of attempts a failed operation will be retried
 	// before producing an error.
@@ -82,6 +91,7 @@ type RetryOptions struct {
 	TryTimeout time.Duration
 
 	// RetryDelay specifies the initial amount of delay to use before retrying an operation.
+	// The value is used only if the HTTP response does not contain a Retry-After header.
 	// The delay increases exponentially with each retry up to the maximum specified by MaxRetryDelay.
 	// The default value is four seconds.  A value less than zero means no delay between retries.
 	RetryDelay time.Duration
@@ -92,8 +102,15 @@ type RetryOptions struct {
 	MaxRetryDelay time.Duration
 
 	// StatusCodes specifies the HTTP status codes that indicate the operation should be retried.
-	// The default value is the status codes in StatusCodesForRetry.
-	// Specifying an empty slice will cause retries to happen only for transport errors.
+	// A nil slice will use the following values.
+	//   http.StatusRequestTimeout      408
+	//   http.StatusTooManyRequests     429
+	//   http.StatusInternalServerError 500
+	//   http.StatusBadGateway          502
+	//   http.StatusServiceUnavailable  503
+	//   http.StatusGatewayTimeout      504
+	// Specifying values will replace the default values.
+	// Specifying an empty slice will disable retries for HTTP status codes.
 	StatusCodes []int
 }
 

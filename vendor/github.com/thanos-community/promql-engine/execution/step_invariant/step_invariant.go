@@ -109,8 +109,8 @@ func (u *stepInvariantOperator) Next(ctx context.Context) ([]model.StepVector, e
 	result := u.vectorPool.GetVectorBatch()
 	for i := 0; i < u.stepsBatch && u.currentStep <= u.maxt; i++ {
 		outVector := u.vectorPool.GetStepVector(u.currentStep)
-		outVector.Samples = append(outVector.Samples, u.cachedVector.Samples...)
-		outVector.SampleIDs = append(outVector.SampleIDs, u.cachedVector.SampleIDs...)
+		outVector.AppendSamples(u.vectorPool, u.cachedVector.SampleIDs, u.cachedVector.Samples)
+		outVector.AppendHistograms(u.vectorPool, u.cachedVector.HistogramIDs, u.cachedVector.Histograms)
 		result = append(result, outVector)
 		u.currentStep += u.step
 	}
@@ -142,8 +142,8 @@ func (u *stepInvariantOperator) cacheInputVector(ctx context.Context) error {
 		// The timestamp of the vector is not relevant since we will produce
 		// new output vectors with the current step's timestamp.
 		u.cachedVector = u.vectorPool.GetStepVector(0)
-		u.cachedVector.Samples = append(u.cachedVector.Samples, in[0].Samples...)
-		u.cachedVector.SampleIDs = append(u.cachedVector.SampleIDs, in[0].SampleIDs...)
+		u.cachedVector.AppendSamples(u.vectorPool, in[0].SampleIDs, in[0].Samples)
+		u.cachedVector.AppendHistograms(u.vectorPool, in[0].HistogramIDs, in[0].Histograms)
 		u.next.GetPool().PutStepVector(in[0])
 	})
 	return err

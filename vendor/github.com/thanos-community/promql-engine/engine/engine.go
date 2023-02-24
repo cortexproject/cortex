@@ -88,10 +88,6 @@ func (l remoteEngine) LabelSets() []labels.Labels {
 	return l.labelSets
 }
 
-func (l remoteEngine) NewInstantQuery(opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	return l.engine.NewInstantQuery(l.q, opts, qs, ts)
-}
-
 func (l remoteEngine) NewRangeQuery(opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	return l.engine.NewRangeQuery(l.q, opts, qs, start, end, interval)
 }
@@ -102,10 +98,10 @@ type distributedEngine struct {
 }
 
 func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngine {
-	opts.LogicalOptimizers = append(
-		opts.LogicalOptimizers,
+	opts.LogicalOptimizers = []logicalplan.Optimizer{
 		logicalplan.DistributedExecutionOptimizer{Endpoints: endpoints},
-	)
+	}
+
 	return &distributedEngine{
 		endpoints:    endpoints,
 		remoteEngine: New(opts),
@@ -144,6 +140,7 @@ func New(opts Opts) *compatibilityEngine {
 		logger:            opts.Logger,
 		lookbackDelta:     opts.LookbackDelta,
 		logicalOptimizers: opts.getLogicalOptimizers(),
+		timeout:           opts.Timeout,
 	}
 }
 
@@ -157,6 +154,7 @@ type compatibilityEngine struct {
 	logger            log.Logger
 	lookbackDelta     time.Duration
 	logicalOptimizers []logicalplan.Optimizer
+	timeout           time.Duration
 }
 
 func (e *compatibilityEngine) SetQueryLogger(l promql.QueryLogger) {
@@ -336,7 +334,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	}
 	defer recoverEngine(q.engine.logger, q.expr, &ret.Err)
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithTimeout(ctx, q.engine.timeout)
 	defer cancel()
 	q.cancel = cancel
 
@@ -365,25 +363,8 @@ loop:
 
 			// Case where Series call might return nil, but samples are present.
 			// For example scalar(http_request_total) where http_request_total has multiple values.
-			if len(resultSeries) == 0 && len(r) != 0 {
-				numSeries := 0
-				for i := range r {
-					numSeries += len(r[i].Samples)
-				}
-
-				series = make([]promql.Series, numSeries)
-
-				for _, vector := range r {
-					for i := range vector.Samples {
-						series[i].Points = append(series[i].Points, promql.Point{
-							T: vector.T,
-							V: vector.Samples[i],
-						})
-					}
-					q.Query.exec.GetPool().PutStepVector(vector)
-				}
-				q.Query.exec.GetPool().PutVectors(r)
-				continue
+			if len(series) == 0 && len(r) != 0 {
+				series = make([]promql.Series, len(r[0].Samples))
 			}
 
 			for _, vector := range r {
@@ -394,6 +375,15 @@ loop:
 					series[s].Points = append(series[s].Points, promql.Point{
 						T: vector.T,
 						V: vector.Samples[i],
+					})
+				}
+				for i, s := range vector.HistogramIDs {
+					if len(series[s].Points) == 0 {
+						series[s].Points = make([]promql.Point, 0, 121) // Typically 1h of data.
+					}
+					series[s].Points = append(series[s].Points, promql.Point{
+						T: vector.T,
+						H: vector.Histograms[i],
 					})
 				}
 				q.Query.exec.GetPool().PutStepVector(vector)
@@ -433,6 +423,7 @@ loop:
 				Metric: series[i].Metric,
 				Point: promql.Point{
 					V: series[i].Points[0].V,
+					H: series[i].Points[0].H,
 					T: q.ts.UnixMilli(),
 				},
 			})

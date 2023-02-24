@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -1256,6 +1257,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 	numSamples := 0
 
 	result := &client.QueryResponse{}
+	var it chunkenc.Iterator
 	for ss.Next() {
 		series := ss.At()
 		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
@@ -1266,7 +1268,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
-		it := series.Iterator()
+		it = series.Iterator(it)
 		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			ts.Samples = append(ts.Samples, cortexpb.Sample{Value: v, TimestampMs: t})
@@ -1758,6 +1760,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	batchSizeBytes := 0
+	var it chunks.Iterator
 	for ss.Next() {
 		series := ss.At()
 
@@ -1770,7 +1773,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
-		it := series.Iterator()
+		it := series.Iterator(it)
 		for it.Next() {
 			// Chunks are ordered by min time.
 			meta := it.At()

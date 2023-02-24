@@ -88,7 +88,7 @@ func (c *ConcreteSeries) Labels() labels.Labels {
 }
 
 // Iterator implements storage.Series
-func (c *ConcreteSeries) Iterator() chunkenc.Iterator {
+func (c *ConcreteSeries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
 	return NewConcreteSeriesIterator(c)
 }
 
@@ -252,8 +252,8 @@ func (d DeletedSeries) Labels() labels.Labels {
 	return d.series.Labels()
 }
 
-func (d DeletedSeries) Iterator() chunkenc.Iterator {
-	return NewDeletedSeriesIterator(d.series.Iterator(), d.deletedIntervals)
+func (d DeletedSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
+	return NewDeletedSeriesIterator(d.series.Iterator(it), d.deletedIntervals)
 }
 
 type DeletedSeriesIterator struct {
@@ -332,7 +332,7 @@ func (e emptySeries) Labels() labels.Labels {
 	return e.labels
 }
 
-func (emptySeries) Iterator() chunkenc.Iterator {
+func (emptySeries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
 	return NewEmptySeriesIterator()
 }
 

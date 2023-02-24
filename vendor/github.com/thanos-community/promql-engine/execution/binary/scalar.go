@@ -136,8 +136,7 @@ func (o *scalarOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 			} else if !keep {
 				continue
 			}
-			step.Samples = append(step.Samples, val)
-			step.SampleIDs = append(step.SampleIDs, vector.SampleIDs[i])
+			step.AppendSample(o.pool, vector.SampleIDs[i], val)
 		}
 		out = append(out, step)
 		o.next.GetPool().PutStepVector(vector)

@@ -187,8 +187,7 @@ func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, Sampl
 		}
 
 		for _, e := range h.entries {
-			s.SampleIDs = append(s.SampleIDs, e.sId)
-			s.Samples = append(s.Samples, e.total)
+			s.AppendSample(a.vectorPool, e.sId, e.total)
 		}
 		*result = append(*result, s)
 		h.entries = h.entries[:0]

@@ -147,6 +147,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine v1.QueryEngin
 		q,
 		nil,
 		nil,
+		func(ctx context.Context) v1.ScrapePoolsRetriever { return nil },
 		func(context.Context) v1.TargetRetriever { return &DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },

@@ -166,7 +166,7 @@ func (r RedisResult) AsReader() (v io.Reader, err error) {
 }
 
 // DecodeJSON delegates to RedisMessage.DecodeJSON
-func (r RedisResult) DecodeJSON(v interface{}) (err error) {
+func (r RedisResult) DecodeJSON(v any) (err error) {
 	if r.err != nil {
 		err = r.err
 	} else {
@@ -181,6 +181,16 @@ func (r RedisResult) AsInt64() (v int64, err error) {
 		err = r.err
 	} else {
 		v, err = r.val.AsInt64()
+	}
+	return
+}
+
+// AsUint64 delegates to RedisMessage.AsUint64
+func (r RedisResult) AsUint64() (v uint64, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		v, err = r.val.AsUint64()
 	}
 	return
 }
@@ -325,6 +335,16 @@ func (r RedisResult) AsIntMap() (v map[string]int64, err error) {
 	return
 }
 
+// AsScanEntry delegates to RedisMessage.AsScanEntry.
+func (r RedisResult) AsScanEntry() (v ScanEntry, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		v, err = r.val.AsScanEntry()
+	}
+	return
+}
+
 // ToMap delegates to RedisMessage.ToMap
 func (r RedisResult) ToMap() (v map[string]RedisMessage, err error) {
 	if r.err != nil {
@@ -336,7 +356,7 @@ func (r RedisResult) ToMap() (v map[string]RedisMessage, err error) {
 }
 
 // ToAny delegates to RedisMessage.ToAny
-func (r RedisResult) ToAny() (v interface{}, err error) {
+func (r RedisResult) ToAny() (v any, err error) {
 	if r.err != nil {
 		err = r.err
 	} else {
@@ -436,7 +456,7 @@ func (m *RedisMessage) AsReader() (reader io.Reader, err error) {
 }
 
 // DecodeJSON check if message is a redis string response and treat it as json, then unmarshal it into provided value
-func (m *RedisMessage) DecodeJSON(v interface{}) (err error) {
+func (m *RedisMessage) DecodeJSON(v any) (err error) {
 	str, err := m.ToString()
 	if err != nil {
 		return err
@@ -455,6 +475,18 @@ func (m *RedisMessage) AsInt64() (val int64, err error) {
 		return 0, err
 	}
 	return strconv.ParseInt(v, 10, 64)
+}
+
+// AsUint64 check if message is a redis string response, and parse it as uint64
+func (m *RedisMessage) AsUint64() (val uint64, err error) {
+	if m.IsInt64() {
+		return uint64(m.integer), nil
+	}
+	v, err := m.ToString()
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(v, 10, 64)
 }
 
 // AsBool checks if message is non-nil redis response, and parses it as bool
@@ -717,6 +749,28 @@ func (m *RedisMessage) AsZScores() ([]ZScore, error) {
 	return scores, nil
 }
 
+// ScanEntry is the element type of both SCAN, SSCAN, HSCAN and ZSCAN command response.
+type ScanEntry struct {
+	Cursor   uint64
+	Elements []string
+}
+
+// AsScanEntry check if message is a redis array/set response of length 2, and convert to ScanEntry.
+func (m *RedisMessage) AsScanEntry() (e ScanEntry, err error) {
+	msgs, err := m.ToArray()
+	if err != nil {
+		return ScanEntry{}, err
+	}
+	if len(msgs) >= 2 {
+		if e.Cursor, err = msgs[0].AsUint64(); err == nil {
+			e.Elements, err = msgs[1].AsStrSlice()
+		}
+		return e, err
+	}
+	typ := m.typ
+	panic(fmt.Sprintf("redis message type %c is not a scan response or its length is not at least 2", typ))
+}
+
 // AsMap check if message is a redis array/set response, and convert to map[string]RedisMessage
 func (m *RedisMessage) AsMap() (map[string]RedisMessage, error) {
 	if err := m.Error(); err != nil {
@@ -788,8 +842,8 @@ func (m *RedisMessage) ToMap() (map[string]RedisMessage, error) {
 	panic(fmt.Sprintf("redis message type %c is not a RESP3 map", typ))
 }
 
-// ToAny turns message into go interface{} value
-func (m *RedisMessage) ToAny() (interface{}, error) {
+// ToAny turns message into go any value
+func (m *RedisMessage) ToAny() (any, error) {
 	if err := m.Error(); err != nil {
 		return nil, err
 	}
@@ -803,7 +857,7 @@ func (m *RedisMessage) ToAny() (interface{}, error) {
 	case ':':
 		return m.integer, nil
 	case '%':
-		vs := make(map[string]interface{}, len(m.values)/2)
+		vs := make(map[string]any, len(m.values)/2)
 		for i := 0; i < len(m.values); i += 2 {
 			if v, err := m.values[i+1].ToAny(); err != nil && !IsRedisNil(err) {
 				vs[m.values[i].string] = err
@@ -813,7 +867,7 @@ func (m *RedisMessage) ToAny() (interface{}, error) {
 		}
 		return vs, nil
 	case '~', '*':
-		vs := make([]interface{}, len(m.values))
+		vs := make([]any, len(m.values))
 		for i := 0; i < len(m.values); i++ {
 			if v, err := m.values[i].ToAny(); err != nil && !IsRedisNil(err) {
 				vs[i] = err

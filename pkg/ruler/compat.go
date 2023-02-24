@@ -44,7 +44,7 @@ type PusherAppender struct {
 	evaluationDelay time.Duration
 }
 
-func (a *PusherAppender) AppendHistogram(storage.SeriesRef, labels.Labels, int64, *histogram.Histogram) (storage.SeriesRef, error) {
+func (a *PusherAppender) AppendHistogram(storage.SeriesRef, labels.Labels, int64, *histogram.Histogram, *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errors.New("querying native histograms is not supported")
 }
 

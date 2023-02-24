@@ -103,8 +103,14 @@ func (a AccessToken) Key() string {
 	)
 }
 
+// FakeValidate enables tests to fake access token validation
+var FakeValidate func(AccessToken) error
+
 // Validate validates that this AccessToken can be used.
 func (a AccessToken) Validate() error {
+	if FakeValidate != nil {
+		return FakeValidate(a)
+	}
 	if a.CachedAt.T.After(time.Now()) {
 		return errors.New("access token isn't valid, it was cached at a future time")
 	}

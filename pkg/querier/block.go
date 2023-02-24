@@ -104,7 +104,7 @@ func (bqs *blockQuerierSeries) Labels() labels.Labels {
 	return bqs.labels
 }
 
-func (bqs *blockQuerierSeries) Iterator() chunkenc.Iterator {
+func (bqs *blockQuerierSeries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
 	if len(bqs.chunks) == 0 {
 		// should not happen in practice, but we have a unit test for it
 		return series.NewErrIterator(errors.New("no chunks"))

@@ -12,7 +12,9 @@ package confidential
 import (
 	"context"
 	"crypto"
+	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -20,6 +22,7 @@ import (
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/base"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/exported"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/accesstokens"
@@ -60,12 +63,9 @@ type AuthResult = base.AuthResult
 type Account = shared.Account
 
 // CertFromPEM converts a PEM file (.pem or .key) for use with NewCredFromCert(). The file
-// must have the public certificate and the private key encoded. The private key must be encoded
-// in PKCS8 (not PKCS1). This is usually denoted by the section "PRIVATE KEY" (instead of PKCS1's
-// "RSA PRIVATE KEY"). If a PEM block is encoded and password is not an empty string, it attempts
-// to decrypt the PEM blocks using the password. This will return multiple x509 certificates,
-// though this use case should have a single cert. Multiple certs are due to certificate
-// chaining for use cases like TLS that sign from root to leaf.
+// must contain the public certificate and the private key. If a PEM block is encrypted and
+// password is not an empty string, it attempts to decrypt the PEM blocks using the password.
+// Multiple certs are due to certificate chaining for use cases like TLS that sign from root to leaf.
 func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.PrivateKey, error) {
 	var certs []*x509.Certificate
 	var priv crypto.PrivateKey
@@ -79,7 +79,7 @@ func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.P
 		if x509.IsEncryptedPEMBlock(block) {
 			b, err := x509.DecryptPEMBlock(block, []byte(password))
 			if err != nil {
-				return nil, nil, fmt.Errorf("could not decrypt encrypted PEM block: %w", err)
+				return nil, nil, fmt.Errorf("could not decrypt encrypted PEM block: %v", err)
 			}
 			block, _ = pem.Decode(b)
 			if block == nil {
@@ -91,18 +91,27 @@ func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.P
 		case "CERTIFICATE":
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err != nil {
-				return nil, nil, fmt.Errorf("block labelled 'CERTIFICATE' could not be pared by x509: %w", err)
+				return nil, nil, fmt.Errorf("block labelled 'CERTIFICATE' could not be parsed by x509: %v", err)
 			}
 			certs = append(certs, cert)
 		case "PRIVATE KEY":
 			if priv != nil {
-				return nil, nil, fmt.Errorf("found multiple blocks labelled 'PRIVATE KEY'")
+				return nil, nil, errors.New("found multiple private key blocks")
 			}
 
 			var err error
-			priv, err = parsePrivateKey(block.Bytes)
+			priv, err = x509.ParsePKCS8PrivateKey(block.Bytes)
 			if err != nil {
-				return nil, nil, fmt.Errorf("could not decode private key: %w", err)
+				return nil, nil, fmt.Errorf("could not decode private key: %v", err)
+			}
+		case "RSA PRIVATE KEY":
+			if priv != nil {
+				return nil, nil, errors.New("found multiple private key blocks")
+			}
+			var err error
+			priv, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+			if err != nil {
+				return nil, nil, fmt.Errorf("could not decode private key: %v", err)
 			}
 		}
 		pemData = rest
@@ -119,15 +128,8 @@ func CertFromPEM(pemData []byte, password string) ([]*x509.Certificate, crypto.P
 	return certs, priv, nil
 }
 
-// parsePrivateKey is based on https://gist.github.com/ukautz/cd118e298bbd8f0a88fc . I don't *think*
-// we need to do the extra decoding in the example, but *maybe*?
-func parsePrivateKey(der []byte) (crypto.PrivateKey, error) {
-	key, err := x509.ParsePKCS8PrivateKey(der)
-	if err != nil {
-		return nil, fmt.Errorf("problems decoding private key using PKCS8: %w", err)
-	}
-	return key, nil
-}
+// AssertionRequestOptions has required information for client assertion claims
+type AssertionRequestOptions = exported.AssertionRequestOptions
 
 // Credential represents the credential used in confidential client flows.
 type Credential struct {
@@ -135,16 +137,37 @@ type Credential struct {
 
 	cert *x509.Certificate
 	key  crypto.PrivateKey
+	x5c  []string
 
-	assertion string
+	assertionCallback func(context.Context, AssertionRequestOptions) (string, error)
+
+	tokenProvider func(context.Context, TokenProviderParameters) (TokenProviderResult, error)
 }
 
 // toInternal returns the accesstokens.Credential that is used internally. The current structure of the
 // code requires that client.go, requests.go and confidential.go share a credential type without
 // having import recursion. That requires the type used between is in a shared package. Therefore
 // we have this.
-func (c Credential) toInternal() *accesstokens.Credential {
-	return &accesstokens.Credential{Secret: c.secret, Cert: c.cert, Key: c.key, Assertion: c.assertion}
+func (c Credential) toInternal() (*accesstokens.Credential, error) {
+	if c.secret != "" {
+		return &accesstokens.Credential{Secret: c.secret}, nil
+	}
+	if c.cert != nil {
+		if c.key == nil {
+			return nil, errors.New("missing private key for certificate")
+		}
+		return &accesstokens.Credential{Cert: c.cert, Key: c.key, X5c: c.x5c}, nil
+	}
+	if c.key != nil {
+		return nil, errors.New("missing certificate for private key")
+	}
+	if c.assertionCallback != nil {
+		return &accesstokens.Credential{AssertionCallback: c.assertionCallback}, nil
+	}
+	if c.tokenProvider != nil {
+		return &accesstokens.Credential{TokenProvider: c.tokenProvider}, nil
+	}
+	return nil, errors.New("invalid credential")
 }
 
 // NewCredFromSecret creates a Credential from a secret.
@@ -156,17 +179,69 @@ func NewCredFromSecret(secret string) (Credential, error) {
 }
 
 // NewCredFromAssertion creates a Credential from a signed assertion.
+//
+// Deprecated: a Credential created by this function can't refresh the
+// assertion when it expires. Use NewCredFromAssertionCallback instead.
 func NewCredFromAssertion(assertion string) (Credential, error) {
 	if assertion == "" {
 		return Credential{}, errors.New("assertion can't be empty string")
 	}
-	return Credential{assertion: assertion}, nil
+	return NewCredFromAssertionCallback(func(context.Context, AssertionRequestOptions) (string, error) { return assertion, nil }), nil
 }
 
-// NewCredFromCert creates a Credential from an x509.Certificate and a PKCS8 DER encoded private key.
-// CertFromPEM() can be used to get these values from a PEM file storing a PKCS8 private key.
+// NewCredFromAssertionCallback creates a Credential that invokes a callback to get assertions
+// authenticating the application. The callback must be thread safe.
+func NewCredFromAssertionCallback(callback func(context.Context, AssertionRequestOptions) (string, error)) Credential {
+	return Credential{assertionCallback: callback}
+}
+
+// NewCredFromCert creates a Credential from an x509.Certificate and an RSA private key.
+// CertFromPEM() can be used to get these values from a PEM file.
 func NewCredFromCert(cert *x509.Certificate, key crypto.PrivateKey) Credential {
-	return Credential{cert: cert, key: key}
+	cred, _ := NewCredFromCertChain([]*x509.Certificate{cert}, key)
+	return cred
+}
+
+// NewCredFromCertChain creates a Credential from a chain of x509.Certificates and an RSA private key
+// as returned by CertFromPEM().
+func NewCredFromCertChain(certs []*x509.Certificate, key crypto.PrivateKey) (Credential, error) {
+	cred := Credential{key: key}
+	k, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return cred, errors.New("key must be an RSA key")
+	}
+	for _, cert := range certs {
+		if cert == nil {
+			// not returning an error here because certs may still contain a sufficient cert/key pair
+			continue
+		}
+		certKey, ok := cert.PublicKey.(*rsa.PublicKey)
+		if ok && k.E == certKey.E && k.N.Cmp(certKey.N) == 0 {
+			// We know this is the signing cert because its public key matches the given private key.
+			// This cert must be first in x5c.
+			cred.cert = cert
+			cred.x5c = append([]string{base64.StdEncoding.EncodeToString(cert.Raw)}, cred.x5c...)
+		} else {
+			cred.x5c = append(cred.x5c, base64.StdEncoding.EncodeToString(cert.Raw))
+		}
+	}
+	if cred.cert == nil {
+		return cred, errors.New("key doesn't match any certificate")
+	}
+	return cred, nil
+}
+
+// TokenProviderParameters is the authentication parameters passed to token providers
+type TokenProviderParameters = exported.TokenProviderParameters
+
+// TokenProviderResult is the authentication result returned by custom token providers
+type TokenProviderResult = exported.TokenProviderResult
+
+// NewCredFromTokenProvider creates a Credential from a function that provides access tokens. The function
+// must be concurrency safe. This is intended only to allow the Azure SDK to cache MSI tokens. It isn't
+// useful to applications in general because the token provider must implement all authentication logic.
+func NewCredFromTokenProvider(provider func(context.Context, TokenProviderParameters) (TokenProviderResult, error)) Credential {
+	return Credential{tokenProvider: provider}
 }
 
 // AutoDetectRegion instructs MSAL Go to auto detect region for Azure regional token service.
@@ -274,6 +349,11 @@ func WithAzureRegion(val string) Option {
 // will store credentials for (a Client is per user). clientID is the Azure clientID and cred is
 // the type of credential to use.
 func New(clientID string, cred Credential, options ...Option) (Client, error) {
+	internalCred, err := cred.toInternal()
+	if err != nil {
+		return Client{}, err
+	}
+
 	opts := Options{
 		Authority:  base.AuthorityPublicCloud,
 		HTTPClient: shared.DefaultClient,
@@ -286,15 +366,28 @@ func New(clientID string, cred Credential, options ...Option) (Client, error) {
 		return Client{}, err
 	}
 
-	base, err := base.New(clientID, opts.Authority, oauth.New(opts.HTTPClient), base.WithX5C(opts.SendX5C), base.WithCacheAccessor(opts.Accessor), base.WithRegionDetection(opts.AzureRegion))
+	baseOpts := []base.Option{
+		base.WithCacheAccessor(opts.Accessor),
+		base.WithRegionDetection(opts.AzureRegion),
+		base.WithX5C(opts.SendX5C),
+	}
+	if cred.tokenProvider != nil {
+		// The caller will handle all details of authentication, using Client only as a token cache.
+		// Declaring the authority host known prevents unnecessary metadata discovery requests. (The
+		// authority is irrelevant to Client and friends because the token provider is responsible
+		// for authentication.)
+		parsed, err := url.Parse(opts.Authority)
+		if err != nil {
+			return Client{}, errors.New("invalid authority")
+		}
+		baseOpts = append(baseOpts, base.WithKnownAuthorityHosts([]string{parsed.Hostname()}))
+	}
+	base, err := base.New(clientID, opts.Authority, oauth.New(opts.HTTPClient), baseOpts...)
 	if err != nil {
 		return Client{}, err
 	}
 
-	return Client{
-		base: base,
-		cred: cred.toInternal(),
-	}, nil
+	return Client{base: base, cred: internalCred}, nil
 }
 
 // UserID is the unique user identifier this client if for.

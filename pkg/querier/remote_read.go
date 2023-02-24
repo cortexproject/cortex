@@ -79,10 +79,11 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error) {
 	result := &client.QueryResponse{}
 
+	var it chunkenc.Iterator
 	for s.Next() {
 		series := s.At()
 		samples := []cortexpb.Sample{}
-		it := series.Iterator()
+		it = series.Iterator(it)
 		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			samples = append(samples, cortexpb.Sample{

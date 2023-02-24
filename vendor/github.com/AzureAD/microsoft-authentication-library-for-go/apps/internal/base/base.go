@@ -37,9 +37,9 @@ type manager interface {
 }
 
 // partitionedManager provides an internal cache. It is defined to allow faking the cache in tests.
-// In all production use it is a *storage.Manager.
+// In all production use it is a *storage.PartitionedManager.
 type partitionedManager interface {
-	Read(ctx context.Context, authParameters authority.AuthParams, account shared.Account) (storage.TokenResponse, error)
+	Read(ctx context.Context, authParameters authority.AuthParams) (storage.TokenResponse, error)
 	Write(authParameters authority.AuthParams, tokenResponse accesstokens.TokenResponse) (shared.Account, error)
 }
 
@@ -147,6 +147,15 @@ func WithCacheAccessor(ca cache.ExportReplace) Option {
 	}
 }
 
+// WithKnownAuthorityHosts specifies hosts Client shouldn't validate or request metadata for because they're known to the user
+func WithKnownAuthorityHosts(hosts []string) Option {
+	return func(c *Client) {
+		cp := make([]string, len(hosts))
+		copy(cp, hosts)
+		c.AuthParams.KnownAuthorityHosts = cp
+	}
+}
+
 // WithX5C specifies if x5c claim(public key of the certificate) should be sent to STS to enable Subject Name Issuer Authentication.
 func WithX5C(sendX5C bool) Option {
 	return func(c *Client) {
@@ -230,7 +239,7 @@ func (b Client) AuthCodeURL(ctx context.Context, clientID, redirectURI string, s
 func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilentParameters) (AuthResult, error) {
 	authParams := b.AuthParams // This is a copy, as we dont' have a pointer receiver and authParams is not a pointer.
 	authParams.Scopes = silent.Scopes
-	authParams.HomeaccountID = silent.Account.HomeAccountID
+	authParams.HomeAccountID = silent.Account.HomeAccountID
 	authParams.AuthorizationType = silent.AuthorizationType
 	authParams.UserAssertion = silent.UserAssertion
 
@@ -242,7 +251,7 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 			b.cacheAccessor.Replace(s, suggestedCacheKey)
 			defer b.cacheAccessor.Export(s, suggestedCacheKey)
 		}
-		storageTokenResponse, err = b.pmanager.Read(ctx, authParams, silent.Account)
+		storageTokenResponse, err = b.pmanager.Read(ctx, authParams)
 		if err != nil {
 			return AuthResult{}, err
 		}
@@ -262,7 +271,7 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 	result, err := AuthResultFromStorage(storageTokenResponse)
 	if err != nil {
 		if reflect.ValueOf(storageTokenResponse.RefreshToken).IsZero() {
-			return AuthResult{}, errors.New("no refresh token found")
+			return AuthResult{}, errors.New("no token found")
 		}
 
 		var cc *accesstokens.Credential
@@ -270,7 +279,7 @@ func (b Client) AcquireTokenSilent(ctx context.Context, silent AcquireTokenSilen
 			cc = silent.Credential
 		}
 
-		token, err := b.Token.Refresh(ctx, silent.RequestType, b.AuthParams, cc, storageTokenResponse.RefreshToken)
+		token, err := b.Token.Refresh(ctx, silent.RequestType, authParams, cc, storageTokenResponse.RefreshToken)
 		if err != nil {
 			return AuthResult{}, err
 		}
@@ -376,7 +385,7 @@ func (b Client) AllAccounts() []shared.Account {
 func (b Client) Account(homeAccountID string) shared.Account {
 	authParams := b.AuthParams // This is a copy, as we dont' have a pointer receiver and .AuthParams is not a pointer.
 	authParams.AuthorizationType = authority.AccountByID
-	authParams.HomeaccountID = homeAccountID
+	authParams.HomeAccountID = homeAccountID
 	if s, ok := b.manager.(cache.Serializer); ok {
 		suggestedCacheKey := b.AuthParams.CacheKey(false)
 		b.cacheAccessor.Replace(s, suggestedCacheKey)

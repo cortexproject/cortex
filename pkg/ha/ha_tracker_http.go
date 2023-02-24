@@ -51,7 +51,7 @@ const trackerTpl = `
 
 var trackerTmpl *template.Template
 
-//nolint:revive
+// nolint:revive
 type HATrackerStatusConfig struct {
 	Title             string
 	ReplicaGroupLabel string

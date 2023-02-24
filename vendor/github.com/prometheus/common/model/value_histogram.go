@@ -18,7 +18,15 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unsafe"
+
+	jsoniter "github.com/json-iterator/go"
 )
+
+func init() {
+	jsoniter.RegisterTypeEncoderFunc("model.HistogramBucket", marshalHistogramBucketJSON, marshalJSONIsEmpty)
+	jsoniter.RegisterTypeEncoderFunc("model.SampleHistogramPair", marshalSampleHistogramPairJSON, marshalJSONIsEmpty)
+}
 
 type FloatString float64
 
@@ -43,30 +51,16 @@ func (v *FloatString) UnmarshalJSON(b []byte) error {
 }
 
 type HistogramBucket struct {
-	Boundaries int
+	Boundaries int32
 	Lower      FloatString
 	Upper      FloatString
 	Count      FloatString
 }
 
-func (s HistogramBucket) MarshalJSON() ([]byte, error) {
-	b, err := json.Marshal(s.Boundaries)
-	if err != nil {
-		return nil, err
-	}
-	l, err := json.Marshal(s.Lower)
-	if err != nil {
-		return nil, err
-	}
-	u, err := json.Marshal(s.Upper)
-	if err != nil {
-		return nil, err
-	}
-	c, err := json.Marshal(s.Count)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[%s,%s,%s,%s]", b, l, u, c)), nil
+// marshalHistogramBucketJSON writes fmt.Sprintf("[%s,%s,%s,%s]", b.Boundaries, b.Lower, b.Upper, b.Count).
+func marshalHistogramBucketJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	b := *((*HistogramBucket)(ptr))
+	MarshalHistogramBucket(b, stream)
 }
 
 func (s *HistogramBucket) UnmarshalJSON(buf []byte) error {
@@ -135,19 +129,25 @@ func (s *SampleHistogram) Equal(o *SampleHistogram) bool {
 
 type SampleHistogramPair struct {
 	Timestamp Time
-	Histogram SampleHistogram
+	// Histogram should never be nil, it's only stored as pointer for efficiency.
+	Histogram *SampleHistogram
+}
+
+// marshalSampleHistogramPairJSON writes `[ts, "val"]`.
+func marshalSampleHistogramPairJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	p := *((*SampleHistogramPair)(ptr))
+	stream.WriteArrayStart()
+	MarshalTimestamp(int64(p.Timestamp), stream)
+	stream.WriteMore()
+	MarshalHistogram(*p.Histogram, stream)
+	stream.WriteArrayEnd()
 }
 
 func (s SampleHistogramPair) MarshalJSON() ([]byte, error) {
-	t, err := json.Marshal(s.Timestamp)
-	if err != nil {
-		return nil, err
+	if s.Histogram == nil {
+		return nil, fmt.Errorf("histogram is nil")
 	}
-	v, err := json.Marshal(s.Histogram)
-	if err != nil {
-		return nil, err
-	}
-	return []byte(fmt.Sprintf("[%s,%s]", t, v)), nil
+	return jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(s)
 }
 
 func (s *SampleHistogramPair) UnmarshalJSON(buf []byte) error {
@@ -159,6 +159,9 @@ func (s *SampleHistogramPair) UnmarshalJSON(buf []byte) error {
 	if gotLen := len(tmp); gotLen != wantLen {
 		return fmt.Errorf("wrong number of fields: %d != %d", gotLen, wantLen)
 	}
+	if s.Histogram == nil {
+		return fmt.Errorf("histogram is null")
+	}
 	return nil
 }
 
@@ -167,5 +170,5 @@ func (s SampleHistogramPair) String() string {
 }
 
 func (s *SampleHistogramPair) Equal(o *SampleHistogramPair) bool {
-	return s == o || (s.Histogram.Equal(&o.Histogram) && s.Timestamp.Equal(o.Timestamp))
+	return s == o || (s.Histogram.Equal(o.Histogram) && s.Timestamp.Equal(o.Timestamp))
 }

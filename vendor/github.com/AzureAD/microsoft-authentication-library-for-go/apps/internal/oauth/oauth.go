@@ -7,15 +7,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"time"
 
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/errors"
+	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/exported"
+	internalTime "github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/json/types/time"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/accesstokens"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/authority"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/ops/wstrust/defs"
+	"github.com/google/uuid"
 )
 
 // ResolveEndpointer contains the methods for resolving authority endpoints.
@@ -92,6 +95,27 @@ func (t *Client) AuthCode(ctx context.Context, req accesstokens.AuthCodeRequest)
 
 // Credential acquires a token from the authority using a client credentials grant.
 func (t *Client) Credential(ctx context.Context, authParams authority.AuthParams, cred *accesstokens.Credential) (accesstokens.TokenResponse, error) {
+	if cred.TokenProvider != nil {
+		now := time.Now()
+		scopes := make([]string, len(authParams.Scopes))
+		copy(scopes, authParams.Scopes)
+		params := exported.TokenProviderParameters{
+			CorrelationID: uuid.New().String(),
+			Scopes:        scopes,
+		}
+		tr, err := cred.TokenProvider(ctx, params)
+		if err != nil {
+			return accesstokens.TokenResponse{}, err
+		}
+		return accesstokens.TokenResponse{
+			AccessToken: tr.AccessToken,
+			ExpiresOn: internalTime.DurationTime{
+				T: now.Add(time.Duration(tr.ExpiresInSeconds) * time.Second),
+			},
+			GrantedScopes: accesstokens.Scopes{Slice: authParams.Scopes},
+		}, nil
+	}
+
 	if err := t.resolveEndpoint(ctx, &authParams, ""); err != nil {
 		return accesstokens.TokenResponse{}, err
 	}
@@ -99,7 +123,7 @@ func (t *Client) Credential(ctx context.Context, authParams authority.AuthParams
 	if cred.Secret != "" {
 		return t.AccessTokens.FromClientSecret(ctx, authParams, cred.Secret)
 	}
-	jwt, err := cred.JWT(authParams)
+	jwt, err := cred.JWT(ctx, authParams)
 	if err != nil {
 		return accesstokens.TokenResponse{}, err
 	}
@@ -116,7 +140,7 @@ func (t *Client) OnBehalfOf(ctx context.Context, authParams authority.AuthParams
 		return t.AccessTokens.FromUserAssertionClientSecret(ctx, authParams, authParams.UserAssertion, cred.Secret)
 
 	}
-	jwt, err := cred.JWT(authParams)
+	jwt, err := cred.JWT(ctx, authParams)
 	if err != nil {
 		return accesstokens.TokenResponse{}, err
 	}
@@ -233,7 +257,7 @@ func isWaitDeviceCodeErr(err error) bool {
 	}
 	var dCErr deviceCodeError
 	defer c.Resp.Body.Close()
-	body, err := ioutil.ReadAll(c.Resp.Body)
+	body, err := io.ReadAll(c.Resp.Body)
 	if err != nil {
 		return false
 	}

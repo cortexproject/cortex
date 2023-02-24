@@ -12,7 +12,7 @@ type CommandSlice struct {
 	s []string
 }
 
-func newCommandSlice() interface{} {
+func newCommandSlice() any {
 	return &CommandSlice{s: make([]string, 0, 2)}
 }
 

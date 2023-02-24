@@ -710,10 +710,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 
 			// Read all returned series and their values.
 			var actualSeries []seriesResult
+			var it chunkenc.Iterator
 			for set.Next() {
 				var actualValues []valueResult
 
-				it := set.At().Iterator()
+				it = set.At().Iterator(it)
 				for it.Next() != chunkenc.ValNone {
 					t, v := it.At()
 					actualValues = append(actualValues, valueResult{

@@ -319,7 +319,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples []cortexpb.Sample) {
 	require.Equal(t, l, series.Labels())
 
-	it := series.Iterator()
+	it := series.Iterator(nil)
 	for _, s := range samples {
 		require.NotEqual(t, it.Next(), chunkenc.ValNone)
 		require.Nil(t, it.Err())

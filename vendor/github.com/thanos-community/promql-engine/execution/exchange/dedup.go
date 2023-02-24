@@ -73,8 +73,7 @@ func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 			// If the timestamp of the sample does not match the input vector timestamp, it means that
 			// the sample was added in a previous iteration and should be skipped.
 			if sample.t == vector.T {
-				out.SampleIDs = append(out.SampleIDs, uint64(outputSampleID))
-				out.Samples = append(out.Samples, sample.v)
+				out.AppendSample(d.pool, uint64(outputSampleID), sample.v)
 			}
 		}
 		result = append(result, out)

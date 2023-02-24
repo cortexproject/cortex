@@ -44,4 +44,5 @@ message RuleDesc {
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
   ];
+  google.protobuf.Duration keepFiringFor = 13 [(gogoproto.nullable) = false,(gogoproto.stdduration) = true, (gogoproto.jsontag) = "keep_firing_for"];
 }

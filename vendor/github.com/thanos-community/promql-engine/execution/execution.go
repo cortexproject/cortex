@@ -112,10 +112,6 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 			return nil, err
 		}
 
-		if e.Func.Variadic != 0 {
-			return nil, errors.Wrapf(parse.ErrNotImplemented, "got variadic function: %s", e)
-		}
-
 		// TODO(saswatamcode): Range vector result might need new operator
 		// before it can be non-nested. https://github.com/thanos-community/promql-engine/issues/39
 		for i := range e.Args {

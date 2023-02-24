@@ -36,7 +36,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 	require.Equal(t, ss.ts[0].Labels[0].Name, series.Labels()[0].Name)
 	require.Equal(t, ss.ts[0].Labels[0].Value, series.Labels()[0].Value)
 
-	it := series.Iterator()
+	it := series.Iterator(nil)
 	require.NotEqual(t, it.Next(), chunkenc.ValNone)
 	ts, v := it.At()
 	require.Equal(t, 3.14, v)
@@ -51,7 +51,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 	ss = newTimeSeriesSeriesSet(true, timeseries)
 
 	require.True(t, ss.Next())
-	it = ss.At().Iterator()
+	it = ss.At().Iterator(nil)
 	require.NotEqual(t, it.Seek(2000), chunkenc.ValNone)
 	ts, v = it.At()
 	require.Equal(t, 1.618, v)
@@ -84,7 +84,7 @@ func TestTimeSeriesIterator(t *testing.T) {
 		},
 	}
 
-	it := ts.Iterator()
+	it := ts.Iterator(nil)
 	require.NotEqual(t, it.Seek(1235), chunkenc.ValNone) // Seek to middle
 	i, _ := it.At()
 	require.EqualValues(t, 1235, i)
@@ -93,7 +93,7 @@ func TestTimeSeriesIterator(t *testing.T) {
 	require.EqualValues(t, 1236, i)
 	require.Equal(t, it.Seek(1238), chunkenc.ValNone) // Seek past end
 
-	it = ts.Iterator()
+	it = ts.Iterator(nil)
 	require.NotEqual(t, it.Next(), chunkenc.ValNone)
 	require.NotEqual(t, it.Next(), chunkenc.ValNone)
 	i, _ = it.At()
@@ -102,7 +102,7 @@ func TestTimeSeriesIterator(t *testing.T) {
 	i, _ = it.At()
 	require.EqualValues(t, 1235, i)
 
-	it = ts.Iterator()
+	it = ts.Iterator(nil)
 	for i := 0; it.Next() != chunkenc.ValNone; {
 		j, _ := it.At()
 		switch i {

@@ -1307,7 +1307,6 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 }
 
 func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, key string, codec dataCodec) *data {
-	//parallel testing causes data race
 	kvp := KeyValuePair{}
 	require.NoError(t, kvp.Unmarshal(marshalledKVP))
 	require.Equal(t, key, kvp.Key)

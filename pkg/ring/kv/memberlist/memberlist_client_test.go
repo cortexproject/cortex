@@ -1319,7 +1319,6 @@ func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, ke
 }
 
 func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value interface{}) []byte {
-	//parallel testing causes data race
 	data, err := codec.Encode(value)
 	require.NoError(t, err)
 

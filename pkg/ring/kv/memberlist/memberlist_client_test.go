@@ -197,7 +197,6 @@ func updateFn(name string) func(*data) (*data, bool, error) {
 }
 
 func get(t *testing.T, kv *Client, key string) interface{} {
-	//parallel testing causes data race
 	val, err := kv.Get(context.Background(), key)
 	if err != nil {
 		t.Fatalf("Failed to get value for key %s: %v", key, err)

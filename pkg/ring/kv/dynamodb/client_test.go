@@ -18,6 +18,7 @@ import (
 const key = "test"
 
 func Test_CAS_ErrorNoRetry(t *testing.T) {
+	t.Parallel()
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
@@ -36,6 +37,7 @@ func Test_CAS_ErrorNoRetry(t *testing.T) {
 }
 
 func Test_CAS_Backoff(t *testing.T) {
+	//parallel testing causes data race
 	backoffConfig.MinBackoff = 1 * time.Millisecond
 	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	ddbMock := NewDynamodbClientMock()
@@ -59,6 +61,7 @@ func Test_CAS_Backoff(t *testing.T) {
 }
 
 func Test_CAS_Failed(t *testing.T) {
+	//parallel testing causes data race
 	backoffConfig.MinBackoff = 1 * time.Millisecond
 	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	backoffConfig.MaxRetries = 10
@@ -78,6 +81,7 @@ func Test_CAS_Failed(t *testing.T) {
 }
 
 func Test_CAS_Update(t *testing.T) {
+	//parallel testing causes data race
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
@@ -109,6 +113,7 @@ func Test_CAS_Update(t *testing.T) {
 }
 
 func Test_CAS_Delete(t *testing.T) {
+	t.Parallel()
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
@@ -136,6 +141,7 @@ func Test_CAS_Delete(t *testing.T) {
 }
 
 func Test_CAS_Update_Delete(t *testing.T) {
+	t.Parallel()
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
@@ -172,6 +178,7 @@ func Test_CAS_Update_Delete(t *testing.T) {
 }
 
 func Test_WatchKey(t *testing.T) {
+	//parallel testing causes data race
 	backoffConfig.MinBackoff = 1 * time.Millisecond
 	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	defaultLoopDelay = 1 * time.Second
@@ -194,6 +201,7 @@ func Test_WatchKey(t *testing.T) {
 }
 
 func Test_WatchKey_UpdateStale(t *testing.T) {
+	//parallel testing causes data race
 	backoffConfig.MinBackoff = 1 * time.Millisecond
 	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	ddbMock := NewDynamodbClientMock()
@@ -223,6 +231,7 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 }
 
 func Test_WatchPrefix(t *testing.T) {
+	//parallel testing causes data race
 	backoffConfig.MinBackoff = 1 * time.Millisecond
 	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	ddbMock := NewDynamodbClientMock()
@@ -250,6 +259,7 @@ func Test_WatchPrefix(t *testing.T) {
 }
 
 func Test_UpdateStaleData(t *testing.T) {
+	t.Parallel()
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())

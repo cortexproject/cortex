@@ -2132,7 +2132,6 @@ func TestRingUpdates(t *testing.T) {
 }
 
 func startLifecycler(t *testing.T, cfg Config, heartbeat time.Duration, lifecyclerID int, zones int) *Lifecycler {
-	//parallel test cause data race
 	lcCfg := LifecyclerConfig{
 		RingConfig:           cfg,
 		NumTokens:            16,

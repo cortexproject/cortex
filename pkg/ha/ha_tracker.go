@@ -28,6 +28,7 @@ var (
 	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
 )
 
+//nolint:revive
 type HATrackerLimits interface {
 	// MaxHAReplicaGroups returns max number of replica groups that HA tracker should track for a user.
 	// Samples from additional replicaGroups are rejected.
@@ -44,8 +45,8 @@ func NewReplicaDesc() *ReplicaDesc {
 	return &ReplicaDesc{}
 }
 
-// HATrackerConfig contains the configuration require to
-// create a HA Tracker.
+// HATrackerConfig contains the configuration require to create a HA Tracker.
+//nolint:revive
 type HATrackerConfig struct {
 	EnableHATracker bool `yaml:"enable_ha_tracker"`
 	// We should only update the timestamp if the difference
@@ -118,6 +119,7 @@ func GetReplicaDescCodec() codec.Proto {
 
 // Track the replica we're accepting samples from
 // for each HA replica group we know about.
+//nolint:revive
 type HATracker struct {
 	services.Service
 

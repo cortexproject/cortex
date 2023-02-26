@@ -47,6 +47,7 @@ import (
 )
 
 func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		setup    func(cfg *Config, limits *validation.Limits)
 		expected error
@@ -80,7 +81,9 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			cfg := &Config{}
 			limits := &validation.Limits{}
 			flagext.DefaultValues(cfg, limits)
@@ -92,6 +95,7 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		initialExists bool
 		initialState  ring.InstanceState
@@ -123,7 +127,9 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
@@ -174,6 +180,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 }
 
 func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = false
@@ -195,6 +202,7 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 }
 
 func TestStoreGateway_InitialSyncFailure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = true
@@ -223,6 +231,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 // their own blocks, regardless which store-gateway joined the ring first or last (even if starting
 // at the same time, they will join the ring at a slightly different time).
 func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
+	//parallel testing causes data race
 	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
@@ -295,6 +304,7 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 	for testName, testData := range tests {
 		for _, bucketIndexEnabled := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s (bucket index enabled = %v)", testName, bucketIndexEnabled), func(t *testing.T) {
+				//parallel testing causes data race
 				// Randomise the seed but log it in case we need to reproduce the test on failure.
 				seed := time.Now().UnixNano()
 				rand.Seed(seed)
@@ -375,6 +385,7 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 }
 
 func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScaleUp(t *testing.T) {
+	t.Parallel()
 	const (
 		numUsers             = 2
 		numBlocks            = numUsers * 12
@@ -534,6 +545,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 }
 
 func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		storedTokens      ring.Tokens
 		expectedNumTokens int
@@ -553,7 +565,9 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			tokensFile, err := os.CreateTemp(os.TempDir(), "tokens-*")
 			require.NoError(t, err)
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
@@ -588,6 +602,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 }
 
 func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
+	t.Parallel()
 	registeredAt := time.Now()
 
 	tests := map[string]struct {
@@ -684,7 +699,9 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
@@ -744,6 +761,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 }
 
 func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+	t.Parallel()
 	const unhealthyInstanceID = "unhealthy-id"
 	const heartbeatTimeout = time.Minute
 
@@ -790,6 +808,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 }
 
 func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	userID := "user-1"
@@ -835,7 +854,9 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 	}
 
 	for _, bucketIndexEnabled := range []bool{true, false} {
+		bucketIndexEnabled := bucketIndexEnabled
 		t.Run(fmt.Sprintf("bucket index enabled = %v", bucketIndexEnabled), func(t *testing.T) {
+			t.Parallel()
 			// Create a store-gateway used to query back the series from the blocks.
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = false
@@ -881,6 +902,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 }
 
 func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testing.T) {
+	t.Parallel()
 	const chunksQueried = 10
 
 	tests := map[string]struct {
@@ -928,6 +950,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			//parallel testing causes data race
 			// Customise the limits.
 			limits := defaultLimitsConfig()
 			limits.MaxChunksPerQuery = testData.limit
@@ -1016,6 +1039,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			//parallel testing causes data race
 			// Customise the limits.
 			limits := defaultLimitsConfig()
 			limits.MaxFetchedSeriesPerQuery = testData.limit

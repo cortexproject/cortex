@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
+	"strings"
+	
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"
-	"net/http"
-	"strings"
 
 	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
 	"github.com/cortexproject/cortex/pkg/util"

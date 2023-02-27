@@ -5,13 +5,17 @@ import (
 	"io"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/backoff"
-
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"
+
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
+
+var defaultOperationRetries = 10
+var defaultRetryMinBackoff = 5 * time.Second
+var defaultRetryMaxBackoff = 2 * time.Minute
 
 // NewBucketClient creates a new S3 bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
@@ -26,9 +30,9 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 	}
 	return &BucketWithRetries{
 		bucket:           bucket,
-		operationRetries: cfg.OperationRetries,
-		retryMinBackoff:  cfg.RetryMinBackoff,
-		retryMaxBackoff:  cfg.RetryMaxBackoff,
+		operationRetries: defaultOperationRetries,
+		retryMinBackoff:  defaultRetryMinBackoff,
+		retryMaxBackoff:  defaultRetryMaxBackoff,
 	}, nil
 }
 
@@ -45,9 +49,9 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 	}
 	return &BucketWithRetries{
 		bucket:           bucket,
-		operationRetries: cfg.OperationRetries,
-		retryMinBackoff:  cfg.RetryMinBackoff,
-		retryMaxBackoff:  cfg.RetryMaxBackoff,
+		operationRetries: defaultOperationRetries,
+		retryMinBackoff:  defaultRetryMinBackoff,
+		retryMaxBackoff:  defaultRetryMaxBackoff,
 	}, nil
 }
 
@@ -105,6 +109,9 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error) error {
 		lastErr = f()
 		if lastErr == nil {
 			return nil
+		}
+		if b.bucket.IsObjNotFoundErr(lastErr) {
+			return lastErr
 		}
 		retries.Wait()
 	}

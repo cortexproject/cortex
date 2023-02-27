@@ -38,7 +38,6 @@
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
-* [BUGFIX] Compactor: Fixed shuffle sharding planner to not fail the compaction if visit marker file is locked by another compactor. #5135
 * [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
 * [BUGFIX] Query-frontend:  Fix sorted queries do not produce sorted results for shardable queries. #5148
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102

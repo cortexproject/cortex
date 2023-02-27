@@ -4,13 +4,11 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"net/http"
-	"strings"
-	"time"
-
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"
+	"net/http"
+	"strings"
 
 	bucket_http "github.com/cortexproject/cortex/pkg/storage/bucket/http"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -67,9 +65,6 @@ type Config struct {
 	Insecure         bool           `yaml:"insecure"`
 	SignatureVersion string         `yaml:"signature_version"`
 	BucketLookupType string         `yaml:"bucket_lookup_type"`
-	OperationRetries int            `yaml:"operation_retries"`
-	RetryMinBackoff  time.Duration  `yaml:"retry_min_backoff"`
-	RetryMaxBackoff  time.Duration  `yaml:"retry_max_backoff"`
 
 	SSE  SSEConfig  `yaml:"sse"`
 	HTTP HTTPConfig `yaml:"http"`
@@ -90,9 +85,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
 	f.StringVar(&cfg.BucketLookupType, prefix+"s3.bucket-lookup-type", BucketAutoLookup, fmt.Sprintf("The s3 bucket lookup style. Supported values are: %s.", strings.Join(supportedBucketLookupTypes, ", ")))
-	f.IntVar(&cfg.OperationRetries, prefix+"s3.operation-retries", 1, "How many times to retry a failed AWS S3 operation.")
-	f.DurationVar(&cfg.RetryMinBackoff, prefix+"s3.retry-min-backoff", 10*time.Second, "The minimum backoff time when retrying failed AWS S3 operation.")
-	f.DurationVar(&cfg.RetryMaxBackoff, prefix+"s3.retry-max-backoff", time.Minute, "The maximum backoff time when retrying failed AWS S3 operation.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }

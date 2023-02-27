@@ -277,18 +277,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.bucket-lookup-type
     [bucket_lookup_type: <string> | default = "auto"]
 
-    # How many times to retry a failed AWS S3 operation.
-    # CLI flag: -blocks-storage.s3.operation-retries
-    [operation_retries: <int> | default = 1]
-
-    # The minimum backoff time when retrying failed AWS S3 operation.
-    # CLI flag: -blocks-storage.s3.retry-min-backoff
-    [retry_min_backoff: <duration> | default = 10s]
-
-    # The maximum backoff time when retrying failed AWS S3 operation.
-    # CLI flag: -blocks-storage.s3.retry-max-backoff
-    [retry_max_backoff: <duration> | default = 1m]
-
     # The s3_sse_config configures the S3 server-side encryption.
     # The CLI flags prefix for this block config is: blocks-storage
     [sse: <s3_sse_config>]

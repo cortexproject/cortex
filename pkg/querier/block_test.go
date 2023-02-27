@@ -71,6 +71,7 @@ func TestBlockQuerierSeries(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			series := newBlockQuerierSeries(labelpb.ZLabelsToPromLabels(testData.series.Labels), testData.series.Chunks)
 
 			assert.Equal(t, testData.expectedMetric, series.Labels())
@@ -111,6 +112,7 @@ func mockTSDBChunkData() []byte {
 }
 
 func TestBlockQuerierSeriesSet(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	// It would be possible to split this test into smaller parts, but I prefer to keep

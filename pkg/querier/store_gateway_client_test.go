@@ -19,6 +19,7 @@ import (
 )
 
 func Test_newStoreGatewayClientFactory(t *testing.T) {
+	t.Parallel()
 	// Create a GRPC server used to query the mocked service.
 	grpcServer := grpc.NewServer()
 	defer grpcServer.GracefulStop()

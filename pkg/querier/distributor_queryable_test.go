@@ -30,6 +30,8 @@ const (
 )
 
 func TestDistributorQuerier(t *testing.T) {
+	t.Parallel()
+
 	d := &MockDistributor{}
 	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		model.Matrix{
@@ -67,6 +69,7 @@ func TestDistributorQuerier(t *testing.T) {
 }
 
 func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) {
+
 	now := time.Now()
 
 	tests := map[string]struct {
@@ -127,7 +130,10 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 
 	for _, streamingEnabled := range []bool{false, true} {
 		for testName, testData := range tests {
+			testData := testData
 			t.Run(fmt.Sprintf("%s (streaming enabled: %t)", testName, streamingEnabled), func(t *testing.T) {
+				t.Parallel()
+
 				distributor := &MockDistributor{}
 				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
@@ -171,6 +177,8 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 }
 
 func TestDistributorQueryableFilter(t *testing.T) {
+	t.Parallel()
+
 	d := &MockDistributor{}
 	dq := newDistributorQueryable(d, false, false, nil, 1*time.Hour, true)
 
@@ -187,6 +195,8 @@ func TestDistributorQueryableFilter(t *testing.T) {
 }
 
 func TestIngesterStreaming(t *testing.T) {
+	t.Parallel()
+
 	// We need to make sure that there is atleast one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
@@ -240,6 +250,8 @@ func TestIngesterStreaming(t *testing.T) {
 }
 
 func TestIngesterStreamingMixedResults(t *testing.T) {
+	t.Parallel()
+
 	const (
 		mint = 0
 		maxt = 10000
@@ -331,11 +343,16 @@ func verifySeries(t *testing.T, series storage.Series, l labels.Labels, samples 
 	require.Nil(t, it.Err())
 }
 func TestDistributorQuerier_LabelNames(t *testing.T) {
+	t.Parallel()
+
 	someMatchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}
 	labelNames := []string{"foo", "job"}
 
 	for _, streamingEnabled := range []bool{false, true} {
+		streamingEnabled := streamingEnabled
 		t.Run("with matchers", func(t *testing.T) {
+			t.Parallel()
+
 			metrics := []metric.Metric{
 				{Metric: model.Metric{"foo": "bar"}},
 				{Metric: model.Metric{"job": "baz"}},

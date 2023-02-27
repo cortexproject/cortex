@@ -12,6 +12,7 @@ import (
 )
 
 func TestConcreteSeriesSet(t *testing.T) {
+	t.Parallel()
 	series1 := &ConcreteSeries{
 		labels:  labels.FromStrings("foo", "bar"),
 		samples: []model.SamplePair{{Value: 1, Timestamp: 2}},
@@ -29,6 +30,7 @@ func TestConcreteSeriesSet(t *testing.T) {
 }
 
 func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {
+	t.Parallel()
 	matrix := model.Matrix{
 		{
 			Metric: model.Metric{
@@ -56,6 +58,7 @@ func TestMatrixToSeriesSetSortsMetricLabels(t *testing.T) {
 }
 
 func TestDeletedSeriesIterator(t *testing.T) {
+	t.Parallel()
 	cs := ConcreteSeries{labels: labels.FromStrings("foo", "bar")}
 	// Insert random stuff from (0, 1000).
 	for i := 0; i < 1000; i++ {
@@ -113,6 +116,7 @@ func TestDeletedSeriesIterator(t *testing.T) {
 }
 
 func TestDeletedIterator_WithSeek(t *testing.T) {
+	t.Parallel()
 	cs := ConcreteSeries{labels: labels.FromStrings("foo", "bar")}
 	// Insert random stuff from (0, 1000).
 	for i := 0; i < 1000; i++ {

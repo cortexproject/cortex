@@ -12,6 +12,7 @@ import (
 )
 
 func Test_ResponseToSamples(t *testing.T) {
+	t.Parallel()
 	input := &PrometheusResponse{
 		Data: PrometheusData{
 			ResultType: string(parser.ValueTypeMatrix),

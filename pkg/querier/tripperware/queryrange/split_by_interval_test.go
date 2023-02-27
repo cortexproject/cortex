@@ -24,6 +24,7 @@ import (
 const seconds = 1e3 // 1e3 milliseconds per second.
 
 func TestNextIntervalBoundary(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		in, step, out int64
 		interval      time.Duration
@@ -55,13 +56,16 @@ func TestNextIntervalBoundary(t *testing.T) {
 		{toMs(day) + 15*seconds, 35 * seconds, 2*toMs(day) - 5*seconds, day},
 		{toMs(time.Hour) + 15*seconds, 35 * seconds, 2*toMs(time.Hour) - 15*seconds, time.Hour},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			require.Equal(t, tc.out, nextIntervalBoundary(tc.in, tc.step, tc.interval))
 		})
 	}
 }
 
 func TestSplitQuery(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		input    tripperware.Request
 		expected []tripperware.Request
@@ -257,7 +261,9 @@ func TestSplitQuery(t *testing.T) {
 			interval: 3 * time.Hour,
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			days, err := splitQuery(tc.input, tc.interval)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, days)
@@ -266,6 +272,7 @@ func TestSplitQuery(t *testing.T) {
 }
 
 func TestSplitByDay(t *testing.T) {
+	t.Parallel()
 	mergedResponse, err := PrometheusCodec.MergeResponse(context.Background(), nil, parsedResponse, parsedResponse)
 	require.NoError(t, err)
 
@@ -281,7 +288,9 @@ func TestSplitByDay(t *testing.T) {
 	}{
 		{query, string(mergedHTTPResponseBody), 2},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			var actualCount atomic.Int32
 			s := httptest.NewServer(
 				middleware.AuthenticateUser.Wrap(
@@ -321,6 +330,7 @@ func TestSplitByDay(t *testing.T) {
 }
 
 func Test_evaluateAtModifier(t *testing.T) {
+	t.Parallel()
 	const (
 		start, end = int64(1546300800), int64(1646300800)
 	)

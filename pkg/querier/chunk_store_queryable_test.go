@@ -24,6 +24,8 @@ import (
 var _ SeriesWithChunks = &chunkSeries{}
 
 func TestChunkQueryable(t *testing.T) {
+	t.Parallel()
+
 	opts := promql.EngineOpts{
 		Logger:             log.NewNopLogger(),
 		ActiveQueryTracker: promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger()),
@@ -44,6 +46,8 @@ func TestChunkQueryable(t *testing.T) {
 			for _, encoding := range encodings {
 				for _, query := range queries {
 					t.Run(fmt.Sprintf("%s/%s/%s/ thanos engine enabled = %t", testcase.name, encoding.name, query.query, thanosEngine), func(t *testing.T) {
+						//parallel testing causes data race
+
 						store, from := makeMockChunkStore(t, 24, encoding.e)
 						queryable := newMockStoreQueryable(store, testcase.f)
 						testRangeQuery(t, queryable, queryEngine, from, query)
@@ -93,6 +97,8 @@ func mkChunk(t require.TestingT, mint, maxt model.Time, step time.Duration, enco
 }
 
 func TestPartitionChunksOutputIsSortedByLabels(t *testing.T) {
+	t.Parallel()
+
 	var allChunks []chunk.Chunk
 
 	const count = 10

@@ -13,6 +13,8 @@ import (
 )
 
 func TestMetadataHandler_Success(t *testing.T) {
+	t.Parallel()
+
 	d := &MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return(
 		[]scrape.MetricMetadata{
@@ -51,6 +53,8 @@ func TestMetadataHandler_Success(t *testing.T) {
 }
 
 func TestMetadataHandler_Error(t *testing.T) {
+	t.Parallel()
+
 	d := &MockDistributor{}
 	d.On("MetricsMetadata", mock.Anything).Return([]scrape.MetricMetadata{}, fmt.Errorf("no user id"))
 

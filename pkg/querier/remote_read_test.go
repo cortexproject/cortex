@@ -23,6 +23,7 @@ import (
 )
 
 func TestRemoteReadHandler(t *testing.T) {
+	t.Parallel()
 	q := storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
 		return mockQuerier{
 			matrix: model.Matrix{

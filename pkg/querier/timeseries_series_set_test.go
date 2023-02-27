@@ -10,6 +10,7 @@ import (
 )
 
 func TestTimeSeriesSeriesSet(t *testing.T) {
+	t.Parallel()
 
 	timeseries := []cortexpb.TimeSeries{
 		{
@@ -59,6 +60,7 @@ func TestTimeSeriesSeriesSet(t *testing.T) {
 }
 
 func TestTimeSeriesIterator(t *testing.T) {
+	t.Parallel()
 	ts := timeseries{
 		series: cortexpb.TimeSeries{
 			Labels: []cortexpb.LabelAdapter{

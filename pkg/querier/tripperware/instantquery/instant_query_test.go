@@ -20,6 +20,7 @@ import (
 )
 
 func TestRequest(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	codec := instantQueryCodec{now: func() time.Time {
 		return now
@@ -71,7 +72,9 @@ func TestRequest(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
+			t.Parallel()
 			r, err := http.NewRequest("GET", tc.url, nil)
 			require.NoError(t, err)
 			r.Header.Add("Test-Header", "test")
@@ -96,6 +99,7 @@ func TestRequest(t *testing.T) {
 }
 
 func TestGzippedResponse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		body   string
 		status int
@@ -116,7 +120,10 @@ func TestGzippedResponse(t *testing.T) {
 		},
 	} {
 		for _, c := range []bool{true, false} {
+			c := c
 			t.Run(fmt.Sprintf("compressed %t [%s]", c, tc.body), func(t *testing.T) {
+				t.Parallel()
+
 				h := http.Header{
 					"Content-Type": []string{"application/json"},
 				}
@@ -152,6 +159,7 @@ func TestGzippedResponse(t *testing.T) {
 }
 
 func TestResponse(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		body string
 	}{
@@ -174,7 +182,10 @@ func TestResponse(t *testing.T) {
 			body: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"1266464.0146205237"]}]}}`,
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+
 			response := &http.Response{
 				StatusCode: 200,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -198,6 +209,7 @@ func TestResponse(t *testing.T) {
 }
 
 func TestMergeResponse(t *testing.T) {
+	t.Parallel()
 	defaultReq := &PrometheusRequest{
 		Query: "sum(up)",
 	}
@@ -340,7 +352,10 @@ func TestMergeResponse(t *testing.T) {
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
 				hr := &http.Response{

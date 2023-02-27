@@ -32,7 +32,7 @@ require (
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.5.0
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.15.15
+	github.com/klauspost/compress v1.16.0
 	github.com/lib/pq v1.10.7
 	github.com/minio/minio-go/v7 v7.0.49
 	github.com/mitchellh/go-wordwrap v1.0.1

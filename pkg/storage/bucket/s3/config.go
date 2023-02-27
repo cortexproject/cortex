@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	
+
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore/providers/s3"

@@ -54,9 +54,10 @@ func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[uli
 // DefaultShardingStrategy is a sharding strategy based on the hash ring formed by store-gateways.
 // Not go-routine safe.
 type DefaultShardingStrategy struct {
-	r            *ring.Ring
-	instanceAddr string
-	logger       log.Logger
+	r              *ring.Ring
+	instanceAddr   string
+	logger         log.Logger
+	allowedTenants *util.AllowedTenants
 }
 
 // NewDefaultShardingStrategy creates DefaultShardingStrategy.
@@ -70,7 +71,15 @@ func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Lo
 
 // FilterUsers implements ShardingStrategy.
 func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
-	return userIDs
+	allUserIDs := userIDs
+
+	for _, userID := range userIDs {
+		if !s.allowedTenants.IsAllowed(userID) {
+			level.Debug(s.logger).Log("msg", "ignoring storage gateway for user, not allowed", "user", userID)
+		}
+	}
+
+	return allUserIDs
 }
 
 // FilterBlocks implements ShardingStrategy.
@@ -89,6 +98,7 @@ type ShuffleShardingStrategy struct {
 	logger       log.Logger
 
 	zoneStableShuffleSharding bool
+	allowedTenants            *util.AllowedTenants
 }
 
 // NewShuffleShardingStrategy makes a new ShuffleShardingStrategy.
@@ -110,6 +120,12 @@ func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 
 	for _, userID := range userIDs {
 		subRing := GetShuffleShardingSubring(s.r, userID, s.limits, s.zoneStableShuffleSharding)
+
+		//filter out users not owned by this shard.
+		if !s.allowedTenants.IsAllowed(userID) {
+			level.Debug(s.logger).Log("msg", "ignoring storage gateway for user, not allowed", "user", userID)
+			continue
+		}
 
 		// Include the user only if it belongs to this store-gateway shard.
 		if subRing.HasInstance(s.instanceID) {

@@ -187,7 +187,7 @@ func (c *HATracker) registerMetrics(reg prometheus.Registerer) {
 	// HATracker metrics can be initialized as part of distributor and ruler instantiation,
 	// leading to potential duplicate registration errors, so we ignore that error here
 	registerOnce := func(reg prometheus.Registerer, x prometheus.Collector) prometheus.Collector {
-		if err := prometheus.Register(x); err != nil {
+		if err := reg.Register(x); err != nil {
 			if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
 				return are.ExistingCollector
 			}

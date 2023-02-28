@@ -3,7 +3,7 @@ module github.com/cortexproject/cortex
 go 1.18
 
 require (
-	github.com/Masterminds/squirrel v0.0.0-20161115235646-20f192218cf5
+	github.com/Masterminds/squirrel v1.5.3
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 	github.com/alicebob/miniredis/v2 v2.30.0

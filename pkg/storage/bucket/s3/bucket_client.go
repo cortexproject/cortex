@@ -13,9 +13,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
-var defaultOperationRetries = 10
+var defaultOperationRetries = 5
 var defaultRetryMinBackoff = 5 * time.Second
-var defaultRetryMaxBackoff = 2 * time.Minute
+var defaultRetryMaxBackoff = 1 * time.Minute
 
 // NewBucketClient creates a new S3 bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {

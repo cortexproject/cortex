@@ -23,6 +23,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -54,6 +55,9 @@ type Config struct {
 	ShardingEnabled  bool       `yaml:"sharding_enabled"`
 	ShardingRing     RingConfig `yaml:"sharding_ring" doc:"description=The hash ring configuration. This option is required only if blocks sharding is enabled."`
 	ShardingStrategy string     `yaml:"sharding_strategy"`
+
+	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
+	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 }
 
 // RegisterFlags registers the Config flags.
@@ -62,6 +66,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.ShardingEnabled, "store-gateway.sharding-enabled", false, "Shard blocks across multiple store gateway instances."+sharedOptionWithQuerier)
 	f.StringVar(&cfg.ShardingStrategy, "store-gateway.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
+	f.Var(&cfg.EnabledTenants, "store-gateway.enabled_tenants", "Comma separated list of tenants whose store metrics this storegateway can process. If specified, only these tenants will be handled by storegateway, otherwise this storegateway will be enabled for all the tenants in the store-gateway cluster.")
+	f.Var(&cfg.DisabledTenants, "store-gateway.disabled_tenants", "Comma separated list of tenants whose store metrics this storegateway cannot process. If specified, a storegateway that would normally pick the specified tenant(s) for processing will ignore them instead.")
 }
 
 // Validate the Config.
@@ -99,6 +105,8 @@ type StoreGateway struct {
 	subservicesWatcher *services.FailureWatcher
 
 	bucketSync *prometheus.CounterVec
+
+	allowedTenants *util.AllowedTenants
 }
 
 func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
@@ -135,12 +143,20 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			Name: "cortex_storegateway_bucket_sync_total",
 			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
+		allowedTenants: util.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants),
 	}
 
 	// Init metrics.
 	g.bucketSync.WithLabelValues(syncReasonInitial)
 	g.bucketSync.WithLabelValues(syncReasonPeriodic)
 	g.bucketSync.WithLabelValues(syncReasonRingChange)
+
+	if len(gatewayCfg.EnabledTenants) > 0 {
+		level.Info(g.logger).Log("msg", "storegateway using enabled users", "enabled", strings.Join(gatewayCfg.EnabledTenants, ", "))
+	}
+	if len(gatewayCfg.DisabledTenants) > 0 {
+		level.Info(g.logger).Log("msg", "storegateway using disabled users", "disabled", strings.Join(gatewayCfg.DisabledTenants, ", "))
+	}
 
 	// Init sharding strategy.
 	var shardingStrategy ShardingStrategy

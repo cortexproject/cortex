@@ -306,7 +306,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					compactorID: otherCompactor,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s is not visited by current compactor %s", block1ulid.String(), currentCompactor),
+			expected: []*metadata.Meta{},
 		},
 		"test should not compact if visit marker file is expired": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -333,7 +333,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					compactorID: currentCompactor,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s is not visited by current compactor %s", block1ulid.String(), currentCompactor),
+			expected: []*metadata.Meta{},
 		},
 	}
 

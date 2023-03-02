@@ -13,6 +13,8 @@ package function
 import (
 	"math"
 	"sort"
+
+	"github.com/prometheus/prometheus/model/histogram"
 )
 
 type le struct {
@@ -162,4 +164,121 @@ func ensureMonotonic(buckets buckets) {
 			buckets[i].count = max
 		}
 	}
+}
+
+// Copied from https://github.com/prometheus/prometheus/blob/main/promql/quantile.go#L146.
+func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
+	if q < 0 {
+		return math.Inf(-1)
+	}
+	if q > 1 {
+		return math.Inf(+1)
+	}
+
+	if h.Count == 0 || math.IsNaN(q) {
+		return math.NaN()
+	}
+
+	var (
+		bucket histogram.Bucket[float64]
+		count  float64
+		it     = h.AllBucketIterator()
+		rank   = q * h.Count
+	)
+	for it.Next() {
+		bucket = it.At()
+		count += bucket.Count
+		if count >= rank {
+			break
+		}
+	}
+	if bucket.Lower < 0 && bucket.Upper > 0 {
+		if len(h.NegativeBuckets) == 0 && len(h.PositiveBuckets) > 0 {
+			// The result is in the zero bucket and the histogram has only
+			// positive buckets. So we consider 0 to be the lower bound.
+			bucket.Lower = 0
+		} else if len(h.PositiveBuckets) == 0 && len(h.NegativeBuckets) > 0 {
+			// The result is in the zero bucket and the histogram has only
+			// negative buckets. So we consider 0 to be the upper bound.
+			bucket.Upper = 0
+		}
+	}
+	// Due to numerical inaccuracies, we could end up with a higher count
+	// than h.Count. Thus, make sure count is never higher than h.Count.
+	if count > h.Count {
+		count = h.Count
+	}
+	// We could have hit the highest bucket without even reaching the rank
+	// (this should only happen if the histogram contains observations of
+	// the value NaN), in which case we simply return the upper limit of the
+	// highest explicit bucket.
+	if count < rank {
+		return bucket.Upper
+	}
+
+	rank -= count - bucket.Count
+	return bucket.Lower + (bucket.Upper-bucket.Lower)*(rank/bucket.Count)
+}
+
+// Copied from https://github.com/prometheus/prometheus/blob/main/promql/quantile.go#L231.
+func histogramFraction(lower, upper float64, h *histogram.FloatHistogram) float64 {
+	if h.Count == 0 || math.IsNaN(lower) || math.IsNaN(upper) {
+		return math.NaN()
+	}
+	if lower >= upper {
+		return 0
+	}
+
+	var (
+		rank, lowerRank, upperRank float64
+		lowerSet, upperSet         bool
+		it                         = h.AllBucketIterator()
+	)
+	for it.Next() {
+		b := it.At()
+		if b.Lower < 0 && b.Upper > 0 {
+			if len(h.NegativeBuckets) == 0 && len(h.PositiveBuckets) > 0 {
+				// This is the zero bucket and the histogram has only
+				// positive buckets. So we consider 0 to be the lower
+				// bound.
+				b.Lower = 0
+			} else if len(h.PositiveBuckets) == 0 && len(h.NegativeBuckets) > 0 {
+				// This is in the zero bucket and the histogram has only
+				// negative buckets. So we consider 0 to be the upper
+				// bound.
+				b.Upper = 0
+			}
+		}
+		if !lowerSet && b.Lower >= lower {
+			lowerRank = rank
+			lowerSet = true
+		}
+		if !upperSet && b.Lower >= upper {
+			upperRank = rank
+			upperSet = true
+		}
+		if lowerSet && upperSet {
+			break
+		}
+		if !lowerSet && b.Lower < lower && b.Upper > lower {
+			lowerRank = rank + b.Count*(lower-b.Lower)/(b.Upper-b.Lower)
+			lowerSet = true
+		}
+		if !upperSet && b.Lower < upper && b.Upper > upper {
+			upperRank = rank + b.Count*(upper-b.Lower)/(b.Upper-b.Lower)
+			upperSet = true
+		}
+		if lowerSet && upperSet {
+			break
+		}
+		rank += b.Count
+	}
+	if !lowerSet || lowerRank > h.Count {
+		lowerRank = h.Count
+	}
+	if !upperSet || upperRank > h.Count {
+		upperRank = h.Count
+	}
+
+	return (upperRank - lowerRank) / h.Count
 }

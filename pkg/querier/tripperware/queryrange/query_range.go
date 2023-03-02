@@ -34,7 +34,7 @@ var (
 	json   = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
-		ValidateJsonRawMessage: true,
+		ValidateJsonRawMessage: false,
 	}.Froze()
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")

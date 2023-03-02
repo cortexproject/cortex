@@ -20,6 +20,7 @@ import (
 )
 
 func TestRequest(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	codec := instantQueryCodec{now: func() time.Time {
 		return now
@@ -71,7 +72,9 @@ func TestRequest(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
+			t.Parallel()
 			r, err := http.NewRequest("GET", tc.url, nil)
 			require.NoError(t, err)
 			r.Header.Add("Test-Header", "test")
@@ -96,6 +99,7 @@ func TestRequest(t *testing.T) {
 }
 
 func TestGzippedResponse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		body   string
 		status int
@@ -116,7 +120,10 @@ func TestGzippedResponse(t *testing.T) {
 		},
 	} {
 		for _, c := range []bool{true, false} {
+			c := c
 			t.Run(fmt.Sprintf("compressed %t [%s]", c, tc.body), func(t *testing.T) {
+				t.Parallel()
+
 				h := http.Header{
 					"Content-Type": []string{"application/json"},
 				}
@@ -152,6 +159,7 @@ func TestGzippedResponse(t *testing.T) {
 }
 
 func TestResponse(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		body string
 	}{
@@ -174,7 +182,10 @@ func TestResponse(t *testing.T) {
 			body: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"1266464.0146205237"]}]}}`,
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
+
 			response := &http.Response{
 				StatusCode: 200,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -198,6 +209,7 @@ func TestResponse(t *testing.T) {
 }
 
 func TestMergeResponse(t *testing.T) {
+	t.Parallel()
 	defaultReq := &PrometheusRequest{
 		Query: "sum(up)",
 	}
@@ -261,7 +273,7 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "merge two responses with sort",
-			req:  &PrometheusRequest{Query: "sort(up)"},
+			req:  &PrometheusRequest{Query: "sort(sum by (job) (up))"},
 			resps: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
@@ -270,12 +282,21 @@ func TestMergeResponse(t *testing.T) {
 		},
 		{
 			name: "merge two responses with sort_desc",
-			req:  &PrometheusRequest{Query: "sort_desc(up)"},
+			req:  &PrometheusRequest{Query: "sort_desc(sum by (job) (up))"},
 			resps: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+		},
+		{
+			name: "merge two responses with topk",
+			req:  &PrometheusRequest{Query: "topk(10, up) by(job)"},
+			resps: []string{
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			},
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
 		},
 		{
 			name: "merge two responses with stats",
@@ -331,7 +352,10 @@ func TestMergeResponse(t *testing.T) {
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
 				hr := &http.Response{
@@ -353,6 +377,72 @@ func TestMergeResponse(t *testing.T) {
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, err, tc.expectedErr)
 			assert.Equal(t, string(contents), tc.expectedResp)
+		})
+	}
+}
+
+func Test_sortPlanForQuery(t *testing.T) {
+	tc := []struct {
+		query        string
+		expectedPlan sortPlan
+		err          bool
+	}{
+		{
+			query:        "invalid(10, up)",
+			expectedPlan: mergeOnly,
+			err:          true,
+		},
+		{
+			query:        "topk(10, up)",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
+			query:        "bottomk(10, up)",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
+			query:        "1 + topk(10, up)",
+			expectedPlan: sortByLabels,
+			err:          false,
+		},
+		{
+			query:        "1 + sort_desc(sum by (job) (up) )",
+			expectedPlan: sortByValuesDesc,
+			err:          false,
+		},
+		{
+			query:        "sort(topk by (job) (10, up))",
+			expectedPlan: sortByValuesAsc,
+			err:          false,
+		},
+		{
+			query:        "topk(5, up) by (job) + sort_desc(up)",
+			expectedPlan: sortByValuesDesc,
+			err:          false,
+		},
+		{
+			query:        "sort(up) + topk(5, up) by (job)",
+			expectedPlan: sortByValuesAsc,
+			err:          false,
+		},
+		{
+			query:        "sum(up) by (job)",
+			expectedPlan: sortByLabels,
+			err:          false,
+		},
+	}
+
+	for _, tc := range tc {
+		t.Run(tc.query, func(t *testing.T) {
+			p, err := sortPlanForQuery(tc.query)
+			if tc.err {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedPlan, p)
+			}
 		})
 	}
 }

@@ -198,6 +198,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			},
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
+			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 		}, bucketClient, limits, logger, reg)
 	} else {
 		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
@@ -206,6 +207,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
 			CacheDir:                 storageCfg.BucketStore.SyncDir,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
+			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 		}, bucketClient, limits, logger, reg)
 	}
 

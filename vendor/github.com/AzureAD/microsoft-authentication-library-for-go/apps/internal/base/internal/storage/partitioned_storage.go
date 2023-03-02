@@ -36,7 +36,7 @@ func NewPartitionedManager(requests *oauth.Client) *PartitionedManager {
 }
 
 // Read reads a storage token from the cache if it exists.
-func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.AuthParams, account shared.Account) (TokenResponse, error) {
+func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.AuthParams) (TokenResponse, error) {
 	realm := authParameters.AuthorityInfo.Tenant
 	clientID := authParameters.ClientID
 	scopes := authParameters.Scopes
@@ -69,7 +69,7 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 		return TokenResponse{}, err
 	}
 
-	account, err = m.readAccount(metadata.Aliases, realm, userAssertionHash, idToken.HomeAccountID)
+	account, err := m.readAccount(metadata.Aliases, realm, userAssertionHash, idToken.HomeAccountID)
 	if err != nil {
 		return TokenResponse{}, err
 	}
@@ -83,8 +83,8 @@ func (m *PartitionedManager) Read(ctx context.Context, authParameters authority.
 
 // Write writes a token response to the cache and returns the account information the token is stored with.
 func (m *PartitionedManager) Write(authParameters authority.AuthParams, tokenResponse accesstokens.TokenResponse) (shared.Account, error) {
-	authParameters.HomeaccountID = tokenResponse.ClientInfo.HomeAccountID()
-	homeAccountID := authParameters.HomeaccountID
+	authParameters.HomeAccountID = tokenResponse.ClientInfo.HomeAccountID()
+	homeAccountID := authParameters.HomeAccountID
 	environment := authParameters.AuthorityInfo.Host
 	realm := authParameters.AuthorityInfo.Tenant
 	clientID := authParameters.ClientID

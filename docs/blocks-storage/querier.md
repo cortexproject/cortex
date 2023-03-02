@@ -1084,6 +1084,15 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.ignore-deletion-marks-delay
     [ignore_deletion_mark_delay: <duration> | default = 6h]
 
+    # The blocks created since `now() - ignore_blocks_within` will not be
+    # synced. This should be used together with `-querier.query-store-after` to
+    # filter out the blocks that are too new to be queried. A reasonable value
+    # for this flag would be `-querier.query-store-after -
+    # blocks-storage.bucket-store.bucket-index.max-stale-period` to give some
+    # buffer. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.ignore-blocks-within
+    [ignore_blocks_within: <duration> | default = 0s]
+
     bucket_index:
       # True to enable querier and store-gateway to discover blocks in the
       # storage via bucket index instead of bucket scanning.

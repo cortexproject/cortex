@@ -68,7 +68,9 @@ const (
 
 // WithInjectEncoding sets the encoding the propagator will inject.
 // The encoding is interpreted as a bitmask. Therefore
-//   WithInjectEncoding(B3SingleHeader | B3MultipleHeader)
+//
+//	WithInjectEncoding(B3SingleHeader | B3MultipleHeader)
+//
 // means the propagator will inject both single and multi B3 headers.
 func WithInjectEncoding(encoding Encoding) Option {
 	return optionFunc(func(c *config) {

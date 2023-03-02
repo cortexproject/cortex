@@ -17,7 +17,6 @@ type RemoteEndpoints interface {
 type RemoteEngine interface {
 	MaxT() int64
 	LabelSets() []labels.Labels
-	NewInstantQuery(opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error)
 	NewRangeQuery(opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error)
 }
 

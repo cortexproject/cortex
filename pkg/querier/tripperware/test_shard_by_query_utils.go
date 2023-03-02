@@ -24,6 +24,7 @@ import (
 )
 
 func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheusCodec Codec) {
+	//parallel testing causes data race
 
 	type queries struct {
 		name           string
@@ -368,6 +369,7 @@ http_requests_total`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			//parallel testing causes data race
 			sort.Strings(tt.shardingLabels)
 			s := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

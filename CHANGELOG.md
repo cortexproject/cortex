@@ -18,7 +18,8 @@
 * [ENHANCEMENT] Push reduce one hash operation of Labels. #4945 #5114
 * [ENHANCEMENT] Alertmanager: Added `-alertmanager.enabled-tenants` and `-alertmanager.disabled-tenants` to explicitly enable or disable alertmanager for specific tenants. #5116
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.17`. #5132
-* [ENHANCEMENT] Update Go version to 1.20.1. #5147
+* [ENHANCEMENT] Add retry logic to S3 bucket client. #5135
+* [ENHANCEMENT] Update Go version to 1.20.1. #5159
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
@@ -31,6 +32,8 @@
 * [FEATURE] Added zstd as an option for grpc compression #5092
 * [FEATURE] Ring: Add new kv store option `dynamodb`. #5026
 * [FEATURE] Cache: Support redis as backend for caching bucket and index cache. #5057
+* [FEATURE] Querier/Store-Gateway: Added `-blocks-storage.bucket-store.ignore-blocks-within` allowing to filter out the recently created blocks from being synced by queriers and store-gateways. #5166
+* [FEATURE] AlertManager/Ruler: Added support for  `keep_firing_for` on alerting rulers.
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
@@ -39,7 +42,8 @@
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
 * [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
-* [BUGFIX] Query-frontend:  Fix sorted queries do not produce sorted results for shardable queries. #5148
+* [BUGFIX] Query-frontend: Fix shardable instant queries do not produce sorted results for `sort`, `sort_desc`, `topk`, `bottomk` functions. #5148, #5170
+* [BUGFIX] Querier: Fix `/api/v1/series` returning 5XX instead of 4XX when limits are hit. #5169
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

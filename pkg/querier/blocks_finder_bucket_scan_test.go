@@ -28,6 +28,7 @@ import (
 )
 
 func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, reg := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -78,6 +79,7 @@ func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	bucket := &bucket.ClientMock{}
 	reg := prometheus.NewPedanticRegistry()
@@ -130,6 +132,8 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *testing.T) {
+	t.Parallel()
+
 	tenantIDs := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
 
 	// Mock the bucket to introduce a 1s sleep while iterating each tenant in the bucket.
@@ -162,6 +166,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 }
 
 func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *testing.T) {
+	t.Parallel()
+
 	var blockPaths []string
 	for i := 1; i <= 10; i++ {
 		blockPaths = append(blockPaths, "user-1/"+ulid.MustNew(uint64(i), nil).String())
@@ -196,6 +202,7 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 }
 
 func TestBucketScanBlocksFinder_PeriodicScanFindsNewUser(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -226,6 +233,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsNewUser(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_PeriodicScanFindsNewBlock(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -256,6 +264,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsNewBlock(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_PeriodicScanFindsBlockMarkedForDeletion(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -287,6 +296,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsBlockMarkedForDeletion(t *testi
 }
 
 func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedBlock(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -315,6 +325,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedBlock(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedUser(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -342,6 +353,7 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsDeletedUser(t *testing.T) {
 }
 
 func TestBucketScanBlocksFinder_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
@@ -380,13 +392,16 @@ func TestBucketScanBlocksFinder_PeriodicScanFindsUserWhichWasPreviouslyDeleted(t
 }
 
 func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
+	//parallel testing causes data race
 	ctx := context.Background()
 	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
+	now := time.Now()
 	block1 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 15)
 	block2 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 12, 20)
 	block3 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 20, 30)
 	block4 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", 30, 40)
+	block5 := cortex_testutil.MockStorageBlock(t, bucket, "user-1", now.Add(-2*time.Hour).UnixMilli(), now.UnixMilli()) // This block is within ignoreBlocksWithin
 	mark3 := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bucket, "user-1", block3))
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
@@ -451,10 +466,21 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 				block3.ULID: mark3,
 			},
 		},
+		"query range matching all blocks but should ignore non-queryable block": {
+			minT:          0,
+			maxT:          block5.MaxTime,
+			expectedMetas: []tsdb.BlockMeta{block4, block3, block2, block1},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ULID: mark3,
+			},
+		},
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			metas, deletionMarks, err := s.GetBlocks(ctx, "user-1", testData.minT, testData.maxT)
 			require.NoError(t, err)
 			require.Equal(t, len(testData.expectedMetas), len(metas))
@@ -468,6 +494,8 @@ func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {
 }
 
 func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfig) (*BucketScanBlocksFinder, objstore.Bucket, string, *prometheus.Registry) {
+	//parallel testing causes data race
+
 	bkt, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	reg := prometheus.NewPedanticRegistry()
@@ -488,5 +516,6 @@ func prepareBucketScanBlocksFinderConfig() BucketScanBlocksFinderConfig {
 		TenantsConcurrency:       10,
 		MetasConcurrency:         10,
 		IgnoreDeletionMarksDelay: time.Hour,
+		IgnoreBlocksWithin:       10 * time.Hour, // All blocks created in the last 10 hour shoudn't be scanned.
 	}
 }

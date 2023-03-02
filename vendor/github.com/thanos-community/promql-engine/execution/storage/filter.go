@@ -46,12 +46,9 @@ func (f filter) Matches(series storage.Series) bool {
 		return true
 	}
 
-	for _, l := range series.Labels() {
-		m, ok := f.matcherSet[l.Name]
-		if !ok {
-			continue
-		}
-		if !m.Matches(l.Value) {
+	for name, m := range f.matcherSet {
+		label := series.Labels().Get(name)
+		if !m.Matches(label) {
 			return false
 		}
 	}

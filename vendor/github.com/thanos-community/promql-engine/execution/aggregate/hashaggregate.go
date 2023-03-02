@@ -128,7 +128,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		}
 		for i := range a.params {
 			a.params[i] = math.NaN()
-			if i < len(args) {
+			if i < len(args) && len(args[i].Samples) > 0 {
 				a.params[i] = args[i].Samples[0]
 				a.paramOp.GetPool().PutStepVector(args[i])
 			}

@@ -82,7 +82,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 
 	// The number of concurrent queries against the tenants BucketStores are limited.
 	queryGateReg := extprom.WrapRegistererWithPrefix("cortex_bucket_stores_", reg)
-	queryGate := gate.New(queryGateReg, cfg.BucketStore.MaxConcurrent)
+	queryGate := gate.New(queryGateReg, cfg.BucketStore.MaxConcurrent, gate.Queries)
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_bucket_stores_gate_queries_concurrent_max",
 		Help: "Number of maximum concurrent queries allowed.",
@@ -434,6 +434,11 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		}),
 		// Remove Cortex external labels so that they're not injected when querying blocks.
 	}...)
+
+	if u.cfg.BucketStore.IgnoreBlocksWithin > 0 {
+		// Filter out blocks that are too new to be queried.
+		filters = append(filters, NewIgnoreNonQueryableBlocksFilter(userLogger, u.cfg.BucketStore.IgnoreBlocksWithin))
+	}
 
 	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
 	var fetcher block.MetadataFetcher

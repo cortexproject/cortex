@@ -10,6 +10,7 @@ import (
 )
 
 func TestStream(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		input1, input2 []promchunk.Batch
 		output         batchStream
@@ -43,7 +44,9 @@ func TestStream(t *testing.T) {
 			output: []promchunk.Batch{mkBatch(0), mkBatch(promchunk.BatchSize), mkBatch(2 * promchunk.BatchSize), mkBatch(3 * promchunk.BatchSize)},
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			result := make(batchStream, len(tc.input1)+len(tc.input2))
 			result = mergeStreams(tc.input1, tc.input2, result, promchunk.BatchSize)
 			require.Equal(t, batchStream(tc.output), result)

@@ -10,6 +10,7 @@ import (
 )
 
 func TestMergeIter(t *testing.T) {
+	t.Parallel()
 	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
 		chunk1 := mkGenericChunk(t, 0, 100, enc)
 		chunk2 := mkGenericChunk(t, model.TimeFromUnix(25), 100, enc)
@@ -26,6 +27,7 @@ func TestMergeIter(t *testing.T) {
 }
 
 func TestMergeHarder(t *testing.T) {
+	t.Parallel()
 	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
 		var (
 			numChunks = 24 * 15

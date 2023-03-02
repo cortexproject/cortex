@@ -19,7 +19,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
         # Commands in the Makefile are hardcoded with an assumed file structure of the CI container
         # Symlink ensures paths specified in previous commands don’t break
       - name: Sym Link Expected Path to Workspace
@@ -48,7 +48,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -67,7 +67,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
@@ -124,7 +124,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
@@ -184,7 +184,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Download Docker Images Artifact
@@ -216,7 +216,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -255,7 +255,7 @@ jobs:
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add sae.directory $$GITHUB_WORKSPACE
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym link Expected Path to Workspace

@@ -120,11 +120,6 @@ jobs:
           go-version: 1.19.x
       - name: Checkout Repo
         uses: actions/checkout@v2
-      - name: Setup Git safe.directory
-        run: |
-          echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
-          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
@@ -180,11 +175,6 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
-      - name: Setup Git safe.directory
-        run: |
-          echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
-          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
-          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Download Docker Images Artifact

@@ -368,9 +368,8 @@ http_requests_total`,
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			//parallel testing causes data race
 			sort.Strings(tt.shardingLabels)
 			s := httptest.NewServer(
 				http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

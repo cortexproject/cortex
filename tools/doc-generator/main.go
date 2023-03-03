@@ -49,9 +49,39 @@ var (
 	// follow the markdown generation.
 	rootBlocks = []rootBlock{
 		{
-			name:       "server_config",
-			structType: reflect.TypeOf(server.Config{}),
-			desc:       "The server_config configures the HTTP and gRPC server of the launched service(s).",
+			name:       "alertmanager_config",
+			structType: reflect.TypeOf(alertmanager.MultitenantAlertmanagerConfig{}),
+			desc:       "The alertmanager_config configures the Cortex alertmanager.",
+		},
+		{
+			name:       "alertmanager_storage_config",
+			structType: reflect.TypeOf(alertstore.Config{}),
+			desc:       "The alertmanager_storage_config configures the Cortex alertmanager storage backend.",
+		},
+		{
+			name:       "blocks_storage_config",
+			structType: reflect.TypeOf(tsdb.BlocksStorageConfig{}),
+			desc:       "The blocks_storage_config configures the blocks storage.",
+		},
+		{
+			name:       "compactor_config",
+			structType: reflect.TypeOf(compactor.Config{}),
+			desc:       "The compactor_config configures the compactor for the blocks storage.",
+		},
+		{
+			name:       "configs_config",
+			structType: reflect.TypeOf(configs.Config{}),
+			desc:       "The configs_config configures the Cortex Configs DB and API.",
+		},
+		{
+			name:       "configstore_config",
+			structType: reflect.TypeOf(config_client.Config{}),
+			desc:       "The configstore_config configures the config database storing rules and alerts, and is used by the Cortex alertmanager.",
+		},
+		{
+			name:       "consul_config",
+			structType: reflect.TypeOf(consul.Config{}),
+			desc:       "The consul_config configures the consul client.",
 		},
 		{
 			name:       "distributor_config",
@@ -59,9 +89,54 @@ var (
 			desc:       "The distributor_config configures the Cortex distributor.",
 		},
 		{
+			name:       "etcd_config",
+			structType: reflect.TypeOf(etcd.Config{}),
+			desc:       "The etcd_config configures the etcd client.",
+		},
+		{
+			name:       "fifo_cache_config",
+			structType: reflect.TypeOf(cache.FifoCacheConfig{}),
+			desc:       "The fifo_cache_config configures the local in-memory cache.",
+		},
+		{
+			name:       "flusher_config",
+			structType: reflect.TypeOf(flusher.Config{}),
+			desc:       "The flusher_config configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.",
+		},
+		{
+			name:       "frontend_worker_config",
+			structType: reflect.TypeOf(querier_worker.Config{}),
+			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.",
+		},
+		{
 			name:       "ingester_config",
 			structType: reflect.TypeOf(ingester.Config{}),
 			desc:       "The ingester_config configures the Cortex ingester.",
+		},
+		{
+			name:       "ingester_client_config",
+			structType: reflect.TypeOf(client.Config{}),
+			desc:       "The ingester_client_config configures how the Cortex distributors connect to the ingesters.",
+		},
+		{
+			name:       "limits_config",
+			structType: reflect.TypeOf(validation.Limits{}),
+			desc:       "The limits_config configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).",
+		},
+		{
+			name:       "memberlist_config",
+			structType: reflect.TypeOf(memberlist.KVConfig{}),
+			desc:       "The memberlist_config configures the Gossip memberlist.",
+		},
+		{
+			name:       "memcached_config",
+			structType: reflect.TypeOf(cache.MemcachedConfig{}),
+			desc:       "The memcached_config block configures how data is stored in Memcached (ie. expiration).",
+		},
+		{
+			name:       "memcached_client_config",
+			structType: reflect.TypeOf(cache.MemcachedClientConfig{}),
+			desc:       "The memcached_client_config configures the client used to connect to Memcached.",
 		},
 		{
 			name:       "querier_config",
@@ -79,6 +154,11 @@ var (
 			desc:       "The query_range_config configures the query splitting and caching in the Cortex query-frontend.",
 		},
 		{
+			name:       "redis_config",
+			structType: reflect.TypeOf(cache.RedisConfig{}),
+			desc:       "The redis_config configures the Redis backend cache.",
+		},
+		{
 			name:       "ruler_config",
 			structType: reflect.TypeOf(ruler.Config{}),
 			desc:       "The ruler_config configures the Cortex ruler.",
@@ -89,14 +169,14 @@ var (
 			desc:       "The ruler_storage_config configures the Cortex ruler storage backend.",
 		},
 		{
-			name:       "alertmanager_config",
-			structType: reflect.TypeOf(alertmanager.MultitenantAlertmanagerConfig{}),
-			desc:       "The alertmanager_config configures the Cortex alertmanager.",
+			name:       "s3_sse_config",
+			structType: reflect.TypeOf(s3.SSEConfig{}),
+			desc:       "The s3_sse_config configures the S3 server-side encryption.",
 		},
 		{
-			name:       "alertmanager_storage_config",
-			structType: reflect.TypeOf(alertstore.Config{}),
-			desc:       "The alertmanager_storage_config configures the Cortex alertmanager storage backend.",
+			name:       "server_config",
+			structType: reflect.TypeOf(server.Config{}),
+			desc:       "The server_config configures the HTTP and gRPC server of the launched service(s).",
 		},
 		{
 			name:       "storage_config",
@@ -104,89 +184,9 @@ var (
 			desc:       "The storage_config configures the storage type Cortex uses.",
 		},
 		{
-			name:       "flusher_config",
-			structType: reflect.TypeOf(flusher.Config{}),
-			desc:       "The flusher_config configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.",
-		},
-		{
-			name:       "ingester_client_config",
-			structType: reflect.TypeOf(client.Config{}),
-			desc:       "The ingester_client_config configures how the Cortex distributors connect to the ingesters.",
-		},
-		{
-			name:       "frontend_worker_config",
-			structType: reflect.TypeOf(querier_worker.Config{}),
-			desc:       "The frontend_worker_config configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.",
-		},
-		{
-			name:       "etcd_config",
-			structType: reflect.TypeOf(etcd.Config{}),
-			desc:       "The etcd_config configures the etcd client.",
-		},
-		{
-			name:       "consul_config",
-			structType: reflect.TypeOf(consul.Config{}),
-			desc:       "The consul_config configures the consul client.",
-		},
-		{
-			name:       "memberlist_config",
-			structType: reflect.TypeOf(memberlist.KVConfig{}),
-			desc:       "The memberlist_config configures the Gossip memberlist.",
-		},
-		{
-			name:       "limits_config",
-			structType: reflect.TypeOf(validation.Limits{}),
-			desc:       "The limits_config configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).",
-		},
-		{
-			name:       "redis_config",
-			structType: reflect.TypeOf(cache.RedisConfig{}),
-			desc:       "The redis_config configures the Redis backend cache.",
-		},
-		{
-			name:       "memcached_config",
-			structType: reflect.TypeOf(cache.MemcachedConfig{}),
-			desc:       "The memcached_config block configures how data is stored in Memcached (ie. expiration).",
-		},
-		{
-			name:       "memcached_client_config",
-			structType: reflect.TypeOf(cache.MemcachedClientConfig{}),
-			desc:       "The memcached_client_config configures the client used to connect to Memcached.",
-		},
-		{
-			name:       "fifo_cache_config",
-			structType: reflect.TypeOf(cache.FifoCacheConfig{}),
-			desc:       "The fifo_cache_config configures the local in-memory cache.",
-		},
-		{
-			name:       "configs_config",
-			structType: reflect.TypeOf(configs.Config{}),
-			desc:       "The configs_config configures the Cortex Configs DB and API.",
-		},
-		{
-			name:       "configstore_config",
-			structType: reflect.TypeOf(config_client.Config{}),
-			desc:       "The configstore_config configures the config database storing rules and alerts, and is used by the Cortex alertmanager.",
-		},
-		{
-			name:       "blocks_storage_config",
-			structType: reflect.TypeOf(tsdb.BlocksStorageConfig{}),
-			desc:       "The blocks_storage_config configures the blocks storage.",
-		},
-		{
-			name:       "compactor_config",
-			structType: reflect.TypeOf(compactor.Config{}),
-			desc:       "The compactor_config configures the compactor for the blocks storage.",
-		},
-		{
 			name:       "store_gateway_config",
 			structType: reflect.TypeOf(storegateway.Config{}),
 			desc:       "The store_gateway_config configures the store-gateway service used by the blocks storage.",
-		},
-		{
-			name:       "s3_sse_config",
-			structType: reflect.TypeOf(s3.SSEConfig{}),
-			desc:       "The s3_sse_config configures the S3 server-side encryption.",
 		},
 		{
 			name:       "tracing_config",

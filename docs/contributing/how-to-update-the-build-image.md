@@ -12,4 +12,5 @@ The build image currently can only be updated by a Cortex maintainer. If you're 
 1. `docker login quay.io`. Note that pushing to `quay.io/cortexproject/build-image` repository can only be done by a maintainer.
 1. Build the and publish the image by using `make push-multiarch-build-image`. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64).  Running this step successfully requires [Docker Buildx](https://docs.docker.com/buildx/working-with-buildx/), but does not require a specific platform.
 1. Replace the image tag in `.github/workflows/*` (_there may be multiple references_) and Makefile (variable `LATEST_BUILD_IMAGE_TAG`).
+1. If you are updating Go's runtime version be sure to change `actions/setup-go`'s `go-version` in ``.github/workflows/*`.
 1. Open a PR and make sure the CI with new build-image passes

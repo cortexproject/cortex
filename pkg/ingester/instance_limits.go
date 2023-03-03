@@ -20,7 +20,7 @@ type InstanceLimits struct {
 }
 
 // Sets default limit values for unmarshalling.
-var defaultInstanceLimits *InstanceLimits = nil
+var defaultInstanceLimits *InstanceLimits
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. If give
 func (l *InstanceLimits) UnmarshalYAML(unmarshal func(interface{}) error) error {

@@ -223,7 +223,7 @@ func TestRulerEvaluationDelay(t *testing.T) {
 	now := time.Now()
 
 	// Generate series that includes stale nans
-	var samplesToSend int = 10
+	samplesToSend := 10
 	series := prompb.TimeSeries{
 		Labels: []prompb.Label{
 			{Name: "__name__", Value: "a_sometimes_stale_nan_series"},

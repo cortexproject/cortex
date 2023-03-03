@@ -11,10 +11,15 @@ jobs:
   lint:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0
+      image: quay.io/cortexproject/build-image:upgrade-to-go1.20.1-pr-5159
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
         # Commands in the Makefile are hardcoded with an assumed file structure of the CI container
         # Symlink ensures paths specified in previous commands don’t break
       - name: Sym Link Expected Path to Workspace
@@ -35,10 +40,15 @@ jobs:
   test:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0
+      image: quay.io/cortexproject/build-image:upgrade-to-go1.20.1-pr-5159
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -49,10 +59,15 @@ jobs:
   build:
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0
+      image: quay.io/cortexproject/build-image:upgrade-to-go1.20.1-pr-5159
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
@@ -92,17 +107,17 @@ jobs:
       fail-fast: false
       matrix:
         tags:
-        - requires_docker
-        - integration_alertmanager
-        - integration_backward_compatibility
-        - integration_memberlist
-        - integration_querier
-        - integration_ruler
+          - requires_docker
+          - integration_alertmanager
+          - integration_backward_compatibility
+          - integration_memberlist
+          - integration_querier
+          - integration_ruler
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@v2
         with:
-          go-version: 1.19.x
+          go-version: 1.20.1
       - name: Checkout Repo
         uses: actions/checkout@v2
       - name: Install Docker Client
@@ -173,20 +188,25 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:upgrade-to-go1.20.1-pr-5159 TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0
+      image: quay.io/cortexproject/build-image:upgrade-to-go1.20.1-pr-5159
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
         with:
           # web-deploy script expects repo to be cloned with ssh for some commands to work
           ssh-key: ${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -217,10 +237,15 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-20.04
     container:
-      image: quay.io/cortexproject/build-image:upgrade-to-go1.19.3-e8b98ddc0
+      image: quay.io/cortexproject/build-image:upgrade-to-go1.20.1-pr-5159
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v2
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: ./.github/workflows/scripts/install-docker.sh
       - name: Sym link Expected Path to Workspace

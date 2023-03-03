@@ -204,7 +204,7 @@ jobs:
           ssh-key: ${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}
       - name: Setup Git safe.directory
         run: |
-          echo "this step is needed because when running in container, actions/checkout does not set sefe.directory effectively."
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
           echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
           git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Sym Link Expected Path to Workspace

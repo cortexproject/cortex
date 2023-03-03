@@ -10446,11 +10446,11 @@ that want to be part of gossip cluster, and then point &lt;code>join_members&lt;
 &amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use local filesystem in this example.&lt;/p>
 &lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
 and will start receiving samples after it enters into ACTIVE state.&lt;/p></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
-&lt;p>To upgrade the Golang version:&lt;/p>
+&lt;p>To upgrade the Go&amp;rsquo;s runtime version:&lt;/p>
 &lt;ol>
 &lt;li>Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/">here&lt;/a>&lt;/li>
 &lt;/ol>
-&lt;p>If the minimum support Golang version should be upgraded as well:&lt;/p>
+&lt;p>If the minimum support Go&amp;rsquo;s language version should be upgraded as well:&lt;/p>
 &lt;ol>
 &lt;li>Upgrade &lt;code>go&lt;/code> version in &lt;code>go.mod&lt;/code>&lt;/li>
 &lt;/ol></description></item><item><title>Docs: Production tips</title><link>/docs/blocks-storage/production-tips/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/production-tips/</guid><description>
@@ -10668,6 +10668,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>&lt;code>docker login quay.io&lt;/code>. Note that pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer.&lt;/li>
 &lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
+&lt;li>If you are updating Go&amp;rsquo;s runtime version be sure to change &lt;code>actions/setup-go&lt;/code>&amp;rsquo;s &lt;code>go-version&lt;/code> in ``.github/workflows/*`.&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: Migrate Cortex cluster from chunks to blocks</title><link>/docs/blocks-storage/migrate-cortex-cluster-from-chunks-to-blocks/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/migrate-cortex-cluster-from-chunks-to-blocks/</guid><description>
 &lt;p>This article describes how to migrate existing Cortex cluster from chunks storage to blocks storage,

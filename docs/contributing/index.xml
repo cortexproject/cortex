@@ -86,11 +86,11 @@ Additionally, any maintainer may request that any change require a 2/3 majority 
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make &lt;span style="color:#000">BUILD_IN_CONTAINER&lt;/span>&lt;span style="color:#ce5c00;font-weight:bold">=&lt;/span>&lt;span style="color:#204a87">false&lt;/span> doc web-pre
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
-&lt;p>To upgrade the Golang version:&lt;/p>
+&lt;p>To upgrade the Go&amp;rsquo;s runtime version:&lt;/p>
 &lt;ol>
 &lt;li>Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/">here&lt;/a>&lt;/li>
 &lt;/ol>
-&lt;p>If the minimum support Golang version should be upgraded as well:&lt;/p>
+&lt;p>If the minimum support Go&amp;rsquo;s language version should be upgraded as well:&lt;/p>
 &lt;ol>
 &lt;li>Upgrade &lt;code>go&lt;/code> version in &lt;code>go.mod&lt;/code>&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
@@ -125,6 +125,7 @@ Name of the docker network to create and use for integration tests. If no variab
 &lt;li>&lt;code>docker login quay.io&lt;/code>. Note that pushing to &lt;code>quay.io/cortexproject/build-image&lt;/code> repository can only be done by a maintainer.&lt;/li>
 &lt;li>Build the and publish the image by using &lt;code>make push-multiarch-build-image&lt;/code>. This will build and push multiplatform docker image (for linux/amd64 and linux/arm64). Running this step successfully requires &lt;a href="https://docs.docker.com/buildx/working-with-buildx/">Docker Buildx&lt;/a>, but does not require a specific platform.&lt;/li>
 &lt;li>Replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
+&lt;li>If you are updating Go&amp;rsquo;s runtime version be sure to change &lt;code>actions/setup-go&lt;/code>&amp;rsquo;s &lt;code>go-version&lt;/code> in ``.github/workflows/*`.&lt;/li>
 &lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
 &lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>
 &lt;p>New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/governance/#voting">majority vote&lt;/a>. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p>

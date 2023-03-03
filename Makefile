@@ -181,7 +181,7 @@ lint:
 	misspell -error docs
 
 	# Configured via .golangci.yml.
-	golangci-lint  --timeout=3m run
+	golangci-lint run
 
 	# Ensure no blocklisted package is imported.
 	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_memberlist,integration_querier,integration_ruler" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\

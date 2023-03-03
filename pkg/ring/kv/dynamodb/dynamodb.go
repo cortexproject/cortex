@@ -34,8 +34,6 @@ type dynamoDbClient interface {
 }
 
 type dynamodbKV struct {
-	dynamoDbClient
-
 	ddbClient dynamodbiface.DynamoDBAPI
 	logger    log.Logger
 	tableName *string

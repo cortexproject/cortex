@@ -281,9 +281,12 @@ type mockDynamodbClient struct {
 	mock.Mock
 }
 
+//revive:disable:unexported-return
 func NewDynamodbClientMock() *mockDynamodbClient {
 	return &mockDynamodbClient{}
 }
+
+//revive:enable:unexported-return
 
 func (m *mockDynamodbClient) List(context.Context, dynamodbKey) ([]string, float64, error) {
 	args := m.Called()

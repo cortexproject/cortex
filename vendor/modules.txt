@@ -1081,10 +1081,10 @@ go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
 go.uber.org/zap/zapgrpc
-# go4.org/intern v0.0.0-20220617035311-6925f38cc365
+# go4.org/intern v0.0.0-20230205224052-192e9f60865c
 ## explicit; go 1.13
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20230221090011-e4bae7ad2296
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
 # golang.org/x/crypto v0.6.0

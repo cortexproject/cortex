@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
@@ -37,7 +39,8 @@ type DefaultMultiTenantManager struct {
 	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
 
-	haTracker *ha.HATracker
+	haTracker           *ha.HATracker
+	groupStartTimestamp map[string]int64
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -75,14 +78,15 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 	}
 
 	return &DefaultMultiTenantManager{
-		cfg:                cfg,
-		notifierCfg:        ncfg,
-		managerFactory:     managerFactory,
-		notifiers:          map[string]*rulerNotifier{},
-		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]RulesManager{},
-		userManagerMetrics: userManagerMetrics,
-		haTracker:          haTracker,
+		cfg:                 cfg,
+		notifierCfg:         ncfg,
+		managerFactory:      managerFactory,
+		notifiers:           map[string]*rulerNotifier{},
+		mapper:              newMapper(cfg.RulePath, logger),
+		userManagers:        map[string]RulesManager{},
+		userManagerMetrics:  userManagerMetrics,
+		haTracker:           haTracker,
+		groupStartTimestamp: map[string]int64{},
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -333,7 +337,25 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 func (r *DefaultMultiTenantManager) evalIterationFunc(evalCtx context.Context, user string, g *promRules.Group, evalTimestamp time.Time) {
 	if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
 		replicaGroup := RuleGroupReplicaGroup(g)
-		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, time.Now())
+		now := time.Now()
+
+		var startTime time.Time
+		startTimestamp, ok := r.groupStartTimestamp[replicaGroup]
+		if ok {
+			startTime = timestamp.Time(startTimestamp)
+		} else {
+			startTime = now.Add(time.Duration(rand.Float64()*r.cfg.PollInterval.Seconds()) * time.Second)
+			r.groupStartTimestamp[replicaGroup] = timestamp.FromTime(startTime)
+		}
+		if now.Before(startTime) {
+			level.Info(g.Logger()).Log("msg", "waiting to start evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "startTime", startTime)
+			if now.Add(g.Interval()).After(startTime) {
+				time.Sleep(time.Duration(startTime.UnixMilli()-now.UnixMilli()) * time.Millisecond)
+			}
+			return
+		}
+
+		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, now)
 		if err != nil {
 			level.Debug(g.Logger()).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
 			return

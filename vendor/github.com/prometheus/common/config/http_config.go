@@ -80,12 +80,9 @@ func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return fmt.Errorf("unknown TLS version: %s", s)
 }
 
-func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
-	if tv == nil || *tv == 0 {
-		return []byte("null"), nil
-	}
+func (tv TLSVersion) MarshalYAML() (interface{}, error) {
 	for s, v := range TLSVersions {
-		if *tv == v {
+		if tv == v {
 			return s, nil
 		}
 	}
@@ -106,13 +103,10 @@ func (tv *TLSVersion) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface for TLSVersion.
-func (tv *TLSVersion) MarshalJSON() ([]byte, error) {
-	if tv == nil || *tv == 0 {
-		return []byte("null"), nil
-	}
+func (tv TLSVersion) MarshalJSON() ([]byte, error) {
 	for s, v := range TLSVersions {
-		if *tv == v {
-			return []byte(s), nil
+		if tv == v {
+			return json.Marshal(s)
 		}
 	}
 	return nil, fmt.Errorf("unknown TLS version: %d", tv)

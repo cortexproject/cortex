@@ -95,7 +95,18 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 			clean: func(in interface{}) {},
 		},
 		{
-			name: "pool",
+			name: "byte pool",
+			writeRequestFactory: func() proto.Marshaler {
+				w := &PreallocWriteRequest{}
+				w.Timeseries = ts
+				return w
+			},
+			clean: func(in interface{}) {
+				ReuseWriteRequest(in.(*PreallocWriteRequest))
+			},
+		},
+		{
+			name: "byte and write pool",
 			writeRequestFactory: func() proto.Marshaler {
 				w := PreallocWriteRequestFromPool()
 				w.Timeseries = ts

@@ -39,3 +39,4 @@ run:
     - integration_memberlist
     - integration_querier
     - integration_ruler
+    - integration_query_fuzz

@@ -1,16 +1,21 @@
 package cortexpb
 
 import (
+	"math"
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestByteSlicePools(t *testing.T) {
+func TestFuzzyByteSlicePools(t *testing.T) {
 	sut := newSlicePool(20)
-	for i := 0; i < 1024*1024; i = i + 128 {
-		s := sut.getSlice(i)
-		assert.Equal(t, len(*s), i)
+	maxByteSize := int(math.Pow(2, 20+minPoolSizePower-1))
+
+	for i := 0; i < 1000; i++ {
+		size := rand.Int() % maxByteSize
+		s := sut.getSlice(size)
+		assert.Equal(t, len(*s), size)
 		sut.reuseSlice(s)
 	}
 }

@@ -5,8 +5,8 @@ import (
 	"flag"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"

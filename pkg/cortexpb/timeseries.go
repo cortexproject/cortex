@@ -98,7 +98,9 @@ func ReuseWriteRequest(req *PreallocWriteRequest) {
 		bytePool.reuseSlice(req.data)
 		req.data = nil
 	}
-
+	req.Source = 0
+	req.Metadata = nil
+	req.Timeseries = nil
 	writeRequestPool.Put(req)
 }
 

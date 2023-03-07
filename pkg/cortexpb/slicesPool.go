@@ -40,6 +40,7 @@ func (sp *byteSlicePools) getSlice(size int) *[]byte {
 		return &buf
 	}
 
+	// if the size is < than the minPoolSizePower we return an array from the first pool
 	if index < 0 {
 		index = 0
 	}
@@ -52,12 +53,8 @@ func (sp *byteSlicePools) getSlice(size int) *[]byte {
 func (sp *byteSlicePools) reuseSlice(s *[]byte) {
 	index := int(math.Floor(math.Log2(float64(cap(*s))))) - minPoolSizePower
 
-	if index >= len(sp.pools) {
+	if index >= len(sp.pools) || index < 0 {
 		return
-	}
-
-	if index < 0 {
-		index = 0
 	}
 
 	sp.pools[index].Put(s)

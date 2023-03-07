@@ -19,3 +19,12 @@ func TestFuzzyByteSlicePools(t *testing.T) {
 		sut.reuseSlice(s)
 	}
 }
+
+func TestReturnSliceSmallerThanMin(t *testing.T) {
+	sut := newSlicePool(20)
+	size := 3
+	buff := make([]byte, 0, size)
+	sut.reuseSlice(&buff)
+	buff2 := sut.getSlice(size * 2)
+	assert.Equal(t, len(*buff2), size*2)
+}

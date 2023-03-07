@@ -97,6 +97,42 @@ func TestStats_AddFetchedDataBytes(t *testing.T) {
 	})
 }
 
+func TestStats_AddFetchedChunks(t *testing.T) {
+	t.Parallel()
+	t.Run("add and load chunks", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddFetchedChunks(4096)
+		stats.AddFetchedChunks(4096)
+
+		assert.Equal(t, uint64(8192), stats.LoadFetchedChunks())
+	})
+
+	t.Run("add and load chunks nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.AddFetchedChunks(1024)
+
+		assert.Equal(t, uint64(0), stats.LoadFetchedChunks())
+	})
+}
+
+func TestStats_AddFetchedSamples(t *testing.T) {
+	t.Parallel()
+	t.Run("add and load samples", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddFetchedSamples(4096)
+		stats.AddFetchedSamples(4096)
+
+		assert.Equal(t, uint64(8192), stats.LoadFetchedSamples())
+	})
+
+	t.Run("add and load samples nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.AddFetchedSamples(1024)
+
+		assert.Equal(t, uint64(0), stats.LoadFetchedSamples())
+	})
+}
+
 func TestStats_Merge(t *testing.T) {
 	t.Parallel()
 	t.Run("merge two stats objects", func(t *testing.T) {

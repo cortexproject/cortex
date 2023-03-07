@@ -835,14 +835,15 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	if err != nil {
 		return err
 	}
-	c := h.(ingester_client.IngesterClient)
+	c := h.(ingester_client.HealthAndIngesterClient)
 
-	req := cortexpb.WriteRequest{
-		Timeseries: timeseries,
-		Metadata:   metadata,
-		Source:     source,
-	}
-	_, err = c.Push(ctx, &req)
+	req := cortexpb.PreallocWriteRequestFromPool()
+	req.Timeseries = timeseries
+	req.Metadata = metadata
+	req.Source = source
+
+	_, err = c.PushPreAlloc(ctx, req)
+	cortexpb.ReuseWriteRequest(req)
 
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()

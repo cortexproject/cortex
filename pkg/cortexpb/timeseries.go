@@ -62,7 +62,7 @@ func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
 // PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshal.
 type PreallocWriteRequest struct {
 	WriteRequest
-	data []byte
+	data *[]byte
 }
 
 // Unmarshal implements proto.Message.
@@ -84,8 +84,8 @@ func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
 
 func (p *PreallocWriteRequest) Marshal() (dAtA []byte, err error) {
 	size := p.Size()
-	dAtA = bytePool.getSlice(size)
-	p.data = dAtA
+	p.data = bytePool.getSlice(size)
+	dAtA = *p.data
 	n, err := p.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err

@@ -37,6 +37,15 @@ var (
 			}
 		},
 	}
+
+	writeRequestPool = sync.Pool{
+		New: func() interface{} {
+			return &PreallocWriteRequest{
+				WriteRequest: WriteRequest{},
+			}
+		},
+	}
+	bytePool = newSlicePool(20)
 )
 
 // PreallocConfig configures how structures will be preallocated to optimise
@@ -53,6 +62,7 @@ func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
 // PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshal.
 type PreallocWriteRequest struct {
 	WriteRequest
+	data *[]byte
 }
 
 // Unmarshal implements proto.Message.
@@ -70,6 +80,32 @@ type PreallocTimeseries struct {
 func (p *PreallocTimeseries) Unmarshal(dAtA []byte) error {
 	p.TimeSeries = TimeseriesFromPool()
 	return p.TimeSeries.Unmarshal(dAtA)
+}
+
+func (p *PreallocWriteRequest) Marshal() (dAtA []byte, err error) {
+	size := p.Size()
+	p.data = bytePool.getSlice(size)
+	dAtA = *p.data
+	n, err := p.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func ReuseWriteRequest(req *PreallocWriteRequest) {
+	if req.data != nil {
+		bytePool.reuseSlice(req.data)
+		req.data = nil
+	}
+	req.Source = 0
+	req.Metadata = nil
+	req.Timeseries = nil
+	writeRequestPool.Put(req)
+}
+
+func PreallocWriteRequestFromPool() *PreallocWriteRequest {
+	return writeRequestPool.Get().(*PreallocWriteRequest)
 }
 
 // LabelAdapter is a labels.Label that can be marshalled to/from protos.

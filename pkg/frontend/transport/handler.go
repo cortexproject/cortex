@@ -137,6 +137,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.MaxBodySize)
 	r.Body = io.NopCloser(io.TeeReader(r.Body, &buf))
+	// We parse form here so that we can use buf as body, in order to
+	// prevent https://github.com/cortexproject/cortex/issues/5201.
+	if err := r.ParseForm(); err != nil {
+		writeError(w, err)
+		return
+	}
+	r.Body = io.NopCloser(&buf)
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)

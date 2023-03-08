@@ -122,7 +122,7 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	return value, err
 }
 
-// Query runs a query range.
+// QueryRange runs a query range.
 func (c *Client) QueryRange(query string, start, end time.Time, step time.Duration) (model.Value, error) {
 	value, _, err := c.querierClient.QueryRange(context.Background(), query, promv1.Range{
 		Start: start,

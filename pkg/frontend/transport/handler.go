@@ -140,7 +140,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// We parse form here so that we can use buf as body, in order to
 	// prevent https://github.com/cortexproject/cortex/issues/5201.
 	if err := r.ParseForm(); err != nil {
-		level.Warn(util_log.WithContext(r.Context(), f.log)).Log("msg", "unable to parse request form", "err", err)
+		writeError(w, err)
+		return
 	}
 	r.Body = io.NopCloser(&buf)
 

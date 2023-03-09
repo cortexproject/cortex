@@ -1687,3 +1687,64 @@ func valuesFromSeries(name string, series ...labels.Labels) []string {
 	sort.Strings(values)
 	return values
 }
+
+func TestCountSamplesAndChunks(t *testing.T) {
+	c := chunkenc.NewXORChunk()
+	appender, err := c.Appender()
+	require.NoError(t, err)
+	samples := 300
+	for i := 0; i < samples; i++ {
+		appender.Append(int64(i), float64(i))
+	}
+
+	for i, tc := range []struct {
+		serieses        []*storepb.Series
+		expectedChunks  uint64
+		expectedSamples uint64
+	}{
+		{
+			serieses: []*storepb.Series{
+				{
+					Chunks: []storepb.AggrChunk{
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: c.Bytes(),
+							},
+						},
+					},
+				},
+			},
+			expectedSamples: uint64(samples),
+			expectedChunks:  1,
+		},
+		{
+			serieses: []*storepb.Series{
+				{
+					Chunks: []storepb.AggrChunk{
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: c.Bytes(),
+							},
+						},
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: c.Bytes(),
+							},
+						},
+					},
+				},
+			},
+			expectedSamples: uint64(int64(samples) * 2),
+			expectedChunks:  2,
+		},
+	} {
+		t.Run(fmt.Sprintf("test_case_%d", i), func(t *testing.T) {
+			samples, chunks := countSamplesAndChunks(tc.serieses...)
+			require.Equal(t, tc.expectedSamples, samples)
+			require.Equal(t, tc.expectedChunks, chunks)
+		})
+	}
+}

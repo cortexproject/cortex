@@ -113,6 +113,7 @@ jobs:
           - integration_memberlist
           - integration_querier
           - integration_ruler
+          - integration_query_fuzz
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@v2

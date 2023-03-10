@@ -2644,7 +2644,7 @@ grpc_client_config:
   # Use compression when sending messages. Supported values are: 'gzip',
   # 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -ingester.client.grpc-compression
-  [grpc_compression: <string> | default = ""]
+  [grpc_compression: <string> | default = "snappy"]
 
   # Rate limit for gRPC client; 0 means disabled.
   # CLI flag: -ingester.client.grpc-client-rate-limit

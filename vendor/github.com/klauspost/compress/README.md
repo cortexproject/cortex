@@ -15,6 +15,13 @@ This package provides various compression algorithms.
 [![Sourcegraph Badge](https://sourcegraph.com/github.com/klauspost/compress/-/badge.svg)](https://sourcegraph.com/github.com/klauspost/compress?badge)
 
 # changelog
+* Feb 26, 2023 (v1.16.0)
+	* s2: Add [Dictionary](https://github.com/klauspost/compress/tree/master/s2#dictionaries) support.  https://github.com/klauspost/compress/pull/685
+	* s2: Add Compression Size Estimate.  https://github.com/klauspost/compress/pull/752
+	* s2: Add support for custom stream encoder. https://github.com/klauspost/compress/pull/755
+	* s2: Add LZ4 block converter. https://github.com/klauspost/compress/pull/748
+	* s2: Support io.ReaderAt in ReadSeeker. https://github.com/klauspost/compress/pull/747
+	* s2c/s2sx: Use concurrent decoding. https://github.com/klauspost/compress/pull/746
 
 * Jan 21st, 2023 (v1.15.15)
 	* deflate: Improve level 7-9 by @klauspost in https://github.com/klauspost/compress/pull/739

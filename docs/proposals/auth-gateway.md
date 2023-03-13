@@ -7,7 +7,7 @@ slug: "auth-gateway"
 
 - Author: [Doğukan Teber](https://github.com/dogukanteber)
 - Date: March 2023
-- Status: Proposedj
+- Status: Proposed
 
 ## Overview
 

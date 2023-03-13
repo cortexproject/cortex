@@ -22,12 +22,15 @@ Here is an example configuration:
 
 ```yaml
 
-basic:  
-  username:      
-    password: "password"       
-    tenant: "orgid"                          
-routes:              
-  - path: "/api/v1/push"       
+basic:
+  username:
+    password: "password"
+    tenant: "orgid"
+  username2:
+    password: "password2"
+    tenant: "orgid"
+routes:
+  - path: "/api/v1/push"
     target: "distributor"
   - path: "/prometheus"
     prefix: true
@@ -39,9 +42,9 @@ routes:
     target: "ruler"
   - path: "/alertmanager"
     prefix: true
-    target: "alertmanager"    
-targets:                
-  distributor: "http://127.0.0.1:8004"            
+    target: "alertmanager"
+targets:
+  distributor: "http://127.0.0.1:8004"
   query-frontend: "http://127.0.0.1:8004"
   alertmanager: "http://127.0.0.1:8004"
   ruler: "http://127.0.0.1:8004"

@@ -36,7 +36,11 @@ func main() {
 	}
 
 	rnd := rand.New(rand.NewSource(time.Now().Unix()))
-	ps := promqlsmith.New(rnd, seriesSet, true, true)
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnableOffset(true),
+		promqlsmith.WithEnableAtModifier(true),
+	}
+	ps := promqlsmith.New(rnd, seriesSet, opts...)
 	// Generate a query that can be used in instant query.
 	q1 := ps.WalkInstantQuery()
 	// Generate a query that can be used in range query.

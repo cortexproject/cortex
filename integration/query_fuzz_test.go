@@ -112,7 +112,11 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	require.Equal(t, labelSet1, labelSet2)
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
-	ps := promqlsmith.New(rnd, lbls, false, false)
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnableOffset(true),
+		promqlsmith.WithEnableAtModifier(true),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	type testCase struct {
 		query        string

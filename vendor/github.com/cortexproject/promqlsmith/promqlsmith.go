@@ -5,7 +5,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"golang.org/x/exp/slices"
 )
 
 type ExprType int
@@ -54,68 +53,23 @@ type PromQLSmith struct {
 }
 
 // New creates a PromQLsmith instance.
-func New(rnd *rand.Rand, seriesSet []labels.Labels, enableOffset, enableAtModifier bool) *PromQLSmith {
-	funcs := make([]*parser.Function, 0, len(parser.Functions))
-OUTER:
-	for _, f := range parser.Functions {
-		// We skip variadic functions for now.
-		if f.Variadic != 0 {
-			continue
-		}
-		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
-			continue OUTER
-		}
-		funcs = append(funcs, f)
+func New(rnd *rand.Rand, seriesSet []labels.Labels, opts ...Option) *PromQLSmith {
+	options := options{}
+	for _, o := range opts {
+		o.apply(&options)
 	}
-	return &PromQLSmith{
-		rnd:              rnd,
-		seriesSet:        filterEmptySeries(seriesSet),
-		labelNames:       labelNamesFromLabelSet(seriesSet),
-		enableOffset:     enableOffset,
-		enableAtModifier: enableAtModifier,
-		supportedExprs: []ExprType{
-			VectorSelector,
-			MatrixSelector,
-			BinaryExpr,
-			AggregateExpr,
-			SubQueryExpr,
-			CallExpr,
-			UnaryExpr,
-		},
-		supportedAggrs: []parser.ItemType{
-			parser.SUM,
-			parser.MIN,
-			parser.MAX,
-			parser.AVG,
-			parser.COUNT,
-			parser.GROUP,
-			parser.STDDEV,
-			parser.STDVAR,
-			parser.TOPK,
-			parser.BOTTOMK,
-			parser.QUANTILE,
-			parser.COUNT_VALUES,
-		},
-		supportedBinops: []parser.ItemType{
-			parser.SUB,
-			parser.ADD,
-			parser.MUL,
-			parser.MOD,
-			parser.DIV,
-			parser.EQLC,
-			parser.NEQ,
-			parser.LTE,
-			parser.GTE,
-			parser.LSS,
-			parser.GTR,
-			parser.POW,
-			parser.ATAN2,
-			parser.LAND,
-			parser.LOR,
-			parser.LUNLESS,
-		},
-		supportedFuncs: funcs,
+	options.applyDefaults()
+
+	ps := &PromQLSmith{
+		rnd:             rnd,
+		seriesSet:       filterEmptySeries(seriesSet),
+		labelNames:      labelNamesFromLabelSet(seriesSet),
+		supportedExprs:  options.enabledExprs,
+		supportedAggrs:  options.enabledAggrs,
+		supportedBinops: options.enabledBinops,
+		supportedFuncs:  options.enabledFuncs,
 	}
+	return ps
 }
 
 // WalkInstantQuery walks the ast and generate an expression that can be used in

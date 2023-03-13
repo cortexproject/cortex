@@ -264,7 +264,7 @@ github.com/coreos/go-semver/semver
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/activation
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/promqlsmith v0.0.0-20230309031733-1c551fa10a5c
+# github.com/cortexproject/promqlsmith v0.0.0-20230313010502-5c380a3b00b0
 ## explicit; go 1.19
 github.com/cortexproject/promqlsmith
 # github.com/davecgh/go-spew v1.1.1

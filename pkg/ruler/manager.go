@@ -39,8 +39,9 @@ type DefaultMultiTenantManager struct {
 	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
 
-	haTracker           *ha.HATracker
-	groupStartTimestamp map[string]int64
+	haTracker              *ha.HATracker
+	groupStartTimestampMtx sync.Mutex
+	groupStartTimestamp    map[string]int64
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -293,7 +294,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	level.Info(r.logger).Log("msg", "all user managers stopped")
 
 	if r.haTracker != nil {
-		r.haTracker.MarkReplicaDeleted(nil, r.cfg.HATrackerConfig.ReplicaId)
+		r.haTracker.MarkReplicaDeleted(nil, r.cfg.HATrackerConfig.ReplicaID)
 		level.Info(r.logger).Log("msg", "marked replica deleted")
 	}
 
@@ -339,29 +340,35 @@ func (r *DefaultMultiTenantManager) evalIterationFunc(evalCtx context.Context, u
 		replicaGroup := RuleGroupReplicaGroup(g)
 		now := time.Now()
 
-		var startTime time.Time
-		startTimestamp, ok := r.groupStartTimestamp[replicaGroup]
-		if ok {
-			startTime = timestamp.Time(startTimestamp)
-		} else {
-			startTime = now.Add(time.Duration(rand.Float64()*r.cfg.PollInterval.Seconds()) * time.Second)
-			r.groupStartTimestamp[replicaGroup] = timestamp.FromTime(startTime)
-		}
+		startTime := r.getGroupStartTime(replicaGroup)
 		if now.Before(startTime) {
 			level.Info(g.Logger()).Log("msg", "waiting to start evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "startTime", startTime)
-			if now.Add(g.Interval()).After(startTime) {
-				time.Sleep(time.Duration(startTime.UnixMilli()-now.UnixMilli()) * time.Millisecond)
+			if now.Add(g.Interval()).Before(startTime) {
+				return
 			}
-			return
+			time.Sleep(time.Duration(startTime.UnixMilli()-now.UnixMilli()) * time.Millisecond)
 		}
 
-		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaId, now)
+		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaID, now)
 		if err != nil {
 			level.Debug(g.Logger()).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
 			return
 		}
 	}
 	promRules.DefaultEvalIterationFunc(evalCtx, g, evalTimestamp)
+}
+
+func (r *DefaultMultiTenantManager) getGroupStartTime(replicaGroup string) time.Time {
+	r.groupStartTimestampMtx.Lock()
+	defer r.groupStartTimestampMtx.Unlock()
+
+	startTimestamp, ok := r.groupStartTimestamp[replicaGroup]
+	if ok {
+		return timestamp.Time(startTimestamp)
+	}
+	startTime := time.Now().Add(time.Duration(rand.Float64()*r.cfg.PollInterval.Seconds()) * time.Second)
+	r.groupStartTimestamp[replicaGroup] = timestamp.FromTime(startTime)
+	return startTime
 }
 
 func RuleGroupReplicaGroup(g *promRules.Group) string {

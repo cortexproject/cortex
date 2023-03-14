@@ -156,7 +156,7 @@ func TestEvalIterationFunc(t *testing.T) {
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
-					ReplicaId: "ruler-test",
+					ReplicaID: "ruler-test",
 				},
 			}
 

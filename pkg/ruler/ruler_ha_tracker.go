@@ -27,7 +27,7 @@ type HATrackerConfig struct {
 	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
 
 	// ID of this replica (instance ID)
-	ReplicaId string
+	ReplicaID string
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -42,7 +42,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax, "ruler.ha-tracker.update-timeout-jitter-max", 5*time.Second, "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
 	f.DurationVar(&cfg.FailoverTimeout, "ruler.ha-tracker.failover-timeout", 30*time.Second, "If we don't receive any ticks from the accepted replica in this amount of time we will failover to the next replica. This value must be greater than the update timeout")
 
-	f.StringVar(&cfg.ReplicaId, "ruler.ha-tracker.replica-id", hostname, "Replica ID to register in the HA tracker.")
+	f.StringVar(&cfg.ReplicaID, "ruler.ha-tracker.replica-id", hostname, "Replica ID to register in the HA tracker.")
 
 	// We want the ability to use different Consul instances for the ring and
 	// for HA tracking. We also customize the default keys prefix, in

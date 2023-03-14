@@ -1091,7 +1091,7 @@ func TestGetRules(t *testing.T) {
 						KVStore: kv.Config{
 							Mock: haTrackerKVStore,
 						},
-						ReplicaId: rID,
+						ReplicaID: rID,
 					}
 
 					testRuleGroupHash := func(g *rulespb.RuleGroupDesc) uint32 {

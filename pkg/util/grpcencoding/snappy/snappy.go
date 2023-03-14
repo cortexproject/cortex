@@ -51,6 +51,20 @@ func (c *compressor) Decompress(r io.Reader) (io.Reader, error) {
 	return reader{dr, &c.readersPool}, nil
 }
 
+// If a Compressor implements DecompressedSize(compressedBytes []byte) int,
+// gRPC will call it to determine the size of the buffer allocated for the
+// result of decompression.
+// Return -1 to indicate unknown size.
+//
+// This is an EXPERIMENTAL feature of grpc-go.
+func (c *compressor) DecompressedSize(compressedBytes []byte) int {
+	decompressedSize, err := snappy.DecodedLen(compressedBytes)
+	if err != nil {
+		return -1
+	}
+	return decompressedSize
+}
+
 type writeCloser struct {
 	writer *snappy.Writer
 	pool   *sync.Pool

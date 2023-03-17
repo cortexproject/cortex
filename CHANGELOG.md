@@ -23,6 +23,7 @@
 * [ENHANCEMENT] Update Go version to 1.20.1. #5159
 * [ENHANCEMENT] Distributor: Reuse byte slices when serializing requests from distributors to ingesters. #5193
 * [ENHANCEMENT] Query Frontend: Add number of chunks and samples fetched in query stats. #5198
+* [ENHANCEMENT] Implement grpc.Compressor.DecompressedSize for snappy to optimize memory allocations. #5213
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000

@@ -95,7 +95,7 @@ func (w *writeCloser) Write(p []byte) (n int, err error) {
 func (w *writeCloser) Close() error {
 	defer func() {
 		w.buff.Reset()
-		w.dst = w.dst[:0]
+		w.dst = w.dst[0:cap(w.dst)]
 		w.pool.Put(w)
 	}()
 

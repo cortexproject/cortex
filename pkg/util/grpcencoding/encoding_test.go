@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappy"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
 	"github.com/cortexproject/cortex/pkg/util/grpcencoding/zstd"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/encoding"

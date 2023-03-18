@@ -101,7 +101,8 @@ func (w *writeCloser) Close() error {
 
 	if w.i != nil {
 		w.dst = snappy.Encode(w.dst, w.buff.Bytes())
-		w.i.Write(w.dst)
+		_, err := w.i.Write(w.dst)
+		return err
 	}
 
 	return nil

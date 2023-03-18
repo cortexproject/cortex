@@ -77,6 +77,7 @@ func testCompress(name string, t *testing.T) {
 				r, err := c.Decompress(buf)
 				require.NoError(t, err)
 				out, err := io.ReadAll(r)
+				require.NoError(t, err)
 				assert.Equal(t, len(out), sizer.DecompressedSize(compressedBytes))
 			}
 		})

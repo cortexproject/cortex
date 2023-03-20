@@ -202,15 +202,13 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 				return status.Errorf(codes.Internal, "TSDBStore: found not populated chunk returned by SeriesSet at ref: %v", chk.Ref)
 			}
 
-			chunkBytes := make([]byte, len(chk.Chunk.Bytes()))
-			copy(chunkBytes, chk.Chunk.Bytes())
 			c := storepb.AggrChunk{
 				MinTime: chk.MinTime,
 				MaxTime: chk.MaxTime,
 				Raw: &storepb.Chunk{
 					Type: storepb.Chunk_Encoding(chk.Chunk.Encoding() - 1), // Proto chunk encoding is one off to TSDB one.
-					Data: chunkBytes,
-					Hash: hashChunk(hasher, chunkBytes, enableChunkHashCalculation),
+					Data: chk.Chunk.Bytes(),
+					Hash: hashChunk(hasher, chk.Chunk.Bytes(), enableChunkHashCalculation),
 				},
 			}
 			frameBytesLeft -= c.Size()

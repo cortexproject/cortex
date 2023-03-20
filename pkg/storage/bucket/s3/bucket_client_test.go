@@ -45,16 +45,16 @@ func TestBucketWithRetries_UploadNonSeekable(t *testing.T) {
 		retryMaxBackoff:  time.Second,
 	}
 
-	input := &FakeReader{}
+	input := &fakeReader{}
 	err := b.Upload(context.Background(), "dummy", input)
 	require.Errorf(t, err, "empty byte slice")
 	require.Equal(t, maxFailCount, m.FailCount)
 }
 
-type FakeReader struct {
+type fakeReader struct {
 }
 
-func (f *FakeReader) Read(p []byte) (n int, err error) {
+func (f *fakeReader) Read(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("empty byte slice")
 }
 

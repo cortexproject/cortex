@@ -12,11 +12,11 @@ import (
 	"github.com/thanos-io/objstore"
 )
 
-func TestBucketWithRetries_Upload(t *testing.T) {
+func TestBucketWithRetries_UploadSeekable(t *testing.T) {
 	t.Parallel()
 
 	m := mockBucket{
-		MaxFailCount: 3,
+		FailCount: 3,
 	}
 	b := BucketWithRetries{
 		bucket:           &m,
@@ -31,8 +31,35 @@ func TestBucketWithRetries_Upload(t *testing.T) {
 	require.Equal(t, input, m.uploadedContent)
 }
 
+func TestBucketWithRetries_UploadNonSeekable(t *testing.T) {
+	t.Parallel()
+
+	maxFailCount := 3
+	m := mockBucket{
+		FailCount: maxFailCount,
+	}
+	b := BucketWithRetries{
+		bucket:           &m,
+		operationRetries: 5,
+		retryMinBackoff:  10 * time.Millisecond,
+		retryMaxBackoff:  time.Second,
+	}
+
+	input := &FakeReader{}
+	err := b.Upload(context.Background(), "dummy", input)
+	require.Errorf(t, err, "empty byte slice")
+	require.Equal(t, maxFailCount, m.FailCount)
+}
+
+type FakeReader struct {
+}
+
+func (f *FakeReader) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("empty byte slice")
+}
+
 type mockBucket struct {
-	MaxFailCount    int
+	FailCount       int
 	uploadedContent []byte
 }
 
@@ -43,9 +70,9 @@ func (m *mockBucket) Upload(ctx context.Context, name string, r io.Reader) error
 		return err
 	}
 	m.uploadedContent = buf.Bytes()
-	if m.MaxFailCount > 0 {
-		m.MaxFailCount--
-		return fmt.Errorf("failed upload: %d", m.MaxFailCount)
+	if m.FailCount > 0 {
+		m.FailCount--
+		return fmt.Errorf("failed upload: %d", m.FailCount)
 	}
 	return nil
 }

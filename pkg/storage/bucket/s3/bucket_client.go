@@ -1,7 +1,6 @@
 package s3
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"time"
@@ -154,18 +153,15 @@ func (b *BucketWithRetries) Exists(ctx context.Context, name string) (exists boo
 }
 
 func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader) error {
-	// Convert Reader to Seeker
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		return err
+	rs, ok := r.(io.ReadSeeker)
+	if !ok {
+		return b.bucket.Upload(ctx, name, r)
 	}
-	s := bytes.NewReader(buf.Bytes())
 	return b.retry(ctx, func() error {
-		err := b.bucket.Upload(ctx, name, s)
-		if _, err := s.Seek(0, io.SeekStart); err != nil {
+		if _, err := rs.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		return err
+		return b.bucket.Upload(ctx, name, rs)
 	})
 }
 

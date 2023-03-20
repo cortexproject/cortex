@@ -56,7 +56,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            promql.ErrQueryCanceled("query execution"),
 			expectedString: "query was canceled",
-			expectedCode:   503,
+			expectedCode:   499,
 		},
 
 		{
@@ -95,7 +95,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            context.Canceled,
 			expectedString: "context canceled",
-			expectedCode:   422,
+			expectedCode:   499,
 		},
 		// Status code 400 is remapped to 422 (only choice we have)
 		{

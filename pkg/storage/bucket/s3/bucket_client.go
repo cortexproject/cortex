@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"
@@ -92,6 +93,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 }
 
 type BucketWithRetries struct {
+	logger           log.Logger
 	bucket           objstore.Bucket
 	operationRetries int
 	retryMinBackoff  time.Duration
@@ -114,6 +116,9 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error) error {
 			return lastErr
 		}
 		retries.Wait()
+	}
+	if lastErr != nil {
+		level.Error(b.logger).Log("msg", "bucket operation fail after retries", "err", lastErr)
 	}
 	return lastErr
 }

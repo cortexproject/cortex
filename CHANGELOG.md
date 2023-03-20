@@ -50,6 +50,7 @@
 * [BUGFIX] Query-frontend: Fix shardable instant queries do not produce sorted results for `sort`, `sort_desc`, `topk`, `bottomk` functions. #5148, #5170
 * [BUGFIX] Querier: Fix `/api/v1/series` returning 5XX instead of 4XX when limits are hit. #5169
 * [BUGFIX] Compactor: Fix issue that shuffle sharding planner return error if block is under visit by other compactor. #5188
+* [BUGFIX] Fix S3 BucketWithRetries upload empty content issue #5217
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
 
 ## 1.14.0 2022-12-02

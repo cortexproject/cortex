@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"
@@ -29,6 +30,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 	return &BucketWithRetries{
+		logger:           logger,
 		bucket:           bucket,
 		operationRetries: defaultOperationRetries,
 		retryMinBackoff:  defaultRetryMinBackoff,
@@ -48,6 +50,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 		return nil, err
 	}
 	return &BucketWithRetries{
+		logger:           logger,
 		bucket:           bucket,
 		operationRetries: defaultOperationRetries,
 		retryMinBackoff:  defaultRetryMinBackoff,
@@ -92,6 +95,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 }
 
 type BucketWithRetries struct {
+	logger           log.Logger
 	bucket           objstore.Bucket
 	operationRetries int
 	retryMinBackoff  time.Duration
@@ -115,7 +119,10 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error) error {
 		}
 		retries.Wait()
 	}
-	return lastErr
+	if lastErr != nil {
+		level.Error(b.logger).Log("msg", "bucket operation fail after retries", "err", lastErr)
+	}
+	return nil
 }
 
 func (b *BucketWithRetries) Name() string {
@@ -153,8 +160,17 @@ func (b *BucketWithRetries) Exists(ctx context.Context, name string) (exists boo
 }
 
 func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.retry(ctx, func() error {
+	rs, ok := r.(io.ReadSeeker)
+	if !ok {
+		// Skip retry if incoming Reader is not seekable to avoid
+		// loading entire content into memory
 		return b.bucket.Upload(ctx, name, r)
+	}
+	return b.retry(ctx, func() error {
+		if _, err := rs.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		return b.bucket.Upload(ctx, name, rs)
 	})
 }
 

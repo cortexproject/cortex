@@ -30,6 +30,7 @@ func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucke
 		return nil, err
 	}
 	return &BucketWithRetries{
+		logger:           logger,
 		bucket:           bucket,
 		operationRetries: defaultOperationRetries,
 		retryMinBackoff:  defaultRetryMinBackoff,
@@ -49,6 +50,7 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 		return nil, err
 	}
 	return &BucketWithRetries{
+		logger:           logger,
 		bucket:           bucket,
 		operationRetries: defaultOperationRetries,
 		retryMinBackoff:  defaultRetryMinBackoff,
@@ -120,7 +122,7 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error) error {
 	if lastErr != nil {
 		level.Error(b.logger).Log("msg", "bucket operation fail after retries", "err", lastErr)
 	}
-	return lastErr
+	return nil
 }
 
 func (b *BucketWithRetries) Name() string {

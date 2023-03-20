@@ -162,6 +162,8 @@ func (b *BucketWithRetries) Exists(ctx context.Context, name string) (exists boo
 func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader) error {
 	rs, ok := r.(io.ReadSeeker)
 	if !ok {
+		// Skip retry if incoming Reader is not seekable to avoid
+		// loading entire content into memory
 		return b.bucket.Upload(ctx, name, r)
 	}
 	return b.retry(ctx, func() error {

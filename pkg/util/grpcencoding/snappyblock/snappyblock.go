@@ -136,6 +136,7 @@ func (r *reader) Read(p []byte) (n int, err error) {
 	n, err = r.dbuff.Read(p)
 	if err == io.EOF {
 		r.cbuff.Reset()
+		r.dst = r.dst[0:cap(r.dst)]
 		r.pool.Put(r)
 	}
 	return n, err

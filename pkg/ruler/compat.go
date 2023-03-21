@@ -44,7 +44,7 @@ type PusherAppender struct {
 	evaluationDelay time.Duration
 }
 
-func (a *PusherAppender) AppendHistogram(storage.SeriesRef, labels.Labels, int64, *histogram.Histogram) (storage.SeriesRef, error) {
+func (a *PusherAppender) AppendHistogram(storage.SeriesRef, labels.Labels, int64, *histogram.Histogram, *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errors.New("querying native histograms is not supported")
 }
 
@@ -281,7 +281,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
-		var queryTime prometheus.Counter = nil
+		var queryTime prometheus.Counter
 		if rulerQuerySeconds != nil {
 			queryTime = rulerQuerySeconds.WithLabelValues(userID)
 		}

@@ -335,6 +335,7 @@ type labelValuesScenario struct {
 
 func TestMergeQueryable_Querier(t *testing.T) {
 	t.Run("querying without a tenant specified should error", func(t *testing.T) {
+		t.Parallel()
 		queryable := &mockTenantQueryableWithFilter{}
 		q := NewQueryable(queryable, false /* byPassWithSingleQuerier */)
 		// Create a context with no tenant specified.
@@ -515,12 +516,16 @@ func TestMergeQueryable_Select(t *testing.T) {
 			}},
 		},
 	} {
+		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
 			querier, err := scenario.init()
 			require.NoError(t, err)
 
 			for _, tc := range scenario.selectTestCases {
+				tc := tc
 				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
 					seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
 
 					if tc.expectedQueryErr != nil {
@@ -664,11 +669,14 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 			},
 		},
 	} {
+		scenario := scenario
 		t.Run(scenario.mergeQueryableScenario.name, func(t *testing.T) {
+			t.Parallel()
 			querier, err := scenario.init()
 			require.NoError(t, err)
 
 			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
+				t.Parallel()
 				labelNames, warnings, err := querier.LabelNames(scenario.labelNamesTestCase.matchers...)
 				if scenario.labelNamesTestCase.expectedQueryErr != nil {
 					require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
@@ -683,6 +691,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 }
 
 func TestMergeQueryable_LabelValues(t *testing.T) {
+	t.Parallel()
 	// set a multi tenant resolver
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 
@@ -839,12 +848,16 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 			}},
 		},
 	} {
+		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
 			querier, err := scenario.init()
 			require.NoError(t, err)
 
 			for _, tc := range scenario.labelValuesTestCases {
+				tc := tc
 				t.Run(tc.name, func(t *testing.T) {
+					t.Parallel()
 					actLabelValues, warnings, err := querier.LabelValues(tc.labelName, tc.matchers...)
 					if tc.expectedQueryErr != nil {
 						require.EqualError(t, err, tc.expectedQueryErr.Error())

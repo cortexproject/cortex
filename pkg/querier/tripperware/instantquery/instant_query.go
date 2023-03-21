@@ -305,7 +305,8 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 
 func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryResponse) (*Vector, error) {
 	output := map[string]*Sample{}
-	sortAsc, sortDesc, err := parseQueryForSort(req.GetQuery())
+	metrics := []string{} // Used to preserve the order for topk and bottomk.
+	sortPlan, err := sortPlanForQuery(req.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +328,7 @@ func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryRespons
 			metric := string(cortexpb.FromLabelAdaptersToLabels(sample.Labels).Bytes(buf))
 			if existingSample, ok := output[metric]; !ok {
 				output[metric] = s
+				metrics = append(metrics, metric) // Preserve the order of metric.
 			} else if existingSample.GetSample().TimestampMs < s.GetSample().TimestampMs {
 				// Choose the latest sample if we see overlap.
 				output[metric] = s
@@ -334,10 +336,19 @@ func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryRespons
 		}
 	}
 
+	result := &Vector{
+		Samples: make([]*Sample, 0, len(output)),
+	}
+
 	if len(output) == 0 {
-		return &Vector{
-			Samples: make([]*Sample, 0),
-		}, nil
+		return result, nil
+	}
+
+	if sortPlan == mergeOnly {
+		for _, k := range metrics {
+			result.Samples = append(result.Samples, output[k])
+		}
+		return result, nil
 	}
 
 	type pair struct {
@@ -354,49 +365,79 @@ func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryRespons
 	}
 
 	sort.Slice(samples, func(i, j int) bool {
-		// Order is determined by the sortFn in the query.
-		if sortAsc {
+		// Order is determined by vector
+		switch sortPlan {
+		case sortByValuesAsc:
 			return samples[i].s.Sample.Value < samples[j].s.Sample.Value
-		} else if sortDesc {
+		case sortByValuesDesc:
 			return samples[i].s.Sample.Value > samples[j].s.Sample.Value
-		} else {
-			// Fallback on sorting by labels.
-			return samples[i].metric < samples[j].metric
 		}
+		return samples[i].metric < samples[j].metric
 	})
-	result := &Vector{
-		Samples: make([]*Sample, 0, len(output)),
-	}
+
 	for _, p := range samples {
 		result.Samples = append(result.Samples, p.s)
 	}
 	return result, nil
 }
 
-func parseQueryForSort(q string) (bool, bool, error) {
+type sortPlan int
+
+const (
+	mergeOnly        sortPlan = 0
+	sortByValuesAsc  sortPlan = 1
+	sortByValuesDesc sortPlan = 2
+	sortByLabels     sortPlan = 3
+)
+
+func sortPlanForQuery(q string) (sortPlan, error) {
 	expr, err := promqlparser.ParseExpr(q)
 	if err != nil {
-		return false, false, err
+		return 0, err
 	}
-	var sortAsc bool = false
-	var sortDesc bool = false
-	done := errors.New("done")
-	promqlparser.Inspect(expr, func(n promqlparser.Node, _ []promqlparser.Node) error {
-		if n, ok := n.(*promqlparser.Call); ok {
+	// Check if the root expression is topk or bottomk
+	if aggr, ok := expr.(*promqlparser.AggregateExpr); ok {
+		if aggr.Op == promqlparser.TOPK || aggr.Op == promqlparser.BOTTOMK {
+			return mergeOnly, nil
+		}
+	}
+	checkForSort := func(expr promqlparser.Expr) (sortAsc, sortDesc bool) {
+		if n, ok := expr.(*promqlparser.Call); ok {
 			if n.Func != nil {
 				if n.Func.Name == "sort" {
 					sortAsc = true
-					return done
 				}
 				if n.Func.Name == "sort_desc" {
 					sortDesc = true
-					return done
 				}
 			}
 		}
-		return nil
-	})
-	return sortAsc, sortDesc, nil
+		return sortAsc, sortDesc
+	}
+	// Check the root expression for sort
+	if sortAsc, sortDesc := checkForSort(expr); sortAsc || sortDesc {
+		if sortAsc {
+			return sortByValuesAsc, nil
+		}
+		return sortByValuesDesc, nil
+	}
+
+	// If the root expression is a binary expression, check the LHS and RHS for sort
+	if bin, ok := expr.(*promqlparser.BinaryExpr); ok {
+		if sortAsc, sortDesc := checkForSort(bin.LHS); sortAsc || sortDesc {
+			if sortAsc {
+				return sortByValuesAsc, nil
+			}
+			return sortByValuesDesc, nil
+		}
+		if sortAsc, sortDesc := checkForSort(bin.RHS); sortAsc || sortDesc {
+			if sortAsc {
+				return sortByValuesAsc, nil
+			}
+			return sortByValuesDesc, nil
+		}
+	}
+	return sortByLabels, nil
 }
 
 func matrixMerge(resps []*PrometheusInstantQueryResponse) []tripperware.SampleStream {

@@ -15,6 +15,7 @@ import (
 )
 
 func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
+	t.Parallel()
 	const (
 		thirtyDays = 30 * 24 * time.Hour
 	)
@@ -66,7 +67,9 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			req := &PrometheusRequest{
 				Start: util.TimeToMillis(testData.reqStartTime),
 				End:   util.TimeToMillis(testData.reqEndTime),
@@ -104,6 +107,7 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 }
 
 func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
+	t.Parallel()
 	const (
 		thirtyDays = 30 * 24 * time.Hour
 	)
@@ -151,7 +155,9 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			req := &PrometheusRequest{
 				Start: util.TimeToMillis(testData.reqStartTime),
 				End:   util.TimeToMillis(testData.reqEndTime),

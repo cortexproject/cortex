@@ -64,11 +64,11 @@ func formatAppUsage(app *ApplicationModel) string {
 
 func formatCmdUsage(app *ApplicationModel, cmd *CmdModel) string {
 	s := []string{app.Name, cmd.String()}
-	if len(app.Flags) > 0 {
-		s = append(s, app.FlagSummary())
+	if len(cmd.Flags) > 0 {
+		s = append(s, cmd.FlagSummary())
 	}
-	if len(app.Args) > 0 {
-		s = append(s, app.ArgSummary())
+	if len(cmd.Args) > 0 {
+		s = append(s, cmd.ArgSummary())
 	}
 	return strings.Join(s, " ")
 }
@@ -136,7 +136,7 @@ func (a *Application) UsageForContextWithTemplate(context *ParseContext, indent 
 			}
 			for _, flag := range f {
 				if !flag.Hidden {
-					rows = append(rows, [2]string{formatFlag(haveShort, flag), flag.Help})
+					rows = append(rows, [2]string{formatFlag(haveShort, flag), flag.HelpWithEnvar()})
 				}
 			}
 			return rows
@@ -162,11 +162,18 @@ func (a *Application) UsageForContextWithTemplate(context *ParseContext, indent 
 		"ArgsToTwoColumns": func(a []*ArgModel) [][2]string {
 			rows := [][2]string{}
 			for _, arg := range a {
-				s := "<" + arg.Name + ">"
-				if !arg.Required {
-					s = "[" + s + "]"
+				if !arg.Hidden {
+					var s string
+					if arg.PlaceHolder != "" {
+						s = arg.PlaceHolder
+					} else {
+						s = "<" + arg.Name + ">"
+					}
+					if !arg.Required {
+						s = "[" + s + "]"
+					}
+					rows = append(rows, [2]string{s, arg.HelpWithEnvar()})
 				}
-				rows = append(rows, [2]string{s, arg.Help})
 			}
 			return rows
 		},
@@ -190,6 +197,10 @@ func (a *Application) UsageForContextWithTemplate(context *ParseContext, indent 
 			return string(c)
 		},
 	}
+	for k, v := range a.usageFuncs {
+		funcs[k] = v
+	}
+
 	t, err := template.New("usage").Funcs(funcs).Parse(tmpl)
 	if err != nil {
 		return err

@@ -1,15 +1,17 @@
 package client
 
 import (
+	"context"
 	"flag"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
-
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -24,12 +26,22 @@ type HealthAndIngesterClient interface {
 	IngesterClient
 	grpc_health_v1.HealthClient
 	Close() error
+	PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error)
 }
 
 type closableHealthAndIngesterClient struct {
 	IngesterClient
 	grpc_health_v1.HealthClient
 	conn *grpc.ClientConn
+}
+
+func (c *closableHealthAndIngesterClient) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	out := new(cortexpb.WriteResponse)
+	err := c.conn.Invoke(ctx, "/cortex.Ingester/Push", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // MakeIngesterClient makes a new IngesterClient

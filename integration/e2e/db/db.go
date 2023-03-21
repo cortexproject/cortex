@@ -71,8 +71,12 @@ func NewKES(port int, serverKeyFile, serverCertFile, rootCertFile string) *e2e.H
 }
 
 func NewConsul() *e2e.HTTPService {
+	return NewConsulWithName("consul")
+}
+
+func NewConsulWithName(name string) *e2e.HTTPService {
 	return e2e.NewHTTPService(
-		"consul",
+		name,
 		images.Consul,
 		// Run consul in "dev" mode so that the initial leader election is immediate
 		e2e.NewCommand("agent", "-server", "-client=0.0.0.0", "-dev", "-log-level=err"),

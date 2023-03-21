@@ -17,6 +17,8 @@ import (
 )
 
 func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
+	t.Parallel()
+
 	const numGets = 1000
 	serviceAddrs := []string{"127.0.0.1", "127.0.0.2"}
 	block1 := ulid.MustNew(1, nil)
@@ -69,6 +71,8 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 }
 
 func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
+	t.Parallel()
+
 	block1 := ulid.MustNew(1, nil)
 	block2 := ulid.MustNew(2, nil)
 

@@ -23,6 +23,7 @@ import (
 )
 
 func TestRequest(t *testing.T) {
+	t.Parallel()
 	// Create a Copy parsedRequest to assign the expected headers to the request without affecting other tests using the global.
 	// The test below adds a Test-Header header to the request and expects it back once the encode/decode of request is done via PrometheusCodec
 	parsedRequestWithHeaders := *parsedRequest
@@ -61,7 +62,9 @@ func TestRequest(t *testing.T) {
 			expectedErr: errStepTooSmall,
 		},
 	} {
+		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
+			t.Parallel()
 			r, err := http.NewRequest("GET", tc.url, nil)
 			require.NoError(t, err)
 			r.Header.Add("Test-Header", "test")
@@ -86,6 +89,7 @@ func TestRequest(t *testing.T) {
 }
 
 func TestResponse(t *testing.T) {
+	t.Parallel()
 	r := *parsedResponse
 	r.Headers = respHeaders
 	for i, tc := range []struct {
@@ -97,7 +101,9 @@ func TestResponse(t *testing.T) {
 			expected: &r,
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			response := &http.Response{
 				StatusCode: 200,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
@@ -122,6 +128,7 @@ func TestResponse(t *testing.T) {
 }
 
 func TestResponseWithStats(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		body     string
 		expected *PrometheusResponse
@@ -156,7 +163,9 @@ func TestResponseWithStats(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			tc.expected.Headers = respHeaders
 			response := &http.Response{
 				StatusCode: 200,
@@ -182,6 +191,7 @@ func TestResponseWithStats(t *testing.T) {
 }
 
 func TestMergeAPIResponses(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		input    []tripperware.Response
@@ -651,7 +661,9 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		}} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			output, err := PrometheusCodec.MergeResponse(context.Background(), nil, tc.input...)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, output)
@@ -660,6 +672,7 @@ func TestMergeAPIResponses(t *testing.T) {
 }
 
 func TestGzippedResponse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		body   string
 		status int
@@ -680,7 +693,9 @@ func TestGzippedResponse(t *testing.T) {
 		},
 	} {
 		for _, c := range []bool{true, false} {
+			c := c
 			t.Run(fmt.Sprintf("compressed %t [%s]", c, tc.body), func(t *testing.T) {
+				t.Parallel()
 				h := http.Header{
 					"Content-Type": []string{"application/json"},
 				}

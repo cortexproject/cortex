@@ -672,7 +672,7 @@ func (p *pipe) Info() map[string]RedisMessage {
 
 func (p *pipe) Do(ctx context.Context, cmd cmds.Completed) (resp RedisResult) {
 	if err := ctx.Err(); err != nil {
-		return newErrResult(ctx.Err())
+		return newErrResult(err)
 	}
 
 	if cmd.IsBlock() {
@@ -880,8 +880,8 @@ func (p *pipe) syncDo(dl time.Time, dlOk bool, cmd cmds.Completed) (resp RedisRe
 			err = context.DeadlineExceeded
 		}
 		p.error.CompareAndSwap(nil, &errs{error: err})
-		atomic.CompareAndSwapInt32(&p.state, 1, 3) // stopping the worker and let it do the cleaning
-		p.background()                             // start the background worker
+		p.conn.Close()
+		p.background() // start the background worker to clean up goroutines
 	}
 	return newResult(msg, err)
 }
@@ -921,8 +921,8 @@ abort:
 		err = context.DeadlineExceeded
 	}
 	p.error.CompareAndSwap(nil, &errs{error: err})
-	atomic.CompareAndSwapInt32(&p.state, 1, 3) // stopping the worker and let it do the cleaning
-	p.background()                             // start the background worker
+	p.conn.Close()
+	p.background() // start the background worker to clean up goroutines
 	for i := 0; i < len(resp); i++ {
 		resp[i] = newErrResult(err)
 	}

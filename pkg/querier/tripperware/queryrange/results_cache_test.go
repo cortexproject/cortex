@@ -151,6 +151,7 @@ func mkExtentWithStepWithStats(start, end, step int64, withStats bool) Extent {
 }
 
 func TestStatsCacheQuerySamples(t *testing.T) {
+	t.Parallel()
 
 	for _, tc := range []struct {
 		name                       string
@@ -195,7 +196,9 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false),
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := ResultsCacheConfig{
 				CacheConfig: cache.Config{
 					Cache: cache.NewMockCache(),
@@ -232,6 +235,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 }
 
 func TestShouldCache(t *testing.T) {
+	t.Parallel()
 	maxCacheTime := int64(150 * 1000)
 	c := &resultsCache{logger: log.NewNopLogger(), cacheGenNumberLoader: newMockCacheGenNumberLoader()}
 	for _, tc := range []struct {
@@ -505,6 +509,7 @@ func TestShouldCache(t *testing.T) {
 	} {
 		{
 			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
 				ctx := cache.InjectCacheGenNumber(context.Background(), tc.cacheGenNumberToInject)
 				ret := c.shouldCacheResponse(ctx, tc.request, tc.input, maxCacheTime)
 				require.Equal(t, tc.expected, ret)
@@ -514,6 +519,7 @@ func TestShouldCache(t *testing.T) {
 }
 
 func TestPartition(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name                   string
 		input                  tripperware.Request
@@ -760,7 +766,9 @@ func TestPartition(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			s := resultsCache{
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
@@ -774,6 +782,7 @@ func TestPartition(t *testing.T) {
 }
 
 func TestHandleHit(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name                       string
 		input                      tripperware.Request
@@ -959,7 +968,9 @@ func TestHandleHit(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			sut := resultsCache{
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
@@ -982,6 +993,7 @@ func TestHandleHit(t *testing.T) {
 }
 
 func TestResultsCache(t *testing.T) {
+	t.Parallel()
 	calls := 0
 	cfg := ResultsCacheConfig{
 		CacheConfig: cache.Config{
@@ -1025,6 +1037,7 @@ func TestResultsCache(t *testing.T) {
 }
 
 func TestResultsCacheRecent(t *testing.T) {
+	t.Parallel()
 	var cfg ResultsCacheConfig
 	flagext.DefaultValues(&cfg)
 	cfg.CacheConfig.Cache = cache.NewMockCache()
@@ -1066,6 +1079,7 @@ func TestResultsCacheRecent(t *testing.T) {
 }
 
 func TestResultsCacheMaxFreshness(t *testing.T) {
+	t.Parallel()
 	modelNow := model.Now()
 	for i, tc := range []struct {
 		fakeLimits       tripperware.Limits
@@ -1086,7 +1100,9 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			expectedResponse: parsedResponse,
 		},
 	} {
+		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			t.Parallel()
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)
 			cfg.CacheConfig.Cache = cache.NewMockCache()
@@ -1124,6 +1140,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 }
 
 func Test_resultsCache_MissingData(t *testing.T) {
+	t.Parallel()
 	cfg := ResultsCacheConfig{
 		CacheConfig: cache.Config{
 			Cache: cache.NewMockCache(),
@@ -1189,7 +1206,9 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 		{"3d5h", &PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
+			t.Parallel()
 			if got := constSplitter(tt.interval).GenerateCacheKey("fake", tt.r); got != tt.want {
 				t.Errorf("generateKey() = %v, want %v", got, tt.want)
 			}
@@ -1198,6 +1217,7 @@ func TestConstSplitter_generateCacheKey(t *testing.T) {
 }
 
 func TestResultsCacheShouldCacheFunc(t *testing.T) {
+	t.Parallel()
 	testcases := []struct {
 		name         string
 		shouldCache  ShouldCacheFn
@@ -1232,7 +1252,9 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			calls := 0
 			var cfg ResultsCacheConfig
 			flagext.DefaultValues(&cfg)

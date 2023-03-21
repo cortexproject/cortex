@@ -138,6 +138,40 @@ func GenerateSeries(name string, ts time.Time, additionalLabels ...prompb.Label)
 	return
 }
 
+func GenerateSeriesWithSamples(
+	name string,
+	startTime time.Time,
+	scrapeInterval time.Duration,
+	startValue int,
+	numSamples int,
+	additionalLabels ...prompb.Label,
+) (series prompb.TimeSeries) {
+	tsMillis := TimeToMilliseconds(startTime)
+	durMillis := scrapeInterval.Milliseconds()
+
+	lbls := append(
+		[]prompb.Label{
+			{Name: labels.MetricName, Value: name},
+		},
+		additionalLabels...,
+	)
+
+	startTMillis := tsMillis
+	samples := make([]prompb.Sample, numSamples)
+	for i := 0; i < numSamples; i++ {
+		samples[i] = prompb.Sample{
+			Timestamp: startTMillis,
+			Value:     float64(i + startValue),
+		}
+		startTMillis += durMillis
+	}
+
+	return prompb.TimeSeries{
+		Labels:  lbls,
+		Samples: samples,
+	}
+}
+
 // GetTempDirectory creates a temporary directory for shared integration
 // test files, either in the working directory or a directory referenced by
 // the E2E_TEMP_DIR environment variable

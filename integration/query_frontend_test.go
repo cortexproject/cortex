@@ -154,6 +154,46 @@ func TestQueryFrontendTLSWithBlocksStorageViaFlags(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendWithVerticalSharding(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		querySchedulerEnabled: false,
+		queryStatsEnabled:     true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+
+			// Enable vertical sharding.
+			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
+				"-frontend.query-vertical-shard-size": "2",
+			})
+			return cortexConfigFile, flags
+		},
+	})
+}
+
+func TestQueryFrontendWithVerticalShardingQueryScheduler(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testMissingMetricName: false,
+		querySchedulerEnabled: true,
+		queryStatsEnabled:     true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+
+			// Enable vertical sharding.
+			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
+				"-frontend.query-vertical-shard-size": "2",
+			})
+			return cortexConfigFile, flags
+		},
+	})
+}
+
 func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
@@ -304,7 +344,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
 
-	// The number of received request is greater then the query requests because include
+	// The number of received request is greater than the query requests because include
 	// requests to /metrics and /ready.
 	require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))

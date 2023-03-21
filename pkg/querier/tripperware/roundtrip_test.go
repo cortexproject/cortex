@@ -68,6 +68,7 @@ func (m mockMiddleware) Do(_ context.Context, req Request) (Response, error) {
 }
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := w.Write([]byte("bar"))
@@ -141,6 +142,7 @@ func TestRoundTrip(t *testing.T) {
 		},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
+			//parallel testing causes data race
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
 

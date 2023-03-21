@@ -28,6 +28,8 @@ import (
 )
 
 func TestApiStatusCodes(t *testing.T) {
+	t.Parallel()
+
 	for ix, tc := range []struct {
 		err            error
 		expectedString string
@@ -54,7 +56,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            promql.ErrQueryCanceled("query execution"),
 			expectedString: "query was canceled",
-			expectedCode:   503,
+			expectedCode:   499,
 		},
 
 		{
@@ -93,7 +95,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            context.Canceled,
 			expectedString: "context canceled",
-			expectedCode:   422,
+			expectedCode:   499,
 		},
 		// Status code 400 is remapped to 422 (only choice we have)
 		{
@@ -109,6 +111,7 @@ func TestApiStatusCodes(t *testing.T) {
 				"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
 			} {
 				t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
+					//parallel testing causes data race
 					opts := promql.EngineOpts{
 						Logger:             log.NewNopLogger(),
 						Reg:                nil,
@@ -147,6 +150,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine v1.QueryEngin
 		q,
 		nil,
 		nil,
+		func(ctx context.Context) v1.ScrapePoolsRetriever { return nil },
 		func(context.Context) v1.TargetRetriever { return &DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },

@@ -34,10 +34,18 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
-// Objects returns internally stored objects.
+// Objects returns a copy of the internally stored objects.
 // NOTE: For assert purposes.
 func (b *InMemBucket) Objects() map[string][]byte {
-	return b.objects
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	objs := make(map[string][]byte)
+	for k, v := range b.objects {
+		objs[k] = v
+	}
+
+	return objs
 }
 
 // Iter calls f for each entry in the given directory. The argument to f is the full

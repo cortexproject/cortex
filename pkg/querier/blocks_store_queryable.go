@@ -692,16 +692,21 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			}
 
 			numSeries := len(mySeries)
+			numSamples, chunksCount := countSamplesAndChunks(mySeries...)
 			chunkBytes := countChunkBytes(mySeries...)
 			dataBytes := countDataBytes(mySeries...)
 
 			reqStats.AddFetchedSeries(uint64(numSeries))
+			reqStats.AddFetchedChunks(chunksCount)
+			reqStats.AddFetchedSamples(numSamples)
 			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
 			reqStats.AddFetchedDataBytes(uint64(dataBytes))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
 				"fetched series", numSeries,
+				"fetched chunks", chunksCount,
+				"fetched samples", numSamples,
 				"fetched chunk bytes", chunkBytes,
 				"fetched data bytes", dataBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
@@ -1016,6 +1021,19 @@ func countDataBytes(series ...*storepb.Series) (count int) {
 	}
 
 	return count
+}
+
+// countSamplesAndChunks counts the number of samples and number counts from the series.
+func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount uint64) {
+	for _, s := range series {
+		chunksCount += uint64(len(s.Chunks))
+		for _, c := range s.Chunks {
+			if c.Raw != nil {
+				samplesCount += uint64(c.Raw.XORNumSamples())
+			}
+		}
+	}
+	return
 }
 
 // only retry connection issues

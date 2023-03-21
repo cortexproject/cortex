@@ -355,6 +355,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		return nil, err
 	}
 
+	span, _ := opentracing.StartSpanFromContext(ctx, "Distributor.MergeIngesterStreams")
+	defer span.Finish()
 	hashToChunkseries := map[string]ingester_client.TimeSeriesChunk{}
 	hashToTimeSeries := map[string]cortexpb.TimeSeries{}
 
@@ -398,6 +400,8 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
 	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
 	reqStats.AddFetchedDataBytes(uint64(resp.Size()))
+	reqStats.AddFetchedChunks(uint64(resp.ChunksCount()))
+	reqStats.AddFetchedSamples(uint64(resp.SamplesCount()))
 
 	return resp, nil
 }

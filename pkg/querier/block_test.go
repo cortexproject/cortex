@@ -71,13 +71,14 @@ func TestBlockQuerierSeries(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			series := newBlockQuerierSeries(labelpb.ZLabelsToPromLabels(testData.series.Labels), testData.series.Chunks)
 
 			assert.Equal(t, testData.expectedMetric, series.Labels())
 
 			sampleIx := 0
 
-			it := series.Iterator()
+			it := series.Iterator(nil)
 			for it.Next() != chunkenc.ValNone {
 				ts, val := it.At()
 				require.True(t, sampleIx < len(testData.expectedSamples))
@@ -111,6 +112,7 @@ func mockTSDBChunkData() []byte {
 }
 
 func TestBlockQuerierSeriesSet(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	// It would be possible to split this test into smaller parts, but I prefer to keep
@@ -208,7 +210,7 @@ func verifyNextSeries(t *testing.T, ss storage.SeriesSet, labels labels.Labels, 
 
 	prevTS := int64(0)
 	count := 0
-	for it := s.Iterator(); it.Next() != chunkenc.ValNone; {
+	for it := s.Iterator(nil); it.Next() != chunkenc.ValNone; {
 		count++
 		ts, v := it.At()
 		require.Equal(t, math.Sin(float64(ts)), v)
@@ -332,9 +334,10 @@ func Benchmark_blockQuerierSeriesSet_iteration(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		set := blockQuerierSeriesSet{series: series}
 
+		var it chunkenc.Iterator
 		for set.Next() {
-			for t := set.At().Iterator(); t.Next() != chunkenc.ValNone; {
-				t.At()
+			for it = set.At().Iterator(it); it.Next() != chunkenc.ValNone; {
+				it.At()
 			}
 		}
 	}

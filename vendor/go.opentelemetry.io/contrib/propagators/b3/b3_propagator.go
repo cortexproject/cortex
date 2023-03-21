@@ -70,13 +70,14 @@ var _ propagation.TextMapPropagator = propagator{}
 // B3 propagator serializes SpanContext to/from B3 Headers.
 // This propagator supports both versions of B3 headers,
 //  1. Single Header:
-//    b3: {TraceId}-{SpanId}-{SamplingState}-{ParentSpanId}
+//     b3: {TraceId}-{SpanId}-{SamplingState}-{ParentSpanId}
 //  2. Multiple Headers:
-//    x-b3-traceid: {TraceId}
-//    x-b3-parentspanid: {ParentSpanId}
-//    x-b3-spanid: {SpanId}
-//    x-b3-sampled: {SamplingState}
-//    x-b3-flags: {DebugFlag}
+//     x-b3-traceid: {TraceId}
+//     x-b3-parentspanid: {ParentSpanId}
+//     x-b3-spanid: {SpanId}
+//     x-b3-sampled: {SamplingState}
+//     x-b3-flags: {DebugFlag}
+//
 // The Single Header propagator is used by default.
 func New(opts ...Option) propagation.TextMapPropagator {
 	cfg := newConfig(opts...)

@@ -6,6 +6,7 @@ Package ops provides operations to various backend services using REST clients.
 
 The REST type provides several clients that can be used to communicate to backends.
 Usage is simple:
+
 	rest := ops.New()
 
 	// Creates an authority client and calls the UserRealm() method.

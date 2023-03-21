@@ -6,6 +6,8 @@
 * [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103
 * [CHANGE] Tracing: Use the default OTEL trace sampler when `-tracing.otel.exporter-type` is set to `awsxray`. #5141
+* [CHANGE] Ingester partial error log line to debug level. #5192
+* [CHANGE] Change HTTP status code from 503/422 to 499 if a request is canceled. #5220
 * [ENHANCEMENT] Update Go version to 1.19.3. #4988
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
@@ -18,6 +20,11 @@
 * [ENHANCEMENT] Push reduce one hash operation of Labels. #4945 #5114
 * [ENHANCEMENT] Alertmanager: Added `-alertmanager.enabled-tenants` and `-alertmanager.disabled-tenants` to explicitly enable or disable alertmanager for specific tenants. #5116
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.17`. #5132
+* [ENHANCEMENT] Add retry logic to S3 bucket client. #5135
+* [ENHANCEMENT] Update Go version to 1.20.1. #5159
+* [ENHANCEMENT] Distributor: Reuse byte slices when serializing requests from distributors to ingesters. #5193
+* [ENHANCEMENT] Query Frontend: Add number of chunks and samples fetched in query stats. #5198
+* [ENHANCEMENT] Implement grpc.Compressor.DecompressedSize for snappy to optimize memory allocations. #5213
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
@@ -31,6 +38,7 @@
 * [FEATURE] Ring: Add new kv store option `dynamodb`. #5026
 * [FEATURE] Cache: Support redis as backend for caching bucket and index cache. #5057
 * [FEATURE] Querier/Store-Gateway: Added `-blocks-storage.bucket-store.ignore-blocks-within` allowing to filter out the recently created blocks from being synced by queriers and store-gateways. #5166
+* [FEATURE] AlertManager/Ruler: Added support for  `keep_firing_for` on alerting rulers.
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
@@ -39,8 +47,12 @@
 * [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
 * [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
-* [BUGFIX] Query-frontend:  Fix sorted queries do not produce sorted results for shardable queries. #5148
+* [BUGFIX] Query-frontend: Fix shardable instant queries do not produce sorted results for `sort`, `sort_desc`, `topk`, `bottomk` functions. #5148, #5170
+* [BUGFIX] Querier: Fix `/api/v1/series` returning 5XX instead of 4XX when limits are hit. #5169
+* [BUGFIX] Compactor: Fix issue that shuffle sharding planner return error if block is under visit by other compactor. #5188
+* [BUGFIX] Fix S3 BucketWithRetries upload empty content issue #5217
 * [FEATURE] Alertmanager: Add support for time_intervals. #5102
+* [BUGFIX] Query Frontend: Disable `absent`, `absent_over_time` and `scalar` for vertical sharding. #5221
 
 ## 1.14.0 2022-12-02
 

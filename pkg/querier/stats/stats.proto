@@ -22,4 +22,8 @@ message Stats {
   uint64 fetched_data_bytes = 4;
   // Extra fields to be reported on the stats log
   map<string, string> extra_fields = 5;
+  // The number of chunks fetched for the query
+  uint64 fetched_chunks_count = 6;
+  // The number of samples fetched for the query
+  uint64 fetched_samples_count = 7;
 }

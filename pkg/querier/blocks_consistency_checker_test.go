@@ -15,6 +15,8 @@ import (
 )
 
 func TestBlocksConsistencyChecker_Check(t *testing.T) {
+	//parallel testing causes data race
+
 	now := time.Now()
 	uploadGracePeriod := 10 * time.Minute
 	deletionGracePeriod := 5 * time.Minute
@@ -103,7 +105,10 @@ func TestBlocksConsistencyChecker_Check(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			reg := prometheus.NewPedanticRegistry()
 			c := NewBlocksConsistencyChecker(uploadGracePeriod, deletionGracePeriod, log.NewNopLogger(), reg)
 

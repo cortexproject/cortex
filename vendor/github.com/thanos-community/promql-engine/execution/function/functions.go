@@ -6,8 +6,10 @@ package function
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -301,11 +303,13 @@ var Funcs = map[string]FunctionCall{
 		if len(f.Points) < 2 {
 			return InvalidSample
 		}
+		v, h := extrapolatedRate(f.Points, true, true, f.StepTime, f.SelectRange, f.Offset)
 		return promql.Sample{
 			Metric: f.Labels,
 			Point: promql.Point{
 				T: f.StepTime,
-				V: extrapolatedRate(f.Points, true, true, f.StepTime, f.SelectRange, f.Offset),
+				V: v,
+				H: h,
 			},
 		}
 	},
@@ -313,11 +317,13 @@ var Funcs = map[string]FunctionCall{
 		if len(f.Points) < 2 {
 			return InvalidSample
 		}
+		v, h := extrapolatedRate(f.Points, false, false, f.StepTime, f.SelectRange, f.Offset)
 		return promql.Sample{
 			Metric: f.Labels,
 			Point: promql.Point{
 				T: f.StepTime,
-				V: extrapolatedRate(f.Points, false, false, f.StepTime, f.SelectRange, f.Offset),
+				V: v,
+				H: h,
 			},
 		}
 	},
@@ -325,11 +331,13 @@ var Funcs = map[string]FunctionCall{
 		if len(f.Points) < 2 {
 			return InvalidSample
 		}
+		v, h := extrapolatedRate(f.Points, true, false, f.StepTime, f.SelectRange, f.Offset)
 		return promql.Sample{
 			Metric: f.Labels,
 			Point: promql.Point{
 				T: f.StepTime,
-				V: extrapolatedRate(f.Points, true, false, f.StepTime, f.SelectRange, f.Offset),
+				V: v,
+				H: h,
 			},
 		}
 	},
@@ -386,6 +394,82 @@ var Funcs = map[string]FunctionCall{
 			},
 		}
 	},
+	"histogram_sum": func(f FunctionArgs) promql.Sample {
+		if len(f.Points) == 0 || f.Points[0].H == nil {
+			return InvalidSample
+		}
+		return promql.Sample{
+			Metric: f.Labels,
+			Point: promql.Point{
+				T: f.StepTime,
+				V: f.Points[0].H.Sum,
+			},
+		}
+	},
+	"histogram_count": func(f FunctionArgs) promql.Sample {
+		if len(f.Points) == 0 || f.Points[0].H == nil {
+			return InvalidSample
+		}
+		return promql.Sample{
+			Metric: f.Labels,
+			Point: promql.Point{
+				T: f.StepTime,
+				V: f.Points[0].H.Count,
+			},
+		}
+	},
+	"histogram_fraction": func(f FunctionArgs) promql.Sample {
+		if len(f.Points) == 0 || f.Points[0].H == nil {
+			return InvalidSample
+		}
+		return promql.Sample{
+			Metric: f.Labels,
+			Point: promql.Point{
+				T: f.StepTime,
+				V: histogramFraction(f.ScalarPoints[0], f.ScalarPoints[1], f.Points[0].H),
+			},
+		}
+	},
+	"days_in_month": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(32 - time.Date(t.Year(), t.Month(), 32, 0, 0, 0, 0, time.UTC).Day())
+		})
+	},
+	"day_of_month": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.Day())
+		})
+	},
+	"day_of_week": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.Weekday())
+		})
+	},
+	"day_of_year": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.YearDay())
+		})
+	},
+	"hour": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.Hour())
+		})
+	},
+	"minute": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.Minute())
+		})
+	},
+	"month": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.Month())
+		})
+	},
+	"year": func(f FunctionArgs) promql.Sample {
+		return dateWrapper(f, func(t time.Time) float64 {
+			return float64(t.Year())
+		})
+	},
 }
 
 func NewFunctionCall(f *parser.Function) (FunctionCall, error) {
@@ -405,20 +489,26 @@ func NewFunctionCall(f *parser.Function) (FunctionCall, error) {
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // extrapolates if the first/last sample is close to the boundary, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) float64 {
+func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
 	var (
-		rangeStart = stepTime - (selectRange + offset)
-		rangeEnd   = stepTime - offset
+		rangeStart      = stepTime - (selectRange + offset)
+		rangeEnd        = stepTime - offset
+		resultValue     float64
+		resultHistogram *histogram.FloatHistogram
 	)
 
-	resultValue := samples[len(samples)-1].V - samples[0].V
-	if isCounter {
-		var lastValue float64
-		for _, sample := range samples {
-			if sample.V < lastValue {
-				resultValue += lastValue
+	if samples[0].H != nil {
+		resultHistogram = histogramRate(samples, isCounter)
+	} else {
+		resultValue = samples[len(samples)-1].V - samples[0].V
+		if isCounter {
+			var lastValue float64
+			for _, sample := range samples {
+				if sample.V < lastValue {
+					resultValue += lastValue
+				}
+				lastValue = sample.V
 			}
-			lastValue = sample.V
 		}
 	}
 
@@ -464,9 +554,62 @@ func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime i
 	if isRate {
 		factor /= float64(selectRange / 1000)
 	}
-	resultValue *= factor
+	if resultHistogram == nil {
+		resultValue *= factor
+	} else {
+		resultHistogram.Scale(factor)
 
-	return resultValue
+	}
+
+	return resultValue, resultHistogram
+}
+
+// histogramRate is a helper function for extrapolatedRate. It requires
+// points[0] to be a histogram. It returns nil if any other Point in points is
+// not a histogram.
+func histogramRate(points []promql.Point, isCounter bool) *histogram.FloatHistogram {
+	prev := points[0].H // We already know that this is a histogram.
+	last := points[len(points)-1].H
+	if last == nil {
+		return nil // Range contains a mix of histograms and floats.
+	}
+	minSchema := prev.Schema
+	if last.Schema < minSchema {
+		minSchema = last.Schema
+	}
+
+	// https://github.com/prometheus/prometheus/blob/ccea61c7bf1e6bce2196ba8189a209945a204c5b/promql/functions.go#L183
+	// First iteration to find out two things:
+	// - What's the smallest relevant schema?
+	// - Are all data points histograms?
+	//   []FloatPoint and a []HistogramPoint separately.
+	for _, currPoint := range points[1 : len(points)-1] {
+		curr := currPoint.H
+		if curr == nil {
+			return nil // Range contains a mix of histograms and floats.
+		}
+		if !isCounter {
+			continue
+		}
+		if curr.Schema < minSchema {
+			minSchema = curr.Schema
+		}
+	}
+
+	h := last.CopyToSchema(minSchema)
+	h.Sub(prev)
+
+	if isCounter {
+		// Second iteration to deal with counter resets.
+		for _, currPoint := range points[1:] {
+			curr := currPoint.H
+			if curr.DetectReset(prev) {
+				h.Add(prev)
+			}
+			prev = curr
+		}
+	}
+	return h.Compact(0)
 }
 
 func instantValue(samples []promql.Point, isRate bool) (float64, bool) {
@@ -674,4 +817,20 @@ func KahanSumInc(inc, sum, c float64) (newSum, newC float64) {
 		c += (inc - t) + sum
 	}
 	return t, c
+}
+
+// Common code for date related functions.
+func dateWrapper(fa FunctionArgs, f func(time.Time) float64) promql.Sample {
+	if len(fa.Points) == 0 {
+		return promql.Sample{
+			Metric: labels.Labels{},
+			Point:  promql.Point{V: f(time.Unix(fa.StepTime/1000, 0).UTC())},
+		}
+	}
+	t := time.Unix(int64(fa.Points[0].V), 0).UTC()
+	lbls, _ := DropMetricName(fa.Labels)
+	return promql.Sample{
+		Metric: lbls,
+		Point:  promql.Point{V: f(t)},
+	}
 }

@@ -16,6 +16,7 @@ import (
 )
 
 func TestRetry(t *testing.T) {
+	t.Parallel()
 	var try atomic.Int32
 
 	for _, tc := range []struct {
@@ -60,6 +61,7 @@ func TestRetry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			//parallel testing causes data race
 			try.Store(0)
 			h := NewRetryMiddleware(log.NewNopLogger(), 5, nil).Wrap(tc.handler)
 			resp, err := h.Do(context.Background(), nil)
@@ -70,6 +72,7 @@ func TestRetry(t *testing.T) {
 }
 
 func Test_RetryMiddlewareCancel(t *testing.T) {
+	t.Parallel()
 	var try atomic.Int32
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

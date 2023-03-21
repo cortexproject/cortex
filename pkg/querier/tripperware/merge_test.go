@@ -11,6 +11,7 @@ import (
 )
 
 func TestMergeSampleStreams(t *testing.T) {
+	t.Parallel()
 	lbls := labels.FromMap(map[string]string{
 		"foo":     "bar",
 		"cluster": "test",
@@ -130,7 +131,9 @@ func TestMergeSampleStreams(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			output := make(map[string]SampleStream)
 			MergeSampleStreams(output, tc.sampleStreams)
 			assert.Equal(t, tc.expectedOutput, output)
@@ -139,6 +142,7 @@ func TestMergeSampleStreams(t *testing.T) {
 }
 
 func TestSliceSamples(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name            string
 		samples         []cortexpb.Sample
@@ -207,7 +211,9 @@ func TestSliceSamples(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			actual := sliceSamples(tc.samples, tc.minTs)
 			assert.Equal(t, tc.expectedSamples, actual)
 		})

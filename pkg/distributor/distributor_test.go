@@ -2174,7 +2174,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
 
 				if testData.expectedErr != nil {
-					assert.EqualError(t, err, testData.expectedErr.Error())
+					assert.ErrorIs(t, err, testData.expectedErr)
 					return
 				}
 
@@ -2191,7 +2191,7 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 			{
 				metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
 				if testData.expectedErr != nil {
-					assert.EqualError(t, err, testData.expectedErr.Error())
+					assert.ErrorIs(t, err, testData.expectedErr)
 					return
 				}
 
@@ -2687,6 +2687,10 @@ func (i *mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheck
 
 func (i *mockIngester) Close() error {
 	return nil
+}
+
+func (i *mockIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return i.Push(ctx, &in.WriteRequest, opts...)
 }
 
 func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {

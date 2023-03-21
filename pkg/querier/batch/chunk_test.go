@@ -19,6 +19,7 @@ const (
 )
 
 func TestChunkIter(t *testing.T) {
+	t.Parallel()
 	forEncodings(t, func(t *testing.T, enc promchunk.Encoding) {
 		chunk := mkGenericChunk(t, 0, 100, enc)
 		iter := &chunkIterator{}
@@ -35,7 +36,9 @@ func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 	for _, enc := range []promchunk.Encoding{
 		promchunk.PrometheusXorChunk,
 	} {
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
 			f(t, enc)
 		})
 	}
@@ -100,6 +103,7 @@ func testSeek(t require.TestingT, points int, iter chunkenc.Iterator) {
 }
 
 func TestSeek(t *testing.T) {
+	t.Parallel()
 	var it mockIterator
 	c := chunkIterator{
 		chunk: GenericChunk{

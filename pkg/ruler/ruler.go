@@ -710,11 +710,12 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				}
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
-						Expr:        rule.Query().String(),
-						Alert:       rule.Name(),
-						For:         rule.HoldDuration(),
-						Labels:      cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
-						Annotations: cortexpb.FromLabelsToLabelAdapters(rule.Annotations()),
+						Expr:          rule.Query().String(),
+						Alert:         rule.Name(),
+						For:           rule.HoldDuration(),
+						KeepFiringFor: rule.KeepFiringFor(),
+						Labels:        cortexpb.FromLabelsToLabelAdapters(rule.Labels()),
+						Annotations:   cortexpb.FromLabelsToLabelAdapters(rule.Annotations()),
 					},
 					State:               rule.State().String(),
 					Health:              string(rule.Health()),

@@ -131,8 +131,7 @@ func (t *table) execBinaryOperation(lhs model.StepVector, rhs model.StepVector, 
 			} else if !keep {
 				continue
 			}
-			step.SampleIDs = append(step.SampleIDs, outputSampleID)
-			step.Samples = append(step.Samples, outputVal)
+			step.AppendSample(t.pool, outputSampleID, outputVal)
 		}
 	}
 

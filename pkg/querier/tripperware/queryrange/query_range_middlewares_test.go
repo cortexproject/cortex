@@ -19,6 +19,7 @@ import (
 )
 
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +74,7 @@ func TestRoundTrip(t *testing.T) {
 		{query, responseBody},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			//parallel testing causes data race
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
 

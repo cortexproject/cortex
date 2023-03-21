@@ -71,7 +71,6 @@ type SamplePair struct {
 	Value     SampleValue
 }
 
-// MarshalJSON implements json.Marshaler.
 func (s SamplePair) MarshalJSON() ([]byte, error) {
 	t, err := json.Marshal(s.Timestamp)
 	if err != nil {

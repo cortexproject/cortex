@@ -98,7 +98,10 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 			// Map input IDs to output IDs.
 			for _, vector := range in {
 				for i := range vector.SampleIDs {
-					vector.SampleIDs[i] += c.sampleOffsets[opIdx]
+					vector.SampleIDs[i] = vector.SampleIDs[i] + c.sampleOffsets[opIdx]
+				}
+				for i := range vector.HistogramIDs {
+					vector.HistogramIDs[i] = vector.HistogramIDs[i] + c.sampleOffsets[opIdx]
 				}
 			}
 			c.inVectors[opIdx] = in
@@ -112,21 +115,21 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 	}
 
 	var out []model.StepVector = nil
-	for opIdx, vector := range c.inVectors {
-		if len(vector) > 0 && out == nil {
+	for opIdx, vectors := range c.inVectors {
+		if len(vectors) > 0 && out == nil {
 			out = c.pool.GetVectorBatch()
-			for i := 0; i < len(vector); i++ {
-				out = append(out, c.pool.GetStepVector(vector[i].T))
+			for i := 0; i < len(vectors); i++ {
+				out = append(out, c.pool.GetStepVector(vectors[i].T))
 			}
 		}
 
-		for i := 0; i < len(vector); i++ {
-			out[i].Samples = append(out[i].Samples, vector[i].Samples...)
-			out[i].SampleIDs = append(out[i].SampleIDs, vector[i].SampleIDs...)
-			c.operators[opIdx].GetPool().PutStepVector(vector[i])
+		for i := range vectors {
+			out[i].AppendSamples(c.pool, vectors[i].SampleIDs, vectors[i].Samples)
+			out[i].AppendHistograms(c.pool, vectors[i].HistogramIDs, vectors[i].Histograms)
+			c.operators[opIdx].GetPool().PutStepVector(vectors[i])
 		}
 		c.inVectors[opIdx] = nil
-		c.operators[opIdx].GetPool().PutVectors(vector)
+		c.operators[opIdx].GetPool().PutVectors(vectors)
 	}
 
 	if out == nil {

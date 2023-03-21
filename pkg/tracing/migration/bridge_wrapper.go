@@ -11,7 +11,7 @@ type CortexBridgeTracerWrapper struct {
 	bt *bridge.BridgeTracer
 }
 
-func NewCortexBridgeTracerWrapper(tracer trace.Tracer) (*CortexBridgeTracerWrapper, *bridge.WrapperTracerProvider) {
+func NewCortexBridgeTracerWrapper(tracer trace.Tracer) (*CortexBridgeTracerWrapper, trace.TracerProvider) {
 	bt, wp := bridge.NewTracerPair(tracer)
 	return &CortexBridgeTracerWrapper{bt: bt}, wp
 }

@@ -653,7 +653,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 
 		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
-			l := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if len(l) == 0 {
 				// all labels are gone, samples will be discarded
 				validation.DiscardedSamples.WithLabelValues(
@@ -841,14 +841,15 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 	if err != nil {
 		return err
 	}
-	c := h.(ingester_client.IngesterClient)
+	c := h.(ingester_client.HealthAndIngesterClient)
 
-	req := cortexpb.WriteRequest{
-		Timeseries: timeseries,
-		Metadata:   metadata,
-		Source:     source,
-	}
-	_, err = c.Push(ctx, &req)
+	req := cortexpb.PreallocWriteRequestFromPool()
+	req.Timeseries = timeseries
+	req.Metadata = metadata
+	req.Source = source
+
+	_, err = c.PushPreAlloc(ctx, req)
+	cortexpb.ReuseWriteRequest(req)
 
 	if len(metadata) > 0 {
 		d.ingesterAppends.WithLabelValues(ingester.Addr, typeMetadata).Inc()
@@ -1040,11 +1041,11 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 				return nil, err
 			}
 			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-				return nil, err
+				return nil, validation.LimitError(err.Error())
 			}
 			for _, m := range resp.Metric {
 				if err := queryLimiter.AddSeries(m.Labels); err != nil {
-					return nil, err
+					return nil, validation.LimitError(err.Error())
 				}
 				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
 				fingerprint := m.Fingerprint()
@@ -1071,7 +1072,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 			for {
 				resp, err := stream.Recv()
 				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-					return nil, err
+					return nil, validation.LimitError(err.Error())
 				}
 
 				if err == io.EOF {
@@ -1084,7 +1085,7 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
 
 					if err := queryLimiter.AddSeries(metric.Labels); err != nil {
-						return nil, err
+						return nil, validation.LimitError(err.Error())
 					}
 
 					fingerprint := m.Fingerprint()

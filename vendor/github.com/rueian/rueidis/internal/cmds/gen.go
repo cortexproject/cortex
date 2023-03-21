@@ -1497,6 +1497,30 @@ func (c BfAddKey) Item(item string) BfAddItem {
 	return (BfAddItem)(c)
 }
 
+type BfCard Completed
+
+func (b Builder) BfCard() (c BfCard) {
+	c = BfCard{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "BF.CARD")
+	return c
+}
+
+func (c BfCard) Key(key string) BfCardKey {
+	if c.ks&NoSlot == NoSlot {
+		c.ks = NoSlot | slot(key)
+	} else {
+		c.ks = check(c.ks, slot(key))
+	}
+	c.cs.s = append(c.cs.s, key)
+	return (BfCardKey)(c)
+}
+
+type BfCardKey Completed
+
+func (c BfCardKey) Build() Completed {
+	return Completed(c)
+}
+
 type BfExists Completed
 
 func (b Builder) BfExists() (c BfExists) {
@@ -6760,120 +6784,6 @@ func (c FtAggregateIndex) Query(query string) FtAggregateQuery {
 	return (FtAggregateQuery)(c)
 }
 
-type FtAggregateLoadField Completed
-
-func (c FtAggregateLoadField) Field(field ...string) FtAggregateLoadField {
-	c.cs.s = append(c.cs.s, field...)
-	return c
-}
-
-func (c FtAggregateLoadField) Timeout(timeout int64) FtAggregateTimeout {
-	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
-	return (FtAggregateTimeout)(c)
-}
-
-func (c FtAggregateLoadField) LoadAll() FtAggregateLoadallLoadAll {
-	c.cs.s = append(c.cs.s, "LOAD", "*")
-	return (FtAggregateLoadallLoadAll)(c)
-}
-
-func (c FtAggregateLoadField) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
-	c.cs.s = append(c.cs.s, "GROUPBY", strconv.FormatInt(nargs, 10))
-	return (FtAggregateOpGroupbyGroupby)(c)
-}
-
-func (c FtAggregateLoadField) Sortby(nargs int64) FtAggregateOpSortbySortby {
-	c.cs.s = append(c.cs.s, "SORTBY", strconv.FormatInt(nargs, 10))
-	return (FtAggregateOpSortbySortby)(c)
-}
-
-func (c FtAggregateLoadField) Apply(expression string) FtAggregateOpApplyApply {
-	c.cs.s = append(c.cs.s, "APPLY", expression)
-	return (FtAggregateOpApplyApply)(c)
-}
-
-func (c FtAggregateLoadField) Limit() FtAggregateOpLimitLimit {
-	c.cs.s = append(c.cs.s, "LIMIT")
-	return (FtAggregateOpLimitLimit)(c)
-}
-
-func (c FtAggregateLoadField) Filter(filter string) FtAggregateOpFilter {
-	c.cs.s = append(c.cs.s, "FILTER", filter)
-	return (FtAggregateOpFilter)(c)
-}
-
-func (c FtAggregateLoadField) Withcursor() FtAggregateCursorWithcursor {
-	c.cs.s = append(c.cs.s, "WITHCURSOR")
-	return (FtAggregateCursorWithcursor)(c)
-}
-
-func (c FtAggregateLoadField) Params() FtAggregateParamsParams {
-	c.cs.s = append(c.cs.s, "PARAMS")
-	return (FtAggregateParamsParams)(c)
-}
-
-func (c FtAggregateLoadField) Dialect(dialect int64) FtAggregateDialect {
-	c.cs.s = append(c.cs.s, "DIALECT", strconv.FormatInt(dialect, 10))
-	return (FtAggregateDialect)(c)
-}
-
-func (c FtAggregateLoadField) Build() Completed {
-	return Completed(c)
-}
-
-type FtAggregateLoadLoad Completed
-
-func (c FtAggregateLoadLoad) Field(field ...string) FtAggregateLoadField {
-	c.cs.s = append(c.cs.s, field...)
-	return (FtAggregateLoadField)(c)
-}
-
-type FtAggregateLoadallLoadAll Completed
-
-func (c FtAggregateLoadallLoadAll) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
-	c.cs.s = append(c.cs.s, "GROUPBY", strconv.FormatInt(nargs, 10))
-	return (FtAggregateOpGroupbyGroupby)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Sortby(nargs int64) FtAggregateOpSortbySortby {
-	c.cs.s = append(c.cs.s, "SORTBY", strconv.FormatInt(nargs, 10))
-	return (FtAggregateOpSortbySortby)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Apply(expression string) FtAggregateOpApplyApply {
-	c.cs.s = append(c.cs.s, "APPLY", expression)
-	return (FtAggregateOpApplyApply)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Limit() FtAggregateOpLimitLimit {
-	c.cs.s = append(c.cs.s, "LIMIT")
-	return (FtAggregateOpLimitLimit)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Filter(filter string) FtAggregateOpFilter {
-	c.cs.s = append(c.cs.s, "FILTER", filter)
-	return (FtAggregateOpFilter)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Withcursor() FtAggregateCursorWithcursor {
-	c.cs.s = append(c.cs.s, "WITHCURSOR")
-	return (FtAggregateCursorWithcursor)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Params() FtAggregateParamsParams {
-	c.cs.s = append(c.cs.s, "PARAMS")
-	return (FtAggregateParamsParams)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Dialect(dialect int64) FtAggregateDialect {
-	c.cs.s = append(c.cs.s, "DIALECT", strconv.FormatInt(dialect, 10))
-	return (FtAggregateDialect)(c)
-}
-
-func (c FtAggregateLoadallLoadAll) Build() Completed {
-	return Completed(c)
-}
-
 type FtAggregateOpApplyApply Completed
 
 func (c FtAggregateOpApplyApply) As(name string) FtAggregateOpApplyAs {
@@ -6896,6 +6806,16 @@ func (c FtAggregateOpApplyAs) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpApplyAs) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpApplyAs) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpApplyAs) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpApplyAs) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -6928,6 +6848,16 @@ func (c FtAggregateOpApplyAs) Build() Completed {
 }
 
 type FtAggregateOpFilter Completed
+
+func (c FtAggregateOpFilter) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpFilter) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
 
 func (c FtAggregateOpFilter) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
 	c.cs.s = append(c.cs.s, "GROUPBY", strconv.FormatInt(nargs, 10))
@@ -7010,6 +6940,16 @@ func (c FtAggregateOpGroupbyGroupby) Filter(filter string) FtAggregateOpFilter {
 	return (FtAggregateOpFilter)(c)
 }
 
+func (c FtAggregateOpGroupbyGroupby) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyGroupby) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
 func (c FtAggregateOpGroupbyGroupby) Withcursor() FtAggregateCursorWithcursor {
 	c.cs.s = append(c.cs.s, "WITHCURSOR")
 	return (FtAggregateCursorWithcursor)(c)
@@ -7064,6 +7004,16 @@ func (c FtAggregateOpGroupbyProperty) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpGroupbyProperty) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpGroupbyProperty) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyProperty) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpGroupbyProperty) Withcursor() FtAggregateCursorWithcursor {
@@ -7142,6 +7092,16 @@ func (c FtAggregateOpGroupbyReduceArg) Filter(filter string) FtAggregateOpFilter
 	return (FtAggregateOpFilter)(c)
 }
 
+func (c FtAggregateOpGroupbyReduceArg) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceArg) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
 func (c FtAggregateOpGroupbyReduceArg) Withcursor() FtAggregateCursorWithcursor {
 	c.cs.s = append(c.cs.s, "WITHCURSOR")
 	return (FtAggregateCursorWithcursor)(c)
@@ -7208,6 +7168,16 @@ func (c FtAggregateOpGroupbyReduceAs) Filter(filter string) FtAggregateOpFilter 
 	return (FtAggregateOpFilter)(c)
 }
 
+func (c FtAggregateOpGroupbyReduceAs) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceAs) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
 func (c FtAggregateOpGroupbyReduceAs) Withcursor() FtAggregateCursorWithcursor {
 	c.cs.s = append(c.cs.s, "WITHCURSOR")
 	return (FtAggregateCursorWithcursor)(c)
@@ -7267,6 +7237,16 @@ func (c FtAggregateOpGroupbyReduceBy) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpGroupbyReduceBy) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceBy) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceBy) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpGroupbyReduceBy) Withcursor() FtAggregateCursorWithcursor {
@@ -7345,6 +7325,16 @@ func (c FtAggregateOpGroupbyReduceNargs) Filter(filter string) FtAggregateOpFilt
 	return (FtAggregateOpFilter)(c)
 }
 
+func (c FtAggregateOpGroupbyReduceNargs) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceNargs) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
 func (c FtAggregateOpGroupbyReduceNargs) Withcursor() FtAggregateCursorWithcursor {
 	c.cs.s = append(c.cs.s, "WITHCURSOR")
 	return (FtAggregateCursorWithcursor)(c)
@@ -7394,6 +7384,16 @@ func (c FtAggregateOpGroupbyReduceOrderAsc) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpGroupbyReduceOrderAsc) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceOrderAsc) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceOrderAsc) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpGroupbyReduceOrderAsc) Withcursor() FtAggregateCursorWithcursor {
@@ -7447,6 +7447,16 @@ func (c FtAggregateOpGroupbyReduceOrderDesc) Filter(filter string) FtAggregateOp
 	return (FtAggregateOpFilter)(c)
 }
 
+func (c FtAggregateOpGroupbyReduceOrderDesc) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpGroupbyReduceOrderDesc) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
 func (c FtAggregateOpGroupbyReduceOrderDesc) Withcursor() FtAggregateCursorWithcursor {
 	c.cs.s = append(c.cs.s, "WITHCURSOR")
 	return (FtAggregateCursorWithcursor)(c)
@@ -7485,6 +7495,16 @@ type FtAggregateOpLimitOffsetNum Completed
 func (c FtAggregateOpLimitOffsetNum) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpLimitOffsetNum) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpLimitOffsetNum) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpLimitOffsetNum) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7526,6 +7546,130 @@ func (c FtAggregateOpLimitOffsetNum) Build() Completed {
 	return Completed(c)
 }
 
+type FtAggregateOpLoadField Completed
+
+func (c FtAggregateOpLoadField) Field(field ...string) FtAggregateOpLoadField {
+	c.cs.s = append(c.cs.s, field...)
+	return c
+}
+
+func (c FtAggregateOpLoadField) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
+	c.cs.s = append(c.cs.s, "GROUPBY", strconv.FormatInt(nargs, 10))
+	return (FtAggregateOpGroupbyGroupby)(c)
+}
+
+func (c FtAggregateOpLoadField) Sortby(nargs int64) FtAggregateOpSortbySortby {
+	c.cs.s = append(c.cs.s, "SORTBY", strconv.FormatInt(nargs, 10))
+	return (FtAggregateOpSortbySortby)(c)
+}
+
+func (c FtAggregateOpLoadField) Apply(expression string) FtAggregateOpApplyApply {
+	c.cs.s = append(c.cs.s, "APPLY", expression)
+	return (FtAggregateOpApplyApply)(c)
+}
+
+func (c FtAggregateOpLoadField) Limit() FtAggregateOpLimitLimit {
+	c.cs.s = append(c.cs.s, "LIMIT")
+	return (FtAggregateOpLimitLimit)(c)
+}
+
+func (c FtAggregateOpLoadField) Filter(filter string) FtAggregateOpFilter {
+	c.cs.s = append(c.cs.s, "FILTER", filter)
+	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpLoadField) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpLoadField) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
+func (c FtAggregateOpLoadField) Withcursor() FtAggregateCursorWithcursor {
+	c.cs.s = append(c.cs.s, "WITHCURSOR")
+	return (FtAggregateCursorWithcursor)(c)
+}
+
+func (c FtAggregateOpLoadField) Params() FtAggregateParamsParams {
+	c.cs.s = append(c.cs.s, "PARAMS")
+	return (FtAggregateParamsParams)(c)
+}
+
+func (c FtAggregateOpLoadField) Dialect(dialect int64) FtAggregateDialect {
+	c.cs.s = append(c.cs.s, "DIALECT", strconv.FormatInt(dialect, 10))
+	return (FtAggregateDialect)(c)
+}
+
+func (c FtAggregateOpLoadField) Build() Completed {
+	return Completed(c)
+}
+
+type FtAggregateOpLoadLoad Completed
+
+func (c FtAggregateOpLoadLoad) Field(field ...string) FtAggregateOpLoadField {
+	c.cs.s = append(c.cs.s, field...)
+	return (FtAggregateOpLoadField)(c)
+}
+
+type FtAggregateOpLoadallLoadAll Completed
+
+func (c FtAggregateOpLoadallLoadAll) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
+	c.cs.s = append(c.cs.s, "GROUPBY", strconv.FormatInt(nargs, 10))
+	return (FtAggregateOpGroupbyGroupby)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Sortby(nargs int64) FtAggregateOpSortbySortby {
+	c.cs.s = append(c.cs.s, "SORTBY", strconv.FormatInt(nargs, 10))
+	return (FtAggregateOpSortbySortby)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Apply(expression string) FtAggregateOpApplyApply {
+	c.cs.s = append(c.cs.s, "APPLY", expression)
+	return (FtAggregateOpApplyApply)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Limit() FtAggregateOpLimitLimit {
+	c.cs.s = append(c.cs.s, "LIMIT")
+	return (FtAggregateOpLimitLimit)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Filter(filter string) FtAggregateOpFilter {
+	c.cs.s = append(c.cs.s, "FILTER", filter)
+	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return c
+}
+
+func (c FtAggregateOpLoadallLoadAll) Withcursor() FtAggregateCursorWithcursor {
+	c.cs.s = append(c.cs.s, "WITHCURSOR")
+	return (FtAggregateCursorWithcursor)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Params() FtAggregateParamsParams {
+	c.cs.s = append(c.cs.s, "PARAMS")
+	return (FtAggregateParamsParams)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Dialect(dialect int64) FtAggregateDialect {
+	c.cs.s = append(c.cs.s, "DIALECT", strconv.FormatInt(dialect, 10))
+	return (FtAggregateDialect)(c)
+}
+
+func (c FtAggregateOpLoadallLoadAll) Build() Completed {
+	return Completed(c)
+}
+
 type FtAggregateOpSortbyFieldsOrderAsc Completed
 
 func (c FtAggregateOpSortbyFieldsOrderAsc) Property(property string) FtAggregateOpSortbyFieldsProperty {
@@ -7551,6 +7695,16 @@ func (c FtAggregateOpSortbyFieldsOrderAsc) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpSortbyFieldsOrderAsc) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpSortbyFieldsOrderAsc) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpSortbyFieldsOrderAsc) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpSortbyFieldsOrderAsc) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7607,6 +7761,16 @@ func (c FtAggregateOpSortbyFieldsOrderDesc) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpSortbyFieldsOrderDesc) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpSortbyFieldsOrderDesc) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpSortbyFieldsOrderDesc) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpSortbyFieldsOrderDesc) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7675,6 +7839,16 @@ func (c FtAggregateOpSortbyFieldsProperty) Filter(filter string) FtAggregateOpFi
 	return (FtAggregateOpFilter)(c)
 }
 
+func (c FtAggregateOpSortbyFieldsProperty) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpSortbyFieldsProperty) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
+}
+
 func (c FtAggregateOpSortbyFieldsProperty) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
 	c.cs.s = append(c.cs.s, "GROUPBY", strconv.FormatInt(nargs, 10))
 	return (FtAggregateOpGroupbyGroupby)(c)
@@ -7719,6 +7893,16 @@ func (c FtAggregateOpSortbyMax) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpSortbyMax) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpSortbyMax) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpSortbyMax) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpSortbyMax) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7775,6 +7959,16 @@ func (c FtAggregateOpSortbySortby) Limit() FtAggregateOpLimitLimit {
 func (c FtAggregateOpSortbySortby) Filter(filter string) FtAggregateOpFilter {
 	c.cs.s = append(c.cs.s, "FILTER", filter)
 	return (FtAggregateOpFilter)(c)
+}
+
+func (c FtAggregateOpSortbySortby) LoadAll() FtAggregateOpLoadallLoadAll {
+	c.cs.s = append(c.cs.s, "LOAD", "*")
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateOpSortbySortby) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateOpSortbySortby) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7842,19 +8036,19 @@ func (c FtAggregateQuery) Verbatim() FtAggregateVerbatim {
 	return (FtAggregateVerbatim)(c)
 }
 
-func (c FtAggregateQuery) Load(count string) FtAggregateLoadLoad {
-	c.cs.s = append(c.cs.s, "LOAD", count)
-	return (FtAggregateLoadLoad)(c)
-}
-
 func (c FtAggregateQuery) Timeout(timeout int64) FtAggregateTimeout {
 	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
 	return (FtAggregateTimeout)(c)
 }
 
-func (c FtAggregateQuery) LoadAll() FtAggregateLoadallLoadAll {
+func (c FtAggregateQuery) LoadAll() FtAggregateOpLoadallLoadAll {
 	c.cs.s = append(c.cs.s, "LOAD", "*")
-	return (FtAggregateLoadallLoadAll)(c)
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateQuery) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateQuery) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7903,9 +8097,14 @@ func (c FtAggregateQuery) Build() Completed {
 
 type FtAggregateTimeout Completed
 
-func (c FtAggregateTimeout) LoadAll() FtAggregateLoadallLoadAll {
+func (c FtAggregateTimeout) LoadAll() FtAggregateOpLoadallLoadAll {
 	c.cs.s = append(c.cs.s, "LOAD", "*")
-	return (FtAggregateLoadallLoadAll)(c)
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateTimeout) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateTimeout) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -7954,19 +8153,19 @@ func (c FtAggregateTimeout) Build() Completed {
 
 type FtAggregateVerbatim Completed
 
-func (c FtAggregateVerbatim) Load(count string) FtAggregateLoadLoad {
-	c.cs.s = append(c.cs.s, "LOAD", count)
-	return (FtAggregateLoadLoad)(c)
-}
-
 func (c FtAggregateVerbatim) Timeout(timeout int64) FtAggregateTimeout {
 	c.cs.s = append(c.cs.s, "TIMEOUT", strconv.FormatInt(timeout, 10))
 	return (FtAggregateTimeout)(c)
 }
 
-func (c FtAggregateVerbatim) LoadAll() FtAggregateLoadallLoadAll {
+func (c FtAggregateVerbatim) LoadAll() FtAggregateOpLoadallLoadAll {
 	c.cs.s = append(c.cs.s, "LOAD", "*")
-	return (FtAggregateLoadallLoadAll)(c)
+	return (FtAggregateOpLoadallLoadAll)(c)
+}
+
+func (c FtAggregateVerbatim) Load(count int64) FtAggregateOpLoadLoad {
+	c.cs.s = append(c.cs.s, "LOAD", strconv.FormatInt(count, 10))
+	return (FtAggregateOpLoadLoad)(c)
 }
 
 func (c FtAggregateVerbatim) Groupby(nargs int64) FtAggregateOpGroupbyGroupby {
@@ -17936,8 +18135,8 @@ func (c HscanCursor) Build() Completed {
 
 type HscanKey Completed
 
-func (c HscanKey) Cursor(cursor int64) HscanCursor {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(cursor, 10))
+func (c HscanKey) Cursor(cursor uint64) HscanCursor {
+	c.cs.s = append(c.cs.s, strconv.FormatUint(cursor, 10))
 	return (HscanCursor)(c)
 }
 
@@ -22510,8 +22709,8 @@ func (b Builder) Scan() (c Scan) {
 	return c
 }
 
-func (c Scan) Cursor(cursor int64) ScanCursor {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(cursor, 10))
+func (c Scan) Cursor(cursor uint64) ScanCursor {
+	c.cs.s = append(c.cs.s, strconv.FormatUint(cursor, 10))
 	return (ScanCursor)(c)
 }
 
@@ -24364,8 +24563,8 @@ func (c SscanCursor) Build() Completed {
 
 type SscanKey Completed
 
-func (c SscanKey) Cursor(cursor int64) SscanCursor {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(cursor, 10))
+func (c SscanKey) Cursor(cursor uint64) SscanCursor {
+	c.cs.s = append(c.cs.s, strconv.FormatUint(cursor, 10))
 	return (SscanCursor)(c)
 }
 
@@ -33928,8 +34127,8 @@ func (c ZscanCursor) Build() Completed {
 
 type ZscanKey Completed
 
-func (c ZscanKey) Cursor(cursor int64) ZscanCursor {
-	c.cs.s = append(c.cs.s, strconv.FormatInt(cursor, 10))
+func (c ZscanKey) Cursor(cursor uint64) ZscanCursor {
+	c.cs.s = append(c.cs.s, strconv.FormatUint(cursor, 10))
 	return (ZscanCursor)(c)
 }
 

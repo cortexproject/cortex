@@ -382,7 +382,7 @@ func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, origi
 		downloadedFiles = append(downloadedFiles, dst) // Last, clean up the root dst directory.
 		// Best-effort cleanup if the download failed.
 		for _, f := range downloadedFiles {
-			if rerr := os.Remove(f); rerr != nil {
+			if rerr := os.RemoveAll(f); rerr != nil {
 				level.Warn(logger).Log("msg", "failed to remove file on partial dir download error", "file", f, "err", rerr)
 			}
 		}

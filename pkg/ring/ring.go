@@ -19,7 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	shardUtil "github.com/cortexproject/cortex/pkg/ring/shard"
-	"github.com/cortexproject/cortex/pkg/ring/util"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	utilmath "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"

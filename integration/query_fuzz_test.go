@@ -157,6 +157,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		})
 	}
 
+	failures := 0
 	for i, tc := range cases {
 		qt := "instant query"
 		if !tc.instantQuery {
@@ -165,10 +166,15 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		if tc.err1 != nil || tc.err2 != nil {
 			if !cmp.Equal(tc.err1, tc.err2) {
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
+				failures++
 			}
 		} else if !sameModelValue(tc.res1, tc.res2) {
 			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+			failures++
 		}
+	}
+	if failures > 0 {
+		require.Fail(t, "failed %d test cases", failures)
 	}
 }
 

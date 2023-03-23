@@ -842,11 +842,13 @@ func (i *Ingester) updateUserTSDBConfigs() {
 				ExemplarsConfig: &config.ExemplarsConfig{
 					MaxExemplars: i.getMaxExemplars(userID),
 				},
+				TSDBConfig: &config.TSDBConfig{
+					OutOfOrderTimeWindow: time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+				},
 			},
 		}
 
-		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow. Invoking this method
-		// with a 0 value of OutOfOrderTimeWindow simply updates Max Exemplars.
+		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow.
 		err := userDB.db.ApplyConfig(cfg)
 		if err != nil {
 			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update user tsdb configuration.")
@@ -995,6 +997,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		startAppend               = time.Now()
 		sampleOutOfBoundsCount    = 0
 		sampleOutOfOrderCount     = 0
+		sampleTooOldCount         = 0
 		newValueForTimestampCount = 0
 		perUserSeriesLimitCount   = 0
 		perMetricSeriesLimitCount = 0
@@ -1060,6 +1063,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case storage.ErrDuplicateSampleForTimestamp:
 				newValueForTimestampCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
+				continue
+
+			case storage.ErrTooOldSample:
+				sampleTooOldCount++
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
 				continue
 
@@ -1152,6 +1160,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 	if sampleOutOfOrderCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
+	}
+	if sampleTooOldCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(sampleTooOld, userID).Add(float64(sampleTooOldCount))
 	}
 	if newValueForTimestampCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
@@ -1947,6 +1958,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
+		OutOfOrderTimeWindow:           time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

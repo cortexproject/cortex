@@ -115,6 +115,12 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errInvalidWALSegmentSizeBytes,
 		},
+		"should fail on out of order cap max": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.TSDB.OutOfOrderCapMax = 0
+			},
+			expectedErr: errInvalidOutOfOrderCapMax,
+		},
 	}
 
 	for testName, testData := range tests {

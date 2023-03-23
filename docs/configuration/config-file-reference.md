@@ -1735,6 +1735,11 @@ tsdb:
   # down.
   # CLI flag: -blocks-storage.tsdb.memory-snapshot-on-shutdown
   [memory_snapshot_on_shutdown: <boolean> | default = false]
+
+  # [EXPERIMENTAL] Configures the maximum number of samples per chunk that can
+  # be out-of-order.
+  # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
+  [out_of_order_cap_max: <int> | default = 32]
 ```
 
 ### `compactor_config`
@@ -2852,6 +2857,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
+# [Experimental] Configures the allowed time window for ingestion of
+# out-of-order samples. Disabled (0s) by default.
+# CLI flag: -ingester.out-of-order-time-window
+[out_of_order_time_window: <duration> | default = 0s]
+
 # Maximum number of chunks that can be fetched in a single query from ingesters
 # and long-term storage. This limit is enforced in the querier, ruler and
 # store-gateway. 0 to disable.
@@ -2864,8 +2874,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-fetched-series-per-query
 [max_fetched_series_per_query: <int> | default = 0]
 
-# Deprecated (user max-fetched-data-bytes-per-query instead): The maximum size
-# of all chunks in bytes that a query can fetch from each ingester and storage.
+# Deprecated (use max-fetched-data-bytes-per-query instead): The maximum size of
+# all chunks in bytes that a query can fetch from each ingester and storage.
 # This limit is enforced in the querier, ruler and store-gateway. 0 to disable.
 # CLI flag: -querier.max-fetched-chunk-bytes-per-query
 [max_fetched_chunk_bytes_per_query: <int> | default = 0]

@@ -39,7 +39,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get label values](#get-label-values) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
 | [Get metric metadata](#get-metric-metadata) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/metadata` |
 | [Remote read](#remote-read) | Querier, Query-frontend || `POST <prometheus-http-prefix>/api/v1/read` |
-| [Build information](#build-information) | Querier, Query-frontend |v1.15.0| `GET <prometheus-http-prefix>/api/v1/status/buildinfo` | 
+| [Build information](#build-information) | Querier, Query-frontend |v1.15.0| `GET <prometheus-http-prefix>/api/v1/status/buildinfo` |
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier || `GET /api/v1/user_stats` |
 | [Ruler ring status](#ruler-ring-status) | Ruler || `GET /ruler/ring` |
 | [Ruler rules ](#ruler-rule-groups) | Ruler || `GET /ruler/rule_groups` |

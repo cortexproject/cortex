@@ -1,6 +1,7 @@
 package ring
 
 import (
+	reflect "reflect"
 	"testing"
 	"time"
 
@@ -597,6 +598,89 @@ func TestDesc_FindDifference(t *testing.T) {
 			assert.Equal(t, testData.toUpdate, toUpdate)
 			assert.Equal(t, testData.toDelete, toDelete)
 			assert.NoError(t, err)
+		})
+	}
+}
+
+func Test_resolveConflicts(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]InstanceDesc
+		want map[string]InstanceDesc
+	}{
+		{
+			name: "Empty input",
+			args: map[string]InstanceDesc{},
+			want: map[string]InstanceDesc{},
+		},
+		{
+			name: "No conflicts",
+			args: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: ACTIVE, Tokens: []uint32{4, 5, 6}},
+			},
+			want: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: ACTIVE, Tokens: []uint32{4, 5, 6}},
+			},
+		},
+		{
+			name: "Conflict resolution with LEFT state",
+			args: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: LEFT, Tokens: []uint32{1, 2, 3, 4}},
+			},
+			want: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: LEFT, Tokens: []uint32{}},
+			},
+		},
+		{
+			name: "Conflict resolution with LEAVING state",
+			args: map[string]InstanceDesc{
+				"ing1": {State: LEAVING, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: PENDING, Tokens: []uint32{1, 2, 3, 4}},
+			},
+			want: map[string]InstanceDesc{
+				"ing1": {State: LEAVING, Tokens: []uint32{}},
+				"ing2": {State: PENDING, Tokens: []uint32{1, 2, 3, 4}},
+			},
+		},
+		{
+			name: "Conflict resolution with JOINING state",
+			args: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: JOINING, Tokens: []uint32{1, 2, 3, 4}},
+			},
+			want: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: JOINING, Tokens: []uint32{4}},
+			},
+		},
+		{
+			name: "Conflict resolution with same state",
+			args: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: ACTIVE, Tokens: []uint32{1, 2, 3, 4}},
+			},
+			want: map[string]InstanceDesc{
+				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
+				"ing2": {State: ACTIVE, Tokens: []uint32{4}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolveConflicts(tt.args)
+			for key, actualInstance := range tt.args {
+				expectedInstance := tt.want[key]
+				if actualInstance.State != expectedInstance.State || !reflect.DeepEqual(actualInstance.Tokens, expectedInstance.Tokens) {
+					if len(actualInstance.Tokens) == len(expectedInstance.Tokens) && len(actualInstance.Tokens) != 0 {
+						t.Errorf("resolveConflicts() for key %s = %v, want %v", key, actualInstance, expectedInstance)
+					}
+				}
+			}
 		})
 	}
 }

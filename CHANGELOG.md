@@ -4,9 +4,9 @@
 
 ## 1.15.0 in progress
 
-* [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5016
+* [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5080 #5122
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
-* [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
+* [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5068
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103
 * [CHANGE] Tracing: Use the default OTEL trace sampler when `-tracing.otel.exporter-type` is set to `awsxray`. #5141
 * [CHANGE] Ingester partial error log line to debug level. #5192
@@ -29,7 +29,7 @@
 * [FEATURE] Added `snappy-block` as an option for grpc compression #5215
 * [FEATURE] Enable experimental out-of-order samples support. Added 2 new configs `ingester.out_of_order_time_window` and `blocks-storage.tsdb.out_of_order_cap_max`. #4964
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
-* [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
+* [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #4991
 * [ENHANCEMENT] Query-tee: Add `/api/v1/query_exemplars` API endpoint support. #5010
 * [ENHANCEMENT] Let blocks_cleaner delete blocks concurrently(default 16 goroutines). #5028
 * [ENHANCEMENT] Query Frontend/Query Scheduler: Increase upper bound to 60s for queue duration histogram metric. #5029
@@ -49,7 +49,7 @@
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
 * [BUGFIX] Fixed ingesters with less tokens stuck in LEAVING. #5061
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
-* [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
+* [BUGFIX] Ingester: Fix Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
 * [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
 * [BUGFIX] Query-frontend: Fix shardable instant queries do not produce sorted results for `sort`, `sort_desc`, `topk`, `bottomk` functions. #5148, #5170

@@ -717,8 +717,8 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.43.0-rc.0.0.20230315130038-58a8d526e8f1
-## explicit; go 1.18
+# github.com/prometheus/prometheus v0.43.1-0.20230327151049-211ae4f1f0a2
+## explicit; go 1.19
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
 github.com/prometheus/prometheus/discovery/dns

@@ -842,7 +842,9 @@ func getFreePorts(count int) ([]int, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer l.Close()
+		if err := l.Close(); err != nil {
+			return nil, err
+		}
 		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
 	}
 	return ports, nil

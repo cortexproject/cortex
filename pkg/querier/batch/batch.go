@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"time"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -98,6 +100,24 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 				a.curr.Index++
 			}
 			return true
+		} else {
+			// In this case, t is after the end of the current batch. Here we try to calculate if we are seeking to samples
+			// in the same chunks, and if so, we foward the iterator to the right point in time - we do that this
+			// is more efficient than the seek call
+			approxNumberOfSamples := model.Time(t).Sub(model.Time(a.curr.Timestamps[a.curr.Length-1])) / (30 * time.Second)
+			if approxNumberOfSamples < 60 {
+				for a.underlying.Next(promchunk.BatchSize) {
+					a.curr = a.underlying.Batch()
+					if t <= a.curr.Timestamps[a.curr.Length-1] {
+						//In this case, some timestamp between current sample and end of batch can fulfill
+						//the seek. Let's find it.
+						for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
+							a.curr.Index++
+						}
+						return true
+					}
+				}
+			}
 		}
 	}
 

@@ -831,7 +831,7 @@ func TestMarkReplicaDeleted(t *testing.T) {
 	haTracker.CheckReplica(ctx, "user3", "g5", "r1", now)
 
 	// wait for haTracker to update its internal elected map
-	for len(haTracker.elected) < 5 {
+	for haTracker.electedLen() < 5 {
 		time.Sleep(time.Second)
 	}
 
@@ -854,4 +854,10 @@ func TestMarkReplicaDeleted(t *testing.T) {
 	verifyDeleted("user1/g3", true)
 	verifyDeleted("user2/g4", true)
 	verifyDeleted("user3/g5", true)
+}
+
+func (c *HATracker) electedLen() int {
+	c.electedLock.Lock()
+	defer c.electedLock.Unlock()
+	return len(c.elected)
 }

@@ -344,9 +344,14 @@ func (r *DefaultMultiTenantManager) evalIterationFunc(evalCtx context.Context, u
 		if now.Before(startTime) {
 			level.Info(g.Logger()).Log("msg", "waiting to start evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "startTime", startTime)
 			if now.Add(g.Interval()).Before(startTime) {
+				// startTime is farther out than this
 				return
 			}
 			time.Sleep(time.Duration(startTime.UnixMilli()-now.UnixMilli()) * time.Millisecond)
+			if g.Interval() <= r.cfg.PollInterval {
+				// skip first iteration
+				return
+			}
 		}
 
 		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaID, now)
@@ -366,7 +371,8 @@ func (r *DefaultMultiTenantManager) getGroupStartTime(replicaGroup string) time.
 	if ok {
 		return timestamp.Time(startTimestamp)
 	}
-	startTime := time.Now().Add(time.Duration(rand.Float64()*r.cfg.PollInterval.Seconds()) * time.Second)
+	jitter := time.Duration(rand.Int63n(int64(r.cfg.PollInterval)))
+	startTime := time.Now().Add(jitter)
 	r.groupStartTimestamp[replicaGroup] = timestamp.FromTime(startTime)
 	return startTime
 }

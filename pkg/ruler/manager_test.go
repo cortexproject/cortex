@@ -141,16 +141,17 @@ func TestEvalIterationFunc(t *testing.T) {
 			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
 
 			err := kvStore.Put(ctx, "testUser/testFile/testGroup", &ha.ReplicaDesc{
-				ReceivedAt: timestamp.FromTime(now) - 1000,
+				ReceivedAt: timestamp.FromTime(now) - 60,
 				Replica:    tc.electedReplica,
 				DeletedAt:  0,
 			})
 			require.NoError(t, err)
 
 			cfg := Config{
+				PollInterval: 5 * time.Second,
 				HATrackerConfig: HATrackerConfig{
 					EnableHATracker:        tc.haTrackerEnabled,
-					UpdateTimeout:          60 * time.Second,
+					UpdateTimeout:          300 * time.Second,
 					UpdateTimeoutJitterMax: 0,
 					FailoverTimeout:        300 * time.Second,
 					KVStore: kv.Config{
@@ -167,9 +168,10 @@ func TestEvalIterationFunc(t *testing.T) {
 			testRule := &mockRule{name: "testRule"}
 
 			g := promRules.NewGroup(promRules.GroupOptions{
-				Name:  "testGroup",
-				File:  "testFile",
-				Rules: []promRules.Rule{testRule},
+				Name:     "testGroup",
+				File:     "testFile",
+				Interval: time.Second,
+				Rules:    []promRules.Rule{testRule},
 				Opts: &promRules.ManagerOptions{
 					Appendable: NewPusherAppendable(&fakePusher{}, user, ruleLimits{}, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounter(prometheus.CounterOpts{})),
 					Logger:     log.NewNopLogger(),
@@ -178,6 +180,9 @@ func TestEvalIterationFunc(t *testing.T) {
 
 			require.True(t, g.GetLastEvalTimestamp().IsZero())
 
+			// first iteration will be skipped for ha-tracker-leader case
+			manager.evalIterationFunc(ctx, user, g, now)
+			time.Sleep(time.Second * 5)
 			manager.evalIterationFunc(ctx, user, g, now)
 
 			if tc.evaluationExpected {

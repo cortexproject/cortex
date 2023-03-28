@@ -912,7 +912,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, quorumType Q
 	merged := make(map[string]*GroupStateDesc)
 	for groupName, groupCounters := range groupCounterMap {
 		quorumFound := false
-		var mostRecentlyEvaluated *groupCounter = nil
+		var mostRecentlyEvaluated *groupCounter
 		for _, groupCounter := range *groupCounters {
 			if mostRecentlyEvaluated == nil || mostRecentlyEvaluated.group.EvaluationTimestamp.Before(groupCounter.group.EvaluationTimestamp) {
 				mostRecentlyEvaluated = groupCounter

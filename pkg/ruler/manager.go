@@ -294,7 +294,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	level.Info(r.logger).Log("msg", "all user managers stopped")
 
 	if r.haTracker != nil {
-		r.haTracker.MarkReplicaDeleted(nil, r.cfg.HATrackerConfig.ReplicaID)
+		r.haTracker.MarkReplicaDeleted(context.Background(), r.cfg.HATrackerConfig.ReplicaID)
 		level.Info(r.logger).Log("msg", "marked replica deleted")
 	}
 

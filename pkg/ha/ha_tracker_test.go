@@ -803,16 +803,16 @@ func TestMarkReplicaDeleted(t *testing.T) {
 	kvStore, closer := consul.NewInMemoryClient(GetReplicaDescCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-	kvStore.Put(ctx, "user1/g1", &ReplicaDesc{
+	require.NoError(t, kvStore.Put(ctx, "user1/g1", &ReplicaDesc{
 		ReceivedAt: timestamp.FromTime(now) - 5000,
 		Replica:    "r0",
 		DeletedAt:  0,
-	})
-	kvStore.Put(ctx, "user2/g2", &ReplicaDesc{
+	}))
+	require.NoError(t, kvStore.Put(ctx, "user2/g2", &ReplicaDesc{
 		ReceivedAt: timestamp.FromTime(now) - 5000,
 		Replica:    "r0",
 		DeletedAt:  0,
-	})
+	}))
 
 	haTracker, err := NewHATracker(HATrackerConfig{
 		EnableHATracker:        true,
@@ -826,9 +826,9 @@ func TestMarkReplicaDeleted(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(ctx, haTracker))
 	defer services.StopAndAwaitTerminated(ctx, haTracker) //nolint:errcheck
 
-	haTracker.CheckReplica(ctx, "user1", "g3", "r1", now)
-	haTracker.CheckReplica(ctx, "user2", "g4", "r1", now)
-	haTracker.CheckReplica(ctx, "user3", "g5", "r1", now)
+	require.NoError(t, haTracker.CheckReplica(ctx, "user1", "g3", "r1", now))
+	require.NoError(t, haTracker.CheckReplica(ctx, "user2", "g4", "r1", now))
+	require.NoError(t, haTracker.CheckReplica(ctx, "user3", "g5", "r1", now))
 
 	// wait for haTracker to update its internal elected map
 	for haTracker.electedLen() < 5 {

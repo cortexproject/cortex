@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 )
@@ -19,6 +20,7 @@ func TestBucketWithRetries_UploadSeekable(t *testing.T) {
 		FailCount: 3,
 	}
 	b := BucketWithRetries{
+		logger:           log.NewNopLogger(),
 		bucket:           &m,
 		operationRetries: 5,
 		retryMinBackoff:  10 * time.Millisecond,
@@ -39,6 +41,7 @@ func TestBucketWithRetries_UploadNonSeekable(t *testing.T) {
 		FailCount: maxFailCount,
 	}
 	b := BucketWithRetries{
+		logger:           log.NewNopLogger(),
 		bucket:           &m,
 		operationRetries: 5,
 		retryMinBackoff:  10 * time.Millisecond,
@@ -49,6 +52,25 @@ func TestBucketWithRetries_UploadNonSeekable(t *testing.T) {
 	err := b.Upload(context.Background(), "dummy", input)
 	require.Errorf(t, err, "empty byte slice")
 	require.Equal(t, maxFailCount, m.FailCount)
+}
+
+func TestBucketWithRetries_UploadFailed(t *testing.T) {
+	t.Parallel()
+
+	m := mockBucket{
+		FailCount: 6,
+	}
+	b := BucketWithRetries{
+		logger:           log.NewNopLogger(),
+		bucket:           &m,
+		operationRetries: 5,
+		retryMinBackoff:  10 * time.Millisecond,
+		retryMaxBackoff:  time.Second,
+	}
+
+	input := []byte("test input")
+	err := b.Upload(context.Background(), "dummy", bytes.NewReader(input))
+	require.ErrorContains(t, err, "failed upload: ")
 }
 
 type fakeReader struct {

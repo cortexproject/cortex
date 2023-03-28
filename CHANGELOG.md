@@ -1,6 +1,9 @@
 # Changelog
 
 ## master / unreleased
+
+## 1.15.0 in progress
+
 * [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5016
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
 * [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
@@ -8,7 +11,23 @@
 * [CHANGE] Tracing: Use the default OTEL trace sampler when `-tracing.otel.exporter-type` is set to `awsxray`. #5141
 * [CHANGE] Ingester partial error log line to debug level. #5192
 * [CHANGE] Change HTTP status code from 503/422 to 499 if a request is canceled. #5220
-* [ENHANCEMENT] Update Go version to 1.19.3. #4988
+* [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
+* [FEATURE] Ingester: Add active series to all_user_stats page. #4972
+* [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
+* [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
+* [FEATURE] Ingester: Enable snapshotting of In-memory TSDB on disk during shutdown via `-blocks-storage.tsdb.memory-snapshot-on-shutdown`. #5011
+* [FEATURE] Query Frontend/Scheduler: Add a new counter metric `cortex_request_queue_requests_total` for total requests going to queue. #5030
+* [FEATURE] Build ARM docker images. #5041
+* [FEATURE] Query-frontend/Querier: Create spans to measure time to merge promql responses. #5041
+* [FEATURE] Querier/Ruler: Support the new thanos promql engine. This is an experimental feature and might change in the future. #5093
+* [FEATURE] Added zstd as an option for grpc compression #5092
+* [FEATURE] Ring: Add new kv store option `dynamodb`. #5026
+* [FEATURE] Cache: Support redis as backend for caching bucket and index cache. #5057
+* [FEATURE] Querier/Store-Gateway: Added `-blocks-storage.bucket-store.ignore-blocks-within` allowing to filter out the recently created blocks from being synced by queriers and store-gateways. #5166
+* [FEATURE] AlertManager/Ruler: Added support for  `keep_firing_for` on alerting rulers.
+* [FEATURE] Alertmanager: Add support for time_intervals. #5102
+* [FEATURE] Added `snappy-block` as an option for grpc compression #5215
+* [FEATURE] Enable experimental out-of-order samples support. Added 2 new configs `ingester.out_of_order_time_window` and `blocks-storage.tsdb.out_of_order_cap_max`. #4964
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
 * [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
 * [ENHANCEMENT] Query-tee: Add `/api/v1/query_exemplars` API endpoint support. #5010
@@ -25,21 +44,7 @@
 * [ENHANCEMENT] Distributor: Reuse byte slices when serializing requests from distributors to ingesters. #5193
 * [ENHANCEMENT] Query Frontend: Add number of chunks and samples fetched in query stats. #5198
 * [ENHANCEMENT] Implement grpc.Compressor.DecompressedSize for snappy to optimize memory allocations. #5213
-* [ENHANCEMENT] Ruler: enable ruler HA by having replication factor more than 3. We will also use the prometheus RuleGroupPostProcessFunc to sync for state before each rule group evaluation. Optional quorum parameter added to Prometheus-compatible ListRules and ListAlerts APIs to control how replicated ruler data is returned.
-* [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
-* [FEATURE] Ingester: Add active series to all_user_stats page. #4972
-* [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
-* [FEATURE] Query Frontend: Log query params in query frontend even if error happens. #5005
-* [FEATURE] Ingester: Enable snapshotting of In-memory TSDB on disk during shutdown via `-blocks-storage.tsdb.memory-snapshot-on-shutdown`. #5011
-* [FEATURE] Query Frontend/Scheduler: Add a new counter metric `cortex_request_queue_requests_total` for total requests going to queue. #5030
-* [FEATURE] Build ARM docker images. #5041
-* [FEATURE] Query-frontend/Querier: Create spans to measure time to merge promql responses. #5041
-* [FEATURE] Querier/Ruler: Support the new thanos promql engine. This is an experimental feature and might change in the future. #5093
-* [FEATURE] Added zstd as an option for grpc compression #5092
-* [FEATURE] Ring: Add new kv store option `dynamodb`. #5026
-* [FEATURE] Cache: Support redis as backend for caching bucket and index cache. #5057
-* [FEATURE] Querier/Store-Gateway: Added `-blocks-storage.bucket-store.ignore-blocks-within` allowing to filter out the recently created blocks from being synced by queriers and store-gateways. #5166
-* [FEATURE] AlertManager/Ruler: Added support for  `keep_firing_for` on alerting rulers.
+* [ENHANCEMENT] Ruler: enable ruler HA by having replication factor more than 3. Optional quorum parameter added to Prometheus-compatible ListRules and ListAlerts APIs to control how replicated ruler data is returned.
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
@@ -52,7 +57,6 @@
 * [BUGFIX] Querier: Fix `/api/v1/series` returning 5XX instead of 4XX when limits are hit. #5169
 * [BUGFIX] Compactor: Fix issue that shuffle sharding planner return error if block is under visit by other compactor. #5188
 * [BUGFIX] Fix S3 BucketWithRetries upload empty content issue #5217
-* [FEATURE] Alertmanager: Add support for time_intervals. #5102
 * [BUGFIX] Query Frontend: Disable `absent`, `absent_over_time` and `scalar` for vertical sharding. #5221
 
 ## 1.14.0 2022-12-02
@@ -112,7 +116,6 @@
 * [FEATURE] QueryFrontend: Support vertical sharding for subqueries. #4955
 * [FEATURE] Querier: Added a new limit `-querier.max-fetched-data-bytes-per-query` allowing to limit the maximum size of all data in bytes that a query can fetch from each ingester and storage. #4854
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-compression` and `-querier.store-gateway-client.grpc-compression` to configure compression methods for grpc clients. #4889
-* [BUGFIX] Storage/Bucket: Enable AWS SDK for go authentication for s3 to fix IMDSv1 authentication. #4897
 * [ENHANCEMENT] AlertManager: Retrying AlertManager Get Requests (Get Alertmanager status, Get Alertmanager Receivers) on next replica on error #4840
 * [ENHANCEMENT] Querier/Ruler: Retry store-gateway in case of unexpected failure, instead of failing the query. #4532 #4839
 * [ENHANCEMENT] Ring: DoBatch prioritize 4xx errors when failing. #4783
@@ -123,6 +126,7 @@
 * [ENHANCEMENT] Enhance traces with hostname information. #4898
 * [ENHANCEMENT] Improve the documentation around limits. #4905
 * [ENHANCEMENT] Distributor: cache user overrides to reduce lock contention. #4904
+* [BUGFIX] Storage/Bucket: Enable AWS SDK for go authentication for s3 to fix IMDSv1 authentication. #4897
 * [BUGFIX] Memberlist: Add join with no retrying when starting service. #4804
 * [BUGFIX] Ruler: Fix /ruler/rule_groups returns YAML with extra fields. #4767
 * [BUGFIX] Respecting `-tracing.otel.sample-ratio` configuration when enabling OpenTelemetry tracing with X-ray. #4862

@@ -16,13 +16,17 @@ type compressor struct {
 }
 
 func init() {
+	encoding.RegisterCompressor(newCompressor())
+}
+
+func newCompressor() *compressor {
 	enc, _ := zstd.NewWriter(nil)
 	dec, _ := zstd.NewReader(nil)
 	c := &compressor{
 		encoder: enc,
 		decoder: dec,
 	}
-	encoding.RegisterCompressor(c)
+	return c
 }
 
 // SetLevel updates the registered compressor to use a particular compression

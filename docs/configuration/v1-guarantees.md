@@ -101,3 +101,7 @@ Currently experimental features are:
   - `query_vertical_shard_size` (int) field in runtime config file
 - Snapshotting of in-memory TSDB on disk during shutdown
   - `-blocks-storage.tsdb.memory-snapshot-on-shutdown` (boolean) CLI flag
+- Out of order samples support
+  - `-blocks-storage.tsdb.out-of-order-cap-max` (int) CLI flag
+  - `-ingester.out-of-order-time-window` (duration) CLI flag
+  - `out_of_order_time_window` (duration) field in runtime config file

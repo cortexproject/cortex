@@ -21,14 +21,6 @@ type mergeIterator struct {
 	currErr error
 }
 
-func (c *mergeIterator) MaxCurrentChunkTime() int64 {
-	if len(c.h) < 1 {
-		return -1
-	}
-
-	return c.h[0].MaxCurrentChunkTime()
-}
-
 func newMergeIterator(cs []GenericChunk) *mergeIterator {
 	css := partitionChunks(cs)
 	its := make([]*nonOverlappingIterator, 0, len(css))
@@ -136,8 +128,12 @@ func (c *mergeIterator) AtTime() int64 {
 	return c.batches[0].Timestamps[0]
 }
 
-func (c *mergeIterator) MaxTIme() int64 {
-	return c.h[0].AtTime()
+func (c *mergeIterator) MaxCurrentChunkTime() int64 {
+	if len(c.h) < 1 {
+		return -1
+	}
+
+	return c.h[0].MaxCurrentChunkTime()
 }
 
 func (c *mergeIterator) Batch() promchunk.Batch {

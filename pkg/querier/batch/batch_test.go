@@ -56,50 +56,50 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 }
 
 func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
-	scrapeInterval := 30 * time.Second
-
 	scenarios := []struct {
 		numChunks          int
 		numSamplesPerChunk int
 		duplicationFactor  int
 		seekStep           time.Duration
+		scrapeInterval     time.Duration
 		enc                promchunk.Encoding
 	}{
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval / 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 10, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 100, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 1000, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval / 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 10, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 100, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 1000, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval / 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 10, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 100, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 1, seekStep: scrapeInterval * 1000, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval / 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 2, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 10, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 100, enc: promchunk.PrometheusXorChunk},
-		{numChunks: 100, numSamplesPerChunk: 120, duplicationFactor: 3, seekStep: scrapeInterval * 1000, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second / 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 10, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 100, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 1, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 1000, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second / 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 10, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 100, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 30 * time.Second, seekStep: 30 * time.Second * 1000, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 10 * time.Second, seekStep: 10 * time.Second / 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 10 * time.Second, seekStep: 10 * time.Second, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 10 * time.Second, seekStep: 10 * time.Second * 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 10 * time.Second, seekStep: 10 * time.Second * 10, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 10 * time.Second, seekStep: 10 * time.Second * 100, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 10 * time.Second, seekStep: 10 * time.Second * 1000, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 60 * time.Second, seekStep: 60 * time.Second / 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 60 * time.Second, seekStep: 60 * time.Second, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 60 * time.Second, seekStep: 60 * time.Second * 2, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 60 * time.Second, seekStep: 60 * time.Second * 10, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 60 * time.Second, seekStep: 60 * time.Second * 100, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 120, duplicationFactor: 3, scrapeInterval: 60 * time.Second, seekStep: 60 * time.Second * 1000, enc: promchunk.PrometheusXorChunk},
 	}
 
 	for _, scenario := range scenarios {
-		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d seekStep %vs encoding: %s",
+		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d scrapeInterval %vs seekStep: %vs encoding: %s",
 			scenario.numChunks,
 			scenario.numSamplesPerChunk,
 			scenario.duplicationFactor,
+			scenario.scrapeInterval.Seconds(),
 			scenario.seekStep.Seconds(),
 			scenario.enc.String())
 
-		chunks := createChunks(b, scrapeInterval, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
+		chunks := createChunks(b, scenario.scrapeInterval, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()

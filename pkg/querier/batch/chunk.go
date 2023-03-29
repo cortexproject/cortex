@@ -21,7 +21,7 @@ func (i *chunkIterator) reset(chunk GenericChunk) {
 	i.batch.Index = 0
 }
 
-func (i *chunkIterator) MaxTime() int64 {
+func (i *chunkIterator) MaxCurrentChunkTime() int64 {
 	return i.chunk.MaxTime
 }
 

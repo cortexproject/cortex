@@ -21,12 +21,12 @@ type mergeIterator struct {
 	currErr error
 }
 
-func (c *mergeIterator) MaxTime() int64 {
+func (c *mergeIterator) MaxCurrentChunkTime() int64 {
 	if len(c.h) < 1 {
 		return -1
 	}
 
-	return c.h[0].MaxTime()
+	return c.h[0].MaxCurrentChunkTime()
 }
 
 func newMergeIterator(cs []GenericChunk) *mergeIterator {

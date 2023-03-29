@@ -84,13 +84,9 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 	}
 
 	for _, scenario := range scenarios {
-		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d scrapeInterval %vs seekStep: %vs encoding: %s",
-			scenario.numChunks,
-			scenario.numSamplesPerChunk,
-			scenario.duplicationFactor,
+		name := fmt.Sprintf("scrapeInterval %vs seekStep: %vs",
 			scenario.scrapeInterval.Seconds(),
-			scenario.seekStep.Seconds(),
-			scenario.enc.String())
+			scenario.seekStep.Seconds())
 
 		chunks := createChunks(b, scenario.scrapeInterval, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 

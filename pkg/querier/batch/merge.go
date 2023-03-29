@@ -22,6 +22,10 @@ type mergeIterator struct {
 }
 
 func (c *mergeIterator) MaxTime() int64 {
+	if len(c.h) < 1 {
+		return -1
+	}
+
 	return c.h[0].MaxTime()
 }
 

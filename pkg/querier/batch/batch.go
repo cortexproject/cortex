@@ -100,6 +100,8 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 			}
 			return true
 		} else if t <= a.underlying.MaxTime() {
+			// In this case, some timestamp inside the current underlying chunk can fulfill the seek.
+			// In this case we will call next until we find the sample as it will be faster than calling seek directly.
 			for a.underlying.Next(promchunk.BatchSize) {
 				a.curr = a.underlying.Batch()
 				if t <= a.curr.Timestamps[a.curr.Length-1] {

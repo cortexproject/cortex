@@ -1,8 +1,6 @@
 package batch
 
 import (
-	"time"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -44,6 +42,7 @@ type iterator interface {
 	// AtTime returns the start time of the next batch.  Must only be called after
 	// Seek or Next have returned true.
 	AtTime() int64
+	MaxTime() int64
 
 	// Batch returns the current batch.  Must only be called after Seek or Next
 	// have returned true.
@@ -100,31 +99,16 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 				a.curr.Index++
 			}
 			return true
-		} else {
-			// In this case, t is after the end of the current batch.
-			// Here we assume that the scrape interval is 30s and try to calculate how many samples ahead we are trying to seek.
-			// If the number of samples is < 60 (each chunk has 120 samples) we assume that the samples belongs to the current
-			// chunk and forward the iterator to the right point - this is more efficient than the seek call.
-			// See: https://github.com/prometheus/prometheus/blob/211ae4f1f0a2cdaae09c4c52735f75345c1817c6/tsdb/head_append.go#L1337
-			scrapeInterval := 30 * time.Second
-
-			// We have 2 samples we can estimate the scrape interval
-			if a.curr.Length > 1 {
-				scrapeInterval = time.Duration(a.curr.Timestamps[1]-a.curr.Timestamps[0]) * time.Millisecond
-			}
-
-			approxNumberOfSamples := model.Time(t).Sub(model.Time(a.curr.Timestamps[a.curr.Length-1])) / scrapeInterval
-			if approxNumberOfSamples < 60 {
-				for a.underlying.Next(promchunk.BatchSize) {
-					a.curr = a.underlying.Batch()
-					if t <= a.curr.Timestamps[a.curr.Length-1] {
-						//In this case, some timestamp between current sample and end of batch can fulfill
-						//the seek. Let's find it.
-						for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
-							a.curr.Index++
-						}
-						return true
+		} else if t <= a.underlying.MaxTime() {
+			for a.underlying.Next(promchunk.BatchSize) {
+				a.curr = a.underlying.Batch()
+				if t <= a.curr.Timestamps[a.curr.Length-1] {
+					//In this case, some timestamp between current sample and end of batch can fulfill
+					//the seek. Let's find it.
+					for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
+						a.curr.Index++
 					}
+					return true
 				}
 			}
 		}

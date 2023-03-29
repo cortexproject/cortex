@@ -32,6 +32,10 @@ func (it *nonOverlappingIterator) Seek(t int64, size int) bool {
 	}
 }
 
+func (it *nonOverlappingIterator) MaxTime() int64 {
+	return it.iter.MaxTime()
+}
+
 func (it *nonOverlappingIterator) Next(size int) bool {
 	for {
 		if it.iter.Next(size) {

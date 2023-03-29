@@ -101,9 +101,11 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 			}
 			return true
 		} else {
-			// In this case, t is after the end of the current batch. Here we try to calculate if we are seeking to samples
-			// in the same chunks, and if so, we foward the iterator to the right point in time - we do that this
-			// is more efficient than the seek call
+			// In this case, t is after the end of the current batch.
+			// Here we assume that the scrape interval is 30s and try to calculate how many samples ahead we are trying to seek.
+			// If the number of samples is < 60 (each chunk has 120 samples) we assume that the samples belongs to the current
+			// chunk and forward the iterator to the right point - this is more efficient than the seek call.
+			// See: https://github.com/prometheus/prometheus/blob/211ae4f1f0a2cdaae09c4c52735f75345c1817c6/tsdb/head_append.go#L1337
 			approxNumberOfSamples := model.Time(t).Sub(model.Time(a.curr.Timestamps[a.curr.Length-1])) / (30 * time.Second)
 			if approxNumberOfSamples < 60 {
 				for a.underlying.Next(promchunk.BatchSize) {

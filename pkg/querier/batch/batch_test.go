@@ -13,47 +13,47 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
-//func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
-//	scenarios := []struct {
-//		numChunks          int
-//		numSamplesPerChunk int
-//		duplicationFactor  int
-//		enc                promchunk.Encoding
-//	}{
-//		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
-//		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
-//		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
-//		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
-//		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
-//		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
-//	}
-//
-//	for _, scenario := range scenarios {
-//		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d encoding: %s",
-//			scenario.numChunks,
-//			scenario.numSamplesPerChunk,
-//			scenario.duplicationFactor,
-//			scenario.enc.String())
-//
-//		chunks := createChunks(b, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
-//
-//		b.Run(name, func(b *testing.B) {
-//			b.ReportAllocs()
-//
-//			for n := 0; n < b.N; n++ {
-//				it := NewChunkMergeIterator(chunks, 0, 0)
-//				for it.Next() != chunkenc.ValNone {
-//					it.At()
-//				}
-//
-//				// Ensure no error occurred.
-//				if it.Err() != nil {
-//					b.Fatal(it.Err().Error())
-//				}
-//			}
-//		})
-//	}
-//}
+func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
+	scenarios := []struct {
+		numChunks          int
+		numSamplesPerChunk int
+		duplicationFactor  int
+		enc                promchunk.Encoding
+	}{
+		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
+	}
+
+	for _, scenario := range scenarios {
+		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d encoding: %s",
+			scenario.numChunks,
+			scenario.numSamplesPerChunk,
+			scenario.duplicationFactor,
+			scenario.enc.String())
+
+		chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
+
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			for n := 0; n < b.N; n++ {
+				it := NewChunkMergeIterator(chunks, 0, 0)
+				for it.Next() != chunkenc.ValNone {
+					it.At()
+				}
+
+				// Ensure no error occurred.
+				if it.Err() != nil {
+					b.Fatal(it.Err().Error())
+				}
+			}
+		})
+	}
+}
 
 func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 	scrapeInterval := 30 * time.Second

@@ -128,6 +128,14 @@ func (c *mergeIterator) AtTime() int64 {
 	return c.batches[0].Timestamps[0]
 }
 
+func (c *mergeIterator) MaxCurrentChunkTime() int64 {
+	if len(c.h) < 1 {
+		return -1
+	}
+
+	return c.h[0].MaxCurrentChunkTime()
+}
+
 func (c *mergeIterator) Batch() promchunk.Batch {
 	return c.batches[0]
 }

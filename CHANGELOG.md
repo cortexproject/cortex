@@ -2,6 +2,8 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Querier: Batch Iterator optimization to prevent transversing it multiple times query ranges steps does not overlap. #5237
+
 ## 1.15.0 in progress
 
 * [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5080 #5122

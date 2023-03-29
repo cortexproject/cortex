@@ -21,6 +21,10 @@ func (i *chunkIterator) reset(chunk GenericChunk) {
 	i.batch.Index = 0
 }
 
+func (i *chunkIterator) MaxCurrentChunkTime() int64 {
+	return i.chunk.MaxTime
+}
+
 // Seek advances the iterator forward to the value at or after
 // the given timestamp.
 func (i *chunkIterator) Seek(t int64, size int) bool {

@@ -339,11 +339,16 @@ func (m *KeyValue) GetValue() AnyValue {
 // such as the fully qualified name and version.
 type InstrumentationScope struct {
 	// An empty instrumentation scope name means the name is unknown.
+<<<<<<< HEAD
 	Name    string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Version string `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
 	// Additional attributes that describe the scope. [Optional].
 	// Attribute keys MUST be unique (it is not allowed to have more than one
 	// attribute with the same key).
+=======
+	Name                   string     `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Version                string     `protobuf:"bytes,2,opt,name=version,proto3" json:"version,omitempty"`
+>>>>>>> 90dc0587b (Initial OTLP ingest support)
 	Attributes             []KeyValue `protobuf:"bytes,3,rep,name=attributes,proto3" json:"attributes"`
 	DroppedAttributesCount uint32     `protobuf:"varint,4,opt,name=dropped_attributes_count,json=droppedAttributesCount,proto3" json:"dropped_attributes_count,omitempty"`
 }

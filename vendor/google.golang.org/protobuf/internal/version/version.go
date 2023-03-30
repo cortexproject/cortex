@@ -51,8 +51,13 @@ import (
 //  10. Send out the CL for review and submit it.
 const (
 	Major      = 1
+<<<<<<< HEAD
 	Minor      = 32
 	Patch      = 0
+=======
+	Minor      = 29
+	Patch      = 1
+>>>>>>> 90dc0587b (Initial OTLP ingest support)
 	PreRelease = ""
 )
 

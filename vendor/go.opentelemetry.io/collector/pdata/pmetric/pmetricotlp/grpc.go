@@ -1,5 +1,20 @@
 // Copyright The OpenTelemetry Authors
+<<<<<<< HEAD
 // SPDX-License-Identifier: Apache-2.0
+=======
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+>>>>>>> 90dc0587b (Initial OTLP ingest support)
 
 package pmetricotlp // import "go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
@@ -10,7 +25,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+<<<<<<< HEAD
 	"go.opentelemetry.io/collector/pdata/internal"
+=======
+>>>>>>> 90dc0587b (Initial OTLP ingest support)
 	otlpcollectormetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
@@ -40,11 +58,15 @@ type grpcClient struct {
 
 func (c *grpcClient) Export(ctx context.Context, request ExportRequest, opts ...grpc.CallOption) (ExportResponse, error) {
 	rsp, err := c.rawClient.Export(ctx, request.orig, opts...)
+<<<<<<< HEAD
 	if err != nil {
 		return ExportResponse{}, err
 	}
 	state := internal.StateMutable
 	return ExportResponse{orig: rsp, state: &state}, err
+=======
+	return ExportResponse{orig: rsp}, err
+>>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 func (c *grpcClient) unexported() {}
@@ -84,7 +106,11 @@ type rawMetricsServer struct {
 
 func (s rawMetricsServer) Export(ctx context.Context, request *otlpcollectormetrics.ExportMetricsServiceRequest) (*otlpcollectormetrics.ExportMetricsServiceResponse, error) {
 	otlp.MigrateMetrics(request.ResourceMetrics)
+<<<<<<< HEAD
 	state := internal.StateMutable
 	rsp, err := s.srv.Export(ctx, ExportRequest{orig: request, state: &state})
+=======
+	rsp, err := s.srv.Export(ctx, ExportRequest{orig: request})
+>>>>>>> 90dc0587b (Initial OTLP ingest support)
 	return rsp.orig, err
 }

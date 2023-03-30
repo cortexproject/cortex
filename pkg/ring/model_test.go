@@ -1,7 +1,6 @@
 package ring
 
 import (
-	reflect "reflect"
 	"testing"
 	"time"
 
@@ -632,7 +631,7 @@ func Test_resolveConflicts(t *testing.T) {
 			},
 			want: map[string]InstanceDesc{
 				"ing1": {State: ACTIVE, Tokens: []uint32{1, 2, 3}},
-				"ing2": {State: LEFT, Tokens: []uint32{}},
+				"ing2": {State: LEFT, Tokens: nil},
 			},
 		},
 		{
@@ -642,7 +641,7 @@ func Test_resolveConflicts(t *testing.T) {
 				"ing2": {State: PENDING, Tokens: []uint32{1, 2, 3, 4}},
 			},
 			want: map[string]InstanceDesc{
-				"ing1": {State: LEAVING, Tokens: []uint32{}},
+				"ing1": {State: LEAVING, Tokens: nil},
 				"ing2": {State: PENDING, Tokens: []uint32{1, 2, 3, 4}},
 			},
 		},
@@ -674,12 +673,7 @@ func Test_resolveConflicts(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resolveConflicts(tt.args)
 			for key, actualInstance := range tt.args {
-				expectedInstance := tt.want[key]
-				if actualInstance.State != expectedInstance.State || !reflect.DeepEqual(actualInstance.Tokens, expectedInstance.Tokens) {
-					if len(actualInstance.Tokens) == len(expectedInstance.Tokens) && len(actualInstance.Tokens) != 0 {
-						t.Errorf("resolveConflicts() for key %s = %v, want %v", key, actualInstance, expectedInstance)
-					}
-				}
+				assert.Equal(t, actualInstance, tt.want[key])
 			}
 		})
 	}

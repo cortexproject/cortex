@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [ENHANCEMENT] Querier: Batch Iterator optimization to prevent transversing it multiple times query ranges steps does not overlap. #5237
+* [BUGFIX] Catch context error in the s3 bucket client. #5240
 
 ## 1.15.0 in progress
 

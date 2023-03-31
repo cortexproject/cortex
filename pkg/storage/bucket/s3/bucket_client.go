@@ -124,7 +124,7 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error, operation
 		level.Error(b.logger).Log("msg", "bucket operation fail after retries", "err", lastErr, "operation", operationInfo)
 		return lastErr
 	}
-	return nil
+	return retries.Err()
 }
 
 func (b *BucketWithRetries) Name() string {

@@ -73,6 +73,25 @@ func TestBucketWithRetries_UploadFailed(t *testing.T) {
 	require.ErrorContains(t, err, "failed upload: ")
 }
 
+func TestBucketWithRetries_ContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	m := mockBucket{}
+	b := BucketWithRetries{
+		logger:           log.NewNopLogger(),
+		bucket:           &m,
+		operationRetries: 5,
+		retryMinBackoff:  10 * time.Millisecond,
+		retryMaxBackoff:  time.Second,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	obj, err := b.GetRange(ctx, "dummy", 0, 10)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, obj)
+}
+
 type fakeReader struct {
 }
 
@@ -121,7 +140,7 @@ func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error
 
 // GetRange mocks objstore.Bucket.GetRange()
 func (m *mockBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return nil, nil
+	return io.NopCloser(bytes.NewBuffer(bytes.Repeat([]byte{1}, int(length)))), nil
 }
 
 // Exists mocks objstore.Bucket.Exists()

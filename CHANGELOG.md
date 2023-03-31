@@ -59,6 +59,7 @@
 * [BUGFIX] Compactor: Fix issue that shuffle sharding planner return error if block is under visit by other compactor. #5188
 * [BUGFIX] Fix S3 BucketWithRetries upload empty content issue #5217
 * [BUGFIX] Query Frontend: Disable `absent`, `absent_over_time` and `scalar` for vertical sharding. #5221
+* [BUGFIX] Catch context error in the s3 bucket client. #5240
 
 ## 1.14.0 2022-12-02
 

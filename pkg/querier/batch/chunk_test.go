@@ -44,7 +44,7 @@ func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 	}
 }
 
-func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
+func mkChunk(t require.TestingT, step time.Duration, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
 	metric := labels.Labels{
 		{Name: model.MetricNameLabel, Value: "foo"},
 	}
@@ -65,7 +65,7 @@ func mkChunk(t require.TestingT, from model.Time, points int, enc promchunk.Enco
 }
 
 func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) GenericChunk {
-	ck := mkChunk(t, from, points, enc)
+	ck := mkChunk(t, step, from, points, enc)
 	return NewGenericChunk(int64(ck.From), int64(ck.Through), ck.Data.NewIterator)
 }
 

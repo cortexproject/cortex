@@ -2053,7 +2053,7 @@ func testPutObjectWithChecksums() {
 	}
 
 	// Enable tracing, write to stderr.
-	//c.TraceOn(os.Stderr)
+	// c.TraceOn(os.Stderr)
 
 	// Set user agent.
 	c.SetAppInfo("MinIO-go-FunctionalTest", "0.1.0")
@@ -8414,14 +8414,20 @@ func testSSECMultipartEncryptedToSSECCopyObjectPart() {
 
 	var completeParts []minio.CompletePart
 
-	part, err := c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 1, bytes.NewReader(buf[:5*1024*1024]), 5*1024*1024, "", "", srcencryption)
+	part, err := c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 1,
+		bytes.NewReader(buf[:5*1024*1024]), 5*1024*1024,
+		minio.PutObjectPartOptions{SSE: srcencryption},
+	)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PutObjectPart call failed", err)
 		return
 	}
 	completeParts = append(completeParts, minio.CompletePart{PartNumber: part.PartNumber, ETag: part.ETag})
 
-	part, err = c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 2, bytes.NewReader(buf[5*1024*1024:]), 1024*1024, "", "", srcencryption)
+	part, err = c.PutObjectPart(context.Background(), bucketName, objectName, uploadID, 2,
+		bytes.NewReader(buf[5*1024*1024:]), 1024*1024,
+		minio.PutObjectPartOptions{SSE: srcencryption},
+	)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "PutObjectPart call failed", err)
 		return

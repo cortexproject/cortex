@@ -175,8 +175,10 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
-		return errInvalidTenantShardSize
+	if limits.IngestionTenantShardSize <= 0 {
+		cfg.ShardingStrategy = "default"
+		msg := fmt.Sprintf("ingestion_tenant_shard_size is given %d. Suffle sharding is disabled", limits.IngestionTenantShardSize)
+		level.Info(util_log.Logger).Log("msg", msg)
 	}
 
 	return cfg.HATrackerConfig.Validate()

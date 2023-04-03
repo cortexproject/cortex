@@ -50,7 +50,7 @@ require (
 	github.com/prometheus/prometheus v0.43.1-0.20230327151049-211ae4f1f0a2
 	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
 	github.com/sony/gobreaker v0.5.0
-	github.com/spf13/afero v1.9.3
+	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.2
 	github.com/thanos-community/promql-engine v0.0.0-20230224075812-ae04bbea7613
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204

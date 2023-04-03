@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/importer"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -84,6 +85,7 @@ const (
 	MemberlistKV             string = "memberlist-kv"
 	TenantDeletion           string = "tenant-deletion"
 	Purger                   string = "purger"
+	Importer                 string = "importer"
 	QueryScheduler           string = "query-scheduler"
 	TenantFederation         string = "tenant-federation"
 	All                      string = "all"
@@ -720,6 +722,12 @@ func (t *Cortex) initQueryScheduler() (services.Service, error) {
 	return s, nil
 }
 
+func (t *Cortex) initImporter() (services.Service, error) {
+	i := importer.New()
+	t.API.RegisterImporter(i)
+	return i, nil
+}
+
 func (t *Cortex) setupModuleManager() error {
 	mm := modules.NewManager(util_log.Logger)
 
@@ -751,6 +759,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(StoreGateway, t.initStoreGateway)
 	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
+	mm.RegisterModule(Importer, t.initImporter)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(TenantFederation, t.initTenantFederation, modules.UserInvisibleModule)
 	mm.RegisterModule(All, nil)
@@ -782,6 +791,7 @@ func (t *Cortex) setupModuleManager() error {
 		StoreGateway:             {API, Overrides, MemberlistKV},
 		TenantDeletion:           {API, Overrides, DeleteRequestsStore},
 		Purger:                   {TenantDeletion},
+		Importer:                 {API},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
 	}

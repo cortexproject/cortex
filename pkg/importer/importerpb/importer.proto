@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package importer;
+
+option go_package = "importerpb";
+
+import "gogoproto/gogo.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message SampleRequest {
+  string sampleField  = 1;
+}
+
+message SampleResponse {
+  string sampleField  = 1;
+}
+
+
+service Importer {
+  rpc SampleRPC(SampleRequest) returns (SampleResponse) {};
+}

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/NYTimes/gziphandler"
+	"github.com/cortexproject/cortex/pkg/importer"
+	"github.com/cortexproject/cortex/pkg/importer/importerpb"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -345,6 +347,11 @@ func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
 func (a *API) RegisterCompactor(c *compactor.Compactor) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/compactor/ring", "Compactor Ring Status")
 	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false, "GET", "POST")
+}
+
+func (a *API) RegisterImporter(i *importer.Importer) {
+	importerpb.RegisterImporterServer(a.server.GRPC, i)
+	a.RegisterRoute("/importer/import", http.HandlerFunc(i.ImportHandler), true, "POST")
 }
 
 type Distributor interface {

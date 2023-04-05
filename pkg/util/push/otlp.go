@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 )
 
@@ -44,7 +46,7 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 			return
 		}
 
-		tsMap, err := prometheusremotewrite.FromMetrics(req.Metrics(), prometheusremotewrite.Settings{DisableTargetInfo: true})
+		tsMap, err := prometheusremotewrite.FromMetrics(convertToMetricsAttributes(req.Metrics()), prometheusremotewrite.Settings{DisableTargetInfo: true})
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -112,4 +114,70 @@ func makeExemplars(in []prompb.Exemplar) []cortexpb.Exemplar {
 		})
 	}
 	return out
+}
+
+func convertToMetricsAttributes(md pmetric.Metrics) pmetric.Metrics {
+	cloneMd := pmetric.NewMetrics()
+	md.CopyTo(cloneMd)
+	rms := cloneMd.ResourceMetrics()
+	for i := 0; i < rms.Len(); i++ {
+		resource := rms.At(i).Resource()
+
+		ilms := rms.At(i).ScopeMetrics()
+		for j := 0; j < ilms.Len(); j++ {
+			ilm := ilms.At(j)
+			metricSlice := ilm.Metrics()
+			for k := 0; k < metricSlice.Len(); k++ {
+				addAttributesToMetric(metricSlice.At(k), resource.Attributes())
+			}
+		}
+	}
+	return cloneMd
+}
+
+// addAttributesToMetric adds additional labels to the given metric
+func addAttributesToMetric(metric pmetric.Metric, labelMap pcommon.Map) {
+	switch metric.Type() {
+	case pmetric.MetricTypeGauge:
+		addAttributesToNumberDataPoints(metric.Gauge().DataPoints(), labelMap)
+	case pmetric.MetricTypeSum:
+		addAttributesToNumberDataPoints(metric.Sum().DataPoints(), labelMap)
+	case pmetric.MetricTypeHistogram:
+		addAttributesToHistogramDataPoints(metric.Histogram().DataPoints(), labelMap)
+	case pmetric.MetricTypeSummary:
+		addAttributesToSummaryDataPoints(metric.Summary().DataPoints(), labelMap)
+	case pmetric.MetricTypeExponentialHistogram:
+		addAttributesToExponentialHistogramDataPoints(metric.ExponentialHistogram().DataPoints(), labelMap)
+	}
+}
+
+func addAttributesToNumberDataPoints(ps pmetric.NumberDataPointSlice, newAttributeMap pcommon.Map) {
+	for i := 0; i < ps.Len(); i++ {
+		joinAttributeMaps(newAttributeMap, ps.At(i).Attributes())
+	}
+}
+
+func addAttributesToHistogramDataPoints(ps pmetric.HistogramDataPointSlice, newAttributeMap pcommon.Map) {
+	for i := 0; i < ps.Len(); i++ {
+		joinAttributeMaps(newAttributeMap, ps.At(i).Attributes())
+	}
+}
+
+func addAttributesToSummaryDataPoints(ps pmetric.SummaryDataPointSlice, newAttributeMap pcommon.Map) {
+	for i := 0; i < ps.Len(); i++ {
+		joinAttributeMaps(newAttributeMap, ps.At(i).Attributes())
+	}
+}
+
+func addAttributesToExponentialHistogramDataPoints(ps pmetric.ExponentialHistogramDataPointSlice, newAttributeMap pcommon.Map) {
+	for i := 0; i < ps.Len(); i++ {
+		joinAttributeMaps(newAttributeMap, ps.At(i).Attributes())
+	}
+}
+
+func joinAttributeMaps(from, to pcommon.Map) {
+	from.Range(func(k string, v pcommon.Value) bool {
+		v.CopyTo(to.PutEmpty(k))
+		return true
+	})
 }

@@ -5,6 +5,7 @@
 
 * [ENHANCEMENT] Querier: Batch Iterator optimization to prevent transversing it multiple times query ranges steps does not overlap. #5237
 * [BUGFIX] Catch context error in the s3 bucket client. #5240
+* [BUGFIX] Disable shuffle sharding and fix the error when `-distributor.ingestion-tenant-shard-size` is set to 0. #5189
 
 ## 1.15.0 in progress
 

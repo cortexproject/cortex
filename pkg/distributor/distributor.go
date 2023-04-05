@@ -48,7 +48,6 @@ var (
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
 
 	// Distributor instance limits errors.
 	errTooManyInflightPushRequests    = errors.New("too many inflight push requests in distributor")

@@ -99,6 +99,7 @@ const (
 	AVXSLOW                             // Indicates the CPU performs 2 128 bit operations instead of one
 	AVXVNNI                             // AVX (VEX encoded) VNNI neural network instructions
 	AVXVNNIINT8                         // AVX-VNNI-INT8 instructions
+	BHI_CTRL                            // Branch History Injection and Intra-mode Branch Target Injection / CVE-2022-0001, CVE-2022-0002 / INTEL-SA-00598
 	BMI1                                // Bit Manipulation Instruction Set 1
 	BMI2                                // Bit Manipulation Instruction Set 2
 	CETIBT                              // Intel CET Indirect Branch Tracking
@@ -152,6 +153,7 @@ const (
 	IBS_OPFUSE                          // AMD: Indicates support for IbsOpFuse
 	IBS_PREVENTHOST                     // Disallowing IBS use by the host supported
 	IBS_ZEN4                            // AMD: Fetch and Op IBS support IBS extensions added with Zen4
+	IDPRED_CTRL                         // IPRED_DIS
 	INT_WBINVD                          // WBINVD/WBNOINVD are interruptible.
 	INVLPGB                             // NVLPGB and TLBSYNC instruction supported
 	LAHF                                // LAHF/SAHF in long mode
@@ -171,6 +173,7 @@ const (
 	MOVU                                // AMD: MOVU SSE instructions are more efficient and should be preferred to SSE	MOVL/MOVH. MOVUPS is more efficient than MOVLPS/MOVHPS. MOVUPD is more efficient than MOVLPD/MOVHPD
 	MPX                                 // Intel MPX (Memory Protection Extensions)
 	MSRIRC                              // Instruction Retired Counter MSR available
+	MSRLIST                             // Read/Write List of Model Specific Registers
 	MSR_PAGEFLUSH                       // Page Flush MSR available
 	NRIPS                               // Indicates support for NRIP save on VMEXIT
 	NX                                  // NX (No-Execute) bit
@@ -179,11 +182,12 @@ const (
 	POPCNT                              // POPCNT instruction
 	PPIN                                // AMD: Protected Processor Inventory Number support. Indicates that Protected Processor Inventory Number (PPIN) capability can be enabled
 	PREFETCHI                           // PREFETCHIT0/1 instructions
-	PSFD                                // AMD: Predictive Store Forward Disable
+	PSFD                                // Predictive Store Forward Disable
 	RDPRU                               // RDPRU instruction supported
 	RDRAND                              // RDRAND instruction is available
 	RDSEED                              // RDSEED instruction is available
 	RDTSCP                              // RDTSCP Instruction
+	RRSBA_CTRL                          // Restricted RSB Alternate
 	RTM                                 // Restricted Transactional Memory
 	RTM_ALWAYS_ABORT                    // Indicates that the loaded microcode is forcing RTM abort.
 	SERIALIZE                           // Serialize Instruction Execution
@@ -236,6 +240,7 @@ const (
 	VTE                                 // AMD Virtual Transparent Encryption supported
 	WAITPKG                             // TPAUSE, UMONITOR, UMWAIT
 	WBNOINVD                            // Write Back and Do Not Invalidate Cache
+	WRMSRNS                             // Non-Serializing Write to Model Specific Register
 	X87                                 // FPU
 	XGETBV1                             // Supports XGETBV with ECX = 1
 	XOP                                 // Bulldozer XOP functions
@@ -1232,13 +1237,20 @@ func support() flagSet {
 				fs.setIf(edx&(1<<25) != 0, AMXINT8)
 				// eax1 = CPUID.(EAX=7, ECX=1).EAX
 				fs.setIf(eax1&(1<<5) != 0, AVX512BF16)
+				fs.setIf(eax1&(1<<19) != 0, WRMSRNS)
 				fs.setIf(eax1&(1<<21) != 0, AMXFP16)
+				fs.setIf(eax1&(1<<27) != 0, MSRLIST)
 			}
 		}
 
 		// CPUID.(EAX=7, ECX=2)
 		_, _, _, edx = cpuidex(7, 2)
+		fs.setIf(edx&(1<<0) != 0, PSFD)
+		fs.setIf(edx&(1<<1) != 0, IDPRED_CTRL)
+		fs.setIf(edx&(1<<2) != 0, RRSBA_CTRL)
+		fs.setIf(edx&(1<<4) != 0, BHI_CTRL)
 		fs.setIf(edx&(1<<5) != 0, MCDT_NO)
+
 	}
 
 	// Processor Extended State Enumeration Sub-leaf (EAX = 0DH, ECX = 1)

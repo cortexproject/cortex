@@ -106,6 +106,12 @@ type Options struct {
 	Region       string
 	BucketLookup BucketLookupType
 
+	// Allows setting a custom region lookup based on URL pattern
+	// not all URL patterns are covered by this library so if you
+	// have a custom endpoints with many regions you can use this
+	// function to perform region lookups appropriately.
+	CustomRegionViaURL func(u url.URL) string
+
 	// TrailingHeaders indicates server support of trailing headers.
 	// Only supported for v4 signatures.
 	TrailingHeaders bool
@@ -118,7 +124,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.49"
+	libraryVersion = "v7.0.50"
 )
 
 // User Agent should always following the below style.
@@ -234,7 +240,11 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 
 	// Sets custom region, if region is empty bucket location cache is used automatically.
 	if opts.Region == "" {
-		opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+		if opts.CustomRegionViaURL != nil {
+			opts.Region = opts.CustomRegionViaURL(*clnt.endpointURL)
+		} else {
+			opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+		}
 	}
 	clnt.region = opts.Region
 

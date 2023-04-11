@@ -323,9 +323,9 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 		// No need to repeat the test on remote read for each user.
 		if userID == 0 && cfg.remoteReadEnabled {
-			start := time.Unix(1595846748, 806*1e6)
-			end := time.Unix(1595846750, 806*1e6)
-			res, err := c.RemoteRead([]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "__name__", "series_1")}, start, end, time.Second)
+			start := now.Add(-1 * time.Hour)
+			end := now.Add(1 * time.Hour)
+			res, err := c.RemoteRead([]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "series_1")}, start, end, time.Second)
 			require.NoError(t, err)
 			require.True(t, len(res.Results) > 0)
 			require.True(t, len(res.Results[0].Timeseries) > 0)

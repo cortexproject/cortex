@@ -167,6 +167,9 @@ func (c *Client) RemoteRead(matchers []*labels.Matcher, start, end time.Time, st
 		Start: startMs,
 		End:   endMs,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	req := &prompb.ReadRequest{
 		Queries:               []*prompb.Query{q},
@@ -184,6 +187,9 @@ func (c *Client) RemoteRead(matchers []*labels.Matcher, start, end time.Time, st
 	defer cancel()
 
 	httpReq, err := http.NewRequestWithContext(httpReqCtx, "POST", "http://"+c.querierAddress+"/prometheus/api/v1/read", bytes.NewReader(compressed))
+	if err != nil {
+		return nil, err
+	}
 	httpReq.Header.Set("X-Scope-OrgID", "user-1")
 	httpReq.Header.Add("Content-Encoding", "snappy")
 	httpReq.Header.Add("Accept-Encoding", "snappy")

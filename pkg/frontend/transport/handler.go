@@ -22,7 +22,6 @@ import (
 	"github.com/weaveworks/common/httpgrpc/server"
 	"google.golang.org/grpc/status"
 
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -34,9 +33,6 @@ const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
-
-	// Queries are a set of matchers with time ranges - should not get into megabytes
-	maxRemoteReadQuerySize = 1024 * 1024
 )
 
 var (
@@ -143,21 +139,14 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(io.TeeReader(r.Body, &buf))
 	// We parse form here so that we can use buf as body, in order to
 	// prevent https://github.com/cortexproject/cortex/issues/5201.
-	if strings.Contains(r.URL.Path, "api/v1/read") {
-		var req client.ReadRequest
-		if err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), maxRemoteReadQuerySize, &req, util.RawSnappy); err != nil {
-			level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse proto", "err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	} else {
+	// Exclude remote read here as we don't have to buffer its body.
+	if !strings.Contains(r.URL.Path, "api/v1/read") {
 		if err := r.ParseForm(); err != nil {
 			writeError(w, err)
 			return
 		}
+		r.Body = io.NopCloser(&buf)
 	}
-
-	r.Body = io.NopCloser(&buf)
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)

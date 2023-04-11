@@ -368,6 +368,10 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 		extra++
 	}
 
+	if cfg.remoteReadEnabled {
+		extra++
+	}
+
 	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(numUsers*numQueriesPerUser+extra), "cortex_query_frontend_queries_total"))
 
 	// The number of received request is greater than the query requests because include

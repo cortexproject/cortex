@@ -6,7 +6,6 @@ package integration
 import (
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -354,16 +354,9 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			_, err := c.QueryRange("up)", start, end, time.Second)
 			require.Error(t, err)
 
-			// Expect the error response format to be correct.
-			type response struct {
-				Status    string `json:"status"`
-				ErrorType string `json:"errorType,omitempty"`
-				Error     string `json:"error,omitempty"`
-			}
-			var res response
-			err = json.Unmarshal([]byte(err.Error()), &res)
-			require.NoError(t, err)
-			require.Equal(t, res.ErrorType, "bad_data")
+			apiErr, ok := err.(*v1.Error)
+			require.True(t, ok)
+			require.Equal(t, apiErr.Type, v1.ErrBadData)
 		}
 
 		for q := 0; q < numQueriesPerUser; q++ {

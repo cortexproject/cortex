@@ -203,12 +203,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {
-	fields := make([]interface{}, 0, 2)
+	fields := make([]interface{}, 0, 4)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
-		fields = append(fields, dashboardUID)
+		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
 	}
 	if panelID := r.Header.Get("X-Panel-Id"); panelID != "" {
-		fields = append(fields, panelID)
+		fields = append(fields, "X-Panel-Id", panelID)
 	}
 	return fields
 }

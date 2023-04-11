@@ -6,6 +6,7 @@ package integration
 import (
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,14 @@ type queryFrontendTestConfig struct {
 	queryStatsEnabled     bool
 	remoteReadEnabled     bool
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
+}
+
+type response struct {
+	Status    status      `json:"status"`
+	Data      interface{} `json:"data,omitempty"`
+	ErrorType errorType   `json:"errorType,omitempty"`
+	Error     string      `json:"error,omitempty"`
+	Warnings  []string    `json:"warnings,omitempty"`
 }
 
 func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
@@ -345,6 +354,26 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			assert.Equal(t, model.LabelSet{labels.MetricName: "series_1"}, result[0])
 		}
 
+		// No need to repeat the query 400 test for each user.
+		if userID == 0 {
+			start := time.Unix(1595846748, 806*1e6)
+			end := time.Unix(1595846750, 806*1e6)
+
+			_, err := c.QueryRange("up)", start, end, time.Second)
+			require.Error(t, err)
+
+			// Expect the error response format to be correct.
+			type response struct {
+				Status    string `json:"status"`
+				ErrorType string `json:"errorType,omitempty"`
+				Error     string `json:"error,omitempty"`
+			}
+			var res response
+			err = json.Unmarshal([]byte(err.Error()), &res)
+			require.NoError(t, err)
+			require.Equal(t, response.ErrorType, "bad_data")
+		}
+
 		for q := 0; q < numQueriesPerUser; q++ {
 			go func() {
 				defer wg.Done()
@@ -359,7 +388,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 	wg.Wait()
 
-	extra := float64(2)
+	extra := float64(3)
 	if cfg.testMissingMetricName {
 		extra++
 	}

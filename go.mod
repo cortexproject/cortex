@@ -48,7 +48,7 @@ require (
 	github.com/prometheus/common v0.42.0
 	// Prometheus maps version 2.x.y to tags v0.x.y.
 	github.com/prometheus/prometheus v0.43.1-0.20230327151049-211ae4f1f0a2
-	github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
+	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.2

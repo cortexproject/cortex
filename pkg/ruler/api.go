@@ -394,6 +394,19 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
+	if len(rgs) == 0 && strings.Contains(userID, "|") { //get rules for every tenant to support teant federation
+		uids := strings.Split(userID, "|")
+		for _, uid := range uids {
+			trgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), uid, namespace)
+			for _, rule := range trgs {
+				rgs = append(rgs, rule)
+			}
+			level.Debug(logger).Log("msg", "rules found for userID", "userID", userID, "rgs", trgs)
+			if err != nil {
+				level.Error(logger).Log("msg", "query ruler error", "userID", userID, "err", err)
+			}
+		}
+	}	
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

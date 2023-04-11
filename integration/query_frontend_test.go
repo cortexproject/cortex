@@ -36,14 +36,6 @@ type queryFrontendTestConfig struct {
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
 }
 
-type response struct {
-	Status    status      `json:"status"`
-	Data      interface{} `json:"data,omitempty"`
-	ErrorType errorType   `json:"errorType,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Warnings  []string    `json:"warnings,omitempty"`
-}
-
 func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
@@ -371,7 +363,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			var res response
 			err = json.Unmarshal([]byte(err.Error()), &res)
 			require.NoError(t, err)
-			require.Equal(t, response.ErrorType, "bad_data")
+			require.Equal(t, res.ErrorType, "bad_data")
 		}
 
 		for q := 0; q < numQueriesPerUser; q++ {

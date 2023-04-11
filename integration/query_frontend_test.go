@@ -31,6 +31,7 @@ type queryFrontendTestConfig struct {
 	testMissingMetricName bool
 	querySchedulerEnabled bool
 	queryStatsEnabled     bool
+	remoteReadEnabled     bool
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
 }
 
@@ -194,6 +195,19 @@ func TestQueryFrontendWithVerticalShardingQueryScheduler(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendRemoteRead(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		remoteReadEnabled: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+			return cortexConfigFile, flags
+		},
+	})
+}
+
 func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
@@ -305,6 +319,18 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			res, _, err := c.QueryRaw("{instance=~\"hello.*\"}")
 			require.NoError(t, err)
 			require.Regexp(t, "querier_wall_time;dur=[0-9.]*, response_time;dur=[0-9.]*$", res.Header.Values("Server-Timing")[0])
+		}
+
+		// No need to repeat the test on remote read for each user.
+		if userID == 0 && cfg.remoteReadEnabled {
+			start := time.Unix(1595846748, 806*1e6)
+			end := time.Unix(1595846750, 806*1e6)
+			res, err := c.RemoteRead([]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "__name__", "series_1")}, start, end, time.Second)
+			require.NoError(t, err)
+			require.True(t, len(res.Results) > 0)
+			require.True(t, len(res.Results[0].Timeseries) > 0)
+			require.True(t, len(res.Results[0].Timeseries[0].Samples) > 0)
+			require.True(t, len(res.Results[0].Timeseries[0].Labels) > 0)
 		}
 
 		// In this test we do ensure that the /series start/end time is ignored and Cortex

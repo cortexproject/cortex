@@ -139,11 +139,14 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.Body = io.NopCloser(io.TeeReader(r.Body, &buf))
 	// We parse form here so that we can use buf as body, in order to
 	// prevent https://github.com/cortexproject/cortex/issues/5201.
-	if err := r.ParseForm(); err != nil {
-		writeError(w, err)
-		return
+	// Exclude remote read here as we don't have to buffer its body.
+	if !strings.Contains(r.URL.Path, "api/v1/read") {
+		if err := r.ParseForm(); err != nil {
+			writeError(w, err)
+			return
+		}
+		r.Body = io.NopCloser(&buf)
 	}
-	r.Body = io.NopCloser(&buf)
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)

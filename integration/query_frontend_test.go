@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -345,6 +346,19 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			assert.Equal(t, model.LabelSet{labels.MetricName: "series_1"}, result[0])
 		}
 
+		// No need to repeat the query 400 test for each user.
+		if userID == 0 {
+			start := time.Unix(1595846748, 806*1e6)
+			end := time.Unix(1595846750, 806*1e6)
+
+			_, err := c.QueryRange("up)", start, end, time.Second)
+			require.Error(t, err)
+
+			apiErr, ok := err.(*v1.Error)
+			require.True(t, ok)
+			require.Equal(t, apiErr.Type, v1.ErrBadData)
+		}
+
 		for q := 0; q < numQueriesPerUser; q++ {
 			go func() {
 				defer wg.Done()
@@ -359,7 +373,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 	wg.Wait()
 
-	extra := float64(2)
+	extra := float64(3)
 	if cfg.testMissingMetricName {
 		extra++
 	}

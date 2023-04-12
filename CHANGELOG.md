@@ -5,6 +5,7 @@
 * [ENHANCEMENT] Querier: Batch Iterator optimization to prevent transversing it multiple times query ranges steps does not overlap. #5237
 * [BUGFIX] Catch context error in the s3 bucket client. #5240
 * [BUGFIX] Fix query frontend remote read empty body. #5257
+* [BUGFIX] Fix query frontend incorrect error response format at `SplitByQuery` middleware. #5260
 
 ## 1.15.0 in progress
 

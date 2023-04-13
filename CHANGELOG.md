@@ -6,6 +6,7 @@
 * [BUGFIX] Catch context error in the s3 bucket client. #5240
 * [BUGFIX] Fix query frontend remote read empty body. #5257
 * [BUGFIX] Fix query frontend incorrect error response format at `SplitByQuery` middleware. #5260
+* [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 
 ## 1.15.0 in progress
 

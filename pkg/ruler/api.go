@@ -496,6 +496,16 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	rgProto := rulespb.ToProto(userID, namespace, rg)
+	loadedRg := rulespb.FromProto(rgProto)
+	rgYaml, err := yaml.Marshal(loadedRg)
+	if err == nil {
+		err = yaml.Unmarshal(rgYaml, &rulefmt.RuleGroup{})
+	}
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to load rule group from proto", "err", err.Error(), "user", userID)
+		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
+		return
+	}
 
 	level.Debug(logger).Log("msg", "attempting to store rulegroup", "userID", userID, "group", rgProto.String())
 	err = a.store.SetRuleGroup(req.Context(), userID, namespace, rgProto)

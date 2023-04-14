@@ -168,6 +168,44 @@ runtime_config:
   # CLI flag: -runtime-config.file
   [file: <string> | default = ""]
 
+  # Overrides default global limits (defined in limits_config) on a per-tenant basis.
+  # Specify tenant-specific limits using the same fields available in limits_config.
+  # Each tenant is defined as a key-value pair, where the key is the tenant ID
+  # and the value is an object with tenant-specific limits.
+  #
+  # Refer to the (https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config)
+  # documentation for a description of available fields and to
+  # [https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file]
+  # for the example usage.
+  [overrides: <limits_config_per_tenant>]
+
+  # Switch to a different store  (eg. consul -> etcd)
+  multi_kv_config:
+    # Updated store name
+    [primary: <string> | default = ""]
+
+    # Enable mirroring
+    [mirror_enabled: <boolean> | default = false]
+
+  # Enable streaming entire chunks instead of individual samples to the
+  # querier
+  [ingester_stream_chunks_when_using_blocks: <boolean> | default = false]
+
+  # Configures limits used by ingester. Reaching any of these 
+  # will result returning an internal error in Push method.
+  ingester_limits:
+    # Ingester's maximum push rate
+    [max_ingestion_rate: <float> | default 0]
+
+    # Ingester's maximum tenant count
+    [max_tenants: <int> | default = 0]
+
+    # Ingester's max series limit
+    [max_series: <int> | default = 0]
+
+    # Ingester's max inflight push requests
+    [max_inflight_push_requests: <int> | default = 0]
+
 # The memberlist_config configures the Gossip memberlist.
 [memberlist: <memberlist_config>]
 

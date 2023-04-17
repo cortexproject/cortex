@@ -56,7 +56,7 @@ type tenantLimitsConfig struct {
 
 func (cfg *tenantLimitsConfig) registerFlags(f *flag.FlagSet) {
 	for key, value := range cfg.perTenantLimits {
-		f.StringVar(&key, "runtime-config.override.tenant-id", "", "Specificies the tenant id")
+		f.StringVar(&key, "runtime-config.override.tenant-id", "", "Specifies the tenant id")
 		value.RegisterFlags(f)
 	}
 }

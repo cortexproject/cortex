@@ -1,6 +1,10 @@
 package ingester
 
-import "github.com/pkg/errors"
+import (
+	"flag"
+
+	"github.com/pkg/errors"
+)
 
 var (
 	// We don't include values in the message to avoid leaking Cortex cluster configuration to users.
@@ -17,6 +21,13 @@ type InstanceLimits struct {
 	MaxInMemoryTenants      int64   `yaml:"max_tenants"`
 	MaxInMemorySeries       int64   `yaml:"max_series"`
 	MaxInflightPushRequests int64   `yaml:"max_inflight_push_requests"`
+}
+
+func (cfg *InstanceLimits) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.Float64Var(&cfg.MaxIngestionRate, prefix+".max-ingestion-rate", 0, "Maximum ingestion rate for the ingester, in samples per second.")
+	f.Int64Var(&cfg.MaxInMemoryTenants, prefix+".max-in-memory-tenants", 0, "Maximum number of tenants allowed in the ingester.")
+	f.Int64Var(&cfg.MaxInMemorySeries, prefix+".max-in-memory-series", 0, "Maximum number of series allowed in the ingester.")
+	f.Int64Var(&cfg.MaxInflightPushRequests, prefix+".max-inflight-push-requests", 0, "Maximum number of inflight push requests allowed in the ingester.")
 }
 
 // Sets default limit values for unmarshalling.

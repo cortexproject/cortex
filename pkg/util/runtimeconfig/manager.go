@@ -17,7 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Loader loads the configuration from file.
@@ -29,14 +32,33 @@ type Config struct {
 	ReloadPeriod time.Duration `yaml:"period"`
 	// LoadPath contains the path to the runtime config file, requires an
 	// non-empty value
-	LoadPath string `yaml:"file"`
-	Loader   Loader `yaml:"-"`
+	LoadPath               string                  `yaml:"file"`
+	TenantLimits           tenantLimitsConfig      `yaml:"overrides" doc:"description=Overrides default global limits (defined in limits_config) on a per-tenant basis. Specify tenant-specific limits using the same fields available in limits_config. Each tenant is defined as a key-value pair, where the key is the tenant ID and the value is an object with tenant-specific limits. Refer to the https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config documentation for a description of available fields and to https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file for the example usage."`
+	Multi                  kv.MultiRuntimeConfig   `yaml:"multi_kv_config"`
+	IngesterChunkStreaming bool                    `yaml:"ingester_stream_chunks_when_using_blocks"`
+	IngesterLimits         ingester.InstanceLimits `yaml:"ingester_limits"`
+	Loader                 Loader                  `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
 func (mc *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
 	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
+	mc.TenantLimits.registerFlags(f)
+	mc.IngesterLimits.RegisterFlagsWithPrefix("runtime-config.ingester-limits", f)
+	mc.Multi.RegisterFlagsWithPrefix("runtime-config.multi-kv-config", f)
+	f.BoolVar(&mc.IngesterChunkStreaming, "runtime-config.ingester-stream-chunks-when-using-blocks", false, "Enable streaming entire chunks instead of individual samples to the querier")
+}
+
+type tenantLimitsConfig struct {
+	perTenantLimits map[string]validation.Limits
+}
+
+func (cfg *tenantLimitsConfig) registerFlags(f *flag.FlagSet) {
+	for key, value := range cfg.perTenantLimits {
+		f.StringVar(&key, "runtime-config.override.tenant-id", "", "Specifices the tenant id")
+		value.RegisterFlags(f)
+	}
 }
 
 // Manager periodically reloads the configuration from a file, and keeps this

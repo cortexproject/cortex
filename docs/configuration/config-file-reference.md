@@ -168,47 +168,6 @@ runtime_config:
   # CLI flag: -runtime-config.file
   [file: <string> | default = ""]
 
-  # Overrides default global limits (defined in limits_config) on a per-tenant basis.
-  # Specify tenant-specific limits using the same fields available in limits_config.
-  # Each tenant is defined as a key-value pair, where the key is the tenant ID
-  # and the value is an object with tenant-specific limits.
-  #
-  # Refer to the (https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config)
-  # documentation for a description of available fields and to
-  # [https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file]
-  # for the example usage.
-  [overrides: <limits_config_per_tenant>]
-
-  # Allows switching to a different store (e.g., consul to etcd) and
-  # enabling/disabling mirroring without requiring a restart.
-  multi_kv_config:
-    # The primary store used by MultiClient. Can be updated at runtime to switch
-    # between different stores, enabling smooth migration.
-    [primary: <string> | default = ""]
-
-    # Indicates whether mirroring is enabled or disabled. If not specified,
-    # no change is made to the current mirroring state.
-    [mirror_enabled: <boolean> | default = false]
-
-  # Enable streaming entire chunks instead of individual samples to the
-  # querier
-  [ingester_stream_chunks_when_using_blocks: <boolean> | default = false]
-
-  # Configures the ingester's limits. If any of these limits are reached,
-  # an internal error will be returned in the Push method.
-  ingester_limits:
-    # Maximum ingestion rate for the ingester, in samples per second.
-    [max_ingestion_rate: <float> | default 0]
-
-    # Maximum number of tenants allowed in the ingester.
-    [max_tenants: <int> | default = 0]
-
-    # Maximum number of series allowed in the ingester.
-    [max_series: <int> | default = 0]
-
-    # Maximum number of inflight push requests allowed in the ingester.
-    [max_inflight_push_requests: <int> | default = 0]
-
 # The memberlist_config configures the Gossip memberlist.
 [memberlist: <memberlist_config>]
 

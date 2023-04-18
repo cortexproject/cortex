@@ -1085,12 +1085,12 @@ func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine v1.Qu
 	require.Len(t, m, 1)
 	series := m[0]
 	require.Equal(t, q.labels, series.Metric)
-	require.Equal(t, q.samples(from, through, step), len(series.Points))
+	require.Equal(t, q.samples(from, through, step), len(series.Floats))
 	var ts int64
-	for i, point := range series.Points {
+	for i, point := range series.Floats {
 		expectedTime, expectedValue := q.expected(ts)
 		require.Equal(t, expectedTime, point.T, strconv.Itoa(i))
-		require.Equal(t, expectedValue, point.V, strconv.Itoa(i))
+		require.Equal(t, expectedValue, point.F, strconv.Itoa(i))
 		ts += int64(step / time.Millisecond)
 	}
 	return r

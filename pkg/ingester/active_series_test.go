@@ -66,8 +66,8 @@ func TestActiveSeries_Purge(t *testing.T) {
 
 func TestActiveSeries_PurgeOpt(t *testing.T) {
 	metric := labels.NewBuilder(labels.FromStrings("__name__", "logs"))
-	ls1 := metric.Set("_", "ypfajYg2lsv").Labels(nil)
-	ls2 := metric.Set("_", "KiqbryhzUpn").Labels(nil)
+	ls1 := metric.Set("_", "ypfajYg2lsv").Labels()
+	ls2 := metric.Set("_", "KiqbryhzUpn").Labels()
 	c := NewActiveSeries()
 
 	now := time.Now()

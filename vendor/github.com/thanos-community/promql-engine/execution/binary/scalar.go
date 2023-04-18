@@ -10,7 +10,8 @@ import (
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 
 	"github.com/thanos-community/promql-engine/execution/function"
 	"github.com/thanos-community/promql-engine/execution/model"
@@ -165,7 +166,7 @@ func (o *scalarOperator) loadSeries(ctx context.Context) error {
 	for i := range vectorSeries {
 		if vectorSeries[i] != nil {
 			lbls := vectorSeries[i]
-			if !o.opType.IsComparisonOperator() {
+			if shouldDropMetricName(o.opType, o.returnBool) {
 				lbls, _ = function.DropMetricName(lbls.Copy())
 			}
 			series[i] = lbls

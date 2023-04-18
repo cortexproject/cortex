@@ -6,6 +6,13 @@ package engine
 import (
 	"context"
 
+	promparser "github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/stats"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
+
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 
@@ -23,9 +30,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/stats"
 
 	"github.com/thanos-community/promql-engine/execution"
 	"github.com/thanos-community/promql-engine/execution/model"
@@ -35,7 +39,14 @@ import (
 
 type QueryType int
 
+type engineMetrics struct {
+	currentQueries prometheus.Gauge
+	queries        *prometheus.CounterVec
+}
+
 const (
+	namespace    string    = "thanos"
+	subsystem    string    = "engine"
 	InstantQuery QueryType = 1
 	RangeQuery   QueryType = 2
 )
@@ -54,14 +65,27 @@ type Opts struct {
 	// If nil, nothing will be printed.
 	// NOTE: Users will not check the errors, debug writing is best effort.
 	DebugWriter io.Writer
+
+	// ExtLookbackDelta specifies what time range to use to determine valid previous sample for extended range functions.
+	// Defaults to 1 hour if not specified.
+	ExtLookbackDelta time.Duration
+
+	// EnableXFunctions enables custom xRate, xIncrease and xDelta functions.
+	// This will default to false.
+	EnableXFunctions bool
+
+	// FallbackEngine
+	Engine v1.QueryEngine
 }
 
 func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
+	var optimizers []logicalplan.Optimizer
 	if o.LogicalOptimizers == nil {
-		return logicalplan.DefaultOptimizers
+		optimizers = logicalplan.DefaultOptimizers
+	} else {
+		optimizers = o.LogicalOptimizers
 	}
-
-	return o.LogicalOptimizers
+	return append(optimizers, logicalplan.TrimSortFunctions{})
 }
 
 type remoteEngine struct {
@@ -69,19 +93,25 @@ type remoteEngine struct {
 	engine    *compatibilityEngine
 	labelSets []labels.Labels
 	maxt      int64
+	mint      int64
 }
 
-func NewRemoteEngine(opts Opts, q storage.Queryable, maxt int64, labelSets []labels.Labels) *remoteEngine {
+func NewRemoteEngine(opts Opts, q storage.Queryable, mint, maxt int64, labelSets []labels.Labels) *remoteEngine {
 	return &remoteEngine{
 		q:         q,
 		labelSets: labelSets,
 		maxt:      maxt,
+		mint:      mint,
 		engine:    New(opts),
 	}
 }
 
 func (l remoteEngine) MaxT() int64 {
 	return l.maxt
+}
+
+func (l remoteEngine) MinT() int64 {
+	return l.mint
 }
 
 func (l remoteEngine) LabelSets() []labels.Labels {
@@ -111,10 +141,20 @@ func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngi
 func (l distributedEngine) SetQueryLogger(log promql.QueryLogger) {}
 
 func (l distributedEngine) NewInstantQuery(q storage.Queryable, opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
+	// Some clients might only support second precision when executing queries.
+	ts = ts.Truncate(time.Second)
+
 	return l.remoteEngine.NewInstantQuery(q, opts, qs, ts)
 }
 
 func (l distributedEngine) NewRangeQuery(q storage.Queryable, opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
+	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
+	// Some clients might only support second precision when executing queries.
+	start = start.Truncate(time.Second)
+	end = end.Truncate(time.Second)
+	interval = interval.Truncate(time.Second)
+
 	return l.remoteEngine.NewRangeQuery(q, opts, qs, start, end, interval)
 }
 
@@ -126,27 +166,59 @@ func New(opts Opts) *compatibilityEngine {
 		opts.LookbackDelta = 5 * time.Minute
 		level.Debug(opts.Logger).Log("msg", "lookback delta is zero, setting to default value", "value", 5*time.Minute)
 	}
+	if opts.ExtLookbackDelta == 0 {
+		opts.ExtLookbackDelta = 1 * time.Hour
+		level.Debug(opts.Logger).Log("msg", "externallookback delta is zero, setting to default value", "value", 1*24*time.Hour)
+	}
 
-	return &compatibilityEngine{
-		prom: promql.NewEngine(opts.EngineOpts),
+	if opts.EnableXFunctions {
+		parser.Functions["xdelta"] = parse.Functions["xdelta"]
+		parser.Functions["xincrease"] = parse.Functions["xincrease"]
+		parser.Functions["xrate"] = parse.Functions["xrate"]
+	}
+
+	metrics := &engineMetrics{
+		currentQueries: promauto.With(opts.Reg).NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Subsystem: subsystem,
+				Name:      "queries",
+				Help:      "The current number of queries being executed or waiting.",
+			},
+		),
 		queries: promauto.With(opts.Reg).NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "promql_engine_queries_total",
-				Help: "Number of PromQL queries.",
+				Namespace: namespace,
+				Subsystem: subsystem,
+				Name:      "queries_total",
+				Help:      "Number of PromQL queries.",
 			}, []string{"fallback"},
 		),
+	}
+
+	var engine v1.QueryEngine
+	if opts.Engine == nil {
+		engine = promql.NewEngine(opts.EngineOpts)
+	} else {
+		engine = opts.Engine
+	}
+
+	return &compatibilityEngine{
+		prom: engine,
+
 		debugWriter:       opts.DebugWriter,
 		disableFallback:   opts.DisableFallback,
 		logger:            opts.Logger,
 		lookbackDelta:     opts.LookbackDelta,
 		logicalOptimizers: opts.getLogicalOptimizers(),
 		timeout:           opts.Timeout,
+		metrics:           metrics,
+		extLookbackDelta:  opts.ExtLookbackDelta,
 	}
 }
 
 type compatibilityEngine struct {
-	prom    *promql.Engine
-	queries *prometheus.CounterVec
+	prom v1.QueryEngine
 
 	debugWriter io.Writer
 
@@ -155,6 +227,9 @@ type compatibilityEngine struct {
 	lookbackDelta     time.Duration
 	logicalOptimizers []logicalplan.Optimizer
 	timeout           time.Duration
+	metrics           *engineMetrics
+
+	extLookbackDelta time.Duration
 }
 
 func (e *compatibilityEngine) SetQueryLogger(l promql.QueryLogger) {
@@ -167,15 +242,33 @@ func (e *compatibilityEngine) NewInstantQuery(q storage.Queryable, opts *promql.
 		return nil, err
 	}
 
-	lplan := logicalplan.New(expr, ts, ts)
+	if opts == nil {
+		opts = &promql.QueryOpts{}
+	}
+
+	if opts.LookbackDelta <= 0 {
+		opts.LookbackDelta = e.lookbackDelta
+	}
+
+	// determine sorting order before optimizers run, we do this by looking for "sort"
+	// and "sort_desc" and optimize them away afterwards since they are only needed at
+	// the presentation layer and not when computing the results.
+	resultSort := newResultSort(expr)
+
+	lplan := logicalplan.New(expr, &logicalplan.Opts{
+		Start:         ts,
+		End:           ts,
+		Step:          1,
+		LookbackDelta: opts.LookbackDelta,
+	})
 	lplan = lplan.Optimize(e.logicalOptimizers)
 
-	exec, err := execution.New(lplan.Expr(), q, ts, ts, 0, e.lookbackDelta)
+	exec, err := execution.New(lplan.Expr(), q, ts, ts, 0, opts.LookbackDelta, e.extLookbackDelta)
 	if e.triggerFallback(err) {
-		e.queries.WithLabelValues("true").Inc()
+		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewInstantQuery(q, opts, qs, ts)
 	}
-	e.queries.WithLabelValues("false").Inc()
+	e.metrics.queries.WithLabelValues("false").Inc()
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +283,7 @@ func (e *compatibilityEngine) NewInstantQuery(q storage.Queryable, opts *promql.
 		expr:       expr,
 		ts:         ts,
 		t:          InstantQuery,
-		resultSort: newResultSort(expr),
+		resultSort: resultSort,
 	}, nil
 }
 
@@ -202,18 +295,31 @@ func (e *compatibilityEngine) NewRangeQuery(q storage.Queryable, opts *promql.Qu
 
 	// Use same check as Prometheus for range queries.
 	if expr.Type() != parser.ValueTypeVector && expr.Type() != parser.ValueTypeScalar {
-		return nil, errors.Newf("invalid expression type %q for range Query, must be Scalar or instant Vector", parser.DocumentedType(expr.Type()))
+		return nil, errors.Newf("invalid expression type %q for range query, must be Scalar or instant Vector", parser.DocumentedType(expr.Type()))
 	}
 
-	lplan := logicalplan.New(expr, start, end)
+	if opts == nil {
+		opts = &promql.QueryOpts{}
+	}
+
+	if opts.LookbackDelta <= 0 {
+		opts.LookbackDelta = e.lookbackDelta
+	}
+
+	lplan := logicalplan.New(expr, &logicalplan.Opts{
+		Start:         start,
+		End:           end,
+		Step:          step,
+		LookbackDelta: opts.LookbackDelta,
+	})
 	lplan = lplan.Optimize(e.logicalOptimizers)
 
-	exec, err := execution.New(lplan.Expr(), q, start, end, step, e.lookbackDelta)
+	exec, err := execution.New(lplan.Expr(), q, start, end, step, opts.LookbackDelta, e.extLookbackDelta)
 	if e.triggerFallback(err) {
-		e.queries.WithLabelValues("true").Inc()
+		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewRangeQuery(q, opts, qs, start, end, step)
 	}
-	e.queries.WithLabelValues("false").Inc()
+	e.metrics.queries.WithLabelValues("false").Inc()
 	if err != nil {
 		return nil, err
 	}
@@ -252,66 +358,90 @@ const (
 	sortOrderDesc sortOrder = true
 )
 
-type resultSort struct {
-	sortByValues  bool
-	sortOrder     sortOrder
+type resultSorter interface {
+	comparer(samples *promql.Vector) func(i, j int) bool
+}
+
+type sortFuncResultSort struct {
+	sortOrder sortOrder
+}
+
+type aggregateResultSort struct {
 	sortingLabels []string
 	groupBy       bool
+
+	sortOrder sortOrder
 }
 
-func newResultSort(expr parser.Expr) resultSort {
-	aggr, ok := expr.(*parser.AggregateExpr)
-	if !ok {
-		return resultSort{}
-	}
+type noSortResultSort struct {
+}
 
-	switch aggr.Op {
-	case parser.TOPK:
-		return resultSort{
-			sortByValues:  true,
-			sortingLabels: aggr.Grouping,
-			sortOrder:     sortOrderDesc,
-			groupBy:       !aggr.Without,
+func newResultSort(expr parser.Expr) resultSorter {
+	switch texpr := expr.(type) {
+	case *parser.Call:
+		switch texpr.Func.Name {
+		case "sort":
+			return sortFuncResultSort{sortOrder: sortOrderAsc}
+		case "sort_desc":
+			return sortFuncResultSort{sortOrder: sortOrderDesc}
 		}
-	case parser.BOTTOMK:
-		return resultSort{
-			sortByValues:  true,
-			sortingLabels: aggr.Grouping,
-			sortOrder:     sortOrderAsc,
-			groupBy:       !aggr.Without,
+	case *parser.AggregateExpr:
+		switch texpr.Op {
+		case parser.TOPK:
+			return aggregateResultSort{
+				sortingLabels: texpr.Grouping,
+				sortOrder:     sortOrderDesc,
+				groupBy:       !texpr.Without,
+			}
+		case parser.BOTTOMK:
+			return aggregateResultSort{
+				sortingLabels: texpr.Grouping,
+				sortOrder:     sortOrderAsc,
+				groupBy:       !texpr.Without,
+			}
 		}
-	default:
-		return resultSort{}
+	}
+	return noSortResultSort{}
+}
+func (s noSortResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
+	return func(i, j int) bool { return i < j }
+}
+
+func valueCompare(order sortOrder, l, r float64) bool {
+	if math.IsNaN(r) {
+		return true
+	}
+	if order == sortOrderAsc {
+		return l < r
+	}
+	return l > r
+}
+
+func (s sortFuncResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
+	return func(i, j int) bool {
+		return valueCompare(s.sortOrder, (*samples)[i].F, (*samples)[j].F)
 	}
 }
 
-func (s resultSort) comparer(samples *promql.Vector) func(i int, j int) bool {
+func (s aggregateResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
 	return func(i int, j int) bool {
-		if !s.sortByValues {
-			return i < j
-		}
-
 		var iLbls labels.Labels
 		var jLbls labels.Labels
 		iLb := labels.NewBuilder((*samples)[i].Metric)
 		jLb := labels.NewBuilder((*samples)[j].Metric)
 		if s.groupBy {
-			iLbls = iLb.Keep(s.sortingLabels...).Labels(nil)
-			jLbls = jLb.Keep(s.sortingLabels...).Labels(nil)
+			iLbls = iLb.Keep(s.sortingLabels...).Labels()
+			jLbls = jLb.Keep(s.sortingLabels...).Labels()
 		} else {
-			iLbls = iLb.Del(s.sortingLabels...).Labels(nil)
-			jLbls = jLb.Del(s.sortingLabels...).Labels(nil)
+			iLbls = iLb.Del(s.sortingLabels...).Labels()
+			jLbls = jLb.Del(s.sortingLabels...).Labels()
 		}
 
 		lblsCmp := labels.Compare(iLbls, jLbls)
 		if lblsCmp != 0 {
 			return lblsCmp < 0
 		}
-
-		if s.sortOrder == sortOrderAsc {
-			return (*samples)[i].V < (*samples)[j].V
-		}
-		return (*samples)[i].V > (*samples)[j].V
+		return valueCompare(s.sortOrder, (*samples)[i].F, (*samples)[j].F)
 	}
 }
 
@@ -321,7 +451,7 @@ type compatibilityQuery struct {
 	expr       parser.Expr
 	ts         time.Time // Empty for range queries.
 	t          QueryType
-	resultSort resultSort
+	resultSort resultSorter
 
 	cancel context.CancelFunc
 }
@@ -334,6 +464,9 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	}
 	defer recoverEngine(q.engine.logger, q.expr, &ret.Err)
 
+	q.engine.metrics.currentQueries.Inc()
+	defer q.engine.metrics.currentQueries.Dec()
+
 	ctx, cancel := context.WithTimeout(ctx, q.engine.timeout)
 	defer cancel()
 	q.cancel = cancel
@@ -341,6 +474,9 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	resultSeries, err := q.Query.exec.Series(ctx)
 	if err != nil {
 		return newErrResult(ret, err)
+	}
+	if containsDuplicateLabelSet(resultSeries) {
+		return newErrResult(ret, errors.New("vector cannot contain metrics with the same labelset"))
 	}
 
 	series := make([]promql.Series, len(resultSeries))
@@ -369,19 +505,19 @@ loop:
 
 			for _, vector := range r {
 				for i, s := range vector.SampleIDs {
-					if len(series[s].Points) == 0 {
-						series[s].Points = make([]promql.Point, 0, 121) // Typically 1h of data.
+					if len(series[s].Floats) == 0 {
+						series[s].Floats = make([]promql.FPoint, 0, 121) // Typically 1h of data.
 					}
-					series[s].Points = append(series[s].Points, promql.Point{
+					series[s].Floats = append(series[s].Floats, promql.FPoint{
 						T: vector.T,
-						V: vector.Samples[i],
+						F: vector.Samples[i],
 					})
 				}
 				for i, s := range vector.HistogramIDs {
-					if len(series[s].Points) == 0 {
-						series[s].Points = make([]promql.Point, 0, 121) // Typically 1h of data.
+					if len(series[s].Histograms) == 0 {
+						series[s].Histograms = make([]promql.HPoint, 0, 121) // Typically 1h of data.
 					}
-					series[s].Points = append(series[s].Points, promql.Point{
+					series[s].Histograms = append(series[s].Histograms, promql.HPoint{
 						T: vector.T,
 						H: vector.Histograms[i],
 					})
@@ -396,7 +532,7 @@ loop:
 	if q.t == RangeQuery {
 		resultMatrix := make(promql.Matrix, 0, len(series))
 		for _, s := range series {
-			if len(s.Points) == 0 {
+			if len(s.Floats)+len(s.Histograms) == 0 {
 				continue
 			}
 			resultMatrix = append(resultMatrix, s)
@@ -406,7 +542,7 @@ loop:
 		return ret
 	}
 
-	var result parser.Value
+	var result promparser.Value
 	switch q.expr.Type() {
 	case parser.ValueTypeMatrix:
 		result = promql.Matrix(series)
@@ -414,26 +550,31 @@ loop:
 		// Convert matrix with one value per series into vector.
 		vector := make(promql.Vector, 0, len(resultSeries))
 		for i := range series {
-			if len(series[i].Points) == 0 {
+			if len(series[i].Floats)+len(series[i].Histograms) == 0 {
 				continue
 			}
 			// Point might have a different timestamp, force it to the evaluation
 			// timestamp as that is when we ran the evaluation.
-			vector = append(vector, promql.Sample{
-				Metric: series[i].Metric,
-				Point: promql.Point{
-					V: series[i].Points[0].V,
-					H: series[i].Points[0].H,
-					T: q.ts.UnixMilli(),
-				},
-			})
+			if len(series[i].Floats) > 0 {
+				vector = append(vector, promql.Sample{
+					Metric: series[i].Metric,
+					F:      series[i].Floats[0].F,
+					T:      q.ts.UnixMilli(),
+				})
+			} else {
+				vector = append(vector, promql.Sample{
+					Metric: series[i].Metric,
+					H:      series[i].Histograms[0].H,
+					T:      q.ts.UnixMilli(),
+				})
+			}
 		}
 		sort.Slice(vector, q.resultSort.comparer(&vector))
 		result = vector
 	case parser.ValueTypeScalar:
 		v := math.NaN()
 		if len(series) != 0 {
-			v = series[0].Points[0].V
+			v = series[0].Floats[0].F
 		}
 		result = promql.Scalar{V: v, T: q.ts.UnixMilli()}
 	default:
@@ -454,7 +595,25 @@ func newErrResult(r *promql.Result, err error) *promql.Result {
 	return r
 }
 
-func (q *compatibilityQuery) Statement() parser.Statement { return nil }
+func containsDuplicateLabelSet(series []labels.Labels) bool {
+	if len(series) <= 1 {
+		return false
+	}
+	var h uint64
+	buf := make([]byte, 0)
+	seen := make(map[uint64]struct{}, len(series))
+	for i := range series {
+		buf = buf[:0]
+		h = xxhash.Sum64(series[i].Bytes(buf))
+		if _, ok := seen[h]; ok {
+			return true
+		}
+		seen[h] = struct{}{}
+	}
+	return false
+}
+
+func (q *compatibilityQuery) Statement() promparser.Statement { return nil }
 
 // Stats always returns empty query stats for now to avoid panic.
 func (q *compatibilityQuery) Stats() *stats.Statistics {

@@ -269,7 +269,10 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		for _, thanosEngine := range []bool{false, true} {
 			thanosEngine := thanosEngine
 			t.Run(tc.name+fmt.Sprintf(", thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
-				t.Parallel()
+				if !thanosEngine {
+					//parallel testing for non thanos engine
+					t.Parallel()
+				}
 				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 				var wQueriables []QueryableWithFilter
 				for _, queriable := range tc.storeQueriables {

@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.15.0 in progress
+## 1.15.0 2023-04-19
 
 * [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5080 #5122
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045

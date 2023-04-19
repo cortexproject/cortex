@@ -1368,18 +1368,20 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 		{T: 1589760030000, F: 2},
 	}
 	for _, thanosEngine := range []bool{false, true} {
-		var queryEngine v1.QueryEngine
-		if thanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
-
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
-			t.Parallel()
+			if !thanosEngine {
+				//parallel testing for non thanos engine
+				t.Parallel()
+			}
+			var queryEngine v1.QueryEngine
+			if thanosEngine {
+				queryEngine = engine.New(engine.Opts{
+					EngineOpts:        opts,
+					LogicalOptimizers: logicalplan.AllOptimizers,
+				})
+			} else {
+				queryEngine = promql.NewEngine(opts)
+			}
 			// Mock the finder to simulate we need to query two blocks.
 			finder := &blocksFinderMock{
 				Service: services.NewIdleService(nil, nil),

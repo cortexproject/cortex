@@ -28,7 +28,7 @@ import (
 )
 
 func TestApiStatusCodes(t *testing.T) {
-	t.Parallel()
+	//parallel testing causes data race
 
 	for ix, tc := range []struct {
 		err            error
@@ -111,7 +111,6 @@ func TestApiStatusCodes(t *testing.T) {
 				"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
 			} {
 				t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
-					//parallel testing causes data race
 					opts := promql.EngineOpts{
 						Logger:             log.NewNopLogger(),
 						Reg:                nil,

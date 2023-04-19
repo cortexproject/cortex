@@ -190,22 +190,26 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		am.state = &NilPeer{}
 	}
 
-	am.wg.Add(1)
 	var err error
-	am.nflog, err = nflog.New(
-		nflog.WithRetention(cfg.Retention),
-		nflog.WithSnapshot(filepath.Join(cfg.TenantDataDir, notificationLogSnapshot)),
-		nflog.WithMaintenance(maintenancePeriod, am.stop, am.wg.Done, nil),
-		nflog.WithMetrics(am.registry),
-		nflog.WithLogger(log.With(am.logger, "component", "nflog")),
-	)
+
+	notificationFile := filepath.Join(cfg.TenantDataDir, notificationLogSnapshot)
+	am.nflog, err = nflog.New(nflog.Options{
+		SnapshotFile: notificationFile,
+		Retention:    cfg.Retention,
+		Logger:       log.With(am.logger, "component", "nflog"),
+		Metrics:      am.registry,
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create notification log: %v", err)
 	}
-
 	c := am.state.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
 	am.nflog.SetBroadcast(c.Broadcast)
-
+	am.wg.Add(1)
+	go func() {
+		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
+		am.wg.Done()
+	}()
 	am.marker = types.NewMarker(am.registry)
 
 	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
@@ -218,10 +222,8 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create silences: %v", err)
 	}
-
 	c = am.state.AddState("sil:"+cfg.UserID, am.silences, am.registry)
 	am.silences.SetBroadcast(c.Broadcast)
-
 	// State replication needs to be started after the state keys are defined.
 	if service, ok := am.state.(services.Service); ok {
 		if err := service.StartAsync(context.Background()); err != nil {
@@ -320,7 +322,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		templateFiles[i] = templateFilepath
 	}
 
-	tmpl, err := template.FromGlobs(templateFiles...)
+	tmpl, err := template.FromGlobs(templateFiles)
 	if err != nil {
 		return err
 	}
@@ -461,7 +463,7 @@ func (am *Alertmanager) getFullState() (*clusterpb.FullState, error) {
 
 // buildIntegrationsMap builds a map of name to the list of integration notifiers off of a
 // list of receiver config.
-func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, notifierWrapper func(string, notify.Notifier) notify.Notifier) (map[string][]notify.Integration, error) {
+func buildIntegrationsMap(nc []config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, notifierWrapper func(string, notify.Notifier) notify.Notifier) (map[string][]notify.Integration, error) {
 	integrationsMap := make(map[string][]notify.Integration, len(nc))
 	for _, rcv := range nc {
 		integrations, err := buildReceiverIntegrations(rcv, tmpl, firewallDialer, logger, notifierWrapper)
@@ -476,7 +478,7 @@ func buildIntegrationsMap(nc []*config.Receiver, tmpl *template.Template, firewa
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
 // Taken from https://github.com/prometheus/alertmanager/blob/94d875f1227b29abece661db1a68c001122d1da5/cmd/alertmanager/main.go#L112-L159.
-func buildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
+func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
 		integrations []notify.Integration

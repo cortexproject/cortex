@@ -62,6 +62,9 @@ type Options struct {
 	// AllowCredentials indicates whether the request can include user credentials like
 	// cookies, HTTP authentication or client side SSL certificates.
 	AllowCredentials bool
+	// AllowPrivateNetwork indicates whether to accept cross-origin requests over a
+	// private network.
+	AllowPrivateNetwork bool
 	// OptionsPassthrough instructs preflight to let other potential next handlers to
 	// process the OPTIONS method. Turn this on if your application handles OPTIONS.
 	OptionsPassthrough bool
@@ -103,6 +106,7 @@ type Cors struct {
 	// Status code to use for successful OPTIONS requests
 	optionsSuccessStatus int
 	allowCredentials     bool
+	allowPrivateNetwork  bool
 	optionPassthrough    bool
 }
 
@@ -113,6 +117,7 @@ func New(options Options) *Cors {
 		allowOriginFunc:        options.AllowOriginFunc,
 		allowOriginRequestFunc: options.AllowOriginRequestFunc,
 		allowCredentials:       options.AllowCredentials,
+		allowPrivateNetwork:    options.AllowPrivateNetwork,
 		maxAge:                 options.MaxAge,
 		optionPassthrough:      options.OptionsPassthrough,
 	}
@@ -282,6 +287,9 @@ func (c *Cors) handlePreflight(w http.ResponseWriter, r *http.Request) {
 	headers.Add("Vary", "Origin")
 	headers.Add("Vary", "Access-Control-Request-Method")
 	headers.Add("Vary", "Access-Control-Request-Headers")
+	if c.allowPrivateNetwork {
+		headers.Add("Vary", "Access-Control-Request-Private-Network")
+	}
 
 	if origin == "" {
 		c.logf("  Preflight aborted: empty origin")
@@ -297,7 +305,12 @@ func (c *Cors) handlePreflight(w http.ResponseWriter, r *http.Request) {
 		c.logf("  Preflight aborted: method '%s' not allowed", reqMethod)
 		return
 	}
-	reqHeaders := parseHeaderList(r.Header.Get("Access-Control-Request-Headers"))
+	// Amazon API Gateway is sometimes feeding multiple values for
+	// Access-Control-Request-Headers in a way where r.Header.Values() picks
+	// them all up, but r.Header.Get() does not.
+	// I suspect it is something like this: https://stackoverflow.com/a/4371395
+	reqHeaderList := strings.Join(r.Header.Values("Access-Control-Request-Headers"), ",")
+	reqHeaders := parseHeaderList(reqHeaderList)
 	if !c.areHeadersAllowed(reqHeaders) {
 		c.logf("  Preflight aborted: headers '%v' not allowed", reqHeaders)
 		return
@@ -318,6 +331,9 @@ func (c *Cors) handlePreflight(w http.ResponseWriter, r *http.Request) {
 	}
 	if c.allowCredentials {
 		headers.Set("Access-Control-Allow-Credentials", "true")
+	}
+	if c.allowPrivateNetwork && r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+		headers.Set("Access-Control-Allow-Private-Network", "true")
 	}
 	if c.maxAge > 0 {
 		headers.Set("Access-Control-Max-Age", strconv.Itoa(c.maxAge))

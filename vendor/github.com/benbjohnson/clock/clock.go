@@ -162,12 +162,20 @@ func (m *Mock) After(d time.Duration) <-chan time.Time {
 	return m.Timer(d).C
 }
 
-// AfterFunc waits for the duration to elapse and then executes a function.
+// AfterFunc waits for the duration to elapse and then executes a function in its own goroutine.
 // A Timer is returned that can be stopped.
 func (m *Mock) AfterFunc(d time.Duration, f func()) *Timer {
-	t := m.Timer(d)
-	t.C = nil
-	t.fn = f
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ch := make(chan time.Time, 1)
+	t := &Timer{
+		c:       ch,
+		fn:      f,
+		mock:    m,
+		next:    m.now.Add(d),
+		stopped: false,
+	}
+	m.timers = append(m.timers, (*internalTimer)(t))
 	return t
 }
 
@@ -313,7 +321,7 @@ func (t *internalTimer) Tick(now time.Time) {
 	t.mock.mu.Lock()
 	if t.fn != nil {
 		// defer function execution until the lock is released, and
-		defer t.fn()
+		defer func() { go t.fn() }()
 	} else {
 		t.c <- now
 	}
@@ -324,12 +332,13 @@ func (t *internalTimer) Tick(now time.Time) {
 
 // Ticker holds a channel that receives "ticks" at regular intervals.
 type Ticker struct {
-	C      <-chan time.Time
-	c      chan time.Time
-	ticker *time.Ticker  // realtime impl, if set
-	next   time.Time     // next tick time
-	mock   *Mock         // mock clock, if set
-	d      time.Duration // time between ticks
+	C       <-chan time.Time
+	c       chan time.Time
+	ticker  *time.Ticker  // realtime impl, if set
+	next    time.Time     // next tick time
+	mock    *Mock         // mock clock, if set
+	d       time.Duration // time between ticks
+	stopped bool          // True if stopped, false if running
 }
 
 // Stop turns off the ticker.
@@ -339,6 +348,7 @@ func (t *Ticker) Stop() {
 	} else {
 		t.mock.mu.Lock()
 		t.mock.removeClockTimer((*internalTicker)(t))
+		t.stopped = true
 		t.mock.mu.Unlock()
 	}
 }
@@ -352,6 +362,11 @@ func (t *Ticker) Reset(dur time.Duration) {
 
 	t.mock.mu.Lock()
 	defer t.mock.mu.Unlock()
+
+	if t.stopped {
+		t.mock.timers = append(t.mock.timers, (*internalTicker)(t))
+		t.stopped = false
+	}
 
 	t.d = dur
 	t.next = t.mock.now.Add(dur)

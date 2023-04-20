@@ -409,6 +409,67 @@ rules:
 	}
 }
 
+func TestRuler_ProtoToRuleGroupYamlConvertion(t *testing.T) {
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	cfg := defaultRulerConfig(t)
+
+	r := newTestRuler(t, cfg, store, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	tc := []struct {
+		name   string
+		input  string
+		output string
+		err    error
+		status int
+	}{
+		{
+			name:   "when pushing group that can be safely converted from RuleGroupDesc to RuleGroup yaml",
+			status: 202,
+			input: `
+name: test_first_group_will_succeed
+interval: 15s
+rules:
+- record: up_rule
+  expr: |2+
+    up{}
+`,
+			output: "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}",
+		},
+		{
+			name:   "when pushing group that CANNOT be safely converted from RuleGroupDesc to RuleGroup yaml",
+			status: 400,
+			input: `
+name: test_first_group_will_succeed
+interval: 15s
+rules:
+- record: up_rule
+  expr: |2+
+
+    up{}
+`,
+			output: "unable to decoded rule group\n",
+		},
+	}
+
+	router := mux.NewRouter()
+	router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			// POST
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.status, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+		})
+	}
+}
+
 func requestFor(t *testing.T, method string, url string, body io.Reader, userID string) *http.Request {
 	t.Helper()
 

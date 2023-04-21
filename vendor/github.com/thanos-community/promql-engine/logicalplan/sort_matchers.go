@@ -6,7 +6,7 @@ package logicalplan
 import (
 	"sort"
 
-	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 )
 
 // SortMatchers sorts all matchers in a selector so that
@@ -14,7 +14,7 @@ import (
 // can rely on this property.
 type SortMatchers struct{}
 
-func (m SortMatchers) Optimize(expr parser.Expr) parser.Expr {
+func (m SortMatchers) Optimize(expr parser.Expr, _ *Opts) parser.Expr {
 	traverse(&expr, func(node *parser.Expr) {
 		e, ok := (*node).(*parser.VectorSelector)
 		if !ok {

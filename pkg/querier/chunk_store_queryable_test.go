@@ -33,20 +33,20 @@ func TestChunkQueryable(t *testing.T) {
 		Timeout:            1 * time.Minute,
 	}
 	for _, thanosEngine := range []bool{false, true} {
-		var queryEngine v1.QueryEngine
-		if thanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
 		for _, testcase := range testcases {
 			for _, encoding := range encodings {
 				for _, query := range queries {
 					t.Run(fmt.Sprintf("%s/%s/%s/ thanos engine enabled = %t", testcase.name, encoding.name, query.query, thanosEngine), func(t *testing.T) {
 						//parallel testing causes data race
+						var queryEngine v1.QueryEngine
+						if thanosEngine {
+							queryEngine = engine.New(engine.Opts{
+								EngineOpts:        opts,
+								LogicalOptimizers: logicalplan.AllOptimizers,
+							})
+						} else {
+							queryEngine = promql.NewEngine(opts)
+						}
 
 						store, from := makeMockChunkStore(t, 24, encoding.e)
 						queryable := newMockStoreQueryable(store, testcase.f)

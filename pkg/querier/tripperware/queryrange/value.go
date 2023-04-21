@@ -37,8 +37,11 @@ func FromResult(res *promql.Result) ([]tripperware.SampleStream, error) {
 		res := make([]tripperware.SampleStream, 0, len(v))
 		for _, sample := range v {
 			res = append(res, tripperware.SampleStream{
-				Labels:  mapLabels(sample.Metric),
-				Samples: mapPoints(sample.Point),
+				Labels: mapLabels(sample.Metric),
+				Samples: mapPoints(promql.FPoint{
+					T: sample.T,
+					F: sample.F,
+				}),
 			})
 		}
 		return res, nil
@@ -48,7 +51,7 @@ func FromResult(res *promql.Result) ([]tripperware.SampleStream, error) {
 		for _, series := range v {
 			res = append(res, tripperware.SampleStream{
 				Labels:  mapLabels(series.Metric),
-				Samples: mapPoints(series.Points...),
+				Samples: mapPoints(series.Floats...),
 			})
 		}
 		return res, nil
@@ -67,12 +70,12 @@ func mapLabels(ls labels.Labels) []cortexpb.LabelAdapter {
 	return result
 }
 
-func mapPoints(pts ...promql.Point) []cortexpb.Sample {
+func mapPoints(pts ...promql.FPoint) []cortexpb.Sample {
 	result := make([]cortexpb.Sample, 0, len(pts))
 
 	for _, pt := range pts {
 		result = append(result, cortexpb.Sample{
-			Value:       pt.V,
+			Value:       pt.F,
 			TimestampMs: pt.T,
 		})
 	}

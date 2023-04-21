@@ -1350,36 +1350,38 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	series1 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_1"}}
 	series2 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_2"}}
 
-	series1Samples := []promql.Point{
-		{T: 1589759955000, V: 1},
-		{T: 1589759970000, V: 1},
-		{T: 1589759985000, V: 1},
-		{T: 1589760000000, V: 1},
-		{T: 1589760015000, V: 1},
-		{T: 1589760030000, V: 1},
+	series1Samples := []promql.FPoint{
+		{T: 1589759955000, F: 1},
+		{T: 1589759970000, F: 1},
+		{T: 1589759985000, F: 1},
+		{T: 1589760000000, F: 1},
+		{T: 1589760015000, F: 1},
+		{T: 1589760030000, F: 1},
 	}
 
-	series2Samples := []promql.Point{
-		{T: 1589759955000, V: 2},
-		{T: 1589759970000, V: 2},
-		{T: 1589759985000, V: 2},
-		{T: 1589760000000, V: 2},
-		{T: 1589760015000, V: 2},
-		{T: 1589760030000, V: 2},
+	series2Samples := []promql.FPoint{
+		{T: 1589759955000, F: 2},
+		{T: 1589759970000, F: 2},
+		{T: 1589759985000, F: 2},
+		{T: 1589760000000, F: 2},
+		{T: 1589760015000, F: 2},
+		{T: 1589760030000, F: 2},
 	}
 	for _, thanosEngine := range []bool{false, true} {
-		var queryEngine v1.QueryEngine
-		if thanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
-
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
-			t.Parallel()
+			if !thanosEngine {
+				//parallel testing for non thanos engine
+				t.Parallel()
+			}
+			var queryEngine v1.QueryEngine
+			if thanosEngine {
+				queryEngine = engine.New(engine.Opts{
+					EngineOpts:        opts,
+					LogicalOptimizers: logicalplan.AllOptimizers,
+				})
+			} else {
+				queryEngine = promql.NewEngine(opts)
+			}
 			// Mock the finder to simulate we need to query two blocks.
 			finder := &blocksFinderMock{
 				Service: services.NewIdleService(nil, nil),
@@ -1467,8 +1469,8 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 
 			assert.Equal(t, labelpb.ZLabelsToPromLabels(series1), matrix[0].Metric)
 			assert.Equal(t, labelpb.ZLabelsToPromLabels(series2), matrix[1].Metric)
-			assert.Equal(t, series1Samples, matrix[0].Points)
-			assert.Equal(t, series2Samples, matrix[1].Points)
+			assert.Equal(t, series1Samples, matrix[0].Floats)
+			assert.Equal(t, series2Samples, matrix[1].Floats)
 		})
 	}
 }

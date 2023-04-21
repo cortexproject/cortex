@@ -44,6 +44,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/zeropool"
 )
 
 var (
@@ -83,13 +84,13 @@ type Head struct {
 	exemplarMetrics     *ExemplarMetrics
 	exemplars           ExemplarStorage
 	logger              log.Logger
-	appendPool          sync.Pool
-	exemplarsPool       sync.Pool
-	histogramsPool      sync.Pool
-	floatHistogramsPool sync.Pool
-	metadataPool        sync.Pool
-	seriesPool          sync.Pool
-	bytesPool           sync.Pool
+	appendPool          zeropool.Pool[[]record.RefSample]
+	exemplarsPool       zeropool.Pool[[]exemplarWithSeriesRef]
+	histogramsPool      zeropool.Pool[[]record.RefHistogramSample]
+	floatHistogramsPool zeropool.Pool[[]record.RefFloatHistogramSample]
+	metadataPool        zeropool.Pool[[]record.RefMetadata]
+	seriesPool          zeropool.Pool[[]*memSeries]
+	bytesPool           zeropool.Pool[[]byte]
 	memChunkPool        sync.Pool
 
 	// All series addressable by their ID or hash.
@@ -590,6 +591,7 @@ func (h *Head) Init(minValidTime int64) error {
 	snapIdx, snapOffset := -1, 0
 	refSeries := make(map[chunks.HeadSeriesRef]*memSeries)
 
+	snapshotLoaded := false
 	if h.opts.EnableMemorySnapshotOnShutdown {
 		level.Info(h.logger).Log("msg", "Chunk snapshot is enabled, replaying from the snapshot")
 		// If there are any WAL files, there should be at least one WAL file with an index that is current or newer
@@ -619,6 +621,7 @@ func (h *Head) Init(minValidTime int64) error {
 			var err error
 			snapIdx, snapOffset, refSeries, err = h.loadChunkSnapshot()
 			if err == nil {
+				snapshotLoaded = true
 				level.Info(h.logger).Log("msg", "Chunk snapshot loading time", "duration", time.Since(start).String())
 			}
 			if err != nil {
@@ -636,26 +639,36 @@ func (h *Head) Init(minValidTime int64) error {
 	}
 
 	mmapChunkReplayStart := time.Now()
-	mmappedChunks, oooMmappedChunks, lastMmapRef, err := h.loadMmappedChunks(refSeries)
-	if err != nil {
-		// TODO(codesome): clear out all m-map chunks here for refSeries.
-		level.Error(h.logger).Log("msg", "Loading on-disk chunks failed", "err", err)
-		if _, ok := errors.Cause(err).(*chunks.CorruptionErr); ok {
-			h.metrics.mmapChunkCorruptionTotal.Inc()
-		}
-
-		// Discard snapshot data since we need to replay the WAL for the missed m-map chunks data.
-		snapIdx, snapOffset = -1, 0
-
-		// If this fails, data will be recovered from WAL.
-		// Hence we wont lose any data (given WAL is not corrupt).
-		mmappedChunks, oooMmappedChunks, lastMmapRef, err = h.removeCorruptedMmappedChunks(err)
+	var (
+		mmappedChunks    map[chunks.HeadSeriesRef][]*mmappedChunk
+		oooMmappedChunks map[chunks.HeadSeriesRef][]*mmappedChunk
+		lastMmapRef      chunks.ChunkDiskMapperRef
+		err              error
+	)
+	if snapshotLoaded || h.wal != nil {
+		// If snapshot was not loaded and if there is no WAL, then m-map chunks will be discarded
+		// anyway. So we only load m-map chunks when it won't be discarded.
+		mmappedChunks, oooMmappedChunks, lastMmapRef, err = h.loadMmappedChunks(refSeries)
 		if err != nil {
-			return err
+			// TODO(codesome): clear out all m-map chunks here for refSeries.
+			level.Error(h.logger).Log("msg", "Loading on-disk chunks failed", "err", err)
+			if _, ok := errors.Cause(err).(*chunks.CorruptionErr); ok {
+				h.metrics.mmapChunkCorruptionTotal.Inc()
+			}
+
+			// Discard snapshot data since we need to replay the WAL for the missed m-map chunks data.
+			snapIdx, snapOffset = -1, 0
+
+			// If this fails, data will be recovered from WAL.
+			// Hence we wont lose any data (given WAL is not corrupt).
+			mmappedChunks, oooMmappedChunks, lastMmapRef, err = h.removeCorruptedMmappedChunks(err)
+			if err != nil {
+				return err
+			}
 		}
+		level.Info(h.logger).Log("msg", "On-disk memory mappable chunks replay completed", "duration", time.Since(mmapChunkReplayStart).String())
 	}
 
-	level.Info(h.logger).Log("msg", "On-disk memory mappable chunks replay completed", "duration", time.Since(mmapChunkReplayStart).String())
 	if h.wal == nil {
 		level.Info(h.logger).Log("msg", "WAL not found")
 		return nil
@@ -823,6 +836,7 @@ func (h *Head) loadMmappedChunks(refSeries map[chunks.HeadSeriesRef]*memSeries) 
 				numSamples: numSamples,
 			})
 
+			h.updateMinOOOMaxOOOTime(mint, maxt)
 			return nil
 		}
 
@@ -1850,7 +1864,7 @@ func (s *stripeSeries) getOrSet(hash uint64, lset labels.Labels, createSeries fu
 
 type sample struct {
 	t  int64
-	v  float64
+	f  float64
 	h  *histogram.Histogram
 	fh *histogram.FloatHistogram
 }
@@ -1860,7 +1874,7 @@ func newSample(t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHi
 }
 
 func (s sample) T() int64                      { return s.t }
-func (s sample) V() float64                    { return s.v }
+func (s sample) F() float64                    { return s.f }
 func (s sample) H() *histogram.Histogram       { return s.h }
 func (s sample) FH() *histogram.FloatHistogram { return s.fh }
 

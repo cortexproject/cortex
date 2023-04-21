@@ -23,12 +23,14 @@ import (
 
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/thanos-community/promql-engine/execution/noop"
 	"github.com/thanos-community/promql-engine/execution/remote"
 
 	"github.com/efficientgo/core/errors"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -50,13 +52,14 @@ const stepsBatch = 10
 
 // New creates new physical query execution for a given query expression which represents logical plan.
 // TODO(bwplotka): Add definition (could be parameters for each execution operator) we can optimize - it would represent physical plan.
-func New(expr parser.Expr, queryable storage.Queryable, mint, maxt time.Time, step, lookbackDelta time.Duration) (model.VectorOperator, error) {
+func New(expr parser.Expr, queryable storage.Queryable, mint, maxt time.Time, step, lookbackDelta, extLookbackDelta time.Duration) (model.VectorOperator, error) {
 	opts := &query.Options{
-		Start:         mint,
-		End:           maxt,
-		Step:          step,
-		LookbackDelta: lookbackDelta,
-		StepsBatch:    stepsBatch,
+		Start:            mint,
+		End:              maxt,
+		Step:             step,
+		LookbackDelta:    lookbackDelta,
+		StepsBatch:       stepsBatch,
+		ExtLookbackDelta: extLookbackDelta,
 	}
 	selectorPool := engstore.NewSelectorPool(queryable)
 	hints := storage.SelectHints{
@@ -126,10 +129,15 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 					return nil, err
 				}
 
-				start, end := getTimeRangesForVectorSelector(vs, opts, t.Range)
+				milliSecondRange := t.Range.Milliseconds()
+				if function.IsExtFunction(hints.Func) {
+					milliSecondRange += opts.ExtLookbackDelta.Milliseconds()
+				}
+
+				start, end := getTimeRangesForVectorSelector(vs, opts, milliSecondRange)
 				hints.Start = start
 				hints.End = end
-				hints.Range = t.Range.Milliseconds()
+				hints.Range = milliSecondRange
 				filter := storage.GetFilteredSelector(start, end, opts.Step.Milliseconds(), vs.LabelMatchers, filters, hints)
 
 				numShards := runtime.GOMAXPROCS(0) / 2
@@ -255,13 +263,21 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 		return exchange.NewConcurrent(dedup, 2), nil
 
 	case logicalplan.RemoteExecution:
-		qry, err := e.Engine.NewRangeQuery(&promql.QueryOpts{}, e.Query, opts.Start, opts.End, opts.Step)
+		// Create a new remote query scoped to the calculated start time.
+		qry, err := e.Engine.NewRangeQuery(&promql.QueryOpts{LookbackDelta: opts.LookbackDelta}, e.Query, e.QueryRangeStart, opts.End, opts.Step)
 		if err != nil {
 			return nil, err
 		}
 
-		return exchange.NewConcurrent(remote.NewExecution(qry, model.NewVectorPool(stepsBatch), opts), 2), nil
-
+		// The selector uses the original query time to make sure that steps from different
+		// operators have the same timestamps.
+		// We need to set the lookback for the selector to 0 since the remote query already applies one lookback.
+		selectorOpts := *opts
+		selectorOpts.LookbackDelta = 0
+		remoteExec := remote.NewExecution(qry, model.NewVectorPool(stepsBatch), &selectorOpts)
+		return exchange.NewConcurrent(remoteExec, 2), nil
+	case logicalplan.Noop:
+		return noop.NewOperator(), nil
 	default:
 		return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "got: %s", e)
 	}
@@ -328,7 +344,7 @@ func newScalarBinaryOperator(e *parser.BinaryExpr, selectorPool *engstore.Select
 }
 
 // Copy from https://github.com/prometheus/prometheus/blob/v2.39.1/promql/engine.go#L791.
-func getTimeRangesForVectorSelector(n *parser.VectorSelector, opts *query.Options, evalRange time.Duration) (int64, int64) {
+func getTimeRangesForVectorSelector(n *parser.VectorSelector, opts *query.Options, evalRange int64) (int64, int64) {
 	start := opts.Start.UnixMilli()
 	end := opts.End.UnixMilli()
 	if n.Timestamp != nil {
@@ -338,7 +354,7 @@ func getTimeRangesForVectorSelector(n *parser.VectorSelector, opts *query.Option
 	if evalRange == 0 {
 		start -= opts.LookbackDelta.Milliseconds()
 	} else {
-		start -= evalRange.Milliseconds()
+		start -= evalRange
 	}
 	offset := n.OriginalOffset.Milliseconds()
 	return start - offset, end - offset

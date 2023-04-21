@@ -10,8 +10,9 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/exp/slices"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 
 	"github.com/thanos-community/promql-engine/execution/model"
 )
@@ -125,7 +126,7 @@ func (o *vectorOperator) initOutputs(ctx context.Context) error {
 		includeLabels = o.matching.Include
 	}
 	keepLabels := o.matching.Card != parser.CardOneToOne
-	keepName := o.opType.IsComparisonOperator()
+	keepName := !shouldDropMetricName(o.opType, o.returnBool)
 	highCardHashes, highCardInputMap := o.hashSeries(highCardSide, keepLabels, keepName, buf)
 	lowCardHashes, lowCardInputMap := o.hashSeries(lowCardSide, keepLabels, keepName, buf)
 	output, highCardOutputIndex, lowCardOutputIndex := o.join(highCardHashes, highCardInputMap, lowCardHashes, lowCardInputMap, includeLabels)
@@ -161,13 +162,24 @@ func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 	default:
 	}
 
-	lhs, err := o.lhs.Next(ctx)
-	if err != nil {
-		return nil, err
+	var lhs []model.StepVector
+	var lerrChan = make(chan error, 1)
+	go func() {
+		var err error
+		lhs, err = o.lhs.Next(ctx)
+		if err != nil {
+			lerrChan <- err
+		}
+		close(lerrChan)
+	}()
+
+	rhs, rerr := o.rhs.Next(ctx)
+	lerr := <-lerrChan
+	if rerr != nil {
+		return nil, rerr
 	}
-	rhs, err := o.rhs.Next(ctx)
-	if err != nil {
-		return nil, err
+	if lerr != nil {
+		return nil, lerr
 	}
 
 	// TODO(fpetkovski): When one operator becomes empty,
@@ -177,6 +189,7 @@ func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, nil
 	}
 
+	var err error
 	o.once.Do(func() { err = o.initOutputs(ctx) })
 	if err != nil {
 		return nil, err
@@ -316,18 +329,18 @@ func signature(metric labels.Labels, without bool, grouping []string, keepOrigin
 		if !keepOriginalLabels {
 			lb.Del(dropLabels...)
 		}
-		return key, lb.Labels(nil)
+		return key, lb.Labels()
 	}
 
 	if !keepOriginalLabels {
 		lb.Keep(grouping...)
 	}
 	if len(grouping) == 0 {
-		return 0, lb.Labels(nil)
+		return 0, lb.Labels()
 	}
 
 	key, _ := metric.HashForLabels(buf, grouping...)
-	return key, lb.Labels(nil)
+	return key, lb.Labels()
 }
 
 func buildOutputSeries(seriesID uint64, highCardSeries, lowCardSeries model.Series, includeLabels []string) model.Series {
@@ -335,7 +348,7 @@ func buildOutputSeries(seriesID uint64, highCardSeries, lowCardSeries model.Seri
 	if len(includeLabels) > 0 {
 		lowCardLabels := labels.NewBuilder(lowCardSeries.Metric).
 			Keep(includeLabels...).
-			Labels(nil)
+			Labels()
 		metric = append(metric, lowCardLabels...)
 	}
 	return model.Series{ID: seriesID, Metric: metric}

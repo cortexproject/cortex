@@ -96,7 +96,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		for _, lbl := range series.Labels {
 			builder.Set(lbl.Name, lbl.Value)
 		}
-		lbls[i] = builder.Labels(labels.EmptyLabels())
+		lbls[i] = builder.Labels()
 	}
 	res, err := c1.Push(serieses)
 	require.NoError(t, err)

@@ -269,7 +269,10 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		for _, thanosEngine := range []bool{false, true} {
 			thanosEngine := thanosEngine
 			t.Run(tc.name+fmt.Sprintf(", thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
-				t.Parallel()
+				if !thanosEngine {
+					//parallel testing for non thanos engine
+					t.Parallel()
+				}
 				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 				var wQueriables []QueryableWithFilter
 				for _, queriable := range tc.storeQueriables {
@@ -331,15 +334,6 @@ func TestQuerier(t *testing.T) {
 		Timeout:            1 * time.Minute,
 	}
 	for _, thanosEngine := range []bool{false, true} {
-		var queryEngine v1.QueryEngine
-		if thanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
 		for _, query := range queries {
 			for _, encoding := range encodings {
 				for _, streaming := range []bool{false, true} {
@@ -347,6 +341,15 @@ func TestQuerier(t *testing.T) {
 						iterators := iterators
 						t.Run(fmt.Sprintf("%s/%s/streaming=%t/iterators=%t", query.query, encoding.name, streaming, iterators), func(t *testing.T) {
 							//parallel testing cause data race
+							var queryEngine v1.QueryEngine
+							if thanosEngine {
+								queryEngine = engine.New(engine.Opts{
+									EngineOpts:        opts,
+									LogicalOptimizers: logicalplan.AllOptimizers,
+								})
+							} else {
+								queryEngine = promql.NewEngine(opts)
+							}
 							cfg.IngesterStreaming = streaming
 							cfg.Iterators = iterators
 
@@ -464,19 +467,20 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	for _, ingesterStreaming := range []bool{true, false} {
 		for _, thanosEngine := range []bool{true, false} {
 			cfg.IngesterStreaming = ingesterStreaming
-			var queryEngine v1.QueryEngine
-			if thanosEngine {
-				queryEngine = engine.New(engine.Opts{
-					EngineOpts:        opts,
-					LogicalOptimizers: logicalplan.AllOptimizers,
-				})
-			} else {
-				queryEngine = promql.NewEngine(opts)
-			}
 			for _, c := range testCases {
 				cfg.QueryIngestersWithin = c.queryIngestersWithin
 				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,queryIngestersWithin=%v, test=%s", cfg.IngesterStreaming, thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
 					//parallel testing causes data race
+					var queryEngine v1.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
+						})
+					} else {
+						queryEngine = promql.NewEngine(opts)
+					}
+
 					chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
 					distributor := &errDistributor{}
 
@@ -566,19 +570,20 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
 		for _, thanosEngine := range []bool{true, false} {
-			var queryEngine v1.QueryEngine
-			if thanosEngine {
-				queryEngine = engine.New(engine.Opts{
-					EngineOpts:        opts,
-					LogicalOptimizers: logicalplan.AllOptimizers,
-				})
-			} else {
-				queryEngine = promql.NewEngine(opts)
-			}
 			for name, c := range tests {
 				cfg.MaxQueryIntoFuture = c.maxQueryIntoFuture
 				t.Run(fmt.Sprintf("%s (ingester streaming enabled = %t, thanos engine enabled = %t)", name, cfg.IngesterStreaming, thanosEngine), func(t *testing.T) {
 					//parallel testing causes data race
+					var queryEngine v1.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
+						})
+					} else {
+						queryEngine = promql.NewEngine(opts)
+					}
+
 					// We don't need to query any data for this test, so an empty store is fine.
 					chunkStore := &emptyChunkStore{}
 					distributor := &MockDistributor{}
@@ -1085,12 +1090,12 @@ func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine v1.Qu
 	require.Len(t, m, 1)
 	series := m[0]
 	require.Equal(t, q.labels, series.Metric)
-	require.Equal(t, q.samples(from, through, step), len(series.Points))
+	require.Equal(t, q.samples(from, through, step), len(series.Floats))
 	var ts int64
-	for i, point := range series.Points {
+	for i, point := range series.Floats {
 		expectedTime, expectedValue := q.expected(ts)
 		require.Equal(t, expectedTime, point.T, strconv.Itoa(i))
-		require.Equal(t, expectedValue, point.V, strconv.Itoa(i))
+		require.Equal(t, expectedValue, point.F, strconv.Itoa(i))
 		ts += int64(step / time.Millisecond)
 	}
 	return r

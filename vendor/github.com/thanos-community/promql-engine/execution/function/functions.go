@@ -12,16 +12,17 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 
 	"github.com/thanos-community/promql-engine/execution/parse"
 )
 
-var InvalidSample = promql.Sample{Point: promql.Point{T: -1, V: 0}}
+var InvalidSample = promql.Sample{T: -1, F: 0}
 
 type FunctionArgs struct {
 	Labels       labels.Labels
-	Points       []promql.Point
+	Samples      []promql.Sample
 	StepTime     int64
 	SelectRange  int64
 	ScalarPoints []float64
@@ -33,20 +34,31 @@ type FunctionCall func(f FunctionArgs) promql.Sample
 
 func simpleFunc(f func(float64) float64) FunctionCall {
 	return func(fa FunctionArgs) promql.Sample {
-		if len(fa.Points) == 0 {
+		if len(fa.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: fa.Labels,
-			Point: promql.Point{
-				T: fa.StepTime,
-				V: f(fa.Points[0].V),
-			},
+			T:      fa.StepTime,
+			F:      f(fa.Samples[0].F),
 		}
 	}
 
 }
 
+func filterFloatOnlySamples(samples []promql.Sample) []promql.Sample {
+	i := 0
+	for _, sample := range samples {
+		if sample.H == nil {
+			samples[i] = sample
+			i++
+		}
+	}
+	samples = samples[:i]
+	return samples
+}
+
+// The engine handles sort and sort_desc when presenting the results. They are not needed here.
 var Funcs = map[string]FunctionCall{
 	"abs":   simpleFunc(math.Abs),
 	"ceil":  simpleFunc(math.Ceil),
@@ -81,218 +93,196 @@ var Funcs = map[string]FunctionCall{
 		} else if v < 0 {
 			sign = -1
 		}
+		if math.IsNaN(v) {
+			sign = math.NaN()
+		}
 		return sign
 	}),
-	"timestamp": func(f FunctionArgs) promql.Sample {
+	"round": func(f FunctionArgs) promql.Sample {
+		if len(f.Samples) != 1 || len(f.ScalarPoints) > 1 {
+			return InvalidSample
+		}
+
+		toNearest := 1.0
+		if len(f.ScalarPoints) > 0 {
+			toNearest = f.ScalarPoints[0]
+		}
+		toNearestInverse := 1.0 / toNearest
 		return promql.Sample{
-			Point: promql.Point{
-				T: f.StepTime,
-				V: float64(f.Points[0].T) / 1000,
-			},
+			T: f.StepTime,
+			F: math.Floor(f.Samples[0].F*toNearestInverse+0.5) / toNearestInverse,
 		}
 	},
 	"pi": func(f FunctionArgs) promql.Sample {
 		return promql.Sample{
-			Point: promql.Point{
-				T: f.StepTime,
-				V: math.Pi,
-			},
+			T: f.StepTime,
+			F: math.Pi,
 		}
 	},
 	"sum_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: sumOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      sumOverTime(f.Samples),
 		}
 	},
 	"max_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: maxOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      maxOverTime(f.Samples),
 		}
 	},
 	"min_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: minOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      minOverTime(f.Samples),
 		}
 	},
 	"avg_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: avgOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      avgOverTime(f.Samples),
 		}
 	},
 	"stddev_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: stddevOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      stddevOverTime(f.Samples),
 		}
 	},
 	"stdvar_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: stdvarOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      stdvarOverTime(f.Samples),
 		}
 	},
 	"count_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: countOverTime(f.Points),
-			},
+			T:      f.StepTime,
+			F:      countOverTime(f.Samples),
 		}
 	},
 	"last_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: f.Points[len(f.Points)-1].V,
-			},
+			T:      f.StepTime,
+			F:      f.Samples[len(f.Samples)-1].F,
 		}
 	},
 	"present_over_time": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: 1,
-			},
+			T:      f.StepTime,
+			F:      1,
 		}
 	},
 	"time": func(f FunctionArgs) promql.Sample {
 		return promql.Sample{
-			Point: promql.Point{
-				T: f.StepTime,
-				V: float64(f.StepTime) / 1000,
-			},
+			T: f.StepTime,
+			F: float64(f.StepTime) / 1000,
 		}
 	},
 	"changes": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: changes(f.Points),
-			},
+			T:      f.StepTime,
+			F:      changes(f.Samples),
 		}
 	},
 	"resets": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: resets(f.Points),
-			},
+			T:      f.StepTime,
+			F:      resets(f.Samples),
 		}
 	},
 	"deriv": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) < 2 {
+		if len(f.Samples) < 2 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: deriv(f.Points),
-			},
+			T:      f.StepTime,
+			F:      deriv(f.Samples),
 		}
 	},
 	"irate": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) < 2 {
+		f.Samples = filterFloatOnlySamples(f.Samples)
+		if len(f.Samples) < 2 {
 			return InvalidSample
 		}
-		val, ok := instantValue(f.Points, true)
+		val, ok := instantValue(f.Samples, true)
 		if !ok {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: val,
-			},
+			T:      f.StepTime,
+			F:      val,
 		}
 	},
 	"idelta": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) < 2 {
+		f.Samples = filterFloatOnlySamples(f.Samples)
+		if len(f.Samples) < 2 {
 			return InvalidSample
 		}
-		val, ok := instantValue(f.Points, false)
+		val, ok := instantValue(f.Samples, false)
 		if !ok {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: val,
-			},
+			T:      f.StepTime,
+			F:      val,
 		}
 	},
 	"vector": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 {
+		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: f.Points[0].V,
-			},
+			T:      f.StepTime,
+			F:      f.Samples[0].F,
 		}
 	},
 	"scalar": func(f FunctionArgs) promql.Sample {
@@ -300,53 +290,83 @@ var Funcs = map[string]FunctionCall{
 		return promql.Sample{}
 	},
 	"rate": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) < 2 {
+		if len(f.Samples) < 2 {
 			return InvalidSample
 		}
-		v, h := extrapolatedRate(f.Points, true, true, f.StepTime, f.SelectRange, f.Offset)
+		v, h := extrapolatedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset)
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: v,
-				H: h,
-			},
+			T:      f.StepTime,
+			F:      v,
+			H:      h,
 		}
 	},
 	"delta": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) < 2 {
+		if len(f.Samples) < 2 {
 			return InvalidSample
 		}
-		v, h := extrapolatedRate(f.Points, false, false, f.StepTime, f.SelectRange, f.Offset)
+		v, h := extrapolatedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset)
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: v,
-				H: h,
-			},
+			T:      f.StepTime,
+			F:      v,
+			H:      h,
 		}
 	},
 	"increase": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) < 2 {
+		if len(f.Samples) < 2 {
 			return InvalidSample
 		}
-		v, h := extrapolatedRate(f.Points, true, false, f.StepTime, f.SelectRange, f.Offset)
+		v, h := extrapolatedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset)
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: v,
-				H: h,
-			},
+			T:      f.StepTime,
+			F:      v,
+			H:      h,
+		}
+	},
+	"xrate": func(f FunctionArgs) promql.Sample {
+		if len(f.Samples) == 0 {
+			return InvalidSample
+		}
+		v, h := extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset)
+		return promql.Sample{
+			Metric: f.Labels,
+			T:      f.StepTime,
+			F:      v,
+			H:      h,
+		}
+	},
+	"xdelta": func(f FunctionArgs) promql.Sample {
+		if len(f.Samples) == 0 {
+			return InvalidSample
+		}
+		v, h := extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset)
+		return promql.Sample{
+			Metric: f.Labels,
+			T:      f.StepTime,
+			F:      v,
+			H:      h,
+		}
+	},
+	"xincrease": func(f FunctionArgs) promql.Sample {
+		if len(f.Samples) == 0 {
+			return InvalidSample
+		}
+		v, h := extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset)
+		return promql.Sample{
+			Metric: f.Labels,
+			T:      f.StepTime,
+			F:      v,
+			H:      h,
 		}
 	},
 	"clamp": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 || len(f.ScalarPoints) < 2 {
+		if len(f.Samples) == 0 || len(f.ScalarPoints) < 2 {
 			return InvalidSample
 		}
 
-		v := f.Points[0].V
+		v := f.Samples[0].F
 		min := f.ScalarPoints[0]
 		max := f.ScalarPoints[1]
 
@@ -356,78 +376,66 @@ var Funcs = map[string]FunctionCall{
 
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: math.Max(min, math.Min(max, v)),
-			},
+			T:      f.StepTime,
+			F:      math.Max(min, math.Min(max, v)),
 		}
 	},
 	"clamp_min": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 || len(f.ScalarPoints) == 0 {
+		if len(f.Samples) == 0 || len(f.ScalarPoints) == 0 {
 			return InvalidSample
 		}
 
-		v := f.Points[0].V
+		v := f.Samples[0].F
 		min := f.ScalarPoints[0]
 
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: math.Max(min, v),
-			},
+			T:      f.StepTime,
+			F:      math.Max(min, v),
 		}
 	},
 	"clamp_max": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 || len(f.ScalarPoints) == 0 {
+		if len(f.Samples) == 0 || len(f.ScalarPoints) == 0 {
 			return InvalidSample
 		}
 
-		v := f.Points[0].V
+		v := f.Samples[0].F
 		max := f.ScalarPoints[0]
 
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: math.Min(max, v),
-			},
+			T:      f.StepTime,
+			F:      math.Min(max, v),
 		}
 	},
 	"histogram_sum": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 || f.Points[0].H == nil {
+		if len(f.Samples) == 0 || f.Samples[0].H == nil {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: f.Points[0].H.Sum,
-			},
+			T:      f.StepTime,
+			F:      f.Samples[0].H.Sum,
 		}
 	},
 	"histogram_count": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 || f.Points[0].H == nil {
+		if len(f.Samples) == 0 || f.Samples[0].H == nil {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: f.Points[0].H.Count,
-			},
+			T:      f.StepTime,
+			F:      f.Samples[0].H.Count,
 		}
 	},
 	"histogram_fraction": func(f FunctionArgs) promql.Sample {
-		if len(f.Points) == 0 || f.Points[0].H == nil {
+		if len(f.Samples) == 0 || f.Samples[0].H == nil {
 			return InvalidSample
 		}
 		return promql.Sample{
 			Metric: f.Labels,
-			Point: promql.Point{
-				T: f.StepTime,
-				V: histogramFraction(f.ScalarPoints[0], f.ScalarPoints[1], f.Points[0].H),
-			},
+			T:      f.StepTime,
+			F:      histogramFraction(f.ScalarPoints[0], f.ScalarPoints[1], f.Samples[0].H),
 		}
 	},
 	"days_in_month": func(f FunctionArgs) promql.Sample {
@@ -489,7 +497,7 @@ func NewFunctionCall(f *parser.Function) (FunctionCall, error) {
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // extrapolates if the first/last sample is close to the boundary, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
+func extrapolatedRate(samples []promql.Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -500,14 +508,14 @@ func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime i
 	if samples[0].H != nil {
 		resultHistogram = histogramRate(samples, isCounter)
 	} else {
-		resultValue = samples[len(samples)-1].V - samples[0].V
+		resultValue = samples[len(samples)-1].F - samples[0].F
 		if isCounter {
 			var lastValue float64
 			for _, sample := range samples {
-				if sample.V < lastValue {
+				if sample.F < lastValue {
 					resultValue += lastValue
 				}
-				lastValue = sample.V
+				lastValue = sample.F
 			}
 		}
 	}
@@ -519,7 +527,7 @@ func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime i
 	sampledInterval := float64(samples[len(samples)-1].T-samples[0].T) / 1000
 	averageDurationBetweenSamples := sampledInterval / float64(len(samples)-1)
 
-	if isCounter && resultValue > 0 && samples[0].V >= 0 {
+	if isCounter && resultValue > 0 && samples[0].F >= 0 {
 		// Counters cannot be negative. If we have any slope at
 		// all (i.e. resultValue went up), we can extrapolate
 		// the zero point of the counter. If the duration to the
@@ -527,7 +535,7 @@ func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime i
 		// take the zero point as the start of the series,
 		// thereby avoiding extrapolation to negative counter
 		// values.
-		durationToZero := sampledInterval * (samples[0].V / resultValue)
+		durationToZero := sampledInterval * (samples[0].F / resultValue)
 		if durationToZero < durationToStart {
 			durationToStart = durationToZero
 		}
@@ -564,10 +572,97 @@ func extrapolatedRate(samples []promql.Point, isCounter, isRate bool, stepTime i
 	return resultValue, resultHistogram
 }
 
+// extendedRate is a utility function for xrate/xincrease/xdelta.
+// It calculates the rate (allowing for counter resets if isCounter is true),
+// taking into account the last sample before the range start, and returns
+// the result as either per-second (if isRate is true) or overall.
+func extendedRate(samples []promql.Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
+	var (
+		rangeStart      = stepTime - (selectRange + offset)
+		rangeEnd        = stepTime - offset
+		resultValue     float64
+		resultHistogram *histogram.FloatHistogram
+	)
+
+	if samples[0].H != nil {
+		// TODO - support extended rate for histograms
+		resultHistogram = histogramRate(samples, isCounter)
+		return resultValue, resultHistogram
+	}
+
+	sameVals := true
+	for i := range samples {
+		if i > 0 && samples[i-1].F != samples[i].F {
+			sameVals = false
+			break
+		}
+	}
+
+	// This effectively injects a "zero" series for xincrease if we only have one sample.
+	until := selectRange
+	if isCounter && !isRate && sameVals {
+		// Make sure we are not at the end of the range
+		if stepTime-offset <= until {
+			return samples[0].F, nil
+		}
+	}
+
+	sampledInterval := float64(samples[len(samples)-1].T - samples[0].T)
+	averageDurationBetweenSamples := sampledInterval / float64(len(samples)-1)
+
+	firstPoint := 0
+	// Only do this for not xincrease
+	if !(isCounter && !isRate) {
+		// If the point before the range is too far from rangeStart, drop it.
+		if float64(rangeStart-samples[0].T) > averageDurationBetweenSamples {
+			if len(samples) < 3 {
+				return resultValue, nil
+			}
+			firstPoint = 1
+			sampledInterval = float64(samples[len(samples)-1].T - samples[1].T)
+			averageDurationBetweenSamples = sampledInterval / float64(len(samples)-2)
+		}
+	}
+
+	var (
+		counterCorrection float64
+		lastValue         float64
+	)
+	if isCounter {
+		for i := firstPoint; i < len(samples); i++ {
+			sample := samples[i]
+			if sample.F < lastValue {
+				counterCorrection += lastValue
+			}
+			lastValue = sample.F
+		}
+	}
+	resultValue = samples[len(samples)-1].F - samples[firstPoint].F + counterCorrection
+
+	// Duration between last sample and boundary of range.
+	durationToEnd := float64(rangeEnd - samples[len(samples)-1].T)
+	// If the points cover the whole range (i.e. they start just before the
+	// range start and end just before the range end) adjust the value from
+	// the sampled range to the requested range.
+	// Only do this for not xincrease.
+	if !(isCounter && !isRate) {
+		if samples[firstPoint].T <= rangeStart && durationToEnd < averageDurationBetweenSamples {
+			adjustToRange := float64(selectRange / 1000)
+			resultValue = resultValue * (adjustToRange / (sampledInterval / 1000))
+		}
+	}
+
+	if isRate {
+		resultValue = resultValue / float64(selectRange/1000)
+	}
+
+	return resultValue, nil
+}
+
 // histogramRate is a helper function for extrapolatedRate. It requires
 // points[0] to be a histogram. It returns nil if any other Point in points is
 // not a histogram.
-func histogramRate(points []promql.Point, isCounter bool) *histogram.FloatHistogram {
+func histogramRate(points []promql.Sample, isCounter bool) *histogram.FloatHistogram {
 	prev := points[0].H // We already know that this is a histogram.
 	last := points[len(points)-1].H
 	if last == nil {
@@ -609,19 +704,20 @@ func histogramRate(points []promql.Point, isCounter bool) *histogram.FloatHistog
 			prev = curr
 		}
 	}
+	h.CounterResetHint = histogram.GaugeType
 	return h.Compact(0)
 }
 
-func instantValue(samples []promql.Point, isRate bool) (float64, bool) {
+func instantValue(samples []promql.Sample, isRate bool) (float64, bool) {
 	lastSample := samples[len(samples)-1]
 	previousSample := samples[len(samples)-2]
 
 	var resultValue float64
-	if isRate && lastSample.V < previousSample.V {
+	if isRate && lastSample.F < previousSample.F {
 		// Counter reset.
-		resultValue = lastSample.V
+		resultValue = lastSample.F
 	} else {
-		resultValue = lastSample.V - previousSample.V
+		resultValue = lastSample.F - previousSample.F
 	}
 
 	sampledInterval := lastSample.T - previousSample.T
@@ -638,42 +734,42 @@ func instantValue(samples []promql.Point, isRate bool) (float64, bool) {
 	return resultValue, true
 }
 
-func maxOverTime(points []promql.Point) float64 {
-	max := points[0].V
+func maxOverTime(points []promql.Sample) float64 {
+	max := points[0].F
 	for _, v := range points {
-		if v.V > max || math.IsNaN(max) {
-			max = v.V
+		if v.F > max || math.IsNaN(max) {
+			max = v.F
 		}
 	}
 	return max
 }
 
-func minOverTime(points []promql.Point) float64 {
-	min := points[0].V
+func minOverTime(points []promql.Sample) float64 {
+	min := points[0].F
 	for _, v := range points {
-		if v.V < min || math.IsNaN(min) {
-			min = v.V
+		if v.F < min || math.IsNaN(min) {
+			min = v.F
 		}
 	}
 	return min
 }
 
-func countOverTime(points []promql.Point) float64 {
+func countOverTime(points []promql.Sample) float64 {
 	return float64(len(points))
 }
 
-func avgOverTime(points []promql.Point) float64 {
+func avgOverTime(points []promql.Sample) float64 {
 	var mean, count, c float64
 	for _, v := range points {
 		count++
 		if math.IsInf(mean, 0) {
-			if math.IsInf(v.V, 0) && (mean > 0) == (v.V > 0) {
-				// The `mean` and `v.V` values are `Inf` of the same sign.  They
+			if math.IsInf(v.F, 0) && (mean > 0) == (v.F > 0) {
+				// The `mean` and `v.F` values are `Inf` of the same sign.  They
 				// can't be subtracted, but the value of `mean` is correct
 				// already.
 				continue
 			}
-			if !math.IsInf(v.V, 0) && !math.IsNaN(v.V) {
+			if !math.IsInf(v.F, 0) && !math.IsNaN(v.F) {
 				// At this stage, the mean is an infinite. If the added
 				// value is neither an Inf or a Nan, we can keep that mean
 				// value.
@@ -683,7 +779,7 @@ func avgOverTime(points []promql.Point) float64 {
 				continue
 			}
 		}
-		mean, c = KahanSumInc(v.V/count-mean/count, mean, c)
+		mean, c = KahanSumInc(v.F/count-mean/count, mean, c)
 	}
 
 	if math.IsInf(mean, 0) {
@@ -692,10 +788,10 @@ func avgOverTime(points []promql.Point) float64 {
 	return mean + c
 }
 
-func sumOverTime(points []promql.Point) float64 {
+func sumOverTime(points []promql.Sample) float64 {
 	var sum, c float64
 	for _, v := range points {
-		sum, c = KahanSumInc(v.V, sum, c)
+		sum, c = KahanSumInc(v.F, sum, c)
 	}
 	if math.IsInf(sum, 0) {
 		return sum
@@ -703,38 +799,38 @@ func sumOverTime(points []promql.Point) float64 {
 	return sum + c
 }
 
-func stddevOverTime(points []promql.Point) float64 {
+func stddevOverTime(points []promql.Sample) float64 {
 	var count float64
 	var mean, cMean float64
 	var aux, cAux float64
 	for _, v := range points {
 		count++
-		delta := v.V - (mean + cMean)
+		delta := v.F - (mean + cMean)
 		mean, cMean = KahanSumInc(delta/count, mean, cMean)
-		aux, cAux = KahanSumInc(delta*(v.V-(mean+cMean)), aux, cAux)
+		aux, cAux = KahanSumInc(delta*(v.F-(mean+cMean)), aux, cAux)
 	}
 	return math.Sqrt((aux + cAux) / count)
 }
 
-func stdvarOverTime(points []promql.Point) float64 {
+func stdvarOverTime(points []promql.Sample) float64 {
 	var count float64
 	var mean, cMean float64
 	var aux, cAux float64
 	for _, v := range points {
 		count++
-		delta := v.V - (mean + cMean)
+		delta := v.F - (mean + cMean)
 		mean, cMean = KahanSumInc(delta/count, mean, cMean)
-		aux, cAux = KahanSumInc(delta*(v.V-(mean+cMean)), aux, cAux)
+		aux, cAux = KahanSumInc(delta*(v.F-(mean+cMean)), aux, cAux)
 	}
 	return (aux + cAux) / count
 }
 
-func changes(points []promql.Point) float64 {
+func changes(points []promql.Sample) float64 {
 	var count float64
-	prev := points[0].V
+	prev := points[0].F
 	count = 0
 	for _, sample := range points[1:] {
-		current := sample.V
+		current := sample.F
 		if current != prev && !(math.IsNaN(current) && math.IsNaN(prev)) {
 			count++
 		}
@@ -743,7 +839,7 @@ func changes(points []promql.Point) float64 {
 	return count
 }
 
-func deriv(points []promql.Point) float64 {
+func deriv(points []promql.Sample) float64 {
 	// We pass in an arbitrary timestamp that is near the values in use
 	// to avoid floating point accuracy issues, see
 	// https://github.com/prometheus/prometheus/issues/2674
@@ -751,11 +847,11 @@ func deriv(points []promql.Point) float64 {
 	return slope
 }
 
-func resets(points []promql.Point) float64 {
+func resets(points []promql.Sample) float64 {
 	count := 0
-	prev := points[0].V
+	prev := points[0].F
 	for _, sample := range points[1:] {
-		current := sample.V
+		current := sample.F
 		if current < prev {
 			count++
 		}
@@ -765,7 +861,7 @@ func resets(points []promql.Point) float64 {
 	return float64(count)
 }
 
-func linearRegression(samples []promql.Point, interceptTime int64) (slope, intercept float64) {
+func linearRegression(samples []promql.Sample, interceptTime int64) (slope, intercept float64) {
 	var (
 		n          float64
 		sumX, cX   float64
@@ -775,18 +871,18 @@ func linearRegression(samples []promql.Point, interceptTime int64) (slope, inter
 		initY      float64
 		constY     bool
 	)
-	initY = samples[0].V
+	initY = samples[0].F
 	constY = true
 	for i, sample := range samples {
 		// Set constY to false if any new y values are encountered.
-		if constY && i > 0 && sample.V != initY {
+		if constY && i > 0 && sample.F != initY {
 			constY = false
 		}
 		n += 1.0
 		x := float64(sample.T-interceptTime) / 1e3
 		sumX, cX = KahanSumInc(x, sumX, cX)
-		sumY, cY = KahanSumInc(sample.V, sumY, cY)
-		sumXY, cXY = KahanSumInc(x*sample.V, sumXY, cXY)
+		sumY, cY = KahanSumInc(sample.F, sumY, cY)
+		sumXY, cXY = KahanSumInc(x*sample.F, sumXY, cXY)
 		sumX2, cX2 = KahanSumInc(x*x, sumX2, cX2)
 	}
 	if constY {
@@ -821,16 +917,21 @@ func KahanSumInc(inc, sum, c float64) (newSum, newC float64) {
 
 // Common code for date related functions.
 func dateWrapper(fa FunctionArgs, f func(time.Time) float64) promql.Sample {
-	if len(fa.Points) == 0 {
+	if len(fa.Samples) == 0 {
 		return promql.Sample{
 			Metric: labels.Labels{},
-			Point:  promql.Point{V: f(time.Unix(fa.StepTime/1000, 0).UTC())},
+			F:      f(time.Unix(fa.StepTime/1000, 0).UTC()),
 		}
 	}
-	t := time.Unix(int64(fa.Points[0].V), 0).UTC()
+	t := time.Unix(int64(fa.Samples[0].F), 0).UTC()
 	lbls, _ := DropMetricName(fa.Labels)
 	return promql.Sample{
 		Metric: lbls,
-		Point:  promql.Point{V: f(t)},
+		F:      f(t),
 	}
+}
+
+// IsExtFunction is a convenience function to determine whether extended range calculations are required.
+func IsExtFunction(functionName string) bool {
+	return functionName == "xincrease" || functionName == "xrate" || functionName == "xdelta"
 }

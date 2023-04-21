@@ -7,7 +7,8 @@ import (
 	"fmt"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 )
 
 type FilteredSelector struct {

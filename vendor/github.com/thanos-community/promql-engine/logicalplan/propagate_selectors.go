@@ -7,22 +7,23 @@ import (
 	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 )
 
 // PropagateMatchersOptimizer implements matcher propagation between
 // two vector selectors in a binary expression.
 type PropagateMatchersOptimizer struct{}
 
-func (m PropagateMatchersOptimizer) Optimize(expr parser.Expr) parser.Expr {
+func (m PropagateMatchersOptimizer) Optimize(expr parser.Expr, _ *Opts) parser.Expr {
 	traverse(&expr, func(expr *parser.Expr) {
 		binOp, ok := (*expr).(*parser.BinaryExpr)
 		if !ok {
 			return
 		}
 
-		// The optimizer cannot be applied to comparison operations.
-		if binOp.Op.IsComparisonOperator() {
+		// The optimizer cannot be applied to comparison operations or 'atan2'.
+		if binOp.Op.IsComparisonOperator() || binOp.Op.String() == "atan2" {
 			return
 		}
 

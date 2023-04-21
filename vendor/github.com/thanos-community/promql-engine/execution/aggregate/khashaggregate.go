@@ -13,8 +13,9 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/exp/slices"
+
+	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
 
 	"github.com/thanos-community/promql-engine/execution/model"
 )
@@ -81,25 +82,25 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 	if err != nil {
 		return nil, err
 	}
-	if in == nil {
-		return nil, nil
-	}
-
-	defer a.next.GetPool().PutVectors(in)
-
 	args, err := a.paramOp.Next(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range a.params {
-		a.params[i] = math.NaN()
-		if i < len(args) {
-			a.params[i] = args[i].Samples[0]
-			a.paramOp.GetPool().PutStepVector(args[i])
+
+	for i := range args {
+		a.params[i] = args[i].Samples[0]
+		a.paramOp.GetPool().PutStepVector(args[i])
+
+		val := a.params[i]
+		if val > math.MaxInt64 || val < math.MinInt64 || math.IsNaN(val) {
+			return nil, errors.Newf("Scalar value %v overflows int64", val)
 		}
 	}
 	a.paramOp.GetPool().PutVectors(args)
 
+	if in == nil {
+		return nil, nil
+	}
 	if len(args) < len(in) {
 		return nil, errors.New("scalar argument not found")
 	}
@@ -111,9 +112,15 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 
 	result := a.vectorPool.GetVectorBatch()
 	for i, vector := range in {
+		// Skip steps where the argument is less than or equal to 0.
+		if int(a.params[i]) <= 0 {
+			result = append(result, a.GetPool().GetStepVector(vector.T))
+			continue
+		}
 		a.aggregate(vector.T, &result, int(a.params[i]), vector.SampleIDs, vector.Samples)
 		a.next.GetPool().PutStepVector(vector)
 	}
+	a.next.GetPool().PutVectors(in)
 
 	return result, nil
 }
@@ -179,8 +186,8 @@ func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, Sampl
 		}
 	}
 
+	s := a.vectorPool.GetStepVector(t)
 	for _, h := range a.heaps {
-		s := a.vectorPool.GetStepVector(t)
 		// The heap keeps the lowest value on top, so reverse it.
 		if len(h.entries) > 1 {
 			sort.Sort(sort.Reverse(h))
@@ -189,9 +196,9 @@ func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, Sampl
 		for _, e := range h.entries {
 			s.AppendSample(a.vectorPool, e.sId, e.total)
 		}
-		*result = append(*result, s)
 		h.entries = h.entries[:0]
 	}
+	*result = append(*result, s)
 }
 
 type entry struct {

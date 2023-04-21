@@ -446,7 +446,7 @@ github.com/google/uuid
 ## explicit; go 1.19
 github.com/googleapis/enterprise-certificate-proxy/client
 github.com/googleapis/enterprise-certificate-proxy/client/util
-# github.com/googleapis/gax-go/v2 v2.7.0
+# github.com/googleapis/gax-go/v2 v2.7.1
 ## explicit; go 1.19
 github.com/googleapis/gax-go/v2
 github.com/googleapis/gax-go/v2/apierror
@@ -571,8 +571,8 @@ github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.51
-## explicit; go 1.14
+# github.com/miekg/dns v1.1.53
+## explicit; go 1.19
 github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
@@ -717,7 +717,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.43.1-0.20230327151049-211ae4f1f0a2
+# github.com/prometheus/prometheus v0.43.1-0.20230414053501-7309ac272195
 ## explicit; go 1.19
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -766,6 +766,7 @@ github.com/prometheus/prometheus/util/stats
 github.com/prometheus/prometheus/util/strutil
 github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
+github.com/prometheus/prometheus/util/zeropool
 github.com/prometheus/prometheus/web/api/v1
 # github.com/rs/cors v1.8.2
 ## explicit; go 1.13
@@ -814,7 +815,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-community/promql-engine v0.0.0-20230224075812-ae04bbea7613
+# github.com/thanos-community/promql-engine v0.0.0-20230417154848-c2396ed5afd9
 ## explicit; go 1.19
 github.com/thanos-community/promql-engine/api
 github.com/thanos-community/promql-engine/engine
@@ -824,12 +825,14 @@ github.com/thanos-community/promql-engine/execution/binary
 github.com/thanos-community/promql-engine/execution/exchange
 github.com/thanos-community/promql-engine/execution/function
 github.com/thanos-community/promql-engine/execution/model
+github.com/thanos-community/promql-engine/execution/noop
 github.com/thanos-community/promql-engine/execution/parse
 github.com/thanos-community/promql-engine/execution/remote
 github.com/thanos-community/promql-engine/execution/scan
 github.com/thanos-community/promql-engine/execution/step_invariant
 github.com/thanos-community/promql-engine/execution/storage
 github.com/thanos-community/promql-engine/execution/unary
+github.com/thanos-community/promql-engine/internal/prometheus/parser
 github.com/thanos-community/promql-engine/logicalplan
 github.com/thanos-community/promql-engine/query
 github.com/thanos-community/promql-engine/worker
@@ -843,7 +846,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.29.1-0.20230314065129-06d9da40244f
+# github.com/thanos-io/thanos v0.31.1-0.20230418080134-0c2af2155056
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -1184,12 +1187,13 @@ golang.org/x/xerrors/internal
 gonum.org/v1/gonum/floats
 gonum.org/v1/gonum/floats/scalar
 gonum.org/v1/gonum/internal/asm/f64
-# google.golang.org/api v0.111.0
+# google.golang.org/api v0.114.0
 ## explicit; go 1.19
 google.golang.org/api/googleapi
 google.golang.org/api/googleapi/transport
 google.golang.org/api/iamcredentials/v1
 google.golang.org/api/internal
+google.golang.org/api/internal/cert
 google.golang.org/api/internal/gensupport
 google.golang.org/api/internal/impersonate
 google.golang.org/api/internal/third_party/uritemplates
@@ -1198,11 +1202,9 @@ google.golang.org/api/option
 google.golang.org/api/option/internaloption
 google.golang.org/api/storage/v1
 google.golang.org/api/transport
-google.golang.org/api/transport/cert
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
 google.golang.org/api/transport/http/internal/propagation
-google.golang.org/api/transport/internal/dca
 # google.golang.org/appengine v1.6.7
 ## explicit; go 1.11
 google.golang.org/appengine

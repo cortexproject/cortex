@@ -12,8 +12,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-var empty = labels.EmptyLabels()
-
 const (
 	// max number of grouping labels in either by or without clause.
 	maxGroupingLabels = 5
@@ -468,7 +466,7 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 						lb.Set(groupLabel, val)
 					}
 				}
-				newLbl := lb.Labels(empty)
+				newLbl := lb.Labels()
 				h, _ := newLbl.HashForLabels(b, node.Grouping...)
 				if _, ok := m[h]; !ok {
 					m[h] = newLbl
@@ -493,7 +491,7 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 					}
 				}
 
-				newLbl := lb.Labels(empty)
+				newLbl := lb.Labels()
 				h, _ := newLbl.HashWithoutLabels(b, node.Grouping...)
 				if _, ok := m[h]; !ok {
 					m[h] = newLbl

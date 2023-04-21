@@ -297,7 +297,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					queryEngine = promql.NewEngine(opts)
 				}
 
-				query, err := queryEngine.NewRangeQuery(queryable, nil, "foo", start, end, 1*time.Minute)
+				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "foo", start, end, 1*time.Minute)
 				r := query.Exec(ctx)
 
 				require.NoError(t, err)
@@ -487,11 +487,11 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 					require.NoError(t, err)
 
+					ctx := user.InjectOrgID(context.Background(), "0")
 					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					query, err := queryEngine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
+					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 					require.NoError(t, err)
 
-					ctx := user.InjectOrgID(context.Background(), "0")
 					r := query.Exec(ctx)
 					_, err = r.Matrix()
 

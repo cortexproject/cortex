@@ -1,22 +1,18 @@
 # Changelog
 
 ## master / unreleased
-* [CHANGE] Store gateways summary metrics have been converted to histograms `cortex_bucket_store_series_blocks_queried`, `cortex_bucket_store_series_data_fetched`, `cortex_bucket_store_series_data_size_touched_bytes`, `cortex_bucket_store_series_data_size_fetched_bytes`, `cortex_bucket_store_series_data_touched`, `cortex_bucket_store_series_result_series` #5239
-* [ENHANCEMENT] Querier: Batch Iterator optimization to prevent transversing it multiple times query ranges steps does not overlap. #5237
-* [BUGFIX] Catch context error in the s3 bucket client. #5240
-* [BUGFIX] Fix query frontend remote read empty body. #5257
-* [BUGFIX] Fix query frontend incorrect error response format at `SplitByQuery` middleware. #5260
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 
-## 1.15.0 in progress
+## 1.15.0 2023-04-19
 
-* [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5016
+* [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5080 #5122
 * [CHANGE] Alertmanager: Local file disclosure vulnerability in OpsGenie configuration has been fixed. #5045
-* [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5067
+* [CHANGE] Rename oltp_endpoint to otlp_endpoint to match opentelemetry spec and lib name. #5068
 * [CHANGE] Distributor/Ingester: Log warn level on push requests when they have status code 4xx. Do not log if status is 429. #5103
 * [CHANGE] Tracing: Use the default OTEL trace sampler when `-tracing.otel.exporter-type` is set to `awsxray`. #5141
 * [CHANGE] Ingester partial error log line to debug level. #5192
 * [CHANGE] Change HTTP status code from 503/422 to 499 if a request is canceled. #5220
+* [CHANGE] Store gateways summary metrics have been converted to histograms `cortex_bucket_store_series_blocks_queried`, `cortex_bucket_store_series_data_fetched`, `cortex_bucket_store_series_data_size_touched_bytes`, `cortex_bucket_store_series_data_size_fetched_bytes`, `cortex_bucket_store_series_data_touched`, `cortex_bucket_store_series_result_series` #5239
 * [FEATURE] Querier/Query Frontend: support Prometheus /api/v1/status/buildinfo API. #4978
 * [FEATURE] Ingester: Add active series to all_user_stats page. #4972
 * [FEATURE] Ingester: Added `-blocks-storage.tsdb.head-chunks-write-queue-size` allowing to configure the size of the in-memory queue used before flushing chunks to the disk . #5000
@@ -35,7 +31,7 @@
 * [FEATURE] Added `snappy-block` as an option for grpc compression #5215
 * [FEATURE] Enable experimental out-of-order samples support. Added 2 new configs `ingester.out_of_order_time_window` and `blocks-storage.tsdb.out_of_order_cap_max`. #4964
 * [ENHANCEMENT] Querier: limit series query to only ingesters if `start` param is not specified. #4976
-* [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #5005
+* [ENHANCEMENT] Query-frontend/scheduler: add a new limit `frontend.max-outstanding-requests-per-tenant` for configuring queue size per tenant. Started deprecating two flags `-query-scheduler.max-outstanding-requests-per-tenant` and `-querier.max-outstanding-requests-per-tenant`, and change their value default to 0. Now if both the old flag and new flag are specified, the old flag's queue size will be picked. #4991
 * [ENHANCEMENT] Query-tee: Add `/api/v1/query_exemplars` API endpoint support. #5010
 * [ENHANCEMENT] Let blocks_cleaner delete blocks concurrently(default 16 goroutines). #5028
 * [ENHANCEMENT] Query Frontend/Query Scheduler: Increase upper bound to 60s for queue duration histogram metric. #5029
@@ -50,12 +46,13 @@
 * [ENHANCEMENT] Distributor: Reuse byte slices when serializing requests from distributors to ingesters. #5193
 * [ENHANCEMENT] Query Frontend: Add number of chunks and samples fetched in query stats. #5198
 * [ENHANCEMENT] Implement grpc.Compressor.DecompressedSize for snappy to optimize memory allocations. #5213
+* [ENHANCEMENT] Querier: Batch Iterator optimization to prevent transversing it multiple times query ranges steps does not overlap. #5237
 * [BUGFIX] Updated `golang.org/x/net` dependency to fix CVE-2022-27664. #5008
 * [BUGFIX] Fix panic when otel and xray tracing is enabled. #5044
 * [BUGFIX] Fixed no compact block got grouped in shuffle sharding grouper. #5055
 * [BUGFIX] Fixed ingesters with less tokens stuck in LEAVING. #5061
 * [BUGFIX] Tracing: Fix missing object storage span instrumentation. #5074
-* [BUGFIX] Ingester: Ingesters returning empty response for metadata APIs. #5081
+* [BUGFIX] Ingester: Fix Ingesters returning empty response for metadata APIs. #5081
 * [BUGFIX] Ingester: Fix panic when querying metadata from blocks that are being deleted. #5119
 * [BUGFIX] Ring: Fix case when dynamodb kv reaches the limit of 25 actions per batch call. #5136
 * [BUGFIX] Query-frontend: Fix shardable instant queries do not produce sorted results for `sort`, `sort_desc`, `topk`, `bottomk` functions. #5148, #5170
@@ -63,6 +60,9 @@
 * [BUGFIX] Compactor: Fix issue that shuffle sharding planner return error if block is under visit by other compactor. #5188
 * [BUGFIX] Fix S3 BucketWithRetries upload empty content issue #5217
 * [BUGFIX] Query Frontend: Disable `absent`, `absent_over_time` and `scalar` for vertical sharding. #5221
+* [BUGFIX] Catch context error in the s3 bucket client. #5240
+* [BUGFIX] Fix query frontend remote read empty body. #5257
+* [BUGFIX] Fix query frontend incorrect error response format at `SplitByQuery` middleware. #5260
 
 ## 1.14.0 2022-12-02
 

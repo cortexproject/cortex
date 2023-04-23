@@ -1740,8 +1740,8 @@ github.com/prometheus/procfs v0.7.3/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1
 github.com/prometheus/procfs v0.8.0/go.mod h1:z7EfXMXOkbkqb9IINtpCn86r/to3BnA0uaxHdg830/4=
 github.com/prometheus/procfs v0.9.0 h1:wzCHvIvM5SxWqYvwgVL7yJY8Lz3PKn49KQtpgMYJfhI=
 github.com/prometheus/procfs v0.9.0/go.mod h1:+pB4zwohETzFnmlpe6yd2lSc+0/46IYZRB/chUwxUZY=
-github.com/prometheus/prometheus v0.43.1-0.20230420171807-0b212fd123e2 h1:Ep7n8F9fUxQUVAW71/tatxw4lltvK0xB90JicZMBehA=
-github.com/prometheus/prometheus v0.43.1-0.20230420171807-0b212fd123e2/go.mod h1:aPsmIK3py5XammeTguyqTmuqzX/jeCdyOWWobLHNKQg=
+github.com/prometheus/prometheus v0.43.1-0.20230422135559-7cd9f8a34030 h1:9DcBkE1bR7PNBQ/iOWIm+BI5wIkGtfVoucsmMVftbIo=
+github.com/prometheus/prometheus v0.43.1-0.20230422135559-7cd9f8a34030/go.mod h1:aPsmIK3py5XammeTguyqTmuqzX/jeCdyOWWobLHNKQg=
 github.com/prometheus/tsdb v0.7.1/go.mod h1:qhTCs0VvXwvX/y3TZrWD7rabWM+ijKTux40TwIPHuXU=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/remyoudompheng/bigfft v0.0.0-20190728182440-6a916e37a237/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
@@ -1864,8 +1864,8 @@ github.com/tchap/go-patricia v2.2.6+incompatible/go.mod h1:bmLyhP68RS6kStMGxByiQ
 github.com/tencentyun/cos-go-sdk-v5 v0.7.40 h1:W6vDGKCHe4wBACI1d2UgE6+50sJFhRWU4O8IB2ozzxM=
 github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e h1:f1Zsv7OAU9iQhZwigp50Yl38W10g/vd5NC8Rdk1Jzng=
 github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e/go.mod h1:jXcofnrSln/cLI6/dhlBxPQZEEQHVPCcFaH75M+nSzM=
-github.com/thanos-community/promql-engine v0.0.0-20230417154848-c2396ed5afd9 h1:PdI6eklbpSZPC2+B2F2KKTwg1TNKY2QsuC6ayBs6M5o=
-github.com/thanos-community/promql-engine v0.0.0-20230417154848-c2396ed5afd9/go.mod h1:mnjFTl5zZ9Rf0/xatwl+lGKvxjeJuUEysBrXYKEVnsM=
+github.com/thanos-community/promql-engine v0.0.0-20230423165045-1c83edbc1174 h1:eM+k75R+adFmnm/kurSN6W21MXwss+ThEWNnEcSbRRM=
+github.com/thanos-community/promql-engine v0.0.0-20230423165045-1c83edbc1174/go.mod h1:PbimG7ocz5JmFRLlQ7yMcewnkunNBmvMyVgAoNmyvDw=
 github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204 h1:W4w5Iph7j32Sf1QFWLJDCqvO0WgZS0jHGID+qnq3wV0=
 github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204/go.mod h1:STSgpY8M6EKF2G/raUFdbIMf2U9GgYlEjAEHJxjvpAo=
 github.com/thanos-io/thanos v0.31.1-0.20230418080134-0c2af2155056 h1:x0jPHfsMnf8DtdxD4B2nMZAbIXza3y/wWgmVLV+3Gxc=

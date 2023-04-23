@@ -100,10 +100,10 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	}
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
-		prompbLabels := []prompb.Labels{prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)}}
-		if numSeries%3 == 0 {
+		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
+		if i%3 == 0 {
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if numSeries%3 == 1 {
+		} else if i%3 == 1 {
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
 		} else {
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})

@@ -150,7 +150,7 @@ type RulesLimits interface {
 func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		evaluationDelay := overrides.EvaluationDelay(userID)
-		q, err := engine.NewInstantQuery(q, nil, qs, t.Add(-evaluationDelay))
+		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t.Add(-evaluationDelay))
 		if err != nil {
 			return nil, err
 		}

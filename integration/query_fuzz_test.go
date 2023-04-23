@@ -108,7 +108,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		} else {
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
-		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels)
+		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
 		for _, lbl := range series.Labels {

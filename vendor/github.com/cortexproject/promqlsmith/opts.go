@@ -72,8 +72,9 @@ type options struct {
 	enabledFuncs  []*parser.Function
 	enabledBinops []parser.ItemType
 
-	enableOffset     bool
-	enableAtModifier bool
+	enableOffset         bool
+	enableAtModifier     bool
+	enableVectorMatching bool
 }
 
 func (o *options) applyDefaults() {
@@ -114,6 +115,12 @@ func WithEnableOffset(enableOffset bool) Option {
 func WithEnableAtModifier(enableAtModifier bool) Option {
 	return optionFunc(func(o *options) {
 		o.enableAtModifier = enableAtModifier
+	})
+}
+
+func WithEnableVectorMatching(enableVectorMatching bool) Option {
+	return optionFunc(func(o *options) {
+		o.enableVectorMatching = enableVectorMatching
 	})
 }
 

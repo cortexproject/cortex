@@ -4,10 +4,12 @@
 package query
 
 import (
+	"context"
 	"time"
 )
 
 type Options struct {
+	Context          context.Context
 	Start            time.Time
 	End              time.Time
 	Step             time.Duration

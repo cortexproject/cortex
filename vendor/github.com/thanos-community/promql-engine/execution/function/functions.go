@@ -199,6 +199,10 @@ var Funcs = map[string]FunctionCall{
 			F:      f.Samples[len(f.Samples)-1].F,
 		}
 	},
+	"label_join": func(f FunctionArgs) promql.Sample {
+		// This is specifically handled by functionOperator Series()
+		return promql.Sample{}
+	},
 	"present_over_time": func(f FunctionArgs) promql.Sample {
 		if len(f.Samples) == 0 {
 			return InvalidSample

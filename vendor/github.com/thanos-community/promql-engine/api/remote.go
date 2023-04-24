@@ -4,6 +4,7 @@
 package api
 
 import (
+	"context"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -18,7 +19,7 @@ type RemoteEngine interface {
 	MaxT() int64
 	MinT() int64
 	LabelSets() []labels.Labels
-	NewRangeQuery(opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error)
+	NewRangeQuery(ctx context.Context, opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error)
 }
 
 type staticEndpoints struct {

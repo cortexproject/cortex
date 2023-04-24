@@ -297,7 +297,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					queryEngine = promql.NewEngine(opts)
 				}
 
-				query, err := queryEngine.NewRangeQuery(queryable, nil, "foo", start, end, 1*time.Minute)
+				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "foo", start, end, 1*time.Minute)
 				r := query.Exec(ctx)
 
 				require.NoError(t, err)
@@ -487,11 +487,11 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 					require.NoError(t, err)
 
+					ctx := user.InjectOrgID(context.Background(), "0")
 					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					query, err := queryEngine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
+					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 					require.NoError(t, err)
 
-					ctx := user.InjectOrgID(context.Background(), "0")
 					r := query.Exec(ctx)
 					_, err = r.Matrix()
 
@@ -593,12 +593,12 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 					require.NoError(t, err)
 
+					ctx := user.InjectOrgID(context.Background(), "0")
 					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					query, err := queryEngine.NewRangeQuery(queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
+					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 					require.NoError(t, err)
 
-					ctx := user.InjectOrgID(context.Background(), "0")
 					r := query.Exec(ctx)
 					require.Nil(t, r.Err)
 
@@ -691,10 +691,10 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 				} else {
 					queryEngine = promql.NewEngine(opts)
 				}
-				query, err := queryEngine.NewRangeQuery(queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+				ctx := user.InjectOrgID(context.Background(), "test")
+				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 				require.NoError(t, err)
 
-				ctx := user.InjectOrgID(context.Background(), "test")
 				r := query.Exec(ctx)
 
 				if testData.expected != nil {
@@ -848,7 +848,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						} else {
 							queryEngine = promql.NewEngine(opts)
 						}
-						query, err := queryEngine.NewRangeQuery(queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
+						query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 						require.NoError(t, err)
 
 						r := query.Exec(ctx)
@@ -1079,10 +1079,10 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *Moc
 
 func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine v1.QueryEngine, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
-	query, err := queryEngine.NewRangeQuery(queryable, nil, q.query, from, through, step)
+	ctx := user.InjectOrgID(context.Background(), "0")
+	query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, q.query, from, through, step)
 	require.NoError(t, err)
 
-	ctx := user.InjectOrgID(context.Background(), "0")
 	r := query.Exec(ctx)
 	m, err := r.Matrix()
 	require.NoError(t, err)
@@ -1330,10 +1330,10 @@ func TestShortTermQueryToLTS(t *testing.T) {
 				require.NoError(t, err)
 
 				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-				query, err := engine.NewRangeQuery(queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
+				ctx := user.InjectOrgID(context.Background(), "0")
+				query, err := engine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 				require.NoError(t, err)
 
-				ctx := user.InjectOrgID(context.Background(), "0")
 				r := query.Exec(ctx)
 				_, err = r.Matrix()
 

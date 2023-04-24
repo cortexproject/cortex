@@ -574,7 +574,7 @@ const cardinalityCacheExpirationTime = time.Duration(30) * time.Second
 func (h *Head) Init(minValidTime int64) error {
 	h.minValidTime.Store(minValidTime)
 	defer func() {
-		h.postings.EnsureOrder()
+		h.postings.EnsureOrder(h.opts.WALReplayConcurrency)
 	}()
 	defer h.gc() // After loading the wal remove the obsolete data from the head.
 	defer func() {
@@ -1453,7 +1453,7 @@ func (h *Head) Delete(mint, maxt int64, ms ...*labels.Matcher) error {
 		}
 	}
 	for _, s := range stones {
-		h.tombstones.AddInterval(storage.SeriesRef(s.Ref), s.Intervals[0])
+		h.tombstones.AddInterval(s.Ref, s.Intervals[0])
 	}
 
 	return nil

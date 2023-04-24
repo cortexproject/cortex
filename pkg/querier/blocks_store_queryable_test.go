@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
@@ -33,6 +30,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
@@ -1455,10 +1454,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
 
 			// Run a query.
-			q, err := queryEngine.NewRangeQuery(queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			q, err := queryEngine.NewRangeQuery(ctx, queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
 			require.NoError(t, err)
 
-			ctx := user.InjectOrgID(context.Background(), "user-1")
 			res := q.Exec(ctx)
 			require.NoError(t, err)
 			require.NoError(t, res.Err)

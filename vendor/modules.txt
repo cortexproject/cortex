@@ -815,7 +815,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-community/promql-engine v0.0.0-20230423165045-1c83edbc1174
+# github.com/thanos-community/promql-engine v0.0.0-20230424192336-6fec99413de8
 ## explicit; go 1.19
 github.com/thanos-community/promql-engine/api
 github.com/thanos-community/promql-engine/engine
@@ -832,8 +832,8 @@ github.com/thanos-community/promql-engine/execution/scan
 github.com/thanos-community/promql-engine/execution/step_invariant
 github.com/thanos-community/promql-engine/execution/storage
 github.com/thanos-community/promql-engine/execution/unary
-github.com/thanos-community/promql-engine/internal/prometheus/parser
 github.com/thanos-community/promql-engine/logicalplan
+github.com/thanos-community/promql-engine/parser
 github.com/thanos-community/promql-engine/query
 github.com/thanos-community/promql-engine/worker
 # github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204

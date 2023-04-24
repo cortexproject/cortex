@@ -16,11 +16,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
-
 	"github.com/thanos-community/promql-engine/execution/function"
 	"github.com/thanos-community/promql-engine/execution/model"
 	engstore "github.com/thanos-community/promql-engine/execution/storage"
+	"github.com/thanos-community/promql-engine/parser"
 	"github.com/thanos-community/promql-engine/query"
 )
 

@@ -259,8 +259,8 @@ func (c *Client) LabelValues(label string, start, end time.Time, matches []strin
 }
 
 // LabelNames gets label names
-func (c *Client) LabelNames(start, end time.Time) ([]string, error) {
-	result, _, err := c.querierClient.LabelNames(context.Background(), nil, start, end)
+func (c *Client) LabelNames(start, end time.Time, matchers ...string) ([]string, error) {
+	result, _, err := c.querierClient.LabelNames(context.Background(), matchers, start, end)
 	return result, err
 }
 

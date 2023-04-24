@@ -639,6 +639,24 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				}
 
 				if err != nil {
+					s, ok := status.FromError(err)
+					if !ok {
+						s, ok = status.FromError(errors.Cause(err))
+					}
+
+					if ok {
+						// Thanos Store Gateway uses it when hitting series/chunk limit.
+						if s.Code() == codes.ResourceExhausted {
+							message := s.Message()
+							// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
+							if strings.Contains(message, "exceeded series limit") {
+								return validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, queryLimiter.MaxSeriesPerQuery))
+							} else if strings.Contains(message, "exceeded chunks limit") {
+								// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L1036
+								return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
+							}
+						}
+					}
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
 
@@ -746,6 +764,7 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 		warnings      = storage.Warnings(nil)
 		queriedBlocks = []ulid.ULID(nil)
 		spanLog       = spanlogger.FromContext(ctx)
+		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -763,10 +782,26 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label names from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					// Thanos Store Gateway uses it when hitting series/chunk limit.
+					if s.Code() == codes.ResourceExhausted {
+						message := s.Message()
+						// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
+						if strings.Contains(message, "exceeded series limit") {
+							return validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, queryLimiter.MaxSeriesPerQuery))
+						}
+					}
+				}
+				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
@@ -827,6 +862,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		warnings      = storage.Warnings(nil)
 		queriedBlocks = []ulid.ULID(nil)
 		spanLog       = spanlogger.FromContext(ctx)
+		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -844,10 +880,25 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label values from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					// Thanos Store Gateway uses it when hitting series/chunk limit.
+					if s.Code() == codes.ResourceExhausted {
+						message := s.Message()
+						// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
+						if strings.Contains(message, "exceeded series limit") {
+							return validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, queryLimiter.MaxSeriesPerQuery))
+						}
+					}
+				}
+				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)

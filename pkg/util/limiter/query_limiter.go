@@ -30,10 +30,10 @@ type QueryLimiter struct {
 	dataBytesCount  atomic.Int64
 	chunkCount      atomic.Int64
 
-	maxSeriesPerQuery     int
-	maxChunkBytesPerQuery int
-	maxDataBytesPerQuery  int
-	maxChunksPerQuery     int
+	MaxSeriesPerQuery     int
+	MaxChunkBytesPerQuery int
+	MaxDataBytesPerQuery  int
+	MaxChunksPerQuery     int
 }
 
 // NewQueryLimiter makes a new per-query limiter. Each query limiter
@@ -43,10 +43,10 @@ func NewQueryLimiter(maxSeriesPerQuery, maxChunkBytesPerQuery, maxChunksPerQuery
 		uniqueSeriesMx: sync.Mutex{},
 		uniqueSeries:   map[model.Fingerprint]struct{}{},
 
-		maxSeriesPerQuery:     maxSeriesPerQuery,
-		maxChunkBytesPerQuery: maxChunkBytesPerQuery,
-		maxChunksPerQuery:     maxChunksPerQuery,
-		maxDataBytesPerQuery:  maxDataBytesPerQuery,
+		MaxSeriesPerQuery:     maxSeriesPerQuery,
+		MaxChunkBytesPerQuery: maxChunkBytesPerQuery,
+		MaxChunksPerQuery:     maxChunksPerQuery,
+		MaxDataBytesPerQuery:  maxDataBytesPerQuery,
 	}
 }
 
@@ -68,7 +68,7 @@ func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 // AddSeries adds the input series and returns an error if the limit is reached.
 func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 	// If the max series is unlimited just return without managing map
-	if ql.maxSeriesPerQuery == 0 {
+	if ql.MaxSeriesPerQuery == 0 {
 		return nil
 	}
 	fingerprint := client.FastFingerprint(seriesLabels)
@@ -77,9 +77,9 @@ func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
 	defer ql.uniqueSeriesMx.Unlock()
 
 	ql.uniqueSeries[fingerprint] = struct{}{}
-	if len(ql.uniqueSeries) > ql.maxSeriesPerQuery {
+	if len(ql.uniqueSeries) > ql.MaxSeriesPerQuery {
 		// Format error with max limit
-		return fmt.Errorf(ErrMaxSeriesHit, ql.maxSeriesPerQuery)
+		return fmt.Errorf(ErrMaxSeriesHit, ql.MaxSeriesPerQuery)
 	}
 	return nil
 }
@@ -93,33 +93,33 @@ func (ql *QueryLimiter) uniqueSeriesCount() int {
 
 // AddChunkBytes adds the input chunk size in bytes and returns an error if the limit is reached.
 func (ql *QueryLimiter) AddChunkBytes(chunkSizeInBytes int) error {
-	if ql.maxChunkBytesPerQuery == 0 {
+	if ql.MaxChunkBytesPerQuery == 0 {
 		return nil
 	}
-	if ql.chunkBytesCount.Add(int64(chunkSizeInBytes)) > int64(ql.maxChunkBytesPerQuery) {
-		return fmt.Errorf(ErrMaxChunkBytesHit, ql.maxChunkBytesPerQuery)
+	if ql.chunkBytesCount.Add(int64(chunkSizeInBytes)) > int64(ql.MaxChunkBytesPerQuery) {
+		return fmt.Errorf(ErrMaxChunkBytesHit, ql.MaxChunkBytesPerQuery)
 	}
 	return nil
 }
 
 // AddDataBytes adds the queried data bytes and returns an error if the limit is reached.
 func (ql *QueryLimiter) AddDataBytes(dataSizeInBytes int) error {
-	if ql.maxDataBytesPerQuery == 0 {
+	if ql.MaxDataBytesPerQuery == 0 {
 		return nil
 	}
-	if ql.dataBytesCount.Add(int64(dataSizeInBytes)) > int64(ql.maxDataBytesPerQuery) {
-		return fmt.Errorf(ErrMaxDataBytesHit, ql.maxDataBytesPerQuery)
+	if ql.dataBytesCount.Add(int64(dataSizeInBytes)) > int64(ql.MaxDataBytesPerQuery) {
+		return fmt.Errorf(ErrMaxDataBytesHit, ql.MaxDataBytesPerQuery)
 	}
 	return nil
 }
 
 func (ql *QueryLimiter) AddChunks(count int) error {
-	if ql.maxChunksPerQuery == 0 {
+	if ql.MaxChunksPerQuery == 0 {
 		return nil
 	}
 
-	if ql.chunkCount.Add(int64(count)) > int64(ql.maxChunksPerQuery) {
-		return fmt.Errorf(ErrMaxChunksPerQueryLimit, ql.maxChunksPerQuery)
+	if ql.chunkCount.Add(int64(count)) > int64(ql.MaxChunksPerQuery) {
+		return fmt.Errorf(ErrMaxChunksPerQueryLimit, ql.MaxChunksPerQuery)
 	}
 	return nil
 }

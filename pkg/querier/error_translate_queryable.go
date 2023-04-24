@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/gogo/status"

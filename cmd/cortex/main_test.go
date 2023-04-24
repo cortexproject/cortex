@@ -42,7 +42,8 @@ func TestFlagParsing(t *testing.T) {
 		},
 
 		"default values": {
-			stdoutMessage: "target: all\n",
+			stdoutMessage: "",
+			stderrMessage: "Error loading config ,config.yaml does not exist, please set config.file for custom config path .for example:-config.file=./docs/configuration/single-process-config-blocks-local.yaml",
 		},
 
 		"config": {

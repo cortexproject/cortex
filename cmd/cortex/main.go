@@ -68,7 +68,8 @@ func main() {
 		printModules         bool
 	)
 
-	configFile, expandENV := parseConfigFileParameter(os.Args[1:])
+	args := os.Args[1:]
+	configFile, expandENV := parseConfigFileParameter(args)
 
 	// This sets default values from flags to the config.
 	// It needs to be called before parsing the config file!
@@ -82,7 +83,8 @@ func main() {
 			}
 			os.Exit(1)
 		}
-	} else {
+	} else if len(args) == 0 {
+
 		fmt.Fprintf(os.Stderr, "Error loading config ,config.yaml does not exist, please set config.file for custom config path .for example:-config.file=./docs/configuration/single-process-config-blocks-local.yaml")
 		if testMode {
 			return

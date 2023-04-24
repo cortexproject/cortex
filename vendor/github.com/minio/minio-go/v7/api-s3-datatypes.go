@@ -85,6 +85,14 @@ type Version struct {
 	StorageClass string
 	VersionID    string `xml:"VersionId"`
 
+	// x-amz-meta-* headers stripped "x-amz-meta-" prefix containing the first value.
+	// Only returned by MinIO servers.
+	UserMetadata StringMap `json:"userMetadata,omitempty"`
+
+	// x-amz-tagging values in their k/v values.
+	// Only returned by MinIO servers.
+	UserTags URLMap `json:"userTags,omitempty" xml:"UserTags"`
+
 	isDeleteMarker bool
 }
 

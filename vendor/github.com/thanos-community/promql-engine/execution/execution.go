@@ -31,8 +31,6 @@ import (
 
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
-
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-community/promql-engine/execution/aggregate"
@@ -46,6 +44,7 @@ import (
 	engstore "github.com/thanos-community/promql-engine/execution/storage"
 	"github.com/thanos-community/promql-engine/execution/unary"
 	"github.com/thanos-community/promql-engine/logicalplan"
+	"github.com/thanos-community/promql-engine/parser"
 	"github.com/thanos-community/promql-engine/query"
 )
 

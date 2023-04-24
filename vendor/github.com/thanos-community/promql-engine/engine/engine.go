@@ -5,36 +5,31 @@ package engine
 
 import (
 	"context"
-
-	promparser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/util/stats"
-
-	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
-
-	"github.com/cespare/xxhash/v2"
-	"github.com/prometheus/prometheus/model/labels"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
-
 	"io"
 	"math"
 	"runtime"
 	"sort"
 	"time"
 
-	"github.com/thanos-community/promql-engine/api"
-
+	"github.com/cespare/xxhash/v2"
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	promparser "github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/stats"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 
+	"github.com/thanos-community/promql-engine/api"
 	"github.com/thanos-community/promql-engine/execution"
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
 	"github.com/thanos-community/promql-engine/logicalplan"
+	"github.com/thanos-community/promql-engine/parser"
 )
 
 type QueryType int

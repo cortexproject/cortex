@@ -6,10 +6,9 @@ package binary
 import (
 	"math"
 
-	"github.com/thanos-community/promql-engine/internal/prometheus/parser"
-
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
+	"github.com/thanos-community/promql-engine/parser"
 )
 
 type binOpSide string

@@ -5,6 +5,7 @@ package integration
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -891,25 +892,26 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// We expect all queries hitting 422 exceeded series limit
-	_, err = c.Query(`{job="test"}`, series2Timestamp)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "422")
-	require.Contains(t, err.Error(), "exceeded series limit")
+	resp, body, err := c.QueryRaw(`{job="test"}`, series2Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), "exceeded series limit")
 
+	resp, body, err = c.SeriesRaw([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
 	_, err = c.Series([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "422")
-	require.Contains(t, err.Error(), "exceeded series limit")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), "max number of series limit")
 
-	_, err = c.LabelNames(series2Timestamp.Add(-time.Hour), series2Timestamp, `{job="test"}`)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "422")
-	require.Contains(t, err.Error(), "exceeded series limit")
+	resp, body, err = c.LabelNamesRaw([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), "max number of series limit")
 
-	_, err = c.LabelValues("__name__", series2Timestamp.Add(-time.Hour), series2Timestamp, []string{`{job="test"}`})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "422")
-	require.Contains(t, err.Error(), "exceeded series limit")
+	resp, body, err = c.LabelValuesRaw("__name__", []string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), "max number of series limit")
 }
 
 func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {

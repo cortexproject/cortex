@@ -162,15 +162,11 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
 	if f.cfg.QueryStatsEnabled {
-		var (
-			statusCode    int
-			contentLength int64
-		)
+		var statusCode int
 		if err != nil {
 			statusCode = getStatusCodeFromError(err)
 		} else if resp != nil {
 			statusCode = resp.StatusCode
-			contentLength = resp.ContentLength
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
@@ -181,7 +177,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode, contentLength)
+		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
 	if err != nil {
@@ -236,7 +232,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, contentLength int64) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -255,6 +251,15 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
+
+	var (
+		contentLength int64
+		encoding      string
+	)
+	if resp != nil {
+		contentLength = resp.ContentLength
+		encoding = resp.Header.Get("Content-Encoding")
+	}
 
 	// Log stats.
 	logMessage := append([]interface{}{
@@ -277,6 +282,10 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
+	}
+
+	if len(encoding) > 0 {
+		logMessage = append(logMessage, "content_encoding", encoding)
 	}
 
 	if error != nil {

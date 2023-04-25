@@ -645,7 +645,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					}
 
 					if ok {
-						// Thanos Store Gateway uses it when hitting series/chunk limit.
 						if s.Code() == codes.ResourceExhausted {
 							message := s.Message()
 							// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
@@ -764,7 +763,6 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 		warnings      = storage.Warnings(nil)
 		queriedBlocks = []ulid.ULID(nil)
 		spanLog       = spanlogger.FromContext(ctx)
-		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -786,21 +784,6 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 					return nil
 				}
 
-				s, ok := status.FromError(err)
-				if !ok {
-					s, ok = status.FromError(errors.Cause(err))
-				}
-
-				if ok {
-					// Thanos Store Gateway uses it when hitting series/chunk limit.
-					if s.Code() == codes.ResourceExhausted {
-						message := s.Message()
-						// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
-						if strings.Contains(message, "exceeded series limit") {
-							return validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, queryLimiter.MaxSeriesPerQuery))
-						}
-					}
-				}
 				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
 			}
 
@@ -862,7 +845,6 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 		warnings      = storage.Warnings(nil)
 		queriedBlocks = []ulid.ULID(nil)
 		spanLog       = spanlogger.FromContext(ctx)
-		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
 
 	// Concurrently fetch series from all clients.
@@ -882,21 +864,6 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 				if isRetryableError(err) {
 					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label values from %s due to retryable error", c.RemoteAddress()))
 					return nil
-				}
-				s, ok := status.FromError(err)
-				if !ok {
-					s, ok = status.FromError(errors.Cause(err))
-				}
-
-				if ok {
-					// Thanos Store Gateway uses it when hitting series/chunk limit.
-					if s.Code() == codes.ResourceExhausted {
-						message := s.Message()
-						// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
-						if strings.Contains(message, "exceeded series limit") {
-							return validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, queryLimiter.MaxSeriesPerQuery))
-						}
-					}
 				}
 				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())
 			}

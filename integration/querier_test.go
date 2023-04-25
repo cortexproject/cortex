@@ -901,16 +901,6 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "max number of series limit")
-
-	resp, body, err = c.LabelNamesRaw([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-	require.Contains(t, string(body), "max number of series limit")
-
-	resp, body, err = c.LabelValuesRaw("__name__", []string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-	require.Contains(t, string(body), "max number of series limit")
 }
 
 func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {

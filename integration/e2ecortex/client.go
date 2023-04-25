@@ -150,10 +150,88 @@ func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Dur
 }
 
 // QueryRaw runs a query directly against the querier API.
-func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
-	addr := fmt.Sprintf("http://%s/api/prom/api/v1/query?query=%s", c.querierAddress, url.QueryEscape(query))
+func (c *Client) QueryRaw(query string, ts time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/query", c.querierAddress),
+	}
+	q := u.Query()
+	q.Set("query", query)
 
-	return c.query(addr)
+	if !ts.IsZero() {
+		q.Set("time", FormatTime(ts))
+	}
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// SeriesRaw runs a series request directly against the querier API.
+func (c *Client) SeriesRaw(matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/series", c.querierAddress),
+	}
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	if !startTime.IsZero() {
+		q.Set("start", FormatTime(startTime))
+	}
+	if !endTime.IsZero() {
+		q.Set("end", FormatTime(endTime))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// LabelNamesRaw runs a label names request directly against the querier API.
+func (c *Client) LabelNamesRaw(matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/labels", c.querierAddress),
+	}
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	if !startTime.IsZero() {
+		q.Set("start", FormatTime(startTime))
+	}
+	if !endTime.IsZero() {
+		q.Set("end", FormatTime(endTime))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// LabelValuesRaw runs a label values request directly against the querier API.
+func (c *Client) LabelValuesRaw(label string, matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/label/%s/values", c.querierAddress, label),
+	}
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	if !startTime.IsZero() {
+		q.Set("start", FormatTime(startTime))
+	}
+	if !endTime.IsZero() {
+		q.Set("end", FormatTime(endTime))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
 }
 
 // RemoteRead runs a remote read query.
@@ -259,8 +337,8 @@ func (c *Client) LabelValues(label string, start, end time.Time, matches []strin
 }
 
 // LabelNames gets label names
-func (c *Client) LabelNames(start, end time.Time) ([]string, error) {
-	result, _, err := c.querierClient.LabelNames(context.Background(), nil, start, end)
+func (c *Client) LabelNames(start, end time.Time, matchers ...string) ([]string, error) {
+	result, _, err := c.querierClient.LabelNames(context.Background(), matchers, start, end)
 	return result, err
 }
 

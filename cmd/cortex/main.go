@@ -85,7 +85,7 @@ func main() {
 		}
 	} else if len(args) == 0 {
 
-		fmt.Fprintf(os.Stderr, "Error loading config ,config.yaml does not exist, please set config.file for custom config path .for example:-config.file=./docs/configuration/single-process-config-blocks-local.yaml")
+		fmt.Fprintf(os.Stderr, "please set configuration file. For example: -config.file=./docs/configuration/single-process-config-blocks-local.yaml")
 		if testMode {
 			return
 		}

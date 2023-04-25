@@ -293,7 +293,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 		// No need to repeat the test on missing metric name for each user.
 		if userID == 0 && cfg.testMissingMetricName {
-			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
+			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}", time.Now())
 			require.NoError(t, err)
 			require.Equal(t, 422, res.StatusCode)
 			require.Contains(t, string(body), "query must contain metric name")
@@ -317,7 +317,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 		// No need to repeat the test on Server-Timing header for each user.
 		if userID == 0 && cfg.queryStatsEnabled {
-			res, _, err := c.QueryRaw("{instance=~\"hello.*\"}")
+			res, _, err := c.QueryRaw("{instance=~\"hello.*\"}", time.Now())
 			require.NoError(t, err)
 			require.Regexp(t, "querier_wall_time;dur=[0-9.]*, response_time;dur=[0-9.]*$", res.Header.Values("Server-Timing")[0])
 		}

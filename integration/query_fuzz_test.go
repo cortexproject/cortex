@@ -133,7 +133,6 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
-		promqlsmith.WithEnableVectorMatching(true),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 

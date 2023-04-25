@@ -2,6 +2,7 @@
 
 ## master / unreleased
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
+* [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 
 ## 1.15.0 2023-04-19
 

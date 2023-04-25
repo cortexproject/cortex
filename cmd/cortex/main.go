@@ -84,12 +84,7 @@ func main() {
 			os.Exit(1)
 		}
 	} else if len(args) == 0 {
-
 		fmt.Fprintf(os.Stderr, "please set configuration file. For example: -config.file=./docs/configuration/single-process-config-blocks-local.yaml")
-		if testMode {
-			return
-		}
-		os.Exit(1)
 	}
 
 	// Ignore -config.file and -config.expand-env here, since it was already parsed, but it's still present on command line.

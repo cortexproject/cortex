@@ -898,7 +898,6 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.Contains(t, string(body), "exceeded series limit")
 
 	resp, body, err = c.SeriesRaw([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
-	_, err = c.Series([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), "max number of series limit")

@@ -646,14 +646,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 					if ok {
 						if s.Code() == codes.ResourceExhausted {
-							message := s.Message()
-							// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L937
-							if strings.Contains(message, "exceeded series limit") {
-								return validation.LimitError(fmt.Sprintf(limiter.ErrMaxSeriesHit, queryLimiter.MaxSeriesPerQuery))
-							} else if strings.Contains(message, "exceeded chunks limit") {
-								// https://github.com/thanos-io/thanos/blob/3c0c9ffaed6ab0a7c52991dd8d7c695c49cff8ee/pkg/store/bucket.go#L1036
-								return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
-							}
+							return validation.LimitError(s.Message())
 						}
 					}
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())

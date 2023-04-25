@@ -66,6 +66,7 @@ type Handler struct {
 	querySeries     *prometheus.CounterVec
 	queryChunkBytes *prometheus.CounterVec
 	queryDataBytes  *prometheus.CounterVec
+	responseBytes   *prometheus.CounterVec
 	activeUsers     *util.ActiveUsersCleanupService
 }
 
@@ -98,11 +99,17 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all data fetched to execute a query in bytes.",
 		}, []string{"user"})
 
+		h.responseBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_query_response_size_bytes_total",
+			Help: "Size of response body size in bytes.",
+		}, []string{"user"})
+
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
+			h.responseBytes.DeleteLabelValues(user)
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
@@ -162,11 +169,15 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
 	if f.cfg.QueryStatsEnabled {
-		var statusCode int
+		var (
+			statusCode    int
+			contentLength int64
+		)
 		if err != nil {
 			statusCode = getStatusCodeFromError(err)
 		} else if resp != nil {
 			statusCode = resp.StatusCode
+			contentLength = resp.ContentLength
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
@@ -177,7 +188,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode)
+		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode, contentLength)
 	}
 
 	if err != nil {
@@ -232,7 +243,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, contentLength int64) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -250,6 +261,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
+	f.responseBytes.WithLabelValues(userID).Add(float64(contentLength))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
@@ -266,6 +278,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_chunks_bytes", numChunkBytes,
 		"fetched_data_bytes", numDataBytes,
 		"status_code", statusCode,
+		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)
 
 	logMessage = append(logMessage, formatQueryString(queryString)...)

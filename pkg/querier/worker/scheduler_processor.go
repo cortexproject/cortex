@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/textproto"
 	"time"
 
 	"github.com/go-kit/log"
@@ -37,7 +38,7 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
-
+		targetHeaders:  cfg.TargetHeaders,
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_querier_query_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",
@@ -70,6 +71,8 @@ type schedulerProcessor struct {
 
 	frontendPool                  *client.Pool
 	frontendClientRequestDuration *prometheus.HistogramVec
+
+	targetHeaders []string
 }
 
 // notifyShutdown implements processor.
@@ -130,6 +133,19 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			// We need to inject user into context for sending response back.
 			ctx := user.InjectOrgID(ctx, request.UserID)
 
+			headers := make(map[string]string, 0)
+			for _, h := range request.HttpRequest.Headers {
+				headers[h.Key] = h.Values[0]
+			}
+			headerMap := make(map[string]string, 0)
+			// Remove non-existent header.
+			for _, header := range sp.targetHeaders {
+				if v, ok := headers[textproto.CanonicalMIMEHeaderKey(header)]; ok {
+					headerMap[header] = v
+				}
+			}
+			ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
+
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.
 			parentSpanContext, _ := httpgrpcutil.GetParentSpanForRequest(tracer, request.HttpRequest)
@@ -140,7 +156,6 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 				ctx = spanCtx
 			}
 			logger := util_log.WithContext(ctx, sp.log)
-
 			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
 
 			// Report back to scheduler that processing of the query has finished.
@@ -167,6 +182,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 				Body: []byte(err.Error()),
 			}
 		}
+	}
+	if statsEnabled {
+		level.Info(logger).Log("msg", "finished request", "status_code", response.Code, "response_size", len(response.GetBody()))
 	}
 
 	// Ensure responses that are too big are not retried.

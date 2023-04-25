@@ -851,8 +851,9 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	seriesTimestamp := time.Now()
+	series2Timestamp := seriesTimestamp.Add(blockRangePeriod * 2)
 	series1, _ := generateSeries("series_1", seriesTimestamp, prompb.Label{Name: "job", Value: "test"})
-	series2, _ := generateSeries("series_2", seriesTimestamp, prompb.Label{Name: "job", Value: "test"})
+	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "job", Value: "test"})
 
 	res, err := c.Push(series1)
 	require.NoError(t, err)
@@ -890,22 +891,22 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// We expect all queries hitting 422 exceeded series limit
-	_, err = c.Query(`{job="test"}`, seriesTimestamp)
+	_, err = c.Query(`{job="test"}`, series2Timestamp)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "422")
 	require.Contains(t, err.Error(), "exceeded series limit")
 
-	_, err = c.Series([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Hour), seriesTimestamp)
+	_, err = c.Series([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "422")
 	require.Contains(t, err.Error(), "exceeded series limit")
 
-	_, err = c.LabelNames(seriesTimestamp.Add(-time.Hour), seriesTimestamp, `{job="test"}`)
+	_, err = c.LabelNames(series2Timestamp.Add(-time.Hour), series2Timestamp, `{job="test"}`)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "422")
 	require.Contains(t, err.Error(), "exceeded series limit")
 
-	_, err = c.LabelValues("__name__", seriesTimestamp.Add(-time.Hour), seriesTimestamp, []string{`{job="test"}`})
+	_, err = c.LabelValues("__name__", series2Timestamp.Add(-time.Hour), series2Timestamp, []string{`{job="test"}`})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "422")
 	require.Contains(t, err.Error(), "exceeded series limit")

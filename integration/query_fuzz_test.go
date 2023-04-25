@@ -174,7 +174,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		}
 	}
 	if failures > 0 {
-		require.Fail(t, "failed %d test cases", failures)
+		require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
 	}
 }
 

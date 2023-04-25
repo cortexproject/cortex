@@ -3,8 +3,6 @@ package worker
 import (
 	"context"
 	"fmt"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/weaveworks/common/user"
 	"net/http"
 	"net/textproto"
 	"time"
@@ -12,12 +10,14 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (

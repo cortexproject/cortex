@@ -66,7 +66,6 @@ type Handler struct {
 	querySeries     *prometheus.CounterVec
 	queryChunkBytes *prometheus.CounterVec
 	queryDataBytes  *prometheus.CounterVec
-	responseBytes   *prometheus.CounterVec
 	activeUsers     *util.ActiveUsersCleanupService
 }
 
@@ -99,17 +98,11 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all data fetched to execute a query in bytes.",
 		}, []string{"user"})
 
-		h.responseBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_query_response_size_bytes_total",
-			Help: "Size of response body size in bytes.",
-		}, []string{"user"})
-
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
-			h.responseBytes.DeleteLabelValues(user)
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
@@ -261,7 +254,6 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
-	f.responseBytes.WithLabelValues(userID).Add(float64(contentLength))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.

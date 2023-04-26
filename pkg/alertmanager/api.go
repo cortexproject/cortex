@@ -437,7 +437,7 @@ func validateReceiverTLSConfig(cfg commoncfg.TLSConfig) error {
 }
 
 // validateGlobalConfig validates the Global config and returns an error if it contains
-// settings now allowed by Cortex.
+// settings not allowed by Cortex.
 func validateGlobalConfig(cfg config.GlobalConfig) error {
 	if cfg.OpsGenieAPIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
@@ -449,7 +449,7 @@ func validateGlobalConfig(cfg config.GlobalConfig) error {
 }
 
 // validateOpsGenieConfig validates the OpsGenie config and returns an error if it contains
-// settings now allowed by Cortex.
+// settings not allowed by Cortex.
 func validateOpsGenieConfig(cfg config.OpsGenieConfig) error {
 	if cfg.APIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
@@ -458,7 +458,7 @@ func validateOpsGenieConfig(cfg config.OpsGenieConfig) error {
 }
 
 // validateSlackConfig validates the Slack config and returns an error if it contains
-// settings now allowed by Cortex.
+// settings not allowed by Cortex.
 func validateSlackConfig(cfg config.SlackConfig) error {
 	if cfg.APIURLFile != "" {
 		return errSlackAPIURLFileNotAllowed
@@ -467,7 +467,7 @@ func validateSlackConfig(cfg config.SlackConfig) error {
 }
 
 // validateVictorOpsConfig validates the VictorOps config and returns an error if it contains
-// settings now allowed by Cortex.
+// settings not allowed by Cortex.
 func validateVictorOpsConfig(cfg config.VictorOpsConfig) error {
 	if cfg.APIKeyFile != "" {
 		return errVictorOpsAPIKeyFileNotAllowed
@@ -476,7 +476,7 @@ func validateVictorOpsConfig(cfg config.VictorOpsConfig) error {
 }
 
 // validatePagerdutyConfig validates the pager duty config and returns an error if it contains
-// settings now allowed by Cortex.
+// settings not allowed by Cortex.
 func validatePagerdutyConfig(cfg config.PagerdutyConfig) error {
 	if cfg.RoutingKeyFile != "" {
 		return errPagerDutyRoutingKeyFileNotAllowed

@@ -40,12 +40,14 @@ const (
 )
 
 var (
-	errPasswordFileNotAllowed        = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
-	errOAuth2SecretFileNotAllowed    = errors.New("setting OAuth2 client_secret_file is not allowed")
-	errTLSFileNotAllowed             = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
-	errSlackAPIURLFileNotAllowed     = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
-	errVictorOpsAPIKeyFileNotAllowed = errors.New("setting VictorOps api_key_file is not allowed")
-	errOpsGenieAPIKeyFileNotAllowed  = errors.New("setting OpsGenie api_key_file is not allowed")
+	errPasswordFileNotAllowed            = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
+	errOAuth2SecretFileNotAllowed        = errors.New("setting OAuth2 client_secret_file is not allowed")
+	errTLSFileNotAllowed                 = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
+	errSlackAPIURLFileNotAllowed         = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
+	errVictorOpsAPIKeyFileNotAllowed     = errors.New("setting VictorOps api_key_file is not allowed")
+	errOpsGenieAPIKeyFileNotAllowed      = errors.New("setting OpsGenie api_key_file is not allowed")
+	errPagerDutyRoutingKeyFileNotAllowed = errors.New("setting PagerDuty routing_key_file is not allowed")
+	errPagerDutyServiceKeyFileNotAllowed = errors.New("setting PagerDuty service_key_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -356,6 +358,11 @@ func validateAlertmanagerConfig(cfg interface{}) error {
 		if err := validateVictorOpsConfig(v.Interface().(config.VictorOpsConfig)); err != nil {
 			return err
 		}
+
+	case reflect.TypeOf(config.PagerdutyConfig{}):
+		if err := validatePagerdutyConfig(v.Interface().(config.PagerdutyConfig)); err != nil {
+			return err
+		}
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.
@@ -465,5 +472,19 @@ func validateVictorOpsConfig(cfg config.VictorOpsConfig) error {
 	if cfg.APIKeyFile != "" {
 		return errVictorOpsAPIKeyFileNotAllowed
 	}
+	return nil
+}
+
+// validatePagerdutyConfig validates the pager duty config and returns an error if it contains
+// settings now allowed by Cortex.
+func validatePagerdutyConfig(cfg config.PagerdutyConfig) error {
+	if cfg.RoutingKeyFile != "" {
+		return errPagerDutyRoutingKeyFileNotAllowed
+	}
+
+	if cfg.ServiceKeyFile != "" {
+		return errPagerDutyServiceKeyFileNotAllowed
+	}
+
 	return nil
 }

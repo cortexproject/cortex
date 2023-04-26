@@ -165,7 +165,6 @@ func (m *PrometheusInstantQueryData) GetStats() *tripperware.PrometheusResponseS
 
 type PrometheusInstantQueryResult struct {
 	// Types that are valid to be assigned to Result:
-	//
 	//	*PrometheusInstantQueryResult_Vector
 	//	*PrometheusInstantQueryResult_RawBytes
 	//	*PrometheusInstantQueryResult_Matrix

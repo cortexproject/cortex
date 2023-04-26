@@ -563,6 +563,34 @@ template_files:
 			maxTemplateSize: 20,
 			err:             nil,
 		},
+		{
+			name: "Should return error if PagerDuty routing_key_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      pagerduty_configs:
+        - routing_key_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errPagerDutyRoutingKeyFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if PagerDuty service_key_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      pagerduty_configs:
+        - service_key_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errPagerDutyServiceKeyFileNotAllowed, "error validating Alertmanager config"),
+		},
 	}
 
 	limits := &mockAlertManagerLimits{}

@@ -340,6 +340,12 @@ func ReuseTimeseries(ts *TimeSeries) {
 			ts.Exemplars[i].Labels[j].Value = ""
 		}
 	}
+
+	for i := range ts.Histograms {
+		ts.Histograms[i].Reset()
+	}
+
 	ts.Exemplars = ts.Exemplars[:0]
+	ts.Histograms = ts.Histograms[:0]
 	timeSeriesPool.Put(ts)
 }

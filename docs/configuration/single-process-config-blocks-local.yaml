@@ -88,3 +88,6 @@ ruler_storage:
   backend: local
   local:
     directory: /tmp/cortex/rules
+
+runtime_config:
+  file: docs/configuration/runtime-config.yaml

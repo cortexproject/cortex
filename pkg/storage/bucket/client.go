@@ -72,13 +72,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefixAndBackend(prefix, f, S3)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefixAndBackend(prefix string, f *flag.FlagSet, defaultBackend string) {
 	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
 
-	f.StringVar(&cfg.Backend, prefix+"backend", S3, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
+	f.StringVar(&cfg.Backend, prefix+"backend", defaultBackend, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
 }
 
 func (cfg *Config) Validate() error {

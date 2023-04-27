@@ -1,9 +1,14 @@
 package runtimeconfig
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/stretchr/testify/mock"
+	"github.com/thanos-io/objstore"
 	"io"
 	"os"
 	"strings"
@@ -109,6 +114,11 @@ func TestNewOverridesManager(t *testing.T) {
 
 	// Make sure test limits were loaded.
 	require.NotNil(t, overridesManager.GetConfig())
+
+	// Defaults to filesystem backend
+	require.Equal(t, bucket.Filesystem, overridesManager.cfg.StorageConfig.Backend)
+	require.Equal(t, "", overridesManager.cfg.StorageConfig.Filesystem.Directory)
+	require.NotNil(t, overridesManager.bucketClientFactory)
 }
 
 func TestManager_ListenerWithDefaultLimits(t *testing.T) {
@@ -139,6 +149,9 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 
 	overridesManager, err := New(overridesManagerConfig, reg, log.NewNopLogger())
+	overridesManager.bucketClientFactory = func(ctx context.Context) (objstore.Bucket, error) {
+		return &bucket.ClientMock{}, nil
+	}
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
@@ -163,7 +176,7 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// reload
-	err = overridesManager.loadConfig()
+	err = overridesManager.loadConfig(nil)
 	require.NoError(t, err)
 
 	var newValue interface{}
@@ -205,7 +218,7 @@ func TestManager_ListenerChannel(t *testing.T) {
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
 
-	err = overridesManager.loadConfig()
+	err = overridesManager.loadConfig(nil)
 	require.NoError(t, err)
 
 	select {
@@ -216,7 +229,7 @@ func TestManager_ListenerChannel(t *testing.T) {
 	}
 
 	config.Store(1111)
-	err = overridesManager.loadConfig()
+	err = overridesManager.loadConfig(nil)
 	require.NoError(t, err)
 
 	select {
@@ -277,4 +290,29 @@ func TestManager_ShouldFastFailOnInvalidConfigAtStartup(t *testing.T) {
 	m, err := New(cfg, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	require.Error(t, services.StartAndAwaitRunning(context.Background(), m))
+}
+
+func TestManager_GetsRuntimeConfigFromBackendStore(t *testing.T) {
+	fileName := "runtime-config"
+	bucketClient := bucket.ClientMock{}
+	configContent := `overrides:
+  user2:
+    limit2: 200`
+	bucketClient.On("Get", mock.Anything, fileName).Return(io.NopCloser(bytes.NewBufferString(configContent)), nil)
+	manager := Manager{
+		cfg: Config{
+			LoadPath: fileName,
+			Loader:   testLoadOverrides,
+		},
+		configLoadSuccess: promauto.NewGauge(prometheus.GaugeOpts{Name: "mockLoadSuccess"}),
+		configHash: promauto.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "mockHash",
+		}, []string{"sha256"}),
+		bucketClient: &bucketClient,
+	}
+
+	err := manager.loadConfig(nil)
+
+	require.NoError(t, err)
+	bucketClient.AssertExpectations(t)
 }

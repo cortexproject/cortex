@@ -6,8 +6,9 @@ import (
 	"crypto/sha256"
 	"flag"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/thanos-io/objstore"
 	"io"
-	"os"
 	"sync"
 	"time"
 
@@ -31,12 +32,16 @@ type Config struct {
 	// non-empty value
 	LoadPath string `yaml:"file"`
 	Loader   Loader `yaml:"-"`
+
+	StorageConfig bucket.Config `yaml:",inline"`
 }
 
 // RegisterFlags registers flags.
 func (mc *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
 	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
+
+	mc.StorageConfig.RegisterFlagsWithPrefixAndBackend("runtime-config.", f, bucket.Filesystem)
 }
 
 // Manager periodically reloads the configuration from a file, and keeps this
@@ -55,12 +60,22 @@ type Manager struct {
 
 	configLoadSuccess prometheus.Gauge
 	configHash        *prometheus.GaugeVec
+
+	bucketClient        objstore.Bucket
+	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error)
 }
 
 // New creates an instance of Manager and starts reload config loop based on config
 func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
+	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
+		return bucket.NewClient(ctx, cfg.StorageConfig, "runtime-config", logger, registerer)
+	}
 	if cfg.LoadPath == "" {
 		return nil, errors.New("LoadPath is empty")
+	}
+
+	if cfg.StorageConfig.Backend == "" {
+		cfg.StorageConfig.Backend = bucket.Filesystem
 	}
 
 	mgr := Manager{
@@ -73,19 +88,26 @@ func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Mana
 			Name: "runtime_config_hash",
 			Help: "Hash of the currently active runtime config file.",
 		}, []string{"sha256"}),
-		logger: logger,
+		logger:              logger,
+		bucketClientFactory: bucketClientFactory,
 	}
 
 	mgr.Service = services.NewBasicService(mgr.starting, mgr.loop, mgr.stopping)
 	return &mgr, nil
 }
 
-func (om *Manager) starting(_ context.Context) error {
+func (om *Manager) starting(ctx context.Context) error {
 	if om.cfg.LoadPath == "" {
 		return nil
 	}
 
-	return errors.Wrap(om.loadConfig(), "failed to load runtime config")
+	var err error
+	om.bucketClient, err = om.bucketClientFactory(ctx)
+	if err != nil {
+		return err
+	}
+
+	return errors.Wrap(om.loadConfig(ctx), "failed to load runtime config")
 }
 
 // CreateListenerChannel creates new channel that can be used to receive new config values.
@@ -131,7 +153,7 @@ func (om *Manager) loop(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			err := om.loadConfig()
+			err := om.loadConfig(ctx)
 			if err != nil {
 				// Log but don't stop on error - we don't want to halt all ingesters because of a typo
 				level.Error(om.logger).Log("msg", "failed to load config", "err", err)
@@ -144,8 +166,9 @@ func (om *Manager) loop(ctx context.Context) error {
 
 // loadConfig loads configuration using the loader function, and if successful,
 // stores it as current configuration and notifies listeners.
-func (om *Manager) loadConfig() error {
-	buf, err := os.ReadFile(om.cfg.LoadPath)
+func (om *Manager) loadConfig(ctx context.Context) error {
+	buf, err := om.loadConfigFromBucket(ctx)
+
 	if err != nil {
 		om.configLoadSuccess.Set(0)
 		return errors.Wrap(err, "read file")
@@ -165,8 +188,21 @@ func (om *Manager) loadConfig() error {
 	// expose hash of runtime config
 	om.configHash.Reset()
 	om.configHash.WithLabelValues(fmt.Sprintf("%x", hash[:])).Set(1)
-
 	return nil
+}
+
+func (om *Manager) loadConfigFromBucket(ctx context.Context) ([]byte, error) {
+	readCloser, err := om.bucketClient.Get(ctx, om.cfg.LoadPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "open file")
+	}
+
+	buf, err := io.ReadAll(readCloser)
+	err = readCloser.Close()
+	if err != nil {
+		return nil, errors.Wrap(err, "close file")
+	}
+	return buf, err
 }
 
 func (om *Manager) setConfig(config interface{}) {

@@ -85,6 +85,9 @@ func main() {
 		}
 	} else if len(args) == 0 {
 		fmt.Fprintf(os.Stderr, "please set configuration file. For example: -config.file=./docs/configuration/single-process-config-blocks-local.yaml\n")
+		if testMode {
+			return
+		}
 		os.Exit(1)
 	}
 

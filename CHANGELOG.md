@@ -4,6 +4,7 @@
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
+* [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
 
 ## 1.15.0 2023-04-19
 

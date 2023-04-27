@@ -1011,7 +1011,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	if am.cfg.ShardingEnabled && am.distributor.IsPathSupported(req.URL.Path) {
+	if am.cfg.ShardingEnabled {
 		am.distributor.DistributeRequest(w, req, am.allowedTenants)
 		return
 	}

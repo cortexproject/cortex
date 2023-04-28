@@ -1336,7 +1336,6 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 }
 
 func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
-	t.Parallel()
 	logger := log.NewNopLogger()
 	opts := promql.EngineOpts{
 		Logger:     logger,
@@ -1368,10 +1367,6 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
-			if !thanosEngine {
-				//parallel testing for non thanos engine
-				t.Parallel()
-			}
 			var queryEngine v1.QueryEngine
 			if thanosEngine {
 				queryEngine = engine.New(engine.Opts{

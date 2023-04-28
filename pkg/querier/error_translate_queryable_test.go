@@ -19,8 +19,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -28,7 +26,7 @@ import (
 )
 
 func TestApiStatusCodes(t *testing.T) {
-	//parallel testing causes data race
+	t.Parallel()
 
 	for ix, tc := range []struct {
 		err            error
@@ -104,41 +102,31 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedCode:   422,
 		},
 	} {
-		for _, thanosEngine := range []bool{false, true} {
-			for k, q := range map[string]storage.SampleAndChunkQueryable{
-				"error from queryable": errorTestQueryable{err: tc.err},
-				"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
-				"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
-			} {
-				t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
-					opts := promql.EngineOpts{
-						Logger:             log.NewNopLogger(),
-						Reg:                nil,
-						ActiveQueryTracker: nil,
-						MaxSamples:         100,
-						Timeout:            5 * time.Second,
-					}
-					var queryEngine v1.QueryEngine
-					if thanosEngine {
-						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
-						})
-					} else {
-						queryEngine = promql.NewEngine(opts)
-					}
-					r := createPrometheusAPI(NewErrorTranslateSampleAndChunkQueryable(q), queryEngine)
-					rec := httptest.NewRecorder()
+		for k, q := range map[string]storage.SampleAndChunkQueryable{
+			"error from queryable": errorTestQueryable{err: tc.err},
+			"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
+			"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
+				opts := promql.EngineOpts{
+					Logger:             log.NewNopLogger(),
+					Reg:                nil,
+					ActiveQueryTracker: nil,
+					MaxSamples:         100,
+					Timeout:            5 * time.Second,
+				}
+				queryEngine := promql.NewEngine(opts)
+				r := createPrometheusAPI(NewErrorTranslateSampleAndChunkQueryable(q), queryEngine)
+				rec := httptest.NewRecorder()
 
-					req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
-					req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
+				req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
+				req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
 
-					r.ServeHTTP(rec, req)
+				r.ServeHTTP(rec, req)
 
-					require.Equal(t, tc.expectedCode, rec.Code)
-					require.Contains(t, rec.Body.String(), tc.expectedString)
-				})
-			}
+				require.Equal(t, tc.expectedCode, rec.Code)
+				require.Contains(t, rec.Body.String(), tc.expectedString)
+			})
 		}
 	}
 }

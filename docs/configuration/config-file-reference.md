@@ -2950,6 +2950,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store-gateway.tenant-shard-size
 [store_gateway_tenant_shard_size: <int> | default = 0]
 
+# The maximum number of data bytes to download per gRPC request in Store
+# Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.
+# CLI flag: -store-gateway.max-downloaded-bytes-per-request
+[max_downloaded_bytes_per_request: <int> | default = 0]
+
 # Delete blocks containing samples older than the specified retention period. 0
 # to disable.
 # CLI flag: -compactor.blocks-retention-period

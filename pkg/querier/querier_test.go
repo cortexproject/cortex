@@ -644,7 +644,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 		Timeout:            1 * time.Minute,
 	}
 	for testName, testData := range tests {
-		t.Run(fmt.Sprintf("%s", testName), func(t *testing.T) {
+		t.Run(testName, func(t *testing.T) {
 			//parallel testing causes data race
 			var cfg Config
 			flagext.DefaultValues(&cfg)
@@ -778,7 +778,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 			expectedMethodForLabelValues = "LabelValuesForLabelNameStream"
 		}
 		for testName, testData := range tests {
-			t.Run(fmt.Sprintf("%s", testName), func(t *testing.T) {
+			t.Run(testName, func(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), "test")
 
 				var cfg Config

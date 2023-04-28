@@ -380,7 +380,7 @@ func PopulateLabels(lb *labels.Builder, cfg *config.ScrapeConfig, noDefaultPort 
 		}
 	}
 
-	preRelabelLabels := lb.Labels(labels.EmptyLabels())
+	preRelabelLabels := lb.Labels()
 	keep := relabel.ProcessBuilder(lb, cfg.RelabelConfigs...)
 
 	// Check if the target was dropped.
@@ -413,9 +413,9 @@ func PopulateLabels(lb *labels.Builder, cfg *config.ScrapeConfig, noDefaultPort 
 		// Addresses reaching this point are already wrapped in [] if necessary.
 		switch scheme {
 		case "http", "":
-			addr = addr + ":80"
+			addr += ":80"
 		case "https":
-			addr = addr + ":443"
+			addr += ":443"
 		default:
 			return labels.EmptyLabels(), labels.EmptyLabels(), errors.Errorf("invalid scheme: %q", cfg.Scheme)
 		}
@@ -476,7 +476,7 @@ func PopulateLabels(lb *labels.Builder, cfg *config.ScrapeConfig, noDefaultPort 
 		lb.Set(model.InstanceLabel, addr)
 	}
 
-	res = lb.Labels(labels.EmptyLabels())
+	res = lb.Labels()
 	err = res.Validate(func(l labels.Label) error {
 		// Check label values are valid, drop the target if not.
 		if !model.LabelValue(l.Value).IsValid() {

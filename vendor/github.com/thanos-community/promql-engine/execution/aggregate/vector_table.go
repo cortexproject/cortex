@@ -6,15 +6,13 @@ package aggregate
 import (
 	"fmt"
 
-	"github.com/prometheus/prometheus/model/histogram"
-
 	"github.com/efficientgo/core/errors"
-
-	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/model/histogram"
 	"gonum.org/v1/gonum/floats"
 
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
+	"github.com/thanos-community/promql-engine/parser"
 )
 
 type vectorAccumulator func([]float64, []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool)
@@ -129,10 +127,10 @@ func newVectorAccumulator(expr parser.ItemType) (vectorAccumulator, error) {
 
 func histogramSum(histograms []*histogram.FloatHistogram) *histogram.FloatHistogram {
 	if len(histograms) == 1 {
-		return histograms[0]
+		return histograms[0].Copy()
 	}
 
-	histSum := histograms[0]
+	histSum := histograms[0].Copy()
 	for i := 1; i < len(histograms); i++ {
 		if histograms[i].Schema >= histSum.Schema {
 			histSum = histSum.Add(histograms[i])

@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -202,13 +203,15 @@ func (s *TSDBStore) Series(r *storepb.SeriesRequest, srv storepb.Store_SeriesSer
 				return status.Errorf(codes.Internal, "TSDBStore: found not populated chunk returned by SeriesSet at ref: %v", chk.Ref)
 			}
 
+			chunkBytes := make([]byte, len(chk.Chunk.Bytes()))
+			copy(chunkBytes, chk.Chunk.Bytes())
 			c := storepb.AggrChunk{
 				MinTime: chk.MinTime,
 				MaxTime: chk.MaxTime,
 				Raw: &storepb.Chunk{
 					Type: storepb.Chunk_Encoding(chk.Chunk.Encoding() - 1), // Proto chunk encoding is one off to TSDB one.
-					Data: chk.Chunk.Bytes(),
-					Hash: hashChunk(hasher, chk.Chunk.Bytes(), enableChunkHashCalculation),
+					Data: chunkBytes,
+					Hash: hashChunk(hasher, chunkBytes, enableChunkHashCalculation),
 				},
 			}
 			frameBytesLeft -= c.Size()
@@ -275,7 +278,16 @@ func (s *TSDBStore) LabelNames(ctx context.Context, r *storepb.LabelNamesRequest
 		sort.Strings(res)
 	}
 
-	return &storepb.LabelNamesResponse{Names: res}, nil
+	// Label values can come from a postings table of a memory-mapped block which can be deleted during
+	// head compaction. Since we close the block querier before we return from the function,
+	// we need to copy label values to make sure the client still has access to the data when
+	// a block is deleted.
+	values := make([]string, len(res))
+	for i := range res {
+		values[i] = strings.Clone(res[i])
+	}
+
+	return &storepb.LabelNamesResponse{Names: values}, nil
 }
 
 // LabelValues returns all known label values for a given label name.
@@ -310,5 +322,14 @@ func (s *TSDBStore) LabelValues(ctx context.Context, r *storepb.LabelValuesReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &storepb.LabelValuesResponse{Values: res}, nil
+	// Label values can come from a postings table of a memory-mapped block which can be deleted during
+	// head compaction. Since we close the block querier before we return from the function,
+	// we need to copy label values to make sure the client still has access to the data when
+	// a block is deleted.
+	values := make([]string, len(res))
+	for i := range res {
+		values[i] = strings.Clone(res[i])
+	}
+
+	return &storepb.LabelValuesResponse{Values: values}, nil
 }

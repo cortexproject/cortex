@@ -79,7 +79,7 @@ func (a *PusherAppender) Commit() error {
 
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE))
 
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
@@ -150,7 +150,7 @@ type RulesLimits interface {
 func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		evaluationDelay := overrides.EvaluationDelay(userID)
-		q, err := engine.NewInstantQuery(q, nil, qs, t.Add(-evaluationDelay))
+		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t.Add(-evaluationDelay))
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +163,8 @@ func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides Rules
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point{T: v.T, V: v.V},
+				T:      v.T,
+				F:      v.V,
 				Metric: labels.Labels{},
 			}}, nil
 		default:
@@ -240,7 +241,7 @@ type RulesManager interface {
 	Stop()
 
 	// Updates rules manager state.
-	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error
+	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.GroupEvalIterationFunc) error
 
 	// Returns current rules groups.
 	RuleGroups() []*rules.Group

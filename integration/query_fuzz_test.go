@@ -86,17 +86,35 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	end := now.Add(-time.Minute * 1)
 	numSeries := 3
 	numSamples := 20
-	lbls := make([]labels.Labels, numSeries)
-	serieses := make([]prompb.TimeSeries, numSeries)
+	lbls := make([]labels.Labels, numSeries*2)
+	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := 30 * time.Second
 	for i := 0; i < numSeries; i++ {
-		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
+		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
 		for _, lbl := range series.Labels {
 			builder.Set(lbl.Name, lbl.Value)
 		}
-		lbls[i] = builder.Labels(labels.EmptyLabels())
+		lbls[i] = builder.Labels()
+	}
+	// Generate another set of series for testing binary expression and vector matching.
+	for i := numSeries; i < 2*numSeries; i++ {
+		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
+		if i%3 == 0 {
+			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
+		} else if i%3 == 1 {
+			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
+		} else {
+			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
+		}
+		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
+		serieses[i] = series
+		builder := labels.NewBuilder(labels.EmptyLabels())
+		for _, lbl := range series.Labels {
+			builder.Set(lbl.Name, lbl.Value)
+		}
+		lbls[i] = builder.Labels()
 	}
 	res, err := c1.Push(serieses)
 	require.NoError(t, err)
@@ -174,7 +192,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		}
 	}
 	if failures > 0 {
-		require.Fail(t, "failed %d test cases", failures)
+		require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
 	}
 }
 

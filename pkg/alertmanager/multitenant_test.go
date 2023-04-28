@@ -1102,6 +1102,9 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 }
 
 func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
+	externalURL := flagext.URLValue{}
+	err := externalURL.Set("http://localhost:8080/alertmanager")
+	require.NoError(t, err)
 	tc := []struct {
 		name              string
 		tenantShardSize   int
@@ -1112,6 +1115,7 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 		withSharding      bool
 		enabledTenants    []string
 		disabledTenants   []string
+		statusCode        func(user string) int
 	}{
 		{
 			name:            "sharding disabled, 1 instance",
@@ -1125,6 +1129,12 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			configs:         10,
 			expectedTenants: 1,
 			enabledTenants:  []string{"u-1"},
+			statusCode: func(user string) int {
+				if user == "u-1" {
+					return http.StatusOK
+				}
+				return http.StatusUnauthorized
+			},
 		},
 		{
 			name:            "sharding disabled, 1 instance, single user disabled",
@@ -1132,6 +1142,12 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			configs:         10,
 			expectedTenants: 9,
 			disabledTenants: []string{"u-2"},
+			statusCode: func(user string) int {
+				if user == "u-2" {
+					return http.StatusUnauthorized
+				}
+				return http.StatusOK
+			},
 		},
 		{
 			name:            "sharding disabled, 2 instances",
@@ -1155,6 +1171,12 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			configs:           10,
 			expectedTenants:   1,
 			enabledTenants:    []string{"u-3"},
+			statusCode: func(user string) int {
+				if user == "u-3" {
+					return http.StatusOK
+				}
+				return http.StatusUnauthorized
+			},
 		},
 		{
 			name:              "sharding enabled, 1 instance, enabled tenants, single user disabled",
@@ -1164,6 +1186,12 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			configs:           10,
 			expectedTenants:   9,
 			disabledTenants:   []string{"u-4"},
+			statusCode: func(user string) int {
+				if user == "u-4" {
+					return http.StatusUnauthorized
+				}
+				return http.StatusOK
+			},
 		},
 		{
 			name:              "sharding enabled, 2 instances, RF = 1",
@@ -1197,6 +1225,15 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			configs:           10,
 			expectedTenants:   24, // (configs - disabled-tenants) * replication factor
 			disabledTenants:   []string{"u-1", "u-2"},
+			statusCode: func(user string) int {
+				switch user {
+				case "u-1":
+					return http.StatusUnauthorized
+				case "u-2":
+					return http.StatusUnauthorized
+				}
+				return http.StatusOK
+			},
 		},
 	}
 
@@ -1221,6 +1258,7 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 					Templates: []*alertspb.TemplateDesc{},
 				}))
 			}
+			clientPool := newPassthroughAlertmanagerClientPool()
 
 			// Then, create the alertmanager instances, start them and add their registries to the slice.
 			for i := 1; i <= tt.instances; i++ {
@@ -1228,6 +1266,7 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 				instanceID := fmt.Sprintf("alertmanager-%d", i)
 
 				amConfig := mockAlertmanagerConfig(t)
+				amConfig.ExternalURL = externalURL
 				amConfig.ShardingRing.ReplicationFactor = tt.replicationFactor
 				amConfig.ShardingRing.InstanceID = instanceID
 				amConfig.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
@@ -1252,6 +1291,11 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 				instances = append(instances, am)
 				instanceIDs = append(instanceIDs, instanceID)
 				registries.AddUserRegistry(instanceID, reg)
+
+				if tt.withSharding {
+					clientPool.setServer(amConfig.ShardingRing.InstanceAddr+":0", am)
+					am.distributor.alertmanagerClientsPool = clientPool
+				}
 			}
 
 			// If we're testing sharding, we need make sure the ring is settled.
@@ -1281,6 +1325,23 @@ func TestMultitenantAlertmanager_PerTenantSharding(t *testing.T) {
 			assert.Equal(t, tt.expectedTenants, numInstances)
 			assert.Equal(t, float64(tt.expectedTenants), metrics.GetSumOfGauges("cortex_alertmanager_tenants_owned"))
 			assert.Equal(t, float64(tt.configs*tt.instances), metrics.GetSumOfGauges("cortex_alertmanager_tenants_discovered"))
+
+			statusCode := tt.statusCode
+			if statusCode == nil {
+				statusCode = func(user string) int {
+					return http.StatusOK
+				}
+			}
+			for ami, am := range instances {
+				for i := 1; i <= tt.configs; i++ {
+					u := fmt.Sprintf("u-%d", i)
+					req := httptest.NewRequest("GET", "http://localhost:8080/alertmanager/", nil)
+					w := httptest.NewRecorder()
+					am.ServeHTTP(w, req.WithContext(user.InjectOrgID(req.Context(), u)))
+					resp := w.Result()
+					require.Equal(t, statusCode(u), resp.StatusCode, ami)
+				}
+			}
 		})
 	}
 }
@@ -2109,8 +2170,8 @@ func (am *passthroughAlertmanagerClient) ReadState(ctx context.Context, in *aler
 	return am.server.ReadState(ctx, in)
 }
 
-func (am *passthroughAlertmanagerClient) HandleRequest(context.Context, *httpgrpc.HTTPRequest, ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
-	return nil, fmt.Errorf("unexpected call to HandleRequest")
+func (am *passthroughAlertmanagerClient) HandleRequest(ctx context.Context, in *httpgrpc.HTTPRequest, opts ...grpc.CallOption) (*httpgrpc.HTTPResponse, error) {
+	return am.server.HandleRequest(ctx, in)
 }
 
 func (am *passthroughAlertmanagerClient) RemoteAddress() string {

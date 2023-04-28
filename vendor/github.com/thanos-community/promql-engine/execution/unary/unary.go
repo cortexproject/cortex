@@ -11,7 +11,6 @@ import (
 	"gonum.org/v1/gonum/floats"
 
 	"github.com/thanos-community/promql-engine/execution/model"
-	"github.com/thanos-community/promql-engine/worker"
 )
 
 type unaryNegation struct {
@@ -19,8 +18,6 @@ type unaryNegation struct {
 	once sync.Once
 
 	series []labels.Labels
-
-	workers worker.Group
 }
 
 func (u *unaryNegation) Explain() (me string, next []model.VectorOperator) {
@@ -34,33 +31,31 @@ func NewUnaryNegation(
 	u := &unaryNegation{
 		next: next,
 	}
-
-	u.workers = worker.NewGroup(stepsBatch, u.workerTask)
 	return u, nil
 }
 
 func (u *unaryNegation) Series(ctx context.Context) ([]labels.Labels, error) {
-	var err error
-	u.once.Do(func() { err = u.loadSeries(ctx) })
-	if err != nil {
+	if err := u.loadSeries(ctx); err != nil {
 		return nil, err
 	}
 	return u.series, nil
 }
 
 func (u *unaryNegation) loadSeries(ctx context.Context) error {
-	vectorSeries, err := u.next.Series(ctx)
-	if err != nil {
-		return err
-	}
-	u.series = make([]labels.Labels, len(vectorSeries))
-	for i := range vectorSeries {
-		lbls := labels.NewBuilder(vectorSeries[i]).Del(labels.MetricName).Labels(nil)
-		u.series[i] = lbls
-	}
-
-	u.workers.Start(ctx)
-	return nil
+	var err error
+	u.once.Do(func() {
+		var series []labels.Labels
+		series, err = u.next.Series(ctx)
+		if err != nil {
+			return
+		}
+		u.series = make([]labels.Labels, len(series))
+		for i := range series {
+			lbls := labels.NewBuilder(series[i]).Del(labels.MetricName).Labels()
+			u.series[i] = lbls
+		}
+	})
+	return err
 }
 
 func (u *unaryNegation) GetPool() *model.VectorPool {
@@ -81,24 +76,8 @@ func (u *unaryNegation) Next(ctx context.Context) ([]model.StepVector, error) {
 	if in == nil {
 		return nil, nil
 	}
-	for i, vector := range in {
-		if err := u.workers[i].Send(0, vector); err != nil {
-			return nil, err
-		}
-	}
-
 	for i := range in {
-		// Make sure worker finishes the job.
-		// Since it is in-place so no need another buffer.
-		if _, err := u.workers[i].GetOutput(); err != nil {
-			return nil, err
-		}
+		floats.Scale(-1, in[i].Samples)
 	}
-
 	return in, nil
-}
-
-func (u *unaryNegation) workerTask(_ int, _ float64, vector model.StepVector) model.StepVector {
-	floats.Scale(-1, vector.Samples)
-	return vector
 }

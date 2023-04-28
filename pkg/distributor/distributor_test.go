@@ -1667,7 +1667,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1693,7 +1693,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1718,7 +1718,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1746,7 +1746,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long name.
 					lbls.Set(fmt.Sprintf("xxx_%0.2000d", 1), "xxx")
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1774,7 +1774,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long value.
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1802,7 +1802,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long value.
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1828,7 +1828,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
@@ -1853,7 +1853,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
@@ -1931,7 +1931,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 
 				if testData.expectedErr == "" && err != nil {
 					b.Fatalf("no error expected but got %v", err)
@@ -2228,7 +2228,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -2264,7 +2264,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 			// Prepare the series to remote write before starting the benchmark.
 			metrics, samples := testData.prepareSeries()
 
-			if _, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)); err != nil {
+			if _, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)); err != nil {
 				b.Fatalf("error pushing to distributor %v", err)
 			}
 
@@ -2373,7 +2373,7 @@ func mockWriteRequest(lbls []labels.Labels, value float64, timestampMs int64) *c
 		}
 	}
 
-	return cortexpb.ToWriteRequest(lbls, samples, nil, cortexpb.API)
+	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
 
 type prepConfig struct {
@@ -3097,7 +3097,7 @@ func TestDistributorValidation(t *testing.T) {
 				limits:           &limits,
 			})
 
-			_, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(tc.labels, tc.samples, tc.metadata, cortexpb.API))
+			_, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(tc.labels, tc.samples, tc.metadata, nil, cortexpb.API))
 			require.Equal(t, tc.err, err)
 		})
 	}

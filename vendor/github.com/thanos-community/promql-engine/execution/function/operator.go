@@ -7,15 +7,17 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
 	"github.com/efficientgo/core/errors"
+	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
+	"github.com/thanos-community/promql-engine/parser"
 	"github.com/thanos-community/promql-engine/query"
 )
 
@@ -30,7 +32,7 @@ type functionOperator struct {
 
 	call         FunctionCall
 	scalarPoints [][]float64
-	pointBuf     []promql.Point
+	sampleBuf    []promql.Sample
 }
 
 type noArgFunctionOperator struct {
@@ -68,7 +70,7 @@ func (o *noArgFunctionOperator) Next(_ context.Context) ([]model.StepVector, err
 		result := o.call(FunctionArgs{
 			StepTime: o.currentStep,
 		})
-		sv.Samples = []float64{result.V}
+		sv.Samples = []float64{result.F}
 		sv.SampleIDs = o.sampleIDs
 
 		ret = append(ret, sv)
@@ -119,7 +121,7 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 		funcExpr:     funcExpr,
 		vectorIndex:  0,
 		scalarPoints: scalarPoints,
-		pointBuf:     make([]promql.Point, 1),
+		sampleBuf:    make([]promql.Sample, 1),
 	}
 
 	for i := range funcExpr.Args {
@@ -130,7 +132,7 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 	}
 
 	// Check selector type.
-	// TODO(saswatamcode): Add support for string and matrix.
+	// TODO(saswatamcode): Add support for matrix.
 	switch funcExpr.Args[f.vectorIndex].Type() {
 	case parser.ValueTypeVector, parser.ValueTypeScalar:
 		return f, nil
@@ -175,6 +177,9 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 	if len(vectors) == 0 {
 		return nil, nil
+	}
+	if o.funcExpr.Func.Name == "label_join" {
+		return vectors, nil
 	}
 
 	scalarIndex := 0
@@ -222,11 +227,12 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		i := 0
 		for i < len(vectors[batchIndex].Samples) {
-			o.pointBuf[0].V = vector.Samples[i]
+			o.sampleBuf[0].H = nil
+			o.sampleBuf[0].F = vector.Samples[i]
 			result := o.call(o.newFunctionArgs(vector, batchIndex))
 
-			if result.Point != InvalidSample.Point {
-				vector.Samples[i] = result.V
+			if result.T != InvalidSample.T {
+				vector.Samples[i] = result.F
 				i++
 			} else {
 				// This operator modifies samples directly in the input vector to avoid allocations.
@@ -237,7 +243,7 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		i = 0
 		for i < len(vectors[batchIndex].Histograms) {
-			o.pointBuf[0].H = vector.Histograms[i]
+			o.sampleBuf[0].H = vector.Histograms[i]
 			result := o.call(o.newFunctionArgs(vector, batchIndex))
 
 			// This operator modifies samples directly in the input vector to avoid allocations.
@@ -245,8 +251,8 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 			// always remove the input histogram so that it does not propagate to the output.
 			sampleID := vectors[batchIndex].HistogramIDs[i]
 			vectors[batchIndex].RemoveHistogram(i)
-			if result.Point != InvalidSample.Point {
-				vectors[batchIndex].AppendSample(o.GetPool(), sampleID, result.V)
+			if result.T != InvalidSample.T {
+				vectors[batchIndex].AppendSample(o.GetPool(), sampleID, result.F)
 			}
 		}
 	}
@@ -257,7 +263,7 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 func (o *functionOperator) newFunctionArgs(vector model.StepVector, batchIndex int) FunctionArgs {
 	return FunctionArgs{
 		Labels:       o.series[0],
-		Points:       o.pointBuf,
+		Samples:      o.sampleBuf,
 		StepTime:     vector.T,
 		ScalarPoints: o.scalarPoints[batchIndex],
 	}
@@ -283,12 +289,45 @@ func (o *functionOperator) loadSeries(ctx context.Context) error {
 		}
 
 		o.series = make([]labels.Labels, len(series))
+
+		var labelJoinDst string
+		var labelJoinSep string
+		var labelJoinSrcLabels []string
+		if o.funcExpr.Func.Name == "label_join" {
+			l := len(o.funcExpr.Args)
+			labelJoinDst = o.funcExpr.Args[1].(*parser.StringLiteral).Val
+			if !prommodel.LabelName(labelJoinDst).IsValid() {
+				err = errors.Newf("invalid destination label name in label_join: %s", labelJoinDst)
+				return
+			}
+			labelJoinSep = o.funcExpr.Args[2].(*parser.StringLiteral).Val
+			for j := 3; j < l; j++ {
+				labelJoinSrcLabels = append(labelJoinSrcLabels, o.funcExpr.Args[j].(*parser.StringLiteral).Val)
+			}
+		}
 		for i, s := range series {
 			lbls := s
-			if o.funcExpr.Func.Name != "last_over_time" {
+			switch o.funcExpr.Func.Name {
+			case "last_over_time":
+			case "label_join":
+				srcVals := make([]string, len(labelJoinSrcLabels))
+
+				for j, src := range labelJoinSrcLabels {
+					srcVals[j] = lbls.Get(src)
+				}
+				lb := labels.NewBuilder(lbls)
+
+				strval := strings.Join(srcVals, labelJoinSep)
+				if strval == "" {
+					lb.Del(labelJoinDst)
+				} else {
+					lb.Set(labelJoinDst, strval)
+				}
+
+				lbls = lb.Labels()
+			default:
 				lbls, _ = DropMetricName(s.Copy())
 			}
-
 			o.series[i] = lbls
 		}
 	})

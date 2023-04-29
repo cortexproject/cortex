@@ -8,6 +8,11 @@
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
 
+## 1.15.1 2023-04-26
+
+* [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290
+* [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
+
 ## 1.15.0 2023-04-19
 
 * [CHANGE] Storage: Make Max exemplars config per tenant instead of global configuration. #5080 #5122

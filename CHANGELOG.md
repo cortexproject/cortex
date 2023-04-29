@@ -98,6 +98,7 @@
     - `-ingester.chunk-age-jitter`
     - `-ingester.concurrent-flushes`
     - `-ingester.spread-flushes`
+    - `-ingester.chunk-encoding`
     - `-store.*` except `-store.engine` and `-store.max-query-length`
     - `-store.query-chunk-limit` was deprecated and replaced by `-querier.max-fetched-chunks-per-query`
   - `-deletes.*`

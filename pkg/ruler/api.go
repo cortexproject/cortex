@@ -359,7 +359,7 @@ func parseGroupName(params map[string]string) (string, error) {
 // and returns them in that order. It also allows users to require a namespace or group name and return
 // an error if it they can not be parsed.
 func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
-	userID, err := tenant.TenantID(req.Context())
+	userIDs, err := tenant.TenantIDs(req.Context())
 	if err != nil {
 		return "", "", "", user.ErrNoOrgID
 	}
@@ -380,7 +380,7 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (strin
 		}
 	}
 
-	return userID, namespace, group, nil
+	return tenant.JoinTenantIDs(userIDs), namespace, group, nil
 }
 
 func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
@@ -393,29 +393,9 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
-	/**
-	when cortex enable tenant federation, eg x-scope-orgid: tenanta|tenantb, the rules can not be listed from ruler
-	Here list all the rules from all the tenants by splitting tenanta|tenantb to tenanta and tenantb
-	*/
-	var rgs rulespb.RuleGroupList	
-	if strings.Contains(userID, "|") {
-		uids := strings.Split(userID, "|")
-		for _, uid := range uids {
-			trgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), uid, namespace)
-			for _, rule := range trgs {
-				rgs = append(rgs, rule)
-			}
-			if err != nil {
-				level.Error(logger).Log("msg", "query ruler error", "userID", userID, "err", err)
-			}
-		}
-	} else {
-		rgs, err = a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
-	}	
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+
+	var rgs rulespb.RuleGroupList
+	rgs, err = a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
 
 	if len(rgs) == 0 {
 		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
@@ -430,7 +410,6 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
-
 	formatted := rgs.Formatted()
 	marshalAndSend(formatted, w, logger)
 }
@@ -443,7 +422,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
+	rgs, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
 		if errors.Is(err, rulestore.ErrGroupNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -453,7 +432,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	formatted := rulespb.FromProto(rg)
+	formatted := rulespb.FromProto(rgs)
 	marshalAndSend(formatted, w, logger)
 }
 

@@ -598,7 +598,12 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 
 	// If the API is enabled, register the Ruler API
 	if t.Cfg.Ruler.EnableAPI {
-		t.API.RegisterRulerAPI(ruler.NewAPI(t.Ruler, t.RulerStorage, util_log.Logger))
+		rulerStorage := t.RulerStorage
+
+		if t.Cfg.TenantFederation.Enabled {
+			rulerStorage = ruler.NewMergeableStore(rulerStorage, util_log.Logger)
+		}
+		t.API.RegisterRulerAPI(ruler.NewAPI(t.Ruler, rulerStorage, util_log.Logger))
 	}
 
 	return t.Ruler, nil

@@ -5,15 +5,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/stretchr/testify/mock"
-	"github.com/thanos-io/objstore"
 	"io"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/stretchr/testify/mock"
+	"github.com/thanos-io/objstore"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -91,9 +93,10 @@ func TestNewOverridesManager(t *testing.T) {
 		require.NoError(t, os.Remove(tempFile.Name()))
 	}()
 
-	_, err = tempFile.WriteString(`overrides:
+	config := `overrides:
   user1:
-    limit2: 150`)
+    limit2: 150`
+	_, err = tempFile.WriteString(config)
 	require.NoError(t, err)
 
 	defaultTestLimits = &TestLimits{Limit1: 100}
@@ -105,7 +108,7 @@ func TestNewOverridesManager(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger())
+	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger(), mockBucketClientFactory([]byte(config)))
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
@@ -131,10 +134,14 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 		require.NoError(t, os.Remove(tempFile.Name()))
 	}()
 
-	config := []byte(`overrides:
+	config1 := []byte(`overrides:
   user1:
     limit2: 150`)
-	err = os.WriteFile(tempFile.Name(), config, 0600)
+	config2 := []byte(`overrides:
+  user2:
+    limit2: 200`)
+
+	err = os.WriteFile(tempFile.Name(), config1, 0600)
 	require.NoError(t, err)
 
 	defaultTestLimits = &TestLimits{Limit1: 100}
@@ -148,10 +155,7 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 
 	reg := prometheus.NewPedanticRegistry()
 
-	overridesManager, err := New(overridesManagerConfig, reg, log.NewNopLogger())
-	overridesManager.bucketClientFactory = func(ctx context.Context) (objstore.Bucket, error) {
-		return &bucket.ClientMock{}, nil
-	}
+	overridesManager, err := New(overridesManagerConfig, reg, log.NewNopLogger(), mockBucketClientFactory(config1, config2))
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
@@ -163,20 +167,17 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 					# HELP runtime_config_last_reload_successful Whether the last runtime-config reload attempt was successful.
 					# TYPE runtime_config_last_reload_successful gauge
 					runtime_config_last_reload_successful 1
-				`, fmt.Sprintf("%x", sha256.Sum256(config))))))
+				`, fmt.Sprintf("%x", sha256.Sum256(config1))))))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
 
 	// rewrite file
-	config = []byte(`overrides:
-  user2:
-    limit2: 200`)
-	err = os.WriteFile(tempFile.Name(), config, 0600)
+	err = os.WriteFile(tempFile.Name(), config2, 0600)
 	require.NoError(t, err)
 
 	// reload
-	err = overridesManager.loadConfig(nil)
+	err = overridesManager.loadConfig(context.TODO())
 	require.NoError(t, err)
 
 	var newValue interface{}
@@ -199,7 +200,7 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 					# HELP runtime_config_last_reload_successful Whether the last runtime-config reload attempt was successful.
 					# TYPE runtime_config_last_reload_successful gauge
 					runtime_config_last_reload_successful 1
-				`, fmt.Sprintf("%x", sha256.Sum256(config))))))
+				`, fmt.Sprintf("%x", sha256.Sum256(config2))))))
 
 	// Cleaning up
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), overridesManager))
@@ -211,14 +212,14 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 func TestManager_ListenerChannel(t *testing.T) {
 	config, overridesManagerConfig := newTestOverridesManagerConfig(t, 555)
 
-	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger())
+	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger(), mockBucketClientFactory([]byte{}, []byte{}, []byte{}))
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
 	// need to use buffer, otherwise loadConfig will throw away update
 	ch := overridesManager.CreateListenerChannel(1)
 
-	err = overridesManager.loadConfig(nil)
+	err = overridesManager.loadConfig(context.TODO())
 	require.NoError(t, err)
 
 	select {
@@ -229,7 +230,7 @@ func TestManager_ListenerChannel(t *testing.T) {
 	}
 
 	config.Store(1111)
-	err = overridesManager.loadConfig(nil)
+	err = overridesManager.loadConfig(context.TODO())
 	require.NoError(t, err)
 
 	select {
@@ -251,7 +252,7 @@ func TestManager_ListenerChannel(t *testing.T) {
 func TestManager_StopClosesListenerChannels(t *testing.T) {
 	_, overridesManagerConfig := newTestOverridesManagerConfig(t, 555)
 
-	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger())
+	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger(), mockBucketClientFactory([]byte{}))
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), overridesManager))
 
@@ -276,7 +277,8 @@ func TestManager_ShouldFastFailOnInvalidConfigAtStartup(t *testing.T) {
 		require.NoError(t, os.Remove(tempFile.Name()))
 	})
 
-	_, err = tempFile.Write([]byte("!invalid!"))
+	config := []byte("!invalid!")
+	_, err = tempFile.Write(config)
 	require.NoError(t, err)
 	require.NoError(t, tempFile.Close())
 
@@ -287,18 +289,17 @@ func TestManager_ShouldFastFailOnInvalidConfigAtStartup(t *testing.T) {
 		Loader:       testLoadOverrides,
 	}
 
-	m, err := New(cfg, nil, log.NewNopLogger())
+	m, err := New(cfg, nil, log.NewNopLogger(), mockBucketClientFactory(config))
 	require.NoError(t, err)
 	require.Error(t, services.StartAndAwaitRunning(context.Background(), m))
 }
 
 func TestManager_GetsRuntimeConfigFromBackendStore(t *testing.T) {
 	fileName := "runtime-config"
-	bucketClient := bucket.ClientMock{}
-	configContent := `overrides:
+	config := []byte(`overrides:
   user2:
-    limit2: 200`
-	bucketClient.On("Get", mock.Anything, fileName).Return(io.NopCloser(bytes.NewBufferString(configContent)), nil)
+    limit2: 200`)
+	bucketClient := createMockBucketClient(config)
 	manager := Manager{
 		cfg: Config{
 			LoadPath: fileName,
@@ -308,11 +309,25 @@ func TestManager_GetsRuntimeConfigFromBackendStore(t *testing.T) {
 		configHash: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "mockHash",
 		}, []string{"sha256"}),
-		bucketClient: &bucketClient,
+		bucketClient: bucketClient,
 	}
 
-	err := manager.loadConfig(nil)
+	err := manager.loadConfig(context.TODO())
 
 	require.NoError(t, err)
 	bucketClient.AssertExpectations(t)
+}
+
+func mockBucketClientFactory(configs ...[]byte) BucketClientFactory {
+	return func(ctx context.Context) (objstore.Bucket, error) {
+		return createMockBucketClient(configs...), nil
+	}
+}
+
+func createMockBucketClient(configs ...[]byte) *bucket.ClientMock {
+	bucketClient := bucket.ClientMock{}
+	for _, config := range configs {
+		bucketClient.On("Get", mock.Anything, mock.Anything).Return(io.NopCloser(bytes.NewBuffer(config)), nil).Once()
+	}
+	return &bucketClient
 }

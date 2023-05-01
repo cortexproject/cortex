@@ -159,7 +159,9 @@ tenant_federation:
 # backend.
 [alertmanager_storage: <alertmanager_storage_config>]
 
-runtime_config: <runtime_configuration_storage_config>
+# The runtime_configuration_storage_config configures the storage backend for
+# the runtime configuration file.
+[runtime_config: <runtime_configuration_storage_config>]
 
 # The memberlist_config configures the Gossip memberlist.
 [memberlist: <memberlist_config>]
@@ -4189,7 +4191,8 @@ The `runtime_configuration_storage_config` configures the storage backend for th
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
 
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem.
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# filesystem.
 # CLI flag: -runtime-config.backend
 [backend: <string> | default = "filesystem"]
 
@@ -4445,6 +4448,7 @@ The `s3_sse_config` configures the S3 server-side encryption. The supported CLI 
 - `alertmanager-storage`
 - `blocks-storage`
 - `ruler-storage`
+- `runtime-config`
 
 &nbsp;
 

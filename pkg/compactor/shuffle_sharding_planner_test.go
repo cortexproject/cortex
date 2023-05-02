@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -28,6 +26,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 		id          ulid.ULID
 		isExpired   bool
 		compactorID string
+		status      VisitStatus
 	}
 
 	currentCompactor := "test-compactor"
@@ -37,13 +36,17 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 	block2ulid := ulid.MustNew(2, nil)
 	block3ulid := ulid.MustNew(3, nil)
 
+	partitionID0 := 0
+
 	tests := map[string]struct {
-		ranges          []int64
-		noCompactBlocks map[ulid.ULID]*metadata.NoCompactMark
-		blocks          []*metadata.Meta
-		expected        []*metadata.Meta
-		expectedErr     error
-		visitedBlocks   []VisitedBlock
+		ranges           []int64
+		noCompactBlocks  map[ulid.ULID]*metadata.NoCompactMark
+		blocks           []*metadata.Meta
+		expected         []*metadata.Meta
+		expectedErr      error
+		visitedBlocks    []VisitedBlock
+		partitionGroupID uint32
+		partitionID      int
 	}{
 		"test basic plan": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -68,13 +71,17 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block2ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
 			expected: []*metadata.Meta{
 				{
 					BlockMeta: tsdb.BlockMeta{
@@ -115,14 +122,18 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block2ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block2ulid.String(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds()),
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expectedErr:      fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block2ulid.String(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds()),
 		},
 		"test blocks outside largest range 1": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -147,14 +158,18 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block2ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block1ulid.String(), 0*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()),
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expectedErr:      fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block1ulid.String(), 0*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()),
 		},
 		"test blocks outside largest range 2": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -179,14 +194,18 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block2ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
-			expectedErr: fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block2ulid.String(), 0*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()),
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expectedErr:      fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block2ulid.String(), 0*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()),
 		},
 		"test should skip blocks marked for no compact": {
 			ranges:          []int64{2 * time.Hour.Milliseconds()},
@@ -219,18 +238,23 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block2ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block3ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
 			expected: []*metadata.Meta{
 				{
 					BlockMeta: tsdb.BlockMeta{
@@ -272,14 +296,18 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 				{
 					id:          block2ulid,
 					isExpired:   false,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
-			expected: []*metadata.Meta{},
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expected:         []*metadata.Meta{},
 		},
 		"test should not compact if visit marker file is not expired and visited by other compactor": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -304,9 +332,12 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   false,
 					compactorID: otherCompactor,
+					status:      Pending,
 				},
 			},
-			expected: []*metadata.Meta{},
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expected:         []*metadata.Meta{},
 		},
 		"test should not compact if visit marker file is expired": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -331,9 +362,42 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					id:          block1ulid,
 					isExpired:   true,
 					compactorID: currentCompactor,
+					status:      Pending,
 				},
 			},
-			expected: []*metadata.Meta{},
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expected:         []*metadata.Meta{},
+		},
+		"test should not compact if visit marker file has completed status": {
+			ranges: []int64{2 * time.Hour.Milliseconds()},
+			blocks: []*metadata.Meta{
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block1ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+				{
+					BlockMeta: tsdb.BlockMeta{
+						ULID:    block2ulid,
+						MinTime: 1 * time.Hour.Milliseconds(),
+						MaxTime: 2 * time.Hour.Milliseconds(),
+					},
+				},
+			},
+			visitedBlocks: []VisitedBlock{
+				{
+					id:          block1ulid,
+					isExpired:   false,
+					compactorID: currentCompactor,
+					status:      Completed,
+				},
+			},
+			partitionGroupID: 12345,
+			partitionID:      partitionID0,
+			expectedErr:      fmt.Errorf("block %s with partition ID %d is in completed status", block1ulid.String(), partitionID0),
 		},
 	}
 
@@ -342,30 +406,26 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			bkt := &bucket.ClientMock{}
 			for _, visitedBlock := range testData.visitedBlocks {
-				visitMarkerFile := path.Join(visitedBlock.id.String(), BlockVisitMarkerFile)
+				visitMarkerFile := getBlockVisitMarkerFile(visitedBlock.id.String(), testData.partitionID)
 				expireTime := time.Now()
 				if visitedBlock.isExpired {
 					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
 				}
 				blockVisitMarker := BlockVisitMarker{
-					CompactorID: visitedBlock.compactorID,
-					VisitTime:   expireTime.Unix(),
-					Version:     VisitMarkerVersion1,
+					CompactorID:        visitedBlock.compactorID,
+					VisitTime:          expireTime.Unix(),
+					Version:            VisitMarkerVersion1,
+					Status:             visitedBlock.status,
+					PartitionedGroupID: testData.partitionGroupID,
+					PartitionID:        testData.partitionID,
 				}
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
 			}
 			bkt.MockUpload(mock.Anything, nil)
 
-			registerer := prometheus.NewPedanticRegistry()
-			blockVisitMarkerReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_compactor_block_visit_marker_read_failed",
-				Help: "Number of block visit marker file failed to be read.",
-			})
-			blockVisitMarkerWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-				Name: "cortex_compactor_block_visit_marker_write_failed",
-				Help: "Number of block visit marker file failed to be written.",
-			})
+			blockVisitMarkerReadFailed := prometheus.NewCounter(prometheus.CounterOpts{})
+			blockVisitMarkerWriteFailed := prometheus.NewCounter(prometheus.CounterOpts{})
 
 			logs := &concurrency.SyncBuffer{}
 			logger := log.NewLogfmtLogger(logs)
@@ -383,7 +443,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
 			)
-			actual, err := p.Plan(context.Background(), testData.blocks)
+			actual, err := p.PlanWithPartition(context.Background(), testData.blocks, testData.partitionID, make(chan error))
 
 			if testData.expectedErr != nil {
 				assert.Equal(t, err, testData.expectedErr)

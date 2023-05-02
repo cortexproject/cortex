@@ -11,20 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/stretchr/testify/mock"
-	"github.com/thanos-io/objstore"
-
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -292,6 +290,33 @@ func TestManager_ShouldFastFailOnInvalidConfigAtStartup(t *testing.T) {
 	m, err := New(cfg, nil, log.NewNopLogger(), mockBucketClientFactory(config))
 	require.NoError(t, err)
 	require.Error(t, services.StartAndAwaitRunning(context.Background(), m))
+}
+
+func TestManger_ShouldFastFailOnMissingConfiguration(t *testing.T) {
+	tests := []struct {
+		name         string
+		cfg          Config
+		errorMessage string
+	}{
+		{
+			name:         "empty load path",
+			cfg:          Config{},
+			errorMessage: "LoadPath is empty",
+		},
+		{
+			name: "empty storage backend",
+			cfg: Config{
+				LoadPath: "fileLoadPath",
+			},
+			errorMessage: "Backend should not be explicitly empty",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(tt.cfg, nil, log.NewNopLogger(), mockBucketClientFactory([]byte{}))
+			require.ErrorContains(t, err, tt.errorMessage)
+		})
+	}
 }
 
 func TestManager_GetsRuntimeConfigFromBackendStore(t *testing.T) {

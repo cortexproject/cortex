@@ -10,16 +10,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/thanos-io/objstore"
-
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -76,7 +74,7 @@ func New(cfg Config, registerer prometheus.Registerer, logger log.Logger, factor
 	}
 
 	if cfg.StorageConfig.Backend == "" {
-		cfg.StorageConfig.Backend = bucket.Filesystem
+		return nil, errors.New("Backend should not be explicitly empty")
 	}
 
 	mgr := Manager{

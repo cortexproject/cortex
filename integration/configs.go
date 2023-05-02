@@ -22,6 +22,7 @@ const (
 	rulestoreBucketName = "cortex-rules"
 	alertsBucketName    = "cortex-alerts"
 	cortexConfigFile    = "config.yaml"
+	runtimeConfigFile   = "runtime-config.yaml"
 	blocksStorageEngine = "blocks"
 	clientCertFile      = "certs/client.crt"
 	clientKeyFile       = "certs/client.key"

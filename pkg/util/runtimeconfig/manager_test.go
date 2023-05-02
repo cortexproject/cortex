@@ -78,6 +78,7 @@ func newTestOverridesManagerConfig(t *testing.T, i int32) (*atomic.Int32, Config
 			val := int(config.Load())
 			return val, nil
 		},
+		StorageConfig: bucket.Config{Backend: bucket.Filesystem},
 	}
 }
 
@@ -101,9 +102,10 @@ func TestNewOverridesManager(t *testing.T) {
 
 	// testing NewRuntimeConfigManager with overrides reload config set
 	overridesManagerConfig := Config{
-		ReloadPeriod: time.Second,
-		LoadPath:     tempFile.Name(),
-		Loader:       testLoadOverrides,
+		ReloadPeriod:  time.Second,
+		LoadPath:      tempFile.Name(),
+		Loader:        testLoadOverrides,
+		StorageConfig: bucket.Config{Backend: bucket.Filesystem},
 	}
 
 	overridesManager, err := New(overridesManagerConfig, nil, log.NewNopLogger(), mockBucketClientFactory([]byte(config)))
@@ -146,9 +148,10 @@ func TestManager_ListenerWithDefaultLimits(t *testing.T) {
 
 	// testing NewRuntimeConfigManager with overrides reload config set
 	overridesManagerConfig := Config{
-		ReloadPeriod: time.Second,
-		LoadPath:     tempFile.Name(),
-		Loader:       testLoadOverrides,
+		ReloadPeriod:  time.Second,
+		LoadPath:      tempFile.Name(),
+		Loader:        testLoadOverrides,
+		StorageConfig: bucket.Config{Backend: bucket.Filesystem},
 	}
 
 	reg := prometheus.NewPedanticRegistry()
@@ -282,9 +285,10 @@ func TestManager_ShouldFastFailOnInvalidConfigAtStartup(t *testing.T) {
 
 	// Create the config manager and start it.
 	cfg := Config{
-		ReloadPeriod: time.Second,
-		LoadPath:     tempFile.Name(),
-		Loader:       testLoadOverrides,
+		ReloadPeriod:  time.Second,
+		LoadPath:      tempFile.Name(),
+		Loader:        testLoadOverrides,
+		StorageConfig: bucket.Config{Backend: bucket.Filesystem},
 	}
 
 	m, err := New(cfg, nil, log.NewNopLogger(), mockBucketClientFactory(config))
@@ -327,8 +331,9 @@ func TestManager_GetsRuntimeConfigFromBackendStore(t *testing.T) {
 	bucketClient := createMockBucketClient(config)
 	manager := Manager{
 		cfg: Config{
-			LoadPath: fileName,
-			Loader:   testLoadOverrides,
+			LoadPath:      fileName,
+			Loader:        testLoadOverrides,
+			StorageConfig: bucket.Config{Backend: bucket.Filesystem},
 		},
 		configLoadSuccess: promauto.NewGauge(prometheus.GaugeOpts{Name: "mockLoadSuccess"}),
 		configHash: promauto.NewGaugeVec(prometheus.GaugeOpts{

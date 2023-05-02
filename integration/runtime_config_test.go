@@ -81,6 +81,7 @@ func TestLoadRuntimeConfigFromCloudStorage(t *testing.T) {
 		AccessKey: e2edb.MinioAccessKey,
 		SecretKey: e2edb.MinioSecretKey,
 	}, "runtime-config-test")
+	require.NoError(t, err)
 
 	content, err := os.ReadFile(filepath.Join(getCortexProjectDir(), "docs/configuration/runtime-config.yaml"))
 	require.NoError(t, err)

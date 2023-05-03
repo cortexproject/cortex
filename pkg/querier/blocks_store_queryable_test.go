@@ -1336,6 +1336,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 }
 
 func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
+	t.Parallel()
 	logger := log.NewNopLogger()
 	opts := promql.EngineOpts{
 		Logger:     logger,

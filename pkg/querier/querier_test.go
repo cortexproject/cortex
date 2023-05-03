@@ -156,6 +156,7 @@ var (
 )
 
 func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
+	t.Parallel()
 	start := time.Now().Add(-2 * time.Hour)
 	end := time.Now()
 	ctx := user.InjectOrgID(context.Background(), "0")
@@ -274,13 +275,10 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
 				}
 				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides, purger.NewNoopTombstonesLoader())
-				queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
-
 				opts := promql.EngineOpts{
-					Logger:             log.NewNopLogger(),
-					ActiveQueryTracker: queryTracker,
-					MaxSamples:         1e6,
-					Timeout:            1 * time.Minute,
+					Logger:     log.NewNopLogger(),
+					MaxSamples: 1e6,
+					Timeout:    1 * time.Minute,
 				}
 				var queryEngine v1.QueryEngine
 				if thanosEngine {
@@ -310,6 +308,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 }
 
 func TestQuerier(t *testing.T) {
+	t.Parallel()
 	var cfg Config
 	flagext.DefaultValues(&cfg)
 
@@ -322,10 +321,9 @@ func TestQuerier(t *testing.T) {
 	db, _ := mockTSDB(t, []labels.Labels{lset}, model.Time(0), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
 
 	opts := promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
-		ActiveQueryTracker: promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger()),
-		MaxSamples:         1e6,
-		Timeout:            1 * time.Minute,
+		Logger:     log.NewNopLogger(),
+		MaxSamples: 1e6,
+		Timeout:    1 * time.Minute,
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		for _, query := range queries {
@@ -345,6 +343,8 @@ func TestQuerier(t *testing.T) {
 							}
 							cfg.IngesterStreaming = streaming
 							cfg.Iterators = iterators
+							// Disable active query tracker to avoid mmap error.
+							cfg.ActiveQueryTrackerDir = ""
 
 							chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
 							distributor := mockDistibutorFor(t, chunkStore, through)
@@ -405,6 +405,7 @@ func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int
 }
 
 func TestNoHistoricalQueryToIngester(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time
@@ -448,14 +449,14 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		},
 	}
 
-	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
 	opts := promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
-		ActiveQueryTracker: queryTracker,
-		MaxSamples:         1e6,
-		Timeout:            1 * time.Minute,
+		Logger:     log.NewNopLogger(),
+		MaxSamples: 1e6,
+		Timeout:    1 * time.Minute,
 	}
 	cfg := Config{}
+	// Disable active query tracker to avoid mmap error.
+	cfg.ActiveQueryTrackerDir = ""
 	for _, ingesterStreaming := range []bool{true, false} {
 		for _, thanosEngine := range []bool{true, false} {
 			cfg.IngesterStreaming = ingesterStreaming
@@ -506,6 +507,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
+	t.Parallel()
 	const engineLookbackDelta = 5 * time.Minute
 
 	now := time.Now()
@@ -556,6 +558,8 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
+	// Disable active query tracker to avoid mmap error.
+	cfg.ActiveQueryTrackerDir = ""
 
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming
@@ -601,6 +605,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
+	t.Parallel()
 	const maxQueryLength = 30 * 24 * time.Hour
 
 	tests := map[string]struct {
@@ -646,6 +651,8 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			//parallel testing causes data race
 			var cfg Config
 			flagext.DefaultValues(&cfg)
+			// Disable active query tracker to avoid mmap error.
+			cfg.ActiveQueryTrackerDir = ""
 
 			limits := DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)
@@ -677,6 +684,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
+	t.Parallel()
 	const (
 		engineLookbackDelta = 5 * time.Minute
 		thirtyDays          = 30 * 24 * time.Hour
@@ -782,6 +790,8 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				flagext.DefaultValues(&cfg)
 				cfg.IngesterStreaming = ingesterStreaming
 				cfg.IngesterMetadataStreaming = ingesterStreaming
+				// Disable active query tracker to avoid mmap error.
+				cfg.ActiveQueryTrackerDir = ""
 
 				limits := DefaultLimitsConfig()
 				limits.MaxQueryLookback = testData.maxQueryLookback
@@ -1216,6 +1226,7 @@ func (q *mockStoreQuerier) Close() error {
 }
 
 func TestShortTermQueryToLTS(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time
@@ -1253,17 +1264,16 @@ func TestShortTermQueryToLTS(t *testing.T) {
 		},
 	}
 
-	queryTracker := promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger())
-
 	engine := promql.NewEngine(promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
-		ActiveQueryTracker: queryTracker,
-		MaxSamples:         1e6,
-		Timeout:            1 * time.Minute,
+		Logger:     log.NewNopLogger(),
+		MaxSamples: 1e6,
+		Timeout:    1 * time.Minute,
 	})
 
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
+	// Disable active query tracker to avoid mmap error.
+	cfg.ActiveQueryTrackerDir = ""
 
 	for _, ingesterStreaming := range []bool{true, false} {
 		cfg.IngesterStreaming = ingesterStreaming

@@ -76,9 +76,11 @@ type Opts struct {
 func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
 	var optimizers []logicalplan.Optimizer
 	if o.LogicalOptimizers == nil {
-		optimizers = logicalplan.DefaultOptimizers
+		optimizers = make([]logicalplan.Optimizer, len(logicalplan.DefaultOptimizers))
+		copy(optimizers, logicalplan.DefaultOptimizers)
 	} else {
-		optimizers = o.LogicalOptimizers
+		optimizers = make([]logicalplan.Optimizer, len(o.LogicalOptimizers))
+		copy(optimizers, o.LogicalOptimizers)
 	}
 	return append(optimizers, logicalplan.TrimSortFunctions{})
 }
@@ -330,6 +332,15 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 		t:      RangeQuery,
 	}, nil
 }
+
+type ExplainableQuery interface {
+	promql.Query
+
+	Explain() string
+	Profile()
+}
+
+var _ ExplainableQuery = &compatibilityQuery{}
 
 type Query struct {
 	exec model.VectorOperator

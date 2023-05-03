@@ -24,11 +24,11 @@ import (
 var _ SeriesWithChunks = &chunkSeries{}
 
 func TestChunkQueryable(t *testing.T) {
+	t.Parallel()
 	opts := promql.EngineOpts{
-		Logger:             log.NewNopLogger(),
-		ActiveQueryTracker: promql.NewActiveQueryTracker(t.TempDir(), 10, log.NewNopLogger()),
-		MaxSamples:         1e6,
-		Timeout:            1 * time.Minute,
+		Logger:     log.NewNopLogger(),
+		MaxSamples: 1e6,
+		Timeout:    1 * time.Minute,
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		for _, testcase := range testcases {

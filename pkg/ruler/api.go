@@ -396,7 +396,11 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 
 	var rgs rulespb.RuleGroupList
 	rgs, err = a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
-
+	if err != nil {
+		level.Error(logger).Log("msg", "list rules error", "err", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if len(rgs) == 0 {
 		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
 		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)

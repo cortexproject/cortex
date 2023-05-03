@@ -555,6 +555,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, err
 	}
 
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.Push")
+	defer span.Finish()
+
 	// We will report *this* request in the error too.
 	inflight := d.inflightPushRequests.Inc()
 	defer d.inflightPushRequests.Dec()
@@ -574,7 +577,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 
-	var firstPartialErr error
 	removeReplica := false
 
 	numSamples := 0
@@ -592,12 +594,8 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
-	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	validatedMetadata := make([]*cortexpb.MetricMetadata, 0, len(req.Metadata))
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
-	seriesKeys := make([]uint32, 0, len(req.Timeseries))
-	validatedSamples := 0
-	validatedExemplars := 0
 
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
@@ -628,89 +626,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 	}
 
-	latestSampleTimestampMs := int64(0)
-	defer func() {
-		// Update this metric even in case of errors.
-		if latestSampleTimestampMs > 0 {
-			d.latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
-		}
-	}()
-
-	// For each timeseries, compute a hash to distribute across ingesters;
-	// check each sample and discard if outside limits.
-
-	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-	for _, ts := range req.Timeseries {
-		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
-		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = util_math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
-		}
-
-		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
-			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
-			if len(l) == 0 {
-				// all labels are gone, samples will be discarded
-				validation.DiscardedSamples.WithLabelValues(
-					validation.DroppedByRelabelConfiguration,
-					userID,
-				).Add(float64(len(ts.Samples)))
-				continue
-			}
-			ts.Labels = cortexpb.FromLabelsToLabelAdapters(l)
-		}
-
-		// If we found both the cluster and replica labels, we only want to include the cluster label when
-		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
-		// series we're trying to dedupe when HA tracking moves over to a different replica.
-		if removeReplica {
-			removeLabel(limits.HAReplicaLabel, &ts.Labels)
-		}
-
-		for _, labelName := range limits.DropLabels {
-			removeLabel(labelName, &ts.Labels)
-		}
-
-		if len(ts.Labels) == 0 {
-			validation.DiscardedExemplars.WithLabelValues(
-				validation.DroppedByUserConfigurationOverride,
-				userID,
-			).Add(float64(len(ts.Samples)))
-
-			continue
-		}
-
-		// We rely on sorted labels in different places:
-		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
-		// different tokens, which is bad.
-		// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
-		// later in the validation phase, we ignore them here.
-		sortLabelsIfNeeded(ts.Labels)
-
-		// Generate the sharding token based on the series labels without the HA replica
-		// label and dropped labels (if any)
-		key, err := d.tokenForLabels(userID, ts.Labels)
-		if err != nil {
-			return nil, err
-		}
-		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
-
-		// Errors in validation are considered non-fatal, as one series in a request may contain
-		// invalid data but all the remaining series could be perfectly valid.
-		if validationErr != nil && firstPartialErr == nil {
-			// The series labels may be retained by validationErr but that's not a problem for this
-			// use case because we format it calling Error() and then we discard it.
-			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
-		}
-
-		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
-		if validatedSeries == emptyPreallocSeries {
-			continue
-		}
-
-		seriesKeys = append(seriesKeys, key)
-		validatedTimeseries = append(validatedTimeseries, validatedSeries)
-		validatedSamples += len(ts.Samples)
-		validatedExemplars += len(ts.Exemplars)
+	firstPartialErr, seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, err := d.prepareHashTimeseries(ctx, req, userID, limits, removeReplica)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, m := range req.Metadata {
@@ -729,7 +647,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	d.receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
-	d.receivedExemplars.WithLabelValues(userID).Add((float64(validatedExemplars)))
+	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
@@ -806,6 +724,106 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, err
 	}
 	return &cortexpb.WriteResponse{}, firstPartialErr
+}
+
+func (d *Distributor) prepareHashTimeseries(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) (error, []uint32, []cortexpb.PreallocTimeseries, int, int, error) {
+	pSpan, _ := opentracing.StartSpanFromContext(ctx, "PrepareHashTimeseries")
+	defer pSpan.Finish()
+
+	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
+	// For each timeseries or samples, we compute a hash to distribute across ingesters;
+	// check each sample/metadata and discard if outside limits.
+	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
+	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	validatedSamples := 0
+	validatedExemplars := 0
+
+	var firstPartialErr error
+
+	latestSampleTimestampMs := int64(0)
+	defer func() {
+		// Update this metric even in case of errors.
+		if latestSampleTimestampMs > 0 {
+			d.latestSeenSampleTimestampPerUser.WithLabelValues(userID).Set(float64(latestSampleTimestampMs) / 1000)
+		}
+	}()
+
+	// For each timeseries, compute a hash to distribute across ingesters;
+	// check each sample and discard if outside limits.
+	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
+	for _, ts := range req.Timeseries {
+		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
+		if len(ts.Samples) > 0 {
+			latestSampleTimestampMs = util_math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+		}
+
+		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
+			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
+			if len(l) == 0 {
+				// all labels are gone, samples will be discarded
+				validation.DiscardedSamples.WithLabelValues(
+					validation.DroppedByRelabelConfiguration,
+					userID,
+				).Add(float64(len(ts.Samples)))
+				continue
+			}
+			ts.Labels = cortexpb.FromLabelsToLabelAdapters(l)
+		}
+
+		// If we found both the cluster and replica labels, we only want to include the cluster label when
+		// storing series in Cortex. If we kept the replica label we would end up with another series for the same
+		// series we're trying to dedupe when HA tracking moves over to a different replica.
+		if removeReplica {
+			removeLabel(limits.HAReplicaLabel, &ts.Labels)
+		}
+
+		for _, labelName := range limits.DropLabels {
+			removeLabel(labelName, &ts.Labels)
+		}
+
+		if len(ts.Labels) == 0 {
+			validation.DiscardedExemplars.WithLabelValues(
+				validation.DroppedByUserConfigurationOverride,
+				userID,
+			).Add(float64(len(ts.Samples)))
+
+			continue
+		}
+
+		// We rely on sorted labels in different places:
+		// 1) When computing token for labels, and sharding by all labels. Here different order of labels returns
+		// different tokens, which is bad.
+		// 2) In validation code, when checking for duplicate label names. As duplicate label names are rejected
+		// later in the validation phase, we ignore them here.
+		sortLabelsIfNeeded(ts.Labels)
+
+		// Generate the sharding token based on the series labels without the HA replica
+		// label and dropped labels (if any)
+		key, err := d.tokenForLabels(userID, ts.Labels)
+		if err != nil {
+			return nil, nil, nil, 0, 0, err
+		}
+		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
+
+		// Errors in validation are considered non-fatal, as one series in a request may contain
+		// invalid data but all the remaining series could be perfectly valid.
+		if validationErr != nil && firstPartialErr == nil {
+			// The series labels may be retained by validationErr but that's not a problem for this
+			// use case because we format it calling Error() and then we discard it.
+			firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+		}
+
+		// validateSeries would have returned an emptyPreallocSeries if there were no valid samples.
+		if validatedSeries == emptyPreallocSeries {
+			continue
+		}
+
+		seriesKeys = append(seriesKeys, key)
+		validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		validatedSamples += len(ts.Samples)
+		validatedExemplars += len(ts.Exemplars)
+	}
+	return firstPartialErr, seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

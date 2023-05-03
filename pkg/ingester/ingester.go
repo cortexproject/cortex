@@ -20,6 +20,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -935,6 +936,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	if err := i.checkRunning(); err != nil {
 		return nil, err
 	}
+
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
+	defer span.Finish()
 
 	// We will report *this* request in the error too.
 	inflight := i.inflightPushRequests.Inc()

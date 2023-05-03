@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
+
 	"google.golang.org/grpc/status"
 
 	"go.uber.org/atomic"
@@ -70,6 +72,10 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 		cleanup()
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
 	}
+
+	span, _ := opentracing.StartSpanFromContext(ctx, "DoBatch")
+	defer span.Finish()
+
 	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
 	itemTrackers := make([]itemTracker, len(keys))
 	instances := make(map[string]instance, r.InstancesCount())

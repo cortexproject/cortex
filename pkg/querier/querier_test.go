@@ -506,7 +506,6 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
-	t.Parallel()
 	const engineLookbackDelta = 5 * time.Minute
 
 	now := time.Now()
@@ -602,7 +601,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
-	t.Parallel()
 	const maxQueryLength = 30 * 24 * time.Hour
 
 	tests := map[string]struct {
@@ -679,7 +677,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 }
 
 func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
-	t.Parallel()
 	const (
 		engineLookbackDelta = 5 * time.Minute
 		thirtyDays          = 30 * 24 * time.Hour
@@ -1219,7 +1216,6 @@ func (q *mockStoreQuerier) Close() error {
 }
 
 func TestShortTermQueryToLTS(t *testing.T) {
-	//parallel testing causes data race
 	testCases := []struct {
 		name                 string
 		mint, maxt           time.Time

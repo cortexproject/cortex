@@ -26,8 +26,6 @@ import (
 )
 
 func TestApiStatusCodes(t *testing.T) {
-	t.Parallel()
-
 	for ix, tc := range []struct {
 		err            error
 		expectedString string

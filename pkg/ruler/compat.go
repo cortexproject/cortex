@@ -251,23 +251,23 @@ type RulesManager interface {
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
 func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
-	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	totalWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_total",
 		Help: "Number of write requests to ingesters.",
-	})
-	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	}, []string{"user"})
+	failedWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_failed_total",
 		Help: "Number of failed write requests to ingesters.",
-	})
+	}, []string{"user"})
 
-	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	totalQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_queries_total",
 		Help: "Number of queries executed by ruler.",
-	})
-	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	}, []string{"user"})
+	failedQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
-	})
+	}, []string{"user"})
 	var rulerQuerySeconds *prometheus.CounterVec
 	if cfg.EnableQueryStats {
 		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -286,6 +286,11 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		if rulerQuerySeconds != nil {
 			queryTime = rulerQuerySeconds.WithLabelValues(userID)
 		}
+
+		failedQueries := failedQueriesVec.WithLabelValues(userID)
+		totalQueries := totalQueriesVec.WithLabelValues(userID)
+		totalWrites := totalWritesVec.WithLabelValues(userID)
+		failedWrites := failedWritesVec.WithLabelValues(userID)
 
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),

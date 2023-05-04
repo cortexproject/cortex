@@ -591,12 +591,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
-	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	// For each timeseries or samples, we compute a hash to distribute across ingesters;
-	// check each sample/metadata and discard if outside limits.
-	validatedMetadata := make([]*cortexpb.MetricMetadata, 0, len(req.Metadata))
-	metadataKeys := make([]uint32, 0, len(req.Metadata))
-
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
@@ -626,25 +620,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 	}
 
-	firstPartialErr, seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, err := d.prepareHashTimeseries(ctx, req, userID, limits, removeReplica)
+	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
+	seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, m := range req.Metadata {
-		err := validation.ValidateMetadata(limits, userID, m)
-
-		if err != nil {
-			if firstPartialErr == nil {
-				firstPartialErr = err
-			}
-
-			continue
-		}
-
-		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
-		validatedMetadata = append(validatedMetadata, m)
-	}
+	metadataKeys, validatedMetadata, firstPartialErr := d.prepareMetadataKeys(req, limits, userID, firstPartialErr)
 
 	d.receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
@@ -726,11 +707,31 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	return &cortexpb.WriteResponse{}, firstPartialErr
 }
 
-func (d *Distributor) prepareHashTimeseries(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) (error, []uint32, []cortexpb.PreallocTimeseries, int, int, error) {
-	pSpan, _ := opentracing.StartSpanFromContext(ctx, "PrepareHashTimeseries")
+func (d *Distributor) prepareMetadataKeys(req *cortexpb.WriteRequest, limits *validation.Limits, userID string, firstPartialErr error) ([]uint32, []*cortexpb.MetricMetadata, error) {
+	validatedMetadata := make([]*cortexpb.MetricMetadata, 0, len(req.Metadata))
+	metadataKeys := make([]uint32, 0, len(req.Metadata))
+
+	for _, m := range req.Metadata {
+		err := validation.ValidateMetadata(limits, userID, m)
+
+		if err != nil {
+			if firstPartialErr == nil {
+				firstPartialErr = err
+			}
+
+			continue
+		}
+
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
+		validatedMetadata = append(validatedMetadata, m)
+	}
+	return metadataKeys, validatedMetadata, firstPartialErr
+}
+
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseries, int, int, error, error) {
+	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
 	defer pSpan.Finish()
 
-	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
 	// For each timeseries or samples, we compute a hash to distribute across ingesters;
 	// check each sample/metadata and discard if outside limits.
 	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
@@ -801,7 +802,7 @@ func (d *Distributor) prepareHashTimeseries(ctx context.Context, req *cortexpb.W
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, nil, nil, 0, 0, err
+			return nil, nil, 0, 0, nil, err
 		}
 		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
 
@@ -823,7 +824,7 @@ func (d *Distributor) prepareHashTimeseries(ctx context.Context, req *cortexpb.W
 		validatedSamples += len(ts.Samples)
 		validatedExemplars += len(ts.Exemplars)
 	}
-	return firstPartialErr, seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, nil
+	return seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, firstPartialErr, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

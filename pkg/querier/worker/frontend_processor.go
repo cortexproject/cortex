@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -27,12 +28,13 @@ var (
 	}
 )
 
-func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) processor {
+func newFrontendProcessor(cfg Config, memLimiter limiter.MemoryLimiter, handler RequestHandler, log log.Logger) processor {
 	return &frontendProcessor{
 		log:            log,
 		handler:        handler,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
+		memLimiter:     memLimiter,
 		targetHeaders:  cfg.TargetHeaders,
 	}
 }
@@ -42,6 +44,7 @@ type frontendProcessor struct {
 	handler        RequestHandler
 	maxMessageSize int
 	querierID      string
+	memLimiter     limiter.MemoryLimiter
 
 	log log.Logger
 
@@ -89,6 +92,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	defer cancel()
 
 	for {
+		level.Debug(fp.log).Log("msg", "Not under memory pressure. Pulling a new query")
 		request, err := c.Recv()
 		if err != nil {
 			return err
@@ -121,6 +125,9 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 }
 
 func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *stats.QueryStats) error) {
+	job := fp.memLimiter.NewJob()
+	defer job.Complete()
+	ctx = limiter.AddJobToContext(ctx, job)
 	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)

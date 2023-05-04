@@ -26,17 +26,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortexmiddleware "github.com/cortexproject/cortex/pkg/util/middleware"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, memLimiter limiter.MemoryLimiter, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
+		memLimiter:     memLimiter,
 		grpcConfig:     cfg.GRPCClientConfig,
 		targetHeaders:  cfg.TargetHeaders,
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
@@ -68,6 +70,7 @@ type schedulerProcessor struct {
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
+	memLimiter     limiter.MemoryLimiter
 
 	frontendPool                  *client.Pool
 	frontendClientRequestDuration *prometheus.HistogramVec
@@ -119,7 +122,10 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	defer cancel()
 
 	for {
+		// Do not pull new requests if not in Green state
+		_ = sp.memLimiter.Wait(ctx, limiter.JobID(0), limiter.Green, false, false)
 		request, err := c.Recv()
+		level.Debug(sp.log).Log("msg", "Pulling a new query")
 		if err != nil {
 			return err
 		}
@@ -167,6 +173,9 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 }
 
 func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
+	job := sp.memLimiter.NewJob()
+	defer job.Complete()
+	ctx = limiter.AddJobToContext(ctx, job)
 	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)

@@ -4,6 +4,7 @@
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290
 * [CHANGE] Ingester: Creating label `native-histogram-sample` on the `cortex_discarded_samples_total` to keep track of discarded native histogram samples. #5289
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
+* [FEATURE] Querier: Add a memory limiter to prevent OOMs. #5320
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286

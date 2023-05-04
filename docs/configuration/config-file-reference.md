@@ -2438,6 +2438,37 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+memory_limiter:
+  # Enable memory-limiter.
+  # CLI flag: -querier.memory-limiter.enabled
+  [enabled: <boolean> | default = false]
+
+  # Specifies whether to fail when the heap is above the limit. If fail fast is
+  # false, the requests will wait for the heap to go down or until the
+  # max-wait-duration.
+  # CLI flag: -querier.memory-limiter.fail-fast
+  [fail_fast: <boolean> | default = false]
+
+  # Specifies the limit above which system is considered to in red state. In red
+  # state, all except one request will be throttled.
+  # CLI flag: -querier.memory-limiter.red-threshold-bytes
+  [red_threshold_bytes: <int> | default = 0]
+
+  # Specifies the limit above which the system is considered to be in yellow
+  # state. In yellow state, new requests cannot be pulled in.
+  # CLI flag: -querier.memory-limiter.yellow-threshold-bytes
+  [yellow_threshold_bytes: <int> | default = 0]
+
+  # Configures how often to watch the heap to detect memory pressure.
+  # CLI flag: -querier.memory-limiter.check-interval
+  [check_interval: <duration> | default = 1s]
+
+  # Configures the maximum wait duration. If a goroutine were blocked for more
+  # than the max-wait-duration, it'll continue execution even under memory
+  # pressure.
+  # CLI flag: -querier.memory-limiter.max-wait-duration
+  [max_wait_duration: <duration> | default = 5s]
 ```
 
 ### `ingester_config`

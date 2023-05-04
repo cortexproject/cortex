@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -33,6 +34,8 @@ type Config struct {
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
 	TargetHeaders []string `yaml:"-"` // Propagated by config.
+
+	MemoryLimiterConfig limiter.MemoryLimiterConfig `yaml:"memory_limiter"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -46,6 +49,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.QuerierID, "querier.id", "", "Querier ID, sent to frontend service to identify requests from the same querier. Defaults to hostname.")
 
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
+	cfg.MemoryLimiterConfig.RegisterFlagsWithPrefix("querier.", f)
 }
 
 func (cfg *Config) Validate(log log.Logger) error {
@@ -104,18 +108,23 @@ func NewQuerierWorker(cfg Config, handler RequestHandler, log log.Logger, reg pr
 	var servs []services.Service
 	var address string
 
+	memLimiter, err := limiter.NewMemoryLimiter(&cfg.MemoryLimiterConfig, reg, log)
+	if err != nil {
+		return nil, err
+	}
+
 	switch {
 	case cfg.SchedulerAddress != "":
 		level.Info(log).Log("msg", "Starting querier worker connected to query-scheduler", "scheduler", cfg.SchedulerAddress)
 
 		address = cfg.SchedulerAddress
-		processor, servs = newSchedulerProcessor(cfg, handler, log, reg)
+		processor, servs = newSchedulerProcessor(cfg, memLimiter, handler, log, reg)
 
 	case cfg.FrontendAddress != "":
 		level.Info(log).Log("msg", "Starting querier worker connected to query-frontend", "frontend", cfg.FrontendAddress)
 
 		address = cfg.FrontendAddress
-		processor = newFrontendProcessor(cfg, handler, log)
+		processor = newFrontendProcessor(cfg, memLimiter, handler, log)
 
 	default:
 		return nil, errors.New("no query-scheduler or query-frontend address")

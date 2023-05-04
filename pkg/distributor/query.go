@@ -290,6 +290,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 		reqStats     = stats.FromContext(ctx)
+		job          = limiter.JobFromContext(ctx)
 	)
 
 	// Fetch samples from multiple ingesters
@@ -309,6 +310,9 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 		result := &ingester_client.QueryStreamResponse{}
 		for {
+			if err := job.Continue(ctx); err != nil {
+				return nil, err
+			}
 			resp, err := stream.Recv()
 			if err == io.EOF {
 				break

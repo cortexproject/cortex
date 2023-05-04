@@ -578,6 +578,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 		spanLog       = spanlogger.FromContext(ctx)
 		queryLimiter  = limiter.QueryLimiterFromContextWithFallback(ctx)
 		reqStats      = stats.FromContext(ctx)
+		job           = limiter.JobFromContext(ctx)
 	)
 	matchers, shardingInfo, err := querysharding.ExtractShardingInfo(matchers)
 
@@ -628,6 +629,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					return gCtx.Err()
 				}
 
+				if err := job.Continue(ctx); err != nil {
+					return err
+				}
 				resp, err := stream.Recv()
 				if err == io.EOF {
 					break

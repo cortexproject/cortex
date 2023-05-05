@@ -11,10 +11,9 @@ func Middlewares(
 	log log.Logger,
 	limits tripperware.Limits,
 	queryAnalyzer querysharding.Analyzer,
-	codec tripperware.Codec,
 ) ([]tripperware.Middleware, error) {
 	var m []tripperware.Middleware
 
-	m = append(m, tripperware.ShardByMiddleware(log, limits, codec, queryAnalyzer))
+	m = append(m, tripperware.ShardByMiddleware(log, limits, InstantQueryCodec, queryAnalyzer))
 	return m, nil
 }

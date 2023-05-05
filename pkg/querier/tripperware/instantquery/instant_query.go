@@ -19,10 +19,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
+	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
-
-	promqlparser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -32,8 +31,6 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
-
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
@@ -109,11 +106,12 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	now func() time.Time
+	now                    func() time.Time
+	noStepSubQueryInterval time.Duration
 }
 
-func newInstantQueryCodec() instantQueryCodec {
-	return instantQueryCodec{now: time.Now}
+func NewInstantQueryCodec(noStepSubQueryInterval time.Duration) instantQueryCodec {
+	return instantQueryCodec{now: time.Now, noStepSubQueryInterval: noStepSubQueryInterval}
 }
 
 func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
@@ -139,6 +137,10 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	}
 
 	result.Query = r.FormValue("query")
+	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
+		return nil, err
+	}
+
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 

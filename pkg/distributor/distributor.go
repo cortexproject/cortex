@@ -575,8 +575,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	now := time.Now()
 	d.activeUsers.UpdateUserTimestamp(userID, now)
 
-	source := util.GetSourceIPsFromOutgoingCtx(ctx)
-
 	removeReplica := false
 
 	numSamples := 0
@@ -662,6 +660,21 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
 	}
 
+	keys := append(seriesKeys, metadataKeys...)
+	initialMetadataIndex := len(seriesKeys)
+
+	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cortexpb.WriteResponse{}, firstPartialErr
+}
+
+func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string) error {
+	span, _ := opentracing.StartSpanFromContext(ctx, "doBatch")
+	defer span.Finish()
+
 	// Use a background context to make sure all ingesters get samples even if we return early
 	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
 	localCtx = user.InjectOrgID(localCtx, userID)
@@ -673,17 +686,15 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
 	}
 	// Get clientIP(s) from Context and add it to localCtx
+	source := util.GetSourceIPsFromOutgoingCtx(ctx)
 	localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
-
-	keys := append(seriesKeys, metadataKeys...)
-	initialMetadataIndex := len(seriesKeys)
 
 	op := ring.WriteNoExtend
 	if d.cfg.ExtendWrites {
 		op = ring.Write
 	}
 
-	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
+	return ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
 		timeseries := make([]cortexpb.PreallocTimeseries, 0, len(indexes))
 		var metadata []*cortexpb.MetricMetadata
 
@@ -700,11 +711,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		cortexpb.ReuseSlice(req.Timeseries)
 		cancel()
 	})
-
-	if err != nil {
-		return nil, err
-	}
-	return &cortexpb.WriteResponse{}, firstPartialErr
 }
 
 func (d *Distributor) prepareMetadataKeys(req *cortexpb.WriteRequest, limits *validation.Limits, userID string, firstPartialErr error) ([]uint32, []*cortexpb.MetricMetadata, error) {

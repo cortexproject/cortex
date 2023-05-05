@@ -50,6 +50,13 @@ func TestSubQueryStepSizeCheck(t *testing.T) {
 			defaultStep: time.Second,
 			err:         httpgrpc.Errorf(http.StatusBadRequest, ErrSubQueryStepTooSmall, 100),
 		},
+		{
+			name:        "two subqueries within functions",
+			query:       "sum_over_time(up[60m:]) + avg_over_time(test[5m:1m])",
+			maxStep:     10,
+			defaultStep: time.Second,
+			err:         httpgrpc.Errorf(http.StatusBadRequest, ErrSubQueryStepTooSmall, 10),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := SubQueryStepSizeCheck(tc.query, tc.defaultStep, tc.maxStep)

@@ -78,8 +78,8 @@ func Middlewares(
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	queryAnalyzer querysharding.Analyzer,
-	prometheusCodec *prometheusCodec,
-	shardedPrometheusCodec *prometheusCodec,
+	prometheusCodec tripperware.Codec,
+	shardedPrometheusCodec tripperware.Codec,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)

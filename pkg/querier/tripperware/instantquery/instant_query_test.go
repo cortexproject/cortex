@@ -19,10 +19,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
-var (
-	InstantQueryCodec = NewInstantQueryCodec(time.Minute)
-)
-
 func TestRequest(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -72,10 +68,6 @@ func TestRequest(t *testing.T) {
 					"Test-Header": {"test"},
 				},
 			},
-		},
-		{
-			url:         "/api/v1/query?query=up%5B30d%3A%5D",
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, tripperware.ErrSubQueryStepTooSmall, 11000),
 		},
 	} {
 		tc := tc

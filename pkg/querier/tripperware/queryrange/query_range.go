@@ -50,7 +50,7 @@ type prometheusCodec struct {
 	noStepSubQueryInterval time.Duration
 }
 
-func NewPrometheusCodec(sharded bool, noStepSubQueryInterval time.Duration) *prometheusCodec {
+func NewPrometheusCodec(sharded bool, noStepSubQueryInterval time.Duration) *prometheusCodec { //nolint:revive
 	return &prometheusCodec{
 		sharded:                sharded,
 		noStepSubQueryInterval: noStepSubQueryInterval,

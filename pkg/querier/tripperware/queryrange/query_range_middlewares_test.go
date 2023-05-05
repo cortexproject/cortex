@@ -73,6 +73,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 		qa,
+		time.Minute,
 	)
 
 	for i, tc := range []struct {

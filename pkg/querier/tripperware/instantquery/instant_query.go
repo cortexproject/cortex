@@ -31,6 +31,8 @@ import (
 )
 
 var (
+	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
+
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
@@ -110,8 +112,8 @@ type instantQueryCodec struct {
 	noStepSubQueryInterval time.Duration
 }
 
-func NewInstantQueryCodec(noStepSubQueryInterval time.Duration) instantQueryCodec {
-	return instantQueryCodec{now: time.Now, noStepSubQueryInterval: noStepSubQueryInterval}
+func newInstantQueryCodec() instantQueryCodec {
+	return instantQueryCodec{now: time.Now}
 }
 
 func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {

@@ -11,7 +11,7 @@ func Middlewares(
 	log log.Logger,
 	limits tripperware.Limits,
 	queryAnalyzer querysharding.Analyzer,
-	codec instantQueryCodec,
+	codec tripperware.Codec,
 ) ([]tripperware.Middleware, error) {
 	var m []tripperware.Middleware
 

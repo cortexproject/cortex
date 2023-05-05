@@ -3,7 +3,6 @@ package tripperware
 import (
 	"bytes"
 	"context"
-	"github.com/weaveworks/common/httpgrpc"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/querysharding"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"

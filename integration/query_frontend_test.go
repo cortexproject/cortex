@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -350,10 +351,8 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 		// No need to repeat the test on subquery step size.
 		if userID == 0 && cfg.testSubQueryStepSize {
-			_, err := c.Query(`up[30d:1m]`, now)
-			apiErr, ok := err.(*v1.Error)
-			require.True(t, ok)
-			require.Equal(t, apiErr.Type, v1.ErrBadData)
+			resp, _, _ := c.QueryRaw(`up[30d:1m]`, now)
+			require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		}
 
 		// In this test we do ensure that the /series start/end time is ignored and Cortex

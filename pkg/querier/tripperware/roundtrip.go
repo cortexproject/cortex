@@ -151,7 +151,7 @@ func NewQueryTripperware(
 					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, MaxStep); err != nil {
 						return nil, err
 					}
-					
+
 					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
 					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
 					if numShards <= 1 {

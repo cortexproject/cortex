@@ -27,3 +27,4 @@ Makefile.local
 .vscode
 compose
 compose-simple
+.DS_Store

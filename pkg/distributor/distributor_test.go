@@ -1645,6 +1645,110 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 	}
 }
 
+func BenchmarkDistributor_LabelsCommons(b *testing.B) {
+	// Prepare the distributor configuration.
+	var distributorCfg Config
+	var clientConfig client.Config
+	limits := validation.Limits{}
+	flagext.DefaultValues(&distributorCfg, &clientConfig, &limits)
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	limits.IngestionRate = 10000000 // Unlimited.
+
+	distributorCfg.ShardByAllLabels = true
+	distributorCfg.IngesterClientFactory = func(addr string) (ring_client.PoolClient, error) {
+		return &noopIngester{}, nil
+	}
+
+	overrides, err := validation.NewOverrides(limits, nil)
+	require.NoError(b, err)
+
+	// Create an in-memory KV store for the ring with 1 ingester registered.
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	b.Cleanup(func() { assert.NoError(b, closer.Close()) })
+
+	err = kvStore.CAS(context.Background(), ingester.RingKey,
+		func(_ interface{}) (interface{}, bool, error) {
+			d := &ring.Desc{}
+			d.AddIngester("ingester-1", "127.0.0.1", "", ring.GenerateTokens(128, nil), ring.ACTIVE, time.Now())
+			return d, true, nil
+		},
+	)
+	require.NoError(b, err)
+
+	ingestersRing, err := ring.New(ring.Config{
+		KVStore:           kv.Config{Mock: kvStore},
+		HeartbeatTimeout:  60 * time.Minute,
+		ReplicationFactor: 1,
+	}, ingester.RingKey, ingester.RingKey, nil, nil)
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingestersRing))
+	b.Cleanup(func() {
+		require.NoError(b, services.StopAndAwaitTerminated(context.Background(), ingestersRing))
+	})
+
+	test.Poll(b, time.Second, 1, func() interface{} {
+		return ingestersRing.InstancesCount()
+	})
+
+	// Start the distributor.
+	distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
+
+	numberOfAz := 3
+	maxNumberOfIngestersPerAz := 100
+	maxNumberOfSeriesPerIngester := 10000
+
+	seriesPerIngester := make(map[int][]string, numberOfAz)
+
+	for az := 0; az < numberOfAz; az++ {
+		for j := 0; j < maxNumberOfIngestersPerAz; j++ {
+			s := make([]string, 0, maxNumberOfSeriesPerIngester)
+			for i := 0; i < maxNumberOfSeriesPerIngester; i++ {
+				s = append(s, fmt.Sprintf("name%v%v", j, i))
+			}
+
+			sort.Strings(s)
+			seriesPerIngester[az] = append(seriesPerIngester[az], s...)
+		}
+	}
+
+	tests := map[string]struct {
+		numberOfIngestersPerAz int
+	}{
+		"10 ingesters": {
+			numberOfIngestersPerAz: 10,
+		},
+		"50 ingesters": {
+			numberOfIngestersPerAz: 50,
+		},
+		"100 ingesters": {
+			numberOfIngestersPerAz: 100,
+		},
+	}
+
+	r := make([]interface{}, 0, numberOfAz*maxNumberOfIngestersPerAz)
+
+	for testName, tc := range tests {
+		b.Run(testName, func(b *testing.B) {
+			// Run the benchmark.
+			b.ReportAllocs()
+			b.ResetTimer()
+			r = r[:0]
+			for i := 0; i < numberOfAz; i++ {
+				for j := 0; j < tc.numberOfIngestersPerAz; j++ {
+					r = append(r, seriesPerIngester[i][j*maxNumberOfSeriesPerIngester:(j+1)*maxNumberOfSeriesPerIngester])
+				}
+			}
+
+			for n := 0; n < b.N; n++ {
+				distributor.LabelNamesCommon(ctx, model.Now(), model.Now(), func(ctx context.Context, rs ring.ReplicationSet, req *client.LabelNamesRequest) ([]interface{}, error) {
+					return r, nil
+				})
+			}
+		})
+	}
+}
+
 func BenchmarkDistributor_Push(b *testing.B) {
 	const (
 		numSeriesPerRequest = 1000

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/stringutil"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -1018,22 +1019,15 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 
 	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
 	defer span.Finish()
-	valueSet := map[string]struct{}{}
-	for _, resp := range resps {
-		for _, v := range resp.([]string) {
-			valueSet[v] = struct{}{}
-		}
+	r := make([][]string, len(resps))
+
+	for i, resp := range resps {
+		r[i] = resp.([]string)
 	}
 
-	values := make([]string, 0, len(valueSet))
-	for v := range valueSet {
-		values = append(values, v)
-	}
+	span.SetTag("result_length", len(r))
 
-	sort.Strings(values)
-	span.SetTag("result_length", len(values))
-
-	return values, nil
+	return stringutil.KWayMerge(r...), nil
 }
 
 func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time) ([]string, error) {

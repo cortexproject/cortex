@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	ErrSubQueryStepTooSmall = "exceeded maximum resolution of %d points per timeseries in subquery. Try decreasing the step size of your subquery"
+	ErrSubQueryStepTooSmall = "exceeded maximum resolution of %d points per timeseries in subquery. Try increasing the step size of your subquery"
 )
 
 const (

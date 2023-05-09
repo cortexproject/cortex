@@ -909,6 +909,12 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 }
 
 func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelValues", opentracing.Tags{
+		"name":  labelName,
+		"start": from.Unix(),
+		"end":   to.Unix(),
+	})
+	defer span.Finish()
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
@@ -924,6 +930,8 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 		return nil, err
 	}
 
+	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
+	defer span.Finish()
 	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
 		for _, v := range resp.([]string) {
@@ -938,11 +946,12 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 	// We need the values returned to be sorted.
 	sort.Strings(values)
+	span.SetTag("result_length", len(values))
 
 	return values, nil
 }
 
-// LabelValuesForLabelName returns all of the label values that are associated with a given label name.
+// LabelValuesForLabelName returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
@@ -955,7 +964,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 	}, matchers...)
 }
 
-// LabelValuesForLabelName returns all of the label values that are associated with a given label name.
+// LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
@@ -982,6 +991,11 @@ func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, t
 }
 
 func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error)) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelNames", opentracing.Tags{
+		"start": from.Unix(),
+		"end":   to.Unix(),
+	})
+	defer span.Finish()
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
@@ -996,6 +1010,8 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 		return nil, err
 	}
 
+	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
+	defer span.Finish()
 	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
 		for _, v := range resp.([]string) {
@@ -1009,6 +1025,7 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	}
 
 	sort.Strings(values)
+	span.SetTag("result_length", len(values))
 
 	return values, nil
 }
@@ -1038,7 +1055,7 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time)
 	})
 }
 
-// LabelNames returns all of the label names.
+// LabelNames returns all the label names.
 func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
 	return d.LabelNamesCommon(ctx, from, to, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {

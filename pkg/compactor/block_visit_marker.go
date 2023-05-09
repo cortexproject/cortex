@@ -99,6 +99,13 @@ func markBlocksVisited(
 	}
 	reader := bytes.NewReader(visitMarkerFileContent)
 	for _, block := range blocks {
+		select {
+		// Exit early if possible.
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		blockID := block.ULID.String()
 		if err := UpdateBlockVisitMarker(ctx, bkt, blockID, reader, blockVisitMarkerWriteFailed); err != nil {
 			level.Error(logger).Log("msg", "unable to upsert visit marker file content for block", "blockID", blockID, "err", err)

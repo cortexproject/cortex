@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -33,6 +34,7 @@ type queryFrontendTestConfig struct {
 	querySchedulerEnabled bool
 	queryStatsEnabled     bool
 	remoteReadEnabled     bool
+	testSubQueryStepSize  bool
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
 }
 
@@ -209,6 +211,19 @@ func TestQueryFrontendRemoteRead(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendSubQueryStepSize(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testSubQueryStepSize: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+			return cortexConfigFile, flags
+		},
+	})
+}
+
 func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
@@ -334,6 +349,12 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			require.True(t, len(res.Results[0].Timeseries[0].Labels) > 0)
 		}
 
+		// No need to repeat the test on subquery step size.
+		if userID == 0 && cfg.testSubQueryStepSize {
+			resp, _, _ := c.QueryRaw(`up[30d:1m]`, now)
+			require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+		}
+
 		// In this test we do ensure that the /series start/end time is ignored and Cortex
 		// always returns series in ingesters memory. No need to repeat it for each user.
 		if userID == 0 {
@@ -383,6 +404,10 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	}
 
 	if cfg.remoteReadEnabled {
+		extra++
+	}
+
+	if cfg.testSubQueryStepSize {
 		extra++
 	}
 

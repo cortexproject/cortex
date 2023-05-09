@@ -22,9 +22,7 @@ import (
 func TestRequest(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
-	codec := instantQueryCodec{now: func() time.Time {
-		return now
-	}}
+	codec := InstantQueryCodec
 
 	for _, tc := range []struct {
 		url         string

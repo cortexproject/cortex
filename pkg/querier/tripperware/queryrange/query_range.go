@@ -40,17 +40,21 @@ var (
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
 
-	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	PrometheusCodec tripperware.Codec = &prometheusCodec{sharded: false}
-	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
-	ShardedPrometheusCodec tripperware.Codec = &prometheusCodec{sharded: true}
-
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
 )
 
 type prometheusCodec struct {
 	sharded bool
+
+	noStepSubQueryInterval time.Duration
+}
+
+func NewPrometheusCodec(sharded bool, noStepSubQueryInterval time.Duration) *prometheusCodec { //nolint:revive
+	return &prometheusCodec{
+		sharded:                sharded,
+		noStepSubQueryInterval: noStepSubQueryInterval,
+	}
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -166,7 +170,7 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Reques
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
+func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -199,6 +203,10 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 	}
 
 	result.Query = r.FormValue("query")
+	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
+		return nil, err
+	}
+
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 

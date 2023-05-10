@@ -17,6 +17,7 @@ import (
 )
 
 func TestResetConcurrency(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                                  string
 		parallelism                           int
@@ -68,7 +69,9 @@ func TestResetConcurrency(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg := Config{
 				Parallelism:           tt.parallelism,
 				MatchMaxConcurrency:   tt.maxConcurrent > 0,

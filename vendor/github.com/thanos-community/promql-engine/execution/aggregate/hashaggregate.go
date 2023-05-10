@@ -11,11 +11,11 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/exp/slices"
 
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
+	"github.com/thanos-community/promql-engine/parser"
 	"github.com/thanos-community/promql-engine/worker"
 )
 
@@ -128,7 +128,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		}
 		for i := range a.params {
 			a.params[i] = math.NaN()
-			if i < len(args) {
+			if i < len(args) && len(args[i].Samples) > 0 {
 				a.params[i] = args[i].Samples[0]
 				a.paramOp.GetPool().PutStepVector(args[i])
 			}

@@ -19,23 +19,27 @@ import (
 )
 
 func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// Mock a bucket index.
+	now := time.Now()
 	block1 := &bucketindex.Block{ID: ulid.MustNew(1, nil), MinTime: 10, MaxTime: 15}
 	block2 := &bucketindex.Block{ID: ulid.MustNew(2, nil), MinTime: 12, MaxTime: 20}
 	block3 := &bucketindex.Block{ID: ulid.MustNew(3, nil), MinTime: 20, MaxTime: 30}
 	block4 := &bucketindex.Block{ID: ulid.MustNew(4, nil), MinTime: 30, MaxTime: 40}
-	block5 := &bucketindex.Block{ID: ulid.MustNew(5, nil), MinTime: 30, MaxTime: 40} // Time range overlaps with block4, but this block deletion mark is above the threshold.
+	block5 := &bucketindex.Block{ID: ulid.MustNew(5, nil), MinTime: 30, MaxTime: 40}                                               // Time range overlaps with block4, but this block deletion mark is above the threshold.
+	block6 := &bucketindex.Block{ID: ulid.MustNew(6, nil), MinTime: now.Add(-2 * time.Hour).UnixMilli(), MaxTime: now.UnixMilli()} // This block is within ignoreBlocksWithin and shouldn't be loaded.
 	mark3 := &bucketindex.BlockDeletionMark{ID: block3.ID, DeletionTime: time.Now().Unix()}
 	mark5 := &bucketindex.BlockDeletionMark{ID: block5.ID, DeletionTime: time.Now().Add(-2 * time.Hour).Unix()}
 
 	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, nil, &bucketindex.Index{
 		Version:            bucketindex.IndexVersion1,
-		Blocks:             bucketindex.Blocks{block1, block2, block3, block4, block5},
+		Blocks:             bucketindex.Blocks{block1, block2, block3, block4, block5, block6},
 		BlockDeletionMarks: bucketindex.BlockDeletionMarks{mark3, mark5},
 		UpdatedAt:          time.Now().Unix(),
 	}))
@@ -102,10 +106,21 @@ func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
 				block3.ID: mark3,
 			},
 		},
+		"query range matching all blocks but should ignore non-queryable block": {
+			minT:           0,
+			maxT:           block5.MaxTime,
+			expectedBlocks: bucketindex.Blocks{block4, block3, block2, block1},
+			expectedMarks: map[ulid.ULID]*bucketindex.BlockDeletionMark{
+				block3.ID: mark3,
+			},
+		},
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, testData.minT, testData.maxT)
 			require.NoError(t, err)
 			require.ElementsMatch(t, testData.expectedBlocks, blocks)
@@ -154,6 +169,8 @@ func BenchmarkBucketIndexBlocksFinder_GetBlocks(b *testing.B) {
 }
 
 func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexDoesNotExist(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
@@ -167,6 +184,8 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexDoesNotExist(t *testing.T)
 }
 
 func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
@@ -181,6 +200,8 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) 
 }
 
 func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOld(t *testing.T) {
+	t.Parallel()
+
 	const userID = "user-1"
 
 	ctx := context.Background()
@@ -209,6 +230,7 @@ func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIn
 		},
 		MaxStalePeriod:           time.Hour,
 		IgnoreDeletionMarksDelay: time.Hour,
+		IgnoreBlocksWithin:       10 * time.Hour,
 	}
 
 	finder := NewBucketIndexBlocksFinder(cfg, bkt, nil, log.NewNopLogger(), nil)

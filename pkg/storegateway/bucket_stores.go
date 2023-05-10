@@ -82,7 +82,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 
 	// The number of concurrent queries against the tenants BucketStores are limited.
 	queryGateReg := extprom.WrapRegistererWithPrefix("cortex_bucket_stores_", reg)
-	queryGate := gate.New(queryGateReg, cfg.BucketStore.MaxConcurrent)
+	queryGate := gate.New(queryGateReg, cfg.BucketStore.MaxConcurrent, gate.Queries)
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_bucket_stores_gate_queries_concurrent_max",
 		Help: "Number of maximum concurrent queries allowed.",
@@ -435,6 +435,11 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// Remove Cortex external labels so that they're not injected when querying blocks.
 	}...)
 
+	if u.cfg.BucketStore.IgnoreBlocksWithin > 0 {
+		// Filter out blocks that are too new to be queried.
+		filters = append(filters, NewIgnoreNonQueryableBlocksFilter(userLogger, u.cfg.BucketStore.IgnoreBlocksWithin))
+	}
+
 	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
 	var fetcher block.MetadataFetcher
 	if u.cfg.BucketStore.BucketIndex.Enabled {
@@ -487,7 +492,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		store.NewBytesLimiterFactory(0),
+		newBytesLimiterFactory(u.limits, userID),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
@@ -629,6 +634,16 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 		// each time a new limiter is instantiated.
 		return &limiter{
 			limiter: store.NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
+		}
+	}
+}
+
+func newBytesLimiterFactory(limits *validation.Overrides, userID string) store.BytesLimiterFactory {
+	return func(failedCounter prometheus.Counter) store.BytesLimiter {
+		// Since limit overrides could be live reloaded, we have to get the current user's limit
+		// each time a new limiter is instantiated.
+		return &limiter{
+			limiter: store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter),
 		}
 	}
 }

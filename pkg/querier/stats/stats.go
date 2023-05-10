@@ -148,7 +148,39 @@ func (s *QueryStats) LoadFetchedDataBytes() uint64 {
 	return atomic.LoadUint64(&s.FetchedDataBytes)
 }
 
-// Merge the provide Stats into this one.
+func (s *QueryStats) AddFetchedSamples(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.FetchedSamplesCount, count)
+}
+
+func (s *QueryStats) LoadFetchedSamples() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.FetchedSamplesCount)
+}
+
+func (s *QueryStats) AddFetchedChunks(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.FetchedChunksCount, count)
+}
+
+func (s *QueryStats) LoadFetchedChunks() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.FetchedChunksCount)
+}
+
+// Merge the provided Stats into this one.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil {
 		return
@@ -158,6 +190,8 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddFetchedSeries(other.LoadFetchedSeries())
 	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 	s.AddFetchedDataBytes(other.LoadFetchedDataBytes())
+	s.AddFetchedSamples(other.LoadFetchedSamples())
+	s.AddFetchedChunks(other.LoadFetchedChunks())
 	s.AddExtraFields(other.LoadExtraFields()...)
 }
 

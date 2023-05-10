@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/stretchr/testify/mock"
@@ -16,10 +17,14 @@ var errObjectDoesNotExist = errors.New("object does not exist")
 // ClientMock mocks objstore.Bucket
 type ClientMock struct {
 	mock.Mock
+	uploaded sync.Map
 }
 
 // Upload mocks objstore.Bucket.Upload()
 func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader) error {
+	if _, ok := m.uploaded.Load(name); ok {
+		m.uploaded.Store(name, true)
+	}
 	args := m.Called(ctx, name, r)
 	return args.Error(0)
 }
@@ -30,6 +35,8 @@ func (m *ClientMock) MockUpload(name string, err error) {
 
 // Delete mocks objstore.Bucket.Delete()
 func (m *ClientMock) Delete(ctx context.Context, name string) error {
+	m.uploaded.Delete(name)
+
 	args := m.Called(ctx, name)
 	return args.Error(0)
 }
@@ -70,7 +77,20 @@ func (m *ClientMock) MockIterWithCallback(prefix string, objects []string, err e
 
 // Get mocks objstore.Bucket.Get()
 func (m *ClientMock) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if val, ok := m.uploaded.Load(name); ok {
+		uploaded := val.(bool)
+		if !uploaded {
+			return nil, errObjectDoesNotExist
+		}
+	}
+
 	args := m.Called(ctx, name)
+
+	// Allow to mock the Get() with a function which is called each time.
+	if fn, ok := args.Get(0).(func(ctx context.Context, name string) (io.ReadCloser, error)); ok {
+		return fn(ctx, name)
+	}
+
 	val, err := args.Get(0), args.Error(1)
 	if val == nil {
 		return nil, err
@@ -90,15 +110,21 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 		// Since we return an ReadCloser and it can be consumed only once,
 		// each time the mocked Get() is called we do create a new one, so
 		// that getting the same mocked object twice works as expected.
-		mockedGet := m.On("Get", mock.Anything, name)
-		mockedGet.Run(func(args mock.Arguments) {
-			mockedGet.Return(io.NopCloser(bytes.NewReader([]byte(content))), err)
+		m.On("Get", mock.Anything, name).Return(func(_ context.Context, _ string) (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader([]byte(content))), err
 		})
 	} else {
 		m.On("Exists", mock.Anything, name).Return(false, err)
 		m.On("Get", mock.Anything, name).Return(nil, errObjectDoesNotExist)
 		m.On("Attributes", mock.Anything, name).Return(nil, errObjectDoesNotExist)
 	}
+}
+
+// MockGetRequireUpload is a convenient method to mock Get() return resulst after upload,
+// otherwise return errObjectDoesNotExist
+func (m *ClientMock) MockGetRequireUpload(name, content string, err error) {
+	m.uploaded.Store(name, false)
+	m.MockGet(name, content, err)
 }
 
 // MockGetTimes is a convenient method to mock Get() and Exists() to run x time

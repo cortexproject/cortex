@@ -46,43 +46,246 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_block_drop_failures_total 112595
 
 			# HELP cortex_bucket_store_series_blocks_queried Number of blocks in a bucket store that were touched to satisfy a query.
-			# TYPE cortex_bucket_store_series_blocks_queried summary
+			# TYPE cortex_bucket_store_series_blocks_queried histogram
+			cortex_bucket_store_series_blocks_queried_bucket{le="1"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="2"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="4"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="8"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="16"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="32"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="64"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="128"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="256"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="512"} 0
+			cortex_bucket_store_series_blocks_queried_bucket{le="+Inf"} 9
 			cortex_bucket_store_series_blocks_queried_sum 1.283583e+06
 			cortex_bucket_store_series_blocks_queried_count 9
 
 			# HELP cortex_bucket_store_series_data_fetched How many items of a data type in a block were fetched for a single series request.
-			# TYPE cortex_bucket_store_series_data_fetched summary
+			# TYPE cortex_bucket_store_series_data_fetched histogram
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="400"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="800"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="1600"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="3200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="6400"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="12800"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="25600"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="51200"} 1
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="102400"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="204800"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="409600"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="819200"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="1.6384e+06"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="3.2768e+06"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-a",le="+Inf"} 3
 			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-a"} 202671
 			cortex_bucket_store_series_data_fetched_count{data_type="fetched-a"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="400"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="800"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="1600"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="3200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="6400"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="12800"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="25600"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="51200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="102400"} 2
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="204800"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="409600"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="819200"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="1.6384e+06"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="3.2768e+06"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-b",le="+Inf"} 3
 			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-b"} 225190
 			cortex_bucket_store_series_data_fetched_count{data_type="fetched-b"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="400"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="800"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="1600"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="3200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="6400"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="12800"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="25600"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="51200"} 0
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="102400"} 2
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="204800"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="409600"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="819200"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="1.6384e+06"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="3.2768e+06"} 3
+			cortex_bucket_store_series_data_fetched_bucket{data_type="fetched-c",le="+Inf"} 3
 			cortex_bucket_store_series_data_fetched_sum{data_type="fetched-c"} 247709
 			cortex_bucket_store_series_data_fetched_count{data_type="fetched-c"} 3
 
 			# HELP cortex_bucket_store_series_data_size_fetched_bytes Size of all items of a data type in a block were fetched for a single series request.
-			# TYPE cortex_bucket_store_series_data_size_fetched_bytes summary
+			# TYPE cortex_bucket_store_series_data_size_fetched_bytes histogram
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="1024"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="2048"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="4096"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="8192"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="16384"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="32768"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="65536"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="131072"} 2
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="262144"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="524288"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="1.048576e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="2.097152e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="4.194304e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="8.388608e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="1.6777216e+07"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-a",le="+Inf"} 3
 			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-a"} 337785
 			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-a"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="1024"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="2048"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="4096"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="8192"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="16384"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="32768"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="65536"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="131072"} 2
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="262144"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="524288"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="1.048576e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="2.097152e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="4.194304e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="8.388608e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="1.6777216e+07"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-b",le="+Inf"} 3
 			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-b"} 360304
 			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-b"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="1024"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="2048"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="4096"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="8192"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="16384"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="32768"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="65536"} 0
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="131072"} 2
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="262144"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="524288"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="1.048576e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="2.097152e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="4.194304e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="8.388608e+06"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="1.6777216e+07"} 3
+			cortex_bucket_store_series_data_size_fetched_bytes_bucket{data_type="size-fetched-c",le="+Inf"} 3
 			cortex_bucket_store_series_data_size_fetched_bytes_sum{data_type="size-fetched-c"} 382823
 			cortex_bucket_store_series_data_size_fetched_bytes_count{data_type="size-fetched-c"} 3
 
 			# HELP cortex_bucket_store_series_data_size_touched_bytes Size of all items of a data type in a block were touched for a single series request.
-			# TYPE cortex_bucket_store_series_data_size_touched_bytes summary
+			# TYPE cortex_bucket_store_series_data_size_touched_bytes histogram
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="1024"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="2048"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="4096"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="8192"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="16384"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="32768"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="65536"} 1
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="131072"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="262144"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="524288"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="1.048576e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="2.097152e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="4.194304e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="8.388608e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="1.6777216e+07"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-a",le="+Inf"} 3
 			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-a"} 270228
 			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-a"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="1024"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="2048"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="4096"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="8192"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="16384"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="32768"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="65536"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="131072"} 2
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="262144"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="524288"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="1.048576e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="2.097152e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="4.194304e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="8.388608e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="1.6777216e+07"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-b",le="+Inf"} 3
 			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-b"} 292747
 			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-b"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="1024"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="2048"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="4096"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="8192"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="16384"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="32768"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="65536"} 0
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="131072"} 2
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="262144"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="524288"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="1.048576e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="2.097152e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="4.194304e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="8.388608e+06"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="1.6777216e+07"} 3
+			cortex_bucket_store_series_data_size_touched_bytes_bucket{data_type="size-touched-c",le="+Inf"} 3
 			cortex_bucket_store_series_data_size_touched_bytes_sum{data_type="size-touched-c"} 315266
 			cortex_bucket_store_series_data_size_touched_bytes_count{data_type="size-touched-c"} 3
 
 			# HELP cortex_bucket_store_series_data_touched How many items of a data type in a block were touched for a single series request.
-			# TYPE cortex_bucket_store_series_data_touched summary
+			# TYPE cortex_bucket_store_series_data_touched histogram
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="200"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="400"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="800"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="1600"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="3200"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="6400"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="12800"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="25600"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="51200"} 2
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="102400"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="204800"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="409600"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="819200"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="1.6384e+06"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="3.2768e+06"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-a",le="+Inf"} 3
 			cortex_bucket_store_series_data_touched_sum{data_type="touched-a"} 135114
 			cortex_bucket_store_series_data_touched_count{data_type="touched-a"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="200"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="400"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="800"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="1600"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="3200"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="6400"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="12800"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="25600"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="51200"} 2
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="102400"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="204800"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="409600"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="819200"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="1.6384e+06"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="3.2768e+06"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-b",le="+Inf"} 3
 			cortex_bucket_store_series_data_touched_sum{data_type="touched-b"} 157633
 			cortex_bucket_store_series_data_touched_count{data_type="touched-b"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="200"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="400"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="800"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="1600"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="3200"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="6400"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="12800"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="25600"} 0
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="51200"} 1
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="102400"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="204800"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="409600"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="819200"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="1.6384e+06"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="3.2768e+06"} 3
+			cortex_bucket_store_series_data_touched_bucket{data_type="touched-c",le="+Inf"} 3
 			cortex_bucket_store_series_data_touched_sum{data_type="touched-c"} 180152
 			cortex_bucket_store_series_data_touched_count{data_type="touched-c"} 3
 
@@ -131,7 +334,23 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_series_refetches_total 743127
 
 			# HELP cortex_bucket_store_series_result_series Number of series observed in the final result of a query.
-			# TYPE cortex_bucket_store_series_result_series summary
+			# TYPE cortex_bucket_store_series_result_series histogram
+			cortex_bucket_store_series_result_series_bucket{le="1"} 0
+			cortex_bucket_store_series_result_series_bucket{le="2"} 0
+			cortex_bucket_store_series_result_series_bucket{le="4"} 0
+			cortex_bucket_store_series_result_series_bucket{le="8"} 0
+			cortex_bucket_store_series_result_series_bucket{le="16"} 0
+			cortex_bucket_store_series_result_series_bucket{le="32"} 0
+			cortex_bucket_store_series_result_series_bucket{le="64"} 0
+			cortex_bucket_store_series_result_series_bucket{le="128"} 0
+			cortex_bucket_store_series_result_series_bucket{le="256"} 0
+			cortex_bucket_store_series_result_series_bucket{le="512"} 0
+			cortex_bucket_store_series_result_series_bucket{le="1024"} 0
+			cortex_bucket_store_series_result_series_bucket{le="2048"} 0
+			cortex_bucket_store_series_result_series_bucket{le="4096"} 0
+			cortex_bucket_store_series_result_series_bucket{le="8192"} 0
+			cortex_bucket_store_series_result_series_bucket{le="16384"} 0
+			cortex_bucket_store_series_result_series_bucket{le="+Inf"} 6
 			cortex_bucket_store_series_result_series_sum 1.238545e+06
 			cortex_bucket_store_series_result_series_count 6
 
@@ -348,15 +567,15 @@ type mockedBucketStoreMetrics struct {
 	blockLoadFailures     prometheus.Counter
 	blockDrops            prometheus.Counter
 	blockDropFailures     prometheus.Counter
-	seriesDataTouched     *prometheus.SummaryVec
-	seriesDataFetched     *prometheus.SummaryVec
-	seriesDataSizeTouched *prometheus.SummaryVec
-	seriesDataSizeFetched *prometheus.SummaryVec
-	seriesBlocksQueried   prometheus.Summary
+	seriesDataTouched     *prometheus.HistogramVec
+	seriesDataFetched     *prometheus.HistogramVec
+	seriesDataSizeTouched *prometheus.HistogramVec
+	seriesDataSizeFetched *prometheus.HistogramVec
+	seriesBlocksQueried   prometheus.Histogram
 	seriesGetAllDuration  prometheus.Histogram
 	seriesMergeDuration   prometheus.Histogram
 	seriesRefetches       prometheus.Counter
-	resultSeriesCount     prometheus.Summary
+	resultSeriesCount     prometheus.Histogram
 	chunkSizeBytes        prometheus.Histogram
 	queriesDropped        *prometheus.CounterVec
 
@@ -400,27 +619,32 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Help: "Number of currently loaded blocks.",
 	})
 
-	m.seriesDataTouched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-		Name: "thanos_bucket_store_series_data_touched",
-		Help: "How many items of a data type in a block were touched for a single series request.",
+	m.seriesDataTouched = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_series_data_touched",
+		Help:    "How many items of a data type in a block were touched for a single series request.",
+		Buckets: prometheus.ExponentialBuckets(200, 2, 15),
 	}, []string{"data_type"})
-	m.seriesDataFetched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-		Name: "thanos_bucket_store_series_data_fetched",
-		Help: "How many items of a data type in a block were fetched for a single series request.",
-	}, []string{"data_type"})
-
-	m.seriesDataSizeTouched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-		Name: "thanos_bucket_store_series_data_size_touched_bytes",
-		Help: "Size of all items of a data type in a block were touched for a single series request.",
-	}, []string{"data_type"})
-	m.seriesDataSizeFetched = promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{
-		Name: "thanos_bucket_store_series_data_size_fetched_bytes",
-		Help: "Size of all items of a data type in a block were fetched for a single series request.",
+	m.seriesDataFetched = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_series_data_fetched",
+		Help:    "How many items of a data type in a block were fetched for a single series request.",
+		Buckets: prometheus.ExponentialBuckets(200, 2, 15),
 	}, []string{"data_type"})
 
-	m.seriesBlocksQueried = promauto.With(reg).NewSummary(prometheus.SummaryOpts{
-		Name: "thanos_bucket_store_series_blocks_queried",
-		Help: "Number of blocks in a bucket store that were touched to satisfy a query.",
+	m.seriesDataSizeTouched = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_series_data_size_touched_bytes",
+		Help:    "Size of all items of a data type in a block were touched for a single series request.",
+		Buckets: prometheus.ExponentialBuckets(1024, 2, 15),
+	}, []string{"data_type"})
+	m.seriesDataSizeFetched = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_series_data_size_fetched_bytes",
+		Help:    "Size of all items of a data type in a block were fetched for a single series request.",
+		Buckets: prometheus.ExponentialBuckets(1024, 2, 15),
+	}, []string{"data_type"})
+
+	m.seriesBlocksQueried = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_series_blocks_queried",
+		Help:    "Number of blocks in a bucket store that were touched to satisfy a query.",
+		Buckets: prometheus.ExponentialBuckets(1, 2, 10),
 	})
 	m.seriesGetAllDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 		Name:    "thanos_bucket_store_series_get_all_duration_seconds",
@@ -432,9 +656,10 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Help:    "Time it takes to merge sub-results from all queried blocks into a single result.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
-	m.resultSeriesCount = promauto.With(reg).NewSummary(prometheus.SummaryOpts{
-		Name: "thanos_bucket_store_series_result_series",
-		Help: "Number of series observed in the final result of a query.",
+	m.resultSeriesCount = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_series_result_series",
+		Help:    "Number of series observed in the final result of a query.",
+		Buckets: prometheus.ExponentialBuckets(1, 2, 15),
 	})
 
 	m.chunkSizeBytes = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{

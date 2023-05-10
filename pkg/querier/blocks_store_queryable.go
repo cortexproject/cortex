@@ -198,6 +198,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			},
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
+			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 		}, bucketClient, limits, logger, reg)
 	} else {
 		finder = NewBucketScanBlocksFinder(BucketScanBlocksFinderConfig{
@@ -206,6 +207,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MetasConcurrency:         storageCfg.BucketStore.MetaSyncConcurrency,
 			CacheDir:                 storageCfg.BucketStore.SyncDir,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
+			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
 		}, bucketClient, limits, logger, reg)
 	}
 
@@ -637,6 +639,16 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				}
 
 				if err != nil {
+					s, ok := status.FromError(err)
+					if !ok {
+						s, ok = status.FromError(errors.Cause(err))
+					}
+
+					if ok {
+						if s.Code() == codes.ResourceExhausted {
+							return validation.LimitError(s.Message())
+						}
+					}
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
 
@@ -690,16 +702,21 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			}
 
 			numSeries := len(mySeries)
+			numSamples, chunksCount := countSamplesAndChunks(mySeries...)
 			chunkBytes := countChunkBytes(mySeries...)
 			dataBytes := countDataBytes(mySeries...)
 
 			reqStats.AddFetchedSeries(uint64(numSeries))
+			reqStats.AddFetchedChunks(chunksCount)
+			reqStats.AddFetchedSamples(numSamples)
 			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
 			reqStats.AddFetchedDataBytes(uint64(dataBytes))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
 				"fetched series", numSeries,
+				"fetched chunks", chunksCount,
+				"fetched samples", numSamples,
 				"fetched chunk bytes", chunkBytes,
 				"fetched data bytes", dataBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
@@ -756,10 +773,11 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label names from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+
+				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
@@ -837,10 +855,10 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label values from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
@@ -1014,6 +1032,19 @@ func countDataBytes(series ...*storepb.Series) (count int) {
 	}
 
 	return count
+}
+
+// countSamplesAndChunks counts the number of samples and number counts from the series.
+func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount uint64) {
+	for _, s := range series {
+		chunksCount += uint64(len(s.Chunks))
+		for _, c := range s.Chunks {
+			if c.Raw != nil {
+				samplesCount += uint64(c.Raw.XORNumSamples())
+			}
+		}
+	}
+	return
 }
 
 // only retry connection issues

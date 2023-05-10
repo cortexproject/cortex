@@ -4,14 +4,17 @@
 package query
 
 import (
+	"context"
 	"time"
 )
 
 type Options struct {
-	Start         time.Time
-	End           time.Time
-	Step          time.Duration
-	LookbackDelta time.Duration
+	Context          context.Context
+	Start            time.Time
+	End              time.Time
+	Step             time.Duration
+	LookbackDelta    time.Duration
+	ExtLookbackDelta time.Duration
 
 	StepsBatch int64
 }

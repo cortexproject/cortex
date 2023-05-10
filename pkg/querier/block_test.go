@@ -71,13 +71,14 @@ func TestBlockQuerierSeries(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			series := newBlockQuerierSeries(labelpb.ZLabelsToPromLabels(testData.series.Labels), testData.series.Chunks)
 
 			assert.Equal(t, testData.expectedMetric, series.Labels())
 
 			sampleIx := 0
 
-			it := series.Iterator()
+			it := series.Iterator(nil)
 			for it.Next() != chunkenc.ValNone {
 				ts, val := it.At()
 				require.True(t, sampleIx < len(testData.expectedSamples))
@@ -111,6 +112,7 @@ func mockTSDBChunkData() []byte {
 }
 
 func TestBlockQuerierSeriesSet(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 
 	// It would be possible to split this test into smaller parts, but I prefer to keep
@@ -208,7 +210,7 @@ func verifyNextSeries(t *testing.T, ss storage.SeriesSet, labels labels.Labels, 
 
 	prevTS := int64(0)
 	count := 0
-	for it := s.Iterator(); it.Next() != chunkenc.ValNone; {
+	for it := s.Iterator(nil); it.Next() != chunkenc.ValNone; {
 		count++
 		ts, v := it.At()
 		require.Equal(t, math.Sin(float64(ts)), v)
@@ -220,24 +222,24 @@ func verifyNextSeries(t *testing.T, ss storage.SeriesSet, labels labels.Labels, 
 }
 
 func createAggrChunkWithSineSamples(minTime, maxTime time.Time, step time.Duration) storepb.AggrChunk {
-	var samples []promql.Point
+	var samples []promql.FPoint
 
 	minT := minTime.Unix() * 1000
 	maxT := maxTime.Unix() * 1000
 	stepMillis := step.Milliseconds()
 
 	for t := minT; t < maxT; t += stepMillis {
-		samples = append(samples, promql.Point{T: t, V: math.Sin(float64(t))})
+		samples = append(samples, promql.FPoint{T: t, F: math.Sin(float64(t))})
 	}
 
 	return createAggrChunk(minT, maxT, samples...)
 }
 
-func createAggrChunkWithSamples(samples ...promql.Point) storepb.AggrChunk {
+func createAggrChunkWithSamples(samples ...promql.FPoint) storepb.AggrChunk {
 	return createAggrChunk(samples[0].T, samples[len(samples)-1].T, samples...)
 }
 
-func createAggrChunk(minTime, maxTime int64, samples ...promql.Point) storepb.AggrChunk {
+func createAggrChunk(minTime, maxTime int64, samples ...promql.FPoint) storepb.AggrChunk {
 	// Ensure samples are sorted by timestamp.
 	sort.Slice(samples, func(i, j int) bool {
 		return samples[i].T < samples[j].T
@@ -250,7 +252,7 @@ func createAggrChunk(minTime, maxTime int64, samples ...promql.Point) storepb.Ag
 	}
 
 	for _, s := range samples {
-		appender.Append(s.T, s.V)
+		appender.Append(s.T, s.F)
 	}
 
 	return storepb.AggrChunk{
@@ -332,9 +334,10 @@ func Benchmark_blockQuerierSeriesSet_iteration(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		set := blockQuerierSeriesSet{series: series}
 
+		var it chunkenc.Iterator
 		for set.Next() {
-			for t := set.At().Iterator(); t.Next() != chunkenc.ValNone; {
-				t.At()
+			for it = set.At().Iterator(it); it.Next() != chunkenc.ValNone; {
+				it.At()
 			}
 		}
 	}

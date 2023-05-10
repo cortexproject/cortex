@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -79,7 +80,8 @@ func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metad
 			return nil, fmt.Errorf("unable to get visit marker file for block %s: %s", blockID, err.Error())
 		}
 		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, p.ringLifecyclerID) {
-			return nil, fmt.Errorf("block %s is not visited by current compactor %s", blockID, p.ringLifecyclerID)
+			level.Warn(p.logger).Log("msg", "block is not visited by current compactor", "block_id", blockID, "compactor_id", p.ringLifecyclerID)
+			return nil, nil
 		}
 
 		resultMetas = append(resultMetas, b)

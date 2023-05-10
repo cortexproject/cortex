@@ -117,6 +117,7 @@ The store-gateway can use a cache to speed up lookups of postings and series fro
 
 - `inmemory`
 - `memcached`
+- `redis`
 
 #### In-memory index cache
 
@@ -139,20 +140,26 @@ The Memcached client uses a jump hash algorithm to shard cached entries across a
 For example, if you're running Memcached in Kubernetes, you may:
 
 1. Deploy your Memcached cluster using a [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
-2. Create an [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) for Memcached StatefulSet
+2. Create a [headless service](https://kubernetes.io/docs/concepts/services-networking/service/#headless-services) for Memcached StatefulSet
 3. Configure the Cortex's Memcached client address using the `dnssrvnoa+` [service discovery](../configuration/arguments.md#dns-service-discovery)
+
+#### Redis index cache
+
+The `redis` index cache allows to use [Redis](https://memcached.org/) as cache backend. This cache backend is configured using `-blocks-storage.bucket-store.index-cache.backend=redis` and requires the Redis server(s) addresses via `-blocks-storage.bucket-store.index-cache.redis.addresses` (or config file).
+
+Using `redis` as the cache backend has similar trade-offs as using `memcached` cache backend. However, client side caching can be enabled when using `redis` backend to avoid Store Gateway fetching data from cache each time. See [here](https://redis.io/docs/manual/client-side-caching/) for more info and it can be enabled by setting flag `-blocks-storage.bucket-store.index-cache.redis.cache-size` > 0.
 
 ### Chunks cache
 
 Store-gateway can also use a cache for storing chunks fetched from the storage. Chunks contain actual samples, and can be reused if user query hits the same series for the same time range.
 
-To enable chunks cache, please set `-blocks-storage.bucket-store.chunks-cache.backend`. Chunks can currently only be stored into Memcached cache. Memcached client can be configured via flags with `-blocks-storage.bucket-store.chunks-cache.memcached.*` prefix.
+To enable chunks cache, please set `-blocks-storage.bucket-store.chunks-cache.backend`. Chunks can be stored into Memcached or Redis cache. Memcached client can be configured via flags with `-blocks-storage.bucket-store.chunks-cache.memcached.*` prefix. Redis client can be configured via flags with `-blocks-storage.bucket-store.chunks-cache.redis.*` prefix.
 
 There are additional low-level options for configuring chunks cache. Please refer to other flags with `-blocks-storage.bucket-store.chunks-cache.*` prefix.
 
 ### Metadata cache
 
-Store-gateway and [querier](./querier.md) can use memcached for caching bucket metadata:
+Store-gateway and [querier](./querier.md) can use memcached or redis for caching bucket metadata:
 
 - List of tenants
 - List of blocks per tenant
@@ -162,11 +169,11 @@ Store-gateway and [querier](./querier.md) can use memcached for caching bucket m
 
 Using the metadata cache can significantly reduce the number of API calls to object storage and protects from linearly scale the number of these API calls with the number of querier and store-gateway instances (because the bucket is periodically scanned and synched by each querier and store-gateway).
 
-To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. Only `memcached` backend is supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix.
+To enable metadata cache, please set `-blocks-storage.bucket-store.metadata-cache.backend`. `memcached` and `redis` backend are supported currently. Memcached client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.memcached.*` prefix. Redis client has additional configuration available via flags with `-blocks-storage.bucket-store.metadata-cache.redis.*` prefix.
 
 Additional options for configuring metadata cache have `-blocks-storage.bucket-store.metadata-cache.*` prefix. By configuring TTL to zero or negative value, caching of given item type is disabled.
 
-_The same memcached backend cluster should be shared between store-gateways and queriers._
+_The same cache backend deployment should be shared between store-gateways and queriers._
 
 ## Store-gateway HTTP endpoints
 

@@ -43,6 +43,9 @@ type iterator interface {
 	// Seek or Next have returned true.
 	AtTime() int64
 
+	// MaxCurrentChunkTime returns the max time on the current chunk.
+	MaxCurrentChunkTime() int64
+
 	// Batch returns the current batch.  Must only be called after Seek or Next
 	// have returned true.
 	Batch() promchunk.Batch
@@ -98,6 +101,17 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 				a.curr.Index++
 			}
 			return true
+		} else if t <= a.underlying.MaxCurrentChunkTime() {
+			// In this case, some timestamp inside the current underlying chunk can fulfill the seek.
+			// In this case we will call next until we find the sample as it will be faster than calling
+			// `a.underlying.Seek` directly as this would cause the iterator to start from the beginning of the chunk.
+			// See: https://github.com/cortexproject/cortex/blob/f69452975877c67ac307709e5f60b8d20477764c/pkg/querier/batch/chunk.go#L26-L45
+			//      https://github.com/cortexproject/cortex/blob/f69452975877c67ac307709e5f60b8d20477764c/pkg/chunk/encoding/prometheus_chunk.go#L90-L95
+			for a.Next() {
+				if t <= a.curr.Timestamps[a.curr.Index] {
+					return true
+				}
+			}
 		}
 	}
 

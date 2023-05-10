@@ -70,6 +70,7 @@ func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometh
 		ddbMetrics: ddbMetrics,
 		staleData:  make(map[string]staleData),
 	}
+	level.Info(c.logger).Log("dynamodb kv initialized")
 	return c, nil
 }
 

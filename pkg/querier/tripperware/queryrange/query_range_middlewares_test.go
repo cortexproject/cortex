@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -18,7 +19,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
+var (
+	PrometheusCodec        = NewPrometheusCodec(false, time.Minute)
+	ShardedPrometheusCodec = NewPrometheusCodec(false, time.Minute)
+)
+
 func TestRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +59,8 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 		qa,
+		PrometheusCodec,
+		ShardedPrometheusCodec,
 	)
 	require.NoError(t, err)
 
@@ -64,6 +73,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 		qa,
+		time.Minute,
 	)
 
 	for i, tc := range []struct {
@@ -73,6 +83,7 @@ func TestRoundTrip(t *testing.T) {
 		{query, responseBody},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			//parallel testing causes data race
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
 

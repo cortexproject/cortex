@@ -24,6 +24,8 @@ import (
 )
 
 func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
+	t.Parallel()
+
 	// The following block IDs have been picked to have increasing hash values
 	// in order to simplify the tests.
 	block1 := ulid.MustNew(1, nil) // hash: 283204220
@@ -377,6 +379,8 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 }
 
 func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancingStrategy(t *testing.T) {
+	t.Parallel()
+
 	const (
 		numRuns      = 1000
 		numInstances = 3

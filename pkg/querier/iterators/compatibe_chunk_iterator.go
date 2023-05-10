@@ -25,9 +25,12 @@ type compatibleChunksIterator struct {
 	err error
 }
 
+//revive:disable:unexported-return
 func NewCompatibleChunksIterator(i compChunksIterator) *compatibleChunksIterator {
 	return &compatibleChunksIterator{it: i}
 }
+
+//revive:enable:unexported-return
 
 func (c *compatibleChunksIterator) Next() chunkenc.ValueType {
 	if c.it.Next() {

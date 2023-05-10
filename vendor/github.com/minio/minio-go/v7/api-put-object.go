@@ -93,6 +93,28 @@ type PutObjectOptions struct {
 	// This can be used for faster uploads on non-seekable or slow-to-seek input.
 	ConcurrentStreamParts bool
 	Internal              AdvancedPutOptions
+
+	customHeaders http.Header
+}
+
+// SetMatchETag if etag matches while PUT MinIO returns an error
+// this is a MinIO specific extension to support optimistic locking
+// semantics.
+func (opts *PutObjectOptions) SetMatchETag(etag string) {
+	if opts.customHeaders == nil {
+		opts.customHeaders = http.Header{}
+	}
+	opts.customHeaders.Set("If-Match", "\""+etag+"\"")
+}
+
+// SetMatchETagExcept if etag does not match while PUT MinIO returns an
+// error this is a MinIO specific extension to support optimistic locking
+// semantics.
+func (opts *PutObjectOptions) SetMatchETagExcept(etag string) {
+	if opts.customHeaders == nil {
+		opts.customHeaders = http.Header{}
+	}
+	opts.customHeaders.Set("If-None-Match", "\""+etag+"\"")
 }
 
 // getNumThreads - gets the number of threads to be used in the multipart
@@ -187,6 +209,12 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 			header.Set("x-amz-meta-"+k, v)
 		}
 	}
+
+	// set any other additional custom headers.
+	for k, v := range opts.customHeaders {
+		header[k] = v
+	}
+
 	return
 }
 

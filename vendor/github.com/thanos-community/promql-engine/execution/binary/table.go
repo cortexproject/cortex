@@ -6,10 +6,9 @@ package binary
 import (
 	"math"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
+	"github.com/thanos-community/promql-engine/parser"
 )
 
 type binOpSide string
@@ -131,8 +130,7 @@ func (t *table) execBinaryOperation(lhs model.StepVector, rhs model.StepVector, 
 			} else if !keep {
 				continue
 			}
-			step.SampleIDs = append(step.SampleIDs, outputSampleID)
-			step.Samples = append(step.Samples, outputVal)
+			step.AppendSample(t.pool, outputSampleID, outputVal)
 		}
 	}
 
@@ -209,4 +207,13 @@ func btof(b bool) float64 {
 		return 1
 	}
 	return 0
+}
+
+func shouldDropMetricName(op parser.ItemType, returnBool bool) bool {
+	switch op.String() {
+	case "+", "-", "*", "/", "%", "^":
+		return true
+	}
+
+	return op.IsComparisonOperator() && returnBool
 }

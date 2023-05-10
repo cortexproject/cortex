@@ -13,6 +13,7 @@ import (
 )
 
 func TestMarshalSampleStream(t *testing.T) {
+	t.Parallel()
 	for i, tc := range []struct {
 		sampleStream SampleStream
 	}{
@@ -34,7 +35,9 @@ func TestMarshalSampleStream(t *testing.T) {
 			},
 		},
 	} {
+		tc := tc
 		t.Run(fmt.Sprintf("test-case-%d", i), func(t *testing.T) {
+			t.Parallel()
 			out1, err := json.Marshal(tc.sampleStream)
 			require.NoError(t, err)
 			out2, err := tc.sampleStream.MarshalJSON()

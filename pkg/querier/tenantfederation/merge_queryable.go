@@ -451,8 +451,8 @@ func (a *addLabelsSeries) Labels() labels.Labels {
 }
 
 // Iterator returns a new, independent iterator of the data of the series.
-func (a *addLabelsSeries) Iterator() chunkenc.Iterator {
-	return a.upstream.Iterator()
+func (a *addLabelsSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
+	return a.upstream.Iterator(it)
 }
 
 // this sets a label and preserves an existing value a new label prefixed with
@@ -470,5 +470,5 @@ func setLabelsRetainExisting(src labels.Labels, additionalLabels ...labels.Label
 		lb.Set(additionalL.Name, additionalL.Value)
 	}
 
-	return lb.Labels(nil)
+	return lb.Labels()
 }

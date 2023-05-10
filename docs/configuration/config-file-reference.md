@@ -159,14 +159,9 @@ tenant_federation:
 # backend.
 [alertmanager_storage: <alertmanager_storage_config>]
 
-runtime_config:
-  # How often to check runtime config file.
-  # CLI flag: -runtime-config.reload-period
-  [period: <duration> | default = 10s]
-
-  # File with the configuration that can be updated in runtime.
-  # CLI flag: -runtime-config.file
-  [file: <string> | default = ""]
+# The runtime_configuration_storage_config configures the storage backend for
+# the runtime configuration file.
+[runtime_config: <runtime_configuration_storage_config>]
 
 # The memberlist_config configures the Gossip memberlist.
 [memberlist: <memberlist_config>]
@@ -198,7 +193,7 @@ query_scheduler:
     [max_send_msg_size: <int> | default = 16777216]
 
     # Use compression when sending messages. Supported values are: 'gzip',
-    # 'snappy', 'zstd' and '' (disable compression)
+    # 'snappy', 'snappy-block' ,'zstd' and '' (disable compression)
     # CLI flag: -query-scheduler.grpc-client-config.grpc-compression
     [grpc_compression: <string> | default = ""]
 
@@ -260,188 +255,1796 @@ query_scheduler:
 [tracing: <tracing_config>]
 ```
 
-### `server_config`
+### `alertmanager_config`
 
-The `server_config` configures the HTTP and gRPC server of the launched service(s).
+The `alertmanager_config` configures the Cortex alertmanager.
 
 ```yaml
-# HTTP server listen network, default tcp
-# CLI flag: -server.http-listen-network
-[http_listen_network: <string> | default = "tcp"]
+# Base path for data storage.
+# CLI flag: -alertmanager.storage.path
+[data_dir: <string> | default = "data/"]
 
-# HTTP server listen address.
-# CLI flag: -server.http-listen-address
-[http_listen_address: <string> | default = ""]
+# How long to keep data for.
+# CLI flag: -alertmanager.storage.retention
+[retention: <duration> | default = 120h]
 
-# HTTP server listen port.
-# CLI flag: -server.http-listen-port
-[http_listen_port: <int> | default = 80]
+# The URL under which Alertmanager is externally reachable (for example, if
+# Alertmanager is served via a reverse proxy). Used for generating relative and
+# absolute links back to Alertmanager itself. If the URL has a path portion, it
+# will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
+# relevant URL components will be derived automatically.
+# CLI flag: -alertmanager.web.external-url
+[external_url: <url> | default = ]
 
-# Maximum number of simultaneous http connections, <=0 to disable
-# CLI flag: -server.http-conn-limit
-[http_listen_conn_limit: <int> | default = 0]
+# How frequently to poll Cortex configs
+# CLI flag: -alertmanager.configs.poll-interval
+[poll_interval: <duration> | default = 15s]
 
-# gRPC server listen network
-# CLI flag: -server.grpc-listen-network
-[grpc_listen_network: <string> | default = "tcp"]
+# Maximum size (bytes) of an accepted HTTP request body.
+# CLI flag: -alertmanager.max-recv-msg-size
+[max_recv_msg_size: <int> | default = 16777216]
 
-# gRPC server listen address.
-# CLI flag: -server.grpc-listen-address
-[grpc_listen_address: <string> | default = ""]
+# Shard tenants across multiple alertmanager instances.
+# CLI flag: -alertmanager.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
 
-# gRPC server listen port.
-# CLI flag: -server.grpc-listen-port
-[grpc_listen_port: <int> | default = 9095]
+sharding_ring:
+  # The key-value store used to share the hash ring across multiple instances.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -alertmanager.sharding-ring.store
+    [store: <string> | default = "consul"]
 
-# Maximum number of simultaneous grpc connections, <=0 to disable
-# CLI flag: -server.grpc-conn-limit
-[grpc_listen_conn_limit: <int> | default = 0]
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -alertmanager.sharding-ring.prefix
+    [prefix: <string> | default = "alertmanagers/"]
 
-# Comma-separated list of cipher suites to use. If blank, the default Go cipher
-# suites is used.
-# CLI flag: -server.tls-cipher-suites
-[tls_cipher_suites: <string> | default = ""]
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.region
+      [region: <string> | default = ""]
 
-# Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
-# VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
-# CLI flag: -server.tls-min-version
-[tls_min_version: <string> | default = ""]
+      # Table name to use on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
 
-http_tls_config:
-  # HTTP server cert path.
-  # CLI flag: -server.http-tls-cert-path
-  [cert_file: <string> | default = ""]
+      # Time to expire items on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
 
-  # HTTP server key path.
-  # CLI flag: -server.http-tls-key-path
-  [key_file: <string> | default = ""]
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
+    [consul: <consul_config>]
 
-  # HTTP TLS Client Auth type.
-  # CLI flag: -server.http-tls-client-auth
-  [client_auth_type: <string> | default = ""]
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
+    [etcd: <etcd_config>]
 
-  # HTTP TLS Client CA path.
-  # CLI flag: -server.http-tls-ca-path
-  [client_ca_file: <string> | default = ""]
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -alertmanager.sharding-ring.multi.primary
+      [primary: <string> | default = ""]
 
-grpc_tls_config:
-  # GRPC TLS server cert path.
-  # CLI flag: -server.grpc-tls-cert-path
-  [cert_file: <string> | default = ""]
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -alertmanager.sharding-ring.multi.secondary
+      [secondary: <string> | default = ""]
 
-  # GRPC TLS server key path.
-  # CLI flag: -server.grpc-tls-key-path
-  [key_file: <string> | default = ""]
+      # Mirror writes to secondary store.
+      # CLI flag: -alertmanager.sharding-ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
 
-  # GRPC TLS Client Auth type.
-  # CLI flag: -server.grpc-tls-client-auth
-  [client_auth_type: <string> | default = ""]
+      # Timeout for storing value to secondary store.
+      # CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 
-  # GRPC TLS Client CA path.
-  # CLI flag: -server.grpc-tls-ca-path
-  [client_ca_file: <string> | default = ""]
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -alertmanager.sharding-ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 15s]
 
-# Register the intrumentation handlers (/metrics etc).
-# CLI flag: -server.register-instrumentation
-[register_instrumentation: <boolean> | default = true]
+  # The heartbeat timeout after which alertmanagers are considered unhealthy
+  # within the ring. 0 = never (timeout disabled).
+  # CLI flag: -alertmanager.sharding-ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
 
-# Timeout for graceful shutdowns
-# CLI flag: -server.graceful-shutdown-timeout
-[graceful_shutdown_timeout: <duration> | default = 30s]
+  # The replication factor to use when sharding the alertmanager.
+  # CLI flag: -alertmanager.sharding-ring.replication-factor
+  [replication_factor: <int> | default = 3]
 
-# Read timeout for HTTP server
-# CLI flag: -server.http-read-timeout
-[http_server_read_timeout: <duration> | default = 30s]
+  # True to enable zone-awareness and replicate alerts across different
+  # availability zones.
+  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
 
-# Write timeout for HTTP server
-# CLI flag: -server.http-write-timeout
-[http_server_write_timeout: <duration> | default = 30s]
+  # Name of network interface to read address from.
+  # CLI flag: -alertmanager.sharding-ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
 
-# Idle timeout for HTTP server
-# CLI flag: -server.http-idle-timeout
-[http_server_idle_timeout: <duration> | default = 2m]
+  # The availability zone where this instance is running. Required if
+  # zone-awareness is enabled.
+  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
+  [instance_availability_zone: <string> | default = ""]
 
-# Limit on the size of a gRPC message this server can receive (bytes).
-# CLI flag: -server.grpc-max-recv-msg-size-bytes
-[grpc_server_max_recv_msg_size: <int> | default = 4194304]
+# Filename of fallback config to use if none specified for instance.
+# CLI flag: -alertmanager.configs.fallback
+[fallback_config_file: <string> | default = ""]
 
-# Limit on the size of a gRPC message this server can send (bytes).
-# CLI flag: -server.grpc-max-send-msg-size-bytes
-[grpc_server_max_send_msg_size: <int> | default = 4194304]
+# Root of URL to generate if config is http://internal.monitor
+# CLI flag: -alertmanager.configs.auto-webhook-root
+[auto_webhook_root: <string> | default = ""]
 
-# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
-# CLI flag: -server.grpc-max-concurrent-streams
-[grpc_server_max_concurrent_streams: <int> | default = 100]
+cluster:
+  # Listen address and port for the cluster. Not specifying this flag disables
+  # high-availability mode.
+  # CLI flag: -alertmanager.cluster.listen-address
+  [listen_address: <string> | default = "0.0.0.0:9094"]
 
-# The duration after which an idle connection should be closed. Default:
-# infinity
-# CLI flag: -server.grpc.keepalive.max-connection-idle
-[grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
+  # Explicit address or hostname to advertise in cluster.
+  # CLI flag: -alertmanager.cluster.advertise-address
+  [advertise_address: <string> | default = ""]
 
-# The duration for the maximum amount of time a connection may exist before it
-# will be closed. Default: infinity
-# CLI flag: -server.grpc.keepalive.max-connection-age
-[grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
+  # Comma-separated list of initial peers.
+  # CLI flag: -alertmanager.cluster.peers
+  [peers: <string> | default = ""]
 
-# An additive period after max-connection-age after which the connection will be
-# forcibly closed. Default: infinity
-# CLI flag: -server.grpc.keepalive.max-connection-age-grace
-[grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
+  # Time to wait between peers to send notifications.
+  # CLI flag: -alertmanager.cluster.peer-timeout
+  [peer_timeout: <duration> | default = 15s]
 
-# Duration after which a keepalive probe is sent in case of no activity over the
-# connection., Default: 2h
-# CLI flag: -server.grpc.keepalive.time
-[grpc_server_keepalive_time: <duration> | default = 2h]
+  # The interval between sending gossip messages. By lowering this value (more
+  # frequent) gossip messages are propagated across cluster more quickly at the
+  # expense of increased bandwidth usage.
+  # CLI flag: -alertmanager.cluster.gossip-interval
+  [gossip_interval: <duration> | default = 200ms]
 
-# After having pinged for keepalive check, the duration after which an idle
-# connection should be closed, Default: 20s
-# CLI flag: -server.grpc.keepalive.timeout
-[grpc_server_keepalive_timeout: <duration> | default = 20s]
+  # The interval between gossip state syncs. Setting this interval lower (more
+  # frequent) will increase convergence speeds across larger clusters at the
+  # expense of increased bandwidth usage.
+  # CLI flag: -alertmanager.cluster.push-pull-interval
+  [push_pull_interval: <duration> | default = 1m]
 
-# Minimum amount of time a client should wait before sending a keepalive ping.
-# If client sends keepalive ping more often, server will send GOAWAY and close
-# the connection.
-# CLI flag: -server.grpc.keepalive.min-time-between-pings
-[grpc_server_min_time_between_pings: <duration> | default = 10s]
+# Enable the experimental alertmanager config api.
+# CLI flag: -experimental.alertmanager.enable-api
+[enable_api: <boolean> | default = false]
 
-# If true, server allows keepalive pings even when there are no active
-# streams(RPCs). If false, and client sends ping when there are no active
-# streams, server will send GOAWAY and close the connection.
-# CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
-[grpc_server_ping_without_stream_allowed: <boolean> | default = true]
+alertmanager_client:
+  # Timeout for downstream alertmanagers.
+  # CLI flag: -alertmanager.alertmanager-client.remote-timeout
+  [remote_timeout: <duration> | default = 2s]
 
-# Output log messages in the given format. Valid formats: [logfmt, json]
-# CLI flag: -log.format
-[log_format: <string> | default = "logfmt"]
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -alertmanager.alertmanager-client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
 
-# Only log messages with the given severity or above. Valid levels: [debug,
-# info, warn, error]
-# CLI flag: -log.level
-[log_level: <string> | default = "info"]
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -alertmanager.alertmanager-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
 
-# Optionally log the source IPs.
-# CLI flag: -server.log-source-ips-enabled
-[log_source_ips_enabled: <boolean> | default = false]
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -alertmanager.alertmanager-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
 
-# Header field storing the source IPs. Only used if
-# server.log-source-ips-enabled is true. If not set the default Forwarded,
-# X-Real-IP and X-Forwarded-For headers are used
-# CLI flag: -server.log-source-ips-header
-[log_source_ips_header: <string> | default = ""]
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -alertmanager.alertmanager-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 
-# Regex for matching the source IPs. Only used if server.log-source-ips-enabled
-# is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For
-# headers are used
-# CLI flag: -server.log-source-ips-regex
-[log_source_ips_regex: <string> | default = ""]
+  # Override the expected name on the server certificate.
+  # CLI flag: -alertmanager.alertmanager-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
 
-# Optionally log requests at info level instead of debug level.
-# CLI flag: -server.log-request-at-info-level-enabled
-[log_request_at_info_level_enabled: <boolean> | default = false]
+  # Skip validating server certificate.
+  # CLI flag: -alertmanager.alertmanager-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
 
-# Base path to serve all API routes from (e.g. /v1/)
-# CLI flag: -server.path-prefix
-[http_path_prefix: <string> | default = ""]
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy' and '' (disable compression)
+  # CLI flag: -alertmanager.alertmanager-client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+# The interval between persisting the current alertmanager state (notification
+# log and silences) to object storage. This is only used when sharding is
+# enabled. This state is read when all replicas for a shard can not be
+# contacted. In this scenario, having persisted the state more frequently will
+# result in potentially fewer lost silences, and fewer duplicate notifications.
+# CLI flag: -alertmanager.persist-interval
+[persist_interval: <duration> | default = 15m]
+
+# Comma separated list of tenants whose alerts this alertmanager can process. If
+# specified, only these tenants will be handled by alertmanager, otherwise this
+# alertmanager can process alerts from all tenants.
+# CLI flag: -alertmanager.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants whose alerts this alertmanager cannot process.
+# If specified, a alertmanager that would normally pick the specified tenant(s)
+# for processing will ignore them instead.
+# CLI flag: -alertmanager.disabled-tenants
+[disabled_tenants: <string> | default = ""]
+```
+
+### `alertmanager_storage_config`
+
+The `alertmanager_storage_config` configures the Cortex alertmanager storage backend.
+
+```yaml
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# filesystem, configdb, local.
+# CLI flag: -alertmanager-storage.backend
+[backend: <string> | default = "s3"]
+
+s3:
+  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+  # S3-compatible service in hostname:port format.
+  # CLI flag: -alertmanager-storage.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
+  # CLI flag: -alertmanager-storage.s3.region
+  [region: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -alertmanager-storage.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -alertmanager-storage.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -alertmanager-storage.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -alertmanager-storage.s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # The signature version to use for authenticating against S3. Supported values
+  # are: v4, v2.
+  # CLI flag: -alertmanager-storage.s3.signature-version
+  [signature_version: <string> | default = "v4"]
+
+  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+  # path.
+  # CLI flag: -alertmanager-storage.s3.bucket-lookup-type
+  [bucket_lookup_type: <string> | default = "auto"]
+
+  # The s3_sse_config configures the S3 server-side encryption.
+  # The CLI flags prefix for this block config is: alertmanager-storage
+  [sse: <s3_sse_config>]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -alertmanager-storage.s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -alertmanager-storage.s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -alertmanager-storage.s3.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -alertmanager-storage.s3.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -alertmanager-storage.s3.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -alertmanager-storage.s3.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -alertmanager-storage.s3.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -alertmanager-storage.s3.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -alertmanager-storage.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON representing either a Google Developers Console client_credentials.json
+  # file or a Google Developers service account key file. If empty, fallback to
+  # Google default logic.
+  # CLI flag: -alertmanager-storage.gcs.service-account
+  [service_account: <string> | default = ""]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -alertmanager-storage.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key
+  # CLI flag: -alertmanager-storage.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -alertmanager-storage.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN
+  # CLI flag: -alertmanager-storage.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -alertmanager-storage.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+  # Azure storage MSI resource. Either this or account key must be set.
+  # CLI flag: -alertmanager-storage.azure.msi-resource
+  [msi_resource: <string> | default = ""]
+
+  # Azure storage MSI resource managed identity client Id. If not supplied
+  # system assigned identity is used
+  # CLI flag: -alertmanager-storage.azure.user-assigned-id
+  [user_assigned_id: <string> | default = ""]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -alertmanager-storage.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -alertmanager-storage.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -alertmanager-storage.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -alertmanager-storage.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -alertmanager-storage.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -alertmanager-storage.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -alertmanager-storage.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -alertmanager-storage.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+swift:
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -alertmanager-storage.swift.auth-version
+  [auth_version: <int> | default = 0]
+
+  # OpenStack Swift authentication URL
+  # CLI flag: -alertmanager-storage.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # OpenStack Swift username.
+  # CLI flag: -alertmanager-storage.swift.username
+  [username: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -alertmanager-storage.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -alertmanager-storage.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # OpenStack Swift user ID.
+  # CLI flag: -alertmanager-storage.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # OpenStack Swift API key.
+  # CLI flag: -alertmanager-storage.swift.password
+  [password: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -alertmanager-storage.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -alertmanager-storage.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # OpenStack Swift project ID (v2,v3 auth only).
+  # CLI flag: -alertmanager-storage.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # OpenStack Swift project name (v2,v3 auth only).
+  # CLI flag: -alertmanager-storage.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
+  # differs the from user domain.
+  # CLI flag: -alertmanager-storage.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
+  # it differs from the user domain.
+  # CLI flag: -alertmanager-storage.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # OpenStack Swift Region to use (v2,v3 auth only).
+  # CLI flag: -alertmanager-storage.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the OpenStack Swift container to put chunks in.
+  # CLI flag: -alertmanager-storage.swift.container-name
+  [container_name: <string> | default = ""]
+
+  # Max retries on requests error.
+  # CLI flag: -alertmanager-storage.swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # Time after which a connection attempt is aborted.
+  # CLI flag: -alertmanager-storage.swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # Time after which an idle request is aborted. The timeout watchdog is reset
+  # each time some data is received, so the timeout triggers after X time no
+  # data is received on a request.
+  # CLI flag: -alertmanager-storage.swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
+
+filesystem:
+  # Local filesystem storage directory.
+  # CLI flag: -alertmanager-storage.filesystem.dir
+  [dir: <string> | default = ""]
+
+# The configstore_config configures the config database storing rules and
+# alerts, and is used by the Cortex alertmanager.
+# The CLI flags prefix for this block config is: alertmanager-storage
+[configdb: <configstore_config>]
+
+local:
+  # Path at which alertmanager configurations are stored.
+  # CLI flag: -alertmanager-storage.local.path
+  [path: <string> | default = ""]
+```
+
+### `blocks_storage_config`
+
+The `blocks_storage_config` configures the blocks storage.
+
+```yaml
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# filesystem.
+# CLI flag: -blocks-storage.backend
+[backend: <string> | default = "s3"]
+
+s3:
+  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
+  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
+  # S3-compatible service in hostname:port format.
+  # CLI flag: -blocks-storage.s3.endpoint
+  [endpoint: <string> | default = ""]
+
+  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
+  # to autodetect it.
+  # CLI flag: -blocks-storage.s3.region
+  [region: <string> | default = ""]
+
+  # S3 bucket name
+  # CLI flag: -blocks-storage.s3.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # S3 secret access key
+  # CLI flag: -blocks-storage.s3.secret-access-key
+  [secret_access_key: <string> | default = ""]
+
+  # S3 access key ID
+  # CLI flag: -blocks-storage.s3.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # If enabled, use http:// for the S3 endpoint instead of https://. This could
+  # be useful in local dev/test environments while using an S3-compatible
+  # backend storage, like Minio.
+  # CLI flag: -blocks-storage.s3.insecure
+  [insecure: <boolean> | default = false]
+
+  # The signature version to use for authenticating against S3. Supported values
+  # are: v4, v2.
+  # CLI flag: -blocks-storage.s3.signature-version
+  [signature_version: <string> | default = "v4"]
+
+  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
+  # path.
+  # CLI flag: -blocks-storage.s3.bucket-lookup-type
+  [bucket_lookup_type: <string> | default = "auto"]
+
+  # The s3_sse_config configures the S3 server-side encryption.
+  # The CLI flags prefix for this block config is: blocks-storage
+  [sse: <s3_sse_config>]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -blocks-storage.s3.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -blocks-storage.s3.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -blocks-storage.s3.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -blocks-storage.s3.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -blocks-storage.s3.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -blocks-storage.s3.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+gcs:
+  # GCS bucket name
+  # CLI flag: -blocks-storage.gcs.bucket-name
+  [bucket_name: <string> | default = ""]
+
+  # JSON representing either a Google Developers Console client_credentials.json
+  # file or a Google Developers service account key file. If empty, fallback to
+  # Google default logic.
+  # CLI flag: -blocks-storage.gcs.service-account
+  [service_account: <string> | default = ""]
+
+azure:
+  # Azure storage account name
+  # CLI flag: -blocks-storage.azure.account-name
+  [account_name: <string> | default = ""]
+
+  # Azure storage account key
+  # CLI flag: -blocks-storage.azure.account-key
+  [account_key: <string> | default = ""]
+
+  # Azure storage container name
+  # CLI flag: -blocks-storage.azure.container-name
+  [container_name: <string> | default = ""]
+
+  # Azure storage endpoint suffix without schema. The account name will be
+  # prefixed to this value to create the FQDN
+  # CLI flag: -blocks-storage.azure.endpoint-suffix
+  [endpoint_suffix: <string> | default = ""]
+
+  # Number of retries for recoverable errors
+  # CLI flag: -blocks-storage.azure.max-retries
+  [max_retries: <int> | default = 20]
+
+  # Azure storage MSI resource. Either this or account key must be set.
+  # CLI flag: -blocks-storage.azure.msi-resource
+  [msi_resource: <string> | default = ""]
+
+  # Azure storage MSI resource managed identity client Id. If not supplied
+  # system assigned identity is used
+  # CLI flag: -blocks-storage.azure.user-assigned-id
+  [user_assigned_id: <string> | default = ""]
+
+  http:
+    # The time an idle connection will remain idle before closing.
+    # CLI flag: -blocks-storage.azure.http.idle-conn-timeout
+    [idle_conn_timeout: <duration> | default = 1m30s]
+
+    # The amount of time the client will wait for a servers response headers.
+    # CLI flag: -blocks-storage.azure.http.response-header-timeout
+    [response_header_timeout: <duration> | default = 2m]
+
+    # If the client connects via HTTPS and this option is enabled, the client
+    # will accept any certificate and hostname.
+    # CLI flag: -blocks-storage.azure.http.insecure-skip-verify
+    [insecure_skip_verify: <boolean> | default = false]
+
+    # Maximum time to wait for a TLS handshake. 0 means no limit.
+    # CLI flag: -blocks-storage.azure.tls-handshake-timeout
+    [tls_handshake_timeout: <duration> | default = 10s]
+
+    # The time to wait for a server's first response headers after fully writing
+    # the request headers if the request has an Expect header. 0 to send the
+    # request body immediately.
+    # CLI flag: -blocks-storage.azure.expect-continue-timeout
+    [expect_continue_timeout: <duration> | default = 1s]
+
+    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
+    # no limit.
+    # CLI flag: -blocks-storage.azure.max-idle-connections
+    [max_idle_connections: <int> | default = 100]
+
+    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
+    # built-in default value is used.
+    # CLI flag: -blocks-storage.azure.max-idle-connections-per-host
+    [max_idle_connections_per_host: <int> | default = 100]
+
+    # Maximum number of connections per host. 0 means no limit.
+    # CLI flag: -blocks-storage.azure.max-connections-per-host
+    [max_connections_per_host: <int> | default = 0]
+
+swift:
+  # OpenStack Swift authentication API version. 0 to autodetect.
+  # CLI flag: -blocks-storage.swift.auth-version
+  [auth_version: <int> | default = 0]
+
+  # OpenStack Swift authentication URL
+  # CLI flag: -blocks-storage.swift.auth-url
+  [auth_url: <string> | default = ""]
+
+  # OpenStack Swift username.
+  # CLI flag: -blocks-storage.swift.username
+  [username: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -blocks-storage.swift.user-domain-name
+  [user_domain_name: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -blocks-storage.swift.user-domain-id
+  [user_domain_id: <string> | default = ""]
+
+  # OpenStack Swift user ID.
+  # CLI flag: -blocks-storage.swift.user-id
+  [user_id: <string> | default = ""]
+
+  # OpenStack Swift API key.
+  # CLI flag: -blocks-storage.swift.password
+  [password: <string> | default = ""]
+
+  # OpenStack Swift user's domain ID.
+  # CLI flag: -blocks-storage.swift.domain-id
+  [domain_id: <string> | default = ""]
+
+  # OpenStack Swift user's domain name.
+  # CLI flag: -blocks-storage.swift.domain-name
+  [domain_name: <string> | default = ""]
+
+  # OpenStack Swift project ID (v2,v3 auth only).
+  # CLI flag: -blocks-storage.swift.project-id
+  [project_id: <string> | default = ""]
+
+  # OpenStack Swift project name (v2,v3 auth only).
+  # CLI flag: -blocks-storage.swift.project-name
+  [project_name: <string> | default = ""]
+
+  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
+  # differs the from user domain.
+  # CLI flag: -blocks-storage.swift.project-domain-id
+  [project_domain_id: <string> | default = ""]
+
+  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
+  # it differs from the user domain.
+  # CLI flag: -blocks-storage.swift.project-domain-name
+  [project_domain_name: <string> | default = ""]
+
+  # OpenStack Swift Region to use (v2,v3 auth only).
+  # CLI flag: -blocks-storage.swift.region-name
+  [region_name: <string> | default = ""]
+
+  # Name of the OpenStack Swift container to put chunks in.
+  # CLI flag: -blocks-storage.swift.container-name
+  [container_name: <string> | default = ""]
+
+  # Max retries on requests error.
+  # CLI flag: -blocks-storage.swift.max-retries
+  [max_retries: <int> | default = 3]
+
+  # Time after which a connection attempt is aborted.
+  # CLI flag: -blocks-storage.swift.connect-timeout
+  [connect_timeout: <duration> | default = 10s]
+
+  # Time after which an idle request is aborted. The timeout watchdog is reset
+  # each time some data is received, so the timeout triggers after X time no
+  # data is received on a request.
+  # CLI flag: -blocks-storage.swift.request-timeout
+  [request_timeout: <duration> | default = 5s]
+
+filesystem:
+  # Local filesystem storage directory.
+  # CLI flag: -blocks-storage.filesystem.dir
+  [dir: <string> | default = ""]
+
+# This configures how the querier and store-gateway discover and synchronize
+# blocks stored in the bucket.
+bucket_store:
+  # Directory to store synchronized TSDB index headers.
+  # CLI flag: -blocks-storage.bucket-store.sync-dir
+  [sync_dir: <string> | default = "tsdb-sync"]
+
+  # How frequently to scan the bucket, or to refresh the bucket index (if
+  # enabled), in order to look for changes (new blocks shipped by ingesters and
+  # blocks deleted by retention or compaction).
+  # CLI flag: -blocks-storage.bucket-store.sync-interval
+  [sync_interval: <duration> | default = 15m]
+
+  # Max number of concurrent queries to execute against the long-term storage.
+  # The limit is shared across all tenants.
+  # CLI flag: -blocks-storage.bucket-store.max-concurrent
+  [max_concurrent: <int> | default = 100]
+
+  # Maximum number of concurrent tenants synching blocks.
+  # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
+  [tenant_sync_concurrency: <int> | default = 10]
+
+  # Maximum number of concurrent blocks synching per tenant.
+  # CLI flag: -blocks-storage.bucket-store.block-sync-concurrency
+  [block_sync_concurrency: <int> | default = 20]
+
+  # Number of Go routines to use when syncing block meta files from object
+  # storage per tenant.
+  # CLI flag: -blocks-storage.bucket-store.meta-sync-concurrency
+  [meta_sync_concurrency: <int> | default = 20]
+
+  # Minimum age of a block before it's being read. Set it to safe value (e.g
+  # 30m) if your object storage is eventually consistent. GCS and S3 are
+  # (roughly) strongly consistent.
+  # CLI flag: -blocks-storage.bucket-store.consistency-delay
+  [consistency_delay: <duration> | default = 0s]
+
+  index_cache:
+    # The index cache backend type. Supported values: inmemory, memcached,
+    # redis.
+    # CLI flag: -blocks-storage.bucket-store.index-cache.backend
+    [backend: <string> | default = "inmemory"]
+
+    inmemory:
+      # Maximum size in bytes of in-memory index cache used to speed up blocks
+      # index lookups (shared between all tenants).
+      # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes
+      [max_size_bytes: <int> | default = 1073741824]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are split into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
+
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
+    redis:
+      # Comma separated list of redis addresses. Supported prefixes are: dns+
+      # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.addresses
+      [addresses: <string> | default = ""]
+
+      # Redis username.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.username
+      [username: <string> | default = ""]
+
+      # Redis password.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.password
+      [password: <string> | default = ""]
+
+      # Database to be selected after connecting to the server.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.db
+      [db: <int> | default = 0]
+
+      # Specifies the master's name. Must be not empty for Redis Sentinel.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.master-name
+      [master_name: <string> | default = ""]
+
+      # Maximum number of socket connections.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.pool-size
+      [pool_size: <int> | default = 100]
+
+      # Specifies the minimum number of idle connections, which is useful when
+      # it is slow to establish new connections.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.min-idle-conns
+      [min_idle_conns: <int> | default = 10]
+
+      # The maximum number of concurrent GetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for mget.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.get-multi-batch-size
+      [get_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent SetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-set-multi-concurrency
+      [max_set_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for pipeline set.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-multi-batch-size
+      [set_multi_batch_size: <int> | default = 100]
+
+      # Client dial timeout.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.dial-timeout
+      [dial_timeout: <duration> | default = 5s]
+
+      # Client read timeout.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.read-timeout
+      [read_timeout: <duration> | default = 3s]
+
+      # Client write timeout.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.write-timeout
+      [write_timeout: <duration> | default = 3s]
+
+      # Amount of time after which client closes idle connections. Should be
+      # less than server's timeout. -1 disables idle timeout check.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.idle-timeout
+      [idle_timeout: <duration> | default = 5m]
+
+      # Connection age at which client retires (closes) the connection. Default
+      # 0 is to not close aged connections.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-conn-age
+      [max_conn_age: <duration> | default = 0s]
+
+      # Whether to enable tls for redis connection.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-enabled
+      [tls_enabled: <boolean> | default = false]
+
+      # Path to the client certificate file, which will be used for
+      # authenticating with the server. Also requires the key path to be
+      # configured.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-cert-path
+      [tls_cert_path: <string> | default = ""]
+
+      # Path to the key file for the client certificate. Also requires the
+      # client certificate to be configured.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-key-path
+      [tls_key_path: <string> | default = ""]
+
+      # Path to the CA certificates file to validate server certificate against.
+      # If not set, the host's root CA certificates are used.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-ca-path
+      [tls_ca_path: <string> | default = ""]
+
+      # Override the expected name on the server certificate.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-server-name
+      [tls_server_name: <string> | default = ""]
+
+      # Skip validating server certificate.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis..tls-insecure-skip-verify
+      [tls_insecure_skip_verify: <boolean> | default = false]
+
+      # If not zero then client-side caching is enabled. Client-side caching is
+      # when data is stored in memory instead of fetching data each time. See
+      # https://redis.io/docs/manual/client-side-caching/ for more info.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
+      [cache_size: <int> | default = 0]
+
+  chunks_cache:
+    # Backend for chunks cache, if not empty. Supported values: memcached.
+    # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
+    [backend: <string> | default = ""]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are split into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
+
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
+    redis:
+      # Comma separated list of redis addresses. Supported prefixes are: dns+
+      # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.addresses
+      [addresses: <string> | default = ""]
+
+      # Redis username.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.username
+      [username: <string> | default = ""]
+
+      # Redis password.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.password
+      [password: <string> | default = ""]
+
+      # Database to be selected after connecting to the server.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.db
+      [db: <int> | default = 0]
+
+      # Specifies the master's name. Must be not empty for Redis Sentinel.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.master-name
+      [master_name: <string> | default = ""]
+
+      # Maximum number of socket connections.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.pool-size
+      [pool_size: <int> | default = 100]
+
+      # Specifies the minimum number of idle connections, which is useful when
+      # it is slow to establish new connections.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.min-idle-conns
+      [min_idle_conns: <int> | default = 10]
+
+      # The maximum number of concurrent GetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for mget.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.get-multi-batch-size
+      [get_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent SetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-set-multi-concurrency
+      [max_set_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for pipeline set.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-multi-batch-size
+      [set_multi_batch_size: <int> | default = 100]
+
+      # Client dial timeout.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.dial-timeout
+      [dial_timeout: <duration> | default = 5s]
+
+      # Client read timeout.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.read-timeout
+      [read_timeout: <duration> | default = 3s]
+
+      # Client write timeout.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.write-timeout
+      [write_timeout: <duration> | default = 3s]
+
+      # Amount of time after which client closes idle connections. Should be
+      # less than server's timeout. -1 disables idle timeout check.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.idle-timeout
+      [idle_timeout: <duration> | default = 5m]
+
+      # Connection age at which client retires (closes) the connection. Default
+      # 0 is to not close aged connections.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-conn-age
+      [max_conn_age: <duration> | default = 0s]
+
+      # Whether to enable tls for redis connection.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-enabled
+      [tls_enabled: <boolean> | default = false]
+
+      # Path to the client certificate file, which will be used for
+      # authenticating with the server. Also requires the key path to be
+      # configured.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-cert-path
+      [tls_cert_path: <string> | default = ""]
+
+      # Path to the key file for the client certificate. Also requires the
+      # client certificate to be configured.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-key-path
+      [tls_key_path: <string> | default = ""]
+
+      # Path to the CA certificates file to validate server certificate against.
+      # If not set, the host's root CA certificates are used.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-ca-path
+      [tls_ca_path: <string> | default = ""]
+
+      # Override the expected name on the server certificate.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-server-name
+      [tls_server_name: <string> | default = ""]
+
+      # Skip validating server certificate.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis..tls-insecure-skip-verify
+      [tls_insecure_skip_verify: <boolean> | default = false]
+
+      # If not zero then client-side caching is enabled. Client-side caching is
+      # when data is stored in memory instead of fetching data each time. See
+      # https://redis.io/docs/manual/client-side-caching/ for more info.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.cache-size
+      [cache_size: <int> | default = 0]
+
+    # Size of each subrange that bucket object is split into for better caching.
+    # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
+    [subrange_size: <int> | default = 16000]
+
+    # Maximum number of sub-GetRange requests that a single GetRange request can
+    # be split into when fetching chunks. Zero or negative value = unlimited
+    # number of sub-requests.
+    # CLI flag: -blocks-storage.bucket-store.chunks-cache.max-get-range-requests
+    [max_get_range_requests: <int> | default = 3]
+
+    # TTL for caching object attributes for chunks.
+    # CLI flag: -blocks-storage.bucket-store.chunks-cache.attributes-ttl
+    [attributes_ttl: <duration> | default = 168h]
+
+    # TTL for caching individual chunks subranges.
+    # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-ttl
+    [subrange_ttl: <duration> | default = 24h]
+
+  metadata_cache:
+    # Backend for metadata cache, if not empty. Supported values: memcached.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.backend
+    [backend: <string> | default = ""]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are split into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
+
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
+    redis:
+      # Comma separated list of redis addresses. Supported prefixes are: dns+
+      # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.addresses
+      [addresses: <string> | default = ""]
+
+      # Redis username.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.username
+      [username: <string> | default = ""]
+
+      # Redis password.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.password
+      [password: <string> | default = ""]
+
+      # Database to be selected after connecting to the server.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.db
+      [db: <int> | default = 0]
+
+      # Specifies the master's name. Must be not empty for Redis Sentinel.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.master-name
+      [master_name: <string> | default = ""]
+
+      # Maximum number of socket connections.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.pool-size
+      [pool_size: <int> | default = 100]
+
+      # Specifies the minimum number of idle connections, which is useful when
+      # it is slow to establish new connections.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.min-idle-conns
+      [min_idle_conns: <int> | default = 10]
+
+      # The maximum number of concurrent GetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for mget.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.get-multi-batch-size
+      [get_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent SetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-set-multi-concurrency
+      [max_set_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for pipeline set.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-multi-batch-size
+      [set_multi_batch_size: <int> | default = 100]
+
+      # Client dial timeout.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.dial-timeout
+      [dial_timeout: <duration> | default = 5s]
+
+      # Client read timeout.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.read-timeout
+      [read_timeout: <duration> | default = 3s]
+
+      # Client write timeout.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.write-timeout
+      [write_timeout: <duration> | default = 3s]
+
+      # Amount of time after which client closes idle connections. Should be
+      # less than server's timeout. -1 disables idle timeout check.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.idle-timeout
+      [idle_timeout: <duration> | default = 5m]
+
+      # Connection age at which client retires (closes) the connection. Default
+      # 0 is to not close aged connections.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-conn-age
+      [max_conn_age: <duration> | default = 0s]
+
+      # Whether to enable tls for redis connection.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-enabled
+      [tls_enabled: <boolean> | default = false]
+
+      # Path to the client certificate file, which will be used for
+      # authenticating with the server. Also requires the key path to be
+      # configured.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-cert-path
+      [tls_cert_path: <string> | default = ""]
+
+      # Path to the key file for the client certificate. Also requires the
+      # client certificate to be configured.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-key-path
+      [tls_key_path: <string> | default = ""]
+
+      # Path to the CA certificates file to validate server certificate against.
+      # If not set, the host's root CA certificates are used.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-ca-path
+      [tls_ca_path: <string> | default = ""]
+
+      # Override the expected name on the server certificate.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-server-name
+      [tls_server_name: <string> | default = ""]
+
+      # Skip validating server certificate.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis..tls-insecure-skip-verify
+      [tls_insecure_skip_verify: <boolean> | default = false]
+
+      # If not zero then client-side caching is enabled. Client-side caching is
+      # when data is stored in memory instead of fetching data each time. See
+      # https://redis.io/docs/manual/client-side-caching/ for more info.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.cache-size
+      [cache_size: <int> | default = 0]
+
+    # How long to cache list of tenants in the bucket.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
+    [tenants_list_ttl: <duration> | default = 15m]
+
+    # How long to cache list of blocks for each tenant.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl
+    [tenant_blocks_list_ttl: <duration> | default = 5m]
+
+    # How long to cache list of chunks for a block.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
+    [chunks_list_ttl: <duration> | default = 24h]
+
+    # How long to cache information that block metafile exists. Also used for
+    # user deletion mark file.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-exists-ttl
+    [metafile_exists_ttl: <duration> | default = 2h]
+
+    # How long to cache information that block metafile doesn't exist. Also used
+    # for user deletion mark file.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
+    [metafile_doesnt_exist_ttl: <duration> | default = 5m]
+
+    # How long to cache content of the metafile.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-content-ttl
+    [metafile_content_ttl: <duration> | default = 24h]
+
+    # Maximum size of metafile content to cache in bytes. Caching will be
+    # skipped if the content exceeds this size. This is useful to avoid network
+    # round trip for large content if the configured caching backend has an hard
+    # limit on cached items size (in this case, you should set this limit to the
+    # same limit in the caching backend).
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
+    [metafile_max_size_bytes: <int> | default = 1048576]
+
+    # How long to cache attributes of the block metafile.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
+    [metafile_attributes_ttl: <duration> | default = 168h]
+
+    # How long to cache attributes of the block index.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.block-index-attributes-ttl
+    [block_index_attributes_ttl: <duration> | default = 168h]
+
+    # How long to cache content of the bucket index.
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
+    [bucket_index_content_ttl: <duration> | default = 5m]
+
+    # Maximum size of bucket index content to cache in bytes. Caching will be
+    # skipped if the content exceeds this size. This is useful to avoid network
+    # round trip for large content if the configured caching backend has an hard
+    # limit on cached items size (in this case, you should set this limit to the
+    # same limit in the caching backend).
+    # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
+    [bucket_index_max_size_bytes: <int> | default = 1048576]
+
+  # Duration after which the blocks marked for deletion will be filtered out
+  # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
+  # blocks that are marked for deletion with some delay. This ensures store can
+  # still serve blocks that are meant to be deleted but do not have a
+  # replacement yet. Default is 6h, half of the default value for
+  # -compactor.deletion-delay.
+  # CLI flag: -blocks-storage.bucket-store.ignore-deletion-marks-delay
+  [ignore_deletion_mark_delay: <duration> | default = 6h]
+
+  # The blocks created since `now() - ignore_blocks_within` will not be synced.
+  # This should be used together with `-querier.query-store-after` to filter out
+  # the blocks that are too new to be queried. A reasonable value for this flag
+  # would be `-querier.query-store-after -
+  # blocks-storage.bucket-store.bucket-index.max-stale-period` to give some
+  # buffer. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.ignore-blocks-within
+  [ignore_blocks_within: <duration> | default = 0s]
+
+  bucket_index:
+    # True to enable querier and store-gateway to discover blocks in the storage
+    # via bucket index instead of bucket scanning.
+    # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
+    [enabled: <boolean> | default = false]
+
+    # How frequently a bucket index, which previously failed to load, should be
+    # tried to load again. This option is used only by querier.
+    # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
+    [update_on_error_interval: <duration> | default = 1m]
+
+    # How long a unused bucket index should be cached. Once this timeout
+    # expires, the unused bucket index is removed from the in-memory cache. This
+    # option is used only by querier.
+    # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
+    [idle_timeout: <duration> | default = 1h]
+
+    # The maximum allowed age of a bucket index (last updated) before queries
+    # start failing because the bucket index is too old. The bucket index is
+    # periodically updated by the compactor, while this check is enforced in the
+    # querier (at query time).
+    # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
+    [max_stale_period: <duration> | default = 1h]
+
+  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
+  # The pool is shared across all tenants. 0 to disable the limit.
+  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
+  [max_chunk_pool_bytes: <int> | default = 2147483648]
+
+  # If enabled, store-gateway will lazily memory-map an index-header only once
+  # required by a query.
+  # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
+  [index_header_lazy_loading_enabled: <boolean> | default = false]
+
+  # If index-header lazy loading is enabled and this setting is > 0, the
+  # store-gateway will release memory-mapped index-headers after 'idle timeout'
+  # inactivity.
+  # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
+  [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
+
+tsdb:
+  # Local directory to store TSDBs in the ingesters.
+  # CLI flag: -blocks-storage.tsdb.dir
+  [dir: <string> | default = "tsdb"]
+
+  # TSDB blocks range period.
+  # CLI flag: -blocks-storage.tsdb.block-ranges-period
+  [block_ranges_period: <list of duration> | default = 2h0m0s]
+
+  # TSDB blocks retention in the ingester before a block is removed. This should
+  # be larger than the block_ranges_period and large enough to give
+  # store-gateways and queriers enough time to discover newly uploaded blocks.
+  # CLI flag: -blocks-storage.tsdb.retention-period
+  [retention_period: <duration> | default = 6h]
+
+  # How frequently the TSDB blocks are scanned and new ones are shipped to the
+  # storage. 0 means shipping is disabled.
+  # CLI flag: -blocks-storage.tsdb.ship-interval
+  [ship_interval: <duration> | default = 1m]
+
+  # Maximum number of tenants concurrently shipping blocks to the storage.
+  # CLI flag: -blocks-storage.tsdb.ship-concurrency
+  [ship_concurrency: <int> | default = 10]
+
+  # How frequently does Cortex try to compact TSDB head. Block is only created
+  # if data covers smallest block range. Must be greater than 0 and max 5
+  # minutes.
+  # CLI flag: -blocks-storage.tsdb.head-compaction-interval
+  [head_compaction_interval: <duration> | default = 1m]
+
+  # Maximum number of tenants concurrently compacting TSDB head into a new block
+  # CLI flag: -blocks-storage.tsdb.head-compaction-concurrency
+  [head_compaction_concurrency: <int> | default = 5]
+
+  # If TSDB head is idle for this duration, it is compacted. Note that up to 25%
+  # jitter is added to the value to avoid ingesters compacting concurrently. 0
+  # means disabled.
+  # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
+  [head_compaction_idle_timeout: <duration> | default = 1h]
+
+  # The write buffer size used by the head chunks mapper. Lower values reduce
+  # memory utilisation on clusters with a large number of tenants at the cost of
+  # increased disk I/O operations.
+  # CLI flag: -blocks-storage.tsdb.head-chunks-write-buffer-size-bytes
+  [head_chunks_write_buffer_size_bytes: <int> | default = 4194304]
+
+  # The number of shards of series to use in TSDB (must be a power of 2).
+  # Reducing this will decrease memory footprint, but can negatively impact
+  # performance.
+  # CLI flag: -blocks-storage.tsdb.stripe-size
+  [stripe_size: <int> | default = 16384]
+
+  # True to enable TSDB WAL compression.
+  # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
+  [wal_compression_enabled: <boolean> | default = false]
+
+  # TSDB WAL segments files max size (bytes).
+  # CLI flag: -blocks-storage.tsdb.wal-segment-size-bytes
+  [wal_segment_size_bytes: <int> | default = 134217728]
+
+  # True to flush blocks to storage on shutdown. If false, incomplete blocks
+  # will be reused after restart.
+  # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
+  [flush_blocks_on_shutdown: <boolean> | default = false]
+
+  # If TSDB has not received any data for this duration, and all blocks from
+  # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
+  # to positive value, this value should be equal or higher than
+  # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+  # prematurely, which could cause partial query results. 0 or negative value
+  # disables closing of idle TSDB.
+  # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
+  [close_idle_tsdb_timeout: <duration> | default = 0s]
+
+  # The size of the in-memory queue used before flushing chunks to the disk.
+  # CLI flag: -blocks-storage.tsdb.head-chunks-write-queue-size
+  [head_chunks_write_queue_size: <int> | default = 0]
+
+  # limit the number of concurrently opening TSDB's on startup
+  # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
+  [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
+
+  # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in
+  # limits is set to zero, cortex will fallback on this value. This setting
+  # enables support for exemplars in TSDB and sets the maximum number that will
+  # be stored. 0 or less means disabled.
+  # CLI flag: -blocks-storage.tsdb.max-exemplars
+  [max_exemplars: <int> | default = 0]
+
+  # True to enable snapshotting of in-memory TSDB data on disk when shutting
+  # down.
+  # CLI flag: -blocks-storage.tsdb.memory-snapshot-on-shutdown
+  [memory_snapshot_on_shutdown: <boolean> | default = false]
+
+  # [EXPERIMENTAL] Configures the maximum number of samples per chunk that can
+  # be out-of-order.
+  # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
+  [out_of_order_cap_max: <int> | default = 32]
+```
+
+### `compactor_config`
+
+The `compactor_config` configures the compactor for the blocks storage.
+
+```yaml
+# List of compaction time ranges.
+# CLI flag: -compactor.block-ranges
+[block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
+
+# Number of Go routines to use when syncing block index and chunks files from
+# the long term storage.
+# CLI flag: -compactor.block-sync-concurrency
+[block_sync_concurrency: <int> | default = 20]
+
+# Number of Go routines to use when syncing block meta files from the long term
+# storage.
+# CLI flag: -compactor.meta-sync-concurrency
+[meta_sync_concurrency: <int> | default = 20]
+
+# Minimum age of fresh (non-compacted) blocks before they are being processed.
+# Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
+# be removed.
+# CLI flag: -compactor.consistency-delay
+[consistency_delay: <duration> | default = 0s]
+
+# Data directory in which to cache blocks and process compactions
+# CLI flag: -compactor.data-dir
+[data_dir: <string> | default = "./data"]
+
+# The frequency at which the compaction runs
+# CLI flag: -compactor.compaction-interval
+[compaction_interval: <duration> | default = 1h]
+
+# How many times to retry a failed compaction within a single compaction run.
+# CLI flag: -compactor.compaction-retries
+[compaction_retries: <int> | default = 3]
+
+# Max number of concurrent compactions running.
+# CLI flag: -compactor.compaction-concurrency
+[compaction_concurrency: <int> | default = 1]
+
+# How frequently compactor should run blocks cleanup and maintenance, as well as
+# update the bucket index.
+# CLI flag: -compactor.cleanup-interval
+[cleanup_interval: <duration> | default = 15m]
+
+# Max number of tenants for which blocks cleanup and maintenance should run
+# concurrently.
+# CLI flag: -compactor.cleanup-concurrency
+[cleanup_concurrency: <int> | default = 20]
+
+# Time before a block marked for deletion is deleted from bucket. If not 0,
+# blocks will be marked for deletion and compactor component will permanently
+# delete blocks marked for deletion from the bucket. If 0, blocks will be
+# deleted straight away. Note that deleting blocks immediately can cause query
+# failures.
+# CLI flag: -compactor.deletion-delay
+[deletion_delay: <duration> | default = 12h]
+
+# For tenants marked for deletion, this is time between deleting of last block,
+# and doing final cleanup (marker files, debug files) of the tenant.
+# CLI flag: -compactor.tenant-cleanup-delay
+[tenant_cleanup_delay: <duration> | default = 6h]
+
+# When enabled, mark blocks containing index with out-of-order chunks for no
+# compact instead of halting the compaction.
+# CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
+[skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
+
+# Number of goroutines to use when fetching/uploading block files from object
+# storage.
+# CLI flag: -compactor.block-files-concurrency
+[block_files_concurrency: <int> | default = 10]
+
+# Number of goroutines to use when fetching blocks from object storage when
+# compacting.
+# CLI flag: -compactor.blocks-fetch-concurrency
+[blocks_fetch_concurrency: <int> | default = 3]
+
+# When enabled, at compactor startup the bucket will be scanned and all found
+# deletion marks inside the block location will be copied to the markers global
+# location too. This option can (and should) be safely disabled as soon as the
+# compactor has successfully run at least once.
+# CLI flag: -compactor.block-deletion-marks-migration-enabled
+[block_deletion_marks_migration_enabled: <boolean> | default = false]
+
+# Comma separated list of tenants that can be compacted. If specified, only
+# these tenants will be compacted by compactor, otherwise all tenants can be
+# compacted. Subject to sharding.
+# CLI flag: -compactor.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants that cannot be compacted by this compactor. If
+# specified, and compactor would normally pick given tenant for compaction (via
+# -compactor.enabled-tenants or sharding), it will be ignored instead.
+# CLI flag: -compactor.disabled-tenants
+[disabled_tenants: <string> | default = ""]
+
+# Shard tenants across multiple compactor instances. Sharding is required if you
+# run multiple compactor instances, in order to coordinate compactions and avoid
+# race conditions leading to the same tenant blocks simultaneously compacted by
+# different instances.
+# CLI flag: -compactor.sharding-enabled
+[sharding_enabled: <boolean> | default = false]
+
+# The sharding strategy to use. Supported values are: default, shuffle-sharding.
+# CLI flag: -compactor.sharding-strategy
+[sharding_strategy: <string> | default = "default"]
+
+sharding_ring:
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -compactor.ring.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -compactor.ring.prefix
+    [prefix: <string> | default = "collectors/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: compactor.ring
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -compactor.ring.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -compactor.ring.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -compactor.ring.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -compactor.ring.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
+
+  # Period at which to heartbeat to the ring. 0 = disabled.
+  # CLI flag: -compactor.ring.heartbeat-period
+  [heartbeat_period: <duration> | default = 5s]
+
+  # The heartbeat timeout after which compactors are considered unhealthy within
+  # the ring. 0 = never (timeout disabled).
+  # CLI flag: -compactor.ring.heartbeat-timeout
+  [heartbeat_timeout: <duration> | default = 1m]
+
+  # Minimum time to wait for ring stability at startup. 0 to disable.
+  # CLI flag: -compactor.ring.wait-stability-min-duration
+  [wait_stability_min_duration: <duration> | default = 1m]
+
+  # Maximum time to wait for ring stability at startup. If the compactor ring
+  # keeps changing after this period of time, the compactor will start anyway.
+  # CLI flag: -compactor.ring.wait-stability-max-duration
+  [wait_stability_max_duration: <duration> | default = 5m]
+
+  # Name of network interface to read address from.
+  # CLI flag: -compactor.ring.instance-interface-names
+  [instance_interface_names: <list of string> | default = [eth0 en0]]
+
+  # Timeout for waiting on compactor to become ACTIVE in the ring.
+  # CLI flag: -compactor.ring.wait-active-instance-timeout
+  [wait_active_instance_timeout: <duration> | default = 10m]
+
+# How long block visit marker file should be considered as expired and able to
+# be picked up by compactor again.
+# CLI flag: -compactor.block-visit-marker-timeout
+[block_visit_marker_timeout: <duration> | default = 5m]
+
+# How frequently block visit marker file should be updated duration compaction.
+# CLI flag: -compactor.block-visit-marker-file-update-interval
+[block_visit_marker_file_update_interval: <duration> | default = 1m]
+
+# When enabled, index verification will ignore out of order label names.
+# CLI flag: -compactor.accept-malformed-index
+[accept_malformed_index: <boolean> | default = false]
+```
+
+### `configs_config`
+
+The `configs_config` configures the Cortex Configs DB and API.
+
+```yaml
+database:
+  # URI where the database can be found (for dev you can use memory://)
+  # CLI flag: -configs.database.uri
+  [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
+
+  # Path where the database migration files can be found
+  # CLI flag: -configs.database.migrations-dir
+  [migrations_dir: <string> | default = ""]
+
+  # File containing password (username goes in URI)
+  # CLI flag: -configs.database.password-file
+  [password_file: <string> | default = ""]
+
+api:
+  notifications:
+    # Disable Email notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-email
+    [disable_email: <boolean> | default = false]
+
+    # Disable WebHook notifications for Alertmanager.
+    # CLI flag: -configs.notifications.disable-webhook
+    [disable_webhook: <boolean> | default = false]
+```
+
+### `configstore_config`
+
+The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- `alertmanager-storage`
+- `ruler-storage`
+
+&nbsp;
+
+```yaml
+# URL of configs API server.
+# CLI flag: -<prefix>.configs.url
+[configs_api_url: <url> | default = ]
+
+# Timeout for requests to Weave Cloud configs service.
+# CLI flag: -<prefix>.configs.client-timeout
+[client_timeout: <duration> | default = 5s]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -<prefix>.configs.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -<prefix>.configs.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -<prefix>.configs.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.configs.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.configs.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `consul_config`
+
+The `consul_config` configures the consul client. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `alertmanager.sharding-ring`
+- `compactor.ring`
+- `distributor.ha-tracker`
+- `distributor.ring`
+- `ruler.ring`
+- `store-gateway.sharding-ring`
+
+&nbsp;
+
+```yaml
+# Hostname and port of Consul.
+# CLI flag: -<prefix>.consul.hostname
+[host: <string> | default = "localhost:8500"]
+
+# ACL Token used to interact with Consul.
+# CLI flag: -<prefix>.consul.acl-token
+[acl_token: <string> | default = ""]
+
+# HTTP timeout when talking to Consul
+# CLI flag: -<prefix>.consul.client-timeout
+[http_client_timeout: <duration> | default = 20s]
+
+# Enable consistent reads to Consul.
+# CLI flag: -<prefix>.consul.consistent-reads
+[consistent_reads: <boolean> | default = false]
+
+# Rate limit when watching key or prefix in Consul, in requests per second. 0
+# disables the rate limit.
+# CLI flag: -<prefix>.consul.watch-rate-limit
+[watch_rate_limit: <float> | default = 1]
+
+# Burst size used in rate limit. Values less than 1 are treated as 1.
+# CLI flag: -<prefix>.consul.watch-burst-size
+[watch_burst_size: <int> | default = 1]
 ```
 
 ### `distributor_config`
@@ -636,6 +2239,211 @@ instance_limits:
   [max_inflight_push_requests: <int> | default = 0]
 ```
 
+### `etcd_config`
+
+The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- _no prefix_
+- `alertmanager.sharding-ring`
+- `compactor.ring`
+- `distributor.ha-tracker`
+- `distributor.ring`
+- `ruler.ring`
+- `store-gateway.sharding-ring`
+
+&nbsp;
+
+```yaml
+# The etcd endpoints to connect to.
+# CLI flag: -<prefix>.etcd.endpoints
+[endpoints: <list of string> | default = []]
+
+# The dial timeout for the etcd connection.
+# CLI flag: -<prefix>.etcd.dial-timeout
+[dial_timeout: <duration> | default = 10s]
+
+# The maximum number of retries to do for failed ops.
+# CLI flag: -<prefix>.etcd.max-retries
+[max_retries: <int> | default = 10]
+
+# Enable TLS.
+# CLI flag: -<prefix>.etcd.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -<prefix>.etcd.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -<prefix>.etcd.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -<prefix>.etcd.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -<prefix>.etcd.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
+
+# Etcd username.
+# CLI flag: -<prefix>.etcd.username
+[username: <string> | default = ""]
+
+# Etcd password.
+# CLI flag: -<prefix>.etcd.password
+[password: <string> | default = ""]
+```
+
+### `fifo_cache_config`
+
+The `fifo_cache_config` configures the local in-memory cache.
+
+```yaml
+# Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
+# applied.
+# CLI flag: -frontend.fifocache.max-size-bytes
+[max_size_bytes: <string> | default = ""]
+
+# Maximum number of entries in the cache.
+# CLI flag: -frontend.fifocache.max-size-items
+[max_size_items: <int> | default = 0]
+
+# The expiry duration for the cache.
+# CLI flag: -frontend.fifocache.duration
+[validity: <duration> | default = 0s]
+
+# Deprecated (use max-size-items or max-size-bytes instead): The number of
+# entries to cache.
+# CLI flag: -frontend.fifocache.size
+[size: <int> | default = 0]
+```
+
+### `flusher_config`
+
+The `flusher_config` configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.
+
+```yaml
+# Stop Cortex after flush has finished. If false, Cortex process will keep
+# running, doing nothing.
+# CLI flag: -flusher.exit-after-flush
+[exit_after_flush: <boolean> | default = true]
+```
+
+### `frontend_worker_config`
+
+The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.
+
+```yaml
+# Address of query frontend service, in host:port format. If
+# -querier.scheduler-address is set as well, querier will use scheduler instead.
+# Only one of -querier.frontend-address or -querier.scheduler-address can be
+# set. If neither is set, queries are only received via HTTP endpoint.
+# CLI flag: -querier.frontend-address
+[frontend_address: <string> | default = ""]
+
+# Hostname (and port) of scheduler that querier will periodically resolve,
+# connect to and receive queries from. Only one of -querier.frontend-address or
+# -querier.scheduler-address can be set. If neither is set, queries are only
+# received via HTTP endpoint.
+# CLI flag: -querier.scheduler-address
+[scheduler_address: <string> | default = ""]
+
+# How often to query DNS for query-frontend or query-scheduler address.
+# CLI flag: -querier.dns-lookup-period
+[dns_lookup_duration: <duration> | default = 10s]
+
+# Number of simultaneous queries to process per query-frontend or
+# query-scheduler.
+# CLI flag: -querier.worker-parallelism
+[parallelism: <int> | default = 10]
+
+# Force worker concurrency to match the -querier.max-concurrent option.
+# Overrides querier.worker-parallelism.
+# CLI flag: -querier.worker-match-max-concurrent
+[match_max_concurrent: <boolean> | default = false]
+
+# Querier ID, sent to frontend service to identify requests from the same
+# querier. Defaults to hostname.
+# CLI flag: -querier.id
+[id: <string> | default = ""]
+
+grpc_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -querier.frontend-client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -querier.frontend-client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy', 'snappy-block' ,'zstd' and '' (disable compression)
+  # CLI flag: -querier.frontend-client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -querier.frontend-client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -querier.frontend-client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -querier.frontend-client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -querier.frontend-client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -querier.frontend-client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -querier.frontend-client.backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -querier.frontend-client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -querier.frontend-client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -querier.frontend-client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -querier.frontend-client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -querier.frontend-client.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+```
+
 ### `ingester_config`
 
 The `ingester_config` configures the Cortex ingester.
@@ -821,6 +2629,635 @@ instance_limits:
 # max-global-series-per-metric limits.
 # CLI flag: -ingester.ignore-series-limit-for-metric-names
 [ignore_series_limit_for_metric_names: <string> | default = ""]
+```
+
+### `ingester_client_config`
+
+The `ingester_client_config` configures how the Cortex distributors connect to the ingesters.
+
+```yaml
+grpc_client_config:
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -ingester.client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 104857600]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -ingester.client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 16777216]
+
+  # Use compression when sending messages. Supported values are: 'gzip',
+  # 'snappy', 'snappy-block' ,'zstd' and '' (disable compression)
+  # CLI flag: -ingester.client.grpc-compression
+  [grpc_compression: <string> | default = ""]
+
+  # Rate limit for gRPC client; 0 means disabled.
+  # CLI flag: -ingester.client.grpc-client-rate-limit
+  [rate_limit: <float> | default = 0]
+
+  # Rate limit burst for gRPC client.
+  # CLI flag: -ingester.client.grpc-client-rate-limit-burst
+  [rate_limit_burst: <int> | default = 0]
+
+  # Enable backoff and retry when we hit ratelimits.
+  # CLI flag: -ingester.client.backoff-on-ratelimits
+  [backoff_on_ratelimits: <boolean> | default = false]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -ingester.client.backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -ingester.client.backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -ingester.client.backoff-retries
+    [max_retries: <int> | default = 10]
+
+  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
+  # TLS flag is set. If set to false, insecure connection to gRPC server will be
+  # used.
+  # CLI flag: -ingester.client.tls-enabled
+  [tls_enabled: <boolean> | default = false]
+
+  # Path to the client certificate file, which will be used for authenticating
+  # with the server. Also requires the key path to be configured.
+  # CLI flag: -ingester.client.tls-cert-path
+  [tls_cert_path: <string> | default = ""]
+
+  # Path to the key file for the client certificate. Also requires the client
+  # certificate to be configured.
+  # CLI flag: -ingester.client.tls-key-path
+  [tls_key_path: <string> | default = ""]
+
+  # Path to the CA certificates file to validate server certificate against. If
+  # not set, the host's root CA certificates are used.
+  # CLI flag: -ingester.client.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
+
+  # Override the expected name on the server certificate.
+  # CLI flag: -ingester.client.tls-server-name
+  [tls_server_name: <string> | default = ""]
+
+  # Skip validating server certificate.
+  # CLI flag: -ingester.client.tls-insecure-skip-verify
+  [tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `limits_config`
+
+The `limits_config` configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).
+
+```yaml
+# Per-user ingestion rate limit in samples per second.
+# CLI flag: -distributor.ingestion-rate-limit
+[ingestion_rate: <float> | default = 25000]
+
+# Whether the ingestion rate limit should be applied individually to each
+# distributor instance (local), or evenly shared across the cluster (global).
+# CLI flag: -distributor.ingestion-rate-limit-strategy
+[ingestion_rate_strategy: <string> | default = "local"]
+
+# Per-user allowed ingestion burst size (in number of samples).
+# CLI flag: -distributor.ingestion-burst-size
+[ingestion_burst_size: <int> | default = 50000]
+
+# Flag to enable, for all users, handling of samples with external labels
+# identifying replicas in an HA Prometheus setup.
+# CLI flag: -distributor.ha-tracker.enable-for-all-users
+[accept_ha_samples: <boolean> | default = false]
+
+# Prometheus label to look for in samples to identify a Prometheus HA cluster.
+# CLI flag: -distributor.ha-tracker.cluster
+[ha_cluster_label: <string> | default = "cluster"]
+
+# Prometheus label to look for in samples to identify a Prometheus HA replica.
+# CLI flag: -distributor.ha-tracker.replica
+[ha_replica_label: <string> | default = "__replica__"]
+
+# Maximum number of clusters that HA tracker will keep track of for single user.
+# 0 to disable the limit.
+# CLI flag: -distributor.ha-tracker.max-clusters
+[ha_max_clusters: <int> | default = 0]
+
+# This flag can be used to specify label names that to drop during sample
+# ingestion within the distributor and can be repeated in order to drop multiple
+# labels.
+# CLI flag: -distributor.drop-label
+[drop_labels: <list of string> | default = []]
+
+# Maximum length accepted for label names
+# CLI flag: -validation.max-length-label-name
+[max_label_name_length: <int> | default = 1024]
+
+# Maximum length accepted for label value. This setting also applies to the
+# metric name
+# CLI flag: -validation.max-length-label-value
+[max_label_value_length: <int> | default = 2048]
+
+# Maximum number of label names per series.
+# CLI flag: -validation.max-label-names-per-series
+[max_label_names_per_series: <int> | default = 30]
+
+# Maximum combined size in bytes of all labels and label values accepted for a
+# series. 0 to disable the limit.
+# CLI flag: -validation.max-labels-size-bytes
+[max_labels_size_bytes: <int> | default = 0]
+
+# Maximum length accepted for metric metadata. Metadata refers to Metric Name,
+# HELP and UNIT.
+# CLI flag: -validation.max-metadata-length
+[max_metadata_length: <int> | default = 1024]
+
+# Reject old samples.
+# CLI flag: -validation.reject-old-samples
+[reject_old_samples: <boolean> | default = false]
+
+# Maximum accepted sample age before rejecting.
+# CLI flag: -validation.reject-old-samples.max-age
+[reject_old_samples_max_age: <duration> | default = 2w]
+
+# Duration which table will be created/deleted before/after it's needed; we
+# won't accept sample from before this time.
+# CLI flag: -validation.create-grace-period
+[creation_grace_period: <duration> | default = 10m]
+
+# Enforce every metadata has a metric name.
+# CLI flag: -validation.enforce-metadata-metric-name
+[enforce_metadata_metric_name: <boolean> | default = true]
+
+# Enforce every sample has a metric name.
+# CLI flag: -validation.enforce-metric-name
+[enforce_metric_name: <boolean> | default = true]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used.
+# Must be set both on ingesters and distributors. When this setting is specified
+# in the per-tenant overrides, a value of 0 disables shuffle sharding for the
+# tenant.
+# CLI flag: -distributor.ingestion-tenant-shard-size
+[ingestion_tenant_shard_size: <int> | default = 0]
+
+# List of metric relabel configurations. Note that in most situations, it is
+# more effective to use metrics relabeling directly in the Prometheus server,
+# e.g. remote_write.write_relabel_configs.
+[metric_relabel_configs: <relabel_config...> | default = ]
+
+# Enables support for exemplars in TSDB and sets the maximum number that will be
+# stored. less than zero means disabled. If the value is set to zero, cortex
+# will fallback to blocks-storage.tsdb.max-exemplars value.
+# CLI flag: -ingester.max-exemplars
+[max_exemplars: <int> | default = 0]
+
+# The maximum number of series for which a query can fetch samples from each
+# ingester. This limit is enforced only in the ingesters (when querying samples
+# not flushed to the storage yet) and it's a per-instance limit. This limit is
+# ignored when running the Cortex blocks storage. When running Cortex with
+# blocks storage use -querier.max-fetched-series-per-query limit instead.
+# CLI flag: -ingester.max-series-per-query
+[max_series_per_query: <int> | default = 100000]
+
+# The maximum number of active series per user, per ingester. 0 to disable.
+# CLI flag: -ingester.max-series-per-user
+[max_series_per_user: <int> | default = 5000000]
+
+# The maximum number of active series per metric name, per ingester. 0 to
+# disable.
+# CLI flag: -ingester.max-series-per-metric
+[max_series_per_metric: <int> | default = 50000]
+
+# The maximum number of active series per user, across the cluster before
+# replication. 0 to disable. Supported only if -distributor.shard-by-all-labels
+# is true.
+# CLI flag: -ingester.max-global-series-per-user
+[max_global_series_per_user: <int> | default = 0]
+
+# The maximum number of active series per metric name, across the cluster before
+# replication. 0 to disable.
+# CLI flag: -ingester.max-global-series-per-metric
+[max_global_series_per_metric: <int> | default = 0]
+
+# The maximum number of active metrics with metadata per user, per ingester. 0
+# to disable.
+# CLI flag: -ingester.max-metadata-per-user
+[max_metadata_per_user: <int> | default = 8000]
+
+# The maximum number of metadata per metric, per ingester. 0 to disable.
+# CLI flag: -ingester.max-metadata-per-metric
+[max_metadata_per_metric: <int> | default = 10]
+
+# The maximum number of active metrics with metadata per user, across the
+# cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is
+# true.
+# CLI flag: -ingester.max-global-metadata-per-user
+[max_global_metadata_per_user: <int> | default = 0]
+
+# The maximum number of metadata per metric, across the cluster. 0 to disable.
+# CLI flag: -ingester.max-global-metadata-per-metric
+[max_global_metadata_per_metric: <int> | default = 0]
+
+# [Experimental] Configures the allowed time window for ingestion of
+# out-of-order samples. Disabled (0s) by default.
+# CLI flag: -ingester.out-of-order-time-window
+[out_of_order_time_window: <duration> | default = 0s]
+
+# Maximum number of chunks that can be fetched in a single query from ingesters
+# and long-term storage. This limit is enforced in the querier, ruler and
+# store-gateway. 0 to disable.
+# CLI flag: -querier.max-fetched-chunks-per-query
+[max_fetched_chunks_per_query: <int> | default = 2000000]
+
+# The maximum number of unique series for which a query can fetch samples from
+# each ingesters and blocks storage. This limit is enforced in the querier,
+# ruler and store-gateway. 0 to disable
+# CLI flag: -querier.max-fetched-series-per-query
+[max_fetched_series_per_query: <int> | default = 0]
+
+# Deprecated (use max-fetched-data-bytes-per-query instead): The maximum size of
+# all chunks in bytes that a query can fetch from each ingester and storage.
+# This limit is enforced in the querier, ruler and store-gateway. 0 to disable.
+# CLI flag: -querier.max-fetched-chunk-bytes-per-query
+[max_fetched_chunk_bytes_per_query: <int> | default = 0]
+
+# The maximum combined size of all data that a query can fetch from each
+# ingester and storage. This limit is enforced in the querier and ruler for
+# `query`, `query_range` and `series` APIs. 0 to disable.
+# CLI flag: -querier.max-fetched-data-bytes-per-query
+[max_fetched_data_bytes_per_query: <int> | default = 0]
+
+# Limit how long back data (series and metadata) can be queried, up until
+# <lookback> duration ago. This limit is enforced in the query-frontend, querier
+# and ruler. If the requested time range is outside the allowed range, the
+# request will not fail but will be manipulated to only query data within the
+# allowed time range. 0 to disable.
+# CLI flag: -querier.max-query-lookback
+[max_query_lookback: <duration> | default = 0s]
+
+# Limit the query time range (end - start time). This limit is enforced in the
+# query-frontend (on the received query) and in the querier (on the query
+# possibly split by the query-frontend). 0 to disable.
+# CLI flag: -store.max-query-length
+[max_query_length: <duration> | default = 0s]
+
+# Maximum number of split queries will be scheduled in parallel by the frontend.
+# CLI flag: -querier.max-query-parallelism
+[max_query_parallelism: <int> | default = 14]
+
+# Most recent allowed cacheable result per-tenant, to prevent caching very
+# recent results that might still be in flux.
+# CLI flag: -frontend.max-cache-freshness
+[max_cache_freshness: <duration> | default = 1m]
+
+# Maximum number of queriers that can handle requests for a single tenant. If
+# set to 0 or value higher than number of available queriers, *all* queriers
+# will handle requests for the tenant. Each frontend (or query-scheduler, if
+# used) will select the same set of queriers for the same tenant (given that all
+# queriers are connected to all frontends / query-schedulers). This option only
+# works with queriers connecting to the query-frontend / query-scheduler, not
+# when using downstream URL.
+# CLI flag: -frontend.max-queriers-per-tenant
+[max_queriers_per_tenant: <int> | default = 0]
+
+# Maximum number of outstanding requests per tenant per request queue (either
+# query frontend or query scheduler); requests beyond this error with HTTP 429.
+# CLI flag: -frontend.max-outstanding-requests-per-tenant
+[max_outstanding_requests_per_tenant: <int> | default = 100]
+
+# Duration to delay the evaluation of rules to ensure the underlying metrics
+# have been pushed to Cortex.
+# CLI flag: -ruler.evaluation-delay-duration
+[ruler_evaluation_delay_duration: <duration> | default = 0s]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# ruler. When this setting is specified in the per-tenant overrides, a value of
+# 0 disables shuffle sharding for the tenant.
+# CLI flag: -ruler.tenant-shard-size
+[ruler_tenant_shard_size: <int> | default = 0]
+
+# Maximum number of rules per rule group per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rules-per-rule-group
+[ruler_max_rules_per_rule_group: <int> | default = 0]
+
+# Maximum number of rule groups per-tenant. 0 to disable.
+# CLI flag: -ruler.max-rule-groups-per-tenant
+[ruler_max_rule_groups_per_tenant: <int> | default = 0]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used.
+# Must be set when the store-gateway sharding is enabled with the
+# shuffle-sharding strategy. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -store-gateway.tenant-shard-size
+[store_gateway_tenant_shard_size: <int> | default = 0]
+
+# The maximum number of data bytes to download per gRPC request in Store
+# Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.
+# CLI flag: -store-gateway.max-downloaded-bytes-per-request
+[max_downloaded_bytes_per_request: <int> | default = 0]
+
+# Delete blocks containing samples older than the specified retention period. 0
+# to disable.
+# CLI flag: -compactor.blocks-retention-period
+[compactor_blocks_retention_period: <duration> | default = 0s]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# the compactor. When this setting is specified in the per-tenant overrides, a
+# value of 0 disables shuffle sharding for the tenant.
+# CLI flag: -compactor.tenant-shard-size
+[compactor_tenant_shard_size: <int> | default = 0]
+
+# S3 server-side encryption type. Required to enable server-side encryption
+# overrides for a specific tenant. If not set, the default S3 client settings
+# are used.
+[s3_sse_type: <string> | default = ""]
+
+# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
+# set.
+[s3_sse_kms_key_id: <string> | default = ""]
+
+# S3 server-side encryption KMS encryption context. If unset and the key ID
+# override is set, the encryption context will not be provided to S3. Ignored if
+# the SSE type override is not set.
+[s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Comma-separated list of network CIDRs to block in Alertmanager receiver
+# integrations.
+# CLI flag: -alertmanager.receivers-firewall-block-cidr-networks
+[alertmanager_receivers_firewall_block_cidr_networks: <string> | default = ""]
+
+# True to block private and local addresses in Alertmanager receiver
+# integrations. It blocks private addresses defined by  RFC 1918 (IPv4
+# addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast
+# and local multicast addresses.
+# CLI flag: -alertmanager.receivers-firewall-block-private-addresses
+[alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
+
+# Per-user rate limit for sending notifications from Alertmanager in
+# notifications/sec. 0 = rate limit disabled. Negative value = no notifications
+# are allowed.
+# CLI flag: -alertmanager.notification-rate-limit
+[alertmanager_notification_rate_limit: <float> | default = 0]
+
+# Per-integration notification rate limits. Value is a map, where each key is
+# integration name and value is a rate-limit (float). On command line, this map
+# is given in JSON format. Rate limit has the same meaning as
+# -alertmanager.notification-rate-limit, but only applies for specific
+# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
+# wechat, slack, victorops, pushover, sns.
+# CLI flag: -alertmanager.notification-rate-limit-per-integration
+[alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
+
+# Maximum size of configuration file for Alertmanager that tenant can upload via
+# Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-config-size-bytes
+[alertmanager_max_config_size_bytes: <int> | default = 0]
+
+# Maximum number of templates in tenant's Alertmanager configuration uploaded
+# via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-templates-count
+[alertmanager_max_templates_count: <int> | default = 0]
+
+# Maximum size of single template in tenant's Alertmanager configuration
+# uploaded via Alertmanager API. 0 = no limit.
+# CLI flag: -alertmanager.max-template-size-bytes
+[alertmanager_max_template_size_bytes: <int> | default = 0]
+
+# Maximum number of aggregation groups in Alertmanager's dispatcher that a
+# tenant can have. Each active aggregation group uses single goroutine. When the
+# limit is reached, dispatcher will not dispatch alerts that belong to
+# additional aggregation groups, but existing groups will keep working properly.
+# 0 = no limit.
+# CLI flag: -alertmanager.max-dispatcher-aggregation-groups
+[alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
+
+# Maximum number of alerts that a single user can have. Inserting more alerts
+# will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-count
+[alertmanager_max_alerts_count: <int> | default = 0]
+
+# Maximum total size of alerts that a single user can have, alert size is the
+# sum of the bytes of its labels, annotations and generatorURL. Inserting more
+# alerts will fail with a log message and metric increment. 0 = no limit.
+# CLI flag: -alertmanager.max-alerts-size-bytes
+[alertmanager_max_alerts_size_bytes: <int> | default = 0]
+```
+
+### `memberlist_config`
+
+The `memberlist_config` configures the Gossip memberlist.
+
+```yaml
+# Name of the node in memberlist cluster. Defaults to hostname.
+# CLI flag: -memberlist.nodename
+[node_name: <string> | default = ""]
+
+# Add random suffix to the node name.
+# CLI flag: -memberlist.randomize-node-name
+[randomize_node_name: <boolean> | default = true]
+
+# The timeout for establishing a connection with a remote node, and for
+# read/write operations.
+# CLI flag: -memberlist.stream-timeout
+[stream_timeout: <duration> | default = 10s]
+
+# Multiplication factor used when sending out messages (factor * log(N+1)).
+# CLI flag: -memberlist.retransmit-factor
+[retransmit_factor: <int> | default = 4]
+
+# How often to use pull/push sync.
+# CLI flag: -memberlist.pullpush-interval
+[pull_push_interval: <duration> | default = 30s]
+
+# How often to gossip.
+# CLI flag: -memberlist.gossip-interval
+[gossip_interval: <duration> | default = 200ms]
+
+# How many nodes to gossip to.
+# CLI flag: -memberlist.gossip-nodes
+[gossip_nodes: <int> | default = 3]
+
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 30s]
+
+# How soon can dead node's name be reclaimed with new address. 0 to disable.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
+
+# Enable message compression. This can be used to reduce bandwidth usage at the
+# cost of slightly more CPU utilization.
+# CLI flag: -memberlist.compression-enabled
+[compression_enabled: <boolean> | default = true]
+
+# Gossip address to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-addr
+[advertise_addr: <string> | default = ""]
+
+# Gossip port to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-port
+[advertise_port: <int> | default = 7946]
+
+# Other cluster members to join. Can be specified multiple times. It can be an
+# IP, hostname or an entry specified in the DNS Service Discovery format.
+# CLI flag: -memberlist.join
+[join_members: <list of string> | default = []]
+
+# Min backoff duration to join other cluster members.
+# CLI flag: -memberlist.min-join-backoff
+[min_join_backoff: <duration> | default = 1s]
+
+# Max backoff duration to join other cluster members.
+# CLI flag: -memberlist.max-join-backoff
+[max_join_backoff: <duration> | default = 1m]
+
+# Max number of retries to join other cluster members.
+# CLI flag: -memberlist.max-join-retries
+[max_join_retries: <int> | default = 10]
+
+# If this node fails to join memberlist cluster, abort.
+# CLI flag: -memberlist.abort-if-join-fails
+[abort_if_cluster_join_fails: <boolean> | default = true]
+
+# If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix
+# the cluster split issue, and is harmless otherwise. For example when using
+# only few components as a seed nodes (via -memberlist.join), then it's
+# recommended to use rejoin. If -memberlist.join points to dynamic service that
+# resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin
+# is not needed.
+# CLI flag: -memberlist.rejoin-interval
+[rejoin_interval: <duration> | default = 0s]
+
+# How long to keep LEFT ingesters in the ring.
+# CLI flag: -memberlist.left-ingesters-timeout
+[left_ingesters_timeout: <duration> | default = 5m]
+
+# Timeout for leaving memberlist cluster.
+# CLI flag: -memberlist.leave-timeout
+[leave_timeout: <duration> | default = 5s]
+
+# How much space to use for keeping received and sent messages in memory for
+# troubleshooting (two buffers). 0 to disable.
+# CLI flag: -memberlist.message-history-buffer-bytes
+[message_history_buffer_bytes: <int> | default = 0]
+
+# IP address to listen on for gossip messages. Multiple addresses may be
+# specified. Defaults to 0.0.0.0
+# CLI flag: -memberlist.bind-addr
+[bind_addr: <list of string> | default = []]
+
+# Port to listen on for gossip messages.
+# CLI flag: -memberlist.bind-port
+[bind_port: <int> | default = 7946]
+
+# Timeout used when connecting to other nodes to send packet.
+# CLI flag: -memberlist.packet-dial-timeout
+[packet_dial_timeout: <duration> | default = 5s]
+
+# Timeout for writing 'packet' data.
+# CLI flag: -memberlist.packet-write-timeout
+[packet_write_timeout: <duration> | default = 5s]
+
+# Enable TLS on the memberlist transport layer.
+# CLI flag: -memberlist.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate file, which will be used for authenticating
+# with the server. Also requires the key path to be configured.
+# CLI flag: -memberlist.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key file for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -memberlist.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates file to validate server certificate against. If
+# not set, the host's root CA certificates are used.
+# CLI flag: -memberlist.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -memberlist.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -memberlist.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `memcached_config`
+
+The `memcached_config` block configures how data is stored in Memcached (ie. expiration).
+
+```yaml
+# How long keys stay in the memcache.
+# CLI flag: -frontend.memcached.expiration
+[expiration: <duration> | default = 0s]
+
+# How many keys to fetch in each batch.
+# CLI flag: -frontend.memcached.batchsize
+[batch_size: <int> | default = 1024]
+
+# Maximum active requests to memcache.
+# CLI flag: -frontend.memcached.parallelism
+[parallelism: <int> | default = 100]
+```
+
+### `memcached_client_config`
+
+The `memcached_client_config` configures the client used to connect to Memcached.
+
+```yaml
+# Hostname for memcached service to use. If empty and if addresses is unset, no
+# memcached will be used.
+# CLI flag: -frontend.memcached.hostname
+[host: <string> | default = ""]
+
+# SRV service used to discover memcache servers.
+# CLI flag: -frontend.memcached.service
+[service: <string> | default = "memcached"]
+
+# EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
+# CLI flag: -frontend.memcached.addresses
+[addresses: <string> | default = ""]
+
+# Maximum time to wait before giving up on memcached requests.
+# CLI flag: -frontend.memcached.timeout
+[timeout: <duration> | default = 100ms]
+
+# Maximum number of idle connections in pool.
+# CLI flag: -frontend.memcached.max-idle-conns
+[max_idle_conns: <int> | default = 16]
+
+# The maximum size of an item stored in memcached. Bigger items are not stored.
+# If set to 0, no maximum size is enforced.
+# CLI flag: -frontend.memcached.max-item-size
+[max_item_size: <int> | default = 0]
+
+# Period with which to poll DNS for memcache servers.
+# CLI flag: -frontend.memcached.update-interval
+[update_interval: <duration> | default = 1m]
+
+# Use consistent hashing to distribute to memcache servers.
+# CLI flag: -frontend.memcached.consistent-hash
+[consistent_hash: <boolean> | default = true]
+
+# Trip circuit-breaker after this number of consecutive dial failures (if zero
+# then circuit-breaker is disabled).
+# CLI flag: -frontend.memcached.circuit-breaker-consecutive-failures
+[circuit_breaker_consecutive_failures: <int> | default = 10]
+
+# Duration circuit-breaker remains open after tripping (if zero then 60 seconds
+# is used).
+# CLI flag: -frontend.memcached.circuit-breaker-timeout
+[circuit_breaker_timeout: <duration> | default = 10s]
+
+# Reset circuit-breaker counts after this long (if zero then never reset).
+# CLI flag: -frontend.memcached.circuit-breaker-interval
+[circuit_breaker_interval: <duration> | default = 10s]
 ```
 
 ### `querier_config`
@@ -1012,7 +3449,7 @@ grpc_client_config:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy', 'zstd' and '' (disable compression)
+  # 'snappy', 'snappy-block' ,'zstd' and '' (disable compression)
   # CLI flag: -frontend.grpc-client-config.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -1153,6 +3590,59 @@ results_cache:
 [forward_headers_list: <list of string> | default = []]
 ```
 
+### `redis_config`
+
+The `redis_config` configures the Redis backend cache.
+
+```yaml
+# Redis Server endpoint to use for caching. A comma-separated list of endpoints
+# for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
+# CLI flag: -frontend.redis.endpoint
+[endpoint: <string> | default = ""]
+
+# Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
+# CLI flag: -frontend.redis.master-name
+[master_name: <string> | default = ""]
+
+# Maximum time to wait before giving up on redis requests.
+# CLI flag: -frontend.redis.timeout
+[timeout: <duration> | default = 500ms]
+
+# How long keys stay in the redis.
+# CLI flag: -frontend.redis.expiration
+[expiration: <duration> | default = 0s]
+
+# Database index.
+# CLI flag: -frontend.redis.db
+[db: <int> | default = 0]
+
+# Maximum number of connections in the pool.
+# CLI flag: -frontend.redis.pool-size
+[pool_size: <int> | default = 0]
+
+# Password to use when connecting to redis.
+# CLI flag: -frontend.redis.password
+[password: <string> | default = ""]
+
+# Enable connecting to redis with TLS.
+# CLI flag: -frontend.redis.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Skip validating server certificate.
+# CLI flag: -frontend.redis.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
+
+# Close connections after remaining idle for this duration. If the value is
+# zero, then idle connections are not closed.
+# CLI flag: -frontend.redis.idle-timeout
+[idle_timeout: <duration> | default = 0s]
+
+# Close connections older than this duration. If the value is zero, then the
+# pool does not close connections based on age.
+# CLI flag: -frontend.redis.max-connection-age
+[max_connection_age: <duration> | default = 0s]
+```
+
 ### `ruler_config`
 
 The `ruler_config` configures the Cortex ruler.
@@ -1175,7 +3665,7 @@ ruler_client:
   [max_send_msg_size: <int> | default = 16777216]
 
   # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy', 'zstd' and '' (disable compression)
+  # 'snappy', 'snappy-block' ,'zstd' and '' (disable compression)
   # CLI flag: -ruler.client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
@@ -1692,481 +4182,477 @@ local:
   [directory: <string> | default = ""]
 ```
 
-### `alertmanager_config`
+### `runtime_configuration_storage_config`
 
-The `alertmanager_config` configures the Cortex alertmanager.
-
-```yaml
-# Base path for data storage.
-# CLI flag: -alertmanager.storage.path
-[data_dir: <string> | default = "data/"]
-
-# How long to keep data for.
-# CLI flag: -alertmanager.storage.retention
-[retention: <duration> | default = 120h]
-
-# The URL under which Alertmanager is externally reachable (for example, if
-# Alertmanager is served via a reverse proxy). Used for generating relative and
-# absolute links back to Alertmanager itself. If the URL has a path portion, it
-# will be used to prefix all HTTP endpoints served by Alertmanager. If omitted,
-# relevant URL components will be derived automatically.
-# CLI flag: -alertmanager.web.external-url
-[external_url: <url> | default = ]
-
-# How frequently to poll Cortex configs
-# CLI flag: -alertmanager.configs.poll-interval
-[poll_interval: <duration> | default = 15s]
-
-# Maximum size (bytes) of an accepted HTTP request body.
-# CLI flag: -alertmanager.max-recv-msg-size
-[max_recv_msg_size: <int> | default = 16777216]
-
-# Shard tenants across multiple alertmanager instances.
-# CLI flag: -alertmanager.sharding-enabled
-[sharding_enabled: <boolean> | default = false]
-
-sharding_ring:
-  # The key-value store used to share the hash ring across multiple instances.
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -alertmanager.sharding-ring.store
-    [store: <string> | default = "consul"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -alertmanager.sharding-ring.prefix
-    [prefix: <string> | default = "alertmanagers/"]
-
-    dynamodb:
-      # Region to access dynamodb.
-      # CLI flag: -alertmanager.sharding-ring.dynamodb.region
-      [region: <string> | default = ""]
-
-      # Table name to use on dynamodb.
-      # CLI flag: -alertmanager.sharding-ring.dynamodb.table-name
-      [table_name: <string> | default = ""]
-
-      # Time to expire items on dynamodb.
-      # CLI flag: -alertmanager.sharding-ring.dynamodb.ttl-time
-      [ttl: <duration> | default = 0s]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
-    [consul: <consul_config>]
-
-    # The etcd_config configures the etcd client.
-    # The CLI flags prefix for this block config is: alertmanager.sharding-ring
-    [etcd: <etcd_config>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -alertmanager.sharding-ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -alertmanager.sharding-ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -alertmanager.sharding-ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -alertmanager.sharding-ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -alertmanager.sharding-ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 15s]
-
-  # The heartbeat timeout after which alertmanagers are considered unhealthy
-  # within the ring. 0 = never (timeout disabled).
-  # CLI flag: -alertmanager.sharding-ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # The replication factor to use when sharding the alertmanager.
-  # CLI flag: -alertmanager.sharding-ring.replication-factor
-  [replication_factor: <int> | default = 3]
-
-  # True to enable zone-awareness and replicate alerts across different
-  # availability zones.
-  # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
-  [zone_awareness_enabled: <boolean> | default = false]
-
-  # Name of network interface to read address from.
-  # CLI flag: -alertmanager.sharding-ring.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
-
-  # The availability zone where this instance is running. Required if
-  # zone-awareness is enabled.
-  # CLI flag: -alertmanager.sharding-ring.instance-availability-zone
-  [instance_availability_zone: <string> | default = ""]
-
-# Filename of fallback config to use if none specified for instance.
-# CLI flag: -alertmanager.configs.fallback
-[fallback_config_file: <string> | default = ""]
-
-# Root of URL to generate if config is http://internal.monitor
-# CLI flag: -alertmanager.configs.auto-webhook-root
-[auto_webhook_root: <string> | default = ""]
-
-cluster:
-  # Listen address and port for the cluster. Not specifying this flag disables
-  # high-availability mode.
-  # CLI flag: -alertmanager.cluster.listen-address
-  [listen_address: <string> | default = "0.0.0.0:9094"]
-
-  # Explicit address or hostname to advertise in cluster.
-  # CLI flag: -alertmanager.cluster.advertise-address
-  [advertise_address: <string> | default = ""]
-
-  # Comma-separated list of initial peers.
-  # CLI flag: -alertmanager.cluster.peers
-  [peers: <string> | default = ""]
-
-  # Time to wait between peers to send notifications.
-  # CLI flag: -alertmanager.cluster.peer-timeout
-  [peer_timeout: <duration> | default = 15s]
-
-  # The interval between sending gossip messages. By lowering this value (more
-  # frequent) gossip messages are propagated across cluster more quickly at the
-  # expense of increased bandwidth usage.
-  # CLI flag: -alertmanager.cluster.gossip-interval
-  [gossip_interval: <duration> | default = 200ms]
-
-  # The interval between gossip state syncs. Setting this interval lower (more
-  # frequent) will increase convergence speeds across larger clusters at the
-  # expense of increased bandwidth usage.
-  # CLI flag: -alertmanager.cluster.push-pull-interval
-  [push_pull_interval: <duration> | default = 1m]
-
-# Enable the experimental alertmanager config api.
-# CLI flag: -experimental.alertmanager.enable-api
-[enable_api: <boolean> | default = false]
-
-alertmanager_client:
-  # Timeout for downstream alertmanagers.
-  # CLI flag: -alertmanager.alertmanager-client.remote-timeout
-  [remote_timeout: <duration> | default = 2s]
-
-  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set. If set to false, insecure connection to gRPC server will be
-  # used.
-  # CLI flag: -alertmanager.alertmanager-client.tls-enabled
-  [tls_enabled: <boolean> | default = false]
-
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
-  # CLI flag: -alertmanager.alertmanager-client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key file for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -alertmanager.alertmanager-client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
-  # CLI flag: -alertmanager.alertmanager-client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -alertmanager.alertmanager-client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -alertmanager.alertmanager-client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-
-  # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy' and '' (disable compression)
-  # CLI flag: -alertmanager.alertmanager-client.grpc-compression
-  [grpc_compression: <string> | default = ""]
-
-# The interval between persisting the current alertmanager state (notification
-# log and silences) to object storage. This is only used when sharding is
-# enabled. This state is read when all replicas for a shard can not be
-# contacted. In this scenario, having persisted the state more frequently will
-# result in potentially fewer lost silences, and fewer duplicate notifications.
-# CLI flag: -alertmanager.persist-interval
-[persist_interval: <duration> | default = 15m]
-
-# Comma separated list of tenants whose alerts this alertmanager can process. If
-# specified, only these tenants will be handled by alertmanager, otherwise this
-# alertmanager can process alerts from all tenants.
-# CLI flag: -alertmanager.enabled-tenants
-[enabled_tenants: <string> | default = ""]
-
-# Comma separated list of tenants whose alerts this alertmanager cannot process.
-# If specified, a alertmanager that would normally pick the specified tenant(s)
-# for processing will ignore them instead.
-# CLI flag: -alertmanager.disabled-tenants
-[disabled_tenants: <string> | default = ""]
-```
-
-### `alertmanager_storage_config`
-
-The `alertmanager_storage_config` configures the Cortex alertmanager storage backend.
+The `runtime_configuration_storage_config` configures the storage backend for the runtime configuration file.
 
 ```yaml
+# How often to check runtime config file.
+# CLI flag: -runtime-config.reload-period
+[period: <duration> | default = 10s]
+
+# File with the configuration that can be updated in runtime.
+# CLI flag: -runtime-config.file
+[file: <string> | default = ""]
+
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
-# filesystem, configdb, local.
-# CLI flag: -alertmanager-storage.backend
-[backend: <string> | default = "s3"]
+# filesystem.
+# CLI flag: -runtime-config.backend
+[backend: <string> | default = "filesystem"]
 
 s3:
   # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
   # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
   # S3-compatible service in hostname:port format.
-  # CLI flag: -alertmanager-storage.s3.endpoint
+  # CLI flag: -runtime-config.s3.endpoint
   [endpoint: <string> | default = ""]
 
   # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
   # to autodetect it.
-  # CLI flag: -alertmanager-storage.s3.region
+  # CLI flag: -runtime-config.s3.region
   [region: <string> | default = ""]
 
   # S3 bucket name
-  # CLI flag: -alertmanager-storage.s3.bucket-name
+  # CLI flag: -runtime-config.s3.bucket-name
   [bucket_name: <string> | default = ""]
 
   # S3 secret access key
-  # CLI flag: -alertmanager-storage.s3.secret-access-key
+  # CLI flag: -runtime-config.s3.secret-access-key
   [secret_access_key: <string> | default = ""]
 
   # S3 access key ID
-  # CLI flag: -alertmanager-storage.s3.access-key-id
+  # CLI flag: -runtime-config.s3.access-key-id
   [access_key_id: <string> | default = ""]
 
   # If enabled, use http:// for the S3 endpoint instead of https://. This could
   # be useful in local dev/test environments while using an S3-compatible
   # backend storage, like Minio.
-  # CLI flag: -alertmanager-storage.s3.insecure
+  # CLI flag: -runtime-config.s3.insecure
   [insecure: <boolean> | default = false]
 
   # The signature version to use for authenticating against S3. Supported values
   # are: v4, v2.
-  # CLI flag: -alertmanager-storage.s3.signature-version
+  # CLI flag: -runtime-config.s3.signature-version
   [signature_version: <string> | default = "v4"]
 
   # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
   # path.
-  # CLI flag: -alertmanager-storage.s3.bucket-lookup-type
+  # CLI flag: -runtime-config.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
   # The s3_sse_config configures the S3 server-side encryption.
-  # The CLI flags prefix for this block config is: alertmanager-storage
+  # The CLI flags prefix for this block config is: runtime-config
   [sse: <s3_sse_config>]
 
   http:
     # The time an idle connection will remain idle before closing.
-    # CLI flag: -alertmanager-storage.s3.http.idle-conn-timeout
+    # CLI flag: -runtime-config.s3.http.idle-conn-timeout
     [idle_conn_timeout: <duration> | default = 1m30s]
 
     # The amount of time the client will wait for a servers response headers.
-    # CLI flag: -alertmanager-storage.s3.http.response-header-timeout
+    # CLI flag: -runtime-config.s3.http.response-header-timeout
     [response_header_timeout: <duration> | default = 2m]
 
     # If the client connects via HTTPS and this option is enabled, the client
     # will accept any certificate and hostname.
-    # CLI flag: -alertmanager-storage.s3.http.insecure-skip-verify
+    # CLI flag: -runtime-config.s3.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
 
     # Maximum time to wait for a TLS handshake. 0 means no limit.
-    # CLI flag: -alertmanager-storage.s3.tls-handshake-timeout
+    # CLI flag: -runtime-config.s3.tls-handshake-timeout
     [tls_handshake_timeout: <duration> | default = 10s]
 
     # The time to wait for a server's first response headers after fully writing
     # the request headers if the request has an Expect header. 0 to send the
     # request body immediately.
-    # CLI flag: -alertmanager-storage.s3.expect-continue-timeout
+    # CLI flag: -runtime-config.s3.expect-continue-timeout
     [expect_continue_timeout: <duration> | default = 1s]
 
     # Maximum number of idle (keep-alive) connections across all hosts. 0 means
     # no limit.
-    # CLI flag: -alertmanager-storage.s3.max-idle-connections
+    # CLI flag: -runtime-config.s3.max-idle-connections
     [max_idle_connections: <int> | default = 100]
 
     # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
     # built-in default value is used.
-    # CLI flag: -alertmanager-storage.s3.max-idle-connections-per-host
+    # CLI flag: -runtime-config.s3.max-idle-connections-per-host
     [max_idle_connections_per_host: <int> | default = 100]
 
     # Maximum number of connections per host. 0 means no limit.
-    # CLI flag: -alertmanager-storage.s3.max-connections-per-host
+    # CLI flag: -runtime-config.s3.max-connections-per-host
     [max_connections_per_host: <int> | default = 0]
 
 gcs:
   # GCS bucket name
-  # CLI flag: -alertmanager-storage.gcs.bucket-name
+  # CLI flag: -runtime-config.gcs.bucket-name
   [bucket_name: <string> | default = ""]
 
   # JSON representing either a Google Developers Console client_credentials.json
   # file or a Google Developers service account key file. If empty, fallback to
   # Google default logic.
-  # CLI flag: -alertmanager-storage.gcs.service-account
+  # CLI flag: -runtime-config.gcs.service-account
   [service_account: <string> | default = ""]
 
 azure:
   # Azure storage account name
-  # CLI flag: -alertmanager-storage.azure.account-name
+  # CLI flag: -runtime-config.azure.account-name
   [account_name: <string> | default = ""]
 
   # Azure storage account key
-  # CLI flag: -alertmanager-storage.azure.account-key
+  # CLI flag: -runtime-config.azure.account-key
   [account_key: <string> | default = ""]
 
   # Azure storage container name
-  # CLI flag: -alertmanager-storage.azure.container-name
+  # CLI flag: -runtime-config.azure.container-name
   [container_name: <string> | default = ""]
 
   # Azure storage endpoint suffix without schema. The account name will be
   # prefixed to this value to create the FQDN
-  # CLI flag: -alertmanager-storage.azure.endpoint-suffix
+  # CLI flag: -runtime-config.azure.endpoint-suffix
   [endpoint_suffix: <string> | default = ""]
 
   # Number of retries for recoverable errors
-  # CLI flag: -alertmanager-storage.azure.max-retries
+  # CLI flag: -runtime-config.azure.max-retries
   [max_retries: <int> | default = 20]
 
   # Azure storage MSI resource. Either this or account key must be set.
-  # CLI flag: -alertmanager-storage.azure.msi-resource
+  # CLI flag: -runtime-config.azure.msi-resource
   [msi_resource: <string> | default = ""]
 
   # Azure storage MSI resource managed identity client Id. If not supplied
   # system assigned identity is used
-  # CLI flag: -alertmanager-storage.azure.user-assigned-id
+  # CLI flag: -runtime-config.azure.user-assigned-id
   [user_assigned_id: <string> | default = ""]
 
   http:
     # The time an idle connection will remain idle before closing.
-    # CLI flag: -alertmanager-storage.azure.http.idle-conn-timeout
+    # CLI flag: -runtime-config.azure.http.idle-conn-timeout
     [idle_conn_timeout: <duration> | default = 1m30s]
 
     # The amount of time the client will wait for a servers response headers.
-    # CLI flag: -alertmanager-storage.azure.http.response-header-timeout
+    # CLI flag: -runtime-config.azure.http.response-header-timeout
     [response_header_timeout: <duration> | default = 2m]
 
     # If the client connects via HTTPS and this option is enabled, the client
     # will accept any certificate and hostname.
-    # CLI flag: -alertmanager-storage.azure.http.insecure-skip-verify
+    # CLI flag: -runtime-config.azure.http.insecure-skip-verify
     [insecure_skip_verify: <boolean> | default = false]
 
     # Maximum time to wait for a TLS handshake. 0 means no limit.
-    # CLI flag: -alertmanager-storage.azure.tls-handshake-timeout
+    # CLI flag: -runtime-config.azure.tls-handshake-timeout
     [tls_handshake_timeout: <duration> | default = 10s]
 
     # The time to wait for a server's first response headers after fully writing
     # the request headers if the request has an Expect header. 0 to send the
     # request body immediately.
-    # CLI flag: -alertmanager-storage.azure.expect-continue-timeout
+    # CLI flag: -runtime-config.azure.expect-continue-timeout
     [expect_continue_timeout: <duration> | default = 1s]
 
     # Maximum number of idle (keep-alive) connections across all hosts. 0 means
     # no limit.
-    # CLI flag: -alertmanager-storage.azure.max-idle-connections
+    # CLI flag: -runtime-config.azure.max-idle-connections
     [max_idle_connections: <int> | default = 100]
 
     # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
     # built-in default value is used.
-    # CLI flag: -alertmanager-storage.azure.max-idle-connections-per-host
+    # CLI flag: -runtime-config.azure.max-idle-connections-per-host
     [max_idle_connections_per_host: <int> | default = 100]
 
     # Maximum number of connections per host. 0 means no limit.
-    # CLI flag: -alertmanager-storage.azure.max-connections-per-host
+    # CLI flag: -runtime-config.azure.max-connections-per-host
     [max_connections_per_host: <int> | default = 0]
 
 swift:
   # OpenStack Swift authentication API version. 0 to autodetect.
-  # CLI flag: -alertmanager-storage.swift.auth-version
+  # CLI flag: -runtime-config.swift.auth-version
   [auth_version: <int> | default = 0]
 
   # OpenStack Swift authentication URL
-  # CLI flag: -alertmanager-storage.swift.auth-url
+  # CLI flag: -runtime-config.swift.auth-url
   [auth_url: <string> | default = ""]
 
   # OpenStack Swift username.
-  # CLI flag: -alertmanager-storage.swift.username
+  # CLI flag: -runtime-config.swift.username
   [username: <string> | default = ""]
 
   # OpenStack Swift user's domain name.
-  # CLI flag: -alertmanager-storage.swift.user-domain-name
+  # CLI flag: -runtime-config.swift.user-domain-name
   [user_domain_name: <string> | default = ""]
 
   # OpenStack Swift user's domain ID.
-  # CLI flag: -alertmanager-storage.swift.user-domain-id
+  # CLI flag: -runtime-config.swift.user-domain-id
   [user_domain_id: <string> | default = ""]
 
   # OpenStack Swift user ID.
-  # CLI flag: -alertmanager-storage.swift.user-id
+  # CLI flag: -runtime-config.swift.user-id
   [user_id: <string> | default = ""]
 
   # OpenStack Swift API key.
-  # CLI flag: -alertmanager-storage.swift.password
+  # CLI flag: -runtime-config.swift.password
   [password: <string> | default = ""]
 
   # OpenStack Swift user's domain ID.
-  # CLI flag: -alertmanager-storage.swift.domain-id
+  # CLI flag: -runtime-config.swift.domain-id
   [domain_id: <string> | default = ""]
 
   # OpenStack Swift user's domain name.
-  # CLI flag: -alertmanager-storage.swift.domain-name
+  # CLI flag: -runtime-config.swift.domain-name
   [domain_name: <string> | default = ""]
 
   # OpenStack Swift project ID (v2,v3 auth only).
-  # CLI flag: -alertmanager-storage.swift.project-id
+  # CLI flag: -runtime-config.swift.project-id
   [project_id: <string> | default = ""]
 
   # OpenStack Swift project name (v2,v3 auth only).
-  # CLI flag: -alertmanager-storage.swift.project-name
+  # CLI flag: -runtime-config.swift.project-name
   [project_name: <string> | default = ""]
 
   # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
   # differs the from user domain.
-  # CLI flag: -alertmanager-storage.swift.project-domain-id
+  # CLI flag: -runtime-config.swift.project-domain-id
   [project_domain_id: <string> | default = ""]
 
   # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
   # it differs from the user domain.
-  # CLI flag: -alertmanager-storage.swift.project-domain-name
+  # CLI flag: -runtime-config.swift.project-domain-name
   [project_domain_name: <string> | default = ""]
 
   # OpenStack Swift Region to use (v2,v3 auth only).
-  # CLI flag: -alertmanager-storage.swift.region-name
+  # CLI flag: -runtime-config.swift.region-name
   [region_name: <string> | default = ""]
 
   # Name of the OpenStack Swift container to put chunks in.
-  # CLI flag: -alertmanager-storage.swift.container-name
+  # CLI flag: -runtime-config.swift.container-name
   [container_name: <string> | default = ""]
 
   # Max retries on requests error.
-  # CLI flag: -alertmanager-storage.swift.max-retries
+  # CLI flag: -runtime-config.swift.max-retries
   [max_retries: <int> | default = 3]
 
   # Time after which a connection attempt is aborted.
-  # CLI flag: -alertmanager-storage.swift.connect-timeout
+  # CLI flag: -runtime-config.swift.connect-timeout
   [connect_timeout: <duration> | default = 10s]
 
   # Time after which an idle request is aborted. The timeout watchdog is reset
   # each time some data is received, so the timeout triggers after X time no
   # data is received on a request.
-  # CLI flag: -alertmanager-storage.swift.request-timeout
+  # CLI flag: -runtime-config.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
 
 filesystem:
   # Local filesystem storage directory.
-  # CLI flag: -alertmanager-storage.filesystem.dir
+  # CLI flag: -runtime-config.filesystem.dir
   [dir: <string> | default = ""]
+```
 
-# The configstore_config configures the config database storing rules and
-# alerts, and is used by the Cortex alertmanager.
-# The CLI flags prefix for this block config is: alertmanager-storage
-[configdb: <configstore_config>]
+### `s3_sse_config`
 
-local:
-  # Path at which alertmanager configurations are stored.
-  # CLI flag: -alertmanager-storage.local.path
-  [path: <string> | default = ""]
+The `s3_sse_config` configures the S3 server-side encryption. The supported CLI flags `<prefix>` used to reference this config block are:
+
+- `alertmanager-storage`
+- `blocks-storage`
+- `ruler-storage`
+- `runtime-config`
+
+&nbsp;
+
+```yaml
+# Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+# CLI flag: -<prefix>.s3.sse.type
+[type: <string> | default = ""]
+
+# KMS Key ID used to encrypt objects in S3
+# CLI flag: -<prefix>.s3.sse.kms-key-id
+[kms_key_id: <string> | default = ""]
+
+# KMS Encryption Context used for object encryption. It expects JSON formatted
+# string.
+# CLI flag: -<prefix>.s3.sse.kms-encryption-context
+[kms_encryption_context: <string> | default = ""]
+```
+
+### `server_config`
+
+The `server_config` configures the HTTP and gRPC server of the launched service(s).
+
+```yaml
+# HTTP server listen network, default tcp
+# CLI flag: -server.http-listen-network
+[http_listen_network: <string> | default = "tcp"]
+
+# HTTP server listen address.
+# CLI flag: -server.http-listen-address
+[http_listen_address: <string> | default = ""]
+
+# HTTP server listen port.
+# CLI flag: -server.http-listen-port
+[http_listen_port: <int> | default = 80]
+
+# Maximum number of simultaneous http connections, <=0 to disable
+# CLI flag: -server.http-conn-limit
+[http_listen_conn_limit: <int> | default = 0]
+
+# gRPC server listen network
+# CLI flag: -server.grpc-listen-network
+[grpc_listen_network: <string> | default = "tcp"]
+
+# gRPC server listen address.
+# CLI flag: -server.grpc-listen-address
+[grpc_listen_address: <string> | default = ""]
+
+# gRPC server listen port.
+# CLI flag: -server.grpc-listen-port
+[grpc_listen_port: <int> | default = 9095]
+
+# Maximum number of simultaneous grpc connections, <=0 to disable
+# CLI flag: -server.grpc-conn-limit
+[grpc_listen_conn_limit: <int> | default = 0]
+
+# Comma-separated list of cipher suites to use. If blank, the default Go cipher
+# suites is used.
+# CLI flag: -server.tls-cipher-suites
+[tls_cipher_suites: <string> | default = ""]
+
+# Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11,
+# VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.
+# CLI flag: -server.tls-min-version
+[tls_min_version: <string> | default = ""]
+
+http_tls_config:
+  # HTTP server cert path.
+  # CLI flag: -server.http-tls-cert-path
+  [cert_file: <string> | default = ""]
+
+  # HTTP server key path.
+  # CLI flag: -server.http-tls-key-path
+  [key_file: <string> | default = ""]
+
+  # HTTP TLS Client Auth type.
+  # CLI flag: -server.http-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+
+  # HTTP TLS Client CA path.
+  # CLI flag: -server.http-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
+grpc_tls_config:
+  # GRPC TLS server cert path.
+  # CLI flag: -server.grpc-tls-cert-path
+  [cert_file: <string> | default = ""]
+
+  # GRPC TLS server key path.
+  # CLI flag: -server.grpc-tls-key-path
+  [key_file: <string> | default = ""]
+
+  # GRPC TLS Client Auth type.
+  # CLI flag: -server.grpc-tls-client-auth
+  [client_auth_type: <string> | default = ""]
+
+  # GRPC TLS Client CA path.
+  # CLI flag: -server.grpc-tls-ca-path
+  [client_ca_file: <string> | default = ""]
+
+# Register the intrumentation handlers (/metrics etc).
+# CLI flag: -server.register-instrumentation
+[register_instrumentation: <boolean> | default = true]
+
+# Timeout for graceful shutdowns
+# CLI flag: -server.graceful-shutdown-timeout
+[graceful_shutdown_timeout: <duration> | default = 30s]
+
+# Read timeout for HTTP server
+# CLI flag: -server.http-read-timeout
+[http_server_read_timeout: <duration> | default = 30s]
+
+# Write timeout for HTTP server
+# CLI flag: -server.http-write-timeout
+[http_server_write_timeout: <duration> | default = 30s]
+
+# Idle timeout for HTTP server
+# CLI flag: -server.http-idle-timeout
+[http_server_idle_timeout: <duration> | default = 2m]
+
+# Limit on the size of a gRPC message this server can receive (bytes).
+# CLI flag: -server.grpc-max-recv-msg-size-bytes
+[grpc_server_max_recv_msg_size: <int> | default = 4194304]
+
+# Limit on the size of a gRPC message this server can send (bytes).
+# CLI flag: -server.grpc-max-send-msg-size-bytes
+[grpc_server_max_send_msg_size: <int> | default = 4194304]
+
+# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
+# CLI flag: -server.grpc-max-concurrent-streams
+[grpc_server_max_concurrent_streams: <int> | default = 100]
+
+# The duration after which an idle connection should be closed. Default:
+# infinity
+# CLI flag: -server.grpc.keepalive.max-connection-idle
+[grpc_server_max_connection_idle: <duration> | default = 2562047h47m16.854775807s]
+
+# The duration for the maximum amount of time a connection may exist before it
+# will be closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age
+[grpc_server_max_connection_age: <duration> | default = 2562047h47m16.854775807s]
+
+# An additive period after max-connection-age after which the connection will be
+# forcibly closed. Default: infinity
+# CLI flag: -server.grpc.keepalive.max-connection-age-grace
+[grpc_server_max_connection_age_grace: <duration> | default = 2562047h47m16.854775807s]
+
+# Duration after which a keepalive probe is sent in case of no activity over the
+# connection., Default: 2h
+# CLI flag: -server.grpc.keepalive.time
+[grpc_server_keepalive_time: <duration> | default = 2h]
+
+# After having pinged for keepalive check, the duration after which an idle
+# connection should be closed, Default: 20s
+# CLI flag: -server.grpc.keepalive.timeout
+[grpc_server_keepalive_timeout: <duration> | default = 20s]
+
+# Minimum amount of time a client should wait before sending a keepalive ping.
+# If client sends keepalive ping more often, server will send GOAWAY and close
+# the connection.
+# CLI flag: -server.grpc.keepalive.min-time-between-pings
+[grpc_server_min_time_between_pings: <duration> | default = 10s]
+
+# If true, server allows keepalive pings even when there are no active
+# streams(RPCs). If false, and client sends ping when there are no active
+# streams, server will send GOAWAY and close the connection.
+# CLI flag: -server.grpc.keepalive.ping-without-stream-allowed
+[grpc_server_ping_without_stream_allowed: <boolean> | default = true]
+
+# Output log messages in the given format. Valid formats: [logfmt, json]
+# CLI flag: -log.format
+[log_format: <string> | default = "logfmt"]
+
+# Only log messages with the given severity or above. Valid levels: [debug,
+# info, warn, error]
+# CLI flag: -log.level
+[log_level: <string> | default = "info"]
+
+# Optionally log the source IPs.
+# CLI flag: -server.log-source-ips-enabled
+[log_source_ips_enabled: <boolean> | default = false]
+
+# Header field storing the source IPs. Only used if
+# server.log-source-ips-enabled is true. If not set the default Forwarded,
+# X-Real-IP and X-Forwarded-For headers are used
+# CLI flag: -server.log-source-ips-header
+[log_source_ips_header: <string> | default = ""]
+
+# Regex for matching the source IPs. Only used if server.log-source-ips-enabled
+# is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For
+# headers are used
+# CLI flag: -server.log-source-ips-regex
+[log_source_ips_regex: <string> | default = ""]
+
+# Optionally log requests at info level instead of debug level.
+# CLI flag: -server.log-request-at-info-level-enabled
+[log_request_at_info_level_enabled: <boolean> | default = false]
+
+# Base path to serve all API routes from (e.g. /v1/)
+# CLI flag: -server.path-prefix
+[http_path_prefix: <string> | default = ""]
 ```
 
 ### `storage_config`
@@ -2177,1858 +4663,6 @@ The `storage_config` configures the storage type Cortex uses.
 # The storage engine to use: blocks is the only supported option today.
 # CLI flag: -store.engine
 [engine: <string> | default = "blocks"]
-```
-
-### `flusher_config`
-
-The `flusher_config` configures the WAL flusher target, used to manually run one-time flushes when scaling down ingesters.
-
-```yaml
-# Stop Cortex after flush has finished. If false, Cortex process will keep
-# running, doing nothing.
-# CLI flag: -flusher.exit-after-flush
-[exit_after_flush: <boolean> | default = true]
-```
-
-### `ingester_client_config`
-
-The `ingester_client_config` configures how the Cortex distributors connect to the ingesters.
-
-```yaml
-grpc_client_config:
-  # gRPC client max receive message size (bytes).
-  # CLI flag: -ingester.client.grpc-max-recv-msg-size
-  [max_recv_msg_size: <int> | default = 104857600]
-
-  # gRPC client max send message size (bytes).
-  # CLI flag: -ingester.client.grpc-max-send-msg-size
-  [max_send_msg_size: <int> | default = 16777216]
-
-  # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy', 'zstd' and '' (disable compression)
-  # CLI flag: -ingester.client.grpc-compression
-  [grpc_compression: <string> | default = ""]
-
-  # Rate limit for gRPC client; 0 means disabled.
-  # CLI flag: -ingester.client.grpc-client-rate-limit
-  [rate_limit: <float> | default = 0]
-
-  # Rate limit burst for gRPC client.
-  # CLI flag: -ingester.client.grpc-client-rate-limit-burst
-  [rate_limit_burst: <int> | default = 0]
-
-  # Enable backoff and retry when we hit ratelimits.
-  # CLI flag: -ingester.client.backoff-on-ratelimits
-  [backoff_on_ratelimits: <boolean> | default = false]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -ingester.client.backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -ingester.client.backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -ingester.client.backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set. If set to false, insecure connection to gRPC server will be
-  # used.
-  # CLI flag: -ingester.client.tls-enabled
-  [tls_enabled: <boolean> | default = false]
-
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
-  # CLI flag: -ingester.client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key file for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -ingester.client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
-  # CLI flag: -ingester.client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -ingester.client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -ingester.client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-```
-
-### `frontend_worker_config`
-
-The `frontend_worker_config` configures the worker - running within the Cortex querier - picking up and executing queries enqueued by the query-frontend or query-scheduler.
-
-```yaml
-# Address of query frontend service, in host:port format. If
-# -querier.scheduler-address is set as well, querier will use scheduler instead.
-# Only one of -querier.frontend-address or -querier.scheduler-address can be
-# set. If neither is set, queries are only received via HTTP endpoint.
-# CLI flag: -querier.frontend-address
-[frontend_address: <string> | default = ""]
-
-# Hostname (and port) of scheduler that querier will periodically resolve,
-# connect to and receive queries from. Only one of -querier.frontend-address or
-# -querier.scheduler-address can be set. If neither is set, queries are only
-# received via HTTP endpoint.
-# CLI flag: -querier.scheduler-address
-[scheduler_address: <string> | default = ""]
-
-# How often to query DNS for query-frontend or query-scheduler address.
-# CLI flag: -querier.dns-lookup-period
-[dns_lookup_duration: <duration> | default = 10s]
-
-# Number of simultaneous queries to process per query-frontend or
-# query-scheduler.
-# CLI flag: -querier.worker-parallelism
-[parallelism: <int> | default = 10]
-
-# Force worker concurrency to match the -querier.max-concurrent option.
-# Overrides querier.worker-parallelism.
-# CLI flag: -querier.worker-match-max-concurrent
-[match_max_concurrent: <boolean> | default = false]
-
-# Querier ID, sent to frontend service to identify requests from the same
-# querier. Defaults to hostname.
-# CLI flag: -querier.id
-[id: <string> | default = ""]
-
-grpc_client_config:
-  # gRPC client max receive message size (bytes).
-  # CLI flag: -querier.frontend-client.grpc-max-recv-msg-size
-  [max_recv_msg_size: <int> | default = 104857600]
-
-  # gRPC client max send message size (bytes).
-  # CLI flag: -querier.frontend-client.grpc-max-send-msg-size
-  [max_send_msg_size: <int> | default = 16777216]
-
-  # Use compression when sending messages. Supported values are: 'gzip',
-  # 'snappy', 'zstd' and '' (disable compression)
-  # CLI flag: -querier.frontend-client.grpc-compression
-  [grpc_compression: <string> | default = ""]
-
-  # Rate limit for gRPC client; 0 means disabled.
-  # CLI flag: -querier.frontend-client.grpc-client-rate-limit
-  [rate_limit: <float> | default = 0]
-
-  # Rate limit burst for gRPC client.
-  # CLI flag: -querier.frontend-client.grpc-client-rate-limit-burst
-  [rate_limit_burst: <int> | default = 0]
-
-  # Enable backoff and retry when we hit ratelimits.
-  # CLI flag: -querier.frontend-client.backoff-on-ratelimits
-  [backoff_on_ratelimits: <boolean> | default = false]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -querier.frontend-client.backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -querier.frontend-client.backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -querier.frontend-client.backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # Enable TLS in the GRPC client. This flag needs to be enabled when any other
-  # TLS flag is set. If set to false, insecure connection to gRPC server will be
-  # used.
-  # CLI flag: -querier.frontend-client.tls-enabled
-  [tls_enabled: <boolean> | default = false]
-
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
-  # CLI flag: -querier.frontend-client.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key file for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -querier.frontend-client.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
-  # CLI flag: -querier.frontend-client.tls-ca-path
-  [tls_ca_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -querier.frontend-client.tls-server-name
-  [tls_server_name: <string> | default = ""]
-
-  # Skip validating server certificate.
-  # CLI flag: -querier.frontend-client.tls-insecure-skip-verify
-  [tls_insecure_skip_verify: <boolean> | default = false]
-```
-
-### `etcd_config`
-
-The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- _no prefix_
-- `alertmanager.sharding-ring`
-- `compactor.ring`
-- `distributor.ha-tracker`
-- `distributor.ring`
-- `ruler.ring`
-- `store-gateway.sharding-ring`
-
-&nbsp;
-
-```yaml
-# The etcd endpoints to connect to.
-# CLI flag: -<prefix>.etcd.endpoints
-[endpoints: <list of string> | default = []]
-
-# The dial timeout for the etcd connection.
-# CLI flag: -<prefix>.etcd.dial-timeout
-[dial_timeout: <duration> | default = 10s]
-
-# The maximum number of retries to do for failed ops.
-# CLI flag: -<prefix>.etcd.max-retries
-[max_retries: <int> | default = 10]
-
-# Enable TLS.
-# CLI flag: -<prefix>.etcd.tls-enabled
-[tls_enabled: <boolean> | default = false]
-
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.etcd.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key file for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -<prefix>.etcd.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.etcd.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -<prefix>.etcd.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -<prefix>.etcd.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Etcd username.
-# CLI flag: -<prefix>.etcd.username
-[username: <string> | default = ""]
-
-# Etcd password.
-# CLI flag: -<prefix>.etcd.password
-[password: <string> | default = ""]
-```
-
-### `consul_config`
-
-The `consul_config` configures the consul client. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- _no prefix_
-- `alertmanager.sharding-ring`
-- `compactor.ring`
-- `distributor.ha-tracker`
-- `distributor.ring`
-- `ruler.ring`
-- `store-gateway.sharding-ring`
-
-&nbsp;
-
-```yaml
-# Hostname and port of Consul.
-# CLI flag: -<prefix>.consul.hostname
-[host: <string> | default = "localhost:8500"]
-
-# ACL Token used to interact with Consul.
-# CLI flag: -<prefix>.consul.acl-token
-[acl_token: <string> | default = ""]
-
-# HTTP timeout when talking to Consul
-# CLI flag: -<prefix>.consul.client-timeout
-[http_client_timeout: <duration> | default = 20s]
-
-# Enable consistent reads to Consul.
-# CLI flag: -<prefix>.consul.consistent-reads
-[consistent_reads: <boolean> | default = false]
-
-# Rate limit when watching key or prefix in Consul, in requests per second. 0
-# disables the rate limit.
-# CLI flag: -<prefix>.consul.watch-rate-limit
-[watch_rate_limit: <float> | default = 1]
-
-# Burst size used in rate limit. Values less than 1 are treated as 1.
-# CLI flag: -<prefix>.consul.watch-burst-size
-[watch_burst_size: <int> | default = 1]
-```
-
-### `memberlist_config`
-
-The `memberlist_config` configures the Gossip memberlist.
-
-```yaml
-# Name of the node in memberlist cluster. Defaults to hostname.
-# CLI flag: -memberlist.nodename
-[node_name: <string> | default = ""]
-
-# Add random suffix to the node name.
-# CLI flag: -memberlist.randomize-node-name
-[randomize_node_name: <boolean> | default = true]
-
-# The timeout for establishing a connection with a remote node, and for
-# read/write operations.
-# CLI flag: -memberlist.stream-timeout
-[stream_timeout: <duration> | default = 10s]
-
-# Multiplication factor used when sending out messages (factor * log(N+1)).
-# CLI flag: -memberlist.retransmit-factor
-[retransmit_factor: <int> | default = 4]
-
-# How often to use pull/push sync.
-# CLI flag: -memberlist.pullpush-interval
-[pull_push_interval: <duration> | default = 30s]
-
-# How often to gossip.
-# CLI flag: -memberlist.gossip-interval
-[gossip_interval: <duration> | default = 200ms]
-
-# How many nodes to gossip to.
-# CLI flag: -memberlist.gossip-nodes
-[gossip_nodes: <int> | default = 3]
-
-# How long to keep gossiping to dead nodes, to give them chance to refute their
-# death.
-# CLI flag: -memberlist.gossip-to-dead-nodes-time
-[gossip_to_dead_nodes_time: <duration> | default = 30s]
-
-# How soon can dead node's name be reclaimed with new address. 0 to disable.
-# CLI flag: -memberlist.dead-node-reclaim-time
-[dead_node_reclaim_time: <duration> | default = 0s]
-
-# Enable message compression. This can be used to reduce bandwidth usage at the
-# cost of slightly more CPU utilization.
-# CLI flag: -memberlist.compression-enabled
-[compression_enabled: <boolean> | default = true]
-
-# Gossip address to advertise to other members in the cluster. Used for NAT
-# traversal.
-# CLI flag: -memberlist.advertise-addr
-[advertise_addr: <string> | default = ""]
-
-# Gossip port to advertise to other members in the cluster. Used for NAT
-# traversal.
-# CLI flag: -memberlist.advertise-port
-[advertise_port: <int> | default = 7946]
-
-# Other cluster members to join. Can be specified multiple times. It can be an
-# IP, hostname or an entry specified in the DNS Service Discovery format.
-# CLI flag: -memberlist.join
-[join_members: <list of string> | default = []]
-
-# Min backoff duration to join other cluster members.
-# CLI flag: -memberlist.min-join-backoff
-[min_join_backoff: <duration> | default = 1s]
-
-# Max backoff duration to join other cluster members.
-# CLI flag: -memberlist.max-join-backoff
-[max_join_backoff: <duration> | default = 1m]
-
-# Max number of retries to join other cluster members.
-# CLI flag: -memberlist.max-join-retries
-[max_join_retries: <int> | default = 10]
-
-# If this node fails to join memberlist cluster, abort.
-# CLI flag: -memberlist.abort-if-join-fails
-[abort_if_cluster_join_fails: <boolean> | default = true]
-
-# If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix
-# the cluster split issue, and is harmless otherwise. For example when using
-# only few components as a seed nodes (via -memberlist.join), then it's
-# recommended to use rejoin. If -memberlist.join points to dynamic service that
-# resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin
-# is not needed.
-# CLI flag: -memberlist.rejoin-interval
-[rejoin_interval: <duration> | default = 0s]
-
-# How long to keep LEFT ingesters in the ring.
-# CLI flag: -memberlist.left-ingesters-timeout
-[left_ingesters_timeout: <duration> | default = 5m]
-
-# Timeout for leaving memberlist cluster.
-# CLI flag: -memberlist.leave-timeout
-[leave_timeout: <duration> | default = 5s]
-
-# How much space to use for keeping received and sent messages in memory for
-# troubleshooting (two buffers). 0 to disable.
-# CLI flag: -memberlist.message-history-buffer-bytes
-[message_history_buffer_bytes: <int> | default = 0]
-
-# IP address to listen on for gossip messages. Multiple addresses may be
-# specified. Defaults to 0.0.0.0
-# CLI flag: -memberlist.bind-addr
-[bind_addr: <list of string> | default = []]
-
-# Port to listen on for gossip messages.
-# CLI flag: -memberlist.bind-port
-[bind_port: <int> | default = 7946]
-
-# Timeout used when connecting to other nodes to send packet.
-# CLI flag: -memberlist.packet-dial-timeout
-[packet_dial_timeout: <duration> | default = 5s]
-
-# Timeout for writing 'packet' data.
-# CLI flag: -memberlist.packet-write-timeout
-[packet_write_timeout: <duration> | default = 5s]
-
-# Enable TLS on the memberlist transport layer.
-# CLI flag: -memberlist.tls-enabled
-[tls_enabled: <boolean> | default = false]
-
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
-# CLI flag: -memberlist.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key file for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -memberlist.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
-# CLI flag: -memberlist.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -memberlist.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -memberlist.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-```
-
-### `limits_config`
-
-The `limits_config` configures default and per-tenant limits imposed by Cortex services (ie. distributor, ingester, ...).
-
-```yaml
-# Per-user ingestion rate limit in samples per second.
-# CLI flag: -distributor.ingestion-rate-limit
-[ingestion_rate: <float> | default = 25000]
-
-# Whether the ingestion rate limit should be applied individually to each
-# distributor instance (local), or evenly shared across the cluster (global).
-# CLI flag: -distributor.ingestion-rate-limit-strategy
-[ingestion_rate_strategy: <string> | default = "local"]
-
-# Per-user allowed ingestion burst size (in number of samples).
-# CLI flag: -distributor.ingestion-burst-size
-[ingestion_burst_size: <int> | default = 50000]
-
-# Flag to enable, for all users, handling of samples with external labels
-# identifying replicas in an HA Prometheus setup.
-# CLI flag: -distributor.ha-tracker.enable-for-all-users
-[accept_ha_samples: <boolean> | default = false]
-
-# Prometheus label to look for in samples to identify a Prometheus HA cluster.
-# CLI flag: -distributor.ha-tracker.cluster
-[ha_cluster_label: <string> | default = "cluster"]
-
-# Prometheus label to look for in samples to identify a Prometheus HA replica.
-# CLI flag: -distributor.ha-tracker.replica
-[ha_replica_label: <string> | default = "__replica__"]
-
-# Maximum number of clusters that HA tracker will keep track of for single user.
-# 0 to disable the limit.
-# CLI flag: -distributor.ha-tracker.max-clusters
-[ha_max_clusters: <int> | default = 0]
-
-# This flag can be used to specify label names that to drop during sample
-# ingestion within the distributor and can be repeated in order to drop multiple
-# labels.
-# CLI flag: -distributor.drop-label
-[drop_labels: <list of string> | default = []]
-
-# Maximum length accepted for label names
-# CLI flag: -validation.max-length-label-name
-[max_label_name_length: <int> | default = 1024]
-
-# Maximum length accepted for label value. This setting also applies to the
-# metric name
-# CLI flag: -validation.max-length-label-value
-[max_label_value_length: <int> | default = 2048]
-
-# Maximum number of label names per series.
-# CLI flag: -validation.max-label-names-per-series
-[max_label_names_per_series: <int> | default = 30]
-
-# Maximum combined size in bytes of all labels and label values accepted for a
-# series. 0 to disable the limit.
-# CLI flag: -validation.max-labels-size-bytes
-[max_labels_size_bytes: <int> | default = 0]
-
-# Maximum length accepted for metric metadata. Metadata refers to Metric Name,
-# HELP and UNIT.
-# CLI flag: -validation.max-metadata-length
-[max_metadata_length: <int> | default = 1024]
-
-# Reject old samples.
-# CLI flag: -validation.reject-old-samples
-[reject_old_samples: <boolean> | default = false]
-
-# Maximum accepted sample age before rejecting.
-# CLI flag: -validation.reject-old-samples.max-age
-[reject_old_samples_max_age: <duration> | default = 2w]
-
-# Duration which table will be created/deleted before/after it's needed; we
-# won't accept sample from before this time.
-# CLI flag: -validation.create-grace-period
-[creation_grace_period: <duration> | default = 10m]
-
-# Enforce every metadata has a metric name.
-# CLI flag: -validation.enforce-metadata-metric-name
-[enforce_metadata_metric_name: <boolean> | default = true]
-
-# Enforce every sample has a metric name.
-# CLI flag: -validation.enforce-metric-name
-[enforce_metric_name: <boolean> | default = true]
-
-# The default tenant's shard size when the shuffle-sharding strategy is used.
-# Must be set both on ingesters and distributors. When this setting is specified
-# in the per-tenant overrides, a value of 0 disables shuffle sharding for the
-# tenant.
-# CLI flag: -distributor.ingestion-tenant-shard-size
-[ingestion_tenant_shard_size: <int> | default = 0]
-
-# List of metric relabel configurations. Note that in most situations, it is
-# more effective to use metrics relabeling directly in the Prometheus server,
-# e.g. remote_write.write_relabel_configs.
-[metric_relabel_configs: <relabel_config...> | default = ]
-
-# Enables support for exemplars in TSDB and sets the maximum number that will be
-# stored. less than zero means disabled. If the value is set to zero, cortex
-# will fallback to blocks-storage.tsdb.max-exemplars value.
-# CLI flag: -ingester.max-exemplars
-[max_exemplars: <int> | default = 0]
-
-# The maximum number of series for which a query can fetch samples from each
-# ingester. This limit is enforced only in the ingesters (when querying samples
-# not flushed to the storage yet) and it's a per-instance limit. This limit is
-# ignored when running the Cortex blocks storage. When running Cortex with
-# blocks storage use -querier.max-fetched-series-per-query limit instead.
-# CLI flag: -ingester.max-series-per-query
-[max_series_per_query: <int> | default = 100000]
-
-# The maximum number of active series per user, per ingester. 0 to disable.
-# CLI flag: -ingester.max-series-per-user
-[max_series_per_user: <int> | default = 5000000]
-
-# The maximum number of active series per metric name, per ingester. 0 to
-# disable.
-# CLI flag: -ingester.max-series-per-metric
-[max_series_per_metric: <int> | default = 50000]
-
-# The maximum number of active series per user, across the cluster before
-# replication. 0 to disable. Supported only if -distributor.shard-by-all-labels
-# is true.
-# CLI flag: -ingester.max-global-series-per-user
-[max_global_series_per_user: <int> | default = 0]
-
-# The maximum number of active series per metric name, across the cluster before
-# replication. 0 to disable.
-# CLI flag: -ingester.max-global-series-per-metric
-[max_global_series_per_metric: <int> | default = 0]
-
-# The maximum number of active metrics with metadata per user, per ingester. 0
-# to disable.
-# CLI flag: -ingester.max-metadata-per-user
-[max_metadata_per_user: <int> | default = 8000]
-
-# The maximum number of metadata per metric, per ingester. 0 to disable.
-# CLI flag: -ingester.max-metadata-per-metric
-[max_metadata_per_metric: <int> | default = 10]
-
-# The maximum number of active metrics with metadata per user, across the
-# cluster. 0 to disable. Supported only if -distributor.shard-by-all-labels is
-# true.
-# CLI flag: -ingester.max-global-metadata-per-user
-[max_global_metadata_per_user: <int> | default = 0]
-
-# The maximum number of metadata per metric, across the cluster. 0 to disable.
-# CLI flag: -ingester.max-global-metadata-per-metric
-[max_global_metadata_per_metric: <int> | default = 0]
-
-# Maximum number of chunks that can be fetched in a single query from ingesters
-# and long-term storage. This limit is enforced in the querier, ruler and
-# store-gateway. 0 to disable.
-# CLI flag: -querier.max-fetched-chunks-per-query
-[max_fetched_chunks_per_query: <int> | default = 2000000]
-
-# The maximum number of unique series for which a query can fetch samples from
-# each ingesters and blocks storage. This limit is enforced in the querier,
-# ruler and store-gateway. 0 to disable
-# CLI flag: -querier.max-fetched-series-per-query
-[max_fetched_series_per_query: <int> | default = 0]
-
-# Deprecated (user max-fetched-data-bytes-per-query instead): The maximum size
-# of all chunks in bytes that a query can fetch from each ingester and storage.
-# This limit is enforced in the querier, ruler and store-gateway. 0 to disable.
-# CLI flag: -querier.max-fetched-chunk-bytes-per-query
-[max_fetched_chunk_bytes_per_query: <int> | default = 0]
-
-# The maximum combined size of all data that a query can fetch from each
-# ingester and storage. This limit is enforced in the querier and ruler for
-# `query`, `query_range` and `series` APIs. 0 to disable.
-# CLI flag: -querier.max-fetched-data-bytes-per-query
-[max_fetched_data_bytes_per_query: <int> | default = 0]
-
-# Limit how long back data (series and metadata) can be queried, up until
-# <lookback> duration ago. This limit is enforced in the query-frontend, querier
-# and ruler. If the requested time range is outside the allowed range, the
-# request will not fail but will be manipulated to only query data within the
-# allowed time range. 0 to disable.
-# CLI flag: -querier.max-query-lookback
-[max_query_lookback: <duration> | default = 0s]
-
-# Limit the query time range (end - start time). This limit is enforced in the
-# query-frontend (on the received query) and in the querier (on the query
-# possibly split by the query-frontend). 0 to disable.
-# CLI flag: -store.max-query-length
-[max_query_length: <duration> | default = 0s]
-
-# Maximum number of split queries will be scheduled in parallel by the frontend.
-# CLI flag: -querier.max-query-parallelism
-[max_query_parallelism: <int> | default = 14]
-
-# Most recent allowed cacheable result per-tenant, to prevent caching very
-# recent results that might still be in flux.
-# CLI flag: -frontend.max-cache-freshness
-[max_cache_freshness: <duration> | default = 1m]
-
-# Maximum number of queriers that can handle requests for a single tenant. If
-# set to 0 or value higher than number of available queriers, *all* queriers
-# will handle requests for the tenant. Each frontend (or query-scheduler, if
-# used) will select the same set of queriers for the same tenant (given that all
-# queriers are connected to all frontends / query-schedulers). This option only
-# works with queriers connecting to the query-frontend / query-scheduler, not
-# when using downstream URL.
-# CLI flag: -frontend.max-queriers-per-tenant
-[max_queriers_per_tenant: <int> | default = 0]
-
-# Maximum number of outstanding requests per tenant per request queue (either
-# query frontend or query scheduler); requests beyond this error with HTTP 429.
-# CLI flag: -frontend.max-outstanding-requests-per-tenant
-[max_outstanding_requests_per_tenant: <int> | default = 100]
-
-# Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
-
-# The default tenant's shard size when the shuffle-sharding strategy is used by
-# ruler. When this setting is specified in the per-tenant overrides, a value of
-# 0 disables shuffle sharding for the tenant.
-# CLI flag: -ruler.tenant-shard-size
-[ruler_tenant_shard_size: <int> | default = 0]
-
-# Maximum number of rules per rule group per-tenant. 0 to disable.
-# CLI flag: -ruler.max-rules-per-rule-group
-[ruler_max_rules_per_rule_group: <int> | default = 0]
-
-# Maximum number of rule groups per-tenant. 0 to disable.
-# CLI flag: -ruler.max-rule-groups-per-tenant
-[ruler_max_rule_groups_per_tenant: <int> | default = 0]
-
-# The default tenant's shard size when the shuffle-sharding strategy is used.
-# Must be set when the store-gateway sharding is enabled with the
-# shuffle-sharding strategy. When this setting is specified in the per-tenant
-# overrides, a value of 0 disables shuffle sharding for the tenant.
-# CLI flag: -store-gateway.tenant-shard-size
-[store_gateway_tenant_shard_size: <int> | default = 0]
-
-# Delete blocks containing samples older than the specified retention period. 0
-# to disable.
-# CLI flag: -compactor.blocks-retention-period
-[compactor_blocks_retention_period: <duration> | default = 0s]
-
-# The default tenant's shard size when the shuffle-sharding strategy is used by
-# the compactor. When this setting is specified in the per-tenant overrides, a
-# value of 0 disables shuffle sharding for the tenant.
-# CLI flag: -compactor.tenant-shard-size
-[compactor_tenant_shard_size: <int> | default = 0]
-
-# S3 server-side encryption type. Required to enable server-side encryption
-# overrides for a specific tenant. If not set, the default S3 client settings
-# are used.
-[s3_sse_type: <string> | default = ""]
-
-# S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not
-# set.
-[s3_sse_kms_key_id: <string> | default = ""]
-
-# S3 server-side encryption KMS encryption context. If unset and the key ID
-# override is set, the encryption context will not be provided to S3. Ignored if
-# the SSE type override is not set.
-[s3_sse_kms_encryption_context: <string> | default = ""]
-
-# Comma-separated list of network CIDRs to block in Alertmanager receiver
-# integrations.
-# CLI flag: -alertmanager.receivers-firewall-block-cidr-networks
-[alertmanager_receivers_firewall_block_cidr_networks: <string> | default = ""]
-
-# True to block private and local addresses in Alertmanager receiver
-# integrations. It blocks private addresses defined by  RFC 1918 (IPv4
-# addresses) and RFC 4193 (IPv6 addresses), as well as loopback, local unicast
-# and local multicast addresses.
-# CLI flag: -alertmanager.receivers-firewall-block-private-addresses
-[alertmanager_receivers_firewall_block_private_addresses: <boolean> | default = false]
-
-# Per-user rate limit for sending notifications from Alertmanager in
-# notifications/sec. 0 = rate limit disabled. Negative value = no notifications
-# are allowed.
-# CLI flag: -alertmanager.notification-rate-limit
-[alertmanager_notification_rate_limit: <float> | default = 0]
-
-# Per-integration notification rate limits. Value is a map, where each key is
-# integration name and value is a rate-limit (float). On command line, this map
-# is given in JSON format. Rate limit has the same meaning as
-# -alertmanager.notification-rate-limit, but only applies for specific
-# integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover, sns.
-# CLI flag: -alertmanager.notification-rate-limit-per-integration
-[alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
-
-# Maximum size of configuration file for Alertmanager that tenant can upload via
-# Alertmanager API. 0 = no limit.
-# CLI flag: -alertmanager.max-config-size-bytes
-[alertmanager_max_config_size_bytes: <int> | default = 0]
-
-# Maximum number of templates in tenant's Alertmanager configuration uploaded
-# via Alertmanager API. 0 = no limit.
-# CLI flag: -alertmanager.max-templates-count
-[alertmanager_max_templates_count: <int> | default = 0]
-
-# Maximum size of single template in tenant's Alertmanager configuration
-# uploaded via Alertmanager API. 0 = no limit.
-# CLI flag: -alertmanager.max-template-size-bytes
-[alertmanager_max_template_size_bytes: <int> | default = 0]
-
-# Maximum number of aggregation groups in Alertmanager's dispatcher that a
-# tenant can have. Each active aggregation group uses single goroutine. When the
-# limit is reached, dispatcher will not dispatch alerts that belong to
-# additional aggregation groups, but existing groups will keep working properly.
-# 0 = no limit.
-# CLI flag: -alertmanager.max-dispatcher-aggregation-groups
-[alertmanager_max_dispatcher_aggregation_groups: <int> | default = 0]
-
-# Maximum number of alerts that a single user can have. Inserting more alerts
-# will fail with a log message and metric increment. 0 = no limit.
-# CLI flag: -alertmanager.max-alerts-count
-[alertmanager_max_alerts_count: <int> | default = 0]
-
-# Maximum total size of alerts that a single user can have, alert size is the
-# sum of the bytes of its labels, annotations and generatorURL. Inserting more
-# alerts will fail with a log message and metric increment. 0 = no limit.
-# CLI flag: -alertmanager.max-alerts-size-bytes
-[alertmanager_max_alerts_size_bytes: <int> | default = 0]
-```
-
-### `redis_config`
-
-The `redis_config` configures the Redis backend cache.
-
-```yaml
-# Redis Server endpoint to use for caching. A comma-separated list of endpoints
-# for Redis Cluster or Redis Sentinel. If empty, no redis will be used.
-# CLI flag: -frontend.redis.endpoint
-[endpoint: <string> | default = ""]
-
-# Redis Sentinel master name. An empty string for Redis Server or Redis Cluster.
-# CLI flag: -frontend.redis.master-name
-[master_name: <string> | default = ""]
-
-# Maximum time to wait before giving up on redis requests.
-# CLI flag: -frontend.redis.timeout
-[timeout: <duration> | default = 500ms]
-
-# How long keys stay in the redis.
-# CLI flag: -frontend.redis.expiration
-[expiration: <duration> | default = 0s]
-
-# Database index.
-# CLI flag: -frontend.redis.db
-[db: <int> | default = 0]
-
-# Maximum number of connections in the pool.
-# CLI flag: -frontend.redis.pool-size
-[pool_size: <int> | default = 0]
-
-# Password to use when connecting to redis.
-# CLI flag: -frontend.redis.password
-[password: <string> | default = ""]
-
-# Enable connecting to redis with TLS.
-# CLI flag: -frontend.redis.tls-enabled
-[tls_enabled: <boolean> | default = false]
-
-# Skip validating server certificate.
-# CLI flag: -frontend.redis.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-
-# Close connections after remaining idle for this duration. If the value is
-# zero, then idle connections are not closed.
-# CLI flag: -frontend.redis.idle-timeout
-[idle_timeout: <duration> | default = 0s]
-
-# Close connections older than this duration. If the value is zero, then the
-# pool does not close connections based on age.
-# CLI flag: -frontend.redis.max-connection-age
-[max_connection_age: <duration> | default = 0s]
-```
-
-### `memcached_config`
-
-The `memcached_config` block configures how data is stored in Memcached (ie. expiration).
-
-```yaml
-# How long keys stay in the memcache.
-# CLI flag: -frontend.memcached.expiration
-[expiration: <duration> | default = 0s]
-
-# How many keys to fetch in each batch.
-# CLI flag: -frontend.memcached.batchsize
-[batch_size: <int> | default = 1024]
-
-# Maximum active requests to memcache.
-# CLI flag: -frontend.memcached.parallelism
-[parallelism: <int> | default = 100]
-```
-
-### `memcached_client_config`
-
-The `memcached_client_config` configures the client used to connect to Memcached.
-
-```yaml
-# Hostname for memcached service to use. If empty and if addresses is unset, no
-# memcached will be used.
-# CLI flag: -frontend.memcached.hostname
-[host: <string> | default = ""]
-
-# SRV service used to discover memcache servers.
-# CLI flag: -frontend.memcached.service
-[service: <string> | default = "memcached"]
-
-# EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
-# https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
-# CLI flag: -frontend.memcached.addresses
-[addresses: <string> | default = ""]
-
-# Maximum time to wait before giving up on memcached requests.
-# CLI flag: -frontend.memcached.timeout
-[timeout: <duration> | default = 100ms]
-
-# Maximum number of idle connections in pool.
-# CLI flag: -frontend.memcached.max-idle-conns
-[max_idle_conns: <int> | default = 16]
-
-# The maximum size of an item stored in memcached. Bigger items are not stored.
-# If set to 0, no maximum size is enforced.
-# CLI flag: -frontend.memcached.max-item-size
-[max_item_size: <int> | default = 0]
-
-# Period with which to poll DNS for memcache servers.
-# CLI flag: -frontend.memcached.update-interval
-[update_interval: <duration> | default = 1m]
-
-# Use consistent hashing to distribute to memcache servers.
-# CLI flag: -frontend.memcached.consistent-hash
-[consistent_hash: <boolean> | default = true]
-
-# Trip circuit-breaker after this number of consecutive dial failures (if zero
-# then circuit-breaker is disabled).
-# CLI flag: -frontend.memcached.circuit-breaker-consecutive-failures
-[circuit_breaker_consecutive_failures: <int> | default = 10]
-
-# Duration circuit-breaker remains open after tripping (if zero then 60 seconds
-# is used).
-# CLI flag: -frontend.memcached.circuit-breaker-timeout
-[circuit_breaker_timeout: <duration> | default = 10s]
-
-# Reset circuit-breaker counts after this long (if zero then never reset).
-# CLI flag: -frontend.memcached.circuit-breaker-interval
-[circuit_breaker_interval: <duration> | default = 10s]
-```
-
-### `fifo_cache_config`
-
-The `fifo_cache_config` configures the local in-memory cache.
-
-```yaml
-# Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
-# applied.
-# CLI flag: -frontend.fifocache.max-size-bytes
-[max_size_bytes: <string> | default = ""]
-
-# Maximum number of entries in the cache.
-# CLI flag: -frontend.fifocache.max-size-items
-[max_size_items: <int> | default = 0]
-
-# The expiry duration for the cache.
-# CLI flag: -frontend.fifocache.duration
-[validity: <duration> | default = 0s]
-
-# Deprecated (use max-size-items or max-size-bytes instead): The number of
-# entries to cache.
-# CLI flag: -frontend.fifocache.size
-[size: <int> | default = 0]
-```
-
-### `configs_config`
-
-The `configs_config` configures the Cortex Configs DB and API.
-
-```yaml
-database:
-  # URI where the database can be found (for dev you can use memory://)
-  # CLI flag: -configs.database.uri
-  [uri: <string> | default = "postgres://postgres@configs-db.weave.local/configs?sslmode=disable"]
-
-  # Path where the database migration files can be found
-  # CLI flag: -configs.database.migrations-dir
-  [migrations_dir: <string> | default = ""]
-
-  # File containing password (username goes in URI)
-  # CLI flag: -configs.database.password-file
-  [password_file: <string> | default = ""]
-
-api:
-  notifications:
-    # Disable Email notifications for Alertmanager.
-    # CLI flag: -configs.notifications.disable-email
-    [disable_email: <boolean> | default = false]
-
-    # Disable WebHook notifications for Alertmanager.
-    # CLI flag: -configs.notifications.disable-webhook
-    [disable_webhook: <boolean> | default = false]
-```
-
-### `configstore_config`
-
-The `configstore_config` configures the config database storing rules and alerts, and is used by the Cortex alertmanager. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- `alertmanager-storage`
-- `ruler-storage`
-
-&nbsp;
-
-```yaml
-# URL of configs API server.
-# CLI flag: -<prefix>.configs.url
-[configs_api_url: <url> | default = ]
-
-# Timeout for requests to Weave Cloud configs service.
-# CLI flag: -<prefix>.configs.client-timeout
-[client_timeout: <duration> | default = 5s]
-
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
-# CLI flag: -<prefix>.configs.tls-cert-path
-[tls_cert_path: <string> | default = ""]
-
-# Path to the key file for the client certificate. Also requires the client
-# certificate to be configured.
-# CLI flag: -<prefix>.configs.tls-key-path
-[tls_key_path: <string> | default = ""]
-
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
-# CLI flag: -<prefix>.configs.tls-ca-path
-[tls_ca_path: <string> | default = ""]
-
-# Override the expected name on the server certificate.
-# CLI flag: -<prefix>.configs.tls-server-name
-[tls_server_name: <string> | default = ""]
-
-# Skip validating server certificate.
-# CLI flag: -<prefix>.configs.tls-insecure-skip-verify
-[tls_insecure_skip_verify: <boolean> | default = false]
-```
-
-### `blocks_storage_config`
-
-The `blocks_storage_config` configures the blocks storage.
-
-```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
-# filesystem.
-# CLI flag: -blocks-storage.backend
-[backend: <string> | default = "s3"]
-
-s3:
-  # The S3 bucket endpoint. It could be an AWS S3 endpoint listed at
-  # https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an
-  # S3-compatible service in hostname:port format.
-  # CLI flag: -blocks-storage.s3.endpoint
-  [endpoint: <string> | default = ""]
-
-  # S3 region. If unset, the client will issue a S3 GetBucketLocation API call
-  # to autodetect it.
-  # CLI flag: -blocks-storage.s3.region
-  [region: <string> | default = ""]
-
-  # S3 bucket name
-  # CLI flag: -blocks-storage.s3.bucket-name
-  [bucket_name: <string> | default = ""]
-
-  # S3 secret access key
-  # CLI flag: -blocks-storage.s3.secret-access-key
-  [secret_access_key: <string> | default = ""]
-
-  # S3 access key ID
-  # CLI flag: -blocks-storage.s3.access-key-id
-  [access_key_id: <string> | default = ""]
-
-  # If enabled, use http:// for the S3 endpoint instead of https://. This could
-  # be useful in local dev/test environments while using an S3-compatible
-  # backend storage, like Minio.
-  # CLI flag: -blocks-storage.s3.insecure
-  [insecure: <boolean> | default = false]
-
-  # The signature version to use for authenticating against S3. Supported values
-  # are: v4, v2.
-  # CLI flag: -blocks-storage.s3.signature-version
-  [signature_version: <string> | default = "v4"]
-
-  # The s3 bucket lookup style. Supported values are: auto, virtual-hosted,
-  # path.
-  # CLI flag: -blocks-storage.s3.bucket-lookup-type
-  [bucket_lookup_type: <string> | default = "auto"]
-
-  # The s3_sse_config configures the S3 server-side encryption.
-  # The CLI flags prefix for this block config is: blocks-storage
-  [sse: <s3_sse_config>]
-
-  http:
-    # The time an idle connection will remain idle before closing.
-    # CLI flag: -blocks-storage.s3.http.idle-conn-timeout
-    [idle_conn_timeout: <duration> | default = 1m30s]
-
-    # The amount of time the client will wait for a servers response headers.
-    # CLI flag: -blocks-storage.s3.http.response-header-timeout
-    [response_header_timeout: <duration> | default = 2m]
-
-    # If the client connects via HTTPS and this option is enabled, the client
-    # will accept any certificate and hostname.
-    # CLI flag: -blocks-storage.s3.http.insecure-skip-verify
-    [insecure_skip_verify: <boolean> | default = false]
-
-    # Maximum time to wait for a TLS handshake. 0 means no limit.
-    # CLI flag: -blocks-storage.s3.tls-handshake-timeout
-    [tls_handshake_timeout: <duration> | default = 10s]
-
-    # The time to wait for a server's first response headers after fully writing
-    # the request headers if the request has an Expect header. 0 to send the
-    # request body immediately.
-    # CLI flag: -blocks-storage.s3.expect-continue-timeout
-    [expect_continue_timeout: <duration> | default = 1s]
-
-    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
-    # no limit.
-    # CLI flag: -blocks-storage.s3.max-idle-connections
-    [max_idle_connections: <int> | default = 100]
-
-    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
-    # built-in default value is used.
-    # CLI flag: -blocks-storage.s3.max-idle-connections-per-host
-    [max_idle_connections_per_host: <int> | default = 100]
-
-    # Maximum number of connections per host. 0 means no limit.
-    # CLI flag: -blocks-storage.s3.max-connections-per-host
-    [max_connections_per_host: <int> | default = 0]
-
-gcs:
-  # GCS bucket name
-  # CLI flag: -blocks-storage.gcs.bucket-name
-  [bucket_name: <string> | default = ""]
-
-  # JSON representing either a Google Developers Console client_credentials.json
-  # file or a Google Developers service account key file. If empty, fallback to
-  # Google default logic.
-  # CLI flag: -blocks-storage.gcs.service-account
-  [service_account: <string> | default = ""]
-
-azure:
-  # Azure storage account name
-  # CLI flag: -blocks-storage.azure.account-name
-  [account_name: <string> | default = ""]
-
-  # Azure storage account key
-  # CLI flag: -blocks-storage.azure.account-key
-  [account_key: <string> | default = ""]
-
-  # Azure storage container name
-  # CLI flag: -blocks-storage.azure.container-name
-  [container_name: <string> | default = ""]
-
-  # Azure storage endpoint suffix without schema. The account name will be
-  # prefixed to this value to create the FQDN
-  # CLI flag: -blocks-storage.azure.endpoint-suffix
-  [endpoint_suffix: <string> | default = ""]
-
-  # Number of retries for recoverable errors
-  # CLI flag: -blocks-storage.azure.max-retries
-  [max_retries: <int> | default = 20]
-
-  # Azure storage MSI resource. Either this or account key must be set.
-  # CLI flag: -blocks-storage.azure.msi-resource
-  [msi_resource: <string> | default = ""]
-
-  # Azure storage MSI resource managed identity client Id. If not supplied
-  # system assigned identity is used
-  # CLI flag: -blocks-storage.azure.user-assigned-id
-  [user_assigned_id: <string> | default = ""]
-
-  http:
-    # The time an idle connection will remain idle before closing.
-    # CLI flag: -blocks-storage.azure.http.idle-conn-timeout
-    [idle_conn_timeout: <duration> | default = 1m30s]
-
-    # The amount of time the client will wait for a servers response headers.
-    # CLI flag: -blocks-storage.azure.http.response-header-timeout
-    [response_header_timeout: <duration> | default = 2m]
-
-    # If the client connects via HTTPS and this option is enabled, the client
-    # will accept any certificate and hostname.
-    # CLI flag: -blocks-storage.azure.http.insecure-skip-verify
-    [insecure_skip_verify: <boolean> | default = false]
-
-    # Maximum time to wait for a TLS handshake. 0 means no limit.
-    # CLI flag: -blocks-storage.azure.tls-handshake-timeout
-    [tls_handshake_timeout: <duration> | default = 10s]
-
-    # The time to wait for a server's first response headers after fully writing
-    # the request headers if the request has an Expect header. 0 to send the
-    # request body immediately.
-    # CLI flag: -blocks-storage.azure.expect-continue-timeout
-    [expect_continue_timeout: <duration> | default = 1s]
-
-    # Maximum number of idle (keep-alive) connections across all hosts. 0 means
-    # no limit.
-    # CLI flag: -blocks-storage.azure.max-idle-connections
-    [max_idle_connections: <int> | default = 100]
-
-    # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
-    # built-in default value is used.
-    # CLI flag: -blocks-storage.azure.max-idle-connections-per-host
-    [max_idle_connections_per_host: <int> | default = 100]
-
-    # Maximum number of connections per host. 0 means no limit.
-    # CLI flag: -blocks-storage.azure.max-connections-per-host
-    [max_connections_per_host: <int> | default = 0]
-
-swift:
-  # OpenStack Swift authentication API version. 0 to autodetect.
-  # CLI flag: -blocks-storage.swift.auth-version
-  [auth_version: <int> | default = 0]
-
-  # OpenStack Swift authentication URL
-  # CLI flag: -blocks-storage.swift.auth-url
-  [auth_url: <string> | default = ""]
-
-  # OpenStack Swift username.
-  # CLI flag: -blocks-storage.swift.username
-  [username: <string> | default = ""]
-
-  # OpenStack Swift user's domain name.
-  # CLI flag: -blocks-storage.swift.user-domain-name
-  [user_domain_name: <string> | default = ""]
-
-  # OpenStack Swift user's domain ID.
-  # CLI flag: -blocks-storage.swift.user-domain-id
-  [user_domain_id: <string> | default = ""]
-
-  # OpenStack Swift user ID.
-  # CLI flag: -blocks-storage.swift.user-id
-  [user_id: <string> | default = ""]
-
-  # OpenStack Swift API key.
-  # CLI flag: -blocks-storage.swift.password
-  [password: <string> | default = ""]
-
-  # OpenStack Swift user's domain ID.
-  # CLI flag: -blocks-storage.swift.domain-id
-  [domain_id: <string> | default = ""]
-
-  # OpenStack Swift user's domain name.
-  # CLI flag: -blocks-storage.swift.domain-name
-  [domain_name: <string> | default = ""]
-
-  # OpenStack Swift project ID (v2,v3 auth only).
-  # CLI flag: -blocks-storage.swift.project-id
-  [project_id: <string> | default = ""]
-
-  # OpenStack Swift project name (v2,v3 auth only).
-  # CLI flag: -blocks-storage.swift.project-name
-  [project_name: <string> | default = ""]
-
-  # ID of the OpenStack Swift project's domain (v3 auth only), only needed if it
-  # differs the from user domain.
-  # CLI flag: -blocks-storage.swift.project-domain-id
-  [project_domain_id: <string> | default = ""]
-
-  # Name of the OpenStack Swift project's domain (v3 auth only), only needed if
-  # it differs from the user domain.
-  # CLI flag: -blocks-storage.swift.project-domain-name
-  [project_domain_name: <string> | default = ""]
-
-  # OpenStack Swift Region to use (v2,v3 auth only).
-  # CLI flag: -blocks-storage.swift.region-name
-  [region_name: <string> | default = ""]
-
-  # Name of the OpenStack Swift container to put chunks in.
-  # CLI flag: -blocks-storage.swift.container-name
-  [container_name: <string> | default = ""]
-
-  # Max retries on requests error.
-  # CLI flag: -blocks-storage.swift.max-retries
-  [max_retries: <int> | default = 3]
-
-  # Time after which a connection attempt is aborted.
-  # CLI flag: -blocks-storage.swift.connect-timeout
-  [connect_timeout: <duration> | default = 10s]
-
-  # Time after which an idle request is aborted. The timeout watchdog is reset
-  # each time some data is received, so the timeout triggers after X time no
-  # data is received on a request.
-  # CLI flag: -blocks-storage.swift.request-timeout
-  [request_timeout: <duration> | default = 5s]
-
-filesystem:
-  # Local filesystem storage directory.
-  # CLI flag: -blocks-storage.filesystem.dir
-  [dir: <string> | default = ""]
-
-# This configures how the querier and store-gateway discover and synchronize
-# blocks stored in the bucket.
-bucket_store:
-  # Directory to store synchronized TSDB index headers.
-  # CLI flag: -blocks-storage.bucket-store.sync-dir
-  [sync_dir: <string> | default = "tsdb-sync"]
-
-  # How frequently to scan the bucket, or to refresh the bucket index (if
-  # enabled), in order to look for changes (new blocks shipped by ingesters and
-  # blocks deleted by retention or compaction).
-  # CLI flag: -blocks-storage.bucket-store.sync-interval
-  [sync_interval: <duration> | default = 15m]
-
-  # Max number of concurrent queries to execute against the long-term storage.
-  # The limit is shared across all tenants.
-  # CLI flag: -blocks-storage.bucket-store.max-concurrent
-  [max_concurrent: <int> | default = 100]
-
-  # Maximum number of concurrent tenants synching blocks.
-  # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
-  [tenant_sync_concurrency: <int> | default = 10]
-
-  # Maximum number of concurrent blocks synching per tenant.
-  # CLI flag: -blocks-storage.bucket-store.block-sync-concurrency
-  [block_sync_concurrency: <int> | default = 20]
-
-  # Number of Go routines to use when syncing block meta files from object
-  # storage per tenant.
-  # CLI flag: -blocks-storage.bucket-store.meta-sync-concurrency
-  [meta_sync_concurrency: <int> | default = 20]
-
-  # Minimum age of a block before it's being read. Set it to safe value (e.g
-  # 30m) if your object storage is eventually consistent. GCS and S3 are
-  # (roughly) strongly consistent.
-  # CLI flag: -blocks-storage.bucket-store.consistency-delay
-  [consistency_delay: <duration> | default = 0s]
-
-  index_cache:
-    # The index cache backend type. Supported values: inmemory, memcached.
-    # CLI flag: -blocks-storage.bucket-store.index-cache.backend
-    [backend: <string> | default = "inmemory"]
-
-    inmemory:
-      # Maximum size in bytes of in-memory index cache used to speed up blocks
-      # index lookups (shared between all tenants).
-      # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes
-      [max_size_bytes: <int> | default = 1073741824]
-
-    memcached:
-      # Comma separated list of memcached addresses. Supported prefixes are:
-      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
-      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
-      # that).
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.addresses
-      [addresses: <string> | default = ""]
-
-      # The socket read/write timeout.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.timeout
-      [timeout: <duration> | default = 100ms]
-
-      # The maximum number of idle connections that will be maintained per
-      # address.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-idle-connections
-      [max_idle_connections: <int> | default = 16]
-
-      # The maximum number of concurrent asynchronous operations can occur.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
-
-      # The maximum number of enqueued asynchronous operations allowed.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-async-buffer-size
-      [max_async_buffer_size: <int> | default = 10000]
-
-      # The maximum number of concurrent connections running get operations. If
-      # set to 0, concurrency is unlimited.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-get-multi-concurrency
-      [max_get_multi_concurrency: <int> | default = 100]
-
-      # The maximum number of keys a single underlying get operation should run.
-      # If more keys are specified, internally keys are split into multiple
-      # batches and fetched concurrently, honoring the max concurrency. If set
-      # to 0, the max batch size is unlimited.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-get-multi-batch-size
-      [max_get_multi_batch_size: <int> | default = 0]
-
-      # The maximum size of an item stored in memcached. Bigger items are not
-      # stored. If set to 0, no maximum size is enforced.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.max-item-size
-      [max_item_size: <int> | default = 1048576]
-
-      # Use memcached auto-discovery mechanism provided by some cloud provider
-      # like GCP and AWS
-      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
-      [auto_discovery: <boolean> | default = false]
-
-  chunks_cache:
-    # Backend for chunks cache, if not empty. Supported values: memcached.
-    # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend
-    [backend: <string> | default = ""]
-
-    memcached:
-      # Comma separated list of memcached addresses. Supported prefixes are:
-      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
-      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
-      # that).
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.addresses
-      [addresses: <string> | default = ""]
-
-      # The socket read/write timeout.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.timeout
-      [timeout: <duration> | default = 100ms]
-
-      # The maximum number of idle connections that will be maintained per
-      # address.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-idle-connections
-      [max_idle_connections: <int> | default = 16]
-
-      # The maximum number of concurrent asynchronous operations can occur.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
-
-      # The maximum number of enqueued asynchronous operations allowed.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-async-buffer-size
-      [max_async_buffer_size: <int> | default = 10000]
-
-      # The maximum number of concurrent connections running get operations. If
-      # set to 0, concurrency is unlimited.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-concurrency
-      [max_get_multi_concurrency: <int> | default = 100]
-
-      # The maximum number of keys a single underlying get operation should run.
-      # If more keys are specified, internally keys are split into multiple
-      # batches and fetched concurrently, honoring the max concurrency. If set
-      # to 0, the max batch size is unlimited.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-get-multi-batch-size
-      [max_get_multi_batch_size: <int> | default = 0]
-
-      # The maximum size of an item stored in memcached. Bigger items are not
-      # stored. If set to 0, no maximum size is enforced.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.max-item-size
-      [max_item_size: <int> | default = 1048576]
-
-      # Use memcached auto-discovery mechanism provided by some cloud provider
-      # like GCP and AWS
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
-      [auto_discovery: <boolean> | default = false]
-
-    # Size of each subrange that bucket object is split into for better caching.
-    # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
-    [subrange_size: <int> | default = 16000]
-
-    # Maximum number of sub-GetRange requests that a single GetRange request can
-    # be split into when fetching chunks. Zero or negative value = unlimited
-    # number of sub-requests.
-    # CLI flag: -blocks-storage.bucket-store.chunks-cache.max-get-range-requests
-    [max_get_range_requests: <int> | default = 3]
-
-    # TTL for caching object attributes for chunks.
-    # CLI flag: -blocks-storage.bucket-store.chunks-cache.attributes-ttl
-    [attributes_ttl: <duration> | default = 168h]
-
-    # TTL for caching individual chunks subranges.
-    # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-ttl
-    [subrange_ttl: <duration> | default = 24h]
-
-  metadata_cache:
-    # Backend for metadata cache, if not empty. Supported values: memcached.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.backend
-    [backend: <string> | default = ""]
-
-    memcached:
-      # Comma separated list of memcached addresses. Supported prefixes are:
-      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
-      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
-      # that).
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.addresses
-      [addresses: <string> | default = ""]
-
-      # The socket read/write timeout.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.timeout
-      [timeout: <duration> | default = 100ms]
-
-      # The maximum number of idle connections that will be maintained per
-      # address.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-idle-connections
-      [max_idle_connections: <int> | default = 16]
-
-      # The maximum number of concurrent asynchronous operations can occur.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-concurrency
-      [max_async_concurrency: <int> | default = 50]
-
-      # The maximum number of enqueued asynchronous operations allowed.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-async-buffer-size
-      [max_async_buffer_size: <int> | default = 10000]
-
-      # The maximum number of concurrent connections running get operations. If
-      # set to 0, concurrency is unlimited.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-concurrency
-      [max_get_multi_concurrency: <int> | default = 100]
-
-      # The maximum number of keys a single underlying get operation should run.
-      # If more keys are specified, internally keys are split into multiple
-      # batches and fetched concurrently, honoring the max concurrency. If set
-      # to 0, the max batch size is unlimited.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-get-multi-batch-size
-      [max_get_multi_batch_size: <int> | default = 0]
-
-      # The maximum size of an item stored in memcached. Bigger items are not
-      # stored. If set to 0, no maximum size is enforced.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.max-item-size
-      [max_item_size: <int> | default = 1048576]
-
-      # Use memcached auto-discovery mechanism provided by some cloud provider
-      # like GCP and AWS
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
-      [auto_discovery: <boolean> | default = false]
-
-    # How long to cache list of tenants in the bucket.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
-    [tenants_list_ttl: <duration> | default = 15m]
-
-    # How long to cache list of blocks for each tenant.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenant-blocks-list-ttl
-    [tenant_blocks_list_ttl: <duration> | default = 5m]
-
-    # How long to cache list of chunks for a block.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.chunks-list-ttl
-    [chunks_list_ttl: <duration> | default = 24h]
-
-    # How long to cache information that block metafile exists. Also used for
-    # user deletion mark file.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-exists-ttl
-    [metafile_exists_ttl: <duration> | default = 2h]
-
-    # How long to cache information that block metafile doesn't exist. Also used
-    # for user deletion mark file.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-doesnt-exist-ttl
-    [metafile_doesnt_exist_ttl: <duration> | default = 5m]
-
-    # How long to cache content of the metafile.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-content-ttl
-    [metafile_content_ttl: <duration> | default = 24h]
-
-    # Maximum size of metafile content to cache in bytes. Caching will be
-    # skipped if the content exceeds this size. This is useful to avoid network
-    # round trip for large content if the configured caching backend has an hard
-    # limit on cached items size (in this case, you should set this limit to the
-    # same limit in the caching backend).
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-max-size-bytes
-    [metafile_max_size_bytes: <int> | default = 1048576]
-
-    # How long to cache attributes of the block metafile.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.metafile-attributes-ttl
-    [metafile_attributes_ttl: <duration> | default = 168h]
-
-    # How long to cache attributes of the block index.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.block-index-attributes-ttl
-    [block_index_attributes_ttl: <duration> | default = 168h]
-
-    # How long to cache content of the bucket index.
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
-    [bucket_index_content_ttl: <duration> | default = 5m]
-
-    # Maximum size of bucket index content to cache in bytes. Caching will be
-    # skipped if the content exceeds this size. This is useful to avoid network
-    # round trip for large content if the configured caching backend has an hard
-    # limit on cached items size (in this case, you should set this limit to the
-    # same limit in the caching backend).
-    # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-max-size-bytes
-    [bucket_index_max_size_bytes: <int> | default = 1048576]
-
-  # Duration after which the blocks marked for deletion will be filtered out
-  # while fetching blocks. The idea of ignore-deletion-marks-delay is to ignore
-  # blocks that are marked for deletion with some delay. This ensures store can
-  # still serve blocks that are meant to be deleted but do not have a
-  # replacement yet. Default is 6h, half of the default value for
-  # -compactor.deletion-delay.
-  # CLI flag: -blocks-storage.bucket-store.ignore-deletion-marks-delay
-  [ignore_deletion_mark_delay: <duration> | default = 6h]
-
-  bucket_index:
-    # True to enable querier and store-gateway to discover blocks in the storage
-    # via bucket index instead of bucket scanning.
-    # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
-    [enabled: <boolean> | default = false]
-
-    # How frequently a bucket index, which previously failed to load, should be
-    # tried to load again. This option is used only by querier.
-    # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
-    [update_on_error_interval: <duration> | default = 1m]
-
-    # How long a unused bucket index should be cached. Once this timeout
-    # expires, the unused bucket index is removed from the in-memory cache. This
-    # option is used only by querier.
-    # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
-    [idle_timeout: <duration> | default = 1h]
-
-    # The maximum allowed age of a bucket index (last updated) before queries
-    # start failing because the bucket index is too old. The bucket index is
-    # periodically updated by the compactor, while this check is enforced in the
-    # querier (at query time).
-    # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
-    [max_stale_period: <duration> | default = 1h]
-
-  # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
-  # The pool is shared across all tenants. 0 to disable the limit.
-  # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
-  [max_chunk_pool_bytes: <int> | default = 2147483648]
-
-  # If enabled, store-gateway will lazily memory-map an index-header only once
-  # required by a query.
-  # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-enabled
-  [index_header_lazy_loading_enabled: <boolean> | default = false]
-
-  # If index-header lazy loading is enabled and this setting is > 0, the
-  # store-gateway will release memory-mapped index-headers after 'idle timeout'
-  # inactivity.
-  # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
-  [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
-
-tsdb:
-  # Local directory to store TSDBs in the ingesters.
-  # CLI flag: -blocks-storage.tsdb.dir
-  [dir: <string> | default = "tsdb"]
-
-  # TSDB blocks range period.
-  # CLI flag: -blocks-storage.tsdb.block-ranges-period
-  [block_ranges_period: <list of duration> | default = 2h0m0s]
-
-  # TSDB blocks retention in the ingester before a block is removed. This should
-  # be larger than the block_ranges_period and large enough to give
-  # store-gateways and queriers enough time to discover newly uploaded blocks.
-  # CLI flag: -blocks-storage.tsdb.retention-period
-  [retention_period: <duration> | default = 6h]
-
-  # How frequently the TSDB blocks are scanned and new ones are shipped to the
-  # storage. 0 means shipping is disabled.
-  # CLI flag: -blocks-storage.tsdb.ship-interval
-  [ship_interval: <duration> | default = 1m]
-
-  # Maximum number of tenants concurrently shipping blocks to the storage.
-  # CLI flag: -blocks-storage.tsdb.ship-concurrency
-  [ship_concurrency: <int> | default = 10]
-
-  # How frequently does Cortex try to compact TSDB head. Block is only created
-  # if data covers smallest block range. Must be greater than 0 and max 5
-  # minutes.
-  # CLI flag: -blocks-storage.tsdb.head-compaction-interval
-  [head_compaction_interval: <duration> | default = 1m]
-
-  # Maximum number of tenants concurrently compacting TSDB head into a new block
-  # CLI flag: -blocks-storage.tsdb.head-compaction-concurrency
-  [head_compaction_concurrency: <int> | default = 5]
-
-  # If TSDB head is idle for this duration, it is compacted. Note that up to 25%
-  # jitter is added to the value to avoid ingesters compacting concurrently. 0
-  # means disabled.
-  # CLI flag: -blocks-storage.tsdb.head-compaction-idle-timeout
-  [head_compaction_idle_timeout: <duration> | default = 1h]
-
-  # The write buffer size used by the head chunks mapper. Lower values reduce
-  # memory utilisation on clusters with a large number of tenants at the cost of
-  # increased disk I/O operations.
-  # CLI flag: -blocks-storage.tsdb.head-chunks-write-buffer-size-bytes
-  [head_chunks_write_buffer_size_bytes: <int> | default = 4194304]
-
-  # The number of shards of series to use in TSDB (must be a power of 2).
-  # Reducing this will decrease memory footprint, but can negatively impact
-  # performance.
-  # CLI flag: -blocks-storage.tsdb.stripe-size
-  [stripe_size: <int> | default = 16384]
-
-  # True to enable TSDB WAL compression.
-  # CLI flag: -blocks-storage.tsdb.wal-compression-enabled
-  [wal_compression_enabled: <boolean> | default = false]
-
-  # TSDB WAL segments files max size (bytes).
-  # CLI flag: -blocks-storage.tsdb.wal-segment-size-bytes
-  [wal_segment_size_bytes: <int> | default = 134217728]
-
-  # True to flush blocks to storage on shutdown. If false, incomplete blocks
-  # will be reused after restart.
-  # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
-  [flush_blocks_on_shutdown: <boolean> | default = false]
-
-  # If TSDB has not received any data for this duration, and all blocks from
-  # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
-  # to positive value, this value should be equal or higher than
-  # -querier.query-ingesters-within flag to make sure that TSDB is not closed
-  # prematurely, which could cause partial query results. 0 or negative value
-  # disables closing of idle TSDB.
-  # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
-  [close_idle_tsdb_timeout: <duration> | default = 0s]
-
-  # The size of the in-memory queue used before flushing chunks to the disk.
-  # CLI flag: -blocks-storage.tsdb.head-chunks-write-queue-size
-  [head_chunks_write_queue_size: <int> | default = 0]
-
-  # limit the number of concurrently opening TSDB's on startup
-  # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
-  [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
-
-  # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in
-  # limits is set to zero, cortex will fallback on this value. This setting
-  # enables support for exemplars in TSDB and sets the maximum number that will
-  # be stored. 0 or less means disabled.
-  # CLI flag: -blocks-storage.tsdb.max-exemplars
-  [max_exemplars: <int> | default = 0]
-
-  # True to enable snapshotting of in-memory TSDB data on disk when shutting
-  # down.
-  # CLI flag: -blocks-storage.tsdb.memory-snapshot-on-shutdown
-  [memory_snapshot_on_shutdown: <boolean> | default = false]
-```
-
-### `compactor_config`
-
-The `compactor_config` configures the compactor for the blocks storage.
-
-```yaml
-# List of compaction time ranges.
-# CLI flag: -compactor.block-ranges
-[block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
-
-# Number of Go routines to use when syncing block index and chunks files from
-# the long term storage.
-# CLI flag: -compactor.block-sync-concurrency
-[block_sync_concurrency: <int> | default = 20]
-
-# Number of Go routines to use when syncing block meta files from the long term
-# storage.
-# CLI flag: -compactor.meta-sync-concurrency
-[meta_sync_concurrency: <int> | default = 20]
-
-# Minimum age of fresh (non-compacted) blocks before they are being processed.
-# Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
-# be removed.
-# CLI flag: -compactor.consistency-delay
-[consistency_delay: <duration> | default = 0s]
-
-# Data directory in which to cache blocks and process compactions
-# CLI flag: -compactor.data-dir
-[data_dir: <string> | default = "./data"]
-
-# The frequency at which the compaction runs
-# CLI flag: -compactor.compaction-interval
-[compaction_interval: <duration> | default = 1h]
-
-# How many times to retry a failed compaction within a single compaction run.
-# CLI flag: -compactor.compaction-retries
-[compaction_retries: <int> | default = 3]
-
-# Max number of concurrent compactions running.
-# CLI flag: -compactor.compaction-concurrency
-[compaction_concurrency: <int> | default = 1]
-
-# How frequently compactor should run blocks cleanup and maintenance, as well as
-# update the bucket index.
-# CLI flag: -compactor.cleanup-interval
-[cleanup_interval: <duration> | default = 15m]
-
-# Max number of tenants for which blocks cleanup and maintenance should run
-# concurrently.
-# CLI flag: -compactor.cleanup-concurrency
-[cleanup_concurrency: <int> | default = 20]
-
-# Time before a block marked for deletion is deleted from bucket. If not 0,
-# blocks will be marked for deletion and compactor component will permanently
-# delete blocks marked for deletion from the bucket. If 0, blocks will be
-# deleted straight away. Note that deleting blocks immediately can cause query
-# failures.
-# CLI flag: -compactor.deletion-delay
-[deletion_delay: <duration> | default = 12h]
-
-# For tenants marked for deletion, this is time between deleting of last block,
-# and doing final cleanup (marker files, debug files) of the tenant.
-# CLI flag: -compactor.tenant-cleanup-delay
-[tenant_cleanup_delay: <duration> | default = 6h]
-
-# When enabled, mark blocks containing index with out-of-order chunks for no
-# compact instead of halting the compaction.
-# CLI flag: -compactor.skip-blocks-with-out-of-order-chunks-enabled
-[skip_blocks_with_out_of_order_chunks_enabled: <boolean> | default = false]
-
-# Number of goroutines to use when fetching/uploading block files from object
-# storage.
-# CLI flag: -compactor.block-files-concurrency
-[block_files_concurrency: <int> | default = 10]
-
-# Number of goroutines to use when fetching blocks from object storage when
-# compacting.
-# CLI flag: -compactor.blocks-fetch-concurrency
-[blocks_fetch_concurrency: <int> | default = 3]
-
-# When enabled, at compactor startup the bucket will be scanned and all found
-# deletion marks inside the block location will be copied to the markers global
-# location too. This option can (and should) be safely disabled as soon as the
-# compactor has successfully run at least once.
-# CLI flag: -compactor.block-deletion-marks-migration-enabled
-[block_deletion_marks_migration_enabled: <boolean> | default = false]
-
-# Comma separated list of tenants that can be compacted. If specified, only
-# these tenants will be compacted by compactor, otherwise all tenants can be
-# compacted. Subject to sharding.
-# CLI flag: -compactor.enabled-tenants
-[enabled_tenants: <string> | default = ""]
-
-# Comma separated list of tenants that cannot be compacted by this compactor. If
-# specified, and compactor would normally pick given tenant for compaction (via
-# -compactor.enabled-tenants or sharding), it will be ignored instead.
-# CLI flag: -compactor.disabled-tenants
-[disabled_tenants: <string> | default = ""]
-
-# Shard tenants across multiple compactor instances. Sharding is required if you
-# run multiple compactor instances, in order to coordinate compactions and avoid
-# race conditions leading to the same tenant blocks simultaneously compacted by
-# different instances.
-# CLI flag: -compactor.sharding-enabled
-[sharding_enabled: <boolean> | default = false]
-
-# The sharding strategy to use. Supported values are: default, shuffle-sharding.
-# CLI flag: -compactor.sharding-strategy
-[sharding_strategy: <string> | default = "default"]
-
-sharding_ring:
-  kvstore:
-    # Backend storage to use for the ring. Supported values are: consul, etcd,
-    # inmemory, memberlist, multi.
-    # CLI flag: -compactor.ring.store
-    [store: <string> | default = "consul"]
-
-    # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -compactor.ring.prefix
-    [prefix: <string> | default = "collectors/"]
-
-    dynamodb:
-      # Region to access dynamodb.
-      # CLI flag: -compactor.ring.dynamodb.region
-      [region: <string> | default = ""]
-
-      # Table name to use on dynamodb.
-      # CLI flag: -compactor.ring.dynamodb.table-name
-      [table_name: <string> | default = ""]
-
-      # Time to expire items on dynamodb.
-      # CLI flag: -compactor.ring.dynamodb.ttl-time
-      [ttl: <duration> | default = 0s]
-
-    # The consul_config configures the consul client.
-    # The CLI flags prefix for this block config is: compactor.ring
-    [consul: <consul_config>]
-
-    # The etcd_config configures the etcd client.
-    # The CLI flags prefix for this block config is: compactor.ring
-    [etcd: <etcd_config>]
-
-    multi:
-      # Primary backend storage used by multi-client.
-      # CLI flag: -compactor.ring.multi.primary
-      [primary: <string> | default = ""]
-
-      # Secondary backend storage used by multi-client.
-      # CLI flag: -compactor.ring.multi.secondary
-      [secondary: <string> | default = ""]
-
-      # Mirror writes to secondary store.
-      # CLI flag: -compactor.ring.multi.mirror-enabled
-      [mirror_enabled: <boolean> | default = false]
-
-      # Timeout for storing value to secondary store.
-      # CLI flag: -compactor.ring.multi.mirror-timeout
-      [mirror_timeout: <duration> | default = 2s]
-
-  # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -compactor.ring.heartbeat-period
-  [heartbeat_period: <duration> | default = 5s]
-
-  # The heartbeat timeout after which compactors are considered unhealthy within
-  # the ring. 0 = never (timeout disabled).
-  # CLI flag: -compactor.ring.heartbeat-timeout
-  [heartbeat_timeout: <duration> | default = 1m]
-
-  # Minimum time to wait for ring stability at startup. 0 to disable.
-  # CLI flag: -compactor.ring.wait-stability-min-duration
-  [wait_stability_min_duration: <duration> | default = 1m]
-
-  # Maximum time to wait for ring stability at startup. If the compactor ring
-  # keeps changing after this period of time, the compactor will start anyway.
-  # CLI flag: -compactor.ring.wait-stability-max-duration
-  [wait_stability_max_duration: <duration> | default = 5m]
-
-  # Name of network interface to read address from.
-  # CLI flag: -compactor.ring.instance-interface-names
-  [instance_interface_names: <list of string> | default = [eth0 en0]]
-
-  # Timeout for waiting on compactor to become ACTIVE in the ring.
-  # CLI flag: -compactor.ring.wait-active-instance-timeout
-  [wait_active_instance_timeout: <duration> | default = 10m]
-
-# How long block visit marker file should be considered as expired and able to
-# be picked up by compactor again.
-# CLI flag: -compactor.block-visit-marker-timeout
-[block_visit_marker_timeout: <duration> | default = 5m]
-
-# How frequently block visit marker file should be updated duration compaction.
-# CLI flag: -compactor.block-visit-marker-file-update-interval
-[block_visit_marker_file_update_interval: <duration> | default = 1m]
 ```
 
 ### `store_gateway_config`
@@ -4142,31 +4776,6 @@ sharding_ring:
 # The sharding strategy to use. Supported values are: default, shuffle-sharding.
 # CLI flag: -store-gateway.sharding-strategy
 [sharding_strategy: <string> | default = "default"]
-```
-
-### `s3_sse_config`
-
-The `s3_sse_config` configures the S3 server-side encryption. The supported CLI flags `<prefix>` used to reference this config block are:
-
-- `alertmanager-storage`
-- `blocks-storage`
-- `ruler-storage`
-
-&nbsp;
-
-```yaml
-# Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
-# CLI flag: -<prefix>.s3.sse.type
-[type: <string> | default = ""]
-
-# KMS Key ID used to encrypt objects in S3
-# CLI flag: -<prefix>.s3.sse.kms-key-id
-[kms_key_id: <string> | default = ""]
-
-# KMS Encryption Context used for object encryption. It expects JSON formatted
-# string.
-# CLI flag: -<prefix>.s3.sse.kms-encryption-context
-[kms_encryption_context: <string> | default = ""]
 ```
 
 ### `tracing_config`

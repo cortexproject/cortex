@@ -34,16 +34,11 @@ var (
 	json   = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
 		SortMapKeys:            true,
-		ValidateJsonRawMessage: true,
+		ValidateJsonRawMessage: false,
 	}.Froze()
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-
-	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	PrometheusCodec tripperware.Codec = &prometheusCodec{sharded: false}
-	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
-	ShardedPrometheusCodec tripperware.Codec = &prometheusCodec{sharded: true}
 
 	// Name of the cache control header.
 	cacheControlHeader = "Cache-Control"
@@ -51,6 +46,15 @@ var (
 
 type prometheusCodec struct {
 	sharded bool
+
+	noStepSubQueryInterval time.Duration
+}
+
+func NewPrometheusCodec(sharded bool, noStepSubQueryInterval time.Duration) *prometheusCodec { //nolint:revive
+	return &prometheusCodec{
+		sharded:                sharded,
+		noStepSubQueryInterval: noStepSubQueryInterval,
+	}
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -127,7 +131,7 @@ func NewEmptyPrometheusResponse() *PrometheusResponse {
 	}
 }
 
-func (c prometheusCodec) MergeResponse(ctx context.Context, responses ...tripperware.Response) (tripperware.Response, error) {
+func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Request, responses ...tripperware.Response) (tripperware.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "QueryRangeResponse.MergeResponse")
 	sp.SetTag("response_count", len(responses))
 	defer sp.Finish()
@@ -166,7 +170,7 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, responses ...tripper
 	return &response, nil
 }
 
-func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
+func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = util.ParseTime(r.FormValue("start"))
@@ -199,6 +203,10 @@ func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forward
 	}
 
 	result.Query = r.FormValue("query")
+	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
+		return nil, err
+	}
+
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 

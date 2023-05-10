@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -841,11 +843,13 @@ func (i *Ingester) updateUserTSDBConfigs() {
 				ExemplarsConfig: &config.ExemplarsConfig{
 					MaxExemplars: i.getMaxExemplars(userID),
 				},
+				TSDBConfig: &config.TSDBConfig{
+					OutOfOrderTimeWindow: time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+				},
 			},
 		}
 
-		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow. Invoking this method
-		// with a 0 value of OutOfOrderTimeWindow simply updates Max Exemplars.
+		// This method currently updates the MaxExemplars and OutOfOrderTimeWindow.
 		err := userDB.db.ApplyConfig(cfg)
 		if err != nil {
 			level.Error(logutil.WithUserID(userID, i.logger)).Log("msg", "failed to update user tsdb configuration.")
@@ -933,6 +937,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		return nil, err
 	}
 
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
+	defer span.Finish()
+
 	// We will report *this* request in the error too.
 	inflight := i.inflightPushRequests.Inc()
 	defer i.inflightPushRequests.Dec()
@@ -994,9 +1001,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		startAppend               = time.Now()
 		sampleOutOfBoundsCount    = 0
 		sampleOutOfOrderCount     = 0
+		sampleTooOldCount         = 0
 		newValueForTimestampCount = 0
 		perUserSeriesLimitCount   = 0
 		perMetricSeriesLimitCount = 0
+		nativeHistogramCount      = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1018,6 +1027,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
+
+		nativeHistogramCount += len(ts.Histograms)
 
 		for _, s := range ts.Samples {
 			var err error
@@ -1059,6 +1070,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case storage.ErrDuplicateSampleForTimestamp:
 				newValueForTimestampCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
+				continue
+
+			case storage.ErrTooOldSample:
+				sampleTooOldCount++
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
 				continue
 
@@ -1152,6 +1168,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	if sampleOutOfOrderCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
 	}
+	if sampleTooOldCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(sampleTooOld, userID).Add(float64(sampleTooOldCount))
+	}
 	if newValueForTimestampCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
 	}
@@ -1160,6 +1179,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 	if perMetricSeriesLimitCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+	}
+
+	if nativeHistogramCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
 	}
 
 	// Distributor counts both samples and metadata, so for consistency ingester does the same.
@@ -1180,7 +1203,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		if errors.As(firstPartialErr, &ve) {
 			code = ve.code
 		}
-		level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "firstPartialErr", firstPartialErr)
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "firstPartialErr", firstPartialErr)
 		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, wrapWithUser(firstPartialErr, userID).Error())
 	}
 
@@ -1256,6 +1279,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 	numSamples := 0
 
 	result := &client.QueryResponse{}
+	var it chunkenc.Iterator
 	for ss.Next() {
 		series := ss.At()
 		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
@@ -1266,7 +1290,7 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
-		it := series.Iterator()
+		it = series.Iterator(it)
 		for it.Next() != chunkenc.ValNone {
 			t, v := it.At()
 			ts.Samples = append(ts.Samples, cortexpb.Sample{Value: v, TimestampMs: t})
@@ -1758,6 +1782,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
 	batchSizeBytes := 0
+	var it chunks.Iterator
 	for ss.Next() {
 		series := ss.At()
 
@@ -1770,7 +1795,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
 		}
 
-		it := series.Iterator()
+		it := series.Iterator(it)
 		for it.Next() {
 			// Chunks are ordered by min time.
 			meta := it.At()
@@ -1944,6 +1969,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
+		OutOfOrderTimeWindow:           time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

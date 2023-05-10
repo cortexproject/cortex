@@ -62,11 +62,11 @@ type Handler struct {
 	roundTripper http.RoundTripper
 
 	// Metrics.
-	querySeconds   *prometheus.CounterVec
-	querySeries    *prometheus.CounterVec
-	queryBytes     *prometheus.CounterVec
-	queryDataBytes *prometheus.CounterVec
-	activeUsers    *util.ActiveUsersCleanupService
+	querySeconds    *prometheus.CounterVec
+	querySeries     *prometheus.CounterVec
+	queryChunkBytes *prometheus.CounterVec
+	queryDataBytes  *prometheus.CounterVec
+	activeUsers     *util.ActiveUsersCleanupService
 }
 
 // NewHandler creates a new frontend handler.
@@ -88,7 +88,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Number of series fetched to execute a query.",
 		}, []string{"user"})
 
-		h.queryBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		h.queryChunkBytes = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_fetched_chunks_bytes_total",
 			Help: "Size of all chunks fetched to execute a query in bytes.",
 		}, []string{"user"})
@@ -101,7 +101,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
-			h.queryBytes.DeleteLabelValues(user)
+			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
@@ -120,9 +120,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
 	if f.cfg.QueryStatsEnabled {
-		var ctx context.Context
-		stats, ctx = querier_stats.ContextWithEmptyStats(r.Context())
-		r = r.WithContext(ctx)
+		// Check if querier stats is enabled in the context.
+		stats = querier_stats.FromContext(r.Context())
+		if stats == nil {
+			var ctx context.Context
+			stats, ctx = querier_stats.ContextWithEmptyStats(r.Context())
+			r = r.WithContext(ctx)
+		}
 	}
 
 	defer func() {
@@ -133,6 +137,16 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	r.Body = http.MaxBytesReader(w, r.Body, f.cfg.MaxBodySize)
 	r.Body = io.NopCloser(io.TeeReader(r.Body, &buf))
+	// We parse form here so that we can use buf as body, in order to
+	// prevent https://github.com/cortexproject/cortex/issues/5201.
+	// Exclude remote read here as we don't have to buffer its body.
+	if !strings.Contains(r.URL.Path, "api/v1/read") {
+		if err := r.ParseForm(); err != nil {
+			writeError(w, err)
+			return
+		}
+		r.Body = io.NopCloser(&buf)
+	}
 
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
@@ -163,7 +177,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode)
+		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
 	if err != nil {
@@ -189,12 +203,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {
-	fields := make([]interface{}, 0, 2)
+	fields := make([]interface{}, 0, 4)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
-		fields = append(fields, dashboardUID)
+		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
 	}
 	if panelID := r.Header.Get("X-Panel-Id"); panelID != "" {
-		fields = append(fields, panelID)
+		fields = append(fields, "X-Panel-Id", panelID)
 	}
 	return fields
 }
@@ -218,7 +232,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int) {
+func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
 		return
@@ -226,15 +240,26 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	userID := tenant.JoinTenantIDs(tenantIDs)
 	wallTime := stats.LoadWallTime()
 	numSeries := stats.LoadFetchedSeries()
-	numBytes := stats.LoadFetchedChunkBytes()
+	numChunks := stats.LoadFetchedChunks()
+	numSamples := stats.LoadFetchedSamples()
+	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
-	f.queryBytes.WithLabelValues(userID).Add(float64(numBytes))
+	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
+
+	var (
+		contentLength int64
+		encoding      string
+	)
+	if resp != nil {
+		contentLength = resp.ContentLength
+		encoding = resp.Header.Get("Content-Encoding")
+	}
 
 	// Log stats.
 	logMessage := append([]interface{}{
@@ -245,15 +270,22 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"response_time", queryResponseTime,
 		"query_wall_time_seconds", wallTime.Seconds(),
 		"fetched_series_count", numSeries,
-		"fetched_chunks_bytes", numBytes,
+		"fetched_chunks_count", numChunks,
+		"fetched_samples_count", numSamples,
+		"fetched_chunks_bytes", numChunkBytes,
 		"fetched_data_bytes", numDataBytes,
 		"status_code", statusCode,
+		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)
 
 	logMessage = append(logMessage, formatQueryString(queryString)...)
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
+	}
+
+	if len(encoding) > 0 {
+		logMessage = append(logMessage, "content_encoding", encoding)
 	}
 
 	if error != nil {

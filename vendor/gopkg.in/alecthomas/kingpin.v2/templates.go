@@ -3,7 +3,7 @@ package kingpin
 // Default usage template.
 var DefaultUsageTemplate = `{{define "FormatCommand"}}\
 {{if .FlagSummary}} {{.FlagSummary}}{{end}}\
-{{range .Args}} {{if not .Required}}[{{end}}<{{.Name}}>{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}\
+{{range .Args}}{{if not .Hidden}} {{if not .Required}}[{{end}}{{if .PlaceHolder}}{{.PlaceHolder}}{{else}}<{{.Name}}>{{end}}{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}{{end}}\
 {{end}}\
 
 {{define "FormatCommands"}}\
@@ -50,7 +50,7 @@ Commands:
 // Usage template where command's optional flags are listed separately
 var SeparateOptionalFlagsUsageTemplate = `{{define "FormatCommand"}}\
 {{if .FlagSummary}} {{.FlagSummary}}{{end}}\
-{{range .Args}} {{if not .Required}}[{{end}}<{{.Name}}>{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}\
+{{range .Args}}{{if not .Hidden}} {{if not .Required}}[{{end}}{{if .PlaceHolder}}{{.PlaceHolder}}{{else}}<{{.Name}}>{{end}}{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}{{end}}\
 {{end}}\
 
 {{define "FormatCommands"}}\
@@ -101,7 +101,7 @@ Commands:
 // Usage template with compactly formatted commands.
 var CompactUsageTemplate = `{{define "FormatCommand"}}\
 {{if .FlagSummary}} {{.FlagSummary}}{{end}}\
-{{range .Args}} {{if not .Required}}[{{end}}<{{.Name}}>{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}\
+{{range .Args}}{{if not .Hidden}} {{if not .Required}}[{{end}}{{if .PlaceHolder}}{{.PlaceHolder}}{{else}}<{{.Name}}>{{end}}{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}{{end}}\
 {{end}}\
 
 {{define "FormatCommandList"}}\
@@ -158,7 +158,7 @@ var ManPageTemplate = `{{define "FormatFlags"}}\
 
 {{define "FormatCommand"}}\
 {{if .FlagSummary}} {{.FlagSummary}}{{end}}\
-{{range .Args}} {{if not .Required}}[{{end}}<{{.Name}}{{if .Default}}*{{end}}>{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}\
+{{range .Args}}{{if not .Hidden}} {{if not .Required}}[{{end}}{{if .PlaceHolder}}{{.PlaceHolder}}{{else}}<{{.Name}}>{{end}}{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}{{end}}\
 {{end}}\
 
 {{define "FormatCommands"}}\
@@ -196,7 +196,7 @@ var ManPageTemplate = `{{define "FormatFlags"}}\
 // Default usage template.
 var LongHelpTemplate = `{{define "FormatCommand"}}\
 {{if .FlagSummary}} {{.FlagSummary}}{{end}}\
-{{range .Args}} {{if not .Required}}[{{end}}<{{.Name}}>{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}\
+{{range .Args}}{{if not .Hidden}} {{if not .Required}}[{{end}}{{if .PlaceHolder}}{{.PlaceHolder}}{{else}}<{{.Name}}>{{end}}{{if .Value|IsCumulative}}...{{end}}{{if not .Required}}]{{end}}{{end}}{{end}}\
 {{end}}\
 
 {{define "FormatCommands"}}\
@@ -237,26 +237,26 @@ _{{.App.Name}}_bash_autocomplete() {
     local cur prev opts base
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
-    opts=$( ${COMP_WORDS[0]} --completion-bash ${COMP_WORDS[@]:1:$COMP_CWORD} )
+    opts=$( ${COMP_WORDS[0]} --completion-bash "${COMP_WORDS[@]:1:$COMP_CWORD}" )
     COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
     return 0
 }
-complete -F _{{.App.Name}}_bash_autocomplete {{.App.Name}}
+complete -F _{{.App.Name}}_bash_autocomplete -o default {{.App.Name}}
 
 `
 
-var ZshCompletionTemplate = `
-#compdef {{.App.Name}}
-autoload -U compinit && compinit
-autoload -U bashcompinit && bashcompinit
+var ZshCompletionTemplate = `#compdef {{.App.Name}}
 
-_{{.App.Name}}_bash_autocomplete() {
-    local cur prev opts base
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    opts=$( ${COMP_WORDS[0]} --completion-bash ${COMP_WORDS[@]:1:$COMP_CWORD} )
-    COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
-    return 0
+_{{.App.Name}}() {
+    local matches=($(${words[1]} --completion-bash "${(@)words[1,$CURRENT]}"))
+    compadd -a matches
+
+    if [[ $compstate[nmatches] -eq 0 && $words[$CURRENT] != -* ]]; then
+        _files
+    fi
 }
-complete -F _{{.App.Name}}_bash_autocomplete {{.App.Name}}
+
+if [[ "$(basename -- ${(%):-%x})" != "_{{.App.Name}}" ]]; then
+    compdef _{{.App.Name}} {{.App.Name}}
+fi
 `

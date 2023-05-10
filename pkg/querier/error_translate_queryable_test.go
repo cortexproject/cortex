@@ -19,8 +19,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -54,7 +52,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            promql.ErrQueryCanceled("query execution"),
 			expectedString: "query was canceled",
-			expectedCode:   503,
+			expectedCode:   499,
 		},
 
 		{
@@ -93,7 +91,7 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            context.Canceled,
 			expectedString: "context canceled",
-			expectedCode:   422,
+			expectedCode:   499,
 		},
 		// Status code 400 is remapped to 422 (only choice we have)
 		{
@@ -102,41 +100,31 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedCode:   422,
 		},
 	} {
-		for _, thanosEngine := range []bool{false, true} {
-			for k, q := range map[string]storage.SampleAndChunkQueryable{
-				"error from queryable": errorTestQueryable{err: tc.err},
-				"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
-				"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
-			} {
-				t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
-					opts := promql.EngineOpts{
-						Logger:             log.NewNopLogger(),
-						Reg:                nil,
-						ActiveQueryTracker: nil,
-						MaxSamples:         100,
-						Timeout:            5 * time.Second,
-					}
-					var queryEngine v1.QueryEngine
-					if thanosEngine {
-						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
-						})
-					} else {
-						queryEngine = promql.NewEngine(opts)
-					}
-					r := createPrometheusAPI(NewErrorTranslateSampleAndChunkQueryable(q), queryEngine)
-					rec := httptest.NewRecorder()
+		for k, q := range map[string]storage.SampleAndChunkQueryable{
+			"error from queryable": errorTestQueryable{err: tc.err},
+			"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
+			"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
+				opts := promql.EngineOpts{
+					Logger:             log.NewNopLogger(),
+					Reg:                nil,
+					ActiveQueryTracker: nil,
+					MaxSamples:         100,
+					Timeout:            5 * time.Second,
+				}
+				queryEngine := promql.NewEngine(opts)
+				r := createPrometheusAPI(NewErrorTranslateSampleAndChunkQueryable(q), queryEngine)
+				rec := httptest.NewRecorder()
 
-					req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
-					req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
+				req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
+				req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
 
-					r.ServeHTTP(rec, req)
+				r.ServeHTTP(rec, req)
 
-					require.Equal(t, tc.expectedCode, rec.Code)
-					require.Contains(t, rec.Body.String(), tc.expectedString)
-				})
-			}
+				require.Equal(t, tc.expectedCode, rec.Code)
+				require.Contains(t, rec.Body.String(), tc.expectedString)
+			})
 		}
 	}
 }
@@ -147,6 +135,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine v1.QueryEngin
 		q,
 		nil,
 		nil,
+		func(ctx context.Context) v1.ScrapePoolsRetriever { return nil },
 		func(context.Context) v1.TargetRetriever { return &DummyTargetRetriever{} },
 		func(context.Context) v1.AlertmanagerRetriever { return &DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },

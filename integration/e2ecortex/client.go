@@ -19,8 +19,11 @@ import (
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/storage/remote"
 	yaml "gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
@@ -122,7 +125,7 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 	return value, err
 }
 
-// Query runs a query range.
+// QueryRange runs a query range.
 func (c *Client) QueryRange(query string, start, end time.Time, step time.Duration) (model.Value, error) {
 	value, _, err := c.querierClient.QueryRange(context.Background(), query, promv1.Range{
 		Start: start,
@@ -147,10 +150,154 @@ func (c *Client) QueryRangeRaw(query string, start, end time.Time, step time.Dur
 }
 
 // QueryRaw runs a query directly against the querier API.
-func (c *Client) QueryRaw(query string) (*http.Response, []byte, error) {
-	addr := fmt.Sprintf("http://%s/api/prom/api/v1/query?query=%s", c.querierAddress, url.QueryEscape(query))
+func (c *Client) QueryRaw(query string, ts time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/query", c.querierAddress),
+	}
+	q := u.Query()
+	q.Set("query", query)
 
-	return c.query(addr)
+	if !ts.IsZero() {
+		q.Set("time", FormatTime(ts))
+	}
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// SeriesRaw runs a series request directly against the querier API.
+func (c *Client) SeriesRaw(matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/series", c.querierAddress),
+	}
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	if !startTime.IsZero() {
+		q.Set("start", FormatTime(startTime))
+	}
+	if !endTime.IsZero() {
+		q.Set("end", FormatTime(endTime))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// LabelNamesRaw runs a label names request directly against the querier API.
+func (c *Client) LabelNamesRaw(matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/labels", c.querierAddress),
+	}
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	if !startTime.IsZero() {
+		q.Set("start", FormatTime(startTime))
+	}
+	if !endTime.IsZero() {
+		q.Set("end", FormatTime(endTime))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// LabelValuesRaw runs a label values request directly against the querier API.
+func (c *Client) LabelValuesRaw(label string, matches []string, startTime, endTime time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/label/%s/values", c.querierAddress, label),
+	}
+	q := u.Query()
+
+	for _, m := range matches {
+		q.Add("match[]", m)
+	}
+
+	if !startTime.IsZero() {
+		q.Set("start", FormatTime(startTime))
+	}
+	if !endTime.IsZero() {
+		q.Set("end", FormatTime(endTime))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String())
+}
+
+// RemoteRead runs a remote read query.
+func (c *Client) RemoteRead(matchers []*labels.Matcher, start, end time.Time, step time.Duration) (*prompb.ReadResponse, error) {
+	startMs := start.UnixMilli()
+	endMs := end.UnixMilli()
+	stepMs := step.Milliseconds()
+
+	q, err := remote.ToQuery(startMs, endMs, matchers, &storage.SelectHints{
+		Step:  stepMs,
+		Start: startMs,
+		End:   endMs,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	req := &prompb.ReadRequest{
+		Queries:               []*prompb.Query{q},
+		AcceptedResponseTypes: []prompb.ReadRequest_ResponseType{prompb.ReadRequest_STREAMED_XOR_CHUNKS},
+	}
+
+	data, err := proto.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	compressed := snappy.Encode(nil, data)
+
+	// Call the remote read API endpoint with a timeout.
+	httpReqCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(httpReqCtx, "POST", "http://"+c.querierAddress+"/prometheus/api/v1/read", bytes.NewReader(compressed))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("X-Scope-OrgID", "user-1")
+	httpReq.Header.Add("Content-Encoding", "snappy")
+	httpReq.Header.Add("Accept-Encoding", "snappy")
+	httpReq.Header.Set("Content-Type", "application/x-protobuf")
+	httpReq.Header.Set("User-Agent", "Prometheus/1.8.2")
+	httpReq.Header.Set("X-Prometheus-Remote-Read-Version", "0.1.0")
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code %d", httpResp.StatusCode)
+	}
+
+	compressed, err = io.ReadAll(httpResp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	uncompressed, err := snappy.Decode(nil, compressed)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp prompb.ReadResponse
+	if err = proto.Unmarshal(uncompressed, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (c *Client) query(addr string) (*http.Response, []byte, error) {
@@ -190,8 +337,8 @@ func (c *Client) LabelValues(label string, start, end time.Time, matches []strin
 }
 
 // LabelNames gets label names
-func (c *Client) LabelNames(start, end time.Time) ([]string, error) {
-	result, _, err := c.querierClient.LabelNames(context.Background(), nil, start, end)
+func (c *Client) LabelNames(start, end time.Time, matchers ...string) ([]string, error) {
+	result, _, err := c.querierClient.LabelNames(context.Background(), matchers, start, end)
 	return result, err
 }
 

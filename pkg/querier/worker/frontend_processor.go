@@ -4,17 +4,20 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/textproto"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var (
@@ -30,6 +33,7 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) pr
 		handler:        handler,
 		maxMessageSize: cfg.GRPCClientConfig.MaxSendMsgSize,
 		querierID:      cfg.QuerierID,
+		targetHeaders:  cfg.TargetHeaders,
 	}
 }
 
@@ -40,6 +44,8 @@ type frontendProcessor struct {
 	querierID      string
 
 	log log.Logger
+
+	targetHeaders []string
 }
 
 // notifyShutdown implements processor.
@@ -120,6 +126,24 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
+	headers := make(map[string]string, 0)
+	for _, h := range request.Headers {
+		headers[h.Key] = h.Values[0]
+	}
+	headerMap := make(map[string]string, 0)
+	// Remove non-existent header.
+	for _, header := range fp.targetHeaders {
+		if v, ok := headers[textproto.CanonicalMIMEHeaderKey(header)]; ok {
+			headerMap[header] = v
+		}
+	}
+	orgID, ok := headers[textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName)]
+	if ok {
+		ctx = user.InjectOrgID(ctx, orgID)
+	}
+	ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
+	logger := util_log.WithContext(ctx, fp.log)
+
 	response, err := fp.handler.Handle(ctx, request)
 	if err != nil {
 		var ok bool
@@ -130,6 +154,9 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 				Body: []byte(err.Error()),
 			}
 		}
+	}
+	if statsEnabled {
+		level.Info(logger).Log("msg", "finished request", "status_code", response.Code, "response_size", len(response.GetBody()))
 	}
 
 	// Ensure responses that are too big are not retried.

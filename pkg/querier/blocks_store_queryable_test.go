@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
@@ -33,6 +30,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
@@ -43,6 +42,8 @@ import (
 )
 
 func TestBlocksStoreQuerier_Select(t *testing.T) {
+	t.Parallel()
+
 	const (
 		metricName = "test_metric"
 		minT       = int64(10)
@@ -672,7 +673,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			ctx := limiter.AddQueryLimiterToContext(context.Background(), testData.queryLimiter)
 			reg := prometheus.NewPedanticRegistry()
 			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
@@ -710,10 +714,11 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 
 			// Read all returned series and their values.
 			var actualSeries []seriesResult
+			var it chunkenc.Iterator
 			for set.Next() {
 				var actualValues []valueResult
 
-				it := set.At().Iterator()
+				it = set.At().Iterator(it)
 				for it.Next() != chunkenc.ValNone {
 					t, v := it.At()
 					actualValues = append(actualValues, valueResult{
@@ -741,6 +746,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 }
 
 func TestBlocksStoreQuerier_Labels(t *testing.T) {
+	t.Parallel()
+
 	const (
 		metricName = "test_metric"
 		minT       = int64(10)
@@ -1182,7 +1189,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			// Splitting it because we need a new registry for names and values.
 			// And also the initial expectedErr checking needs to be done for both.
 			for _, testFunc := range []string{"LabelNames", "LabelValues"} {
@@ -1244,6 +1254,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 }
 
 func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T) {
+
 	now := time.Now()
 
 	tests := map[string]struct {
@@ -1284,7 +1295,10 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
 			finder := &blocksFinderMock{}
 			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
@@ -1322,6 +1336,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 }
 
 func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
+	t.Parallel()
 	logger := log.NewNopLogger()
 	opts := promql.EngineOpts{
 		Logger:     logger,
@@ -1334,35 +1349,34 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	series1 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_1"}}
 	series2 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_2"}}
 
-	series1Samples := []promql.Point{
-		{T: 1589759955000, V: 1},
-		{T: 1589759970000, V: 1},
-		{T: 1589759985000, V: 1},
-		{T: 1589760000000, V: 1},
-		{T: 1589760015000, V: 1},
-		{T: 1589760030000, V: 1},
+	series1Samples := []promql.FPoint{
+		{T: 1589759955000, F: 1},
+		{T: 1589759970000, F: 1},
+		{T: 1589759985000, F: 1},
+		{T: 1589760000000, F: 1},
+		{T: 1589760015000, F: 1},
+		{T: 1589760030000, F: 1},
 	}
 
-	series2Samples := []promql.Point{
-		{T: 1589759955000, V: 2},
-		{T: 1589759970000, V: 2},
-		{T: 1589759985000, V: 2},
-		{T: 1589760000000, V: 2},
-		{T: 1589760015000, V: 2},
-		{T: 1589760030000, V: 2},
+	series2Samples := []promql.FPoint{
+		{T: 1589759955000, F: 2},
+		{T: 1589759970000, F: 2},
+		{T: 1589759985000, F: 2},
+		{T: 1589760000000, F: 2},
+		{T: 1589760015000, F: 2},
+		{T: 1589760030000, F: 2},
 	}
 	for _, thanosEngine := range []bool{false, true} {
-		var queryEngine v1.QueryEngine
-		if thanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
-
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
+			var queryEngine v1.QueryEngine
+			if thanosEngine {
+				queryEngine = engine.New(engine.Opts{
+					EngineOpts:        opts,
+					LogicalOptimizers: logicalplan.AllOptimizers,
+				})
+			} else {
+				queryEngine = promql.NewEngine(opts)
+			}
 			// Mock the finder to simulate we need to query two blocks.
 			finder := &blocksFinderMock{
 				Service: services.NewIdleService(nil, nil),
@@ -1436,10 +1450,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
 
 			// Run a query.
-			q, err := queryEngine.NewRangeQuery(queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			q, err := queryEngine.NewRangeQuery(ctx, queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
 			require.NoError(t, err)
 
-			ctx := user.InjectOrgID(context.Background(), "user-1")
 			res := q.Exec(ctx)
 			require.NoError(t, err)
 			require.NoError(t, res.Err)
@@ -1450,8 +1464,8 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 
 			assert.Equal(t, labelpb.ZLabelsToPromLabels(series1), matrix[0].Metric)
 			assert.Equal(t, labelpb.ZLabelsToPromLabels(series2), matrix[1].Metric)
-			assert.Equal(t, series1Samples, matrix[0].Points)
-			assert.Equal(t, series2Samples, matrix[1].Points)
+			assert.Equal(t, series1Samples, matrix[0].Floats)
+			assert.Equal(t, series2Samples, matrix[1].Floats)
 		})
 	}
 }
@@ -1669,4 +1683,65 @@ func valuesFromSeries(name string, series ...labels.Labels) []string {
 
 	sort.Strings(values)
 	return values
+}
+
+func TestCountSamplesAndChunks(t *testing.T) {
+	c := chunkenc.NewXORChunk()
+	appender, err := c.Appender()
+	require.NoError(t, err)
+	samples := 300
+	for i := 0; i < samples; i++ {
+		appender.Append(int64(i), float64(i))
+	}
+
+	for i, tc := range []struct {
+		serieses        []*storepb.Series
+		expectedChunks  uint64
+		expectedSamples uint64
+	}{
+		{
+			serieses: []*storepb.Series{
+				{
+					Chunks: []storepb.AggrChunk{
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: c.Bytes(),
+							},
+						},
+					},
+				},
+			},
+			expectedSamples: uint64(samples),
+			expectedChunks:  1,
+		},
+		{
+			serieses: []*storepb.Series{
+				{
+					Chunks: []storepb.AggrChunk{
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: c.Bytes(),
+							},
+						},
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: c.Bytes(),
+							},
+						},
+					},
+				},
+			},
+			expectedSamples: uint64(int64(samples) * 2),
+			expectedChunks:  2,
+		},
+	} {
+		t.Run(fmt.Sprintf("test_case_%d", i), func(t *testing.T) {
+			samples, chunks := countSamplesAndChunks(tc.serieses...)
+			require.Equal(t, tc.expectedSamples, samples)
+			require.Equal(t, tc.expectedChunks, chunks)
+		})
+	}
 }

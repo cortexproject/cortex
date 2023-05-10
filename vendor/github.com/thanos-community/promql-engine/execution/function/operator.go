@@ -7,15 +7,17 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
 	"github.com/efficientgo/core/errors"
+	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-community/promql-engine/execution/model"
 	"github.com/thanos-community/promql-engine/execution/parse"
+	"github.com/thanos-community/promql-engine/parser"
 	"github.com/thanos-community/promql-engine/query"
 )
 
@@ -30,7 +32,7 @@ type functionOperator struct {
 
 	call         FunctionCall
 	scalarPoints [][]float64
-	pointBuf     []promql.Point
+	sampleBuf    []promql.Sample
 }
 
 type noArgFunctionOperator struct {
@@ -42,21 +44,23 @@ type noArgFunctionOperator struct {
 	funcExpr    *parser.Call
 	call        FunctionCall
 	vectorPool  *model.VectorPool
+	series      []labels.Labels
+	sampleIDs   []uint64
 }
 
 func (o *noArgFunctionOperator) Explain() (me string, next []model.VectorOperator) {
 	return fmt.Sprintf("[*noArgFunctionOperator] %v()", o.funcExpr.Func.Name), []model.VectorOperator{}
 }
 
-func (o *noArgFunctionOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	return []labels.Labels{}, nil
+func (o *noArgFunctionOperator) Series(_ context.Context) ([]labels.Labels, error) {
+	return o.series, nil
 }
 
 func (o *noArgFunctionOperator) GetPool() *model.VectorPool {
 	return o.vectorPool
 }
 
-func (o *noArgFunctionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *noArgFunctionOperator) Next(_ context.Context) ([]model.StepVector, error) {
 	if o.currentStep > o.maxt {
 		return nil, nil
 	}
@@ -66,9 +70,8 @@ func (o *noArgFunctionOperator) Next(ctx context.Context) ([]model.StepVector, e
 		result := o.call(FunctionArgs{
 			StepTime: o.currentStep,
 		})
-		sv.T = o.currentStep
-		sv.Samples = []float64{result.V}
-		sv.SampleIDs = []uint64{}
+		sv.Samples = []float64{result.F}
+		sv.SampleIDs = o.sampleIDs
 
 		ret = append(ret, sv)
 		o.currentStep += o.step
@@ -86,7 +89,7 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 			interval = 1
 		}
 
-		return &noArgFunctionOperator{
+		op := &noArgFunctionOperator{
 			currentStep: opts.Start.UnixMilli(),
 			mint:        opts.Start.UnixMilli(),
 			maxt:        opts.End.UnixMilli(),
@@ -95,7 +98,18 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 			funcExpr:    funcExpr,
 			call:        call,
 			vectorPool:  model.NewVectorPool(stepsBatch),
-		}, nil
+		}
+
+		switch funcExpr.Func.Name {
+		case "pi", "time", "scalar":
+			op.sampleIDs = []uint64{0}
+		default:
+			// Other functions require non-nil labels.
+			op.series = []labels.Labels{{}}
+			op.sampleIDs = []uint64{0}
+		}
+
+		return op, nil
 	}
 	scalarPoints := make([][]float64, stepsBatch)
 	for i := 0; i < stepsBatch; i++ {
@@ -107,7 +121,7 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 		funcExpr:     funcExpr,
 		vectorIndex:  0,
 		scalarPoints: scalarPoints,
-		pointBuf:     make([]promql.Point, 1),
+		sampleBuf:    make([]promql.Sample, 1),
 	}
 
 	for i := range funcExpr.Args {
@@ -118,7 +132,7 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 	}
 
 	// Check selector type.
-	// TODO(saswatamcode): Add support for string and matrix.
+	// TODO(saswatamcode): Add support for matrix.
 	switch funcExpr.Args[f.vectorIndex].Type() {
 	case parser.ValueTypeVector, parser.ValueTypeScalar:
 		return f, nil
@@ -164,6 +178,9 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 	if len(vectors) == 0 {
 		return nil, nil
 	}
+	if o.funcExpr.Func.Name == "label_join" {
+		return vectors, nil
+	}
 
 	scalarIndex := 0
 	for i := range o.nextOps {
@@ -191,32 +208,65 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 	for batchIndex, vector := range vectors {
 		// scalar() depends on number of samples per vector and returns NaN if len(samples) != 1.
 		// So need to handle this separately here, instead of going via call which is per point.
+		// TODO(fpetkovski): make this decision once in the constructor and create a new operator.
 		if o.funcExpr.Func.Name == "scalar" {
-			if len(vector.Samples) <= 1 {
+			if len(vector.Samples) == 0 {
+				vectors[batchIndex].SampleIDs = []uint64{0}
+				vectors[batchIndex].Samples = []float64{math.NaN()}
 				continue
 			}
 
-			vectors[batchIndex].Samples = vector.Samples[:1]
 			vectors[batchIndex].SampleIDs = vector.SampleIDs[:1]
-			vector.Samples[0] = math.NaN()
+			vectors[batchIndex].SampleIDs[0] = 0
+			if len(vector.Samples) > 1 {
+				vectors[batchIndex].Samples = vector.Samples[:1]
+				vectors[batchIndex].Samples[0] = math.NaN()
+			}
 			continue
 		}
 
-		for i := range vector.Samples {
-			o.pointBuf[0].V = vector.Samples[i]
-			// Call function by separately passing major input and scalars.
-			result := o.call(FunctionArgs{
-				Labels:       o.series[0],
-				Points:       o.pointBuf,
-				StepTime:     vector.T,
-				ScalarPoints: o.scalarPoints[batchIndex],
-			})
+		i := 0
+		for i < len(vectors[batchIndex].Samples) {
+			o.sampleBuf[0].H = nil
+			o.sampleBuf[0].F = vector.Samples[i]
+			result := o.call(o.newFunctionArgs(vector, batchIndex))
 
-			vector.Samples[i] = result.V
+			if result.T != InvalidSample.T {
+				vector.Samples[i] = result.F
+				i++
+			} else {
+				// This operator modifies samples directly in the input vector to avoid allocations.
+				// In case of an invalid output sample, we need to do an in-place removal of the input sample.
+				vectors[batchIndex].RemoveSample(i)
+			}
+		}
+
+		i = 0
+		for i < len(vectors[batchIndex].Histograms) {
+			o.sampleBuf[0].H = vector.Histograms[i]
+			result := o.call(o.newFunctionArgs(vector, batchIndex))
+
+			// This operator modifies samples directly in the input vector to avoid allocations.
+			// All current functions for histograms produce a float64 sample. It's therefore safe to
+			// always remove the input histogram so that it does not propagate to the output.
+			sampleID := vectors[batchIndex].HistogramIDs[i]
+			vectors[batchIndex].RemoveHistogram(i)
+			if result.T != InvalidSample.T {
+				vectors[batchIndex].AppendSample(o.GetPool(), sampleID, result.F)
+			}
 		}
 	}
 
 	return vectors, nil
+}
+
+func (o *functionOperator) newFunctionArgs(vector model.StepVector, batchIndex int) FunctionArgs {
+	return FunctionArgs{
+		Labels:       o.series[0],
+		Samples:      o.sampleBuf,
+		StepTime:     vector.T,
+		ScalarPoints: o.scalarPoints[batchIndex],
+	}
 }
 
 func (o *functionOperator) loadSeries(ctx context.Context) error {
@@ -239,12 +289,45 @@ func (o *functionOperator) loadSeries(ctx context.Context) error {
 		}
 
 		o.series = make([]labels.Labels, len(series))
+
+		var labelJoinDst string
+		var labelJoinSep string
+		var labelJoinSrcLabels []string
+		if o.funcExpr.Func.Name == "label_join" {
+			l := len(o.funcExpr.Args)
+			labelJoinDst = o.funcExpr.Args[1].(*parser.StringLiteral).Val
+			if !prommodel.LabelName(labelJoinDst).IsValid() {
+				err = errors.Newf("invalid destination label name in label_join: %s", labelJoinDst)
+				return
+			}
+			labelJoinSep = o.funcExpr.Args[2].(*parser.StringLiteral).Val
+			for j := 3; j < l; j++ {
+				labelJoinSrcLabels = append(labelJoinSrcLabels, o.funcExpr.Args[j].(*parser.StringLiteral).Val)
+			}
+		}
 		for i, s := range series {
 			lbls := s
-			if o.funcExpr.Func.Name != "last_over_time" {
+			switch o.funcExpr.Func.Name {
+			case "last_over_time":
+			case "label_join":
+				srcVals := make([]string, len(labelJoinSrcLabels))
+
+				for j, src := range labelJoinSrcLabels {
+					srcVals[j] = lbls.Get(src)
+				}
+				lb := labels.NewBuilder(lbls)
+
+				strval := strings.Join(srcVals, labelJoinSep)
+				if strval == "" {
+					lb.Del(labelJoinDst)
+				} else {
+					lb.Set(labelJoinDst, strval)
+				}
+
+				lbls = lb.Labels()
+			default:
 				lbls, _ = DropMetricName(s.Copy())
 			}
-
 			o.series[i] = lbls
 		}
 	})

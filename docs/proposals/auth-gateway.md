@@ -11,7 +11,7 @@ slug: "auth-gateway"
 
 ## Overview
 
-If you run Cortex for multiple tenants you need to identify your tenants every time they send metrics or query them. This is needed to ensure that metrics can be ingested and queried separately from each other. For this purpose, the Cortex microservices require you to pass a Header called `X-Scope-OrgID`. Unfortunately, the Prometheus Remote write API has no config option to send headers and for Grafana you must provide a data source to do so. Therefore the Cortex k8s manifests suggest deploying an NGINX server inside of each tenant which acts as a reverse proxy. Its sole purpose is proxying the traffic and setting the `X-Scope-OrgID` header for your tenant.
+If you run Cortex for multiple tenants you need to identify your tenants every time they send metrics or query them. This is needed to ensure that metrics can be ingested and queried separately from each other. For this purpose, the Cortex microservices require you to pass a Header called `X-Scope-OrgID`. The Cortex k8s manifests suggest deploying an NGINX server inside of each tenant which acts as a reverse proxy. Its sole purpose is proxying the traffic and setting the `X-Scope-OrgID` header for your tenant.
 
 ## Proposal
 
@@ -58,7 +58,7 @@ frontend:
 
 ```
 
-`admin` will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof. If no paths are given in the component, such as `frontend`, all of the endpoints of that component will be registered. Additionally, the users will be able to specify custom timeouts for each component similar to [NGINX](https://github.com/cortexproject/cortex-helm-chart/blob/571fc2a5f184b6b7c243bac3727503264249bfd1/templates/nginx/nginx-config.yaml#L50-L55).
+`admin` will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof. If no paths are given in the component, such as `frontend`, the default API paths of that component will be registered. If paths are provided, then the provided API paths will override the default API paths. Additionally, the users will be able to specify custom timeouts for each component similar to [NGINX](https://github.com/cortexproject/cortex-helm-chart/blob/571fc2a5f184b6b7c243bac3727503264249bfd1/templates/nginx/nginx-config.yaml#L50-L55).
 
 Note that only the distributor and query-frontend are mentioned in the example configuration. However, in addition to the distributor and query-frontend, alertmanager and ruler will be supported. The same configurations can be done for these components as well.
 

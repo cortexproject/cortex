@@ -30,6 +30,7 @@ const (
 var (
 	ErrorBlockVisitMarkerNotFound  = errors.New("block visit marker not found")
 	ErrorUnmarshalBlockVisitMarker = errors.New("unmarshal block visit marker JSON")
+	ErrorNotBlockVisitMarker       = errors.New("file is not block visit marker")
 )
 
 type BlockVisitMarker struct {
@@ -141,4 +142,15 @@ heartBeat:
 		}
 	}
 	level.Info(logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
+}
+
+func IsBlockVisitMarker(path string) (bool, error) {
+	if strings.HasSuffix(path, BlockVisitMarkerFile) {
+		return true, nil
+	}
+	return false, ErrorNotBlockVisitMarker
+}
+
+func IsNotBlockVisitMarkerError(err error) bool {
+	return errors.Is(err, ErrorNotBlockVisitMarker)
 }

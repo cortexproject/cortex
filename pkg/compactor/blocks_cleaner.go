@@ -419,7 +419,17 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 		// We can safely delete only partial blocks with a deletion mark.
 		err := metadata.ReadMarker(ctx, userLogger, userBucket, blockID.String(), &metadata.DeletionMark{})
 		if errors.Is(err, metadata.ErrorMarkerNotFound) {
-			return nil
+			//If only visit marker exists in the block, we can safely delete it.
+			isEmpty := true
+			visitMarkerError := userBucket.ReaderWithExpectedErrs(IsNotBlockVisitMarkerError).Iter(ctx, blockID.String(), func(file string) error {
+				isEmpty = false
+				_, err := IsBlockVisitMarker(file)
+				return err
+			})
+			if isEmpty || visitMarkerError != nil {
+				return nil
+			}
+			err = nil
 		}
 		if err != nil {
 			level.Warn(userLogger).Log("msg", "error reading partial block deletion mark", "block", blockID, "err", err)

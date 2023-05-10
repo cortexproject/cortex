@@ -79,11 +79,13 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	block6 := createTSDBBlock(t, bucketClient, "user-1", 40, 50, nil)
 	block7 := createTSDBBlock(t, bucketClient, "user-2", 10, 20, nil)
 	block8 := createTSDBBlock(t, bucketClient, "user-2", 40, 50, nil)
+	block11 := ulid.MustNew(11, rand.Reader)
 	createDeletionMark(t, bucketClient, "user-1", block2, now.Add(-deletionDelay).Add(time.Hour))             // Block hasn't reached the deletion threshold yet.
 	createDeletionMark(t, bucketClient, "user-1", block3, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 	createDeletionMark(t, bucketClient, "user-1", block4, now.Add(-deletionDelay).Add(time.Hour))             // Partial block hasn't reached the deletion threshold yet.
 	createDeletionMark(t, bucketClient, "user-1", block5, now.Add(-deletionDelay).Add(-time.Hour))            // Partial block reached the deletion threshold.
 	require.NoError(t, bucketClient.Delete(ctx, path.Join("user-1", block6.String(), metadata.MetaFilename))) // Partial block without deletion mark.
+	createBlockVisitMarker(t, bucketClient, "user-1", block11)                                                // Partial block only has visit marker.
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, marked for deletion.
@@ -147,6 +149,8 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-1", bucketindex.BlockDeletionMarkFilepath(block5)), expectedExists: false},
 		// Should not delete a partial block without deletion mark.
 		{path: path.Join("user-1", block6.String(), "index"), expectedExists: true},
+		// Should delete a partial block with only visit marker.
+		{path: path.Join("user-1", block11.String(), BlockVisitMarkerFile), expectedExists: false},
 		// Should completely delete blocks for user-3, marked for deletion
 		{path: path.Join("user-3", block9.String(), metadata.MetaFilename), expectedExists: false},
 		{path: path.Join("user-3", block9.String(), "index"), expectedExists: false},
@@ -166,7 +170,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed))
-	assert.Equal(t, float64(6), testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(7), testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
@@ -179,7 +183,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{
 			userID:         "user-1",
 			expectedIndex:  true,
-			expectedBlocks: []ulid.ULID{block1, block2 /* deleted: block3, block4, block5, partial: block6 */},
+			expectedBlocks: []ulid.ULID{block1, block2 /* deleted: block3, block4, block5, block11, partial: block6 */},
 			expectedMarks:  []ulid.ULID{block2},
 		}, {
 			userID:         "user-2",

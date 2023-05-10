@@ -854,7 +854,9 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	seriesTimestamp := time.Now()
 	series2Timestamp := seriesTimestamp.Add(blockRangePeriod * 2)
 	series1, _ := generateSeries("series_1", seriesTimestamp, prompb.Label{Name: "job", Value: "test"})
-	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "job", Value: "test"})
+	series2, _ := generateSeries("series_2", seriesTimestamp, prompb.Label{Name: "job", Value: "test"})
+	// Make sure series in ingester has a different job label.
+	series3, _ := generateSeries("series_3", series2Timestamp, prompb.Label{Name: "job", Value: "prometheus"})
 
 	res, err := c.Push(series1)
 	require.NoError(t, err)
@@ -864,11 +866,15 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
+	res, err = c.Push(series3)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
 	// Wait until the TSDB head is compacted and shipped to the storage.
-	// The shipped block contains the 1st series, while the 2ns series is in the head.
+	// The shipped block contains the 1st and 2nd series, while the 3rd series is in the head.
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_shipper_uploads_total"))
-	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_created_total"))
-	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(3), "cortex_ingester_memory_series_created_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
 	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
@@ -877,8 +883,8 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 		"-querier.max-fetched-series-per-query":      "1",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.query-store-for-labels-enabled":    "true",
 		"-blocks-storage.bucket-store.sync-interval": "5s",
-		"-querier.max-fetched-series-per-query":      "1",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
@@ -891,26 +897,26 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	// We expect all queries hitting 422 exceeded series limit
-	resp, body, err := c.QueryRaw(`{job="test"}`, series2Timestamp)
+	// We expect all queries hitting 422 exceeded series limit on store gateway.
+	resp, body, err := c.QueryRangeRaw(`{job="test"}`, seriesTimestamp.Add(-time.Second), seriesTimestamp, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-	require.Contains(t, string(body), "max number of series limit")
+	require.Contains(t, string(body), "exceeded series limit")
 
-	resp, body, err = c.SeriesRaw([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
+	resp, body, err = c.SeriesRaw([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-	require.Contains(t, string(body), "max number of series limit")
+	require.Contains(t, string(body), "exceeded series limit")
 
-	resp, body, err = c.LabelNamesRaw([]string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
+	resp, body, err = c.LabelNamesRaw([]string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-	require.Contains(t, string(body), "max number of series limit")
+	require.Contains(t, string(body), "exceeded series limit")
 
-	resp, body, err = c.LabelValuesRaw("__name__", []string{`{job="test"}`}, series2Timestamp.Add(-time.Hour), series2Timestamp)
+	resp, body, err = c.LabelValuesRaw("job", []string{`{job="test"}`}, seriesTimestamp.Add(-time.Second), seriesTimestamp)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
-	require.Contains(t, string(body), "max number of series limit")
+	require.Contains(t, string(body), "exceeded series limit")
 }
 
 func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {

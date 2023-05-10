@@ -9,6 +9,7 @@
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
 * [ENHANCEMENT] Compactor: Exposing Thanos accept-malformed-index to Cortex compactor. #5334
+* [ENHANCEMENT] Log: Avoid expensive log.Valuer evaluation for disallowed levels. #5297
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293

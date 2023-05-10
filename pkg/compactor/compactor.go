@@ -56,8 +56,8 @@ var (
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
-			false, // Do not accept malformed indexes
-			true,  // Enable vertical compaction
+			cfg.AcceptMalformedIndex,
+			true, // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
@@ -72,8 +72,8 @@ var (
 			ctx,
 			logger,
 			bkt,
-			false, // Do not accept malformed indexes
-			true,  // Enable vertical compaction
+			cfg.AcceptMalformedIndex,
+			true, // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
 			blocksMarkedForNoCompaction,
@@ -208,6 +208,8 @@ type Config struct {
 	// Block visit marker file config
 	BlockVisitMarkerTimeout            time.Duration `yaml:"block_visit_marker_timeout"`
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
+
+	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -244,6 +246,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BlockVisitMarkerTimeout, "compactor.block-visit-marker-timeout", 5*time.Minute, "How long block visit marker file should be considered as expired and able to be picked up by compactor again.")
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
+
+	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {

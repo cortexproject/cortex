@@ -70,8 +70,16 @@ Apart from the increased resources and cost of redundant evaluations, duplicated
 Since we will be essentially copying distributor's HA tracker implementation, we will add the same configuration parameters to ruler:
 
 ```
-# Ruler HA tracking is automatically enabled when replication_factor is > 1
 ha_tracker:
+  # Explicitly enable the ruler HA tracker to track ruler replica leadership
+  # state. This is useful when migrating from replication_factor=1 to
+  # replication_factor>1, as part of a 2-phase deployment where an admin
+  # enables HA tracking with replication_factor=1 as the first step, followed
+  # by increasing ruler replication in the second step.
+  # Note that this parameter defaults to true if ruler.ring.replication_factor > 1.
+  # CLI flag: -ruler.ha-tracker.enable
+  [enable_ha_tracker: <boolean> | default = false]
+
   # Update the timestamp in the KV store for a given cluster/replica only after
   # this amount of time has passed since the current stored timestamp.
   # CLI flag: -ruler.ha-tracker.update-timeout

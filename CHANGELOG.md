@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.15.2 2023-05-09
+
+* [ENHANCEMENT] Update Go version to 1.20.4. #5299
+
 ## 1.15.1 2023-04-26
 
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290

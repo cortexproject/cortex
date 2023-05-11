@@ -19,7 +19,8 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
 - **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data. This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
-Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
+Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/).
+
 Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
 
 
@@ -150,16 +151,6 @@ To see meeting calendar:
 
 There are several commercial services where you can use Cortex
 on-demand:
-
-### Weave Cloud
-
-[Weave Cloud](https://cloud.weave.works) from
-[Weaveworks](https://weave.works) lets you deploy, manage, and monitor
-container-based applications. Sign up at https://cloud.weave.works
-and follow the instructions there. Additional help can also be found
-in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/).
-
-[Instrumenting Your App: Best Practices](https://www.weave.works/docs/cloud/latest/tasks/monitor/best-instrumenting/)
 
 ### Amazon Managed Service for Prometheus (AMP)
 

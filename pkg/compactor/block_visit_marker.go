@@ -144,11 +144,8 @@ heartBeat:
 	level.Info(logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
 }
 
-func IsBlockVisitMarker(path string) (bool, error) {
-	if strings.HasSuffix(path, BlockVisitMarkerFile) {
-		return true, nil
-	}
-	return false, ErrorNotBlockVisitMarker
+func IsBlockVisitMarker(path string) bool {
+	return strings.HasSuffix(path, BlockVisitMarkerFile)
 }
 
 func IsNotBlockVisitMarkerError(err error) bool {

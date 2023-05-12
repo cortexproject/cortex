@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -90,6 +93,49 @@ func TestUpdater_UpdateIndex_ShouldSkipPartialBlocks(t *testing.T) {
 
 	assert.Len(t, partials, 1)
 	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaNotFound))
+}
+
+func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetric(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	registry := prometheus.NewRegistry()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	bkt = objstore.BucketWithMetrics("test-bucket", bkt, registry)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
+	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
+
+	// Delete a block's meta.json to simulate a partial block.
+	require.NoError(t, bkt.Delete(ctx, path.Join(userID, block3.ULID.String(), metadata.MetaFilename)))
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, partials, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1, block2},
+		[]*metadata.DeletionMark{block2Mark})
+
+	assert.Len(t, partials, 1)
+	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaNotFound))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+			# HELP thanos_objstore_bucket_operation_failures_total Total number of operations against a bucket that failed, but were not expected to fail in certain way from caller perspective. Those errors have to be investigated.
+			# TYPE thanos_objstore_bucket_operation_failures_total counter
+			thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="attributes"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="delete"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="exists"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="get"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="get_range"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="iter"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="upload"} 0
+		`), "thanos_objstore_bucket_operation_failures_total"))
 }
 
 func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {

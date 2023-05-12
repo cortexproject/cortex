@@ -15,6 +15,7 @@
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
+* [BUGFIX] Storage: Bucket index updater should ignore meta not found for partial blocks. #5343
 
 ## 1.15.1 2023-04-26
 

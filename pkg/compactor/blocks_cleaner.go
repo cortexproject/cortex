@@ -421,19 +421,17 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 		if errors.Is(err, metadata.ErrorMarkerNotFound) {
 			//If only visit marker exists in the block, we can safely delete it.
 			isEmpty := true
-			visitMarkerError := userBucket.ReaderWithExpectedErrs(IsNotBlockVisitMarkerError).Iter(ctx, blockID.String(), func(file string) error {
+			notVisitMarkerError := userBucket.ReaderWithExpectedErrs(IsNotBlockVisitMarkerError).Iter(ctx, blockID.String(), func(file string) error {
 				isEmpty = false
 				if !IsBlockVisitMarker(file) {
 					return ErrorNotBlockVisitMarker
 				}
 				return nil
 			})
-			if isEmpty || visitMarkerError != nil {
+			if isEmpty || notVisitMarkerError != nil {
 				return nil
 			}
-			err = nil
-		}
-		if err != nil {
+		} else if err != nil {
 			level.Warn(userLogger).Log("msg", "error reading partial block deletion mark", "block", blockID, "err", err)
 			return nil
 		}

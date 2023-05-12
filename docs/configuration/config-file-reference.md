@@ -446,6 +446,14 @@ alertmanager_client:
   # CLI flag: -alertmanager.alertmanager-client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
+  # gRPC client max receive message size (bytes).
+  # CLI flag: -alertmanager.alertmanager-client.grpc-max-recv-msg-size
+  [max_recv_msg_size: <int> | default = 16777216]
+
+  # gRPC client max send message size (bytes).
+  # CLI flag: -alertmanager.alertmanager-client.grpc-max-send-msg-size
+  [max_send_msg_size: <int> | default = 4194304]
+
 # The interval between persisting the current alertmanager state (notification
 # log and silences) to object storage. This is only used when sharding is
 # enabled. This state is read when all replicas for a shard can not be

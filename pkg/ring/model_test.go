@@ -35,7 +35,7 @@ func TestInstanceDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
 			ingester:       &InstanceDesc{State: JOINING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
 			timeout:        time.Minute,
 			writeExpected:  false,
-			readExpected:   false,
+			readExpected:   true,
 			reportExpected: true,
 		},
 		"LEAVING ingester with last keepalive newer than timeout": {

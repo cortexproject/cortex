@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"testing"
 
@@ -181,12 +182,26 @@ func Benchmark_Compression(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
+			// Reusing the array to read the body and avoid allocation on the test
+			encRespBody := make([]byte, len(respBody))
+
 			for i := 0; i < b.N; i++ {
-				_, err = client.Do(req)
+				resp, err := client.Do(req)
 
 				require.NoError(b, err)
 
 				require.NoError(b, err, "client get failed with unexpected error")
+
+				responseBodySize := 0
+				for {
+					n, err := resp.Body.Read(encRespBody)
+					responseBodySize += n
+					if err == io.EOF {
+						break
+					}
+				}
+
+				b.ReportMetric(float64(responseBodySize), "ContentLength")
 			}
 		})
 	}

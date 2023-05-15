@@ -720,7 +720,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.44.0-rc.0.0.20230508103029-94d9367bbf13
+# github.com/prometheus/prometheus v0.44.0
 ## explicit; go 1.19
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

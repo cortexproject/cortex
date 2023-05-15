@@ -179,7 +179,7 @@ func Benchmark_Compression(b *testing.B) {
 				err := server.Run()
 				require.NoError(b, err)
 			}()
-			
+
 			defer server.Shutdown()
 			req, _ := http.NewRequest("GET", "http://"+server.HTTPListenAddr().String()+"/foo_endpoint", nil)
 			req.Header.Set(acceptEncodingHeader, "gzip")

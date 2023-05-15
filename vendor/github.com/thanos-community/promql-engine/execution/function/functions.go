@@ -20,12 +20,13 @@ import (
 var InvalidSample = promql.Sample{T: -1, F: 0}
 
 type FunctionArgs struct {
-	Labels       labels.Labels
-	Samples      []promql.Sample
-	StepTime     int64
-	SelectRange  int64
-	ScalarPoints []float64
-	Offset       int64
+	Labels           labels.Labels
+	Samples          []promql.Sample
+	StepTime         int64
+	SelectRange      int64
+	ScalarPoints     []float64
+	Offset           int64
+	MetricAppearedTs *int64
 }
 
 // FunctionCall represents functions as defined in https://prometheus.io/docs/prometheus/latest/querying/functions/
@@ -332,7 +333,10 @@ var Funcs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
-		v, h := extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset)
+		if f.MetricAppearedTs == nil {
+			panic("BUG: we got some samples but metric still hasn't appeared")
+		}
+		v, h := extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		return promql.Sample{
 			Metric: f.Labels,
 			T:      f.StepTime,
@@ -344,7 +348,10 @@ var Funcs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
-		v, h := extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset)
+		if f.MetricAppearedTs == nil {
+			panic("BUG: we got some samples but metric still hasn't appeared")
+		}
+		v, h := extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		return promql.Sample{
 			Metric: f.Labels,
 			T:      f.StepTime,
@@ -356,7 +363,10 @@ var Funcs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return InvalidSample
 		}
-		v, h := extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset)
+		if f.MetricAppearedTs == nil {
+			panic("BUG: we got some samples but metric still hasn't appeared")
+		}
+		v, h := extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		return promql.Sample{
 			Metric: f.Labels,
 			T:      f.StepTime,
@@ -579,7 +589,7 @@ func extrapolatedRate(samples []promql.Sample, isCounter, isRate bool, stepTime 
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // taking into account the last sample before the range start, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extendedRate(samples []promql.Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
+func extendedRate(samples []promql.Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -602,9 +612,10 @@ func extendedRate(samples []promql.Sample, isCounter, isRate bool, stepTime int6
 	}
 
 	// This effectively injects a "zero" series for xincrease if we only have one sample.
-	until := selectRange
+	// Only do it for some time when the metric appears the first time.
+	until := selectRange + metricAppearedTs
 	if isCounter && !isRate && sameVals {
-		// Make sure we are not at the end of the range
+		// Make sure we are not at the end of the range.
 		if stepTime-offset <= until {
 			return samples[0].F, nil
 		}

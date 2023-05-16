@@ -424,11 +424,15 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, partials map
 			notVisitMarkerError := userBucket.ReaderWithExpectedErrs(IsNotBlockVisitMarkerError).Iter(ctx, blockID.String(), func(file string) error {
 				isEmpty = false
 				if !IsBlockVisitMarker(file) {
+					// return error here to fail iteration fast
+					// to avoid going through all files
 					return ErrorNotBlockVisitMarker
 				}
 				return nil
 			})
 			if isEmpty || notVisitMarkerError != nil {
+				// skip deleting partial block if block directory
+				// is empty or non visit marker file exists
 				return nil
 			}
 		} else if err != nil {

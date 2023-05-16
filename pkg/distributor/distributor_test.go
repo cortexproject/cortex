@@ -1693,6 +1693,7 @@ func BenchmarkDistributor_LabelsCommons(b *testing.B) {
 
 	// Start the distributor.
 	distributor, err := New(distributorCfg, clientConfig, overrides, ingestersRing, true, nil, log.NewNopLogger())
+	require.NoError(b, err)
 
 	numberOfAz := 3
 	maxNumberOfIngestersPerAz := 100
@@ -1741,9 +1742,10 @@ func BenchmarkDistributor_LabelsCommons(b *testing.B) {
 			}
 
 			for n := 0; n < b.N; n++ {
-				distributor.LabelNamesCommon(ctx, model.Now(), model.Now(), func(ctx context.Context, rs ring.ReplicationSet, req *client.LabelNamesRequest) ([]interface{}, error) {
+				_, err := distributor.LabelNamesCommon(ctx, model.Now(), model.Now(), func(ctx context.Context, rs ring.ReplicationSet, req *client.LabelNamesRequest) ([]interface{}, error) {
 					return r, nil
 				})
+				require.NoError(b, err)
 			}
 		})
 	}

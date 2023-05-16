@@ -16,8 +16,12 @@ func Test_kWayMerge(t *testing.T) {
 			arrays: [][]string{
 				{"a", "c", "e"},
 				{"c", "d", "f"},
+				{"c", "f"},
+				{"k", "m"},
+				{"b"},
+				{"a"},
 			},
-			want: []string{"a", "c", "d", "e", "f"},
+			want: []string{"a", "b", "c", "d", "e", "f", "k", "m"},
 		},
 	}
 

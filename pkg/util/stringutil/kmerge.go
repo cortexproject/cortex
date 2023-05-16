@@ -32,7 +32,7 @@ func KWayMerge(arrays ...[]string) []string {
 		for node.idx < len(arrays[node.array])-1 {
 			next := arrays[node.array][node.idx+1]
 			node.val = next
-			node.idx += 1
+			node.idx++
 			if !h.Contains(next) {
 				heap.Fix(&h, 0)
 				remove = false

@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/stringutil"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -40,6 +39,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/stringutil"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -939,23 +939,15 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
 	defer span.Finish()
-	valueSet := map[string]struct{}{}
-	for _, resp := range resps {
-		for _, v := range resp.([]string) {
-			valueSet[v] = struct{}{}
-		}
+	r := make([][]string, len(resps))
+
+	for i, resp := range resps {
+		r[i] = resp.([]string)
 	}
 
-	values := make([]string, 0, len(valueSet))
-	for v := range valueSet {
-		values = append(values, v)
-	}
+	span.SetTag("result_length", len(r))
 
-	// We need the values returned to be sorted.
-	sort.Strings(values)
-	span.SetTag("result_length", len(values))
-
-	return values, nil
+	return stringutil.KWayMerge(r...), nil
 }
 
 // LabelValuesForLabelName returns all the label values that are associated with a given label name.

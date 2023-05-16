@@ -33,6 +33,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -840,7 +841,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 
 				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
-				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
+				err = d.HATracker.CheckReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
 				assert.NoError(t, err)
 
 				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)
@@ -2495,7 +2496,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		}
 
 		if cfg.enableTracker {
-			codec := GetReplicaDescCodec()
+			codec := ha.GetReplicaDescCodec()
 			ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
 			tb.Cleanup(func() { assert.NoError(tb, closer.Close()) })
 			mock := kv.PrefixClient(ringStore, "prefix")
@@ -3374,4 +3375,52 @@ func countMockIngestersCalls(ingesters []*mockIngester, name string) int {
 		}
 	}
 	return count
+}
+
+func TestFindHALabels(t *testing.T) {
+	t.Parallel()
+	replicaLabel, clusterLabel := "replica", "cluster"
+	type expectedOutput struct {
+		cluster string
+		replica string
+	}
+	cases := []struct {
+		labelsIn []cortexpb.LabelAdapter
+		expected expectedOutput
+	}{
+		{
+			[]cortexpb.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: replicaLabel, Value: "1"},
+			},
+			expectedOutput{cluster: "", replica: "1"},
+		},
+		{
+			[]cortexpb.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: clusterLabel, Value: "cluster-2"},
+			},
+			expectedOutput{cluster: "cluster-2", replica: ""},
+		},
+		{
+			[]cortexpb.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: replicaLabel, Value: "3"},
+				{Name: clusterLabel, Value: "cluster-3"},
+			},
+			expectedOutput{cluster: "cluster-3", replica: "3"},
+		},
+	}
+
+	for _, c := range cases {
+		cluster, replica := findHALabels(replicaLabel, clusterLabel, c.labelsIn)
+		assert.Equal(t, c.expected.cluster, cluster)
+		assert.Equal(t, c.expected.replica, replica)
+	}
 }

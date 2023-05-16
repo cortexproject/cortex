@@ -1,4 +1,4 @@
-package distributor
+package ha
 
 import (
 	"html/template"
@@ -17,16 +17,16 @@ const trackerTpl = `
 <html>
 	<head>
 		<meta charset="UTF-8">
-		<title>Cortex HA Tracker Status</title>
+		<title>{{ .Config.Title }}</title>
 	</head>
 	<body>
-		<h1>Cortex HA Tracker Status</h1>
+		<h1>{{ .Config.Title }}</h1>
 		<p>Current time: {{ .Now }}</p>
 		<table width="100%" border="1">
 			<thead>
 				<tr>
 					<th>User ID</th>
-					<th>Cluster</th>
+					<th>{{ .Config.ReplicaGroupLabel }}</th>
 					<th>Replica</th>
 					<th>Elected Time</th>
 					<th>Time Until Update</th>
@@ -51,11 +51,17 @@ const trackerTpl = `
 
 var trackerTmpl *template.Template
 
+// nolint:revive
+type HATrackerStatusConfig struct {
+	Title             string
+	ReplicaGroupLabel string
+}
+
 func init() {
 	trackerTmpl = template.Must(template.New("ha-tracker").Parse(trackerTpl))
 }
 
-func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (h *HATracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	h.electedLock.RLock()
 	type replica struct {
 		UserID       string        `json:"userID"`
@@ -92,10 +98,12 @@ func (h *haTracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	})
 
 	util.RenderHTTPResponse(w, struct {
-		Elected []replica `json:"elected"`
-		Now     time.Time `json:"now"`
+		Elected []replica             `json:"elected"`
+		Now     time.Time             `json:"now"`
+		Config  HATrackerStatusConfig `json:"config"`
 	}{
 		Elected: electedReplicas,
 		Now:     time.Now(),
+		Config:  h.trackerStatusConfig,
 	}, trackerTmpl, req)
 }

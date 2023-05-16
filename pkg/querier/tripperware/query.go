@@ -91,7 +91,7 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		case "metric":
 			iter.ReadVal(&lbls)
 		case "values":
-			for  {
+			for {
 				if !iter.ReadArray() {
 					break
 				}
@@ -104,7 +104,7 @@ func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 
 	*(*SampleStream)(ptr) = SampleStream{
 		Samples: samples,
-		Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
+		Labels:  cortexpb.FromLabelsToLabelAdapters(lbls),
 	}
 }
 

@@ -777,6 +777,16 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 					return nil
 				}
 
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					if s.Code() == codes.ResourceExhausted {
+						return validation.LimitError(s.Message())
+					}
+				}
 				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
 			}
 
@@ -857,6 +867,17 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 				if isRetryableError(err) {
 					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label values from %s due to retryable error", c.RemoteAddress()))
 					return nil
+				}
+
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					if s.Code() == codes.ResourceExhausted {
+						return validation.LimitError(s.Message())
+					}
 				}
 				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())
 			}

@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 func TestRequest(t *testing.T) {
@@ -493,7 +493,6 @@ func Benchmark_Decode(b *testing.B) {
 
 			body, err := json.Marshal(r)
 			require.NoError(b, err)
-
 
 			b.ResetTimer()
 			b.ReportAllocs()

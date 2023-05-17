@@ -42,7 +42,7 @@ func TestFlagParsing(t *testing.T) {
 		},
 
 		"default values": {
-			stdoutMessage: "target: all\n",
+			stderrMessage: "please set configuration file. For example: -config.file=./docs/configuration/single-process-config-blocks-local.yaml\n",
 		},
 
 		"config": {

@@ -203,6 +203,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {
+	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
+
 	fields := make([]interface{}, 0, 4)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
 		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
@@ -215,8 +217,6 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
-
 	logMessage := append([]interface{}{
 		"msg", "slow query detected",
 		"method", r.Method,
@@ -286,6 +286,10 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 
 	if len(encoding) > 0 {
 		logMessage = append(logMessage, "content_encoding", encoding)
+	}
+
+	if query := queryString.Get("query"); len(query) > 0 {
+		logMessage = append(logMessage, "query_length", len(query))
 	}
 
 	if error != nil {

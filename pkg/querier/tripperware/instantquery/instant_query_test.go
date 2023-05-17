@@ -11,11 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
@@ -443,4 +445,67 @@ func Test_sortPlanForQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Benchmark_Decode(b *testing.B) {
+	maxSamplesCount := 1000000
+	samples := make([]tripperware.SampleStream, maxSamplesCount)
+
+	for i := 0; i < maxSamplesCount; i++ {
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
+		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
+		samples[i].Samples = append(samples[i].Samples, cortexpb.Sample{TimestampMs: int64(i), Value: float64(i)})
+	}
+
+	for name, tc := range map[string]struct {
+		sampleStream []tripperware.SampleStream
+	}{
+		"100 samples": {
+			sampleStream: samples[:100],
+		},
+		"1000 samples": {
+			sampleStream: samples[:1000],
+		},
+		"10000 samples": {
+			sampleStream: samples[:10000],
+		},
+		"100000 samples": {
+			sampleStream: samples[:100000],
+		},
+		"1000000 samples": {
+			sampleStream: samples[:1000000],
+		},
+	} {
+		b.Run(name, func(b *testing.B) {
+			r := PrometheusInstantQueryResponse{
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValMatrix.String(),
+					Result: PrometheusInstantQueryResult{
+						Result: &PrometheusInstantQueryResult_Matrix{
+							Matrix: &Matrix{
+								SampleStreams: tc.sampleStream,
+							},
+						},
+					},
+				},
+			}
+
+			body, err := json.Marshal(r)
+			require.NoError(b, err)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				response := &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(bytes.NewBuffer(body)),
+				}
+				_, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				require.NoError(b, err)
+			}
+		})
+	}
+
 }

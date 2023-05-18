@@ -27,6 +27,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ha"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -82,7 +83,7 @@ type Distributor struct {
 	distributorsRing       *ring.Ring
 
 	// For handling HA replicas.
-	HATracker *haTracker
+	HATracker *ha.HATracker
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
@@ -179,7 +180,8 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidTenantShardSize
 	}
 
-	return cfg.HATrackerConfig.Validate()
+	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
+	return haHATrackerConfig.Validate()
 }
 
 const (
@@ -198,7 +200,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	haTracker, err := newHATracker(cfg.HATrackerConfig, limits, reg, log)
+	haTrackerStatusConfig := ha.HATrackerStatusConfig{
+		Title:             "Cortex HA Tracker Status",
+		ReplicaGroupLabel: "Cluster",
+	}
+	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +402,7 @@ func (d *Distributor) running(ctx context.Context) error {
 func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.ingestersRing.CleanupShuffleShardCache(userID)
 
-	d.HATracker.cleanupHATrackerMetricsForUser(userID)
+	d.HATracker.CleanupHATrackerMetricsForUser(userID)
 
 	d.receivedSamples.DeleteLabelValues(userID)
 	d.receivedExemplars.DeleteLabelValues(userID)
@@ -491,7 +497,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 
 	// At this point we know we have both HA labels, we should lookup
 	// the cluster/instance here to see if we want to accept this sample.
-	err := d.HATracker.checkReplica(ctx, userID, cluster, replica, time.Now())
+	err := d.HATracker.CheckReplica(ctx, userID, cluster, replica, time.Now())
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
 		return false, err
@@ -599,13 +605,13 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			// Ensure the request slice is reused if the series get deduped.
 			cortexpb.ReuseSlice(req.Timeseries)
 
-			if errors.Is(err, replicasNotMatchError{}) {
+			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
 			}
 
-			if errors.Is(err, tooManyClustersError{}) {
+			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
 				validation.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numSamples))
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
@@ -1320,4 +1326,22 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			</html>`
 		util.WriteHTMLResponse(w, ringNotEnabledPage)
 	}
+}
+
+func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdapter) (string, string) {
+	var cluster, replica string
+	var pair cortexpb.LabelAdapter
+
+	for _, pair = range labels {
+		if pair.Name == replicaLabel {
+			replica = pair.Value
+		}
+		if pair.Name == clusterLabel {
+			// cluster label is unmarshalled into yoloString, which retains original remote write request body in memory.
+			// Hence, we clone the yoloString to allow the request body to be garbage collected.
+			cluster = util.StringsClone(pair.Value)
+		}
+	}
+
+	return cluster, replica
 }

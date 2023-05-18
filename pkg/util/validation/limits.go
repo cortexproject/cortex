@@ -551,8 +551,8 @@ func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
-// MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
-func (o *Overrides) MaxHAClusters(user string) int {
+// MaxHAReplicaGroups returns maximum number of clusters that HA tracker will track for a user.
+func (o *Overrides) MaxHAReplicaGroups(user string) int {
 	return o.GetOverridesForUser(user).HAMaxClusters
 }
 

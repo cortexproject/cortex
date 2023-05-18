@@ -64,12 +64,12 @@ func (o *noArgFunctionOperator) Next(_ context.Context) ([]model.StepVector, err
 	if o.currentStep > o.maxt {
 		return nil, nil
 	}
+	fa := FunctionArgs{}
 	ret := o.vectorPool.GetVectorBatch()
 	for i := 0; i < o.stepsBatch && o.currentStep <= o.maxt; i++ {
 		sv := o.vectorPool.GetStepVector(o.currentStep)
-		result := o.call(FunctionArgs{
-			StepTime: o.currentStep,
-		})
+		fa.StepTime = o.currentStep
+		result := o.call(fa)
 		sv.Samples = []float64{result.F}
 		sv.SampleIDs = o.sampleIDs
 
@@ -226,10 +226,15 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		}
 
 		i := 0
+		fa := FunctionArgs{}
 		for i < len(vectors[batchIndex].Samples) {
 			o.sampleBuf[0].H = nil
 			o.sampleBuf[0].F = vector.Samples[i]
-			result := o.call(o.newFunctionArgs(vector, batchIndex))
+			fa.Labels = o.series[0]
+			fa.Samples = o.sampleBuf
+			fa.StepTime = vector.T
+			fa.ScalarPoints = o.scalarPoints[batchIndex]
+			result := o.call(fa)
 
 			if result.T != InvalidSample.T {
 				vector.Samples[i] = result.F
@@ -244,7 +249,11 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		i = 0
 		for i < len(vectors[batchIndex].Histograms) {
 			o.sampleBuf[0].H = vector.Histograms[i]
-			result := o.call(o.newFunctionArgs(vector, batchIndex))
+			fa.Labels = o.series[0]
+			fa.Samples = o.sampleBuf
+			fa.StepTime = vector.T
+			fa.ScalarPoints = o.scalarPoints[batchIndex]
+			result := o.call(fa)
 
 			// This operator modifies samples directly in the input vector to avoid allocations.
 			// All current functions for histograms produce a float64 sample. It's therefore safe to
@@ -258,15 +267,6 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 	}
 
 	return vectors, nil
-}
-
-func (o *functionOperator) newFunctionArgs(vector model.StepVector, batchIndex int) FunctionArgs {
-	return FunctionArgs{
-		Labels:       o.series[0],
-		Samples:      o.sampleBuf,
-		StepTime:     vector.T,
-		ScalarPoints: o.scalarPoints[batchIndex],
-	}
 }
 
 func (o *functionOperator) loadSeries(ctx context.Context) error {

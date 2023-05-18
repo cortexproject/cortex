@@ -24,10 +24,11 @@ import (
 )
 
 type matrixScanner struct {
-	labels          labels.Labels
-	signature       uint64
-	previousSamples []promql.Sample
-	samples         *storage.BufferedSeriesIterator
+	labels           labels.Labels
+	signature        uint64
+	previousSamples  []promql.Sample
+	samples          *storage.BufferedSeriesIterator
+	metricAppearedTs *int64
 }
 
 type matrixSelector struct {
@@ -141,7 +142,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			var err error
 
 			if function.IsExtFunction(o.funcExpr.Func.Name) {
-				rangeSamples, err = selectExtPoints(series.samples, mint, maxt, o.scanners[i].previousSamples, o.funcExpr.Func.Name, o.extLookbackDelta)
+				rangeSamples, err = selectExtPoints(series.samples, mint, maxt, o.scanners[i].previousSamples, o.funcExpr.Func.Name, o.extLookbackDelta, &o.scanners[i].metricAppearedTs)
 			} else {
 				rangeSamples, err = selectPoints(series.samples, mint, maxt, o.scanners[i].previousSamples)
 			}
@@ -155,11 +156,12 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-community/promql-engine/issues/39
 			result := o.call(function.FunctionArgs{
-				Labels:      series.labels,
-				Samples:     rangeSamples,
-				StepTime:    seriesTs,
-				SelectRange: o.selectRange,
-				Offset:      o.offset,
+				Labels:           series.labels,
+				Samples:          rangeSamples,
+				StepTime:         seriesTs,
+				SelectRange:      o.selectRange,
+				Offset:           o.offset,
+				MetricAppearedTs: o.scanners[i].metricAppearedTs,
 			})
 
 			if result.T != function.InvalidSample.T {
@@ -321,7 +323,7 @@ loop:
 // into the [mint, maxt] range are retained; only points with later timestamps
 // are populated from the iterator.
 // TODO(fpetkovski): Add max samples limit.
-func selectExtPoints(it *storage.BufferedSeriesIterator, mint, maxt int64, out []promql.Sample, functionName string, extLookbackDelta int64) ([]promql.Sample, error) {
+func selectExtPoints(it *storage.BufferedSeriesIterator, mint, maxt int64, out []promql.Sample, functionName string, extLookbackDelta int64, metricAppearedTs **int64) ([]promql.Sample, error) {
 	extMint := mint - extLookbackDelta
 
 	if len(out) > 0 && out[len(out)-1].T >= mint {
@@ -370,6 +372,9 @@ loop:
 			if value.IsStaleNaN(fh.Sum) {
 				continue loop
 			}
+			if *metricAppearedTs == nil {
+				*metricAppearedTs = &t
+			}
 			if t >= mint {
 				out = append(out, promql.Sample{T: t, H: fh})
 			}
@@ -377,6 +382,9 @@ loop:
 			t, v := buf.At()
 			if value.IsStaleNaN(v) {
 				continue loop
+			}
+			if *metricAppearedTs == nil {
+				*metricAppearedTs = &t
 			}
 
 			// This is the argument to an extended range function: if any point
@@ -397,11 +405,17 @@ loop:
 	case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
 		t, fh := it.AtFloatHistogram()
 		if t == maxt && !value.IsStaleNaN(fh.Sum) {
+			if *metricAppearedTs == nil {
+				*metricAppearedTs = &t
+			}
 			out = append(out, promql.Sample{T: t, H: fh})
 		}
 	case chunkenc.ValFloat:
 		t, v := it.At()
 		if t == maxt && !value.IsStaleNaN(v) {
+			if *metricAppearedTs == nil {
+				*metricAppearedTs = &t
+			}
 			out = append(out, promql.Sample{T: t, F: v})
 		}
 	}

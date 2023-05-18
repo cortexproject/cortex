@@ -18,6 +18,7 @@
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
 * [BUGFIX] Storage: Bucket index updater should ignore meta not found for partial blocks. #5343
 * [BUGFIX] Ring: Add JOINING state to read operation. #5346
+* [BUGFIX] Compactor: Partial block with only visit marker should be deleted even there is no deletion marker. #5342
 
 ## 1.15.1 2023-04-26
 

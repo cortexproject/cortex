@@ -313,6 +313,10 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.dynamodb.ttl-time
       [ttl: <duration> | default = 0s]
 
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
     [consul: <consul_config>]
@@ -1878,6 +1882,10 @@ sharding_ring:
       # CLI flag: -compactor.ring.dynamodb.ttl-time
       [ttl: <duration> | default = 0s]
 
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -compactor.ring.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -2117,6 +2125,10 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.ttl-time
       [ttl: <duration> | default = 0s]
 
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -distributor.ha-tracker.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -2193,6 +2205,10 @@ ring:
       # Time to expire items on dynamodb.
       # CLI flag: -distributor.ring.dynamodb.ttl-time
       [ttl: <duration> | default = 0s]
+
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -distributor.ring.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -2481,6 +2497,10 @@ lifecycler:
         # Time to expire items on dynamodb.
         # CLI flag: -dynamodb.ttl-time
         [ttl: <duration> | default = 0s]
+
+        # Time to refresh local ring with information on dynamodb.
+        # CLI flag: -dynamodb.puller-sync-time
+        [puller_sync_time: <duration> | default = 1m]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -3853,6 +3873,10 @@ ring:
       # CLI flag: -ruler.ring.dynamodb.ttl-time
       [ttl: <duration> | default = 0s]
 
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -ruler.ring.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
     [consul: <consul_config>]
@@ -4711,6 +4735,10 @@ sharding_ring:
       # Time to expire items on dynamodb.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.ttl-time
       [ttl: <duration> | default = 0s]
+
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

@@ -71,15 +71,17 @@ func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Lo
 
 // FilterUsers implements ShardingStrategy.
 func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
-	allUserIDs := userIDs
-
+	filteredUserIDs := []string{} 
 	for _, userID := range userIDs {
 		if !s.allowedTenants.IsAllowed(userID) {
 			level.Debug(s.logger).Log("msg", "ignoring storage gateway for user, not allowed", "user", userID)
+			continue
 		}
+
+		filteredUserIDs = append(filteredUserIDs, userID)
 	}
 
-	return allUserIDs
+	return filteredUserIDs
 }
 
 // FilterBlocks implements ShardingStrategy.

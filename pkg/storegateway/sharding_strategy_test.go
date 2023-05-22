@@ -42,6 +42,9 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		zoneAwarenessEnabled bool
 		setupRing            func(*ring.Desc)
 		expectedBlocks       map[string][]ulid.ULID
+		enableTenants        []string
+		disableTenants       []string
+		allowedTenants	func(*DefaultShardingStrategy)
 	}{
 		"one ACTIVE instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
@@ -64,6 +67,21 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				"127.0.0.2": {block2, block4},
 			},
 		},
+		"two ACTIVE instances in the ring with replication factor = 1 and one tenant disabled": {
+			replicationFactor: 1,
+			setupRing: func(r *ring.Desc) {
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
+				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
+		},
+			allowedTenants: func(r *DefaultShardingStrategy) {
+						 userIds:=  []string{"u-1","u-2"}
+				r.FilterUsers(context.Background(), userIds)
+			},
+			expectedBlocks: map[string][]ulid.ULID{
+				"127.0.0.1": {block1, block3}, // Tenant 1 blocks expected
+				"127.0.0.2": {},               // Tenant 2 blocks disabled
+			},
+	},
 		"one ACTIVE instance in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {

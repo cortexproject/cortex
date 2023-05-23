@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,14 +24,13 @@ import (
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
-	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
+	// StatusClientClosedRequest is the status code for when a client request cancellation of a http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
 )
@@ -39,6 +39,35 @@ var (
 	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
+)
+
+const (
+	reasonRequestBodyTooLarge     = "request_body_too_large"
+	reasonResponseTooLarge        = "response_too_large"
+	reasonTooManyRequests         = "too_many_requests"
+	reasonTooLongRange            = "too_long_range"
+	reasonTooManySamples          = "too_many_samples"
+	reasonSeriesFetched           = "series_fetched"
+	reasonChunksFetched           = "chunks_fetched"
+	reasonChunkBytesFetched       = "chunk_bytes_fetched"
+	reasonDataBytesFetched        = "data_bytes_fetched"
+	reasonSeriesLimitStoreGateway = "series_limit_store_gateway"
+	reasonChunksLimitStoreGateway = "chunks_limit_store_gateway"
+	reasonBytesLimitStoreGateway  = "bytes_limit_store_gateway"
+)
+
+var (
+	LimitTooManySamples    = `query processing would load too many samples into memory`
+	LimitTooLongRange      = `the query time range exceeds the limit`
+	LimitSeriesFetched     = `the query hit the max number of series limit`
+	LimitChunksFetched     = `the query hit the max number of chunks limit`
+	LimitChunkBytesFetched = `the query hit the aggregated chunks size limit`
+	LimitDataBytesFetched  = `the query hit the aggregated data size limit`
+
+	// Store gateway limits.
+	LimitSeriesStoreGateway = `exceeded series limit`
+	LimitChunksStoreGateway = `exceeded chunks limit`
+	LimitBytesStoreGateway  = `exceeded bytes limit`
 )
 
 // Config for a Handler.
@@ -62,12 +91,13 @@ type Handler struct {
 	roundTripper http.RoundTripper
 
 	// Metrics.
-	queriesCount    *prometheus.CounterVec
-	querySeconds    *prometheus.CounterVec
-	querySeries     *prometheus.CounterVec
-	queryChunkBytes *prometheus.CounterVec
-	queryDataBytes  *prometheus.CounterVec
-	activeUsers     *util.ActiveUsersCleanupService
+	queriesCount     *prometheus.CounterVec
+	querySeconds     *prometheus.CounterVec
+	querySeries      *prometheus.CounterVec
+	queryChunkBytes  *prometheus.CounterVec
+	queryDataBytes   *prometheus.CounterVec
+	discardedQueries *prometheus.CounterVec
+	activeUsers      *util.ActiveUsersCleanupService
 }
 
 // NewHandler creates a new frontend handler.
@@ -104,12 +134,23 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all data fetched to execute a query in bytes.",
 		}, []string{"user"})
 
+		h.discardedQueries = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_discarded_queries_total",
+				Help: "The total number of queries that were discarded.",
+			},
+			[]string{"reason", "user"},
+		)
+
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.queriesCount.DeleteLabelValues(user)
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
+			if err := util.DeleteMatchingLabels(h.discardedQueries, map[string]string{"user": user}); err != nil {
+				level.Warn(log).Log("msg", "failed to remove cortex_discarded_queries_total metric for user", "user", user, "err", err)
+			}
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
@@ -123,6 +164,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stats       *querier_stats.QueryStats
 		queryString url.Values
 	)
+
+	tenantIDs, err := tenant.TenantIDs(r.Context())
+	if err != nil {
+		return
+	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
@@ -150,6 +197,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.Contains(r.URL.Path, "api/v1/read") {
 		if err := r.ParseForm(); err != nil {
 			writeError(w, err)
+			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
+				f.discardedQueries.WithLabelValues(reasonRequestBodyTooLarge, userID).Inc()
+			}
 			return
 		}
 		r.Body = io.NopCloser(&buf)
@@ -168,7 +218,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
+
 	if f.cfg.QueryStatsEnabled {
+		// Try to parse error and get status code.
 		var statusCode int
 		if err != nil {
 			statusCode = getStatusCodeFromError(err)
@@ -184,7 +236,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode, resp)
+		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
 	if err != nil {
@@ -239,12 +291,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
-	tenantIDs, err := tenant.TenantIDs(r.Context())
-	if err != nil {
-		return
-	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
+func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	wallTime := stats.LoadWallTime()
 	numSeries := stats.LoadFetchedSeries()
 	numChunks := stats.LoadFetchedChunks()
@@ -310,6 +357,38 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	} else {
 		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	}
+
+	var reason string
+	// 413, 422 or 429.
+	if statusCode == http.StatusTooManyRequests {
+		reason = reasonTooManyRequests
+	} else if statusCode == http.StatusRequestEntityTooLarge {
+		reason = reasonResponseTooLarge
+	} else if statusCode == http.StatusUnprocessableEntity {
+		errMsg := error.Error()
+		if strings.Contains(errMsg, LimitTooManySamples) {
+			reason = reasonTooManySamples
+		} else if strings.Contains(errMsg, LimitTooLongRange) {
+			reason = reasonTooLongRange
+		} else if strings.Contains(errMsg, LimitSeriesFetched) {
+			reason = reasonSeriesFetched
+		} else if strings.Contains(errMsg, LimitChunksFetched) {
+			reason = reasonChunksFetched
+		} else if strings.Contains(errMsg, LimitChunkBytesFetched) {
+			reason = reasonChunkBytesFetched
+		} else if strings.Contains(errMsg, LimitDataBytesFetched) {
+			reason = reasonDataBytesFetched
+		} else if strings.Contains(errMsg, LimitSeriesStoreGateway) {
+			reason = reasonSeriesLimitStoreGateway
+		} else if strings.Contains(errMsg, LimitChunksStoreGateway) {
+			reason = reasonChunksLimitStoreGateway
+		} else if strings.Contains(errMsg, LimitBytesStoreGateway) {
+			reason = reasonBytesLimitStoreGateway
+		}
+	}
+	if len(reason) > 0 {
+		f.discardedQueries.WithLabelValues(reason, userID).Inc()
 	}
 }
 

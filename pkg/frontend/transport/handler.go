@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"io"
 	"net/http"
 	"net/url"
@@ -24,6 +23,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"

@@ -81,7 +81,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonResponseTooLarge, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -96,7 +96,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonTooManyRequests, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -107,11 +107,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitTooManySamples)),
+					Body:       io.NopCloser(strings.NewReader(limitTooManySamples)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonTooManySamples, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -122,11 +122,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitTooLongRange)),
+					Body:       io.NopCloser(strings.NewReader(limitTimeRangeExceeded)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonTooLongRange, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -137,11 +137,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitSeriesFetched)),
+					Body:       io.NopCloser(strings.NewReader(limitSeriesFetched)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonSeriesFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -152,11 +152,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitChunksFetched)),
+					Body:       io.NopCloser(strings.NewReader(limitChunksFetched)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonChunksFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -167,11 +167,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitChunkBytesFetched)),
+					Body:       io.NopCloser(strings.NewReader(limitChunkBytesFetched)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonChunkBytesFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -182,11 +182,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitDataBytesFetched)),
+					Body:       io.NopCloser(strings.NewReader(limitDataBytesFetched)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonDataBytesFetched, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -197,11 +197,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitSeriesStoreGateway)),
+					Body:       io.NopCloser(strings.NewReader(limitSeriesStoreGateway)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -212,11 +212,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitChunksStoreGateway)),
+					Body:       io.NopCloser(strings.NewReader(limitChunksStoreGateway)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonChunksLimitStoreGateway, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},
@@ -227,11 +227,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusUnprocessableEntity,
-					Body:       io.NopCloser(strings.NewReader(LimitBytesStoreGateway)),
+					Body:       io.NopCloser(strings.NewReader(limitBytesStoreGateway)),
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.discardedQueries.WithLabelValues(reasonBytesLimitStoreGateway, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, userID))
 				assert.Equal(t, float64(1), v)
 			},
 		},

@@ -42,32 +42,30 @@ var (
 )
 
 const (
-	reasonRequestBodyTooLarge     = "request_body_too_large"
-	reasonResponseTooLarge        = "response_too_large"
-	reasonTooManyRequests         = "too_many_requests"
-	reasonTooLongRange            = "too_long_range"
-	reasonTooManySamples          = "too_many_samples"
-	reasonSeriesFetched           = "series_fetched"
-	reasonChunksFetched           = "chunks_fetched"
-	reasonChunkBytesFetched       = "chunk_bytes_fetched"
-	reasonDataBytesFetched        = "data_bytes_fetched"
-	reasonSeriesLimitStoreGateway = "series_limit_store_gateway"
-	reasonChunksLimitStoreGateway = "chunks_limit_store_gateway"
-	reasonBytesLimitStoreGateway  = "bytes_limit_store_gateway"
-)
+	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
+	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
+	reasonTooManyRequests          = "too_many_requests"
+	reasonTimeRangeExceeded        = "time_range_exceeded"
+	reasonTooManySamples           = "too_many_samples"
+	reasonSeriesFetched            = "series_fetched"
+	reasonChunksFetched            = "chunks_fetched"
+	reasonChunkBytesFetched        = "chunk_bytes_fetched"
+	reasonDataBytesFetched         = "data_bytes_fetched"
+	reasonSeriesLimitStoreGateway  = "store_gateway_series_limit"
+	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
+	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
 
-var (
-	LimitTooManySamples    = `query processing would load too many samples into memory`
-	LimitTooLongRange      = `the query time range exceeds the limit`
-	LimitSeriesFetched     = `the query hit the max number of series limit`
-	LimitChunksFetched     = `the query hit the max number of chunks limit`
-	LimitChunkBytesFetched = `the query hit the aggregated chunks size limit`
-	LimitDataBytesFetched  = `the query hit the aggregated data size limit`
+	limitTooManySamples    = `query processing would load too many samples into memory`
+	limitTimeRangeExceeded = `the query time range exceeds the limit`
+	limitSeriesFetched     = `the query hit the max number of series limit`
+	limitChunksFetched     = `the query hit the max number of chunks limit`
+	limitChunkBytesFetched = `the query hit the aggregated chunks size limit`
+	limitDataBytesFetched  = `the query hit the aggregated data size limit`
 
 	// Store gateway limits.
-	LimitSeriesStoreGateway = `exceeded series limit`
-	LimitChunksStoreGateway = `exceeded chunks limit`
-	LimitBytesStoreGateway  = `exceeded bytes limit`
+	limitSeriesStoreGateway = `exceeded series limit`
+	limitChunksStoreGateway = `exceeded chunks limit`
+	limitBytesStoreGateway  = `exceeded bytes limit`
 )
 
 // Config for a Handler.
@@ -91,13 +89,13 @@ type Handler struct {
 	roundTripper http.RoundTripper
 
 	// Metrics.
-	queriesCount     *prometheus.CounterVec
-	querySeconds     *prometheus.CounterVec
-	querySeries      *prometheus.CounterVec
-	queryChunkBytes  *prometheus.CounterVec
-	queryDataBytes   *prometheus.CounterVec
-	discardedQueries *prometheus.CounterVec
-	activeUsers      *util.ActiveUsersCleanupService
+	queriesCount    *prometheus.CounterVec
+	querySeconds    *prometheus.CounterVec
+	querySeries     *prometheus.CounterVec
+	queryChunkBytes *prometheus.CounterVec
+	queryDataBytes  *prometheus.CounterVec
+	rejectedQueries *prometheus.CounterVec
+	activeUsers     *util.ActiveUsersCleanupService
 }
 
 // NewHandler creates a new frontend handler.
@@ -134,10 +132,10 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all data fetched to execute a query in bytes.",
 		}, []string{"user"})
 
-		h.discardedQueries = prometheus.NewCounterVec(
+		h.rejectedQueries = prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "cortex_discarded_queries_total",
-				Help: "The total number of queries that were discarded.",
+				Name: "cortex_rejected_queries_total",
+				Help: "The total number of queries that were rejected.",
 			},
 			[]string{"reason", "user"},
 		)
@@ -148,8 +146,8 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			h.querySeries.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
-			if err := util.DeleteMatchingLabels(h.discardedQueries, map[string]string{"user": user}); err != nil {
-				level.Warn(log).Log("msg", "failed to remove cortex_discarded_queries_total metric for user", "user", user, "err", err)
+			if err := util.DeleteMatchingLabels(h.rejectedQueries, map[string]string{"user": user}); err != nil {
+				level.Warn(log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
 			}
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
@@ -198,7 +196,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseForm(); err != nil {
 			writeError(w, err)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
-				f.discardedQueries.WithLabelValues(reasonRequestBodyTooLarge, userID).Inc()
+				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID).Inc()
 			}
 			return
 		}
@@ -360,35 +358,34 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	}
 
 	var reason string
-	// 413, 422 or 429.
 	if statusCode == http.StatusTooManyRequests {
 		reason = reasonTooManyRequests
 	} else if statusCode == http.StatusRequestEntityTooLarge {
-		reason = reasonResponseTooLarge
+		reason = reasonResponseBodySizeExceeded
 	} else if statusCode == http.StatusUnprocessableEntity {
 		errMsg := error.Error()
-		if strings.Contains(errMsg, LimitTooManySamples) {
+		if strings.Contains(errMsg, limitTooManySamples) {
 			reason = reasonTooManySamples
-		} else if strings.Contains(errMsg, LimitTooLongRange) {
-			reason = reasonTooLongRange
-		} else if strings.Contains(errMsg, LimitSeriesFetched) {
+		} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
+			reason = reasonTimeRangeExceeded
+		} else if strings.Contains(errMsg, limitSeriesFetched) {
 			reason = reasonSeriesFetched
-		} else if strings.Contains(errMsg, LimitChunksFetched) {
+		} else if strings.Contains(errMsg, limitChunksFetched) {
 			reason = reasonChunksFetched
-		} else if strings.Contains(errMsg, LimitChunkBytesFetched) {
+		} else if strings.Contains(errMsg, limitChunkBytesFetched) {
 			reason = reasonChunkBytesFetched
-		} else if strings.Contains(errMsg, LimitDataBytesFetched) {
+		} else if strings.Contains(errMsg, limitDataBytesFetched) {
 			reason = reasonDataBytesFetched
-		} else if strings.Contains(errMsg, LimitSeriesStoreGateway) {
+		} else if strings.Contains(errMsg, limitSeriesStoreGateway) {
 			reason = reasonSeriesLimitStoreGateway
-		} else if strings.Contains(errMsg, LimitChunksStoreGateway) {
+		} else if strings.Contains(errMsg, limitChunksStoreGateway) {
 			reason = reasonChunksLimitStoreGateway
-		} else if strings.Contains(errMsg, LimitBytesStoreGateway) {
+		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
 		}
 	}
 	if len(reason) > 0 {
-		f.discardedQueries.WithLabelValues(reason, userID).Inc()
+		f.rejectedQueries.WithLabelValues(reason, userID).Inc()
 	}
 }
 

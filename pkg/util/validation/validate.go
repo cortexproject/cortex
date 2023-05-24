@@ -95,20 +95,10 @@ var DiscardedMetadata = prometheus.NewCounterVec(
 	[]string{discardReasonLabel, "user"},
 )
 
-// DiscardedQueries is a metric of the number of discarded queries, by reason.
-var DiscardedQueries = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "cortex_discarded_query_total",
-		Help: "The total number of queries that were discarded.",
-	},
-	[]string{discardReasonLabel, "user"},
-)
-
 func init() {
 	prometheus.MustRegister(DiscardedSamples)
 	prometheus.MustRegister(DiscardedExemplars)
 	prometheus.MustRegister(DiscardedMetadata)
-	prometheus.MustRegister(DiscardedQueries)
 }
 
 // ValidateSample returns an err if the sample is invalid.

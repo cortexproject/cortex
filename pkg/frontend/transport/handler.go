@@ -386,6 +386,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	}
 	if len(reason) > 0 {
 		f.rejectedQueries.WithLabelValues(reason, userID).Inc()
+		stats.LimitHit = reason
 	}
 }
 

@@ -88,6 +88,11 @@ func TestHandler_ServeHTTP(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedMetrics, count)
+
+			if tt.cfg.QueryStatsEnabled {
+				h := handler.(*Handler)
+				assert.Equal(t, float64(1), promtest.ToFloat64(h.queriesCount.WithLabelValues("12345")))
+			}
 		})
 	}
 }

@@ -89,7 +89,6 @@ type Handler struct {
 	roundTripper http.RoundTripper
 
 	// Metrics.
-	queriesCount    *prometheus.CounterVec
 	querySeconds    *prometheus.CounterVec
 	querySeries     *prometheus.CounterVec
 	queryChunkBytes *prometheus.CounterVec
@@ -107,11 +106,6 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 	}
 
 	if cfg.QueryStatsEnabled {
-		h.queriesCount = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_queries_total",
-			Help: "Total number of queries per user.",
-		}, []string{"user"})
-
 		h.querySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_seconds_total",
 			Help: "Total amount of wall clock time spend processing queries.",
@@ -141,7 +135,6 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 		)
 
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
-			h.queriesCount.DeleteLabelValues(user)
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
@@ -298,7 +291,6 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	numDataBytes := stats.LoadFetchedDataBytes()
 
 	// Track stats.
-	f.queriesCount.WithLabelValues(userID).Inc()
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
 	f.querySeries.WithLabelValues(userID).Add(float64(numSeries))
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))

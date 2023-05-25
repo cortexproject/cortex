@@ -1,6 +1,8 @@
 package promqlsmith
 
 import (
+	"time"
+
 	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/exp/slices"
 )
@@ -72,9 +74,10 @@ type options struct {
 	enabledFuncs  []*parser.Function
 	enabledBinops []parser.ItemType
 
-	enableOffset         bool
-	enableAtModifier     bool
-	enableVectorMatching bool
+	enableOffset           bool
+	enableAtModifier       bool
+	enableVectorMatching   bool
+	atModifierMaxTimestamp int64
 }
 
 func (o *options) applyDefaults() {
@@ -93,6 +96,10 @@ func (o *options) applyDefaults() {
 	if len(o.enabledFuncs) == 0 {
 		o.enabledFuncs = defaultSupportedFuncs
 	}
+
+	if o.atModifierMaxTimestamp == 0 {
+		o.atModifierMaxTimestamp = time.Now().UnixMilli()
+	}
 }
 
 // Option specifies options when generating queries.
@@ -109,6 +116,12 @@ func (f optionFunc) apply(o *options) {
 func WithEnableOffset(enableOffset bool) Option {
 	return optionFunc(func(o *options) {
 		o.enableOffset = enableOffset
+	})
+}
+
+func WithAtModifierMaxTimestamp(atModifierMaxTimestamp int64) Option {
+	return optionFunc(func(o *options) {
+		o.atModifierMaxTimestamp = atModifierMaxTimestamp
 	})
 }
 

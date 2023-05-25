@@ -3396,7 +3396,7 @@ store_gateway_client:
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
 # Experimental. Use Thanos promql engine
-# https://github.com/thanos-community/promql-engine rather than the Prometheus
+# https://github.com/thanos-io/promql-engine rather than the Prometheus
 # promql engine.
 # CLI flag: -querier.thanos-engine
 [thanos_engine: <boolean> | default = false]

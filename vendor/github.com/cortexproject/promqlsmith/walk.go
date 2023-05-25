@@ -132,22 +132,22 @@ func (s *PromQLSmith) walkBinaryExpr(valueTypes ...parser.ValueType) parser.Expr
 func (s *PromQLSmith) walkVectorMatching(expr *parser.BinaryExpr, seriesSetA []labels.Labels, seriesSetB []labels.Labels, includeLabels bool) {
 	sa := make(map[string]struct{})
 	for _, series := range seriesSetA {
-		for _, lbl := range series {
+		series.Range(func(lbl labels.Label) {
 			if lbl.Name == labels.MetricName {
-				continue
+				return
 			}
 			sa[lbl.Name] = struct{}{}
-		}
+		})
 	}
 
 	sb := make(map[string]struct{})
 	for _, series := range seriesSetB {
-		for _, lbl := range series {
+		series.Range(func(lbl labels.Label) {
 			if lbl.Name == labels.MetricName {
-				continue
+				return
 			}
 			sb[lbl.Name] = struct{}{}
-		}
+		})
 	}
 	expr.VectorMatching.On = true
 	matchedLabels := make([]string, 0)
@@ -307,11 +307,17 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 	items := s.rnd.Intn((series.Len() + 1) / 2)
 	matchers := make([]*labels.Matcher, 0, items)
 	containsName := false
+	lbls := make([]labels.Label, 0, series.Len())
+	series.Range(func(l labels.Label) {
+		lbls = append(lbls, l)
+	})
+
 	for i := 0; i < items; i++ {
-		if series[orders[i]].Name == labels.MetricName {
+
+		if lbls[orders[i]].Name == labels.MetricName {
 			containsName = true
 		}
-		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, series[orders[i]].Name, series[orders[i]].Value))
+		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, lbls[orders[i]].Name, lbls[orders[i]].Value))
 	}
 
 	if !containsName {
@@ -334,7 +340,7 @@ func (s *PromQLSmith) walkAtModifier() (ts *int64, op parser.ItemType) {
 	case 1:
 		op = parser.END
 	case 2:
-		t := time.Now().UnixMilli()
+		t := s.rnd.Int63n(s.atModifierMaxTimestamp)
 		ts = &t
 	}
 	return
@@ -456,7 +462,7 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		m := make(map[uint64]labels.Labels)
 		b := make([]byte, 1024)
 		output := make([]labels.Labels, 0)
-		lb := labels.NewBuilder(nil)
+		lb := labels.NewBuilder(labels.EmptyLabels())
 		if !node.Without {
 			for _, lbl := range lbls {
 				for _, groupLabel := range node.Grouping {
@@ -478,18 +484,19 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 				set[g] = struct{}{}
 			}
 			for _, lbl := range lbls {
-				for _, l := range lbl {
+				lbl.Range(func(l labels.Label) {
 					if l.Name == labels.MetricName {
-						continue
+						return
 					}
 					if _, ok := set[l.Name]; !ok {
-						if val := lbl.Get(l.Name); val == "" {
-							continue
-						} else {
-							lb.Set(l.Name, val)
+						val := lbl.Get(l.Name)
+						if val == "" {
+							return
 						}
+
+						lb.Set(l.Name, val)
 					}
-				}
+				})
 
 				newLbl := lb.Labels()
 				h, _ := newLbl.HashWithoutLabels(b, node.Grouping...)

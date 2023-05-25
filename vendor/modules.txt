@@ -261,7 +261,7 @@ github.com/coreos/go-semver/semver
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/activation
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/promqlsmith v0.0.0-20230421071515-a6cbb90f0f71
+# github.com/cortexproject/promqlsmith v0.0.0-20230502194647-ed3e43bb7a52
 ## explicit; go 1.19
 github.com/cortexproject/promqlsmith
 # github.com/davecgh/go-spew v1.1.1
@@ -720,7 +720,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.44.0
+# github.com/prometheus/prometheus v0.44.1-0.20230524110021-37e5249e33e4
 ## explicit; go 1.19
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -818,27 +818,6 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-community/promql-engine v0.0.0-20230505104016-5124a98eee24
-## explicit; go 1.19
-github.com/thanos-community/promql-engine/api
-github.com/thanos-community/promql-engine/engine
-github.com/thanos-community/promql-engine/execution
-github.com/thanos-community/promql-engine/execution/aggregate
-github.com/thanos-community/promql-engine/execution/binary
-github.com/thanos-community/promql-engine/execution/exchange
-github.com/thanos-community/promql-engine/execution/function
-github.com/thanos-community/promql-engine/execution/model
-github.com/thanos-community/promql-engine/execution/noop
-github.com/thanos-community/promql-engine/execution/parse
-github.com/thanos-community/promql-engine/execution/remote
-github.com/thanos-community/promql-engine/execution/scan
-github.com/thanos-community/promql-engine/execution/step_invariant
-github.com/thanos-community/promql-engine/execution/storage
-github.com/thanos-community/promql-engine/execution/unary
-github.com/thanos-community/promql-engine/logicalplan
-github.com/thanos-community/promql-engine/parser
-github.com/thanos-community/promql-engine/query
-github.com/thanos-community/promql-engine/worker
 # github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 ## explicit; go 1.18
 github.com/thanos-io/objstore
@@ -849,7 +828,28 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.0.0-20230518071718-528944910da2
+# github.com/thanos-io/promql-engine v0.0.0-20230524173220-ac7dd841e96a
+## explicit; go 1.19
+github.com/thanos-io/promql-engine/api
+github.com/thanos-io/promql-engine/engine
+github.com/thanos-io/promql-engine/execution
+github.com/thanos-io/promql-engine/execution/aggregate
+github.com/thanos-io/promql-engine/execution/binary
+github.com/thanos-io/promql-engine/execution/exchange
+github.com/thanos-io/promql-engine/execution/function
+github.com/thanos-io/promql-engine/execution/model
+github.com/thanos-io/promql-engine/execution/noop
+github.com/thanos-io/promql-engine/execution/parse
+github.com/thanos-io/promql-engine/execution/remote
+github.com/thanos-io/promql-engine/execution/scan
+github.com/thanos-io/promql-engine/execution/step_invariant
+github.com/thanos-io/promql-engine/execution/storage
+github.com/thanos-io/promql-engine/execution/unary
+github.com/thanos-io/promql-engine/logicalplan
+github.com/thanos-io/promql-engine/parser
+github.com/thanos-io/promql-engine/query
+github.com/thanos-io/promql-engine/worker
+# github.com/thanos-io/thanos v0.0.0-20230524201324-c4321c5e1de2
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

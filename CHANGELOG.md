@@ -6,8 +6,7 @@
 * [CHANGE] Ingester: Creating label `native-histogram-sample` on the `cortex_discarded_samples_total` to keep track of discarded native histogram samples. #5289
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
-* [FEATURE] Query Frontend: Add `cortex_queries_total` metric for total number of queries executed per user. #5360
-* [FEATURE] Query Frontend: Add `cortex_discarded_queries_total` metric for throttled queries. #5356
+* [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323

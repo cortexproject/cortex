@@ -22,7 +22,7 @@ To specify which configuration file to load, pass the `-config.file` flag at the
 * `<int>`: any integer matching the regular expression `[1-9]+[0-9]*`
 * `<duration>`: a duration matching the regular expression `[0-9]+(ns|us|µs|ms|s|m|h|d|w|y)` where y = 365 days.
 * `<string>`: a regular string
-* `<url>`: an URL
+* `<url>`: a URL
 * `<prefix>`: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)
 * `<relabel_config>`: a [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config).
 * `<time>`: a timestamp, with available formats: `2006-01-20` (midnight, local timezone), `2006-01-20T15:04` (local timezone), and RFC 3339 formats: `2006-01-20T15:04:05Z` (UTC) or `2006-01-20T15:04:05+07:00` (explicit timezone)

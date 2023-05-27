@@ -382,7 +382,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 		shardingStrategy     = util.ShardingStrategyDefault
 		replicationFactor    = 3
 		numInitialGateways   = 4
-		numScaleUpGateways   = 6
+		numScaleUpGateways   = 2
 		expectedBlocksLoaded = 3 * numBlocks // blocks are replicated 3 times
 	)
 

@@ -168,6 +168,45 @@ runtime_config:
   # CLI flag: -runtime-config.file
   [file: <string> | default = ""]
 
+  # Sets tenant-specific global limits that override defaults in limits_config.
+  # Each tenant is defined by a key-value pair, namely the tenant ID and an
+  # object detailing its limits, using the same fields found in limits_config.
+  # For field descriptions and examples, please visit the respective pages on
+  # Cortex Metrics documentation: the limits_config section for available
+  # fields, and the runtime configuration file section for usage examples.
+  overrides:
+
+  multi_kv_config:
+    # The primary store used by MultiClient. Can be updated at runtime to switch
+    # between different stores, enabling smooth migration.
+    # CLI flag: -runtime-config.multi-kv-config.primary
+    [primary: <string> | default = ""]
+
+    # Indicates whether mirroring is enabled or disabled.
+    # CLI flag: -runtime-config.multi-kv-config.mirror-enabled
+    [mirror_enabled: <boolean> | default = false]
+
+  # Enable streaming entire chunks instead of individual samples to the querier
+  # CLI flag: -runtime-config.ingester-stream-chunks-when-using-blocks
+  [ingester_stream_chunks_when_using_blocks: <boolean> | default = false]
+
+  ingester_limits:
+    # Maximum ingestion rate for the ingester, in samples per second.
+    # CLI flag: -runtime-config.ingester-limits.max-ingestion-rate
+    [max_ingestion_rate: <float> | default = 0]
+
+    # Maximum number of tenants allowed in the ingester.
+    # CLI flag: -runtime-config.ingester-limits.max-in-memory-tenants
+    [max_tenants: <int> | default = 0]
+
+    # Maximum number of series allowed in the ingester.
+    # CLI flag: -runtime-config.ingester-limits.max-in-memory-series
+    [max_series: <int> | default = 0]
+
+    # Maximum number of inflight push requests allowed in the ingester.
+    # CLI flag: -runtime-config.ingester-limits.max-inflight-push-requests
+    [max_inflight_push_requests: <int> | default = 0]
+
 # The memberlist_config configures the Gossip memberlist.
 [memberlist: <memberlist_config>]
 

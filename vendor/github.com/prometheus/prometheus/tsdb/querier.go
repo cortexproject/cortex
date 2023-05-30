@@ -180,7 +180,7 @@ func (q *blockChunkQuerier) Select(sortSeries bool, hints *storage.SelectHints, 
 	if sortSeries {
 		p = q.index.SortedPostings(p)
 	}
-	return newBlockChunkSeriesSet(q.blockID, q.index, q.chunks, q.tombstones, p, mint, maxt, disableTrimming)
+	return NewBlockChunkSeriesSet(q.blockID, q.index, q.chunks, q.tombstones, p, mint, maxt, disableTrimming)
 }
 
 func findSetMatches(pattern string) []string {
@@ -239,18 +239,20 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 	}
 
 	for _, m := range ms {
-		if m.Name == "" && m.Value == "" { // Special-case for AllPostings, used in tests at least.
+		switch {
+		case m.Name == "" && m.Value == "": // Special-case for AllPostings, used in tests at least.
 			k, v := index.AllPostingsKey()
 			allPostings, err := ix.Postings(k, v)
 			if err != nil {
 				return nil, err
 			}
 			its = append(its, allPostings)
-		} else if labelMustBeSet[m.Name] {
+		case labelMustBeSet[m.Name]:
 			// If this matcher must be non-empty, we can be smarter.
 			matchesEmpty := m.Matches("")
 			isNot := m.Type == labels.MatchNotEqual || m.Type == labels.MatchNotRegexp
-			if isNot && matchesEmpty { // l!="foo"
+			switch {
+			case isNot && matchesEmpty: // l!="foo"
 				// If the label can't be empty and is a Not and the inner matcher
 				// doesn't match empty, then subtract it out at the end.
 				inverse, err := m.Inverse()
@@ -263,7 +265,7 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 					return nil, err
 				}
 				notIts = append(notIts, it)
-			} else if isNot && !matchesEmpty { // l!=""
+			case isNot && !matchesEmpty: // l!=""
 				// If the label can't be empty and is a Not, but the inner matcher can
 				// be empty we need to use inversePostingsForMatcher.
 				inverse, err := m.Inverse()
@@ -279,7 +281,7 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 					return index.EmptyPostings(), nil
 				}
 				its = append(its, it)
-			} else { // l="a"
+			default: // l="a"
 				// Non-Not matcher, use normal postingsForMatcher.
 				it, err := postingsForMatcher(ix, m)
 				if err != nil {
@@ -290,7 +292,7 @@ func PostingsForMatchers(ix IndexReader, ms ...*labels.Matcher) (index.Postings,
 				}
 				its = append(its, it)
 			}
-		} else { // l=""
+		default: // l=""
 			// If the matchers for a labelname selects an empty value, it selects all
 			// the series which don't have the label name set too. See:
 			// https://github.com/prometheus/prometheus/issues/3575 and
@@ -359,6 +361,22 @@ func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, erro
 
 // inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
 func inversePostingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, error) {
+	// Fast-path for MatchNotRegexp matching.
+	// Inverse of a MatchNotRegexp is MatchRegexp (double negation).
+	// Fast-path for set matching.
+	if m.Type == labels.MatchNotRegexp {
+		setMatches := findSetMatches(m.GetRegexString())
+		if len(setMatches) > 0 {
+			return ix.Postings(m.Name, setMatches...)
+		}
+	}
+
+	// Fast-path for MatchNotEqual matching.
+	// Inverse of a MatchNotEqual is MatchEqual (double negation).
+	if m.Type == labels.MatchNotEqual {
+		return ix.Postings(m.Name, m.Value)
+	}
+
 	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err
@@ -438,7 +456,7 @@ func (s *seriesData) Labels() labels.Labels { return s.labels }
 
 // blockBaseSeriesSet allows to iterate over all series in the single block.
 // Iterated series are trimmed with given min and max time as well as tombstones.
-// See newBlockSeriesSet and newBlockChunkSeriesSet to use it for either sample or chunk iterating.
+// See newBlockSeriesSet and NewBlockChunkSeriesSet to use it for either sample or chunk iterating.
 type blockBaseSeriesSet struct {
 	blockID         ulid.ULID
 	p               index.Postings
@@ -775,14 +793,35 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 		if app, err = newChunk.Appender(); err != nil {
 			break
 		}
-		if hc, ok := p.currChkMeta.Chunk.(*chunkenc.HistogramChunk); ok {
+
+		switch hc := p.currChkMeta.Chunk.(type) {
+		case *chunkenc.HistogramChunk:
 			newChunk.(*chunkenc.HistogramChunk).SetCounterResetHeader(hc.GetCounterResetHeader())
+		case *safeHeadChunk:
+			if unwrapped, ok := hc.Chunk.(*chunkenc.HistogramChunk); ok {
+				newChunk.(*chunkenc.HistogramChunk).SetCounterResetHeader(unwrapped.GetCounterResetHeader())
+			} else {
+				err = fmt.Errorf("internal error, could not unwrap safeHeadChunk to histogram chunk: %T", hc.Chunk)
+			}
+		default:
+			err = fmt.Errorf("internal error, unknown chunk type %T when expecting histogram", p.currChkMeta.Chunk)
 		}
+		if err != nil {
+			break
+		}
+
 		var h *histogram.Histogram
 		t, h = p.currDelIter.AtHistogram()
 		p.curr.MinTime = t
 
+		// Detect missing gauge reset hint.
+		if h.CounterResetHint == histogram.GaugeType && newChunk.(*chunkenc.HistogramChunk).GetCounterResetHeader() != chunkenc.GaugeType {
+			err = fmt.Errorf("found gauge histogram in non gauge chunk")
+			break
+		}
+
 		app.AppendHistogram(t, h)
+
 		for vt := p.currDelIter.Next(); vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
 			if vt != chunkenc.ValHistogram {
 				err = fmt.Errorf("found value type %v in histogram chunk", vt)
@@ -791,23 +830,37 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 			t, h = p.currDelIter.AtHistogram()
 
 			// Defend against corrupted chunks.
-			pI, nI, okToAppend, counterReset := app.(*chunkenc.HistogramAppender).Appendable(h)
-			if len(pI)+len(nI) > 0 {
-				err = fmt.Errorf(
-					"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
-					len(pI), len(nI),
-				)
-				break
+			if h.CounterResetHint == histogram.GaugeType {
+				pI, nI, bpI, bnI, _, _, okToAppend := app.(*chunkenc.HistogramAppender).AppendableGauge(h)
+				if !okToAppend {
+					err = errors.New("unable to append histogram due to unexpected schema change")
+					break
+				}
+				if len(pI)+len(nI)+len(bpI)+len(bnI) > 0 {
+					err = fmt.Errorf(
+						"bucket layout has changed unexpectedly: forward %d positive, %d negative, backward %d positive %d negative bucket interjections required",
+						len(pI), len(nI), len(bpI), len(bnI),
+					)
+					break
+				}
+			} else {
+				pI, nI, okToAppend, counterReset := app.(*chunkenc.HistogramAppender).Appendable(h)
+				if len(pI)+len(nI) > 0 {
+					err = fmt.Errorf(
+						"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
+						len(pI), len(nI),
+					)
+					break
+				}
+				if counterReset {
+					err = errors.New("detected unexpected counter reset in histogram")
+					break
+				}
+				if !okToAppend {
+					err = errors.New("unable to append histogram due to unexpected schema change")
+					break
+				}
 			}
-			if counterReset {
-				err = errors.New("detected unexpected counter reset in histogram")
-				break
-			}
-			if !okToAppend {
-				err = errors.New("unable to append histogram due to unexpected schema change")
-				break
-			}
-
 			app.AppendHistogram(t, h)
 		}
 	case chunkenc.ValFloat:
@@ -832,14 +885,35 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 		if app, err = newChunk.Appender(); err != nil {
 			break
 		}
-		if hc, ok := p.currChkMeta.Chunk.(*chunkenc.FloatHistogramChunk); ok {
+
+		switch hc := p.currChkMeta.Chunk.(type) {
+		case *chunkenc.FloatHistogramChunk:
 			newChunk.(*chunkenc.FloatHistogramChunk).SetCounterResetHeader(hc.GetCounterResetHeader())
+		case *safeHeadChunk:
+			if unwrapped, ok := hc.Chunk.(*chunkenc.FloatHistogramChunk); ok {
+				newChunk.(*chunkenc.FloatHistogramChunk).SetCounterResetHeader(unwrapped.GetCounterResetHeader())
+			} else {
+				err = fmt.Errorf("internal error, could not unwrap safeHeadChunk to float histogram chunk: %T", hc.Chunk)
+			}
+		default:
+			err = fmt.Errorf("internal error, unknown chunk type %T when expecting float histogram", p.currChkMeta.Chunk)
 		}
+		if err != nil {
+			break
+		}
+
 		var h *histogram.FloatHistogram
 		t, h = p.currDelIter.AtFloatHistogram()
 		p.curr.MinTime = t
 
+		// Detect missing gauge reset hint.
+		if h.CounterResetHint == histogram.GaugeType && newChunk.(*chunkenc.FloatHistogramChunk).GetCounterResetHeader() != chunkenc.GaugeType {
+			err = fmt.Errorf("found float gauge histogram in non gauge chunk")
+			break
+		}
+
 		app.AppendFloatHistogram(t, h)
+
 		for vt := p.currDelIter.Next(); vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
 			if vt != chunkenc.ValFloatHistogram {
 				err = fmt.Errorf("found value type %v in histogram chunk", vt)
@@ -848,21 +922,36 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 			t, h = p.currDelIter.AtFloatHistogram()
 
 			// Defend against corrupted chunks.
-			pI, nI, okToAppend, counterReset := app.(*chunkenc.FloatHistogramAppender).Appendable(h)
-			if len(pI)+len(nI) > 0 {
-				err = fmt.Errorf(
-					"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
-					len(pI), len(nI),
-				)
-				break
-			}
-			if counterReset {
-				err = errors.New("detected unexpected counter reset in histogram")
-				break
-			}
-			if !okToAppend {
-				err = errors.New("unable to append histogram due to unexpected schema change")
-				break
+			if h.CounterResetHint == histogram.GaugeType {
+				pI, nI, bpI, bnI, _, _, okToAppend := app.(*chunkenc.FloatHistogramAppender).AppendableGauge(h)
+				if !okToAppend {
+					err = errors.New("unable to append histogram due to unexpected schema change")
+					break
+				}
+				if len(pI)+len(nI)+len(bpI)+len(bnI) > 0 {
+					err = fmt.Errorf(
+						"bucket layout has changed unexpectedly: forward %d positive, %d negative, backward %d positive %d negative bucket interjections required",
+						len(pI), len(nI), len(bpI), len(bnI),
+					)
+					break
+				}
+			} else {
+				pI, nI, okToAppend, counterReset := app.(*chunkenc.FloatHistogramAppender).Appendable(h)
+				if len(pI)+len(nI) > 0 {
+					err = fmt.Errorf(
+						"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
+						len(pI), len(nI),
+					)
+					break
+				}
+				if counterReset {
+					err = errors.New("detected unexpected counter reset in histogram")
+					break
+				}
+				if !okToAppend {
+					err = errors.New("unable to append histogram due to unexpected schema change")
+					break
+				}
 			}
 
 			app.AppendFloatHistogram(t, h)
@@ -924,7 +1013,7 @@ type blockChunkSeriesSet struct {
 	blockBaseSeriesSet
 }
 
-func newBlockChunkSeriesSet(id ulid.ULID, i IndexReader, c ChunkReader, t tombstones.Reader, p index.Postings, mint, maxt int64, disableTrimming bool) storage.ChunkSeriesSet {
+func NewBlockChunkSeriesSet(id ulid.ULID, i IndexReader, c ChunkReader, t tombstones.Reader, p index.Postings, mint, maxt int64, disableTrimming bool) storage.ChunkSeriesSet {
 	return &blockChunkSeriesSet{
 		blockBaseSeriesSet{
 			blockID:         id,
@@ -965,24 +1054,24 @@ func (m *mergedStringIter) Next() bool {
 	if (!m.aok && !m.bok) || (m.Err() != nil) {
 		return false
 	}
-
-	if !m.aok {
+	switch {
+	case !m.aok:
 		m.cur = m.b.At()
 		m.bok = m.b.Next()
 		m.err = m.b.Err()
-	} else if !m.bok {
+	case !m.bok:
 		m.cur = m.a.At()
 		m.aok = m.a.Next()
 		m.err = m.a.Err()
-	} else if m.b.At() > m.a.At() {
+	case m.b.At() > m.a.At():
 		m.cur = m.a.At()
 		m.aok = m.a.Next()
 		m.err = m.a.Err()
-	} else if m.a.At() > m.b.At() {
+	case m.a.At() > m.b.At():
 		m.cur = m.b.At()
 		m.bok = m.b.Next()
 		m.err = m.b.Err()
-	} else { // Equal.
+	default: // Equal.
 		m.cur = m.b.At()
 		m.aok = m.a.Next()
 		m.err = m.a.Err()
@@ -1085,7 +1174,7 @@ func newNopChunkReader() ChunkReader {
 	}
 }
 
-func (cr nopChunkReader) Chunk(meta chunks.Meta) (chunkenc.Chunk, error) {
+func (cr nopChunkReader) Chunk(chunks.Meta) (chunkenc.Chunk, error) {
 	return cr.emptyChunk, nil
 }
 

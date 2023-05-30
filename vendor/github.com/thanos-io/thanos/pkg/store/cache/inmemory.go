@@ -289,8 +289,8 @@ func copyToKey(l labels.Label) cacheKeyPostings {
 
 // StorePostings sets the postings identified by the ulid and label to the value v,
 // if the postings already exists in the cache it is not mutated.
-func (c *InMemoryIndexCache) StorePostings(_ context.Context, blockID ulid.ULID, l labels.Label, v []byte) {
-	c.set(cacheTypePostings, cacheKey{block: blockID, key: copyToKey(l)}, v)
+func (c *InMemoryIndexCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte) {
+	c.set(cacheTypePostings, cacheKey{block: blockID.String(), key: copyToKey(l)}, v)
 }
 
 // FetchMultiPostings fetches multiple postings - each identified by a label -
@@ -298,8 +298,9 @@ func (c *InMemoryIndexCache) StorePostings(_ context.Context, blockID ulid.ULID,
 func (c *InMemoryIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.ULID, keys []labels.Label) (hits map[labels.Label][]byte, misses []labels.Label) {
 	hits = map[labels.Label][]byte{}
 
+	blockIDKey := blockID.String()
 	for _, key := range keys {
-		if b, ok := c.get(cacheTypePostings, cacheKey{blockID, cacheKeyPostings(key)}); ok {
+		if b, ok := c.get(cacheTypePostings, cacheKey{blockIDKey, cacheKeyPostings(key)}); ok {
 			hits[key] = b
 			continue
 		}
@@ -312,8 +313,8 @@ func (c *InMemoryIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.
 
 // StoreSeries sets the series identified by the ulid and id to the value v,
 // if the series already exists in the cache it is not mutated.
-func (c *InMemoryIndexCache) StoreSeries(_ context.Context, blockID ulid.ULID, id storage.SeriesRef, v []byte) {
-	c.set(cacheTypeSeries, cacheKey{blockID, cacheKeySeries(id)}, v)
+func (c *InMemoryIndexCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte) {
+	c.set(cacheTypeSeries, cacheKey{blockID.String(), cacheKeySeries(id)}, v)
 }
 
 // FetchMultiSeries fetches multiple series - each identified by ID - from the cache
@@ -321,8 +322,9 @@ func (c *InMemoryIndexCache) StoreSeries(_ context.Context, blockID ulid.ULID, i
 func (c *InMemoryIndexCache) FetchMultiSeries(_ context.Context, blockID ulid.ULID, ids []storage.SeriesRef) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
 	hits = map[storage.SeriesRef][]byte{}
 
+	blockIDKey := blockID.String()
 	for _, id := range ids {
-		if b, ok := c.get(cacheTypeSeries, cacheKey{blockID, cacheKeySeries(id)}); ok {
+		if b, ok := c.get(cacheTypeSeries, cacheKey{blockIDKey, cacheKeySeries(id)}); ok {
 			hits[id] = b
 			continue
 		}

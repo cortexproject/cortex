@@ -33,6 +33,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -840,7 +841,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 
 				userID, err := tenant.TenantID(ctx)
 				assert.NoError(t, err)
-				err = d.HATracker.checkReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
+				err = d.HATracker.CheckReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
 				assert.NoError(t, err)
 
 				request := makeWriteRequestHA(tc.samples, tc.testReplica, tc.cluster)
@@ -1667,7 +1668,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1693,7 +1694,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1718,7 +1719,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1746,7 +1747,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long name.
 					lbls.Set(fmt.Sprintf("xxx_%0.2000d", 1), "xxx")
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1774,7 +1775,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long value.
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1802,7 +1803,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 					// Add a label with a very long value.
 					lbls.Set("xxx", fmt.Sprintf("xxx_%0.2000d", 1))
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -1828,7 +1829,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().Add(-2*time.Hour).UnixNano() / int64(time.Millisecond),
@@ -1853,7 +1854,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().Add(time.Hour).UnixNano() / int64(time.Millisecond),
@@ -1931,7 +1932,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 
 				if testData.expectedErr == "" && err != nil {
 					b.Fatalf("no error expected but got %v", err)
@@ -2228,7 +2229,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 						lbls.Set(fmt.Sprintf("name_%d", i), fmt.Sprintf("value_%d", i))
 					}
 
-					metrics[i] = lbls.Labels(nil)
+					metrics[i] = lbls.Labels()
 					samples[i] = cortexpb.Sample{
 						Value:       float64(i),
 						TimestampMs: time.Now().UnixNano() / int64(time.Millisecond),
@@ -2264,7 +2265,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 			// Prepare the series to remote write before starting the benchmark.
 			metrics, samples := testData.prepareSeries()
 
-			if _, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)); err != nil {
+			if _, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)); err != nil {
 				b.Fatalf("error pushing to distributor %v", err)
 			}
 
@@ -2373,7 +2374,7 @@ func mockWriteRequest(lbls []labels.Labels, value float64, timestampMs int64) *c
 		}
 	}
 
-	return cortexpb.ToWriteRequest(lbls, samples, nil, cortexpb.API)
+	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
 
 type prepConfig struct {
@@ -2495,7 +2496,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		}
 
 		if cfg.enableTracker {
-			codec := GetReplicaDescCodec()
+			codec := ha.GetReplicaDescCodec()
 			ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
 			tb.Cleanup(func() { assert.NoError(tb, closer.Close()) })
 			mock := kv.PrefixClient(ringStore, "prefix")
@@ -3097,7 +3098,7 @@ func TestDistributorValidation(t *testing.T) {
 				limits:           &limits,
 			})
 
-			_, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(tc.labels, tc.samples, tc.metadata, cortexpb.API))
+			_, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(tc.labels, tc.samples, tc.metadata, nil, cortexpb.API))
 			require.Equal(t, tc.err, err)
 		})
 	}
@@ -3374,4 +3375,52 @@ func countMockIngestersCalls(ingesters []*mockIngester, name string) int {
 		}
 	}
 	return count
+}
+
+func TestFindHALabels(t *testing.T) {
+	t.Parallel()
+	replicaLabel, clusterLabel := "replica", "cluster"
+	type expectedOutput struct {
+		cluster string
+		replica string
+	}
+	cases := []struct {
+		labelsIn []cortexpb.LabelAdapter
+		expected expectedOutput
+	}{
+		{
+			[]cortexpb.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: replicaLabel, Value: "1"},
+			},
+			expectedOutput{cluster: "", replica: "1"},
+		},
+		{
+			[]cortexpb.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: clusterLabel, Value: "cluster-2"},
+			},
+			expectedOutput{cluster: "cluster-2", replica: ""},
+		},
+		{
+			[]cortexpb.LabelAdapter{
+				{Name: "__name__", Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "sample", Value: "1"},
+				{Name: replicaLabel, Value: "3"},
+				{Name: clusterLabel, Value: "cluster-3"},
+			},
+			expectedOutput{cluster: "cluster-3", replica: "3"},
+		},
+	}
+
+	for _, c := range cases {
+		cluster, replica := findHALabels(replicaLabel, clusterLabel, c.labelsIn)
+		assert.Equal(t, c.expected.cluster, cluster)
+		assert.Equal(t, c.expected.replica, replica)
+	}
 }

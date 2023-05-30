@@ -5,3 +5,4 @@ GOBUILD=$(GO) build -ldflags '$(LDFLAGS)'
 
 test:
 	$(GOTEST) -timeout 600s -v -count=1 .
+	$(GOTEST) --tags=stringlabels -timeout 600s -v -count=1 .

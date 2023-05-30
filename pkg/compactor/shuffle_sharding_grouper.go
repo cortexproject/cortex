@@ -249,8 +249,8 @@ mainLoop:
 			groupKey,
 			externalLabels,
 			resolution,
-			false, // No malformed index.
-			true,  // Enable vertical compaction.
+			g.acceptMalformedIndex,
+			true, // Enable vertical compaction.
 			g.compactions.WithLabelValues(groupKey),
 			g.compactionRunsStarted.WithLabelValues(groupKey),
 			g.compactionRunsCompleted.WithLabelValues(groupKey),

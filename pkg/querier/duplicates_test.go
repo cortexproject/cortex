@@ -98,10 +98,11 @@ func runPromQLAndGetJSONResult(t *testing.T, query string, ts cortexpb.TimeSerie
 	start := model.Time(ts.Samples[0].TimestampMs).Time()
 	end := model.Time(ts.Samples[len(ts.Samples)-1].TimestampMs).Time()
 
-	q, err := engine.NewRangeQuery(tq, nil, query, start, end, step)
+	ctx := context.Background()
+	q, err := engine.NewRangeQuery(ctx, tq, nil, query, start, end, step)
 	require.NoError(t, err)
 
-	res := q.Exec(context.Background())
+	res := q.Exec(ctx)
 	require.NoError(t, err)
 
 	out, err := json.Marshal(res)

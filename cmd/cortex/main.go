@@ -68,7 +68,8 @@ func main() {
 		printModules         bool
 	)
 
-	configFile, expandENV := parseConfigFileParameter(os.Args[1:])
+	args := os.Args[1:]
+	configFile, expandENV := parseConfigFileParameter(args)
 
 	// This sets default values from flags to the config.
 	// It needs to be called before parsing the config file!
@@ -82,6 +83,12 @@ func main() {
 			}
 			os.Exit(1)
 		}
+	} else if len(args) == 0 {
+		fmt.Fprintf(os.Stderr, "please set configuration file. For example: -config.file=./docs/configuration/single-process-config-blocks-local.yaml\n")
+		if testMode {
+			return
+		}
+		os.Exit(1)
 	}
 
 	// Ignore -config.file and -config.expand-env here, since it was already parsed, but it's still present on command line.

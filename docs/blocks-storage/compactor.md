@@ -277,4 +277,8 @@ compactor:
   # compaction.
   # CLI flag: -compactor.block-visit-marker-file-update-interval
   [block_visit_marker_file_update_interval: <duration> | default = 1m]
+
+  # When enabled, index verification will ignore out of order label names.
+  # CLI flag: -compactor.accept-malformed-index
+  [accept_malformed_index: <boolean> | default = false]
 ```

@@ -7,10 +7,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/NYTimes/gziphandler"
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -145,7 +145,7 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	}
 
 	if a.cfg.ResponseCompression {
-		handler = gziphandler.GzipHandler(handler)
+		handler = gzhttp.GzipHandler(handler)
 	}
 	if a.HTTPHeaderMiddleware != nil {
 		handler = a.HTTPHeaderMiddleware.Wrap(handler)
@@ -165,7 +165,7 @@ func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth
 	}
 
 	if a.cfg.ResponseCompression {
-		handler = gziphandler.GzipHandler(handler)
+		handler = gzhttp.GzipHandler(handler)
 	}
 	if a.HTTPHeaderMiddleware != nil {
 		handler = a.HTTPHeaderMiddleware.Wrap(handler)

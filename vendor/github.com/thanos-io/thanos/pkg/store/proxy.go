@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/thanos/pkg/component"
+	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -31,6 +32,9 @@ import (
 )
 
 type ctxKey int
+
+// UninitializedTSDBTime is the TSDB start time of an uninitialized TSDB instance.
+const UninitializedTSDBTime = math.MaxInt64
 
 // StoreMatcherKey is the context key for the store's allow list.
 const StoreMatcherKey = ctxKey(0)
@@ -49,6 +53,9 @@ type Client interface {
 
 	// TimeRange returns minimum and maximum time range of data in the store.
 	TimeRange() (mint int64, maxt int64)
+
+	// TSDBInfos returns metadata about each TSDB backed by the client.
+	TSDBInfos() []infopb.TSDBInfo
 
 	// SupportsSharding returns true if sharding is supported by the underlying store.
 	SupportsSharding() bool
@@ -76,6 +83,7 @@ type ProxyStore struct {
 	responseTimeout   time.Duration
 	metrics           *proxyStoreMetrics
 	retrievalStrategy RetrievalStrategy
+	debugLogging      bool
 }
 
 type proxyStoreMetrics struct {
@@ -99,6 +107,16 @@ func RegisterStoreServer(storeSrv storepb.StoreServer, logger log.Logger) func(*
 	}
 }
 
+// BucketStoreOption are functions that configure BucketStore.
+type ProxyStoreOption func(s *ProxyStore)
+
+// WithProxyStoreDebugLogging enables debug logging.
+func WithProxyStoreDebugLogging() ProxyStoreOption {
+	return func(s *ProxyStore) {
+		s.debugLogging = true
+	}
+}
+
 // NewProxyStore returns a new ProxyStore that uses the given clients that implements storeAPI to fan-in all series to the client.
 // Note that there is no deduplication support. Deduplication should be done on the highest level (just before PromQL).
 func NewProxyStore(
@@ -109,6 +127,7 @@ func NewProxyStore(
 	selectorLabels labels.Labels,
 	responseTimeout time.Duration,
 	retrievalStrategy RetrievalStrategy,
+	options ...ProxyStoreOption,
 ) *ProxyStore {
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -128,6 +147,11 @@ func NewProxyStore(
 		metrics:           metrics,
 		retrievalStrategy: retrievalStrategy,
 	}
+
+	for _, option := range options {
+		option(s)
+	}
+
 	return s
 }
 
@@ -217,6 +241,7 @@ func (s *ProxyStore) LabelSet() []labelpb.ZLabelSet {
 
 	return labelSets
 }
+
 func (s *ProxyStore) TimeRange() (int64, int64) {
 	stores := s.stores()
 	if len(stores) == 0 {
@@ -235,6 +260,14 @@ func (s *ProxyStore) TimeRange() (int64, int64) {
 	}
 
 	return minTime, maxTime
+}
+
+func (s *ProxyStore) TSDBInfos() []infopb.TSDBInfo {
+	infos := make([]infopb.TSDBInfo, 0)
+	for _, store := range s.stores() {
+		infos = append(infos, store.TSDBInfos()...)
+	}
+	return infos
 }
 
 func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
@@ -272,8 +305,10 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 	stores := []Client{}
 	for _, st := range s.stores() {
 		// We might be able to skip the store if its meta information indicates it cannot have series matching our query.
-		if ok, reason := storeMatches(srv.Context(), st, originalRequest.MinTime, originalRequest.MaxTime, matchers...); !ok {
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out: %v", st, reason))
+		if ok, reason := storeMatches(srv.Context(), st, s.debugLogging, originalRequest.MinTime, originalRequest.MaxTime, matchers...); !ok {
+			if s.debugLogging {
+				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s filtered out: %v", st, reason))
+			}
 			continue
 		}
 
@@ -289,8 +324,9 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 
 	for _, st := range stores {
 		st := st
-
-		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
+		if s.debugLogging {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("store %s queried", st))
+		}
 
 		respSet, err := newAsyncRespSet(srv.Context(), st, r, s.responseTimeout, s.retrievalStrategy, &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses)
 		if err != nil {
@@ -329,7 +365,7 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 }
 
 // storeMatches returns boolean if the given store may hold data for the given label matchers, time ranges and debug store matches gathered from context.
-func storeMatches(ctx context.Context, s Client, mint, maxt int64, matchers ...*labels.Matcher) (ok bool, reason string) {
+func storeMatches(ctx context.Context, s Client, debugLogging bool, mint, maxt int64, matchers ...*labels.Matcher) (ok bool, reason string) {
 	var storeDebugMatcher [][]*labels.Matcher
 	if ctxVal := ctx.Value(StoreMatcherKey); ctxVal != nil {
 		if value, ok := ctxVal.([][]*labels.Matcher); ok {
@@ -339,7 +375,10 @@ func storeMatches(ctx context.Context, s Client, mint, maxt int64, matchers ...*
 
 	storeMinTime, storeMaxTime := s.TimeRange()
 	if mint > storeMaxTime || maxt < storeMinTime {
-		return false, fmt.Sprintf("does not have data within this time period: [%v,%v]. Store time ranges: [%v,%v]", mint, maxt, storeMinTime, storeMaxTime)
+		if debugLogging {
+			reason = fmt.Sprintf("does not have data within this time period: [%v,%v]. Store time ranges: [%v,%v]", mint, maxt, storeMinTime, storeMaxTime)
+		}
+		return false, reason
 	}
 
 	if ok, reason := storeMatchDebugMetadata(s, storeDebugMatcher); !ok {
@@ -348,7 +387,10 @@ func storeMatches(ctx context.Context, s Client, mint, maxt int64, matchers ...*
 
 	extLset := s.LabelSets()
 	if !labelSetsMatch(matchers, extLset...) {
-		return false, fmt.Sprintf("external labels %v does not match request label matchers: %v", extLset, matchers)
+		if debugLogging {
+			reason = fmt.Sprintf("external labels %v does not match request label matchers: %v", extLset, matchers)
+		}
+		return false, reason
 	}
 	return true, ""
 }
@@ -411,11 +453,15 @@ func (s *ProxyStore) LabelNames(ctx context.Context, r *storepb.LabelNamesReques
 		st := st
 
 		// We might be able to skip the store if its meta information indicates it cannot have series matching our query.
-		if ok, reason := storeMatches(gctx, st, r.Start, r.End); !ok {
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out due to %v", st, reason))
+		if ok, reason := storeMatches(gctx, st, s.debugLogging, r.Start, r.End); !ok {
+			if s.debugLogging {
+				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out due to %v", st, reason))
+			}
 			continue
 		}
-		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+		if s.debugLogging {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+		}
 
 		g.Go(func() error {
 			resp, err := st.LabelNames(gctx, &storepb.LabelNamesRequest{
@@ -485,11 +531,15 @@ func (s *ProxyStore) LabelValues(ctx context.Context, r *storepb.LabelValuesRequ
 		defer span.Finish()
 
 		// We might be able to skip the store if its meta information indicates it cannot have series matching our query.
-		if ok, reason := storeMatches(gctx, st, r.Start, r.End); !ok {
-			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out due to %v", st, reason))
+		if ok, reason := storeMatches(gctx, st, s.debugLogging, r.Start, r.End); !ok {
+			if s.debugLogging {
+				storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s filtered out due to %v", st, reason))
+			}
 			continue
 		}
-		storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+		if s.debugLogging {
+			storeDebugMsgs = append(storeDebugMsgs, fmt.Sprintf("Store %s queried", st))
+		}
 
 		g.Go(func() error {
 			resp, err := st.LabelValues(gctx, &storepb.LabelValuesRequest{

@@ -26,16 +26,20 @@ var (
 )
 
 // IndexCache is the interface exported by index cache backends.
+// Store operations do not support context.Context, deadlines need to be
+// supported by the backends themselves. This is because Set operations are
+// run async and it does not make sense to attach same context
+// (potentially with a deadline) as in the original user's request.
 type IndexCache interface {
 	// StorePostings stores postings for a single series.
-	StorePostings(ctx context.Context, blockID ulid.ULID, l labels.Label, v []byte)
+	StorePostings(blockID ulid.ULID, l labels.Label, v []byte)
 
 	// FetchMultiPostings fetches multiple postings - each identified by a label -
 	// and returns a map containing cache hits, along with a list of missing keys.
 	FetchMultiPostings(ctx context.Context, blockID ulid.ULID, keys []labels.Label) (hits map[labels.Label][]byte, misses []labels.Label)
 
 	// StoreSeries stores a single series.
-	StoreSeries(ctx context.Context, blockID ulid.ULID, id storage.SeriesRef, v []byte)
+	StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte)
 
 	// FetchMultiSeries fetches multiple series - each identified by ID - from the cache
 	// and returns a map containing cache hits, along with a list of missing IDs.
@@ -43,7 +47,7 @@ type IndexCache interface {
 }
 
 type cacheKey struct {
-	block ulid.ULID
+	block string
 	key   interface{}
 }
 
@@ -75,9 +79,9 @@ func (c cacheKey) string() string {
 		// which would end up in wrong query results.
 		lbl := c.key.(cacheKeyPostings)
 		lblHash := blake2b.Sum256([]byte(lbl.Name + ":" + lbl.Value))
-		return "P:" + c.block.String() + ":" + base64.RawURLEncoding.EncodeToString(lblHash[0:])
+		return "P:" + c.block + ":" + base64.RawURLEncoding.EncodeToString(lblHash[0:])
 	case cacheKeySeries:
-		return "S:" + c.block.String() + ":" + strconv.FormatUint(uint64(c.key.(cacheKeySeries)), 10)
+		return "S:" + c.block + ":" + strconv.FormatUint(uint64(c.key.(cacheKeySeries)), 10)
 	default:
 		return ""
 	}

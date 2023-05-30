@@ -26,4 +26,6 @@ message Stats {
   uint64 fetched_chunks_count = 6;
   // The number of samples fetched for the query
   uint64 fetched_samples_count = 7;
+  // The limit hit when executing the query
+  string limit_hit = 8 [(gogoproto.nullable) = true];
 }

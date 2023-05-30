@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/querysharding"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -19,11 +21,13 @@ import (
 )
 
 const (
-	queryRange        = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
-	query             = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680"
-	queryNonShardable = "/api/v1/query?time=1536716898&query=container_memory_rss&start=1536673680"
-	queryExemplar     = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
-	responseBody      = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	queryRange                    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
+	query                         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680"
+	queryNonShardable             = "/api/v1/query?time=1536716898&query=container_memory_rss&start=1536673680"
+	queryExemplar                 = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
+	querySubqueryStepSizeTooSmall = "/api/v1/query?query=up%5B30d%3A%5D"
+
+	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 type mockRequest struct {
@@ -103,6 +107,7 @@ func TestRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	for _, tc := range []struct {
 		path, expectedBody string
+		expectedErr        error
 		limits             Limits
 	}{
 		{
@@ -140,8 +145,16 @@ func TestRoundTrip(t *testing.T) {
 			expectedBody: responseBody,
 			limits:       shardingOverrides,
 		},
+		{
+			path:        querySubqueryStepSizeTooSmall,
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, ErrSubQueryStepTooSmall, 11000),
+			limits:      defaultOverrides,
+		},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
+			if tc.path != querySubqueryStepSizeTooSmall {
+				return
+			}
 			//parallel testing causes data race
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
@@ -163,14 +176,19 @@ func TestRoundTrip(t *testing.T) {
 				mockCodec{},
 				tc.limits,
 				querysharding.NewQueryAnalyzer(),
+				time.Minute,
 			)
 			resp, err := tw(downstream).RoundTrip(req)
-			require.NoError(t, err)
-			require.Equal(t, 200, resp.StatusCode)
+			if tc.expectedErr == nil {
+				require.NoError(t, err)
+				require.Equal(t, 200, resp.StatusCode)
 
-			bs, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedBody, string(bs))
+				bs, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBody, string(bs))
+			} else {
+				require.Equal(t, tc.expectedErr, err)
+			}
 		})
 	}
 }

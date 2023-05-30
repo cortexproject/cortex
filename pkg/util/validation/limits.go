@@ -95,7 +95,8 @@ type Limits struct {
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 
 	// Store-gateway.
-	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
+	StoreGatewayTenantShardSize  int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
+	MaxDownloadedBytesPerRequest int `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
 
 	// Compactor.
 	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
@@ -182,6 +183,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	// Store-gateway.
 	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.IntVar(&l.MaxDownloadedBytesPerRequest, "store-gateway.max-downloaded-bytes-per-request", 0, "The maximum number of data bytes to download per gRPC request in Store Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.")
 
 	// Alertmanager.
 	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
@@ -430,6 +432,12 @@ func (o *Overrides) MaxFetchedDataBytesPerQuery(userID string) int {
 	return o.GetOverridesForUser(userID).MaxFetchedDataBytesPerQuery
 }
 
+// MaxDownloadedBytesPerRequest returns the maximum number of bytes to download for each gRPC request in Store Gateway,
+// including any data fetched from cache or object storage.
+func (o *Overrides) MaxDownloadedBytesPerRequest(userID string) int {
+	return o.GetOverridesForUser(userID).MaxDownloadedBytesPerRequest
+}
+
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLookback)
@@ -543,8 +551,8 @@ func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
-// MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
-func (o *Overrides) MaxHAClusters(user string) int {
+// MaxHAReplicaGroups returns maximum number of clusters that HA tracker will track for a user.
+func (o *Overrides) MaxHAReplicaGroups(user string) int {
 	return o.GetOverridesForUser(user).HAMaxClusters
 }
 

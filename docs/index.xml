@@ -150,7 +150,7 @@ Passwords are filtered out of this endpoint.&lt;/p>
 &lt;li>&lt;code>&amp;lt;int&amp;gt;&lt;/code>: any integer matching the regular expression &lt;code>[1-9]+[0-9]*&lt;/code>&lt;/li>
 &lt;li>&lt;code>&amp;lt;duration&amp;gt;&lt;/code>: a duration matching the regular expression &lt;code>[0-9]+(ns|us|µs|ms|s|m|h|d|w|y)&lt;/code> where y = 365 days.&lt;/li>
 &lt;li>&lt;code>&amp;lt;string&amp;gt;&lt;/code>: a regular string&lt;/li>
-&lt;li>&lt;code>&amp;lt;url&amp;gt;&lt;/code>: an URL&lt;/li>
+&lt;li>&lt;code>&amp;lt;url&amp;gt;&lt;/code>: a URL&lt;/li>
 &lt;li>&lt;code>&amp;lt;prefix&amp;gt;&lt;/code>: a CLI flag prefix based on the context (look at the parent configuration block to see which CLI flags prefix should be used)&lt;/li>
 &lt;li>&lt;code>&amp;lt;relabel_config&amp;gt;&lt;/code>: a &lt;a href="https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config">Prometheus relabeling configuration&lt;/a>.&lt;/li>
 &lt;li>&lt;code>&amp;lt;time&amp;gt;&lt;/code>: a timestamp, with available formats: &lt;code>2006-01-20&lt;/code> (midnight, local timezone), &lt;code>2006-01-20T15:04&lt;/code> (local timezone), and RFC 3339 formats: &lt;code>2006-01-20T15:04:05Z&lt;/code> (UTC) or &lt;code>2006-01-20T15:04:05+07:00&lt;/code> (explicit timezone)&lt;/li>

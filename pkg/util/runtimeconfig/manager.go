@@ -33,7 +33,7 @@ type Config struct {
 	// LoadPath contains the path to the runtime config file, requires an
 	// non-empty value
 	LoadPath               string                  `yaml:"file"`
-	TenantLimits           tenantLimitsConfig      `yaml:"overrides" doc:"description=Overrides default global limits (defined in limits_config) on a per-tenant basis. Specify tenant-specific limits using the same fields available in limits_config. Each tenant is defined as a key-value pair, where the key is the tenant ID and the value is an object with tenant-specific limits. Refer to the https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config documentation for a description of available fields and to https://cortexmetrics.io/docs/configuration/arguments/#runtime-configuration-file for the example usage."`
+	TenantLimits           tenantLimitsConfig      `yaml:"overrides" doc:"Sets tenant-specific global limits that override defaults in limits_config. Each tenant is defined by a key-value pair, namely the tenant ID and an object detailing its limits, using the same fields found in limits_config. For field descriptions and examples, please visit the respective pages on Cortex Metrics documentation: the limits_config section for available fields, and the runtime configuration file section for usage examples."`
 	Multi                  kv.MultiRuntimeConfig   `yaml:"multi_kv_config"`
 	IngesterChunkStreaming bool                    `yaml:"ingester_stream_chunks_when_using_blocks"`
 	IngesterLimits         ingester.InstanceLimits `yaml:"ingester_limits"`

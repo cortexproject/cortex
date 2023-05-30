@@ -32,7 +32,7 @@ The following is the proposed configuration:
 server:
   address: localhost
   port: 8080
-admin:
+debug:
   address: localhost
   port: 8090
 tenants:
@@ -65,7 +65,7 @@ frontend:
 
 ```
 
-`admin` will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof.
+`debug` will be used for endpoints that do not require authentication, ie. /metrics, /ready, /pprof.
 If no paths are given in the component, such as `frontend`, the default API paths of that component will be registered.
 If paths are provided, then the provided API paths will override the default API paths.
 Additionally, the users will be able to specify custom timeouts for each component similar to [NGINX](https://github.com/cortexproject/cortex-helm-chart/blob/571fc2a5f184b6b7c243bac3727503264249bfd1/templates/nginx/nginx-config.yaml#L50-L55).

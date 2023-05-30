@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -31,6 +33,8 @@ type queryFrontendTestConfig struct {
 	testMissingMetricName bool
 	querySchedulerEnabled bool
 	queryStatsEnabled     bool
+	remoteReadEnabled     bool
+	testSubQueryStepSize  bool
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
 }
 
@@ -194,6 +198,32 @@ func TestQueryFrontendWithVerticalShardingQueryScheduler(t *testing.T) {
 	})
 }
 
+func TestQueryFrontendRemoteRead(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		remoteReadEnabled: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+			return cortexConfigFile, flags
+		},
+	})
+}
+
+func TestQueryFrontendSubQueryStepSize(t *testing.T) {
+	runQueryFrontendTest(t, queryFrontendTestConfig{
+		testSubQueryStepSize: true,
+		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+			require.NoError(t, s.StartAndWaitReady(minio))
+			return cortexConfigFile, flags
+		},
+	})
+}
+
 func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	const numUsers = 10
 	const numQueriesPerUser = 10
@@ -278,7 +308,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 		// No need to repeat the test on missing metric name for each user.
 		if userID == 0 && cfg.testMissingMetricName {
-			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}")
+			res, body, err := c.QueryRaw("{instance=~\"hello.*\"}", time.Now())
 			require.NoError(t, err)
 			require.Equal(t, 422, res.StatusCode)
 			require.Contains(t, string(body), "query must contain metric name")
@@ -302,9 +332,27 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 		// No need to repeat the test on Server-Timing header for each user.
 		if userID == 0 && cfg.queryStatsEnabled {
-			res, _, err := c.QueryRaw("{instance=~\"hello.*\"}")
+			res, _, err := c.QueryRaw("{instance=~\"hello.*\"}", time.Now())
 			require.NoError(t, err)
 			require.Regexp(t, "querier_wall_time;dur=[0-9.]*, response_time;dur=[0-9.]*$", res.Header.Values("Server-Timing")[0])
+		}
+
+		// No need to repeat the test on remote read for each user.
+		if userID == 0 && cfg.remoteReadEnabled {
+			start := now.Add(-1 * time.Hour)
+			end := now.Add(1 * time.Hour)
+			res, err := c.RemoteRead([]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "series_1")}, start, end, time.Second)
+			require.NoError(t, err)
+			require.True(t, len(res.Results) > 0)
+			require.True(t, len(res.Results[0].Timeseries) > 0)
+			require.True(t, len(res.Results[0].Timeseries[0].Samples) > 0)
+			require.True(t, len(res.Results[0].Timeseries[0].Labels) > 0)
+		}
+
+		// No need to repeat the test on subquery step size.
+		if userID == 0 && cfg.testSubQueryStepSize {
+			resp, _, _ := c.QueryRaw(`up[30d:1m]`, now)
+			require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		}
 
 		// In this test we do ensure that the /series start/end time is ignored and Cortex
@@ -317,6 +365,19 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			require.NoError(t, err)
 			require.Len(t, result, 1)
 			assert.Equal(t, model.LabelSet{labels.MetricName: "series_1"}, result[0])
+		}
+
+		// No need to repeat the query 400 test for each user.
+		if userID == 0 {
+			start := time.Unix(1595846748, 806*1e6)
+			end := time.Unix(1595846750, 806*1e6)
+
+			_, err := c.QueryRange("up)", start, end, time.Second)
+			require.Error(t, err)
+
+			apiErr, ok := err.(*v1.Error)
+			require.True(t, ok)
+			require.Equal(t, apiErr.Type, v1.ErrBadData)
 		}
 
 		for q := 0; q < numQueriesPerUser; q++ {
@@ -333,12 +394,20 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 	wg.Wait()
 
-	extra := float64(2)
+	extra := float64(3)
 	if cfg.testMissingMetricName {
 		extra++
 	}
 
 	if cfg.queryStatsEnabled {
+		extra++
+	}
+
+	if cfg.remoteReadEnabled {
+		extra++
+	}
+
+	if cfg.testSubQueryStepSize {
 		extra++
 	}
 

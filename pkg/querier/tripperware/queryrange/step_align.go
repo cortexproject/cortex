@@ -7,7 +7,7 @@ import (
 )
 
 // StepAlignMiddleware aligns the start and end of request to the step to
-// improved the cacheability of the query results.
+// improve the cacheability of the query results.
 var StepAlignMiddleware = tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 	return stepAlign{
 		next: next,

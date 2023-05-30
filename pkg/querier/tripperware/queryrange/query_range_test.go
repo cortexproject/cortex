@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
-	io "io"
+	"io"
 	"net/http"
 	"strconv"
 	"testing"
@@ -60,6 +60,10 @@ func TestRequest(t *testing.T) {
 		{
 			url:         "api/v1/query_range?start=0&end=11001&step=1",
 			expectedErr: errStepTooSmall,
+		},
+		{
+			url:         "/api/v1/query?query=up%5B30d%3A%5D&start=123&end=456&step=10",
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, tripperware.ErrSubQueryStepTooSmall, 11000),
 		},
 	} {
 		tc := tc

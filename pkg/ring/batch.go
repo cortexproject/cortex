@@ -70,6 +70,7 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 		cleanup()
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
 	}
+
 	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
 	itemTrackers := make([]itemTracker, len(keys))
 	instances := make(map[string]instance, r.InstancesCount())

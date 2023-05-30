@@ -492,7 +492,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		store.NewBytesLimiterFactory(0),
+		newBytesLimiterFactory(u.limits, userID),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
@@ -634,6 +634,16 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 		// each time a new limiter is instantiated.
 		return &limiter{
 			limiter: store.NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
+		}
+	}
+}
+
+func newBytesLimiterFactory(limits *validation.Overrides, userID string) store.BytesLimiterFactory {
+	return func(failedCounter prometheus.Counter) store.BytesLimiter {
+		// Since limit overrides could be live reloaded, we have to get the current user's limit
+		// each time a new limiter is instantiated.
+		return &limiter{
+			limiter: store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter),
 		}
 	}
 }

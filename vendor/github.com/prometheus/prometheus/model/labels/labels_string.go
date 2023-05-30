@@ -56,8 +56,14 @@ func (ls labelSlice) Swap(i, j int)      { ls[i], ls[j] = ls[j], ls[i] }
 func (ls labelSlice) Less(i, j int) bool { return ls[i].Name < ls[j].Name }
 
 func decodeSize(data string, index int) (int, int) {
-	var size int
-	for shift := uint(0); ; shift += 7 {
+	// Fast-path for common case of a single byte, value 0..127.
+	b := data[index]
+	index++
+	if b < 0x80 {
+		return int(b), index
+	}
+	size := int(b & 0x7F)
+	for shift := uint(7); ; shift += 7 {
 		// Just panic if we go of the end of data, since all Labels strings are constructed internally and
 		// malformed data indicates a bug, or memory corruption.
 		b := data[index]
@@ -158,7 +164,7 @@ func (ls Labels) MatchLabels(on bool, names ...string) Labels {
 		b.Del(MetricName)
 		b.Del(names...)
 	}
-	return b.Labels(EmptyLabels())
+	return b.Labels()
 }
 
 // Hash returns a hash value for the label set.
@@ -587,13 +593,14 @@ func (b *Builder) Set(n, v string) *Builder {
 }
 
 func (b *Builder) Get(n string) string {
-	if slices.Contains(b.del, n) {
-		return ""
-	}
+	// Del() removes entries from .add but Set() does not remove from .del, so check .add first.
 	for _, a := range b.add {
 		if a.Name == n {
 			return a.Value
 		}
+	}
+	if slices.Contains(b.del, n) {
+		return ""
 	}
 	return b.base.Get(n)
 }
@@ -624,10 +631,9 @@ func contains(s []Label, n string) bool {
 	return false
 }
 
-// Labels returns the labels from the builder, adding them to res if non-nil.
-// Argument res can be the same as b.base, if caller wants to overwrite that slice.
+// Labels returns the labels from the builder.
 // If no modifications were made, the original labels are returned.
-func (b *Builder) Labels(res Labels) Labels {
+func (b *Builder) Labels() Labels {
 	if len(b.del) == 0 && len(b.add) == 0 {
 		return b.base
 	}
@@ -637,7 +643,7 @@ func (b *Builder) Labels(res Labels) Labels {
 	a, d := 0, 0
 
 	bufSize := len(b.base.data) + labelsSize(b.add)
-	buf := make([]byte, 0, bufSize) // TODO: see if we can re-use the buffer from res.
+	buf := make([]byte, 0, bufSize)
 	for pos := 0; pos < len(b.base.data); {
 		oldPos := pos
 		var lName string
@@ -794,7 +800,7 @@ func (b *ScratchBuilder) Sort() {
 	slices.SortFunc(b.add, func(a, b Label) bool { return a.Name < b.Name })
 }
 
-// Asssign is for when you already have a Labels which you want this ScratchBuilder to return.
+// Assign is for when you already have a Labels which you want this ScratchBuilder to return.
 func (b *ScratchBuilder) Assign(l Labels) {
 	b.output = l
 }
@@ -812,7 +818,7 @@ func (b *ScratchBuilder) Labels() Labels {
 }
 
 // Write the newly-built Labels out to ls, reusing an internal buffer.
-// Callers must ensure that there are no other references to ls.
+// Callers must ensure that there are no other references to ls, or any strings fetched from it.
 func (b *ScratchBuilder) Overwrite(ls *Labels) {
 	size := labelsSize(b.add)
 	if size <= cap(b.overwriteBuffer) {

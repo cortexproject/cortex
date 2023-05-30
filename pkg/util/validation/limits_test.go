@@ -564,3 +564,35 @@ tenant2:
 	require.Equal(t, 3, ov.MaxExemplars("tenant2"))
 	require.Equal(t, 5, ov.MaxExemplars("tenant3"))
 }
+
+func TestMaxDownloadedBytesPerRequestOverridesPerTenant(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{
+		MaxLabelNameLength: 100,
+	})
+
+	baseYAML := `
+max_downloaded_bytes_per_request: 5`
+	overridesYAML := `
+tenant1:
+  max_downloaded_bytes_per_request: 1
+tenant2:
+  max_downloaded_bytes_per_request: 3
+`
+
+	l := Limits{}
+	err := yaml.UnmarshalStrict([]byte(baseYAML), &l)
+	require.NoError(t, err)
+
+	overrides := map[string]*Limits{}
+	err = yaml.Unmarshal([]byte(overridesYAML), &overrides)
+	require.NoError(t, err, "parsing overrides")
+
+	tl := newMockTenantLimits(overrides)
+
+	ov, err := NewOverrides(l, tl)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, ov.MaxDownloadedBytesPerRequest("tenant1"))
+	require.Equal(t, 3, ov.MaxDownloadedBytesPerRequest("tenant2"))
+	require.Equal(t, 5, ov.MaxDownloadedBytesPerRequest("tenant3"))
+}

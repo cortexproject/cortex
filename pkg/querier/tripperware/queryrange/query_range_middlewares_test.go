@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -16,6 +17,11 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+)
+
+var (
+	PrometheusCodec        = NewPrometheusCodec(false, time.Minute)
+	ShardedPrometheusCodec = NewPrometheusCodec(false, time.Minute)
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -53,6 +59,8 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 		qa,
+		PrometheusCodec,
+		ShardedPrometheusCodec,
 	)
 	require.NoError(t, err)
 
@@ -65,6 +73,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		nil,
 		qa,
+		time.Minute,
 	)
 
 	for i, tc := range []struct {

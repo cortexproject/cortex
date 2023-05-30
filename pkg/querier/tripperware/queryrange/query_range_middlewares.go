@@ -78,6 +78,8 @@ func Middlewares(
 	registerer prometheus.Registerer,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	queryAnalyzer querysharding.Analyzer,
+	prometheusCodec tripperware.Codec,
+	shardedPrometheusCodec tripperware.Codec,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -88,7 +90,7 @@ func Middlewares(
 	}
 	if cfg.SplitQueriesByInterval != 0 {
 		staticIntervalFn := func(_ tripperware.Request) time.Duration { return cfg.SplitQueriesByInterval }
-		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, PrometheusCodec, registerer))
+		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, prometheusCodec, registerer))
 	}
 
 	var c cache.Cache
@@ -99,7 +101,7 @@ func Middlewares(
 			}
 			return false
 		}
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, PrometheusCodec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -111,7 +113,7 @@ func Middlewares(
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
 	}
 
-	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, ShardedPrometheusCodec, queryAnalyzer))
+	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, shardedPrometheusCodec, queryAnalyzer))
 
 	return queryRangeMiddleware, c, nil
 }

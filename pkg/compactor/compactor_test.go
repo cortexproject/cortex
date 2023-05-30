@@ -1215,8 +1215,8 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/no-compact-mark.json", "", nil)
-			bucketClient.MockGetTimes(userID+"/"+blockID+"/visit-mark.json", "", nil, 1)
 			bucketClient.MockGet(userID+"/"+blockID+"/visit-mark.json", string(visitMarkerFileContent), nil)
+			bucketClient.MockGetRequireUpload(userID+"/"+blockID+"/visit-mark.json", string(visitMarkerFileContent), nil)
 			bucketClient.MockUpload(userID+"/"+blockID+"/visit-mark.json", nil)
 			blockDirectory = append(blockDirectory, userID+"/"+blockID)
 
@@ -1243,6 +1243,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 	for i := 1; i <= 4; i++ {
 		cfg := prepareConfig()
 		cfg.ShardingEnabled = true
+		cfg.CompactionInterval = 15 * time.Second
 		cfg.ShardingStrategy = util.ShardingStrategyShuffle
 		cfg.ShardingRing.InstanceID = fmt.Sprintf("compactor-%d", i)
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
@@ -1280,7 +1281,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, 1.0, func() interface{} {
+		cortex_testutil.Poll(t, 60*time.Second, 2.0, func() interface{} {
 			return prom_testutil.ToFloat64(c.compactionRunsCompleted)
 		})
 	}
@@ -1418,6 +1419,14 @@ func createNoCompactionMark(t *testing.T, bkt objstore.Bucket, userID string, bl
 	content := mockNoCompactBlockJSON(blockID.String())
 	blockPath := path.Join(userID, blockID.String())
 	markPath := path.Join(blockPath, metadata.NoCompactMarkFilename)
+
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
+}
+
+func createBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
+	content := mockBlockVisitMarker()
+	blockPath := path.Join(userID, blockID.String())
+	markPath := path.Join(blockPath, BlockVisitMarkerFile)
 
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
@@ -1674,6 +1683,21 @@ func mockBlockMetaJSONWithTime(id string, orgID string, minTime int64, maxTime i
 	content, err := json.Marshal(meta)
 	if err != nil {
 		panic("failed to marshal mocked block meta")
+	}
+
+	return string(content)
+}
+
+func mockBlockVisitMarker() string {
+	blockVisitMarker := BlockVisitMarker{
+		CompactorID: "dummy",
+		VisitTime:   time.Now().Unix(),
+		Version:     1,
+	}
+
+	content, err := json.Marshal(blockVisitMarker)
+	if err != nil {
+		panic("failed to marshal mocked block visit marker")
 	}
 
 	return string(content)

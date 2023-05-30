@@ -38,6 +38,8 @@ type ClientConfig struct {
 	TLSEnabled      bool             `yaml:"tls_enabled"`
 	TLS             tls.ClientConfig `yaml:",inline"`
 	GRPCCompression string           `yaml:"grpc_compression"`
+	MaxRecvMsgSize  int              `yaml:"max_recv_msg_size"`
+	MaxSendMsgSize  int              `yaml:"max_send_msg_size"`
 }
 
 // RegisterFlagsWithPrefix registers flags with prefix.
@@ -46,6 +48,8 @@ func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet)
 	f.DurationVar(&cfg.RemoteTimeout, prefix+".remote-timeout", 2*time.Second, "Timeout for downstream alertmanagers.")
 	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", "Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
+	f.IntVar(&cfg.MaxRecvMsgSize, prefix+".grpc-max-recv-msg-size", 16*1024*1024, "gRPC client max receive message size (bytes).")
+	f.IntVar(&cfg.MaxSendMsgSize, prefix+".grpc-max-send-msg-size", 4*1024*1024, "gRPC client max send message size (bytes).")
 }
 
 type alertmanagerClientsPool struct {
@@ -55,8 +59,8 @@ type alertmanagerClientsPool struct {
 func newAlertmanagerClientsPool(discovery client.PoolServiceDiscovery, amClientCfg ClientConfig, logger log.Logger, reg prometheus.Registerer) ClientsPool {
 	// We prefer sane defaults instead of exposing further config options.
 	grpcCfg := grpcclient.Config{
-		MaxRecvMsgSize:      16 * 1024 * 1024,
-		MaxSendMsgSize:      4 * 1024 * 1024,
+		MaxRecvMsgSize:      amClientCfg.MaxRecvMsgSize,
+		MaxSendMsgSize:      amClientCfg.MaxSendMsgSize,
 		GRPCCompression:     amClientCfg.GRPCCompression,
 		RateLimit:           0,
 		RateLimitBurst:      0,

@@ -87,12 +87,9 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 # github.com/HdrHistogram/hdrhistogram-go v1.1.2
 ## explicit; go 1.14
-# github.com/Masterminds/squirrel v1.5.3
+# github.com/Masterminds/squirrel v1.5.4
 ## explicit; go 1.14
 github.com/Masterminds/squirrel
-# github.com/NYTimes/gziphandler v1.1.1
-## explicit; go 1.11
-github.com/NYTimes/gziphandler
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 ## explicit
 github.com/alecthomas/template
@@ -103,7 +100,7 @@ github.com/alecthomas/units
 # github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a
 ## explicit
 github.com/alicebob/gopher-json
-# github.com/alicebob/miniredis/v2 v2.30.0
+# github.com/alicebob/miniredis/v2 v2.30.1
 ## explicit; go 1.14
 github.com/alicebob/miniredis/v2
 github.com/alicebob/miniredis/v2/geohash
@@ -117,7 +114,7 @@ github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 ## explicit; go 1.13
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.44.217
+# github.com/aws/aws-sdk-go v1.44.245
 ## explicit; go 1.11
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/awserr
@@ -264,7 +261,7 @@ github.com/coreos/go-semver/semver
 ## explicit; go 1.12
 github.com/coreos/go-systemd/v22/activation
 github.com/coreos/go-systemd/v22/journal
-# github.com/cortexproject/promqlsmith v0.0.0-20230313010502-5c380a3b00b0
+# github.com/cortexproject/promqlsmith v0.0.0-20230502194647-ed3e43bb7a52
 ## explicit; go 1.19
 github.com/cortexproject/promqlsmith
 # github.com/davecgh/go-spew v1.1.1
@@ -318,7 +315,7 @@ github.com/go-kit/log/level
 # github.com/go-logfmt/logfmt v0.6.0
 ## explicit; go 1.17
 github.com/go-logfmt/logfmt
-# github.com/go-logr/logr v1.2.3
+# github.com/go-logr/logr v1.2.4
 ## explicit; go 1.16
 github.com/go-logr/logr
 github.com/go-logr/logr/funcr
@@ -360,8 +357,8 @@ github.com/go-openapi/runtime/security
 # github.com/go-openapi/spec v0.20.8 => github.com/go-openapi/spec v0.20.6
 ## explicit; go 1.13
 github.com/go-openapi/spec
-# github.com/go-openapi/strfmt v0.21.3
-## explicit; go 1.13
+# github.com/go-openapi/strfmt v0.21.7
+## explicit; go 1.19
 github.com/go-openapi/strfmt
 # github.com/go-openapi/swag v0.22.3
 ## explicit; go 1.18
@@ -436,7 +433,7 @@ github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
 github.com/google/go-cmp/cmp/internal/function
 github.com/google/go-cmp/cmp/internal/value
-# github.com/google/pprof v0.0.0-20230228050547-1710fef4ab10
+# github.com/google/pprof v0.0.0-20230406165453-00490a63f317
 ## explicit; go 1.19
 github.com/google/pprof/profile
 # github.com/google/uuid v1.3.0
@@ -446,7 +443,7 @@ github.com/google/uuid
 ## explicit; go 1.19
 github.com/googleapis/enterprise-certificate-proxy/client
 github.com/googleapis/enterprise-certificate-proxy/client/util
-# github.com/googleapis/gax-go/v2 v2.7.0
+# github.com/googleapis/gax-go/v2 v2.7.1
 ## explicit; go 1.19
 github.com/googleapis/gax-go/v2
 github.com/googleapis/gax-go/v2/apierror
@@ -459,7 +456,7 @@ github.com/gorilla/mux
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
-# github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+# github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 ## explicit; go 1.14
 github.com/grpc-ecosystem/go-grpc-middleware
 # github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.0.0-rc.2.0.20201207153454-9f6bf00c00a7
@@ -532,14 +529,20 @@ github.com/julienschmidt/httprouter
 # github.com/klauspost/compress v1.16.3
 ## explicit; go 1.18
 github.com/klauspost/compress
+github.com/klauspost/compress/flate
 github.com/klauspost/compress/fse
+github.com/klauspost/compress/gzhttp
+github.com/klauspost/compress/gzhttp/writer
+github.com/klauspost/compress/gzhttp/writer/gzkp
+github.com/klauspost/compress/gzip
 github.com/klauspost/compress/huff0
 github.com/klauspost/compress/internal/cpuinfo
 github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/s2
+github.com/klauspost/compress/snappy
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/klauspost/cpuid/v2 v2.2.3
+# github.com/klauspost/cpuid/v2 v2.2.4
 ## explicit; go 1.15
 github.com/klauspost/cpuid/v2
 # github.com/kylelemons/godebug v1.1.0
@@ -552,7 +555,7 @@ github.com/lann/builder
 # github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0
 ## explicit
 github.com/lann/ps
-# github.com/lib/pq v1.10.7
+# github.com/lib/pq v1.10.9
 ## explicit; go 1.13
 github.com/lib/pq
 github.com/lib/pq/oid
@@ -571,13 +574,13 @@ github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.4
 ## explicit; go 1.9
 github.com/matttproud/golang_protobuf_extensions/pbutil
-# github.com/miekg/dns v1.1.51
-## explicit; go 1.14
+# github.com/miekg/dns v1.1.53
+## explicit; go 1.19
 github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.49
+# github.com/minio/minio-go/v7 v7.0.52
 ## explicit; go 1.17
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/credentials
@@ -683,7 +686,7 @@ github.com/prometheus/alertmanager/template
 github.com/prometheus/alertmanager/timeinterval
 github.com/prometheus/alertmanager/types
 github.com/prometheus/alertmanager/ui
-# github.com/prometheus/client_golang v1.14.0
+# github.com/prometheus/client_golang v1.15.1
 ## explicit; go 1.17
 github.com/prometheus/client_golang/api
 github.com/prometheus/client_golang/api/prometheus/v1
@@ -717,7 +720,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.43.1-0.20230327151049-211ae4f1f0a2
+# github.com/prometheus/prometheus v0.44.1-0.20230524110021-37e5249e33e4
 ## explicit; go 1.19
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -766,23 +769,24 @@ github.com/prometheus/prometheus/util/stats
 github.com/prometheus/prometheus/util/strutil
 github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
+github.com/prometheus/prometheus/util/zeropool
 github.com/prometheus/prometheus/web/api/v1
+# github.com/redis/rueidis v1.0.2-go1.18
+## explicit; go 1.18
+github.com/redis/rueidis
+github.com/redis/rueidis/internal/cmds
+github.com/redis/rueidis/internal/util
 # github.com/rs/cors v1.8.2
 ## explicit; go 1.13
 github.com/rs/cors
 # github.com/rs/xid v1.4.0
 ## explicit; go 1.12
 github.com/rs/xid
-# github.com/rueian/rueidis v0.0.93
-## explicit; go 1.18
-github.com/rueian/rueidis
-github.com/rueian/rueidis/internal/cmds
-github.com/rueian/rueidis/internal/util
 # github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529
 ## explicit
 github.com/sean-/seed
-# github.com/segmentio/fasthash v0.0.0-20180216231524-a72b379d632e
-## explicit
+# github.com/segmentio/fasthash v1.0.3
+## explicit; go 1.11
 github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver v2.4.0+incompatible => github.com/sercand/kuberesolver/v4 v4.0.0
 ## explicit; go 1.14
@@ -801,7 +805,7 @@ github.com/sirupsen/logrus
 # github.com/sony/gobreaker v0.5.0
 ## explicit; go 1.12
 github.com/sony/gobreaker
-# github.com/spf13/afero v1.9.3
+# github.com/spf13/afero v1.9.5
 ## explicit; go 1.16
 github.com/spf13/afero
 github.com/spf13/afero/internal/common
@@ -814,25 +818,6 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-community/promql-engine v0.0.0-20230224075812-ae04bbea7613
-## explicit; go 1.19
-github.com/thanos-community/promql-engine/api
-github.com/thanos-community/promql-engine/engine
-github.com/thanos-community/promql-engine/execution
-github.com/thanos-community/promql-engine/execution/aggregate
-github.com/thanos-community/promql-engine/execution/binary
-github.com/thanos-community/promql-engine/execution/exchange
-github.com/thanos-community/promql-engine/execution/function
-github.com/thanos-community/promql-engine/execution/model
-github.com/thanos-community/promql-engine/execution/parse
-github.com/thanos-community/promql-engine/execution/remote
-github.com/thanos-community/promql-engine/execution/scan
-github.com/thanos-community/promql-engine/execution/step_invariant
-github.com/thanos-community/promql-engine/execution/storage
-github.com/thanos-community/promql-engine/execution/unary
-github.com/thanos-community/promql-engine/logicalplan
-github.com/thanos-community/promql-engine/query
-github.com/thanos-community/promql-engine/worker
 # github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 ## explicit; go 1.18
 github.com/thanos-io/objstore
@@ -843,7 +828,28 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/thanos v0.29.1-0.20230314065129-06d9da40244f
+# github.com/thanos-io/promql-engine v0.0.0-20230524173220-ac7dd841e96a
+## explicit; go 1.19
+github.com/thanos-io/promql-engine/api
+github.com/thanos-io/promql-engine/engine
+github.com/thanos-io/promql-engine/execution
+github.com/thanos-io/promql-engine/execution/aggregate
+github.com/thanos-io/promql-engine/execution/binary
+github.com/thanos-io/promql-engine/execution/exchange
+github.com/thanos-io/promql-engine/execution/function
+github.com/thanos-io/promql-engine/execution/model
+github.com/thanos-io/promql-engine/execution/noop
+github.com/thanos-io/promql-engine/execution/parse
+github.com/thanos-io/promql-engine/execution/remote
+github.com/thanos-io/promql-engine/execution/scan
+github.com/thanos-io/promql-engine/execution/step_invariant
+github.com/thanos-io/promql-engine/execution/storage
+github.com/thanos-io/promql-engine/execution/unary
+github.com/thanos-io/promql-engine/logicalplan
+github.com/thanos-io/promql-engine/parser
+github.com/thanos-io/promql-engine/query
+github.com/thanos-io/promql-engine/worker
+# github.com/thanos-io/thanos v0.0.0-20230524201324-c4321c5e1de2
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -861,11 +867,13 @@ github.com/thanos-io/thanos/pkg/discovery/dns/miekgdns
 github.com/thanos-io/thanos/pkg/discovery/memcache
 github.com/thanos-io/thanos/pkg/errutil
 github.com/thanos-io/thanos/pkg/exemplars/exemplarspb
+github.com/thanos-io/thanos/pkg/extgrpc/snappy
 github.com/thanos-io/thanos/pkg/extkingpin
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/extprom/http
 github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/httpconfig
+github.com/thanos-io/thanos/pkg/info/infopb
 github.com/thanos-io/thanos/pkg/metadata/metadatapb
 github.com/thanos-io/thanos/pkg/model
 github.com/thanos-io/thanos/pkg/pool
@@ -935,22 +943,22 @@ github.com/weaveworks/common/user
 # github.com/weaveworks/promrus v1.2.0
 ## explicit
 github.com/weaveworks/promrus
-# github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
+# github.com/yuin/gopher-lua v1.1.0
 ## explicit; go 1.17
 github.com/yuin/gopher-lua
 github.com/yuin/gopher-lua/ast
 github.com/yuin/gopher-lua/parse
 github.com/yuin/gopher-lua/pm
-# go.etcd.io/etcd/api/v3 v3.5.7
-## explicit; go 1.17
+# go.etcd.io/etcd/api/v3 v3.5.8
+## explicit; go 1.19
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
 go.etcd.io/etcd/api/v3/membershippb
 go.etcd.io/etcd/api/v3/mvccpb
 go.etcd.io/etcd/api/v3/v3rpc/rpctypes
 go.etcd.io/etcd/api/v3/version
-# go.etcd.io/etcd/client/pkg/v3 v3.5.7
-## explicit; go 1.17
+# go.etcd.io/etcd/client/pkg/v3 v3.5.8
+## explicit; go 1.19
 go.etcd.io/etcd/client/pkg/v3/fileutil
 go.etcd.io/etcd/client/pkg/v3/logutil
 go.etcd.io/etcd/client/pkg/v3/systemd
@@ -963,7 +971,7 @@ go.etcd.io/etcd/client/v3
 go.etcd.io/etcd/client/v3/credentials
 go.etcd.io/etcd/client/v3/internal/endpoint
 go.etcd.io/etcd/client/v3/internal/resolver
-# go.mongodb.org/mongo-driver v1.11.2
+# go.mongodb.org/mongo-driver v1.11.3
 ## explicit; go 1.13
 go.mongodb.org/mongo-driver/bson
 go.mongodb.org/mongo-driver/bson/bsoncodec
@@ -1063,7 +1071,7 @@ go.opentelemetry.io/proto/otlp/collector/trace/v1
 go.opentelemetry.io/proto/otlp/common/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
-# go.uber.org/atomic v1.10.0
+# go.uber.org/atomic v1.11.0
 ## explicit; go 1.18
 go.uber.org/atomic
 # go.uber.org/goleak v1.2.1
@@ -1096,14 +1104,14 @@ golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
-# golang.org/x/exp v0.0.0-20230307190834-24139beb5833
+# golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 ## explicit; go 1.18
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
-# golang.org/x/mod v0.9.0
+# golang.org/x/mod v0.10.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
-# golang.org/x/net v0.8.0
+# golang.org/x/net v0.9.0
 ## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1121,7 +1129,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/netutil
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.6.0
+# golang.org/x/oauth2 v0.7.0
 ## explicit; go 1.17
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -1134,7 +1142,7 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.1.0
 ## explicit
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.6.0
+# golang.org/x/sys v0.7.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -1142,7 +1150,7 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/text v0.8.0
+# golang.org/x/text v0.9.0
 ## explicit; go 1.17
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -1158,7 +1166,7 @@ golang.org/x/text/unicode/norm
 # golang.org/x/time v0.3.0
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.7.0
+# golang.org/x/tools v0.8.0
 ## explicit; go 1.18
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/packagesdriver
@@ -1184,12 +1192,13 @@ golang.org/x/xerrors/internal
 gonum.org/v1/gonum/floats
 gonum.org/v1/gonum/floats/scalar
 gonum.org/v1/gonum/internal/asm/f64
-# google.golang.org/api v0.111.0
+# google.golang.org/api v0.114.0
 ## explicit; go 1.19
 google.golang.org/api/googleapi
 google.golang.org/api/googleapi/transport
 google.golang.org/api/iamcredentials/v1
 google.golang.org/api/internal
+google.golang.org/api/internal/cert
 google.golang.org/api/internal/gensupport
 google.golang.org/api/internal/impersonate
 google.golang.org/api/internal/third_party/uritemplates
@@ -1198,11 +1207,9 @@ google.golang.org/api/option
 google.golang.org/api/option/internaloption
 google.golang.org/api/storage/v1
 google.golang.org/api/transport
-google.golang.org/api/transport/cert
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
 google.golang.org/api/transport/http/internal/propagation
-google.golang.org/api/transport/internal/dca
 # google.golang.org/appengine v1.6.7
 ## explicit; go 1.11
 google.golang.org/appengine
@@ -1229,7 +1236,7 @@ google.golang.org/genproto/googleapis/rpc/status
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/protobuf/field_mask
-# google.golang.org/grpc v1.53.0
+# google.golang.org/grpc v1.54.0
 ## explicit; go 1.17
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -1295,7 +1302,7 @@ google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
 google.golang.org/grpc/test/bufconn
-# google.golang.org/protobuf v1.29.1
+# google.golang.org/protobuf v1.30.0
 ## explicit; go 1.11
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext

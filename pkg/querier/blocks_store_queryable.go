@@ -639,6 +639,16 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				}
 
 				if err != nil {
+					s, ok := status.FromError(err)
+					if !ok {
+						s, ok = status.FromError(errors.Cause(err))
+					}
+
+					if ok {
+						if s.Code() == codes.ResourceExhausted {
+							return validation.LimitError(s.Message())
+						}
+					}
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
 
@@ -763,10 +773,21 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 			namesResp, err := c.LabelNames(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label names from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					if s.Code() == codes.ResourceExhausted {
+						return validation.LimitError(s.Message())
+					}
+				}
+				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)
@@ -844,10 +865,21 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 			valuesResp, err := c.LabelValues(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
-					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch label values from %s due to retryable error", c.RemoteAddress()))
 					return nil
 				}
-				return errors.Wrapf(err, "failed to fetch series from %s", c.RemoteAddress())
+
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					if s.Code() == codes.ResourceExhausted {
+						return validation.LimitError(s.Message())
+					}
+				}
+				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())
 			}
 
 			myQueriedBlocks := []ulid.ULID(nil)

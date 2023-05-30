@@ -331,7 +331,7 @@ func (h *headChunkReader) chunk(meta chunks.Meta, copyLastChunk bool) (chunkenc.
 	}
 	s.Unlock()
 
-	return &safeChunk{
+	return &safeHeadChunk{
 		Chunk:    chk,
 		s:        s,
 		cid:      cid,
@@ -424,7 +424,8 @@ func (s *memSeries) oooMergedChunk(meta chunks.Meta, cdm *chunks.ChunkDiskMapper
 			break
 		}
 
-		if chunkRef == meta.OOOLastRef {
+		switch {
+		case chunkRef == meta.OOOLastRef:
 			tmpChks = append(tmpChks, chunkMetaAndChunkDiskMapperRef{
 				meta: chunks.Meta{
 					MinTime: meta.OOOLastMinTime,
@@ -435,7 +436,7 @@ func (s *memSeries) oooMergedChunk(meta chunks.Meta, cdm *chunks.ChunkDiskMapper
 				origMinT: c.minTime,
 				origMaxT: c.maxTime,
 			})
-		} else if c.OverlapsClosedInterval(mint, maxt) {
+		case c.OverlapsClosedInterval(mint, maxt):
 			tmpChks = append(tmpChks, chunkMetaAndChunkDiskMapperRef{
 				meta: chunks.Meta{
 					MinTime: c.minTime,
@@ -594,12 +595,14 @@ type boundedIterator struct {
 func (b boundedIterator) Next() chunkenc.ValueType {
 	for b.Iterator.Next() == chunkenc.ValFloat {
 		t, _ := b.Iterator.At()
-		if t < b.minT {
+		switch {
+		case t < b.minT:
 			continue
-		} else if t > b.maxT {
+		case t > b.maxT:
 			return chunkenc.ValNone
+		default:
+			return chunkenc.ValFloat
 		}
-		return chunkenc.ValFloat
 	}
 	return chunkenc.ValNone
 }
@@ -624,15 +627,15 @@ func (b boundedIterator) Seek(t int64) chunkenc.ValueType {
 	return b.Iterator.Seek(t)
 }
 
-// safeChunk makes sure that the chunk can be accessed without a race condition
-type safeChunk struct {
+// safeHeadChunk makes sure that the chunk can be accessed without a race condition
+type safeHeadChunk struct {
 	chunkenc.Chunk
 	s        *memSeries
 	cid      chunks.HeadChunkID
 	isoState *isolationState
 }
 
-func (c *safeChunk) Iterator(reuseIter chunkenc.Iterator) chunkenc.Iterator {
+func (c *safeHeadChunk) Iterator(reuseIter chunkenc.Iterator) chunkenc.Iterator {
 	c.s.Lock()
 	it := c.s.iterator(c.cid, c.Chunk, c.isoState, reuseIter)
 	c.s.Unlock()

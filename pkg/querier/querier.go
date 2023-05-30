@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -172,6 +173,14 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		}
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
+
+	// Emit max_concurrent config as a metric.
+	maxConcurrentMetric := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "max_concurrent_queries",
+		Help:      "The maximum number of concurrent queries.",
+	})
+	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
 	var queryEngine v1.QueryEngine
 	opts := promql.EngineOpts{

@@ -911,7 +911,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 						return err
 					}
 
-					userAmConfig.Receivers[i].WebhookConfigs[j].URL = &amconfig.URL{URL: u}
+					userAmConfig.Receivers[i].WebhookConfigs[j].URL = &amconfig.SecretURL{URL: u}
 				}
 			}
 		}

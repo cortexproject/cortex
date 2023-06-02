@@ -146,6 +146,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	rgs, err := a.ruler.GetRules(req.Context())
 
 	if err != nil {
@@ -222,6 +223,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
@@ -238,6 +240,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	rgs, err := a.ruler.GetRules(req.Context())
 
 	if err != nil {
@@ -273,6 +276,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
@@ -392,6 +396,8 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
 	if err != nil {
@@ -424,6 +430,8 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 		respondError(logger, w, err.Error())
 		return
 	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
@@ -463,6 +471,8 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
 		return
 	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	errs := a.ruler.manager.ValidateRuleGroup(rg)
 	if len(errs) > 0 {
@@ -527,6 +537,8 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	err = a.store.DeleteNamespace(req.Context(), userID, namespace)
 	if err != nil {
 		if err == rulestore.ErrGroupNamespaceNotFound {
@@ -548,6 +560,8 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 		respondError(logger, w, err.Error())
 		return
 	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	err = a.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {

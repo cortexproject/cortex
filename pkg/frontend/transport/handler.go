@@ -270,7 +270,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func getQueryDetail(url string, values url.Values) QueryDetail {
-	urlValues := parseUrlValues(values)
+	urlValues := parseURLValues(values)
 	t := InstantQuery
 	if strings.HasSuffix(url, "query_range") {
 		t = RangeQuery
@@ -290,7 +290,7 @@ type urlValues struct {
 	stepInt, startInt, endInt, tsInt int64
 }
 
-func parseUrlValues(values url.Values) urlValues {
+func parseURLValues(values url.Values) urlValues {
 	query := values.Get("query")
 	step := values.Get("step")
 	start := values.Get("start")

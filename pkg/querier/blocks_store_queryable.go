@@ -743,6 +743,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				"chunks_fetched", seriesQueryStats.ChunksFetched,
 				"chunks_fetch_count", seriesQueryStats.ChunksFetchCount,
 				"chunks_fetched_size_sum", seriesQueryStats.ChunksFetchedSizeSum,
+				"data_downloaded_size_sum", seriesQueryStats.DataDownloadedSizeSum,
 			)
 
 			// Store the result.

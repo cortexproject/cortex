@@ -35,6 +35,13 @@ const (
 	ServiceTimingHeaderName   = "Server-Timing"
 )
 
+type QueryType string
+
+const (
+	InstantQuery QueryType = "instant"
+	RangeQuery   QueryType = "range"
+)
+
 var (
 	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
@@ -208,6 +215,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
 	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
+		queryDetails := getQueryDetail(r.URL.Path, queryString)
+		stats.AddQuery(queryDetails.QueryString)
+		stats.AddQueryType(string(queryDetails.QueryType))
+		stats.AddStart(queryDetails.StartInt)
+		stats.AddEnd(queryDetails.EndInt)
+		stats.AddStep(queryDetails.StepInt)
+		stats.AddTs(queryDetails.TsInt)
 	}
 
 	if shouldReportSlowQuery {
@@ -230,7 +244,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-
 		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
@@ -254,6 +267,97 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
+}
+
+func getQueryDetail(url string, values url.Values) QueryDetail {
+	urlValues := parseUrlValues(values)
+	t := InstantQuery
+	if strings.HasSuffix(url, "query_range") {
+		t = RangeQuery
+	}
+	return QueryDetail{
+		QueryString: urlValues.query,
+		StepInt:     urlValues.stepInt,
+		StartInt:    urlValues.startInt,
+		EndInt:      urlValues.endInt,
+		TsInt:       urlValues.tsInt,
+		QueryType:   t,
+	}
+}
+
+type urlValues struct {
+	query                            string
+	stepInt, startInt, endInt, tsInt int64
+}
+
+func parseUrlValues(values url.Values) urlValues {
+	query := values.Get("query")
+	step := values.Get("step")
+	start := values.Get("start")
+	end := values.Get("end")
+	ts := values.Get("time")
+	var (
+		tsInt, startInt, endInt, stepInt int64
+		err                              error
+	)
+	if len(ts) > 0 {
+		tsInt, err = util.ParseTime(ts)
+		if err != nil {
+			util_log.Logger.Log("msg", "failed to parse time", "err", err)
+		}
+	}
+	if len(start) > 0 {
+		startInt, err = util.ParseTime(start)
+		if err != nil {
+			util_log.Logger.Log("msg", "failed to parse start", "err", err)
+		}
+	}
+
+	if len(end) > 0 {
+		endInt, err = util.ParseTime(end)
+		if err != nil {
+			util_log.Logger.Log("msg", "failed to parse end", "err", err)
+		}
+	}
+
+	if len(step) > 0 {
+		stepInt, err = util.ParseDurationMs(step)
+		if err != nil {
+			util_log.Logger.Log("msg", "failed to parse step", "err", err)
+		}
+	}
+	return urlValues{
+		query:    query,
+		tsInt:    tsInt,
+		startInt: startInt,
+		endInt:   endInt,
+		stepInt:  stepInt,
+	}
+}
+
+type queryOrigin struct{}
+
+type QueryDetail struct {
+	QueryString      string
+	SamplesProcessed int64
+	QueryType        QueryType
+	StartInt         int64
+	EndInt           int64
+	StepInt          int64
+	TsInt            int64
+}
+
+// NewOriginContext returns a new context with data about the origin attached.
+func NewOriginContext(ctx context.Context, query QueryDetail) context.Context {
+	return context.WithValue(ctx, queryOrigin{}, query)
+}
+
+// FromOriginContext returns the QueryDetail origin data from the context.
+func FromOriginContext(ctx context.Context) QueryDetail {
+	if queryInfo, ok := ctx.Value(queryOrigin{}).(QueryDetail); ok {
+		return queryInfo
+	}
+	return QueryDetail{}
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {

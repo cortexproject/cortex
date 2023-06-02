@@ -48,6 +48,20 @@ func ParseTime(s string) (int64, error) {
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
 }
 
+func ParseDurationMs(s string) (int64, error) {
+	if d, err := strconv.ParseFloat(s, 64); err == nil {
+		ts := d * float64(time.Second/time.Millisecond)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, httpgrpc.Errorf(http.StatusBadRequest,"cannot parse %q to a valid duration. It overflows int64", s)
+		}
+		return int64(ts), nil
+	}
+	if d, err := model.ParseDuration(s); err == nil {
+		return int64(d) / int64(time.Millisecond/time.Nanosecond), nil
+	}
+	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid duration", s)
+}
+
 // DurationWithJitter returns random duration from "input - input*variance" to "input + input*variance" interval.
 func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration {
 	// No duration? No jitter.

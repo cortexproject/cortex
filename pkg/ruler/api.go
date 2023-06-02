@@ -303,6 +303,7 @@ func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger
 	}
 
 	w.Header().Set("Content-Type", "application/yaml")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if _, err := w.Write(d); err != nil {
 		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
 		return
@@ -319,6 +320,7 @@ func respondAccepted(w http.ResponseWriter, logger log.Logger) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
 	w.WriteHeader(http.StatusAccepted)
@@ -396,8 +398,6 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
 	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
 	if err != nil {
@@ -430,8 +430,6 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 		respondError(logger, w, err.Error())
 		return
 	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {
@@ -471,8 +469,6 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
 		return
 	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	errs := a.ruler.manager.ValidateRuleGroup(rg)
 	if len(errs) > 0 {
@@ -537,8 +533,6 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
 	err = a.store.DeleteNamespace(req.Context(), userID, namespace)
 	if err != nil {
 		if err == rulestore.ErrGroupNamespaceNotFound {
@@ -560,8 +554,6 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 		respondError(logger, w, err.Error())
 		return
 	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	err = a.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
 	if err != nil {

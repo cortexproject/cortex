@@ -30,14 +30,12 @@ message Stats {
   string limit_hit = 8 [(gogoproto.nullable) = true];
   // Query string
   string query = 9;
-  // Query type
-  string query_type = 10;
   // Start
-  int64 start_int = 11;
+  int64 start_int = 10;
   // End
-  int64 end_int = 12;
+  int64 end_int = 11;
   // Step
-  int64 step_int = 13;
+  int64 step_int = 12;
   // Ts
-  int64 ts = 14;
+  int64 ts = 13;
 }

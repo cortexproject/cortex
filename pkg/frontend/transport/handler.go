@@ -217,7 +217,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		queryString = f.parseRequestQueryString(r, buf)
 		queryDetails := getQueryDetail(r.URL.Path, queryString)
 		stats.AddQuery(queryDetails.QueryString)
-		stats.AddQueryType(string(queryDetails.QueryType))
 		stats.AddStart(queryDetails.StartInt)
 		stats.AddEnd(queryDetails.EndInt)
 		stats.AddStep(queryDetails.StepInt)
@@ -271,17 +270,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func getQueryDetail(url string, values url.Values) QueryDetail {
 	urlValues := parseURLValues(values)
-	t := InstantQuery
-	if strings.HasSuffix(url, "query_range") {
-		t = RangeQuery
-	}
 	return QueryDetail{
 		QueryString: urlValues.query,
 		StepInt:     urlValues.stepInt,
 		StartInt:    urlValues.startInt,
 		EndInt:      urlValues.endInt,
 		TsInt:       urlValues.tsInt,
-		QueryType:   t,
 	}
 }
 
@@ -300,11 +294,25 @@ func parseURLValues(values url.Values) urlValues {
 		tsInt, startInt, endInt, stepInt int64
 		err                              error
 	)
-	if len(ts) > 0 {
-		tsInt, err = util.ParseTime(ts)
-		if err != nil {
-			util_log.Logger.Log("msg", "failed to parse time", "err", err)
+	if len(step) == 0 { // instance query
+		if len(ts) > 0 {
+			tsInt, err = util.ParseTime(ts)
+			if err != nil {
+				util_log.Logger.Log("msg", "failed to parse time", "err", err)
+			}
+		} else {
+			tsInt = util.TimeToMillis(time.Now())
 		}
+		return urlValues{
+			query: query,
+			tsInt: tsInt,
+		}
+	}
+
+	//range query
+	stepInt, err = util.ParseDurationMs(step)
+	if err != nil {
+		util_log.Logger.Log("msg", "failed to parse step", "err", err)
 	}
 	if len(start) > 0 {
 		startInt, err = util.ParseTime(start)
@@ -312,52 +320,26 @@ func parseURLValues(values url.Values) urlValues {
 			util_log.Logger.Log("msg", "failed to parse start", "err", err)
 		}
 	}
-
 	if len(end) > 0 {
 		endInt, err = util.ParseTime(end)
 		if err != nil {
 			util_log.Logger.Log("msg", "failed to parse end", "err", err)
 		}
 	}
-
-	if len(step) > 0 {
-		stepInt, err = util.ParseDurationMs(step)
-		if err != nil {
-			util_log.Logger.Log("msg", "failed to parse step", "err", err)
-		}
-	}
 	return urlValues{
 		query:    query,
-		tsInt:    tsInt,
 		startInt: startInt,
 		endInt:   endInt,
 		stepInt:  stepInt,
 	}
 }
 
-type queryOrigin struct{}
-
 type QueryDetail struct {
-	QueryString      string
-	SamplesProcessed int64
-	QueryType        QueryType
-	StartInt         int64
-	EndInt           int64
-	StepInt          int64
-	TsInt            int64
-}
-
-// NewOriginContext returns a new context with data about the origin attached.
-func NewOriginContext(ctx context.Context, query QueryDetail) context.Context {
-	return context.WithValue(ctx, queryOrigin{}, query)
-}
-
-// FromOriginContext returns the QueryDetail origin data from the context.
-func FromOriginContext(ctx context.Context) QueryDetail {
-	if queryInfo, ok := ctx.Value(queryOrigin{}).(QueryDetail); ok {
-		return queryInfo
-	}
-	return QueryDetail{}
+	QueryString string
+	StartInt    int64
+	EndInt      int64
+	StepInt     int64
+	TsInt       int64
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {

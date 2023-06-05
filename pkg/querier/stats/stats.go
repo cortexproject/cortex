@@ -126,24 +126,6 @@ func (s *QueryStats) LoadQuery() string {
 	return s.Query
 }
 
-func (s *QueryStats) AddQueryType(queryType string) {
-	if s == nil {
-		return
-	}
-	s.m.Lock()
-	defer s.m.Unlock()
-	s.QueryType = queryType
-}
-
-func (s *QueryStats) LoadQueryType() string {
-	if s == nil {
-		return ""
-	}
-	s.m.Lock()
-	defer s.m.Unlock()
-	return s.QueryType
-}
-
 func (s *QueryStats) AddStart(start int64) {
 	if s == nil {
 		return
@@ -285,12 +267,6 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddFetchedSamples(other.LoadFetchedSamples())
 	s.AddFetchedChunks(other.LoadFetchedChunks())
 	s.AddExtraFields(other.LoadExtraFields()...)
-	s.AddQuery(other.LoadQuery())
-	s.AddQueryType(other.LoadQueryType())
-	s.AddStart(other.LoadStart())
-	s.AddEnd(other.LoadEnd())
-	s.AddStep(other.LoadStep())
-	s.AddTs(other.LoadTs())
 }
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {

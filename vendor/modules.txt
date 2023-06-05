@@ -833,7 +833,7 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing
-# github.com/thanos-io/promql-engine v0.0.0-20230524173220-ac7dd841e96a
+# github.com/thanos-io/promql-engine v0.0.0-20230526105742-791d78b260ea
 ## explicit; go 1.19
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/engine
@@ -854,7 +854,7 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.0.0-20230524201324-c4321c5e1de2
+# github.com/thanos-io/thanos v0.31.1-0.20230602190045-fbc88857d78c
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

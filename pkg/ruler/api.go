@@ -136,150 +136,166 @@ func NewAPI(r *Ruler, s rulestore.RuleStore, logger log.Logger) *API {
 	}
 }
 
-func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, err := tenant.TenantID(req.Context())
-	if err != nil || userID == "" {
-		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	rgs, err := a.ruler.GetRules(req.Context())
-
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
-
-	groups := make([]*RuleGroup, 0, len(rgs))
-
-	for _, g := range rgs {
-		grp := RuleGroup{
-			Name:           g.Group.Name,
-			File:           g.Group.Namespace,
-			Rules:          make([]rule, len(g.ActiveRules)),
-			Interval:       g.Group.Interval.Seconds(),
-			LastEvaluation: g.GetEvaluationTimestamp(),
-			EvaluationTime: g.GetEvaluationDuration().Seconds(),
+func (a *API) PrometheusRules(disableCORS bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		logger := util_log.WithContext(req.Context(), a.logger)
+		userID, err := tenant.TenantID(req.Context())
+		if err != nil || userID == "" {
+			level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
+			respondError(logger, w, "no valid org id found")
+			return
 		}
-
-		for i, rl := range g.ActiveRules {
-			if g.ActiveRules[i].Rule.Alert != "" {
-				alerts := make([]*Alert, 0, len(rl.Alerts))
-				for _, a := range rl.Alerts {
-					alerts = append(alerts, &Alert{
-						Labels:      cortexpb.FromLabelAdaptersToLabels(a.Labels),
-						Annotations: cortexpb.FromLabelAdaptersToLabels(a.Annotations),
-						State:       a.GetState(),
-						ActiveAt:    &a.ActiveAt,
-						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
-					})
-				}
-				grp.Rules[i] = alertingRule{
-					State:          rl.GetState(),
-					Name:           rl.Rule.GetAlert(),
-					Query:          rl.Rule.GetExpr(),
-					Duration:       rl.Rule.For.Seconds(),
-					Labels:         cortexpb.FromLabelAdaptersToLabels(rl.Rule.Labels),
-					Annotations:    cortexpb.FromLabelAdaptersToLabels(rl.Rule.Annotations),
-					Alerts:         alerts,
-					Health:         rl.GetHealth(),
-					LastError:      rl.GetLastError(),
-					LastEvaluation: rl.GetEvaluationTimestamp(),
-					EvaluationTime: rl.GetEvaluationDuration().Seconds(),
-					Type:           v1.RuleTypeAlerting,
-				}
-			} else {
-				grp.Rules[i] = recordingRule{
-					Name:           rl.Rule.GetRecord(),
-					Query:          rl.Rule.GetExpr(),
-					Labels:         cortexpb.FromLabelAdaptersToLabels(rl.Rule.Labels),
-					Health:         rl.GetHealth(),
-					LastError:      rl.GetLastError(),
-					LastEvaluation: rl.GetEvaluationTimestamp(),
-					EvaluationTime: rl.GetEvaluationDuration().Seconds(),
-					Type:           v1.RuleTypeRecording,
+	
+		w.Header().Set("Content-Type", "application/json")
+		if disableCORS != true {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+		
+		rgs, err := a.ruler.GetRules(req.Context())
+	
+		if err != nil {
+			respondError(logger, w, err.Error())
+			return
+		}
+	
+		groups := make([]*RuleGroup, 0, len(rgs))
+	
+		for _, g := range rgs {
+			grp := RuleGroup{
+				Name:           g.Group.Name,
+				File:           g.Group.Namespace,
+				Rules:          make([]rule, len(g.ActiveRules)),
+				Interval:       g.Group.Interval.Seconds(),
+				LastEvaluation: g.GetEvaluationTimestamp(),
+				EvaluationTime: g.GetEvaluationDuration().Seconds(),
+			}
+	
+			for i, rl := range g.ActiveRules {
+				if g.ActiveRules[i].Rule.Alert != "" {
+					alerts := make([]*Alert, 0, len(rl.Alerts))
+					for _, a := range rl.Alerts {
+						alerts = append(alerts, &Alert{
+							Labels:      cortexpb.FromLabelAdaptersToLabels(a.Labels),
+							Annotations: cortexpb.FromLabelAdaptersToLabels(a.Annotations),
+							State:       a.GetState(),
+							ActiveAt:    &a.ActiveAt,
+							Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
+						})
+					}
+					grp.Rules[i] = alertingRule{
+						State:          rl.GetState(),
+						Name:           rl.Rule.GetAlert(),
+						Query:          rl.Rule.GetExpr(),
+						Duration:       rl.Rule.For.Seconds(),
+						Labels:         cortexpb.FromLabelAdaptersToLabels(rl.Rule.Labels),
+						Annotations:    cortexpb.FromLabelAdaptersToLabels(rl.Rule.Annotations),
+						Alerts:         alerts,
+						Health:         rl.GetHealth(),
+						LastError:      rl.GetLastError(),
+						LastEvaluation: rl.GetEvaluationTimestamp(),
+						EvaluationTime: rl.GetEvaluationDuration().Seconds(),
+						Type:           v1.RuleTypeAlerting,
+					}
+				} else {
+					grp.Rules[i] = recordingRule{
+						Name:           rl.Rule.GetRecord(),
+						Query:          rl.Rule.GetExpr(),
+						Labels:         cortexpb.FromLabelAdaptersToLabels(rl.Rule.Labels),
+						Health:         rl.GetHealth(),
+						LastError:      rl.GetLastError(),
+						LastEvaluation: rl.GetEvaluationTimestamp(),
+						EvaluationTime: rl.GetEvaluationDuration().Seconds(),
+						Type:           v1.RuleTypeRecording,
+					}
 				}
 			}
+			groups = append(groups, &grp)
 		}
-		groups = append(groups, &grp)
-	}
+	
+		// keep data.groups are in order
+		sort.Slice(groups, func(i, j int) bool {
+			return groups[i].File < groups[j].File
+		})
+	
+		b, err := json.Marshal(&response{
+			Status: "success",
+			Data:   &RuleDiscovery{RuleGroups: groups},
+		})
+		if err != nil {
+			level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+			respondError(logger, w, "unable to marshal the requested data")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if disableCORS != true {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 
-	// keep data.groups are in order
-	sort.Slice(groups, func(i, j int) bool {
-		return groups[i].File < groups[j].File
-	})
-
-	b, err := json.Marshal(&response{
-		Status: "success",
-		Data:   &RuleDiscovery{RuleGroups: groups},
-	})
-	if err != nil {
-		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.WriteHeader(http.StatusOK)
-	if n, err := w.Write(b); err != nil {
-		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+		w.WriteHeader(http.StatusOK)
+		if n, err := w.Write(b); err != nil {
+			level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+		}
 	}
 }
 
-func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, err := tenant.TenantID(req.Context())
-	if err != nil || userID == "" {
-		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found")
-		return
-	}
+func (a *API) PrometheusAlerts(disableCORS bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) { 
+		logger := util_log.WithContext(req.Context(), a.logger)
+		userID, err := tenant.TenantID(req.Context())
+		if err != nil || userID == "" {
+			level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
+			respondError(logger, w, "no valid org id found")
+			return
+		}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	rgs, err := a.ruler.GetRules(req.Context())
+		w.Header().Set("Content-Type", "application/json")
+		if disableCORS != true {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
+		rgs, err := a.ruler.GetRules(req.Context())
 
-	alerts := []*Alert{}
+		if err != nil {
+			respondError(logger, w, err.Error())
+			return
+		}
 
-	for _, g := range rgs {
-		for _, rl := range g.ActiveRules {
-			if rl.Rule.Alert != "" {
-				for _, a := range rl.Alerts {
-					alerts = append(alerts, &Alert{
-						Labels:      cortexpb.FromLabelAdaptersToLabels(a.Labels),
-						Annotations: cortexpb.FromLabelAdaptersToLabels(a.Annotations),
-						State:       a.GetState(),
-						ActiveAt:    &a.ActiveAt,
-						Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
-					})
+		alerts := []*Alert{}
+
+		for _, g := range rgs {
+			for _, rl := range g.ActiveRules {
+				if rl.Rule.Alert != "" {
+					for _, a := range rl.Alerts {
+						alerts = append(alerts, &Alert{
+							Labels:      cortexpb.FromLabelAdaptersToLabels(a.Labels),
+							Annotations: cortexpb.FromLabelAdaptersToLabels(a.Annotations),
+							State:       a.GetState(),
+							ActiveAt:    &a.ActiveAt,
+							Value:       strconv.FormatFloat(a.Value, 'e', -1, 64),
+						})
+					}
 				}
 			}
 		}
-	}
 
-	b, err := json.Marshal(&response{
-		Status: "success",
-		Data:   &AlertDiscovery{Alerts: alerts},
-	})
-	if err != nil {
-		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.WriteHeader(http.StatusOK)
-	if n, err := w.Write(b); err != nil {
-		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+		b, err := json.Marshal(&response{
+			Status: "success",
+			Data:   &AlertDiscovery{Alerts: alerts},
+		})
+		if err != nil {
+			level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+			respondError(logger, w, "unable to marshal the requested data")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if disableCORS != true {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		if n, err := w.Write(b); err != nil {
+			level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+		}
 	}
 }
 
@@ -294,7 +310,7 @@ var (
 	ErrBadRuleGroup = errors.New("unable to decoded rule group")
 )
 
-func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger) {
+func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger, disableCORS bool) {
 	d, err := yaml.Marshal(&output)
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
@@ -303,14 +319,17 @@ func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger
 	}
 
 	w.Header().Set("Content-Type", "application/yaml")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if disableCORS != true {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}
+
 	if _, err := w.Write(d); err != nil {
 		level.Error(logger).Log("msg", "error writing yaml response", "err", err)
 		return
 	}
 }
 
-func respondAccepted(w http.ResponseWriter, logger log.Logger) {
+func respondAccepted(w http.ResponseWriter, logger log.Logger, disableCORS bool) {
 	b, err := json.Marshal(&response{
 		Status: "success",
 	})
@@ -320,7 +339,9 @@ func respondAccepted(w http.ResponseWriter, logger log.Logger) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if disableCORS != true {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}
 
 	// Return a status accepted because the rule has been stored and queued for polling, but is not currently active
 	w.WriteHeader(http.StatusAccepted)
@@ -389,181 +410,191 @@ func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (strin
 	return userID, namespace, group, nil
 }
 
-func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
+func (a *API) ListRules(disableCORS bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		logger := util_log.WithContext(req.Context(), a.logger)
 
-	userID, namespace, _, err := parseRequest(req, false, false)
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
-
-	level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
-	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if len(rgs) == 0 {
-		level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
-		http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
-		return
-	}
-
-	err = a.store.LoadRuleGroups(req.Context(), map[string]rulespb.RuleGroupList{userID: rgs})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
-
-	formatted := rgs.Formatted()
-	marshalAndSend(formatted, w, logger)
-}
-
-func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, namespace, groupName, err := parseRequest(req, true, true)
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
-
-	rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
-	if err != nil {
-		if errors.Is(err, rulestore.ErrGroupNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		userID, namespace, _, err := parseRequest(req, false, false)
+		if err != nil {
+			respondError(logger, w, err.Error())
 			return
 		}
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
 
-	formatted := rulespb.FromProto(rg)
-	marshalAndSend(formatted, w, logger)
-}
-
-func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, namespace, _, err := parseRequest(req, true, false)
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
-
-	payload, err := io.ReadAll(req.Body)
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to read rule group payload", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	level.Debug(logger).Log("msg", "attempting to unmarshal rulegroup", "userID", userID, "group", string(payload))
-
-	rg := rulefmt.RuleGroup{}
-	err = yaml.Unmarshal(payload, &rg)
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to unmarshal rule group payload", "err", err.Error())
-		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
-		return
-	}
-
-	errs := a.ruler.manager.ValidateRuleGroup(rg)
-	if len(errs) > 0 {
-		e := []string{}
-		for _, err := range errs {
-			level.Error(logger).Log("msg", "unable to validate rule group payload", "err", err.Error())
-			e = append(e, err.Error())
-		}
-
-		http.Error(w, strings.Join(e, ", "), http.StatusBadRequest)
-		return
-	}
-
-	if err := a.ruler.AssertMaxRulesPerRuleGroup(userID, len(rg.Rules)); err != nil {
-		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, "")
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to fetch current rule groups for validation", "err", err.Error(), "user", userID)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := a.ruler.AssertMaxRuleGroups(userID, len(rgs)+1); err != nil {
-		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	rgProto := rulespb.ToProto(userID, namespace, rg)
-	loadedRg := rulespb.FromProto(rgProto)
-	rgYaml, err := yaml.Marshal(loadedRg)
-	if err == nil {
-		err = yaml.Unmarshal(rgYaml, &rulefmt.RuleGroup{})
-	}
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to load rule group from proto", "err", err.Error(), "user", userID)
-		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
-		return
-	}
-
-	level.Debug(logger).Log("msg", "attempting to store rulegroup", "userID", userID, "group", rgProto.String())
-	err = a.store.SetRuleGroup(req.Context(), userID, namespace, rgProto)
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to store rule group", "err", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	respondAccepted(w, logger)
-}
-
-func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-
-	userID, namespace, _, err := parseRequest(req, true, false)
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
-
-	err = a.store.DeleteNamespace(req.Context(), userID, namespace)
-	if err != nil {
-		if err == rulestore.ErrGroupNamespaceNotFound {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		level.Debug(logger).Log("msg", "retrieving rule groups with namespace", "userID", userID, "namespace", namespace)
+		rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, namespace)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		respondError(logger, w, err.Error())
-		return
-	}
 
-	respondAccepted(w, logger)
-}
-
-func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
-	logger := util_log.WithContext(req.Context(), a.logger)
-
-	userID, namespace, groupName, err := parseRequest(req, true, true)
-	if err != nil {
-		respondError(logger, w, err.Error())
-		return
-	}
-
-	err = a.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
-	if err != nil {
-		if err == rulestore.ErrGroupNotFound {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if len(rgs) == 0 {
+			level.Info(logger).Log("msg", "no rule groups found", "userID", userID)
+			http.Error(w, ErrNoRuleGroups.Error(), http.StatusNotFound)
 			return
 		}
-		respondError(logger, w, err.Error())
-		return
-	}
 
-	respondAccepted(w, logger)
+		err = a.store.LoadRuleGroups(req.Context(), map[string]rulespb.RuleGroupList{userID: rgs})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
+
+		formatted := rgs.Formatted()
+		marshalAndSend(formatted, w, logger, disableCORS)
+	}
+}
+
+func (a *API) GetRuleGroup(disableCORS bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		logger := util_log.WithContext(req.Context(), a.logger)
+		userID, namespace, groupName, err := parseRequest(req, true, true)
+		if err != nil {
+			respondError(logger, w, err.Error())
+			return
+		}
+
+		rg, err := a.store.GetRuleGroup(req.Context(), userID, namespace, groupName)
+		if err != nil {
+			if errors.Is(err, rulestore.ErrGroupNotFound) {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		formatted := rulespb.FromProto(rg)
+		marshalAndSend(formatted, w, logger, disableCORS)
+	}
+}
+
+func (a *API) CreateRuleGroup(disableCORS bool) http.HandlerFunc {
+	return func (w http.ResponseWriter, req *http.Request) {
+		logger := util_log.WithContext(req.Context(), a.logger)
+		userID, namespace, _, err := parseRequest(req, true, false)
+		if err != nil {
+			respondError(logger, w, err.Error())
+			return
+		}
+
+		payload, err := io.ReadAll(req.Body)
+		if err != nil {
+			level.Error(logger).Log("msg", "unable to read rule group payload", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		level.Debug(logger).Log("msg", "attempting to unmarshal rulegroup", "userID", userID, "group", string(payload))
+
+		rg := rulefmt.RuleGroup{}
+		err = yaml.Unmarshal(payload, &rg)
+		if err != nil {
+			level.Error(logger).Log("msg", "unable to unmarshal rule group payload", "err", err.Error())
+			http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
+			return
+		}
+
+		errs := a.ruler.manager.ValidateRuleGroup(rg)
+		if len(errs) > 0 {
+			e := []string{}
+			for _, err := range errs {
+				level.Error(logger).Log("msg", "unable to validate rule group payload", "err", err.Error())
+				e = append(e, err.Error())
+			}
+
+			http.Error(w, strings.Join(e, ", "), http.StatusBadRequest)
+			return
+		}
+
+		if err := a.ruler.AssertMaxRulesPerRuleGroup(userID, len(rg.Rules)); err != nil {
+			level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, "")
+		if err != nil {
+			level.Error(logger).Log("msg", "unable to fetch current rule groups for validation", "err", err.Error(), "user", userID)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := a.ruler.AssertMaxRuleGroups(userID, len(rgs)+1); err != nil {
+			level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		rgProto := rulespb.ToProto(userID, namespace, rg)
+		loadedRg := rulespb.FromProto(rgProto)
+		rgYaml, err := yaml.Marshal(loadedRg)
+		if err == nil {
+			err = yaml.Unmarshal(rgYaml, &rulefmt.RuleGroup{})
+		}
+		if err != nil {
+			level.Error(logger).Log("msg", "unable to load rule group from proto", "err", err.Error(), "user", userID)
+			http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
+			return
+		}
+
+		level.Debug(logger).Log("msg", "attempting to store rulegroup", "userID", userID, "group", rgProto.String())
+		err = a.store.SetRuleGroup(req.Context(), userID, namespace, rgProto)
+		if err != nil {
+			level.Error(logger).Log("msg", "unable to store rule group", "err", err.Error())
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		respondAccepted(w, logger, disableCORS)
+	}
+}
+
+func (a *API) DeleteNamespace(disableCORS bool) http.HandlerFunc {
+	return func (w http.ResponseWriter, req *http.Request) {
+		logger := util_log.WithContext(req.Context(), a.logger)
+
+		userID, namespace, _, err := parseRequest(req, true, false)
+		if err != nil {
+			respondError(logger, w, err.Error())
+			return
+		}
+
+		err = a.store.DeleteNamespace(req.Context(), userID, namespace)
+		if err != nil {
+			if err == rulestore.ErrGroupNamespaceNotFound {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			respondError(logger, w, err.Error())
+			return
+		}
+
+		respondAccepted(w, logger, disableCORS)
+	}
+}
+
+func (a *API) DeleteRuleGroup(disableCORS bool) http.HandlerFunc {
+	return func (w http.ResponseWriter, req *http.Request) {
+		logger := util_log.WithContext(req.Context(), a.logger)
+
+		userID, namespace, groupName, err := parseRequest(req, true, true)
+		if err != nil {
+			respondError(logger, w, err.Error())
+			return
+		}
+
+		err = a.store.DeleteRuleGroup(req.Context(), userID, namespace, groupName)
+		if err != nil {
+			if err == rulestore.ErrGroupNotFound {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+			respondError(logger, w, err.Error())
+			return
+		}
+
+		respondAccepted(w, logger, disableCORS)
+	}
 }

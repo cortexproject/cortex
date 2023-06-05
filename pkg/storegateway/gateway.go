@@ -299,7 +299,8 @@ func (g *StoreGateway) running(ctx context.Context) error {
 			// replication set which we use to compare with the previous state.
 			currRingState, _ := g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
 
-			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
+			// Ignore address when comparing to avoid block re-sync if tokens are persisted with tokens_file_path
+			if ring.HasReplicationSetChangedWithoutStateAndAddress(ringLastState, currRingState) {
 				ringLastState = currRingState
 				g.syncStores(ctx, syncReasonRingChange)
 			}

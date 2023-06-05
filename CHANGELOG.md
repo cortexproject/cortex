@@ -1,11 +1,18 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276
+  - Validating new fields on the Webhook AM config, PushOver AM Config and Telegram AM Config.
+  - filtering 5xx Errors in numTotalFailedNotifications metric.
+  - Delete silence respond with 404 when silence is not found.
+  - mark webhook URL as a secret.
 * [CHANGE] Ruler: Added user label to `cortex_ruler_write_requests_total`, `cortex_ruler_write_requests_failed_total`, `cortex_ruler_queries_total`, and `cortex_ruler_queries_failed_total` metrics. #5312
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290
 * [CHANGE] Ingester: Creating label `native-histogram-sample` on the `cortex_discarded_samples_total` to keep track of discarded native histogram samples. #5289
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
+* [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
+* [FEATURE] Querier: Log query stats when querying store gateway. #5376
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
@@ -14,12 +21,14 @@
 * [ENHANCEMENT] Log: Avoid expensive log.Valuer evaluation for disallowed levels. #5297
 * [ENHANCEMENT] Improving Performance on the API Gzip Handler. #5347
 * [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
+* [ENHANCEMENT] Emit querier `max_concurrent` as a metric. #5362
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
 * [BUGFIX] Storage: Bucket index updater should ignore meta not found for partial blocks. #5343
 * [BUGFIX] Ring: Add JOINING state to read operation. #5346
 * [BUGFIX] Compactor: Partial block with only visit marker should be deleted even there is no deletion marker. #5342
+* [ENHANCEMENT] Do not resync blocks in running store gateways during rollout deployment and container restart. #5363
 
 ## 1.15.1 2023-04-26
 

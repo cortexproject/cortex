@@ -1586,22 +1586,29 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Run a query for each matchers set and collect all the results.
-	var sets []storage.SeriesSet
+	var (
+		sets      []storage.SeriesSet
+		mergedSet storage.SeriesSet
+	)
 
-	for _, matchers := range matchersSet {
-		// Interrupt if the context has been canceled.
-		if ctx.Err() != nil {
-			return nil, cleanup, ctx.Err()
+	hints := &storage.SelectHints{
+		Start: mint,
+		End:   maxt,
+		Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
+	}
+	if len(matchersSet) > 1 {
+		for _, matchers := range matchersSet {
+			// Interrupt if the context has been canceled.
+			if ctx.Err() != nil {
+				return nil, cleanup, ctx.Err()
+			}
+
+			seriesSet := q.Select(true, hints, matchers...)
+			sets = append(sets, seriesSet)
 		}
-
-		hints := &storage.SelectHints{
-			Start: mint,
-			End:   maxt,
-			Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
-		}
-
-		seriesSet := q.Select(true, hints, matchers...)
-		sets = append(sets, seriesSet)
+		mergedSet = storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+	} else {
+		mergedSet = q.Select(false, hints, matchersSet[0]...)
 	}
 
 	// Generate the response merging all series sets.
@@ -1609,7 +1616,6 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		Metric: make([]*cortexpb.Metric, 0),
 	}
 
-	mergedSet := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 	for mergedSet.Next() {
 		// Interrupt if the context has been canceled.
 		if ctx.Err() != nil {

@@ -382,7 +382,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 		shardingStrategy     = util.ShardingStrategyDefault
 		replicationFactor    = 3
 		numInitialGateways   = 4
-		numScaleUpGateways   = 6
+		numScaleUpGateways   = 2
 		expectedBlocksLoaded = 3 * numBlocks // blocks are replicated 3 times
 	)
 
@@ -615,7 +615,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			},
 			expectedSync: true,
 		},
-		"should sync when an instance changes state": {
+		"should NOT sync when an instance changes state": {
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
 				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING, registeredAt)
@@ -625,7 +625,19 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 				instance.State = ring.ACTIVE
 				desc.Ingesters["instance-2"] = instance
 			},
-			expectedSync: true,
+			expectedSync: false,
+		},
+		"should NOT sync when an instance address is replaced": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				instance := desc.Ingesters["instance-2"]
+				instance.Addr = "127.0.0.3"
+				desc.Ingesters["instance-2"] = instance
+			},
+			expectedSync: false,
 		},
 		"should sync when an healthy instance becomes unhealthy": {
 			setupRing: func(desc *ring.Desc) {

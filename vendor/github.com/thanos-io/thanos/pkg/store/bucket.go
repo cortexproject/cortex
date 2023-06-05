@@ -1013,6 +1013,9 @@ func (b *blockSeriesClient) nextBatch() error {
 
 	b.entries = b.entries[:0]
 	for i := 0; i < len(postingsBatch); i++ {
+		if err := b.ctx.Err(); err != nil {
+			return err
+		}
 		ok, err := b.indexr.LoadSeriesForTime(postingsBatch[i], &b.symbolizedLset, &b.chkMetas, b.skipChunks, b.mint, b.maxt)
 		if err != nil {
 			return errors.Wrap(err, "read series")
@@ -1224,6 +1227,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		reqBlockMatchers []*labels.Matcher
 		chunksLimiter    = s.chunksLimiterFactory(s.metrics.queriesDropped.WithLabelValues("chunks"))
 		seriesLimiter    = s.seriesLimiterFactory(s.metrics.queriesDropped.WithLabelValues("series"))
+
+		queryStatsEnabled = false
 	)
 
 	if req.Hints != nil {
@@ -1231,6 +1236,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
 			return status.Error(codes.InvalidArgument, errors.Wrap(err, "unmarshal series request hints").Error())
 		}
+		queryStatsEnabled = reqHints.EnableQueryStats
 
 		reqBlockMatchers, err = storepb.MatchersToPromMatchers(reqHints.BlockMatchers...)
 		if err != nil {
@@ -1421,6 +1427,9 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_Serie
 	if s.enableSeriesResponseHints {
 		var anyHints *types.Any
 
+		if queryStatsEnabled {
+			resHints.QueryStats = stats.toHints()
+		}
 		if anyHints, err = types.MarshalAny(resHints); err != nil {
 			err = status.Error(codes.Unknown, errors.Wrap(err, "marshal series response hints").Error())
 			return
@@ -2282,15 +2291,7 @@ func checkNilPosting(l labels.Label, p index.Postings) index.Postings {
 func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, error), m *labels.Matcher) (*postingGroup, error) {
 	if m.Type == labels.MatchRegexp {
 		if vals := findSetMatches(m.Value); len(vals) > 0 {
-			// Sorting will improve the performance dramatically if the dataset is relatively large
-			// since entries in the postings offset table was sorted by label name and value,
-			// the sequential reading is much faster.
-			sort.Strings(vals)
-			toAdd := make([]labels.Label, 0, len(vals))
-			for _, val := range vals {
-				toAdd = append(toAdd, labels.Label{Name: m.Name, Value: val})
-			}
-			return newPostingGroup(false, toAdd, nil), nil
+			return newPostingGroup(false, labelsFromSetMatchers(m.Name, vals), nil), nil
 		}
 	}
 
@@ -2298,12 +2299,29 @@ func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, er
 	// have the label name set too. See: https://github.com/prometheus/prometheus/issues/3575
 	// and https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555.
 	if m.Matches("") {
+		var toRemove []labels.Label
+
+		// Fast-path for MatchNotRegexp matching.
+		// Inverse of a MatchNotRegexp is MatchRegexp (double negation).
+		// Fast-path for set matching.
+		if m.Type == labels.MatchNotRegexp {
+			if vals := findSetMatches(m.Value); len(vals) > 0 {
+				toRemove = labelsFromSetMatchers(m.Name, vals)
+				return newPostingGroup(true, nil, toRemove), nil
+			}
+		}
+
+		// Fast-path for MatchNotEqual matching.
+		// Inverse of a MatchNotEqual is MatchEqual (double negation).
+		if m.Type == labels.MatchNotEqual {
+			return newPostingGroup(true, nil, []labels.Label{{Name: m.Name, Value: m.Value}}), nil
+		}
+
 		vals, err := lvalsFn(m.Name)
 		if err != nil {
 			return nil, err
 		}
 
-		var toRemove []labels.Label
 		for _, val := range vals {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -2339,6 +2357,18 @@ func toPostingGroup(ctx context.Context, lvalsFn func(name string) ([]string, er
 	return newPostingGroup(false, toAdd, nil), nil
 }
 
+func labelsFromSetMatchers(name string, vals []string) []labels.Label {
+	// Sorting will improve the performance dramatically if the dataset is relatively large
+	// since entries in the postings offset table was sorted by label name and value,
+	// the sequential reading is much faster.
+	sort.Strings(vals)
+	toAdd := make([]labels.Label, 0, len(vals))
+	for _, val := range vals {
+		toAdd = append(toAdd, labels.Label{Name: name, Value: val})
+	}
+	return toAdd
+}
+
 type postingPtr struct {
 	keyID int
 	ptr   index.Range
@@ -2363,6 +2393,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 		if err := bytesLimiter.Reserve(uint64(len(dataFromCache))); err != nil {
 			return nil, closeFns, httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while loading postings from index cache: %s", err)
 		}
+		r.stats.DataDownloadedSizeSum += units.Base2Bytes(len(dataFromCache))
 	}
 
 	// Iterate over all groups and fetch posting from cache.
@@ -2436,6 +2467,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 		if err := bytesLimiter.Reserve(uint64(length)); err != nil {
 			return nil, closeFns, httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching postings: %s", err)
 		}
+		r.stats.DataDownloadedSizeSum += units.Base2Bytes(length)
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -2596,6 +2628,7 @@ func (r *bucketIndexReader) PreloadSeries(ctx context.Context, ids []storage.Ser
 		if err := bytesLimiter.Reserve(uint64(len(b))); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while loading series from index cache: %s", err)
 		}
+		r.stats.DataDownloadedSizeSum += units.Base2Bytes(len(b))
 	}
 
 	parts := r.block.partitioner.Partition(len(ids), func(i int) (start, end uint64) {
@@ -2621,6 +2654,7 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []storage.Series
 		if err := bytesLimiter.Reserve(uint64(end - start)); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching series: %s", err)
 		}
+		r.stats.DataDownloadedSizeSum += units.Base2Bytes(end - start)
 	}
 
 	b, err := r.block.readIndexRange(ctx, int64(start), int64(end-start))
@@ -2893,6 +2927,7 @@ func (r *bucketChunkReader) load(ctx context.Context, res []seriesEntry, aggrs [
 			if err := bytesLimiter.Reserve(uint64(p.End - p.Start)); err != nil {
 				return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching chunks: %s", err)
 			}
+			r.stats.DataDownloadedSizeSum += units.Base2Bytes(p.End - p.Start)
 		}
 
 		for _, p := range parts {
@@ -3010,6 +3045,7 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 		if err := bytesLimiter.Reserve(uint64(chunkLen)); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching chunks: %s", err)
 		}
+		r.stats.DataDownloadedSizeSum += units.Base2Bytes(chunkLen)
 		nb, err := r.block.readChunkRange(ctx, seq, int64(pIdx.offset), int64(chunkLen), []byteRange{{offset: 0, length: chunkLen}})
 		if err != nil {
 			return errors.Wrapf(err, "preloaded chunk too small, expecting %d, and failed to fetch full chunk", chunkLen)
@@ -3117,6 +3153,8 @@ type queryStats struct {
 	mergedSeriesCount int
 	mergedChunksCount int
 	MergeDuration     time.Duration
+
+	DataDownloadedSizeSum units.Base2Bytes
 }
 
 func (s queryStats) merge(o *queryStats) *queryStats {
@@ -3157,7 +3195,34 @@ func (s queryStats) merge(o *queryStats) *queryStats {
 	s.mergedChunksCount += o.mergedChunksCount
 	s.MergeDuration += o.MergeDuration
 
+	s.DataDownloadedSizeSum += o.DataDownloadedSizeSum
+
 	return &s
+}
+
+func (s queryStats) toHints() *hintspb.QueryStats {
+	return &hintspb.QueryStats{
+		BlocksQueried:          int64(s.blocksQueried),
+		PostingsTouched:        int64(s.postingsTouched),
+		PostingsTouchedSizeSum: int64(s.PostingsTouchedSizeSum),
+		PostingsToFetch:        int64(s.postingsToFetch),
+		PostingsFetched:        int64(s.postingsFetched),
+		PostingsFetchedSizeSum: int64(s.PostingsFetchedSizeSum),
+		PostingsFetchCount:     int64(s.postingsFetchCount),
+		SeriesTouched:          int64(s.seriesTouched),
+		SeriesTouchedSizeSum:   int64(s.SeriesTouchedSizeSum),
+		SeriesFetched:          int64(s.seriesFetched),
+		SeriesFetchedSizeSum:   int64(s.SeriesFetchedSizeSum),
+		SeriesFetchCount:       int64(s.seriesFetchCount),
+		ChunksTouched:          int64(s.chunksTouched),
+		ChunksTouchedSizeSum:   int64(s.ChunksTouchedSizeSum),
+		ChunksFetched:          int64(s.chunksFetched),
+		ChunksFetchedSizeSum:   int64(s.ChunksFetchedSizeSum),
+		ChunksFetchCount:       int64(s.chunksFetchCount),
+		MergedSeriesCount:      int64(s.mergedSeriesCount),
+		MergedChunksCount:      int64(s.mergedChunksCount),
+		DataDownloadedSizeSum:  int64(s.DataDownloadedSizeSum),
+	}
 }
 
 // NewDefaultChunkBytesPool returns a chunk bytes pool with default settings.

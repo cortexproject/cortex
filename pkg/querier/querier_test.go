@@ -21,8 +21,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/engine"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -38,6 +38,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+
+	"github.com/prometheus/client_golang/prometheus"
+	promutil "github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 const (
@@ -361,6 +364,28 @@ func TestQuerier(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestQuerierMetric(t *testing.T) {
+	var cfg Config
+	flagext.DefaultValues(&cfg)
+	cfg.MaxConcurrent = 120
+
+	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+	require.NoError(t, err)
+
+	chunkStore, through := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
+	distributor := mockDistibutorFor(t, chunkStore, through)
+
+	queryables := []QueryableWithFilter{}
+	r := prometheus.NewRegistry()
+	reg := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, r)
+	New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), reg, log.NewNopLogger())
+	assert.NoError(t, promutil.GatherAndCompare(r, strings.NewReader(`
+		# HELP cortex_max_concurrent_queries The maximum number of concurrent queries.
+		# TYPE cortex_max_concurrent_queries gauge
+		cortex_max_concurrent_queries{engine="querier"} 120
+	`), "cortex_max_concurrent_queries"))
 }
 
 func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int, step, chunkOffset time.Duration, samplesPerChunk int) (storage.Queryable, []cortexpb.Sample) {

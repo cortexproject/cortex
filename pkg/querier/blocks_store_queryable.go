@@ -583,7 +583,6 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 	if err != nil {
 		return nil, nil, nil, 0, err
-
 	}
 	convertedMatchers := convertMatchersToLabelMatcher(matchers)
 
@@ -601,6 +600,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			// Only fail the function if we have validation error. We should return blocks that were successfully
 			// retrieved.
+			seriesQueryStats := &hintspb.QueryStats{}
 			skipChunks := sp != nil && sp.Func == "series"
 
 			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs)
@@ -698,6 +698,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					}
 
 					myQueriedBlocks = append(myQueriedBlocks, ids...)
+					if hints.QueryStats != nil {
+						seriesQueryStats.Merge(hints.QueryStats)
+					}
 				}
 			}
 
@@ -714,13 +717,34 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),
-				"fetched series", numSeries,
-				"fetched chunks", chunksCount,
-				"fetched samples", numSamples,
-				"fetched chunk bytes", chunkBytes,
-				"fetched data bytes", dataBytes,
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
+
+			level.Info(spanLog).Log("msg", "store gateway series request stats",
+				"instance", c.RemoteAddress(),
+				"queryable_chunk_bytes_fetched", chunkBytes,
+				"queryable_data_bytes_fetched", dataBytes,
+				"blocks_queried", seriesQueryStats.BlocksQueried,
+				"series_merged_count", seriesQueryStats.MergedSeriesCount,
+				"chunks_merged_count", seriesQueryStats.MergedChunksCount,
+				"postings_touched", seriesQueryStats.PostingsTouched,
+				"postings_touched_size_sum", seriesQueryStats.PostingsTouchedSizeSum,
+				"postings_to_fetch", seriesQueryStats.PostingsToFetch,
+				"postings_fetched", seriesQueryStats.PostingsFetched,
+				"postings_fetch_count", seriesQueryStats.PostingsFetchCount,
+				"postings_fetched_size_sum", seriesQueryStats.PostingsFetchedSizeSum,
+				"series_touched", seriesQueryStats.SeriesTouched,
+				"series_touched_size_sum", seriesQueryStats.SeriesTouchedSizeSum,
+				"series_fetched", seriesQueryStats.SeriesFetched,
+				"series_fetch_count", seriesQueryStats.SeriesFetchCount,
+				"series_fetched_size_sum", seriesQueryStats.SeriesFetchedSizeSum,
+				"chunks_touched", seriesQueryStats.ChunksTouched,
+				"chunks_touched_size_sum", seriesQueryStats.ChunksTouchedSizeSum,
+				"chunks_fetched", seriesQueryStats.ChunksFetched,
+				"chunks_fetch_count", seriesQueryStats.ChunksFetchCount,
+				"chunks_fetched_size_sum", seriesQueryStats.ChunksFetchedSizeSum,
+				"data_downloaded_size_sum", seriesQueryStats.DataDownloadedSizeSum,
+			)
 
 			// Store the result.
 			mtx.Lock()
@@ -937,6 +961,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shar
 				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
 			},
 		},
+		EnableQueryStats: true,
 	}
 
 	anyHints, err := types.MarshalAny(hints)

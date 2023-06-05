@@ -50,7 +50,7 @@ require (
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
-	github.com/stretchr/testify v1.8.3
+	github.com/stretchr/testify v1.8.4
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/thanos-io/promql-engine v0.0.0-20230526105742-791d78b260ea
 	github.com/thanos-io/thanos v0.31.1-0.20230602190045-fbc88857d78c

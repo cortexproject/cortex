@@ -127,21 +127,33 @@ func (r ReplicationSet) GetAddressesWithout(exclude string) []string {
 	return addrs
 }
 
-// HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
-// false if they differ in any way (number of instances, instance states, tokens, zones, ...).
+// HasReplicationSetChanged returns false if two replications sets are the same (with possibly different timestamps),
+// true if they differ in any way (number of instances, instance states, tokens, zones, ...).
 func HasReplicationSetChanged(before, after ReplicationSet) bool {
 	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
 		i.Timestamp = 0
 	})
 }
 
-// HasReplicationSetChangedWithoutState returns true if two replications sets
+// HasReplicationSetChangedWithoutState returns false if two replications sets
 // are the same (with possibly different timestamps and instance states),
-// false if they differ in any other way (number of instances, tokens, zones, ...).
+// true if they differ in any other way (number of instances, tokens, zones, ...).
 func HasReplicationSetChangedWithoutState(before, after ReplicationSet) bool {
 	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
 		i.Timestamp = 0
 		i.State = PENDING
+	})
+}
+
+// HasReplicationSetChangedWithoutStateAndAddress returns false if two replications sets
+// are the same (with possibly different timestamps, instance states and address),
+// true if they differ in any other way (number of instances, tokens, or zones).
+func HasReplicationSetChangedWithoutStateAndAddress(before, after ReplicationSet) bool {
+	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
+		i.Timestamp = 0
+		i.State = PENDING
+		i.Addr = ""
+		i.RegisteredTimestamp = 0
 	})
 }
 

@@ -217,6 +217,10 @@ compactor:
         # CLI flag: -compactor.ring.dynamodb.ttl-time
         [ttl: <duration> | default = 0s]
 
+        # Time to refresh local ring with information on dynamodb.
+        # CLI flag: -compactor.ring.dynamodb.puller-sync-time
+        [puller_sync_time: <duration> | default = 1m]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is: compactor.ring
       [consul: <consul_config>]

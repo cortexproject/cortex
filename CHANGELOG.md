@@ -20,6 +20,7 @@
 * [ENHANCEMENT] Update Go version to 1.20.4. #5299
 * [ENHANCEMENT] Log: Avoid expensive log.Valuer evaluation for disallowed levels. #5297
 * [ENHANCEMENT] Improving Performance on the API Gzip Handler. #5347
+* [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
 * [ENHANCEMENT] Emit querier `max_concurrent` as a metric. #5362
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286

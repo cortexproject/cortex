@@ -3,14 +3,18 @@ package api
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
+	"os"
 	"path"
 	"strings"
 
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/regexp"
 	"github.com/klauspost/compress/gzhttp"
+	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
@@ -35,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/httputil"
 	"github.com/cortexproject/cortex/pkg/util/push"
 )
 
@@ -66,8 +71,8 @@ type Config struct {
 	// Allows and is used to configure the addition of HTTP Header fields to logs
 	HTTPRequestHeadersToLog flagext.StringSlice `yaml:"http_request_headers_to_log"`
 
-	// If variable is set to false, CORS is enabled and an Origin header is sent with the response
-	disableCORS bool `yaml:"-"`
+	// This sets the Origin header value
+	corsRegexString	string `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -92,6 +97,15 @@ func (cfg *Config) wrapDistributorPush(d *distributor.Distributor) push.Func {
 	return d.Push
 }
 
+// compileCORSRegexString compiles given string and adds anchors
+func compileCORSRegexString(s string) (*regexp.Regexp, error) {
+	r, err := relabel.NewRegexp(s)
+	if err != nil {
+		return nil, err
+	}
+	return r.Regexp, nil
+}
+
 type API struct {
 	AuthMiddleware       middleware.Interface
 	cfg                  Config
@@ -100,6 +114,7 @@ type API struct {
 	sourceIPs            *middleware.SourceIPExtractor
 	indexPage            *IndexPageContent
 	HTTPHeaderMiddleware *HTTPHeaderMiddleware
+	CORSOrigin           *regexp.Regexp
 }
 
 func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logger) (*API, error) {
@@ -305,28 +320,28 @@ func (a *API) RegisterRuler(r *ruler.Ruler) {
 // RegisterRulerAPI registers routes associated with the Ruler API
 func (a *API) RegisterRulerAPI(r *ruler.API) {
 	// Prometheus Rule API Routes
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/rules"), http.HandlerFunc(r.PrometheusRules(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/alerts"), http.HandlerFunc(r.PrometheusAlerts(a.cfg.disableCORS)), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/rules"), http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/alerts"), http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Ruler API Routes
-	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup(a.cfg.disableCORS)), true, "POST")
-	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup(a.cfg.disableCORS)), true, "DELETE")
-	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace(a.cfg.disableCORS)), true, "DELETE")
+	a.RegisterRoute("/api/v1/rules", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRoute("/api/v1/rules/{namespace}/{groupName}", http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRoute("/api/v1/rules/{namespace}", http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 
 	// Legacy Prometheus Rule API Routes
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/rules"), http.HandlerFunc(r.PrometheusRules(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/alerts"), http.HandlerFunc(r.PrometheusAlerts(a.cfg.disableCORS)), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/rules"), http.HandlerFunc(r.PrometheusRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/alerts"), http.HandlerFunc(r.PrometheusAlerts), true, "GET")
 
 	// Legacy Ruler API Routes
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules"), http.HandlerFunc(r.ListRules(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.ListRules(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.GetRuleGroup(a.cfg.disableCORS)), true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.CreateRuleGroup(a.cfg.disableCORS)), true, "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.DeleteRuleGroup(a.cfg.disableCORS)), true, "DELETE")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.DeleteNamespace(a.cfg.disableCORS)), true, "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules"), http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.ListRules), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.GetRuleGroup), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.CreateRuleGroup), true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
 }
 
 // RegisterRing registers the ring UI page associated with the distributor for writes.
@@ -372,25 +387,38 @@ func (a *API) RegisterQueryable(
 // RegisterQueryAPI registers the Prometheus API routes with the provided handler.
 func (a *API) RegisterQueryAPI(handler http.Handler) {
 	infoHandler := &buildInfoHandler{logger: a.logger}
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/read"), handler, true, "POST")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_range"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_exemplars"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/labels"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/metadata"), handler, true, "GET")
+
+	var err error
+	a.CORSOrigin, err = compileCORSRegexString(a.cfg.corsRegexString)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("could not compile CORS regex string %q: %w", a.cfg.corsRegexString, err))
+		os.Exit(2)
+	}
+	
+	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httputil.SetCORS(w, a.CORSOrigin, r)
+		handler.ServeHTTP(w, r)
+	})
+
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/read"), hf, true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_range"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/query_exemplars"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/labels"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/label/{name}/values"), hf, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/series"), hf, true, "GET", "POST", "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/metadata"), hf, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
 
 	// Register Legacy Routers
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/read"), handler, true, "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_range"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_exemplars"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/labels"), handler, true, "GET", "POST")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/label/{name}/values"), handler, true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/series"), handler, true, "GET", "POST", "DELETE")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/metadata"), handler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/read"), hf, true, "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_range"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/query_exemplars"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/labels"), hf, true, "GET", "POST")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/label/{name}/values"), hf, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/series"), hf, true, "GET", "POST", "DELETE")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/metadata"), hf, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
 }
 

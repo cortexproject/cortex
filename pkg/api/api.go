@@ -39,8 +39,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	"github.com/cortexproject/cortex/pkg/util/httputil"
 	"github.com/cortexproject/cortex/pkg/util/push"
+	"github.com/prometheus/prometheus/util/httputil"
 )
 
 // DistributorPushWrapper wraps around a push. It is similar to middleware.Interface.

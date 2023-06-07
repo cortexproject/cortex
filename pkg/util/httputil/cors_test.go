@@ -16,7 +16,6 @@ package httputil
 import (
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/grafana/regexp"
@@ -26,7 +25,6 @@ import (
 var (
 	mux      *http.ServeMux
 	server   *httptest.Server
-	respBody = strings.Repeat("Hello World!", 500)
 )
 
 func setup() func() {

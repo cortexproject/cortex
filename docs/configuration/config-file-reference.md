@@ -86,6 +86,10 @@ api:
   # CLI flag: -api.http-request-headers-to-log
   [http_request_headers_to_log: <list of string> | default = []]
 
+  # Access-Control-Allow-Origin response header
+  # CLI flag: -server.cors-origin
+  [cors_origin: <string> | default = "*"]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]

@@ -23,8 +23,8 @@ import (
 )
 
 var (
-	mux      *http.ServeMux
-	server   *httptest.Server
+	mux    *http.ServeMux
+	server *httptest.Server
 )
 
 func setup() func() {

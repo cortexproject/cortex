@@ -72,7 +72,7 @@ type Config struct {
 	HTTPRequestHeadersToLog flagext.StringSlice `yaml:"http_request_headers_to_log"`
 
 	// This sets the Origin header value
-	corsRegexString	string `yaml:"cors_origin"`
+	corsRegexString string `yaml:"cors_origin"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -175,8 +175,6 @@ func (a *API) RegisterRoute(path string, handler http.Handler, auth bool, method
 	}
 	a.server.HTTP.Path(path).Methods(methods...).Handler(handler)
 }
-
-
 
 func (a *API) RegisterRoutesWithPrefix(prefix string, handler http.Handler, auth bool, methods ...string) {
 	level.Debug(a.logger).Log("msg", "api: registering route", "methods", strings.Join(methods, ","), "prefix", prefix, "auth", auth)
@@ -394,7 +392,7 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("could not compile CORS regex string %q: %w", a.cfg.corsRegexString, err))
 		os.Exit(2)
 	}
-	
+
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		httputil.SetCORS(w, a.CORSOrigin, r)
 		handler.ServeHTTP(w, r)

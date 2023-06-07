@@ -72,7 +72,7 @@ type Config struct {
 	HTTPRequestHeadersToLog flagext.StringSlice `yaml:"http_request_headers_to_log"`
 
 	// This sets the Origin header value
-	corsRegexString	string `yaml:"-"`
+	corsRegexString	string `yaml:"cors_origin"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

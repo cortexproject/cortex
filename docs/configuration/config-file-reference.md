@@ -88,7 +88,7 @@ api:
 
   # Access-Control-Allow-Origin response header
   # CLI flag: -server.cors-origin
-  [cors_origin: <string> | default = "*"]
+  [cors_origin: <string> | default = "^(?:.*)$"]
 
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).

@@ -16,6 +16,7 @@ import (
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/httputil"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
@@ -40,7 +41,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/push"
-	"github.com/prometheus/prometheus/util/httputil"
 )
 
 // DistributorPushWrapper wraps around a push. It is similar to middleware.Interface.

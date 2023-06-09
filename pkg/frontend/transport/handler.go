@@ -192,7 +192,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			} else {
 				err = httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
-			server.WriteError(w, err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
 				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID).Inc()
 			}

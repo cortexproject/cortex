@@ -11,10 +11,6 @@ package metadata
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -25,6 +21,9 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"gopkg.in/yaml.v3"
+	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/thanos-io/thanos/pkg/runutil"
 )
@@ -91,8 +90,26 @@ type Thanos struct {
 	// Rewrites is present when any rewrite (deletion, relabel etc) were applied to this block. Optional.
 	Rewrites []Rewrite `json:"rewrites,omitempty"`
 
-	// PartitionInfo is used for partitioning compaction to keep track of partition information of result block. Optional.
-	PartitionInfo *PartitionInfo `json:"partition_info,omitempty"`
+	// Extensions are used for plugin any arbitrary additional information for block. Optional.
+	Extensions any `json:"extensions,omitempty"`
+}
+
+func (m *Thanos) ParseExtensions(v any) (any, error) {
+	return ConvertExtensions(m.Extensions, v)
+}
+
+func ConvertExtensions(extensions any, v any) (any, error) {
+	if extensions == nil {
+		return nil, nil
+	}
+	extensionsContent, err := json.Marshal(extensions)
+	if err != nil {
+		return nil, err
+	}
+	if err = json.Unmarshal(extensionsContent, v); err != nil {
+		return nil, err
+	}
+	return v, nil
 }
 
 type Rewrite struct {
@@ -102,12 +119,6 @@ type Rewrite struct {
 	DeletionsApplied []DeletionRequest `json:"deletions_applied,omitempty"`
 	// Relabels if applied.
 	RelabelsApplied []*relabel.Config `json:"relabels_applied,omitempty"`
-}
-
-type PartitionInfo struct {
-	PartitionedGroupID uint32 `json:"partitionedGroupID"`
-	PartitionCount     int    `json:"partitionCount"`
-	PartitionID        int    `json:"partitionID"`
 }
 
 type Matchers []*labels.Matcher

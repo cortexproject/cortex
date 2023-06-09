@@ -59,8 +59,8 @@ var (
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
-			false, // Do not accept malformed indexes
-			true,  // Enable vertical compaction
+			cfg.AcceptMalformedIndex,
+			true, // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
@@ -75,8 +75,8 @@ var (
 			ctx,
 			logger,
 			bkt,
-			false, // Do not accept malformed indexes
-			true,  // Enable vertical compaction
+			cfg.AcceptMalformedIndex,
+			true, // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
 			blocksMarkedForNoCompaction,
@@ -233,6 +233,8 @@ type Config struct {
 	BlockVisitMarkerTimeout            time.Duration `yaml:"block_visit_marker_timeout"`
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
 
+	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
+
 	// Partitioning config
 	PartitionIndexSizeLimitInBytes int64 `yaml:"partition_index_size_limit_in_bytes"`
 	PartitionSeriesCountLimit      int64 `yaml:"partition_series_count_limit"`
@@ -272,6 +274,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BlockVisitMarkerTimeout, "compactor.block-visit-marker-timeout", 5*time.Minute, "How long block visit marker file should be considered as expired and able to be picked up by compactor again.")
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
+
+	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
 
 	f.Int64Var(&cfg.PartitionIndexSizeLimitInBytes, "compactor.partition-index-size-limit-in-bytes", 0, "Index size limit in bytes for each compaction partition. 0 means no limit")
 	f.Int64Var(&cfg.PartitionSeriesCountLimit, "compactor.partition-series-count-limit", 0, "Time series count limit for each compaction partition. 0 means no limit")
@@ -348,6 +352,7 @@ type Compactor struct {
 
 	// Metrics.
 	compactionRunsStarted           prometheus.Counter
+	compactionRunsInterrupted       prometheus.Counter
 	compactionRunsCompleted         prometheus.Counter
 	compactionRunsFailed            prometheus.Counter
 	compactionRunsLastSuccess       prometheus.Gauge
@@ -444,6 +449,10 @@ func newCompactor(
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
 			Help: "Total number of compaction runs started.",
+		}),
+		compactionRunsInterrupted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_compactor_runs_interrupted_total",
+			Help: "Total number of compaction runs interrupted.",
 		}),
 		compactionRunsCompleted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_completed_total",
@@ -653,6 +662,7 @@ func (c *Compactor) running(ctx context.Context) error {
 
 func (c *Compactor) compactUsers(ctx context.Context) {
 	succeeded := false
+	interrupted := false
 	compactionErrorCount := 0
 
 	c.compactionRunsStarted.Inc()
@@ -661,6 +671,8 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 		if succeeded && compactionErrorCount == 0 {
 			c.compactionRunsCompleted.Inc()
 			c.compactionRunsLastSuccess.SetToCurrentTime()
+		} else if interrupted {
+			c.compactionRunsInterrupted.Inc()
 		} else {
 			c.compactionRunsFailed.Inc()
 		}
@@ -694,6 +706,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	for _, userID := range users {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
+			interrupted = true
 			level.Info(c.logger).Log("msg", "interrupting compaction of user blocks", "err", err)
 			return
 		}
@@ -844,14 +857,19 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "failed to create syncer")
 	}
 
+	blockDeletableChecker := c.blockDeletableCheckerFactory(ctx, bucket, ulogger, c.blockVisitMarkerReadFailed, c.partitionedGroupInfoReadFailed)
+	shardedCompactionLifecycleCallback := ShardedCompactionLifecycleCallback{
+		userBucket:                     bucket,
+		partitionedGroupInfoReadFailed: c.partitionedGroupInfoReadFailed,
+	}
 	compactor, err := compact.NewBucketCompactorWithCheckerAndCallback(
 		ulogger,
 		syncer,
 		c.blocksGrouperFactory(ctx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.partitionedGroupInfoReadFailed, c.partitionedGroupInfoWriteFailed, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter),
 		c.blocksPlannerFactory(ctx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed),
 		c.blocksCompactor,
-		c.blockDeletableCheckerFactory(ctx, bucket, ulogger, c.blockVisitMarkerReadFailed, c.partitionedGroupInfoReadFailed),
-		ShardedCompactionLifecycleCallback{},
+		blockDeletableChecker,
+		shardedCompactionLifecycleCallback,
 		path.Join(c.compactorCfg.DataDir, "compact"),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,

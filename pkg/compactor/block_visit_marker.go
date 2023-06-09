@@ -32,6 +32,7 @@ const (
 var (
 	ErrorBlockVisitMarkerNotFound  = errors.New("block visit marker not found")
 	ErrorUnmarshalBlockVisitMarker = errors.New("unmarshal block visit marker JSON")
+	ErrorNotBlockVisitMarker       = errors.New("file is not block visit marker")
 )
 
 type VisitStatus string
@@ -64,12 +65,12 @@ func (b *BlockVisitMarker) isCompleted() bool {
 	return b.Status == Completed
 }
 
-func getBlockVisitMarkerFile(blockID string, partitionID int) string {
+func GetBlockVisitMarkerFile(blockID string, partitionID int) string {
 	return path.Join(blockID, fmt.Sprintf("%s%d%s", BlockVisitMarkerFilePrefix, partitionID, BlockVisitMarkerFileSuffix))
 }
 
 func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketReader, logger log.Logger, blockID string, partitionID int, blockVisitMarkerReadFailed prometheus.Counter) (*BlockVisitMarker, error) {
-	visitMarkerFile := getBlockVisitMarkerFile(blockID, partitionID)
+	visitMarkerFile := GetBlockVisitMarkerFile(blockID, partitionID)
 	visitMarkerFileReader, err := bkt.ReaderWithExpectedErrs(bkt.IsObjNotFoundErr).Get(ctx, visitMarkerFile)
 	if err != nil {
 		if bkt.IsObjNotFoundErr(err) {
@@ -96,7 +97,7 @@ func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketRe
 }
 
 func UpdateBlockVisitMarker(ctx context.Context, bkt objstore.Bucket, blockID string, partitionID int, reader io.Reader, blockVisitMarkerWriteFailed prometheus.Counter) error {
-	blockVisitMarkerFilePath := getBlockVisitMarkerFile(blockID, partitionID)
+	blockVisitMarkerFilePath := GetBlockVisitMarkerFile(blockID, partitionID)
 	if err := bkt.Upload(ctx, blockVisitMarkerFilePath, reader); err != nil {
 		blockVisitMarkerWriteFailed.Inc()
 		return err
@@ -127,6 +128,13 @@ func markBlocksVisited(
 	}
 	reader := bytes.NewReader(visitMarkerFileContent)
 	for _, block := range blocks {
+		select {
+		// Exit early if possible.
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		blockID := block.ULID.String()
 		if err := UpdateBlockVisitMarker(ctx, bkt, blockID, marker.PartitionID, reader, blockVisitMarkerWriteFailed); err != nil {
 			level.Error(logger).Log("msg", "unable to upsert visit marker file content for block", "partition_id", marker.PartitionID, "block_id", blockID, "err", err)
@@ -155,7 +163,7 @@ func markBlocksVisitedHeartBeat(
 	isComplete := false
 heartBeat:
 	for {
-		level.Debug(logger).Log("msg", "visit marker heart beat", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "blocks", blocksInfo)
+		level.Debug(logger).Log("msg", fmt.Sprintf("heart beat for blocks: %s", blocksInfo))
 		blockVisitMarker := BlockVisitMarker{
 			VisitTime:          time.Now().Unix(),
 			CompactorID:        compactorID,
@@ -220,4 +228,12 @@ func markBlocksVisitMarkerCompleted(
 		}
 		reader.Reset(visitMarkerFileContent)
 	}
+}
+
+func IsBlockVisitMarker(path string) bool {
+	return strings.HasSuffix(path, BlockVisitMarkerFileSuffix)
+}
+
+func IsNotBlockVisitMarkerError(err error) bool {
+	return errors.Is(err, ErrorNotBlockVisitMarker)
 }

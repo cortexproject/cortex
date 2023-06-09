@@ -439,11 +439,15 @@ func (c *BlocksCleaner) findResultBlocksForPartitionedGroup(ctx context.Context,
 			level.Info(userLogger).Log("msg", "unable to get meta for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
 			continue
 		}
-		if meta.Thanos.PartitionInfo == nil {
+		partitionInfo, err := GetPartitionInfo(meta)
+		if err != nil {
+			level.Warn(userLogger).Log("msg", "failed to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String(), "err", err)
+			continue
+		}
+		if partitionInfo == nil {
 			level.Info(userLogger).Log("msg", "unable to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
 			continue
 		}
-		partitionInfo := meta.Thanos.PartitionInfo
 		if partitionInfo.PartitionedGroupID == partitionedGroupID {
 			level.Info(userLogger).Log("msg", "found result block", "partitioned_group_id", partitionedGroupID, "partition_id", partitionInfo.PartitionID, "block", b.String())
 			resultBlocks[partitionInfo.PartitionID] = b

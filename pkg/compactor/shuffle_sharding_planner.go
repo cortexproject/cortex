@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -53,8 +52,15 @@ func NewShuffleShardingPlanner(
 	}
 }
 
-func (p *ShuffleShardingPlanner) Plan(_ context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error) {
-	return nil, errors.New("not support without partitioning")
+func (p *ShuffleShardingPlanner) Plan(ctx context.Context, metasByMinTime []*metadata.Meta, errChan chan error, extensions any) ([]*metadata.Meta, error) {
+	partitionInfo, err := ConvertToPartitionInfo(extensions)
+	if err != nil {
+		return nil, err
+	}
+	if partitionInfo == nil {
+		return nil, fmt.Errorf("partitionInfo cannot be nil")
+	}
+	return p.PlanWithPartition(ctx, metasByMinTime, partitionInfo.PartitionID, errChan)
 }
 
 func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, partitionID int, errChan chan error) ([]*metadata.Meta, error) {

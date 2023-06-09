@@ -1,6 +1,6 @@
 package compactor
 
-import(
+import (
 	"context"
 
 	"github.com/prometheus/prometheus/storage"
@@ -13,11 +13,9 @@ type backgrounChunkSeriesSet struct {
 }
 
 func (b *backgrounChunkSeriesSet) Next() bool {
-	select {
-	case s, ok := <-b.nextSet:
-		b.actual = s
-		return ok
-	}
+	s, ok := <-b.nextSet
+	b.actual = s
+	return ok
 }
 
 func (b *backgrounChunkSeriesSet) At() storage.ChunkSeries {
@@ -34,7 +32,7 @@ func (b *backgrounChunkSeriesSet) Warnings() storage.Warnings {
 
 func (b *backgrounChunkSeriesSet) run(ctx context.Context) {
 	for {
-		if (!b.cs.Next()) {
+		if !b.cs.Next() {
 			close(b.nextSet)
 			return
 		}
@@ -48,8 +46,8 @@ func (b *backgrounChunkSeriesSet) run(ctx context.Context) {
 }
 
 func NewBackgroundChunkSeriesSet(ctx context.Context, cs storage.ChunkSeriesSet) storage.ChunkSeriesSet {
-	r :=  &backgrounChunkSeriesSet{
-		cs: cs,
+	r := &backgrounChunkSeriesSet{
+		cs:      cs,
 		nextSet: make(chan storage.ChunkSeries, 1000),
 	}
 

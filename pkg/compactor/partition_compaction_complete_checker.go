@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
@@ -36,11 +35,15 @@ func NewPartitionCompactionBlockDeletableChecker(
 }
 
 func (p *PartitionCompactionBlockDeletableChecker) CanDelete(group *compact.Group, blockID ulid.ULID) bool {
-	if group.PartitionedInfo() == nil {
+	partitionInfo, err := ConvertToPartitionInfo(group.Extensions())
+	if err != nil {
+		return false
+	}
+	if partitionInfo == nil {
 		return true
 	}
-	partitionedGroupID := group.PartitionedInfo().PartitionedGroupID
-	currentPartitionID := group.PartitionedInfo().PartitionID
+	partitionedGroupID := partitionInfo.PartitionedGroupID
+	currentPartitionID := partitionInfo.PartitionID
 	partitionedGroupInfo, err := ReadPartitionedGroupInfo(p.ctx, p.bkt, p.logger, partitionedGroupID, p.partitionedGroupInfoReadFailed)
 	if err != nil {
 		level.Warn(p.logger).Log("msg", "unable to read partitioned group info", "partitioned_group_id", partitionedGroupID, "block_id", blockID, "err", err)

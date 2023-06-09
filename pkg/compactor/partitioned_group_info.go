@@ -90,12 +90,12 @@ func (p PartitionedGroupInfo) String() string {
 	return fmt.Sprintf("{PartitionedGroupID: %d, PartitionCount: %d, Partitions: %s}", p.PartitionedGroupID, p.PartitionCount, strings.Join(partitions, ", "))
 }
 
-func getPartitionedGroupFile(partitionedGroupID uint32) string {
+func GetPartitionedGroupFile(partitionedGroupID uint32) string {
 	return path.Join(PartitionedGroupDirectory, fmt.Sprintf("%d.json", partitionedGroupID))
 }
 
 func ReadPartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBucketReader, logger log.Logger, partitionedGroupID uint32, partitionedGroupInfoReadFailed prometheus.Counter) (*PartitionedGroupInfo, error) {
-	return ReadPartitionedGroupInfoFile(ctx, bkt, logger, getPartitionedGroupFile(partitionedGroupID), partitionedGroupInfoReadFailed)
+	return ReadPartitionedGroupInfoFile(ctx, bkt, logger, GetPartitionedGroupFile(partitionedGroupID), partitionedGroupInfoReadFailed)
 }
 
 func ReadPartitionedGroupInfoFile(ctx context.Context, bkt objstore.InstrumentedBucketReader, logger log.Logger, partitionedGroupFile string, partitionedGroupInfoReadFailed prometheus.Counter) (*PartitionedGroupInfo, error) {
@@ -131,7 +131,7 @@ func UpdatePartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBu
 		level.Warn(logger).Log("msg", "partitioned group info already exists", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 		return existingPartitionedGroup, nil
 	}
-	partitionedGroupFile := getPartitionedGroupFile(partitionedGroupInfo.PartitionedGroupID)
+	partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupInfo.PartitionedGroupID)
 	partitionedGroupInfoContent, err := json.Marshal(partitionedGroupInfo)
 	if err != nil {
 		partitionedGroupInfoWriteFailed.Inc()

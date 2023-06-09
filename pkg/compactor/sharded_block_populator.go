@@ -21,7 +21,7 @@ import (
 
 type ShardedBlockPopulator struct {
 	partitionCount int
-	partitionId    int
+	partitionID    int
 	logger         log.Logger
 }
 
@@ -98,11 +98,11 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 		all = indexr.SortedPostings(all)
 		g.Go(func() error {
 			shardStart := time.Now()
-			shardedPosting, err := NewShardedPosting(all, uint64(c.partitionCount), uint64(c.partitionId), indexr.Series)
+			shardedPosting, err := NewShardedPosting(all, uint64(c.partitionCount), uint64(c.partitionID), indexr.Series)
 			if err != nil {
 				return err
 			}
-			level.Info(c.logger).Log("msg", "finished sharding", "duration", time.Since(shardStart))
+			level.Debug(c.logger).Log("msg", "finished sharding", "duration", time.Since(shardStart))
 			// Blocks meta is half open: [min, max), so subtract 1 to ensure we don't hold samples with exact meta.MaxTime timestamp.
 			setsMtx.Lock()
 			sets = append(sets, tsdb.NewBlockChunkSeriesSet(meta.ULID, indexr, chunkr, tombsr, shardedPosting, meta.MinTime, meta.MaxTime-1, false))

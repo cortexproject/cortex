@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"encoding/json"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"testing"
 	"time"
 
@@ -359,7 +358,7 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 		t.Run(tcase.name, func(t *testing.T) {
 			bkt := &bucket.ClientMock{}
 			partitionedGroupInfoFileContent, _ := json.Marshal(tcase.partitionedGroupInfo)
-			bkt.MockGet(getPartitionedGroupFile(partitionedGroupID), string(partitionedGroupInfoFileContent), nil)
+			bkt.MockGet(GetPartitionedGroupFile(partitionedGroupID), string(partitionedGroupInfoFileContent), nil)
 			checker := NewPartitionCompactionBlockDeletableChecker(
 				context.Background(),
 				objstore.WithNoopInstr(bkt),
@@ -369,15 +368,17 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 			)
 			group := compact.Group{}
 			// set partitionID to -1, so it will go through all partitionIDs when checking
-			group.SetPartitionInfo(&metadata.PartitionInfo{
-				PartitionedGroupID: tcase.partitionedGroupInfo.PartitionedGroupID,
-				PartitionCount:     tcase.partitionedGroupInfo.PartitionCount,
-				PartitionID:        -1,
+			group.SetExtensions(&CortexMetaExtensions{
+				PartitionInfo: &PartitionInfo{
+					PartitionedGroupID: tcase.partitionedGroupInfo.PartitionedGroupID,
+					PartitionCount:     tcase.partitionedGroupInfo.PartitionCount,
+					PartitionID:        -1,
+				},
 			})
 			for blockID, blockTCase := range tcase.blocks {
 				for _, visitMarker := range blockTCase.visitMarkers {
 					visitMarkerFileContent, _ := json.Marshal(visitMarker)
-					bkt.MockGet(getBlockVisitMarkerFile(blockID.String(), visitMarker.PartitionID), string(visitMarkerFileContent), nil)
+					bkt.MockGet(GetBlockVisitMarkerFile(blockID.String(), visitMarker.PartitionID), string(visitMarkerFileContent), nil)
 				}
 				require.Equal(t, blockTCase.expectComplete, checker.CanDelete(&group, blockID))
 			}

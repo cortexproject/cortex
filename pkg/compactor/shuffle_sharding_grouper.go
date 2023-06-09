@@ -272,7 +272,7 @@ mainLoop:
 				partitionedGroupKey,
 				externalLabels,
 				resolution,
-				true, // No malformed index.
+				g.acceptMalformedIndex,
 				true, // Enable vertical compaction.
 				g.compactions.WithLabelValues(partitionedGroupKey),
 				g.compactionRunsStarted.WithLabelValues(partitionedGroupKey),
@@ -295,10 +295,12 @@ mainLoop:
 					level.Error(g.logger).Log("msg", "failed to add block to partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "block", m.ULID)
 				}
 			}
-			thanosGroup.SetPartitionInfo(&metadata.PartitionInfo{
-				PartitionedGroupID: partitionedGroupID,
-				PartitionCount:     partitionCount,
-				PartitionID:        partitionID,
+			thanosGroup.SetExtensions(&CortexMetaExtensions{
+				PartitionInfo: &PartitionInfo{
+					PartitionedGroupID: partitionedGroupID,
+					PartitionCount:     partitionCount,
+					PartitionID:        partitionID,
+				},
 			})
 
 			outGroups = append(outGroups, thanosGroup)
@@ -436,11 +438,14 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 			// Case that number of blocks in this time interval is 2^n, should
 			// use modulo calculation to find blocks for each partition ID.
 			for _, block := range blocksInSameTimeInterval {
-				partitionInfo := block.Thanos.PartitionInfo
+				partitionInfo, err := GetPartitionInfo(*block)
+				if err != nil {
+					return nil, err
+				}
 				if partitionInfo == nil {
 					// For legacy blocks with level > 1, treat PartitionID is always 0.
 					// So it can be included in every partition.
-					partitionInfo = &metadata.PartitionInfo{
+					partitionInfo = &PartitionInfo{
 						PartitionID: 0,
 					}
 				}
@@ -525,11 +530,11 @@ func createBlocksGroup(blocks map[ulid.ULID]*metadata.Meta, blockIDs []ulid.ULID
 	group.rangeStart = rangeStart
 	group.rangeEnd = rangeEnd
 	for _, blockID := range blockIDs {
-		if m, ok := blocks[blockID]; !ok {
-			return nil, errors.New(fmt.Sprintf("block not found: %s", blockID))
-		} else {
-			group.blocks = append(group.blocks, m)
+		m, ok := blocks[blockID]
+		if !ok {
+			return nil, fmt.Errorf("block not found: %s", blockID)
 		}
+		group.blocks = append(group.blocks, m)
 	}
 	return &group, nil
 }
@@ -631,18 +636,18 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 				}
 			}
 
-			firstBlockPartitionInfo := group.blocks[0].Thanos.PartitionInfo
-			if firstBlockPartitionInfo == nil {
-				firstBlockPartitionInfo = &metadata.PartitionInfo{
+			firstBlockPartitionInfo, err := GetPartitionInfo(*group.blocks[0])
+			if err != nil || firstBlockPartitionInfo == nil {
+				firstBlockPartitionInfo = &PartitionInfo{
 					PartitionedGroupID: 0,
 					PartitionCount:     1,
 					PartitionID:        0,
 				}
 			}
 			for _, block := range group.blocks {
-				blockPartitionInfo := block.Thanos.PartitionInfo
-				if blockPartitionInfo == nil {
-					blockPartitionInfo = &metadata.PartitionInfo{
+				blockPartitionInfo, err := GetPartitionInfo(*block)
+				if err != nil || blockPartitionInfo == nil {
+					blockPartitionInfo = &PartitionInfo{
 						PartitionedGroupID: 0,
 						PartitionCount:     1,
 						PartitionID:        0,

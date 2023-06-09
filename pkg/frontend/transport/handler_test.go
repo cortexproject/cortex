@@ -34,6 +34,7 @@ func TestWriteError(t *testing.T) {
 		{StatusClientClosedRequest, context.Canceled},
 		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, "")},
 		{http.StatusRequestEntityTooLarge, errors.New("http: request body too large")},
+		{http.StatusBadRequest, errors.New("invalid semicolon separator in query")},
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()

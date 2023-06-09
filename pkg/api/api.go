@@ -3,9 +3,7 @@ package api
 import (
 	"context"
 	"flag"
-	"fmt"
 	"net/http"
-	"os"
 	"path"
 	"strings"
 
@@ -86,7 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AlertmanagerHTTPPrefix, prefix+"http.alertmanager-http-prefix", "/alertmanager", "HTTP URL path under which the Alertmanager ui and api will be served.")
 	f.StringVar(&cfg.PrometheusHTTPPrefix, prefix+"http.prometheus-http-prefix", "/prometheus", "HTTP URL path under which the Prometheus api will be served.")
-	f.StringVar(&cfg.corsRegexString, prefix+"server.cors-origin", ".*", "Access-Control-Allow-Origin response header.")
+	f.StringVar(&cfg.corsRegexString, prefix+"server.cors-origin", ".*", "Access-Control-Allow-Origin response header. Regex anchors are not added by default.")
 }
 
 // Push either wraps the distributor push function as configured or returns the distributor push directly.
@@ -132,6 +130,11 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 		}
 	}
 
+	CORSOrigin, err := compileCORSRegexString(cfg.corsRegexString)
+	if err != nil {
+		return nil, err
+	}
+
 	api := &API{
 		cfg:            cfg,
 		AuthMiddleware: cfg.HTTPAuthMiddleware,
@@ -139,6 +142,7 @@ func New(cfg Config, serverCfg server.Config, s *server.Server, logger log.Logge
 		logger:         logger,
 		sourceIPs:      sourceIPs,
 		indexPage:      newIndexPageContent(),
+		CORSOrigin:     CORSOrigin,
 	}
 
 	// If no authentication middleware is present in the config, use the default authentication middleware.
@@ -386,13 +390,6 @@ func (a *API) RegisterQueryable(
 // RegisterQueryAPI registers the Prometheus API routes with the provided handler.
 func (a *API) RegisterQueryAPI(handler http.Handler) {
 	infoHandler := &buildInfoHandler{logger: a.logger}
-
-	var err error
-	a.CORSOrigin, err = compileCORSRegexString(a.cfg.corsRegexString)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, fmt.Errorf("could not compile CORS regex string %q: %w", a.cfg.corsRegexString, err))
-		os.Exit(2)
-	}
 
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		httputil.SetCORS(w, a.CORSOrigin, r)

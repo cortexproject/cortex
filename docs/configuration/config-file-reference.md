@@ -86,7 +86,8 @@ api:
   # CLI flag: -api.http-request-headers-to-log
   [http_request_headers_to_log: <list of string> | default = []]
 
-  # Access-Control-Allow-Origin response header.
+  # Regex for CORS origin. It is fully anchored. Example:
+  # 'https?://(domain1|domain2)\.com'
   # CLI flag: -server.cors-origin
   [cors_origin: <string> | default = ".*"]
 

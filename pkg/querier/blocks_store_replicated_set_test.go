@@ -43,7 +43,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 
 	tests := map[string]struct {
 		shardingStrategy  string
-		tenantShardSize   int
+		tenantShardSize   float64
 		replicationFactor int
 		setup             func(*ring.Desc)
 		queryBlocks       []ulid.ULID

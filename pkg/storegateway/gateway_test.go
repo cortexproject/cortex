@@ -241,7 +241,7 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 
 	tests := map[string]struct {
 		shardingStrategy     string
-		tenantShardSize      int // Used only when the sharding strategy is shuffle-sharding.
+		tenantShardSize      float64 // Used only when the sharding strategy is shuffle-sharding.
 		replicationFactor    int
 		numGateways          int
 		expectedBlocksLoaded int
@@ -287,6 +287,13 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 		"shuffle sharding strategy, 20 gateways, RF = 3, SS = 3": {
 			shardingStrategy:     util.ShardingStrategyShuffle,
 			tenantShardSize:      3,
+			replicationFactor:    3,
+			numGateways:          20,
+			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
+		},
+		"shuffle sharding strategy, 20 gateways, RF = 3, SS = 0.5": {
+			shardingStrategy:     util.ShardingStrategyShuffle,
+			tenantShardSize:      0.5,
 			replicationFactor:    3,
 			numGateways:          20,
 			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
@@ -361,8 +368,9 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 				assert.Equal(t, float64(2*testData.numGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
 
 				if testData.shardingStrategy == util.ShardingStrategyShuffle {
-					assert.Equal(t, float64(testData.tenantShardSize*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
-					assert.Equal(t, float64(testData.tenantShardSize*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
+					shards := util.DynamicShardSize(testData.tenantShardSize, testData.numGateways)
+					assert.Equal(t, float64(shards*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
+					assert.Equal(t, float64(shards*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
 				} else {
 					assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
 					assert.Equal(t, float64(testData.numGateways*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))

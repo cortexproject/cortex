@@ -39,7 +39,6 @@ var (
 	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
-	errInvalidURLQueryParams = httpgrpc.Errorf(http.StatusBadRequest, "http: invalid url query params")
 )
 
 const (
@@ -188,7 +187,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Exclude remote read here as we don't have to buffer its body.
 	if !strings.Contains(r.URL.Path, "api/v1/read") {
 		if err := r.ParseForm(); err != nil {
-			writeError(w, err)
+			if util.IsRequestBodyTooLarge(err) {
+				err = errRequestEntityTooLarge
+			} else {
+				err = httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			}
+			server.WriteError(w, err)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
 				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID).Inc()
 			}
@@ -413,8 +417,6 @@ func writeError(w http.ResponseWriter, err error) {
 	default:
 		if util.IsRequestBodyTooLarge(err) {
 			err = errRequestEntityTooLarge
-		} else if util.IsRequestURLParamsInvalid(err) {
-			err = errInvalidURLQueryParams
 		}
 	}
 	server.WriteError(w, err)

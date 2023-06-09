@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -1137,14 +1136,7 @@ func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int
 }
 
 func generateSortedTokens(numTokens int) ring.Tokens {
-	tokens := ring.GenerateTokens(numTokens, nil)
-
-	// Ensure generated tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
-
-	return ring.Tokens(tokens)
+	return ring.GenerateTokens(numTokens, nil, true)
 }
 
 func readSamplesFromChunks(rawChunks []storepb.AggrChunk) ([]sample, error) {

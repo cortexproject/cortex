@@ -1040,7 +1040,7 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 			name:          "with an instance already in the ring with ACTIVE state and all tokens",
 			existing:      true,
 			initialState:  ring.ACTIVE,
-			initialTokens: ring.GenerateTokens(128, nil),
+			initialTokens: ring.GenerateTokens(128, nil, true),
 		},
 		{
 			name:          "with an instance already in the ring with LEAVING state and all tokens",
@@ -1521,7 +1521,7 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 
 	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "127.0.0.1", "", ring.GenerateTokens(RingNumTokens, nil), ring.ACTIVE, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "127.0.0.1", "", ring.GenerateTokens(RingNumTokens, nil, true), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 

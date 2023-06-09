@@ -14,7 +14,7 @@ func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.De
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(r.cfg.Ring.NumTokens-len(tokens), takenTokens)
+	newTokens := ring.GenerateTokens(r.cfg.Ring.NumTokens-len(tokens), takenTokens, false)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

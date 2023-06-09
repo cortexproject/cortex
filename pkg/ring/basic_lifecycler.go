@@ -348,7 +348,7 @@ func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 		needTokens := l.cfg.NumTokens - len(actualTokens)
 
 		level.Info(l.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", l.ringName)
-		newTokens := GenerateTokens(needTokens, takenTokens)
+		newTokens := GenerateTokens(needTokens, takenTokens, false)
 
 		actualTokens = append(actualTokens, newTokens...)
 		sort.Sort(actualTokens)

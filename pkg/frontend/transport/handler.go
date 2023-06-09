@@ -46,6 +46,7 @@ var (
 	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
+	errInvalidURLQueryParams = httpgrpc.Errorf(http.StatusBadRequest, "http: invalid url query params")
 )
 
 const (
@@ -505,6 +506,8 @@ func writeError(w http.ResponseWriter, err error) {
 	default:
 		if util.IsRequestBodyTooLarge(err) {
 			err = errRequestEntityTooLarge
+		} else if util.IsRequestURLParamsInvalid(err) {
+			err = errInvalidURLQueryParams
 		}
 	}
 	server.WriteError(w, err)

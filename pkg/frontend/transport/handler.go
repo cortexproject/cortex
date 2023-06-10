@@ -187,12 +187,11 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Exclude remote read here as we don't have to buffer its body.
 	if !strings.Contains(r.URL.Path, "api/v1/read") {
 		if err := r.ParseForm(); err != nil {
+			statusCode := http.StatusBadRequest
 			if util.IsRequestBodyTooLarge(err) {
-				err = errRequestEntityTooLarge
-			} else {
-				err = httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				statusCode = http.StatusRequestEntityTooLarge
 			}
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(w, err.Error(), statusCode)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
 				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID).Inc()
 			}

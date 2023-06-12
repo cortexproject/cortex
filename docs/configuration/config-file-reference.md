@@ -86,6 +86,11 @@ api:
   # CLI flag: -api.http-request-headers-to-log
   [http_request_headers_to_log: <list of string> | default = []]
 
+  # Regex for CORS origin. It is fully anchored. Example:
+  # 'https?://(domain1|domain2)\.com'
+  # CLI flag: -server.cors-origin
+  [cors_origin: <string> | default = ".*"]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]

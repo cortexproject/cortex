@@ -1,5 +1,85 @@
 # Release History
 
+## 1.0.0 (2023-02-07)
+
+### Features Added
+
+* Add support to log calculated block size and count during uploads
+* Added MissingSharedKeyCredential error type for cleaner UX. Related to [#19864](https://github.com/Azure/azure-sdk-for-go/issues/19864).
+
+### Breaking Changes
+
+* Changed API signatures to map correctly to Azure Storage REST APIs, These changes impact:
+  * `blob.GetSASURL()`
+  * `blockblob.StageBlockFromURL()`
+  * `container.SetAccessPolicy()`
+  * `container.GetSASURL()`
+  * `service.GetSASURL()`
+  * `service.FilterBlobs()`
+  * `lease.AcquireLease()` (blobs and containers)
+  * `lease.ChangeLease()` (blobs and containers)
+* Type name changes:
+  * `CpkInfo` -> `CPKInfo`
+  * `CpkScopeInfo` -> `CPKScopeInfo`
+  * `RuleId` -> `RuleID`
+  * `PolicyId` -> `PolicyID`
+  * `CorsRule` -> `CORSRule`
+* Remove `AccountServices` it is now hardcoded to blobs
+
+### Bugs Fixed
+
+* Fixed encoding issues seen in FilterBlobs. Fixes [#17421](https://github.com/Azure/azure-sdk-for-go/issues/17421).
+* Fixing inconsistency seen with Metadata and ORS response. Fixes [#19688](https://github.com/Azure/azure-sdk-for-go/issues/19688).
+* Fixed endless loop during pagination issue [#19773](https://github.com/Azure/azure-sdk-for-go/pull/19773).
+
+### Other Changes
+
+* Exported some missing types in the `blob`, `container` and `service` packages. Fixes [#19775](https://github.com/Azure/azure-sdk-for-go/issues/19775).
+* SAS changes [#19781](https://github.com/Azure/azure-sdk-for-go/pull/19781):
+  * AccountSASPermissions: SetImmutabilityPolicy support
+  * ContainerSASPermissions: Move support
+  * Validations to ensure correct sas perm ordering
+
+## 0.6.1 (2022-12-09)
+
+### Bugs Fixed
+
+* Fix compilation error on Darwin.
+
+## 0.6.0 (2022-12-08)
+
+### Features Added
+
+* Added BlobDeleteType to DeleteOptions to allow access to ['Permanent'](https://learn.microsoft.com/rest/api/storageservices/delete-blob#permanent-delete) DeleteType.
+* Added [Set Blob Expiry API](https://learn.microsoft.com/rest/api/storageservices/set-blob-expiry).
+* Added method `ServiceClient()` to the `azblob.Client` type, allowing access to the underlying service client.
+* Added support for object level immutability policy with versioning (Version Level WORM).
+* Added the custom CRC64 polynomial used by storage for transactional hashes, and implemented automatic hashing for transactions.
+
+### Breaking Changes
+
+* Corrected the name for `saoid` and `suoid` SAS parameters in `BlobSignatureValues` struct as per [this](https://learn.microsoft.com/rest/api/storageservices/create-user-delegation-sas#construct-a-user-delegation-sas)
+* Updated type of `BlockSize` from int to int64 in `UploadStreamOptions`
+* CRC64 transactional hashes are now supplied with a `uint64` rather than a `[]byte` to conform with Golang's `hash/crc64` package
+* Field `XMSContentCRC64` has been renamed to `ContentCRC64`
+* The `Lease*` constant types and values in the `blob` and `container` packages have been moved to the `lease` package and their names fixed up to avoid stuttering.
+* Fields `TransactionalContentCRC64` and `TransactionalContentMD5` have been replaced by `TransactionalValidation`.
+* Fields `SourceContentCRC64` and `SourceContentMD5` have been replaced by `SourceContentValidation`.
+* Field `TransactionalContentMD5` has been removed from type `AppendBlockFromURLOptions`.
+
+### Bugs Fixed
+
+* Corrected signing of User Delegation SAS. Fixes [#19372](https://github.com/Azure/azure-sdk-for-go/issues/19372) and [#19454](https://github.com/Azure/azure-sdk-for-go/issues/19454)
+* Added formatting of start and expiry time in [SetAccessPolicy](https://learn.microsoft.com/rest/api/storageservices/set-container-acl#request-body). Fixes [#18712](https://github.com/Azure/azure-sdk-for-go/issues/18712)
+* Uploading block blobs larger than 256MB can fail in some cases with error `net/http: HTTP/1.x transport connection broken`.
+* Blob name parameters are URL-encoded before constructing the complete blob URL.
+
+### Other Changes
+
+* Added some missing public surface area in the `container` and `service` packages.
+* The `UploadStream()` methods now use anonymous memory mapped files for buffers in order to reduce heap allocations/fragmentation.
+  * The anonymous memory mapped files are typically backed by the page/swap file, multiple files are not actually created.
+
 ## 0.5.1 (2022-10-11)
 
 ### Bugs Fixed

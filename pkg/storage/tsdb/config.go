@@ -265,6 +265,8 @@ type BucketStoreConfig struct {
 	// The config option is hidden until experimental.
 	PartitionerMaxGapBytes uint64 `yaml:"partitioner_max_gap_bytes" doc:"hidden"`
 
+	// Controls the estimated size to fetch for series and chunk in Store Gateway. Using
+	// a large value might cause data overfetch while a small value might need to refetch.
 	EstimatedMaxSeriesSizeBytes uint64 `yaml:"estimated_max_series_size_bytes" doc:"hidden"`
 	EstimatedMaxChunkSizeBytes  uint64 `yaml:"estimated_max_chunk_size_bytes" doc:"hidden"`
 

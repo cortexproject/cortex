@@ -863,7 +863,7 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.31.1-0.20230612190217-a0b37fd280cb
+# github.com/thanos-io/thanos v0.31.1-0.20230613074926-0651f3343245
 ## explicit; go 1.18
 github.com/thanos-io/thanos/internal/cortex/chunk/cache
 github.com/thanos-io/thanos/internal/cortex/cortexpb

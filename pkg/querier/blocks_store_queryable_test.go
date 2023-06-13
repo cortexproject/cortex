@@ -1558,14 +1558,14 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 
 type blocksStoreLimitsMock struct {
 	maxChunksPerQuery           int
-	storeGatewayTenantShardSize int
+	storeGatewayTenantShardSize float64
 }
 
 func (m *blocksStoreLimitsMock) MaxChunksPerQueryFromStore(_ string) int {
 	return m.maxChunksPerQuery
 }
 
-func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) int {
+func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) float64 {
 	return m.storeGatewayTenantShardSize
 }
 

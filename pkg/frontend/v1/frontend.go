@@ -43,18 +43,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
+	MaxQueriersPerUser(user string) float64
 
 	queue.Limits
 }
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	Queriers int
+	Queriers float64
 	queue.MockLimits
 }
 
-func (l MockLimits) MaxQueriersPerUser(_ string) int {
+func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
 	return l.Queriers
 }
 
@@ -338,7 +338,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
+	maxQueriers := validation.SmallestPositiveNonZeroFloat64PerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
 
 	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)

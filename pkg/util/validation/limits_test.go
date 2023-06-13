@@ -262,7 +262,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	}
 }
 
-func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
+func TestSmallestPositiveNonZeroFloat64PerTenant(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
 			MaxQueriersPerTenant: 5,
@@ -280,7 +280,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 
 	for _, tc := range []struct {
 		tenantIDs []string
-		expLimit  int
+		expLimit  float64
 	}{
 		{tenantIDs: []string{}, expLimit: 0},
 		{tenantIDs: []string{"tenant-a"}, expLimit: 5},
@@ -290,7 +290,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 		{tenantIDs: []string{"tenant-c", "tenant-d", "tenant-e"}, expLimit: 0},
 		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: 5},
 	} {
-		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroIntPerTenant(tc.tenantIDs, ov.MaxQueriersPerUser))
+		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroFloat64PerTenant(tc.tenantIDs, ov.MaxQueriersPerUser))
 	}
 }
 

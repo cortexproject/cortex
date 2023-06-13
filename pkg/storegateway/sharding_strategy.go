@@ -12,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -32,7 +33,7 @@ type ShardingStrategy interface {
 // ShardingLimits is the interface that should be implemented by the limits provider,
 // limiting the scope of the limits to the ones required by sharding strategies.
 type ShardingLimits interface {
-	StoreGatewayTenantShardSize(userID string) int
+	StoreGatewayTenantShardSize(userID string) float64
 }
 
 // NoShardingStrategy is a no-op strategy. When this strategy is used, no tenant/block is filtered out.
@@ -173,7 +174,7 @@ func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[
 // GetShuffleShardingSubring returns the subring to be used for a given user. This function
 // should be used both by store-gateway and querier in order to guarantee the same logic is used.
 func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLimits) ring.ReadRing {
-	shardSize := limits.StoreGatewayTenantShardSize(userID)
+	shardSize := util.DynamicShardSize(limits.StoreGatewayTenantShardSize(userID), ring.InstancesCount())
 
 	// A shard size of 0 means shuffle sharding is disabled for this specific user,
 	// so we just return the full ring so that blocks will be sharded across all store-gateways.

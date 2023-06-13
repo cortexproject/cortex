@@ -2943,13 +2943,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
-# will handle requests for the tenant. Each frontend (or query-scheduler, if
-# used) will select the same set of queriers for the same tenant (given that all
-# queriers are connected to all frontends / query-schedulers). This option only
-# works with queriers connecting to the query-frontend / query-scheduler, not
-# when using downstream URL.
+# will handle requests for the tenant. If the value is < 1, it will be treated
+# as a percentage and the gets a percentage of the total queriers. Each frontend
+# (or query-scheduler, if used) will select the same set of queriers for the
+# same tenant (given that all queriers are connected to all frontends /
+# query-schedulers). This option only works with queriers connecting to the
+# query-frontend / query-scheduler, not when using downstream URL.
 # CLI flag: -frontend.max-queriers-per-tenant
-[max_queriers_per_tenant: <int> | default = 0]
+[max_queriers_per_tenant: <float> | default = 0]
 
 # Maximum number of outstanding requests per tenant per request queue (either
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
@@ -2978,9 +2979,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # The default tenant's shard size when the shuffle-sharding strategy is used.
 # Must be set when the store-gateway sharding is enabled with the
 # shuffle-sharding strategy. When this setting is specified in the per-tenant
-# overrides, a value of 0 disables shuffle sharding for the tenant.
+# overrides, a value of 0 disables shuffle sharding for the tenant. If the value
+# is < 1 the shard size will be a percentage of the total store-gateways.
 # CLI flag: -store-gateway.tenant-shard-size
-[store_gateway_tenant_shard_size: <int> | default = 0]
+[store_gateway_tenant_shard_size: <float> | default = 0]
 
 # The maximum number of data bytes to download per gRPC request in Store
 # Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.

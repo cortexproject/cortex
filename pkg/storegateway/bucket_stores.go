@@ -66,6 +66,9 @@ type BucketStores struct {
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
 
+	// List of users assigned to the BucketStores
+	userIDs []string
+
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
@@ -140,7 +143,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, true, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -152,13 +155,13 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 }
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
-func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+func (u *BucketStores) SyncBlocks(ctx context.Context, shouldUpdateUserList bool) error {
+	return u.syncUsersBlocksWithRetries(ctx, shouldUpdateUserList, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
 	})
 }
 
-func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, shouldUpdateUserList bool, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -167,7 +170,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 
 	var lastErr error
 	for retries.Ongoing() {
-		lastErr = u.syncUsersBlocks(ctx, f)
+		lastErr = u.syncUsersBlocks(ctx, shouldUpdateUserList, f)
 		if lastErr == nil {
 			return nil
 		}
@@ -182,7 +185,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 	return lastErr
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, shouldUpdateUserList bool, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
 		if returnErr == nil {
@@ -203,17 +206,22 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	// Scan users in the bucket. In case of error, it may return a subset of users. If we sync a subset of users
 	// during a periodic sync, we may end up unloading blocks for users that still belong to this store-gateway
 	// so we do prefer to not run the sync at all.
-	userIDs, err := u.scanUsers(ctx)
+	scannedUserIDs, err := u.scanUsers(ctx)
 	if err != nil {
 		return err
 	}
 
 	includeUserIDs := make(map[string]struct{})
-	for _, userID := range u.shardingStrategy.FilterUsers(ctx, userIDs) {
+
+	if shouldUpdateUserList {
+		u.userIDs = u.shardingStrategy.FilterUsers(ctx, scannedUserIDs)
+	}
+
+	for _, userID := range u.userIDs {
 		includeUserIDs[userID] = struct{}{}
 	}
 
-	u.tenantsDiscovered.Set(float64(len(userIDs)))
+	u.tenantsDiscovered.Set(float64(len(scannedUserIDs)))
 	u.tenantsSynced.Set(float64(len(includeUserIDs)))
 
 	// Create a pool of workers which will synchronize blocks. The pool size
@@ -236,7 +244,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	// Lazily create a bucket store for each new user found
 	// and submit a sync job for each user.
-	for _, userID := range userIDs {
+	for _, userID := range scannedUserIDs {
 		// If we don't have a store for the tenant yet, then we should skip it if it's not
 		// included in the store-gateway shard. If we already have it, we need to sync it
 		// anyway to make sure all its blocks are unloaded and metrics updated correctly

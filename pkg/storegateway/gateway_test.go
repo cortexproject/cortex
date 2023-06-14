@@ -763,6 +763,105 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 	}
 }
 
+func TestStoreGateway_syncStoresShouldWaitRingStability(t *testing.T) {
+	registeredAt := time.Now()
+	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
+
+	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
+	now := time.Now()
+	mockTSDB(t, path.Join(storageDir, "user-1"), 1, 12, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000)
+
+	gatewayCfg := mockGatewayConfig()
+	gatewayCfg.ShardingEnabled = true
+	gatewayCfg.ShardingRing.RingCheckPeriod = time.Hour          // Disable sync ticker
+	gatewayCfg.ShardingRing.WaitStabilityMinDuration = time.Hour // Make rings never stable
+	gatewayCfg.ShardingRing.WaitStabilityMaxDuration = 2 * time.Hour
+
+	storageCfg := mockStorageConfig(t)
+	storageCfg.BucketStore.SyncInterval = time.Hour // Disable sync ticker
+
+	reg := prometheus.NewPedanticRegistry()
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	ctx := context.Background()
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+		ringDesc := ring.GetOrCreateRingDesc(in)
+		ringDesc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+		return ringDesc, true, nil
+	}))
+
+	syncCtx, cancelCtx := context.WithTimeout(ctx, 3*time.Second)
+	g.syncStores(syncCtx, "test", true)
+	cancelCtx()
+
+	// No blocks should be synced
+	regs := util.NewUserRegistries()
+	regs.AddUserRegistry("test", reg)
+	metrics := regs.BuildMetricFamiliesPerUser()
+	assert.Equal(t, float64(0), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
+}
+
+func TestStoreGateway_PeriodicSyncShouldNotUpdateUserList(t *testing.T) {
+	registeredAt := time.Now()
+	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
+
+	// This tests uses real TSDB blocks. 24h time range, 2h block range period
+	now := time.Now()
+	mockTSDB(t, path.Join(storageDir, "user-1"), 1, 12, now.Add(-24*time.Hour).Unix()*1000, now.Unix()*1000)
+
+	ctx := context.Background()
+	gatewayCfg := mockGatewayConfig()
+	gatewayCfg.ShardingEnabled = true
+	gatewayCfg.ShardingRing.RingCheckPeriod = time.Hour // Do not trigger the ring change sync in this test.
+
+	storageCfg := mockStorageConfig(t)
+	storageCfg.BucketStore.SyncInterval = 100 * time.Millisecond
+
+	reg := prometheus.NewPedanticRegistry()
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
+		ringDesc := ring.GetOrCreateRingDesc(in)
+		ringDesc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+		return ringDesc, true, nil
+	}))
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
+	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
+
+	// Assert on the initial state.
+	regs := util.NewUserRegistries()
+	regs.AddUserRegistry("test", reg)
+	metrics := regs.BuildMetricFamiliesPerUser()
+	assert.Equal(t, float64(12), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
+
+	// Add more blocks, and extra user
+	mockTSDB(t, path.Join(storageDir, "user-1"), 1, 3, now.Unix()*1000, now.Add(6*time.Hour).Unix()*1000)
+	mockTSDB(t, path.Join(storageDir, "user-2"), 1, 3, now.Unix()*1000, now.Add(6*time.Hour).Unix()*1000)
+
+	// Verify only user-1 blocks are synced
+	time.Sleep(time.Second)
+	metrics = regs.BuildMetricFamiliesPerUser()
+	assert.Equal(t, float64(12+3), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
+
+	// Force update user list
+	g.syncStores(ctx, "test", true)
+	g.waitRingStability(ctx)
+
+	// Verify user-2 blocks are also synced
+	time.Sleep(time.Second)
+	metrics = regs.BuildMetricFamiliesPerUser()
+	assert.Equal(t, float64(12+3+3), metrics.GetSumOfGauges("cortex_bucket_store_blocks_loaded"))
+}
+
 func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	const unhealthyInstanceID = "unhealthy-id"
 	const heartbeatTimeout = time.Minute

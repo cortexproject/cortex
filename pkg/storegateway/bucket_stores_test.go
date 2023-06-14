@@ -209,7 +209,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 
 	// Generate another block and sync blocks again.
 	generateStorageBlock(t, storageDir, userID, metricName, 100, 200, 15)
-	require.NoError(t, stores.SyncBlocks(ctx))
+	require.NoError(t, stores.SyncBlocks(ctx, false))
 
 	seriesSet, warnings, err = querySeries(stores, userID, metricName, 150, 180)
 	require.NoError(t, err)
@@ -252,12 +252,14 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	allUsers := []string{"user-1", "user-2", "user-3"}
 
 	tests := map[string]struct {
-		shardingStrategy ShardingStrategy
-		expectedStores   int32
+		shardingStrategy     ShardingStrategy
+		expectedStores       int32
+		shouldUpdateUserList bool
 	}{
 		"when sharding is disabled all users should be synced": {
-			shardingStrategy: NewNoShardingStrategy(),
-			expectedStores:   3,
+			shardingStrategy:     NewNoShardingStrategy(),
+			expectedStores:       3,
+			shouldUpdateUserList: true,
 		},
 		"when sharding is enabled only stores for filtered users should be created": {
 			shardingStrategy: func() ShardingStrategy {
@@ -265,7 +267,17 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 				s.On("FilterUsers", mock.Anything, allUsers).Return([]string{"user-1", "user-2"})
 				return s
 			}(),
-			expectedStores: 2,
+			expectedStores:       2,
+			shouldUpdateUserList: true,
+		},
+		"should not sync any blocks if shouldUpdateUserList was never true": {
+			shardingStrategy: func() ShardingStrategy {
+				s := &mockShardingStrategy{}
+				s.On("FilterUsers", mock.Anything, allUsers).Return([]string{"user-1", "user-2"})
+				return s
+			}(),
+			expectedStores:       0,
+			shouldUpdateUserList: false,
 		},
 	}
 
@@ -282,7 +294,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			// Sync user stores and count the number of times the callback is called.
 			var storesCount atomic.Int32
-			err = stores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
+			err = stores.syncUsersBlocks(context.Background(), testData.shouldUpdateUserList, func(ctx context.Context, bs *store.BucketStore) error {
 				storesCount.Inc()
 				return nil
 			})
@@ -493,7 +505,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 
 	// Single user left in shard.
 	sharding.users = []string{user1}
-	require.NoError(t, stores.SyncBlocks(ctx))
+	require.NoError(t, stores.SyncBlocks(ctx, true))
 	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -510,7 +522,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 
 	// No users left in this shard.
 	sharding.users = nil
-	require.NoError(t, stores.SyncBlocks(ctx))
+	require.NoError(t, stores.SyncBlocks(ctx, true))
 	require.Equal(t, []string(nil), getUsersInDir(t, cfg.BucketStore.SyncDir))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -524,7 +536,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 
 	// We can always get user back.
 	sharding.users = []string{user1}
-	require.NoError(t, stores.SyncBlocks(ctx))
+	require.NoError(t, stores.SyncBlocks(ctx, true))
 	require.Equal(t, []string{user1}, getUsersInDir(t, cfg.BucketStore.SyncDir))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`

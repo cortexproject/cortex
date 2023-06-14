@@ -354,7 +354,7 @@ func (g *StoreGateway) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc 
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(RingNumTokens-len(tokens), takenTokens, false)
+	newTokens := ring.GenerateTokens(RingNumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

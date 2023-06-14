@@ -22,7 +22,7 @@
 * [ENHANCEMENT] Improving Performance on the API Gzip Handler. #5347
 * [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
 * [ENHANCEMENT] Emit querier `max_concurrent` as a metric. #5362
-* [ENHANCEMENT] Avoid sort calls on GenerateTokens. #5394
+* [ENHANCEMENT] Avoid sort tokens on lifecycler autoJoin. #5394
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293

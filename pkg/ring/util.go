@@ -16,8 +16,8 @@ import (
 )
 
 // GenerateTokens make numTokens unique random tokens, none of which clash
-// with takenTokens.
-func GenerateTokens(numTokens int, takenTokens []uint32, sortTokens bool) []uint32 {
+// with takenTokens. Generated tokens are sorted.
+func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
 	if numTokens <= 0 {
 		return []uint32{}
 	}
@@ -40,12 +40,10 @@ func GenerateTokens(numTokens int, takenTokens []uint32, sortTokens bool) []uint
 		i++
 	}
 
-	if sortTokens {
-		// Ensure returned tokens are sorted.
-		sort.Slice(tokens, func(i, j int) bool {
-			return tokens[i] < tokens[j]
-		})
-	}
+	// Ensure returned tokens are sorted.
+	sort.Slice(tokens, func(i, j int) bool {
+		return tokens[i] < tokens[j]
+	})
 
 	return tokens
 }

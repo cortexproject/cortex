@@ -681,7 +681,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			needTokens := i.cfg.NumTokens - len(ringTokens)
 
 			level.Info(i.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", i.RingName)
-			newTokens := GenerateTokens(needTokens, takenTokens, false)
+			newTokens := GenerateTokens(needTokens, takenTokens)
 
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(ringTokens)
@@ -748,7 +748,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 			return ringDesc, true, nil
 		}
 
-		newTokens := GenerateTokens(needTokens, takenTokens, false)
+		newTokens := GenerateTokens(needTokens, takenTokens)
 
 		myTokens = append(myTokens, newTokens...)
 		sort.Sort(myTokens)

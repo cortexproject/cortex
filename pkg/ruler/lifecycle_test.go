@@ -75,7 +75,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(config.Ring.NumTokens), ring.ACTIVE, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", ring.GenerateTokens(config.Ring.NumTokens, nil), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 
@@ -92,10 +92,6 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 		_, ok := ring.GetOrCreateRingDesc(d).Ingesters[unhealthyInstanceID]
 		return ok
 	})
-}
-
-func generateSortedTokens(numTokens int) ring.Tokens {
-	return ring.GenerateTokens(numTokens, nil, true)
 }
 
 // numTokens determines the number of tokens owned by the specified

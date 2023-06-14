@@ -53,7 +53,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/thanos-io/promql-engine v0.0.0-20230526105742-791d78b260ea
-	github.com/thanos-io/thanos v0.31.1-0.20230613074926-0651f3343245
+	github.com/thanos-io/thanos v0.31.1-0.20230614124517-ab10d61b0662
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20221201103051-7c2720a9024d
 	go.etcd.io/etcd/api/v3 v3.5.8
@@ -255,3 +255,5 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
+
+replace github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20230613161054-ac0ec780f192

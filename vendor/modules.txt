@@ -863,20 +863,8 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.31.1-0.20230613074926-0651f3343245
+# github.com/thanos-io/thanos v0.31.1-0.20230614124517-ab10d61b0662 => github.com/yeya24/thanos v0.2.2-0.20230613161054-ac0ec780f192
 ## explicit; go 1.18
-github.com/thanos-io/thanos/internal/cortex/chunk/cache
-github.com/thanos-io/thanos/internal/cortex/cortexpb
-github.com/thanos-io/thanos/internal/cortex/querier
-github.com/thanos-io/thanos/internal/cortex/querier/queryrange
-github.com/thanos-io/thanos/internal/cortex/tenant
-github.com/thanos-io/thanos/internal/cortex/util
-github.com/thanos-io/thanos/internal/cortex/util/flagext
-github.com/thanos-io/thanos/internal/cortex/util/log
-github.com/thanos-io/thanos/internal/cortex/util/math
-github.com/thanos-io/thanos/internal/cortex/util/services
-github.com/thanos-io/thanos/internal/cortex/util/spanlogger
-github.com/thanos-io/thanos/internal/cortex/util/validation
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -1396,3 +1384,4 @@ sigs.k8s.io/yaml
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
+# github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20230613161054-ac0ec780f192

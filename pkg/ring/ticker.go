@@ -1,8 +1,6 @@
 package ring
 
-import (
-	"time"
-)
+import "time"
 
 // newDisableableTicker essentially wraps NewTicker but allows the ticker to be disabled by passing
 // zero duration as the interval. Returns a function for stopping the ticker, and the ticker channel.

@@ -201,7 +201,6 @@ func (l *BasicLifecycler) running(ctx context.Context) error {
 
 	for {
 		select {
-
 		case <-heartbeatTickerChan:
 			l.heartbeat(ctx)
 

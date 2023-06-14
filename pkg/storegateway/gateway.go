@@ -234,7 +234,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// different time and thus each one starts with a different state of the ring. It's better
 		// to just wait the ring stability for a short time.
 		if g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
-			g.waitRingStability(ctx)
+			g.waitRingStability(ctx, syncReasonInitial)
 		}
 	}
 
@@ -313,7 +313,7 @@ func (g *StoreGateway) stopping(_ error) error {
 
 func (g *StoreGateway) syncStores(ctx context.Context, reason string, shouldUpdateUserList bool) {
 	if g.gatewayCfg.ShardingEnabled && g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
-		g.waitRingStability(ctx)
+		g.waitRingStability(ctx, reason)
 	}
 
 	level.Info(g.logger).Log("msg", "synchronizing TSDB blocks for all users", "reason", reason)
@@ -363,15 +363,15 @@ func (g *StoreGateway) OnRingInstanceStopping(_ *ring.BasicLifecycler)          
 func (g *StoreGateway) OnRingInstanceHeartbeat(_ *ring.BasicLifecycler, _ *ring.Desc, _ *ring.InstanceDesc) {
 }
 
-func (g *StoreGateway) waitRingStability(ctx context.Context) {
+func (g *StoreGateway) waitRingStability(ctx context.Context, reason string) {
 	minWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMinDuration
 	maxWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMaxDuration
 
-	level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String())
+	level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String(), "reason", reason)
 	if err := ring.WaitRingStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
-		level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway")
+		level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway", "reason", reason)
 	} else {
-		level.Info(g.logger).Log("msg", "store-gateway ring topology is stable")
+		level.Info(g.logger).Log("msg", "store-gateway ring topology is stable", "reason", reason)
 	}
 }
 

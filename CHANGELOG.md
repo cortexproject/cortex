@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276
   - Validating new fields on the Webhook AM config, PushOver AM Config and Telegram AM Config.
   - filtering 5xx Errors in numTotalFailedNotifications metric.
@@ -13,6 +14,7 @@
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
 * [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
 * [FEATURE] Querier: Log query stats when querying store gateway. #5376
+* [FEATURE] Querier/StoreGateway: Allow the tenant shard sizes to be a percent of total instances. #5393
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
@@ -23,13 +25,15 @@
 * [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
 * [ENHANCEMENT] Emit querier `max_concurrent` as a metric. #5362
 * [ENHANCEMENT] Avoid sort tokens on lifecycler autoJoin. #5394
+* [ENHANCEMENT] Do not resync blocks in running store gateways during rollout deployment and container restart. #5363
+* [ENHANCEMENT] Store Gateway: Add new metrics `cortex_bucket_store_sent_chunk_size_bytes`, `cortex_bucket_store_postings_size_bytes` and `cortex_bucket_store_empty_postings_total`. #5397
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
 * [BUGFIX] Storage: Bucket index updater should ignore meta not found for partial blocks. #5343
 * [BUGFIX] Ring: Add JOINING state to read operation. #5346
 * [BUGFIX] Compactor: Partial block with only visit marker should be deleted even there is no deletion marker. #5342
-* [ENHANCEMENT] Do not resync blocks in running store gateways during rollout deployment and container restart. #5363
+* [BUGFIX] KV: Etcd calls will no longer block indefinitely and will now time out after the DialTimeout period. #5392
 
 ## 1.15.1 2023-04-26
 

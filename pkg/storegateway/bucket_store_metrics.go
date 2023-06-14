@@ -27,6 +27,9 @@ type BucketStoreMetrics struct {
 	seriesRefetches       *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
 	queriesDropped        *prometheus.Desc
+	chunkSizeBytes        *prometheus.Desc
+	postingsSizeBytes     *prometheus.Desc
+	emptyPostingCount     *prometheus.Desc
 
 	cachedPostingsCompressions           *prometheus.Desc
 	cachedPostingsCompressionErrors      *prometheus.Desc
@@ -109,6 +112,18 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_queries_dropped_total",
 			"Number of queries that were dropped due to the max chunks per query limit.",
 			nil, nil),
+		chunkSizeBytes: prometheus.NewDesc(
+			"cortex_bucket_store_sent_chunk_size_bytes",
+			"Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.",
+			nil, nil),
+		postingsSizeBytes: prometheus.NewDesc(
+			"cortex_bucket_store_postings_size_bytes",
+			"Size in bytes of the postings for a single series call.",
+			nil, nil),
+		emptyPostingCount: prometheus.NewDesc(
+			"cortex_bucket_store_empty_postings_total",
+			"Total number of empty postings when fetching block series.",
+			nil, nil),
 
 		cachedPostingsCompressions: prometheus.NewDesc(
 			"cortex_bucket_store_cached_postings_compressions_total",
@@ -187,6 +202,9 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesRefetches
 	out <- m.resultSeriesCount
 	out <- m.queriesDropped
+	out <- m.chunkSizeBytes
+	out <- m.postingsSizeBytes
+	out <- m.emptyPostingCount
 
 	out <- m.cachedPostingsCompressions
 	out <- m.cachedPostingsCompressionErrors
@@ -225,6 +243,9 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.seriesRefetches, "thanos_bucket_store_series_refetches_total")
 	data.SendSumOfHistograms(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
 	data.SendSumOfCounters(out, m.queriesDropped, "thanos_bucket_store_queries_dropped_total")
+	data.SendSumOfHistograms(out, m.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")
+	data.SendSumOfHistograms(out, m.postingsSizeBytes, "thanos_bucket_store_postings_size_bytes")
+	data.SendSumOfCounters(out, m.emptyPostingCount, "thanos_bucket_store_empty_postings_total")
 
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressions, "thanos_bucket_store_cached_postings_compressions_total", "op")
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressionErrors, "thanos_bucket_store_cached_postings_compression_errors_total", "op")

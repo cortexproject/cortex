@@ -357,7 +357,22 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_queries_dropped_total Number of queries that were dropped due to the max chunks per query limit.
 			# TYPE cortex_bucket_store_queries_dropped_total counter
 			cortex_bucket_store_queries_dropped_total 698089
-
+        	# HELP cortex_bucket_store_sent_chunk_size_bytes Size in bytes of the chunks for the single series, which is adequate to the gRPC message size sent to querier.
+        	# TYPE cortex_bucket_store_sent_chunk_size_bytes histogram
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="32"} 0
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="256"} 0
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="512"} 0
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="1024"} 0
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="32768"} 0
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="262144"} 7
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="524288"} 9
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="1.048576e+06"} 9
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="3.3554432e+07"} 9
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="2.68435456e+08"} 9
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="5.36870912e+08"} 9
+        	cortex_bucket_store_sent_chunk_size_bytes_bucket{le="+Inf"} 9
+        	cortex_bucket_store_sent_chunk_size_bytes_sum 1.57633e+06
+        	cortex_bucket_store_sent_chunk_size_bytes_count 9
 			# HELP cortex_bucket_store_cached_postings_compressions_total Number of postings compressions and decompressions when storing to index cache.
 			# TYPE cortex_bucket_store_cached_postings_compressions_total counter
 			cortex_bucket_store_cached_postings_compressions_total{op="encode"} 1125950
@@ -400,7 +415,9 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="+Inf"} 3
 			cortex_bucket_store_cached_series_fetch_duration_seconds_sum 1.306102e+06
 			cortex_bucket_store_cached_series_fetch_duration_seconds_count 3
-
+        	# HELP cortex_bucket_store_empty_postings_total Total number of empty postings when fetching block series.
+            # TYPE cortex_bucket_store_empty_postings_total counter
+        	cortex_bucket_store_empty_postings_total 112595
 			# HELP cortex_bucket_store_cached_postings_fetch_duration_seconds Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
 			# TYPE cortex_bucket_store_cached_postings_fetch_duration_seconds histogram
 			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.001"} 0
@@ -451,6 +468,22 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_indexheader_lazy_unload_total Total number of index-header lazy unload operations.
 			# TYPE cortex_bucket_store_indexheader_lazy_unload_total counter
 			cortex_bucket_store_indexheader_lazy_unload_total 1.396178e+06
+        	# HELP cortex_bucket_store_postings_size_bytes Size in bytes of the postings for a single series call.
+        	# TYPE cortex_bucket_store_postings_size_bytes histogram
+        	cortex_bucket_store_postings_size_bytes_bucket{le="32"} 0
+        	cortex_bucket_store_postings_size_bytes_bucket{le="256"} 0
+        	cortex_bucket_store_postings_size_bytes_bucket{le="512"} 0
+        	cortex_bucket_store_postings_size_bytes_bucket{le="1024"} 0
+        	cortex_bucket_store_postings_size_bytes_bucket{le="32768"} 0
+        	cortex_bucket_store_postings_size_bytes_bucket{le="262144"} 3
+        	cortex_bucket_store_postings_size_bytes_bucket{le="524288"} 3
+        	cortex_bucket_store_postings_size_bytes_bucket{le="1.048576e+06"} 3
+        	cortex_bucket_store_postings_size_bytes_bucket{le="3.3554432e+07"} 3
+        	cortex_bucket_store_postings_size_bytes_bucket{le="2.68435456e+08"} 3
+        	cortex_bucket_store_postings_size_bytes_bucket{le="5.36870912e+08"} 3
+        	cortex_bucket_store_postings_size_bytes_bucket{le="+Inf"} 3
+        	cortex_bucket_store_postings_size_bytes_sum 225190
+        	cortex_bucket_store_postings_size_bytes_count 3
 `))
 	require.NoError(t, err)
 }
@@ -534,6 +567,9 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.queriesDropped.WithLabelValues("chunks").Add(31 * base)
 	m.queriesDropped.WithLabelValues("series").Add(0)
 
+	m.postingsSizeBytes.Observe(10 * base)
+	m.chunkSizeBytes.Observe(11 * base)
+
 	m.seriesRefetches.Add(33 * base)
 
 	m.cachedPostingsCompressions.WithLabelValues("encode").Add(50 * base)
@@ -557,6 +593,8 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.indexHeaderLazyUnloadFailedCount.Add(63 * base)
 	m.indexHeaderLazyLoadDuration.Observe(0.65)
 
+	m.emptyPostingCount.Add(5 * base)
+
 	return reg
 }
 
@@ -577,7 +615,9 @@ type mockedBucketStoreMetrics struct {
 	seriesRefetches       prometheus.Counter
 	resultSeriesCount     prometheus.Histogram
 	chunkSizeBytes        prometheus.Histogram
+	postingsSizeBytes     prometheus.Histogram
 	queriesDropped        *prometheus.CounterVec
+	emptyPostingCount     prometheus.Counter
 
 	cachedPostingsCompressions           *prometheus.CounterVec
 	cachedPostingsCompressionErrors      *prometheus.CounterVec
@@ -670,6 +710,14 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		},
 	})
 
+	m.postingsSizeBytes = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name: "thanos_bucket_store_postings_size_bytes",
+		Help: "Size in bytes of the postings for a single series call.",
+		Buckets: []float64{
+			32, 256, 512, 1024, 32 * 1024, 256 * 1024, 512 * 1024, 1024 * 1024, 32 * 1024 * 1024, 256 * 1024 * 1024, 512 * 1024 * 1024,
+		},
+	})
+
 	m.queriesDropped = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_queries_dropped_total",
 		Help: "Number of queries that were dropped due to the limit.",
@@ -731,6 +779,11 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Name:    "thanos_bucket_store_indexheader_lazy_load_duration_seconds",
 		Help:    "Duration of the index-header lazy loading in seconds.",
 		Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5},
+	})
+
+	m.emptyPostingCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_empty_postings_total",
+		Help: "Total number of empty postings when fetching block series.",
 	})
 
 	return &m

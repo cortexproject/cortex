@@ -82,7 +82,7 @@ type Limits struct {
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
-	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
@@ -95,8 +95,8 @@ type Limits struct {
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 
 	// Store-gateway.
-	StoreGatewayTenantShardSize  int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
-	MaxDownloadedBytesPerRequest int `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
+	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
+	MaxDownloadedBytesPerRequest int     `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
 
 	// Compactor.
 	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
@@ -168,7 +168,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
-	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
@@ -182,7 +182,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	// Store-gateway.
-	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
 	f.IntVar(&l.MaxDownloadedBytesPerRequest, "store-gateway.max-downloaded-bytes-per-request", 0, "The maximum number of data bytes to download per gRPC request in Store Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.")
 
 	// Alertmanager.
@@ -455,7 +455,7 @@ func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
-func (o *Overrides) MaxQueriersPerUser(userID string) int {
+func (o *Overrides) MaxQueriersPerUser(userID string) float64 {
 	return o.GetOverridesForUser(userID).MaxQueriersPerTenant
 }
 
@@ -547,7 +547,7 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
-func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
+func (o *Overrides) StoreGatewayTenantShardSize(userID string) float64 {
 	return o.GetOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
@@ -687,12 +687,12 @@ func SmallestPositiveIntPerTenant(tenantIDs []string, f func(string) int) int {
 	return *result
 }
 
-// SmallestPositiveNonZeroIntPerTenant is returning the minimal positive and
+// SmallestPositiveNonZeroFloat64PerTenant is returning the minimal positive and
 // non-zero value of the supplied limit function for all given tenants. In many
 // limits a value of 0 means unlimted so the method will return 0 only if all
 // inputs have a limit of 0 or an empty tenant list is given.
-func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int) int {
-	var result *int
+func SmallestPositiveNonZeroFloat64PerTenant(tenantIDs []string, f func(string) float64) float64 {
+	var result *float64
 	for _, tenantID := range tenantIDs {
 		v := f(tenantID)
 		if v > 0 && (result == nil || v < *result) {

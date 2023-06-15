@@ -241,12 +241,12 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
 				// Check the in-memory index cache metrics (in the store-gateway).
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(7), "thanos_store_index_cache_requests_total"))
+				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(12), "thanos_store_index_cache_requests_total"))
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*2), "thanos_store_index_cache_items"))             // 2 series both for postings and series cache
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*2), "thanos_store_index_cache_items_added_total")) // 2 series both for postings and series cache
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*3), "thanos_store_index_cache_items"))             // 2 series both for expanded postings, postings and series cache
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*3), "thanos_store_index_cache_items_added_total")) // 2 series both for expanded postings, postings and series cache
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(11), "thanos_memcached_operations_total")) // 7 gets + 4 sets
 				}
@@ -261,8 +261,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*2), "thanos_store_index_cache_items"))             // as before
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*2), "thanos_store_index_cache_items_added_total")) // as before
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*3), "thanos_store_index_cache_items"))             // as before
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2*3), "thanos_store_index_cache_items_added_total")) // as before
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(11+2), "thanos_memcached_operations_total")) // as before + 2 gets
 				}

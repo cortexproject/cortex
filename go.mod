@@ -255,5 +255,3 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
-
-replace github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20230613161054-ac0ec780f192

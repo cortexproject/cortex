@@ -4797,13 +4797,14 @@ sharding_ring:
   # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # Minimum time to wait for ring stability at startup. 0 to disable.
+  # Minimum time to wait for ring stability at startup and ring change. 0 to
+  # disable.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
   [wait_stability_min_duration: <duration> | default = 1m]
 
-  # Maximum time to wait for ring stability at startup. If the store-gateway
-  # ring keeps changing after this period of time, the store-gateway will start
-  # anyway.
+  # Maximum time to wait for ring stability at startup and ring change. If the
+  # store-gateway ring keeps changing after this period of time, the
+  # store-gateway will start or sync anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
 

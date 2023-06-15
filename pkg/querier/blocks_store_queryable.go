@@ -720,31 +720,36 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 
-			level.Info(spanLog).Log("msg", "store gateway series request stats",
-				"instance", c.RemoteAddress(),
-				"queryable_chunk_bytes_fetched", chunkBytes,
-				"queryable_data_bytes_fetched", dataBytes,
-				"blocks_queried", seriesQueryStats.BlocksQueried,
-				"series_merged_count", seriesQueryStats.MergedSeriesCount,
-				"chunks_merged_count", seriesQueryStats.MergedChunksCount,
-				"postings_touched", seriesQueryStats.PostingsTouched,
-				"postings_touched_size_sum", seriesQueryStats.PostingsTouchedSizeSum,
-				"postings_to_fetch", seriesQueryStats.PostingsToFetch,
-				"postings_fetched", seriesQueryStats.PostingsFetched,
-				"postings_fetch_count", seriesQueryStats.PostingsFetchCount,
-				"postings_fetched_size_sum", seriesQueryStats.PostingsFetchedSizeSum,
-				"series_touched", seriesQueryStats.SeriesTouched,
-				"series_touched_size_sum", seriesQueryStats.SeriesTouchedSizeSum,
-				"series_fetched", seriesQueryStats.SeriesFetched,
-				"series_fetch_count", seriesQueryStats.SeriesFetchCount,
-				"series_fetched_size_sum", seriesQueryStats.SeriesFetchedSizeSum,
-				"chunks_touched", seriesQueryStats.ChunksTouched,
-				"chunks_touched_size_sum", seriesQueryStats.ChunksTouchedSizeSum,
-				"chunks_fetched", seriesQueryStats.ChunksFetched,
-				"chunks_fetch_count", seriesQueryStats.ChunksFetchCount,
-				"chunks_fetched_size_sum", seriesQueryStats.ChunksFetchedSizeSum,
-				"data_downloaded_size_sum", seriesQueryStats.DataDownloadedSizeSum,
-			)
+			// It is also interesting to look at data downloaded at store gateway even if
+			// no series got matched, but to reduce verbosity we are more interested in those
+			// matched case. With vertical sharding enabled it is easy to log too much.
+			if numSeries > 0 {
+				level.Info(spanLog).Log("msg", "store gateway series request stats",
+					"instance", c.RemoteAddress(),
+					"queryable_chunk_bytes_fetched", chunkBytes,
+					"queryable_data_bytes_fetched", dataBytes,
+					"blocks_queried", seriesQueryStats.BlocksQueried,
+					"series_merged_count", seriesQueryStats.MergedSeriesCount,
+					"chunks_merged_count", seriesQueryStats.MergedChunksCount,
+					"postings_touched", seriesQueryStats.PostingsTouched,
+					"postings_touched_size_sum", seriesQueryStats.PostingsTouchedSizeSum,
+					"postings_to_fetch", seriesQueryStats.PostingsToFetch,
+					"postings_fetched", seriesQueryStats.PostingsFetched,
+					"postings_fetch_count", seriesQueryStats.PostingsFetchCount,
+					"postings_fetched_size_sum", seriesQueryStats.PostingsFetchedSizeSum,
+					"series_touched", seriesQueryStats.SeriesTouched,
+					"series_touched_size_sum", seriesQueryStats.SeriesTouchedSizeSum,
+					"series_fetched", seriesQueryStats.SeriesFetched,
+					"series_fetch_count", seriesQueryStats.SeriesFetchCount,
+					"series_fetched_size_sum", seriesQueryStats.SeriesFetchedSizeSum,
+					"chunks_touched", seriesQueryStats.ChunksTouched,
+					"chunks_touched_size_sum", seriesQueryStats.ChunksTouchedSizeSum,
+					"chunks_fetched", seriesQueryStats.ChunksFetched,
+					"chunks_fetch_count", seriesQueryStats.ChunksFetchCount,
+					"chunks_fetched_size_sum", seriesQueryStats.ChunksFetchedSizeSum,
+					"data_downloaded_size_sum", seriesQueryStats.DataDownloadedSizeSum,
+				)
+			}
 
 			// Store the result.
 			mtx.Lock()

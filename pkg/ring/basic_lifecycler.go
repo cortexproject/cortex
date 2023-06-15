@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"fmt"
+	mathrand "math/rand"
 	"sort"
 	"sync"
 	"time"
@@ -185,8 +186,18 @@ func (l *BasicLifecycler) starting(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) running(ctx context.Context) error {
-	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(l.cfg.HeartbeatPeriod)
-	defer heartbeatTickerStop()
+	var heartbeatTickerChan <-chan time.Time
+	if uint64(l.cfg.HeartbeatPeriod) > 0 {
+		heartbeatTicker := time.NewTicker(l.cfg.HeartbeatPeriod)
+		heartbeatTicker.Stop()
+		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(l.cfg.HeartbeatPeriod)), func() {
+			l.heartbeat(ctx)
+			heartbeatTicker.Reset(l.cfg.HeartbeatPeriod)
+		})
+		defer heartbeatTicker.Stop()
+
+		heartbeatTickerChan = heartbeatTicker.C
+	}
 
 	for {
 		select {

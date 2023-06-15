@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	mathrand "math/rand"
 	"os"
 	"sort"
 	"sync"
@@ -429,8 +430,18 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		autoJoinAfter = time.After(i.cfg.JoinAfter)
 	}
 
-	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(i.cfg.HeartbeatPeriod)
-	defer heartbeatTickerStop()
+	var heartbeatTickerChan <-chan time.Time
+	if uint64(i.cfg.HeartbeatPeriod) > 0 {
+		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+		heartbeatTicker.Stop()
+		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod)), func() {
+			i.heartbeat()
+			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
+		})
+		defer heartbeatTicker.Stop()
+
+		heartbeatTickerChan = heartbeatTicker.C
+	}
 
 	for {
 		select {
@@ -486,11 +497,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			}
 
 		case <-heartbeatTickerChan:
-			i.lifecyclerMetrics.consulHeartbeats.Inc()
-			if err := i.updateConsul(context.Background()); err != nil {
-				level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
-			}
-
+			i.heartbeat()
 		case f := <-i.actorChan:
 			f()
 
@@ -498,6 +505,13 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			level.Info(i.logger).Log("msg", "lifecycler loop() exited gracefully", "ring", i.RingName)
 			return nil
 		}
+	}
+}
+
+func (i *Lifecycler) heartbeat() {
+	i.lifecyclerMetrics.consulHeartbeats.Inc()
+	if err := i.updateConsul(context.Background()); err != nil {
+		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}
 }
 

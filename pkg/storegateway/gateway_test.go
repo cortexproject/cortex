@@ -854,7 +854,7 @@ func TestStoreGateway_PeriodicSyncShouldNotUpdateUserList(t *testing.T) {
 
 	// Force update user list
 	g.syncStores(ctx, "test", true)
-	g.waitRingStability(ctx)
+	g.waitRingStability(ctx, "test")
 
 	// Verify user-2 blocks are also synced
 	time.Sleep(time.Second)

@@ -285,16 +285,15 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	for {
 		select {
 		case <-syncTicker.C:
-			g.syncStores(ctx, syncReasonPeriodic, false)
+			g.syncStores(ctx, ringLastState, syncReasonPeriodic)
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
 			currRingState, _ := g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
 
 			// Ignore address when comparing to avoid block re-sync if tokens are persisted with tokens_file_path
-			if ring.HasReplicationSetChangedWithoutStateAndAddress(ringLastState, currRingState) {
-				ringLastState = currRingState
-				g.syncStores(ctx, syncReasonRingChange, true)
+			if ring.HasReplicationSetTokensOrZonesChanged(ringLastState, currRingState) {
+				ringLastState = g.syncStores(ctx, currRingState, syncReasonRingChange)
 			}
 		case <-ctx.Done():
 			return nil
@@ -311,19 +310,23 @@ func (g *StoreGateway) stopping(_ error) error {
 	return nil
 }
 
-func (g *StoreGateway) syncStores(ctx context.Context, reason string, shouldUpdateUserList bool) {
+func (g *StoreGateway) syncStores(ctx context.Context, currRingState ring.ReplicationSet, reason string) ring.ReplicationSet {
+	ringLastState := currRingState
 	if g.gatewayCfg.ShardingEnabled && g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
 		g.waitRingStability(ctx, reason)
+		ringLastState, _ = g.ring.GetAllHealthy(BlocksOwnerSync)
 	}
 
 	level.Info(g.logger).Log("msg", "synchronizing TSDB blocks for all users", "reason", reason)
 	g.bucketSync.WithLabelValues(reason).Inc()
 
-	if err := g.stores.SyncBlocks(ctx, shouldUpdateUserList); err != nil {
+	if err := g.stores.SyncBlocks(ctx); err != nil {
 		level.Warn(g.logger).Log("msg", "failed to synchronize TSDB blocks", "reason", reason, "err", err)
 	} else {
 		level.Info(g.logger).Log("msg", "successfully synchronized TSDB blocks for all users", "reason", reason)
 	}
+
+	return ringLastState
 }
 
 func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.StoreGateway_SeriesServer) error {
@@ -368,7 +371,7 @@ func (g *StoreGateway) waitRingStability(ctx context.Context, reason string) {
 	maxWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMaxDuration
 
 	level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String(), "reason", reason)
-	if err := ring.WaitRingStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
+	if err := ring.WaitRingTokensAndZonesStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
 		level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway", "reason", reason)
 	} else {
 		level.Info(g.logger).Log("msg", "store-gateway ring topology is stable", "reason", reason)

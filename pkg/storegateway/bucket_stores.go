@@ -66,9 +66,6 @@ type BucketStores struct {
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
 
-	// List of users assigned to the BucketStores
-	userIDs []string
-
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
@@ -143,7 +140,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocksWithRetries(ctx, true, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -155,13 +152,13 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 }
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
-func (u *BucketStores) SyncBlocks(ctx context.Context, shouldUpdateUserList bool) error {
-	return u.syncUsersBlocksWithRetries(ctx, shouldUpdateUserList, func(ctx context.Context, s *store.BucketStore) error {
+func (u *BucketStores) SyncBlocks(ctx context.Context) error {
+	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
 	})
 }
 
-func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, shouldUpdateUserList bool, f func(context.Context, *store.BucketStore) error) error {
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -170,7 +167,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, shouldUpd
 
 	var lastErr error
 	for retries.Ongoing() {
-		lastErr = u.syncUsersBlocks(ctx, shouldUpdateUserList, f)
+		lastErr = u.syncUsersBlocks(ctx, f)
 		if lastErr == nil {
 			return nil
 		}
@@ -185,7 +182,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, shouldUpd
 	return lastErr
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, shouldUpdateUserList bool, f func(context.Context, *store.BucketStore) error) (returnErr error) {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
 		if returnErr == nil {
@@ -213,11 +210,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, shouldUpdateUserList
 
 	includeUserIDs := make(map[string]struct{})
 
-	if shouldUpdateUserList {
-		u.userIDs = u.shardingStrategy.FilterUsers(ctx, scannedUserIDs)
-	}
-
-	for _, userID := range u.userIDs {
+	for _, userID := range u.shardingStrategy.FilterUsers(ctx, scannedUserIDs) {
 		includeUserIDs[userID] = struct{}{}
 	}
 

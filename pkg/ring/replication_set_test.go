@@ -341,7 +341,7 @@ func TestHasReplicationSetChangedWithoutStateAndAddress_IgnoresTimeStampAndState
 	// Only testing difference to underlying Equal function
 	for testName, testData := range replicationSetChangesTestCases {
 		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expectHasReplicationSetChangedWithoutStateAndAddress, HasReplicationSetChangedWithoutStateAndAddress(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChangedWithoutStateAndAddress wrong result")
+			assert.Equal(t, testData.expectHasReplicationSetChangedWithoutStateAndAddress, HasReplicationSetTokensOrZonesChanged(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChangedWithoutStateAndAddress wrong result")
 		})
 	}
 }

@@ -138,7 +138,7 @@ func TestWaitRingStability_ShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(
 	assert.Less(t, elapsedTime, 2*minStability)
 }
 
-func TestWaitRingTokensStability_ShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t *testing.T) {
+func TestWaitRingTokensAndZonesStability_ShouldReturnAsSoonAsMinStabilityIsReachedOnNoChanges(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -149,7 +149,7 @@ func TestWaitRingTokensStability_ShouldReturnAsSoonAsMinStabilityIsReachedOnNoCh
 	ring := createStartingRing()
 
 	startTime := time.Now()
-	require.NoError(t, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	require.NoError(t, WaitRingTokensAndZonesStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
 	assert.GreaterOrEqual(t, elapsedTime, minStability)
@@ -195,7 +195,7 @@ func TestWaitRingStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReached
 	assert.LessOrEqual(t, elapsedTime, minStability+addInstanceAfter+3*time.Second)
 }
 
-func TestWaitRingTokensStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReached(t *testing.T) {
+func TestWaitRingTokensAndZonesStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReached(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -210,7 +210,7 @@ func TestWaitRingTokensStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenR
 	addInstanceAfterSomeTime(ring, addInstanceAfter)
 
 	startTime := time.Now()
-	require.NoError(t, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	require.NoError(t, WaitRingTokensAndZonesStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
 	assert.GreaterOrEqual(t, elapsedTime, minStability+addInstanceAfter)
@@ -264,7 +264,7 @@ func TestWaitRingStability_ShouldReturnErrorIfInstancesAddedAndMaxWaitingIsReach
 	assert.GreaterOrEqual(t, elapsedTime, maxWaiting)
 }
 
-func TestWaitRingTokensStability_ShouldReturnErrorIfInstancesAddedAndMaxWaitingIsReached(t *testing.T) {
+func TestWaitRingTokensAndZonesStability_ShouldReturnErrorIfInstancesAddedAndMaxWaitingIsReached(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -278,7 +278,7 @@ func TestWaitRingTokensStability_ShouldReturnErrorIfInstancesAddedAndMaxWaitingI
 	defer close(done)
 
 	startTime := time.Now()
-	require.Equal(t, context.DeadlineExceeded, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	require.Equal(t, context.DeadlineExceeded, WaitRingTokensAndZonesStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
 	assert.GreaterOrEqual(t, elapsedTime, maxWaiting)
@@ -335,7 +335,7 @@ func TestWaitRingStability_ShouldReturnErrorIfInstanceStateIsChangingAndMaxWaiti
 	assert.GreaterOrEqual(t, elapsedTime, maxWaiting)
 }
 
-func TestWaitRingTokensStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReachedWhileStateCanChange(t *testing.T) {
+func TestWaitRingTokensAndZonesStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenReachedWhileStateCanChange(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -350,7 +350,7 @@ func TestWaitRingTokensStability_ShouldReturnOnceMinStabilityOfInstancesHasBeenR
 	defer close(done)
 
 	startTime := time.Now()
-	require.NoError(t, WaitRingTokensStability(context.Background(), ring, Reporting, minStability, maxWaiting))
+	require.NoError(t, WaitRingTokensAndZonesStability(context.Background(), ring, Reporting, minStability, maxWaiting))
 	elapsedTime := time.Since(startTime)
 
 	assert.GreaterOrEqual(t, elapsedTime, minStability)

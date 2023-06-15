@@ -24,6 +24,7 @@
 * [ENHANCEMENT] Improving Performance on the API Gzip Handler. #5347
 * [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
 * [ENHANCEMENT] Emit querier `max_concurrent` as a metric. #5362
+* [ENHANCEMENT] Avoid sort tokens on lifecycler autoJoin. #5394
 * [ENHANCEMENT] Do not resync blocks in running store gateways during rollout deployment and container restart. #5363
 * [ENHANCEMENT] Store Gateway: Add new metrics `cortex_bucket_store_sent_chunk_size_bytes`, `cortex_bucket_store_postings_size_bytes` and `cortex_bucket_store_empty_postings_total`. #5397
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265

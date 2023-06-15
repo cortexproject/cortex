@@ -735,11 +735,20 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 			ringDesc = in.(*Desc)
 		}
 
-		// At this point, we should not have any tokens, and we should be in PENDING state.
-		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
-
-		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
+
+		// At this point, we should not have any tokens, and we should be in PENDING state.
+		// Need to make sure we didnt change the num of tokens configured
+		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
+		needTokens := i.cfg.NumTokens - len(myTokens)
+
+		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
+			// Tokens have been verified. No need to change them.
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+			return ringDesc, true, nil
+		}
+
+		newTokens := GenerateTokens(needTokens, takenTokens)
 
 		myTokens = append(myTokens, newTokens...)
 		sort.Sort(myTokens)

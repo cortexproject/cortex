@@ -479,8 +479,8 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
-					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*2*seriesReplicationFactor)), "thanos_store_index_cache_items"))             // 2 series both for postings and series cache
-					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*2*seriesReplicationFactor)), "thanos_store_index_cache_items_added_total")) // 2 series both for postings and series cache
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*3*seriesReplicationFactor)), "thanos_store_index_cache_items"))             // 2 series both for expanded postings, postings and series cache
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*3*seriesReplicationFactor)), "thanos_store_index_cache_items_added_total")) // 2 series both for expanded postings, postings and series cache
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(11*seriesReplicationFactor)), "thanos_memcached_operations_total")) // 7 gets + 4 sets
 				}
@@ -491,12 +491,12 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((7+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
+				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((7+1)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*seriesReplicationFactor)), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
-					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*2*seriesReplicationFactor)), "thanos_store_index_cache_items"))             // as before
-					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*2*seriesReplicationFactor)), "thanos_store_index_cache_items_added_total")) // as before
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*3*seriesReplicationFactor)), "thanos_store_index_cache_items"))             // as before
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*3*seriesReplicationFactor)), "thanos_store_index_cache_items_added_total")) // as before
 				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((11+2)*seriesReplicationFactor)), "thanos_memcached_operations_total")) // as before + 2 gets
 				}

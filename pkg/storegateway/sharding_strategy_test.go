@@ -662,9 +662,9 @@ func TestShuffleShardingStrategy(t *testing.T) {
 }
 
 type shardingLimitsMock struct {
-	storeGatewayTenantShardSize int
+	storeGatewayTenantShardSize float64
 }
 
-func (m *shardingLimitsMock) StoreGatewayTenantShardSize(_ string) int {
+func (m *shardingLimitsMock) StoreGatewayTenantShardSize(_ string) float64 {
 	return m.storeGatewayTenantShardSize
 }

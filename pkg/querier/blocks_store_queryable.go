@@ -97,7 +97,7 @@ type BlocksStoreLimits interface {
 	bucket.TenantConfigProvider
 
 	MaxChunksPerQueryFromStore(userID string) int
-	StoreGatewayTenantShardSize(userID string) int
+	StoreGatewayTenantShardSize(userID string) float64
 }
 
 type blocksStoreQueryableMetrics struct {

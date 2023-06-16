@@ -265,6 +265,11 @@ type BucketStoreConfig struct {
 	// The config option is hidden until experimental.
 	PartitionerMaxGapBytes uint64 `yaml:"partitioner_max_gap_bytes" doc:"hidden"`
 
+	// Controls the estimated size to fetch for series and chunk in Store Gateway. Using
+	// a large value might cause data overfetch while a small value might need to refetch.
+	EstimatedMaxSeriesSizeBytes uint64 `yaml:"estimated_max_series_size_bytes" doc:"hidden"`
+	EstimatedMaxChunkSizeBytes  uint64 `yaml:"estimated_max_chunk_size_bytes" doc:"hidden"`
+
 	// Controls what is the ratio of postings offsets store will hold in memory.
 	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
 	// It's meant for setups that want low baseline memory pressure and where less traffic is expected.
@@ -298,6 +303,8 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IndexHeaderLazyLoadingEnabled, "blocks-storage.bucket-store.index-header-lazy-loading-enabled", false, "If enabled, store-gateway will lazily memory-map an index-header only once required by a query.")
 	f.DurationVar(&cfg.IndexHeaderLazyLoadingIdleTimeout, "blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout", 20*time.Minute, "If index-header lazy loading is enabled and this setting is > 0, the store-gateway will release memory-mapped index-headers after 'idle timeout' inactivity.")
 	f.Uint64Var(&cfg.PartitionerMaxGapBytes, "blocks-storage.bucket-store.partitioner-max-gap-bytes", store.PartitionerMaxGapSize, "Max size - in bytes - of a gap for which the partitioner aggregates together two bucket GET object requests.")
+	f.Uint64Var(&cfg.EstimatedMaxSeriesSizeBytes, "blocks-storage.bucket-store.estimated-max-series-size-bytes", store.EstimatedMaxSeriesSize, "Estimated max series size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 64KB.")
+	f.Uint64Var(&cfg.EstimatedMaxChunkSizeBytes, "blocks-storage.bucket-store.estimated-max-chunk-size-bytes", store.EstimatedMaxChunkSize, "Estimated max chunk size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 16KiB.")
 }
 
 // Validate the config.

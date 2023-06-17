@@ -481,10 +481,18 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		store.WithQueryGate(u.queryGate),
 		store.WithChunkPool(u.chunksPool),
 		store.WithSeriesBatchSize(store.SeriesBatchSize),
-		store.WithBlockEstimatedMaxChunkFunc(func(_ thanos_metadata.Meta) uint64 {
+		store.WithBlockEstimatedMaxChunkFunc(func(m thanos_metadata.Meta) uint64 {
+			if m.Thanos.IndexStats.ChunkMaxSize > 0 &&
+				uint64(m.Thanos.IndexStats.ChunkMaxSize) < u.cfg.BucketStore.EstimatedMaxChunkSizeBytes {
+				return uint64(m.Thanos.IndexStats.ChunkMaxSize)
+			}
 			return u.cfg.BucketStore.EstimatedMaxChunkSizeBytes
 		}),
-		store.WithBlockEstimatedMaxSeriesFunc(func(_ thanos_metadata.Meta) uint64 {
+		store.WithBlockEstimatedMaxSeriesFunc(func(m thanos_metadata.Meta) uint64 {
+			if m.Thanos.IndexStats.SeriesMaxSize > 0 &&
+				uint64(m.Thanos.IndexStats.SeriesMaxSize) < u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes {
+				return uint64(m.Thanos.IndexStats.SeriesMaxSize)
+			}
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
 	}

@@ -35,13 +35,6 @@ const (
 	ServiceTimingHeaderName   = "Server-Timing"
 )
 
-type QueryType string
-
-const (
-	InstantQuery QueryType = "instant"
-	RangeQuery   QueryType = "range"
-)
-
 var (
 	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
@@ -216,12 +209,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
 	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
-		queryDetails := getQueryDetail(r.URL.Path, queryString)
-		stats.AddQuery(queryDetails.QueryString)
-		stats.AddStart(queryDetails.StartInt)
-		stats.AddEnd(queryDetails.EndInt)
-		stats.AddStep(queryDetails.StepInt)
-		stats.AddTs(queryDetails.TsInt)
+		f.parseURLValues(r, stats, queryString)
 	}
 
 	if shouldReportSlowQuery {
@@ -269,23 +257,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getQueryDetail(url string, values url.Values) QueryDetail {
-	urlValues := parseURLValues(values)
-	return QueryDetail{
-		QueryString: urlValues.query,
-		StepInt:     urlValues.stepInt,
-		StartInt:    urlValues.startInt,
-		EndInt:      urlValues.endInt,
-		TsInt:       urlValues.tsInt,
-	}
-}
-
-type urlValues struct {
-	query                            string
-	stepInt, startInt, endInt, tsInt int64
-}
-
-func parseURLValues(values url.Values) urlValues {
+func (f *Handler) parseURLValues(r *http.Request, stats *querier_stats.QueryStats, values url.Values) {
 	query := values.Get("query")
 	step := values.Get("step")
 	start := values.Get("start")
@@ -295,52 +267,41 @@ func parseURLValues(values url.Values) urlValues {
 		tsInt, startInt, endInt, stepInt int64
 		err                              error
 	)
-	if len(step) == 0 { // instance query
+	stats.AddQuery(query)
+	if len(step) == 0 { // instant query
 		if len(ts) > 0 {
 			tsInt, err = util.ParseTime(ts)
 			if err != nil {
-				util_log.Logger.Log("msg", "failed to parse time", "err", err)
+				level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse time", "err", err)
 			}
 		} else {
 			tsInt = util.TimeToMillis(time.Now())
 		}
-		return urlValues{
-			query: query,
-			tsInt: tsInt,
-		}
+		stats.AddTs(tsInt)
+		return
 	}
 
 	//range query
 	stepInt, err = util.ParseDurationMs(step)
 	if err != nil {
-		util_log.Logger.Log("msg", "failed to parse step", "err", err)
+		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse step", "err", err)
 	}
 	if len(start) > 0 {
 		startInt, err = util.ParseTime(start)
 		if err != nil {
-			util_log.Logger.Log("msg", "failed to parse start", "err", err)
+			level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse start", "err", err)
 		}
 	}
 	if len(end) > 0 {
 		endInt, err = util.ParseTime(end)
 		if err != nil {
-			util_log.Logger.Log("msg", "failed to parse end", "err", err)
+			level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse end", "err", err)
 		}
 	}
-	return urlValues{
-		query:    query,
-		startInt: startInt,
-		endInt:   endInt,
-		stepInt:  stepInt,
-	}
-}
-
-type QueryDetail struct {
-	QueryString string
-	StartInt    int64
-	EndInt      int64
-	StepInt     int64
-	TsInt       int64
+	stats.AddStart(startInt)
+	stats.AddEnd(endInt)
+	stats.AddStep(stepInt)
+	return
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {

@@ -15,6 +15,7 @@ import (
 )
 
 func TestChunkBytesPool_Get(t *testing.T) {
+	t.Parallel()
 	reg := prometheus.NewPedanticRegistry()
 	p, err := newChunkBytesPool(cortex_tsdb.ChunkPoolDefaultMinBucketSize, cortex_tsdb.ChunkPoolDefaultMaxBucketSize, 0, reg)
 	require.NoError(t, err)

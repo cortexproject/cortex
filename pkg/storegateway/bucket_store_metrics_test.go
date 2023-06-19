@@ -12,6 +12,7 @@ import (
 )
 
 func TestBucketStoreMetrics(t *testing.T) {
+	t.Parallel()
 	mainReg := prometheus.NewPedanticRegistry()
 
 	tsdbMetrics := NewBucketStoreMetrics()

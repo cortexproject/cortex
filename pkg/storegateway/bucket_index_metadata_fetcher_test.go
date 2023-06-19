@@ -25,6 +25,7 @@ import (
 )
 
 func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
@@ -99,6 +100,7 @@ func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
 }
 
 func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
@@ -150,6 +152,7 @@ func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
 }
 
 func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
@@ -204,6 +207,7 @@ func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
 }
 
 func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)

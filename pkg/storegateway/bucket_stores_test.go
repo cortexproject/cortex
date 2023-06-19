@@ -41,6 +41,7 @@ import (
 )
 
 func TestBucketStores_InitialSync(t *testing.T) {
+	t.Parallel()
 	userToMetric := map[string]string{
 		"user-1": "series_1",
 		"user-2": "series_2",
@@ -180,6 +181,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
+	t.Parallel()
 	const (
 		userID     = "user-1"
 		metricName = "series_1"
@@ -249,6 +251,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 }
 
 func TestBucketStores_syncUsersBlocks(t *testing.T) {
+	t.Parallel()
 	allUsers := []string{"user-1", "user-2", "user-3"}
 
 	tests := map[string]struct {

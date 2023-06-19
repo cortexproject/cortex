@@ -301,7 +301,6 @@ func (f *Handler) parseURLValues(r *http.Request, stats *querier_stats.QueryStat
 	stats.AddStart(startInt)
 	stats.AddEnd(endInt)
 	stats.AddStep(stepInt)
-	return
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {

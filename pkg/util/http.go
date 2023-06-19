@@ -28,11 +28,6 @@ func IsRequestBodyTooLarge(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "http: request body too large")
 }
 
-// IsRequestURLParamsInvalid returns true if the error is "invalid semicolon separator in query"
-func IsRequestURLParamsInvalid(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "invalid semicolon separator in query")
-}
-
 // BasicAuth configures basic authentication for HTTP clients.
 type BasicAuth struct {
 	Username string `yaml:"basic_auth_username"`

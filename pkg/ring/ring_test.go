@@ -378,19 +378,26 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 			zoneAwarenessEnabled: true,
 			expectedInstances:    3,
 		},
-		"should fail if there are instances in 1 zone only on RF = 3": {
-			numInstances:         16,
-			numZones:             1,
+		"should fail if there are not enough instances": {
+			numInstances:         1,
+			numZones:             3,
 			replicationFactor:    3,
 			zoneAwarenessEnabled: true,
 			expectedErr:          "at least 2 live replicas required across different availability zones, could only find 1",
 		},
-		"should succeed if there are instances in 2 zones on RF = 3": {
+		"should succeed if there are instances in 3 zones on RF = 4": {
 			numInstances:         16,
-			numZones:             2,
-			replicationFactor:    3,
+			numZones:             3,
+			replicationFactor:    4,
 			zoneAwarenessEnabled: true,
-			expectedInstances:    2,
+			expectedInstances:    4,
+		},
+		"should succeed if there are instances in 3 zones on RF = 9": {
+			numInstances:         16,
+			numZones:             3,
+			replicationFactor:    9,
+			zoneAwarenessEnabled: true,
+			expectedInstances:    9,
 		},
 		"should succeed if there are instances in 1 zone only on RF = 3 but zone-awareness is disabled": {
 			numInstances:         16,
@@ -426,7 +433,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				ringTokens:          r.GetTokens(),
 				ringTokensByZone:    r.getTokensByZone(),
 				ringInstanceByToken: r.getTokensInfo(),
-				ringZones:           getZones(r.getTokensByZone()),
+				ringZones:           []string{"zone-1", "zone-2", "zone-3"},
 				strategy:            NewDefaultReplicationStrategy(),
 				KVClient:            &MockClient{},
 			}
@@ -447,13 +454,9 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 				set, err = ring.Get(testValues[i], Write, instances, bufHosts, bufZones)
 				if testData.expectedErr != "" {
 					require.EqualError(t, err, testData.expectedErr)
+					continue // Skip the rest of the assertions if we were expecting an error.
 				} else {
 					require.NoError(t, err)
-				}
-
-				// Skip the rest of the assertions if we were expecting an error.
-				if testData.expectedErr != "" {
-					continue
 				}
 
 				// Check that we have the expected number of instances for replication.
@@ -461,12 +464,23 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 
 				// Ensure all instances are in a different zone (only if zone-awareness is enabled).
 				if testData.zoneAwarenessEnabled {
-					zones := make(map[string]struct{})
+					zones := make(map[string]int)
+					maxNumOfHostsPerZone := math.Ceil(float64(testData.replicationFactor) / float64(testData.numZones))
+
 					for i := 0; i < len(set.Instances); i++ {
-						if _, ok := zones[set.Instances[i].Zone]; ok {
-							t.Fatal("found multiple instances in the same zone")
+						if _, ok := zones[set.Instances[i].Zone]; !ok {
+							zones[set.Instances[i].Zone] = 1
+						} else {
+							zones[set.Instances[i].Zone]++
+
+							if zones[set.Instances[i].Zone] > int(maxNumOfHostsPerZone) {
+								t.Fatal("instances not spread across zones evenly")
+							}
 						}
-						zones[set.Instances[i].Zone] = struct{}{}
+					}
+
+					if testData.replicationFactor >= testData.numZones && len(zones) != testData.numZones {
+						t.Fatalf("each zone must have at least one instance")
 					}
 				}
 			}

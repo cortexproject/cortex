@@ -186,7 +186,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	rulesRequest := RulesRequest{
 		RuleNames:      req.Form["rule_name[]"],
 		RuleGroupNames: req.Form["rule_group[]"],
-		Files:          req.Form["files[]"],
+		Files:          req.Form["file[]"],
 		Type:           typ,
 	}
 

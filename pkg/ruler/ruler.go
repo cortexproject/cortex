@@ -776,12 +776,15 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 			default:
 				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
 			}
-			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
+			if ruleDesc != nil {
+				groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
+			}
 		}
 		if len(groupDesc.ActiveRules) > 0 {
 			groupDescs = append(groupDescs, groupDesc)
 		}
 	}
+
 	return groupDescs, nil
 }
 
@@ -818,7 +821,12 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &rulesRequest)
+		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{
+			RuleNames:      rulesRequest.GetRuleNames(),
+			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
+			Files:          rulesRequest.GetFiles(),
+			Type:           rulesRequest.GetType(),
+		})
 		if err != nil {
 			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}

@@ -726,7 +726,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
 				if !returnAlerts {
-					break
+					continue
 				}
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
@@ -760,7 +760,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 				}
 			case *promRules.RecordingRule:
 				if !returnRecording {
-					break
+					continue
 				}
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
@@ -776,9 +776,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 			default:
 				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
 			}
-			if ruleDesc != nil {
-				groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
-			}
+			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
 		if len(groupDesc.ActiveRules) > 0 {
 			groupDescs = append(groupDescs, groupDesc)

@@ -325,7 +325,6 @@ func compareRuleGroupDescToStateDesc(t *testing.T, expected *rulespb.RuleGroupDe
 func TestGetRules(t *testing.T) {
 	// ruler ID -> (user ID -> list of groups).
 	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
-	type ruleExecutionMap map[string]map[string]rulespb.RuleGroupList
 	type rulesMap map[string][]*rulespb.RuleDesc
 
 	type testCase struct {
@@ -483,6 +482,33 @@ func TestGetRules(t *testing.T) {
 			expectedCount: map[string]int{
 				"user1": 3,
 				"user2": 5,
+				"user3": 1,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 and Rule Group Name Filter": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				RuleGroupNames: []string{"third"},
+			},
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 1,
+				"user3": 2,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 and Rule Group Name and Rule Type Filter": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				RuleGroupNames: []string{"second", "third"},
+				Type:           RecordingRuleFilter,
+			},
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 2,
 				"user3": 1,
 			},
 		},

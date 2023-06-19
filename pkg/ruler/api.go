@@ -284,7 +284,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	rulesRequest := RulesRequest{
-		//Type: AlertingRuleFilter,
+		Type: AlertingRuleFilter,
 	}
 	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 

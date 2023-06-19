@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"encoding/json"
+	"fmt"
 	io "io"
 	"net/http"
 	"net/url"
@@ -99,6 +100,11 @@ type recordingRule struct {
 	EvaluationTime float64       `json:"evaluationTime"`
 }
 
+const (
+	AlertingRuleFilter  string = "alert"
+	RecordingRuleFilter string = "record"
+)
+
 func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	b, err := json.Marshal(&response{
 		Status:    "error",
@@ -114,6 +120,26 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	}
 
 	w.WriteHeader(http.StatusInternalServerError)
+	if n, err := w.Write(b); err != nil {
+		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
+}
+
+func respondClientError(logger log.Logger, w http.ResponseWriter, msg string) {
+	b, err := json.Marshal(&response{
+		Status:    "error",
+		ErrorType: v1.ErrServer,
+		Error:     msg,
+		Data:      nil,
+	})
+
+	if err != nil {
+		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusBadRequest)
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
@@ -145,8 +171,27 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if err := req.ParseForm(); err != nil {
+		level.Error(logger).Log("msg", "error parsing form/query params", "err", err)
+		respondClientError(logger, w, err.Error())
+		return
+	}
+
+	typ := strings.ToLower(req.URL.Query().Get("type"))
+	if typ != "" && typ != AlertingRuleFilter && typ != RecordingRuleFilter {
+		respondClientError(logger, w, fmt.Sprintf("not supported value %q", typ))
+		return
+	}
+
+	rulesRequest := RulesRequest{
+		RuleNames:      req.Form["rule_name[]"],
+		RuleGroupNames: req.Form["rule_group[]"],
+		Files:          req.Form["files[]"],
+		Type:           typ,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context())
+	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -238,7 +283,10 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context())
+	rulesRequest := RulesRequest{
+		//Type: AlertingRuleFilter,
+	}
+	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
 		respondError(logger, w, err.Error())

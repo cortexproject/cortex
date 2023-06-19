@@ -380,11 +380,17 @@ func TestGetRules(t *testing.T) {
 		},
 		"ruler2-user2-rule-group2": []*rulespb.RuleDesc{
 			{
-				Record: "rtest_user1_1",
+				Record: "rtest_user2_1",
 				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
 			},
 			{
-				Alert: "atest_user1_1",
+				Alert: "atest_user2_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler2-user3-rule-group1": []*rulespb.RuleDesc{
+			{
+				Alert: "atest_user3_1",
 				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
 			},
 		},
@@ -438,6 +444,9 @@ func TestGetRules(t *testing.T) {
 				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user2-rule-group1"]},
 				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user2-rule-group2"]},
 			},
+			"user3": {
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "latency-test", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user3-rule-group1"]},
+			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
@@ -451,33 +460,32 @@ func TestGetRules(t *testing.T) {
 	}
 
 	testCases := map[string]testCase{
-		"No Sharding": {
+		"No Sharding with Rule Type Filter": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				Type: AlertingRuleFilter,
+				Type: alertingRuleFilter,
 			},
 			expectedCount: map[string]int{
 				"user1": 2,
 				"user2": 4,
-				"user3": 1,
-			},
-		},
-		"Default Sharding": {
-			sharding:         true,
-			shardingStrategy: util.ShardingStrategyDefault,
-			rulesRequest:     RulesRequest{},
-			expectedCount: map[string]int{
-				"user1": 5,
-				"user2": 9,
 				"user3": 2,
 			},
 		},
-		"Shuffle Sharding and ShardSize = 2": {
+		"Default Sharding with No Filter": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter": {
 			sharding:         true,
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
-				Type: RecordingRuleFilter,
+				Type: recordingRuleFilter,
 			},
 			expectedCount: map[string]int{
 				"user1": 3,
@@ -504,11 +512,25 @@ func TestGetRules(t *testing.T) {
 			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
 				RuleGroupNames: []string{"second", "third"},
-				Type:           RecordingRuleFilter,
+				Type:           recordingRuleFilter,
 			},
 			expectedCount: map[string]int{
 				"user1": 2,
 				"user2": 2,
+				"user3": 1,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule Type and Namespace Filters": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				Type:  alertingRuleFilter,
+				Files: []string{"latency-test"},
+			},
+			expectedCount: map[string]int{
+				"user1": 0,
+				"user2": 0,
 				"user3": 1,
 			},
 		},

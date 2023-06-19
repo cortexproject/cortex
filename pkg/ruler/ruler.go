@@ -66,6 +66,9 @@ const (
 
 	// errors
 	errListAllUser = "unable to list the ruler users"
+
+	alertingRuleFilter  string = "alert"
+	recordingRuleFilter string = "record"
 )
 
 // Config is the configuration for the recording rules server.
@@ -677,12 +680,17 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 	fileSet := sliceToSet(rulesRequest.Files)
 	ruleType := rulesRequest.Type
 
-	returnAlerts := ruleType == "" || ruleType == "alert"
-	returnRecording := ruleType == "" || ruleType == "record"
+	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
+	returnRecording := ruleType == "" || ruleType == recordingRuleFilter
 
 	for _, group := range groups {
+		// The mapped filename is url path escaped encoded to make handling `/` characters easier
+		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to decode rule filename")
+		}
 		if len(fileSet) > 0 {
-			if _, OK := fileSet[group.File()]; !OK {
+			if _, OK := fileSet[decodedNamespace]; !OK {
 				continue
 			}
 		}
@@ -693,12 +701,6 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 			}
 		}
 		interval := group.Interval()
-
-		// The mapped filename is url path escaped encoded to make handling `/` characters easier
-		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
-		if err != nil {
-			return nil, errors.Wrap(err, "unable to decode rule filename")
-		}
 
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{

@@ -100,11 +100,6 @@ type recordingRule struct {
 	EvaluationTime float64       `json:"evaluationTime"`
 }
 
-const (
-	AlertingRuleFilter  string = "alert"
-	RecordingRuleFilter string = "record"
-)
-
 func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	b, err := json.Marshal(&response{
 		Status:    "error",
@@ -125,10 +120,10 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	}
 }
 
-func respondClientError(logger log.Logger, w http.ResponseWriter, msg string) {
+func respondBadRequest(logger log.Logger, w http.ResponseWriter, msg string) {
 	b, err := json.Marshal(&response{
 		Status:    "error",
-		ErrorType: v1.ErrServer,
+		ErrorType: v1.ErrBadData,
 		Error:     msg,
 		Data:      nil,
 	})
@@ -173,13 +168,13 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 
 	if err := req.ParseForm(); err != nil {
 		level.Error(logger).Log("msg", "error parsing form/query params", "err", err)
-		respondClientError(logger, w, err.Error())
+		respondBadRequest(logger, w, "error parsing form/query params")
 		return
 	}
 
 	typ := strings.ToLower(req.URL.Query().Get("type"))
-	if typ != "" && typ != AlertingRuleFilter && typ != RecordingRuleFilter {
-		respondClientError(logger, w, fmt.Sprintf("not supported value %q", typ))
+	if typ != "" && typ != alertingRuleFilter && typ != recordingRuleFilter {
+		respondBadRequest(logger, w, fmt.Sprintf("unsupported rule type %q", typ))
 		return
 	}
 
@@ -284,7 +279,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	rulesRequest := RulesRequest{
-		Type: AlertingRuleFilter,
+		Type: alertingRuleFilter,
 	}
 	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 

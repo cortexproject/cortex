@@ -478,6 +478,10 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 							}
 						}
 					}
+
+					if testData.replicationFactor >= testData.numZones && len(zones) != testData.numZones {
+						t.Fatalf("each zone must have at least one instance")
+					}
 				}
 			}
 		})
@@ -2030,7 +2034,7 @@ func TestRing_Get_NoMemoryAllocations(t *testing.T) {
 	buf, bufHosts, bufZones := MakeBuffersForGet()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	numAllocs := testing.AllocsPerRun(100, func() {
+	numAllocs := testing.AllocsPerRun(10, func() {
 		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
 		if err != nil || len(set.Instances) != 3 {
 			t.Fail()

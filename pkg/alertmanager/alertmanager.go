@@ -80,6 +80,7 @@ type Config struct {
 	Replicator        Replicator
 	Store             alertstore.AlertStore
 	PersisterConfig   PersisterConfig
+	APIConcurrency    int
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -266,6 +267,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
 			return am.dispatcher.Groups(f1, f2)
 		},
+		Concurrency: am.cfg.APIConcurrency,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api: %v", err)

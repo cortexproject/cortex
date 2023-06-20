@@ -1967,7 +1967,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
-	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
+	oooTimeWindow := time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds()
 	walCompressType := wlog.CompressionNone
 	// TODO(yeya24): expose zstd compression for WAL.
 	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
@@ -2044,8 +2044,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			func() bool {
-				return oooTimeWindow > 0 // Upload compacted blocks when OOO is enabled.
-			},
+				return time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds() > 0
+			}, // No need to upload compacted blocks unless out of order samples is enabled.
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
 		)

@@ -78,7 +78,8 @@ type MultitenantAlertmanagerConfig struct {
 
 	Cluster ClusterConfig `yaml:"cluster"`
 
-	EnableAPI bool `yaml:"enable_api"`
+	EnableAPI      bool `yaml:"enable_api"`
+	APIConcurrency int  `yaml:"api_concurrency"`
 
 	// For distributor.
 	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
@@ -117,6 +118,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
+	f.IntVar(&cfg.APIConcurrency, "alertmanager.api-concurrency", 0, "Maximum number of concurrent GET API requests before returning an error.")
 
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 	f.Var(&cfg.EnabledTenants, "alertmanager.enabled-tenants", "Comma separated list of tenants whose alerts this alertmanager can process. If specified, only these tenants will be handled by alertmanager, otherwise this alertmanager can process alerts from all tenants.")
@@ -965,6 +967,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		Store:             am.store,
 		PersisterConfig:   am.cfg.Persister,
 		Limits:            am.limits,
+		APIConcurrency:    am.cfg.APIConcurrency,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

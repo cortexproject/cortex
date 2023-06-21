@@ -416,6 +416,10 @@ cluster:
 # CLI flag: -experimental.alertmanager.enable-api
 [enable_api: <boolean> | default = false]
 
+# Maximum number of concurrent GET API requests before returning an error.
+# CLI flag: -alertmanager.api-concurrency
+[api_concurrency: <int> | default = 0]
+
 alertmanager_client:
   # Timeout for downstream alertmanagers.
   # CLI flag: -alertmanager.alertmanager-client.remote-timeout

@@ -372,10 +372,6 @@ func (g *StoreGateway) waitRingStability(ctx context.Context, reason string) {
 	minWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMinDuration
 	maxWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMaxDuration
 
-	if !g.gatewayCfg.ShardingEnabled || minWaiting <= 0 {
-		return
-	}
-
 	level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String(), "reason", reason)
 	if err := ring.WaitRingTokensAndZonesStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
 		level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway", "reason", reason)

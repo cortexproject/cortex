@@ -233,7 +233,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// time, we may end up in a situation where each new store-gateway instance starts at a slightly
 		// different time and thus each one starts with a different state of the ring. It's better
 		// to just wait the ring stability for a short time.
-		if g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
+		if g.shouldWaitRingStability() {
 			g.waitRingStability(ctx, syncReasonInitial)
 		}
 	}
@@ -276,7 +276,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
-		ringLastState, _ = g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
+		ringLastState = g.getRingState(BlocksOwnerSync)
 		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -285,15 +285,25 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	for {
 		select {
 		case <-syncTicker.C:
-			g.syncStores(ctx, ringLastState, syncReasonPeriodic)
+			if g.shouldWaitRingStability() {
+				g.waitRingStability(ctx, syncReasonPeriodic)
+			}
+			g.syncStores(ctx, syncReasonPeriodic)
 		case <-ringTickerChan:
-			// We ignore the error because in case of error it will return an empty
-			// replication set which we use to compare with the previous state.
-			currRingState, _ := g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
+			currRingState := g.getRingState(BlocksOwnerSync)
 
-			// Ignore address when comparing to avoid block re-sync if tokens are persisted with tokens_file_path
 			if ring.HasReplicationSetTokensOrZonesChanged(ringLastState, currRingState) {
-				ringLastState = g.syncStores(ctx, currRingState, syncReasonRingChange)
+				if g.shouldWaitRingStability() {
+					g.waitRingStability(ctx, syncReasonRingChange)
+					currRingState = g.getRingState(BlocksOwnerSync)
+					if ring.HasReplicationSetTokensOrZonesChanged(ringLastState, currRingState) {
+						ringLastState = currRingState
+						g.syncStores(ctx, syncReasonRingChange)
+					}
+				} else {
+					ringLastState = currRingState
+					g.syncStores(ctx, syncReasonRingChange)
+				}
 			}
 		case <-ctx.Done():
 			return nil
@@ -310,13 +320,7 @@ func (g *StoreGateway) stopping(_ error) error {
 	return nil
 }
 
-func (g *StoreGateway) syncStores(ctx context.Context, currRingState ring.ReplicationSet, reason string) ring.ReplicationSet {
-	ringLastState := currRingState
-	if g.gatewayCfg.ShardingEnabled && g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0 {
-		g.waitRingStability(ctx, reason)
-		ringLastState, _ = g.ring.GetAllHealthy(BlocksOwnerSync)
-	}
-
+func (g *StoreGateway) syncStores(ctx context.Context, reason string) {
 	level.Info(g.logger).Log("msg", "synchronizing TSDB blocks for all users", "reason", reason)
 	g.bucketSync.WithLabelValues(reason).Inc()
 
@@ -325,8 +329,6 @@ func (g *StoreGateway) syncStores(ctx context.Context, currRingState ring.Replic
 	} else {
 		level.Info(g.logger).Log("msg", "successfully synchronized TSDB blocks for all users", "reason", reason)
 	}
-
-	return ringLastState
 }
 
 func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.StoreGateway_SeriesServer) error {
@@ -370,12 +372,27 @@ func (g *StoreGateway) waitRingStability(ctx context.Context, reason string) {
 	minWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMinDuration
 	maxWaiting := g.gatewayCfg.ShardingRing.WaitStabilityMaxDuration
 
+	if !g.gatewayCfg.ShardingEnabled || minWaiting <= 0 {
+		return
+	}
+
 	level.Info(g.logger).Log("msg", "waiting until store-gateway ring topology is stable", "min_waiting", minWaiting.String(), "max_waiting", maxWaiting.String(), "reason", reason)
 	if err := ring.WaitRingTokensAndZonesStability(ctx, g.ring, BlocksOwnerSync, minWaiting, maxWaiting); err != nil {
 		level.Warn(g.logger).Log("msg", "store-gateway ring topology is not stable after the max waiting time, proceeding anyway", "reason", reason)
 	} else {
 		level.Info(g.logger).Log("msg", "store-gateway ring topology is stable", "reason", reason)
 	}
+}
+
+func (g *StoreGateway) getRingState(op ring.Operation) ring.ReplicationSet {
+	// We ignore the error because in case of error it will return an empty
+	// replication set which we use to compare with the previous state.
+	ringState, _ := g.ring.GetAllHealthy(op) // nolint:errcheck
+	return ringState
+}
+
+func (g *StoreGateway) shouldWaitRingStability() bool {
+	return g.gatewayCfg.ShardingEnabled && g.gatewayCfg.ShardingRing.WaitStabilityMinDuration > 0
 }
 
 func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {

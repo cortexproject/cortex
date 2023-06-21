@@ -795,8 +795,7 @@ func TestStoreGateway_syncStoresShouldWaitRingStability(t *testing.T) {
 	}))
 
 	syncCtx, cancelCtx := context.WithTimeout(ctx, 3*time.Second)
-	ringState, _ := g.ring.GetAllHealthy(BlocksOwnerSync)
-	g.syncStores(syncCtx, ringState, "test")
+	g.syncStores(syncCtx, "test")
 	cancelCtx()
 
 	// No blocks should be synced

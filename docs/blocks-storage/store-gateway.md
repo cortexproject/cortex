@@ -282,6 +282,12 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # True to keep the store gateway instance in the ring when it shuts down.
+    # The instance will then be auto-forgotten from the ring after
+    # 10*heartbeat_timeout.
+    # CLI flag: -store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown
+    [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]

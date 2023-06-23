@@ -55,20 +55,23 @@ func TestHandler_ServeHTTP(t *testing.T) {
 		name                       string
 		cfg                        HandlerConfig
 		expectedMetrics            int
+		expectedStatusCode         int
 		roundTripperFunc           roundTripperFunc
 		additionalMetricsCheckFunc func(h *Handler)
 	}{
 		{
-			name:             "test handler with stats enabled",
-			cfg:              HandlerConfig{QueryStatsEnabled: true},
-			expectedMetrics:  3,
-			roundTripperFunc: roundTripper,
+			name:               "test handler with stats enabled",
+			cfg:                HandlerConfig{QueryStatsEnabled: true},
+			expectedMetrics:    3,
+			roundTripperFunc:   roundTripper,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
-			name:             "test handler with stats disabled",
-			cfg:              HandlerConfig{QueryStatsEnabled: false},
-			expectedMetrics:  0,
-			roundTripperFunc: roundTripper,
+			name:               "test handler with stats disabled",
+			cfg:                HandlerConfig{QueryStatsEnabled: false},
+			expectedMetrics:    0,
+			roundTripperFunc:   roundTripper,
+			expectedStatusCode: http.StatusOK,
 		},
 		{
 			name:            "test handler with reasonResponseTooLarge",
@@ -81,9 +84,10 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusRequestEntityTooLarge,
 		},
 		{
 			name:            "test handler with reasonTooManyRequests",
@@ -99,6 +103,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusTooManyRequests,
 		},
 		{
 			name:            "test handler with reasonTooManySamples",
@@ -114,6 +119,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonTooLongRange",
@@ -129,6 +135,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonSeriesFetched",
@@ -144,6 +151,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonChunksFetched",
@@ -159,6 +167,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonChunkBytesFetched",
@@ -174,6 +183,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonDataBytesFetched",
@@ -189,6 +199,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonSeriesLimitStoreGateway",
@@ -204,6 +215,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonChunksLimitStoreGateway",
@@ -219,6 +231,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
 			name:            "test handler with reasonBytesLimitStoreGateway",
@@ -234,11 +247,12 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, userID))
 				assert.Equal(t, float64(1), v)
 			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			handler := NewHandler(tt.cfg, roundTripper, log.NewNopLogger(), reg)
+			handler := NewHandler(tt.cfg, tt.roundTripperFunc, log.NewNopLogger(), reg)
 
 			ctx := user.InjectOrgID(context.Background(), userID)
 			req := httptest.NewRequest("GET", "/", nil)
@@ -247,7 +261,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 
 			handler.ServeHTTP(resp, req)
 			_, _ = io.ReadAll(resp.Body)
-			require.Equal(t, resp.Code, http.StatusOK)
+			require.Equal(t, resp.Code, tt.expectedStatusCode)
 
 			count, err := promtest.GatherAndCount(
 				reg,
@@ -258,6 +272,10 @@ func TestHandler_ServeHTTP(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedMetrics, count)
+
+			if tt.additionalMetricsCheckFunc != nil {
+				tt.additionalMetricsCheckFunc(handler.(*Handler))
+			}
 		})
 	}
 }

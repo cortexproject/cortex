@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.15.5 2023-06-22
+## 1.15.3 2023-06-22
 
 * [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
 

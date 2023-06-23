@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.15.3 2023-06-22
+
+* [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
+
 ## 1.15.2 2023-05-09
 
 * [ENHANCEMENT] Update Go version to 1.20.4. #5299

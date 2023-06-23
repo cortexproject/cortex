@@ -57,6 +57,11 @@ $ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
 
 In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/prometheus`).
 
+If you are on a Linux machine, `http://host.docker.internal:9009` might not work for you.
+In this case, you will need to use the IP address of your host machine.
+You can usually get it by running `hostname -I | awk '{print $1}'` in your terminal.
+For example, if the IP is `192.168.1.100`, use `http://192.168.1.100:9009/prometheus`.
+
 **To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
 
 ## Horizontally scale out

@@ -145,18 +145,6 @@ func HasReplicationSetChangedWithoutState(before, after ReplicationSet) bool {
 	})
 }
 
-// HasReplicationSetChangedWithoutStateAndAddress returns false if two replications sets
-// are the same (with possibly different timestamps, instance states and address),
-// true if they differ in any other way (number of instances, tokens, or zones).
-func HasReplicationSetChangedWithoutStateAndAddress(before, after ReplicationSet) bool {
-	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
-		i.Timestamp = 0
-		i.State = PENDING
-		i.Addr = ""
-		i.RegisteredTimestamp = 0
-	})
-}
-
 // Do comparison of replicasets, but apply a function first
 // to be able to exclude (reset) some values
 func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude func(*InstanceDesc)) bool {

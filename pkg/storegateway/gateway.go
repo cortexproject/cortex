@@ -276,7 +276,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 
 func (g *StoreGateway) running(ctx context.Context) error {
 	var ringTickerChan <-chan time.Time
-	var ringLastState ring.ReplicationSet
+	var lastInstanceDescs map[string]ring.InstanceDesc
 
 	// Apply a jitter to the sync frequency in order to increase the probability
 	// of hitting the shared cache (if any).
@@ -284,7 +284,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
-		ringLastState, _ = g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
+		lastInstanceDescs, _ = g.ring.GetInstanceDescsForOperation(BlocksOwnerSync) // nolint:errcheck
 		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -297,11 +297,13 @@ func (g *StoreGateway) running(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
+			currInstanceDescs, _ := g.ring.GetInstanceDescsForOperation(BlocksOwnerSync) // nolint:errcheck
 
 			// Ignore address when comparing to avoid block re-sync if tokens are persisted with tokens_file_path
-			if ring.HasReplicationSetChangedWithoutStateAndAddress(ringLastState, currRingState) {
-				ringLastState = currRingState
+			if ring.HasInstanceDescsChanged(lastInstanceDescs, currInstanceDescs, func(b, a ring.InstanceDesc) bool {
+				return ring.HasTokensChanged(b, a) || ring.HasZoneChanged(b, a)
+			}) {
+				lastInstanceDescs = currInstanceDescs
 				g.syncStores(ctx, syncReasonRingChange)
 			}
 		case <-ctx.Done():

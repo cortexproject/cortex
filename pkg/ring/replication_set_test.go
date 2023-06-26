@@ -251,10 +251,9 @@ var (
 		},
 	}
 	replicationSetChangesTestCases = map[string]struct {
-		nextState                                            ReplicationSet
-		expectHasReplicationSetChanged                       bool
-		expectHasReplicationSetChangedWithoutState           bool
-		expectHasReplicationSetChangedWithoutStateAndAddress bool
+		nextState                                  ReplicationSet
+		expectHasReplicationSetChanged             bool
+		expectHasReplicationSetChangedWithoutState bool
 	}{
 		"timestamp changed": {
 			ReplicationSet{
@@ -264,7 +263,6 @@ var (
 					{Addr: "127.0.0.3"},
 				},
 			},
-			false,
 			false,
 			false,
 		},
@@ -278,7 +276,6 @@ var (
 			},
 			true,
 			false,
-			false,
 		},
 		"more instances": {
 			ReplicationSet{
@@ -291,7 +288,6 @@ var (
 			},
 			true,
 			true,
-			true,
 		},
 		"less instances": {
 			ReplicationSet{
@@ -300,7 +296,6 @@ var (
 					{Addr: "127.0.0.2"},
 				},
 			},
-			true,
 			true,
 			true,
 		},
@@ -314,7 +309,6 @@ var (
 			},
 			true,
 			true,
-			false,
 		},
 	}
 )
@@ -333,15 +327,6 @@ func TestHasReplicationSetChangedWithoutState_IgnoresTimeStampAndState(t *testin
 	for testName, testData := range replicationSetChangesTestCases {
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expectHasReplicationSetChangedWithoutState, HasReplicationSetChangedWithoutState(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChangedWithoutState wrong result")
-		})
-	}
-}
-
-func TestHasReplicationSetChangedWithoutStateAndAddress_IgnoresTimeStampAndStateAndAddress(t *testing.T) {
-	// Only testing difference to underlying Equal function
-	for testName, testData := range replicationSetChangesTestCases {
-		t.Run(testName, func(t *testing.T) {
-			assert.Equal(t, testData.expectHasReplicationSetChangedWithoutStateAndAddress, HasReplicationSetChangedWithoutStateAndAddress(replicationSetChangesInitialState, testData.nextState), "HasReplicationSetChangedWithoutStateAndAddress wrong result")
 		})
 	}
 }

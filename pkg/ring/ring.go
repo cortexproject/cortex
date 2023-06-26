@@ -434,6 +434,26 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}, nil
 }
 
+// GetInstanceDescsForOperation implements ReadRing.
+func (r *Ring) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
+		return map[string]InstanceDesc{}, ErrEmptyRing
+	}
+
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	instanceDescs := make(map[string]InstanceDesc, 0)
+	for id, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op, storageLastUpdate) {
+			instanceDescs[id] = instance
+		}
+	}
+
+	return instanceDescs, nil
+}
+
 // GetReplicationSetForOperation implements ReadRing.
 func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()

@@ -159,6 +159,39 @@ func (i *InstanceDesc) IsReady(storageLastUpdated time.Time, heartbeatTimeout ti
 	return nil
 }
 
+func HasInstanceDescsChanged(beforeByID, afterByID map[string]InstanceDesc, hasChanged func(b, a InstanceDesc) bool) bool {
+	if len(beforeByID) != len(afterByID) {
+		return true
+	}
+
+	for id, before := range beforeByID {
+		after := afterByID[id]
+		if hasChanged(before, after) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func HasTokensChanged(before, after InstanceDesc) bool {
+	if len(before.Tokens) != len(after.Tokens) {
+		return true
+	}
+
+	for i, token := range before.Tokens {
+		if token != after.Tokens[i] {
+			return true
+		}
+	}
+
+	return false
+}
+
+func HasZoneChanged(before, after InstanceDesc) bool {
+	return before.Zone != after.Zone
+}
+
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
 // and can be sent out to other clients.
 //

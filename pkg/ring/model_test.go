@@ -1,7 +1,6 @@
 package ring
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
@@ -195,7 +194,7 @@ func TestHasInstanceDescsChanged_TokensOrZone(t *testing.T) {
 			hasInstanceDescsChanged := HasInstanceDescsChanged(testData.before, testData.after, func(a, b InstanceDesc) bool {
 				return HasTokensChanged(b, a) || HasZoneChanged(b, a)
 			})
-			require.Equal(t, testData.hasChanged, hasInstanceDescsChanged)
+			assert.Equal(t, testData.hasChanged, hasInstanceDescsChanged)
 		})
 	}
 }

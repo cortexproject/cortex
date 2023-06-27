@@ -315,6 +315,12 @@ func (i *Lifecycler) getTokens() Tokens {
 	return i.tokens
 }
 
+func (i *Lifecycler) getStateAndTokens() (InstanceState, Tokens) {
+	i.stateMtx.RLock()
+	defer i.stateMtx.RUnlock()
+	return i.state, i.tokens
+}
+
 func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.lifecyclerMetrics.tokensOwned.Set(float64(len(tokens)))
 
@@ -800,7 +806,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
 		} else {
 			instanceDesc.Timestamp = time.Now().Unix()
-			instanceDesc.State = i.GetState()
+			instanceDesc.State, instanceDesc.Tokens = i.getStateAndTokens()
 			instanceDesc.Addr = i.Addr
 			instanceDesc.Zone = i.Zone
 			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()

@@ -803,6 +803,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			instanceDesc.State = i.GetState()
 			instanceDesc.Addr = i.Addr
 			instanceDesc.Zone = i.Zone
+			instanceDesc.Tokens = i.getTokens()
 			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
 			ringDesc.Ingesters[i.ID] = instanceDesc
 		}

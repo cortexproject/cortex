@@ -2279,6 +2279,8 @@ func TestShuffleShardWithCaching(t *testing.T) {
 		lcs = append(lcs, lc)
 	}
 
+	time.Sleep(5 * time.Second)
+
 	// Wait until all instances in the ring are ACTIVE.
 	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
 		active := 0

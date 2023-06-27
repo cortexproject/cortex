@@ -46,6 +46,9 @@ type ReadRing interface {
 	// of unhealthy instances is greater than the tolerated max unavailable.
 	GetAllHealthy(op Operation) (ReplicationSet, error)
 
+	// GetInstanceDescsForOperation returns map of InstanceDesc with instance ID as the keys.
+	GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error)
+
 	// GetReplicationSetForOperation returns all instances where the input operation should be executed.
 	// The resulting ReplicationSet doesn't necessarily contains all healthy instances
 	// in the ring, but could contain the minimum set of instances required to execute

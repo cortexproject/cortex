@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
-	"github.com/weaveworks/common/user"
+	"github.com/cortexproject/cortex/pkg/tenant"
 )
 
 const maxBufferSize = 1024
@@ -25,7 +25,7 @@ func (w *WriteRequest) VerifySign(ctx context.Context, signature string) (bool, 
 }
 
 func (w *WriteRequest) Sign(ctx context.Context) (string, error) {
-	u, err := user.ExtractOrgID(ctx)
+	u, err := tenant.TenantID(ctx)
 	if err != nil {
 		return "", err
 	}

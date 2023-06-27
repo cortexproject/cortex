@@ -31,6 +31,11 @@ func (r *RingMock) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	return args.Get(0).(ReplicationSet), args.Error(1)
 }
 
+func (r *RingMock) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error) {
+	args := r.Called(op)
+	return args.Get(0).(map[string]InstanceDesc), args.Error(1)
+}
+
 func (r *RingMock) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	args := r.Called(op)
 	return args.Get(0).(ReplicationSet), args.Error(1)

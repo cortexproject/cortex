@@ -41,6 +41,7 @@
 * [BUGFIX] KV: Etcd calls will no longer block indefinitely and will now time out after the DialTimeout period. #5392
 * [BUGFIX] Ring: Allow RF greater than number of zones to select more than one instance per zone #5411
 * [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
+* [BUGFIX] Store Gateway: Fix bug in store gateway ring comparison logic. #5426
 
 ## 1.15.1 2023-04-26
 

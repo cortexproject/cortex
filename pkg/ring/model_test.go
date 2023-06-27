@@ -93,6 +93,112 @@ func TestInstanceDesc_GetRegisteredAt(t *testing.T) {
 	}
 }
 
+func TestHasInstanceDescsChanged_TokensOrZone(t *testing.T) {
+	tests := map[string]struct {
+		before     map[string]InstanceDesc
+		after      map[string]InstanceDesc
+		hasChanged bool
+	}{
+		"should return false if same": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			hasChanged: false,
+		},
+		"should return true if zone is different": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-3"},
+			},
+			hasChanged: true,
+		},
+		"should return true if token is different": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 9}, Zone: "zone-2"},
+			},
+			hasChanged: true,
+		},
+		"should return true if token is added": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8, 9}, Zone: "zone-2"},
+			},
+			hasChanged: true,
+		},
+		"should return true if token is removed": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3}, Zone: "zone-2"},
+			},
+			hasChanged: true,
+		},
+		"should return true if tokens are swapped": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{2, 3, 8}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{1, 5, 7}, Zone: "zone-2"},
+			},
+			hasChanged: true,
+		},
+		"should return true if instance is added": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+				"instance-3": {Tokens: []uint32{10, 11}, Zone: "zone-3"},
+			},
+			hasChanged: true,
+		},
+		"should return true if instance is removed": {
+			before: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+				"instance-2": {Tokens: []uint32{2, 3, 8}, Zone: "zone-2"},
+			},
+			after: map[string]InstanceDesc{
+				"instance-1": {Tokens: []uint32{1, 5, 7}, Zone: "zone-1"},
+			},
+			hasChanged: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			hasInstanceDescsChanged := HasInstanceDescsChanged(testData.before, testData.after, func(a, b InstanceDesc) bool {
+				return HasTokensChanged(b, a) || HasZoneChanged(b, a)
+			})
+			assert.Equal(t, testData.hasChanged, hasInstanceDescsChanged)
+		})
+	}
+}
+
 func normalizedSource() *Desc {
 	r := NewDesc()
 	r.Ingesters["first"] = InstanceDesc{

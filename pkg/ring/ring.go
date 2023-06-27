@@ -46,6 +46,9 @@ type ReadRing interface {
 	// of unhealthy instances is greater than the tolerated max unavailable.
 	GetAllHealthy(op Operation) (ReplicationSet, error)
 
+	// GetInstanceDescsForOperation returns map of InstanceDesc with instance ID as the keys.
+	GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error)
+
 	// GetReplicationSetForOperation returns all instances where the input operation should be executed.
 	// The resulting ReplicationSet doesn't necessarily contains all healthy instances
 	// in the ring, but could contain the minimum set of instances required to execute
@@ -432,6 +435,26 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 		Instances: instances,
 		MaxErrors: 0,
 	}, nil
+}
+
+// GetInstanceDescsForOperation implements ReadRing.
+func (r *Ring) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
+		return map[string]InstanceDesc{}, ErrEmptyRing
+	}
+
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	instanceDescs := make(map[string]InstanceDesc, 0)
+	for id, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op, storageLastUpdate) {
+			instanceDescs[id] = instance
+		}
+	}
+
+	return instanceDescs, nil
 }
 
 // GetReplicationSetForOperation implements ReadRing.

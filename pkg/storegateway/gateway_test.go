@@ -655,9 +655,9 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING, registeredAt)
 			},
 			updateRing: func(desc *ring.Desc) {
-				instance := desc.Ingesters["instance-2"]
+				instance := desc.Ingesters["instance-1"]
 				instance.Addr = "127.0.0.3"
-				desc.Ingesters["instance-2"] = instance
+				desc.Ingesters["instance-1"] = instance
 			},
 			expectedSync: false,
 		},
@@ -713,6 +713,74 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			updateRing: func(desc *ring.Desc) {
 				// Remove the unhealthy instance from the ring.
 				desc.RemoveIngester("instance-2")
+			},
+			expectedSync: false,
+		},
+		"should sync when token has changed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{7, 8, 9}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when token is added": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3, 7}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when token is removed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when token is swapped": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.RemoveIngester("instance-2")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when zone has changed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "zone-1", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "zone-2", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "zone-3", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should NOT sync when registered timestamp has changed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt.Add(1*time.Hour))
 			},
 			expectedSync: false,
 		},

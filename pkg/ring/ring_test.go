@@ -555,6 +555,36 @@ func TestRing_GetAllHealthy(t *testing.T) {
 	}
 }
 
+func TestRing_GetInstanceDescsForOperation(t *testing.T) {
+	now := time.Now().Unix()
+	twoMinutesAgo := time.Now().Add(-2 * time.Minute).Unix()
+
+	ringDesc := &Desc{Ingesters: map[string]InstanceDesc{
+		"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1}, State: ACTIVE, Timestamp: now},
+		"instance-2": {Addr: "127.0.0.2", Tokens: []uint32{2}, State: LEAVING, Timestamp: now},          // not healthy state
+		"instance-3": {Addr: "127.0.0.3", Tokens: []uint32{3}, State: ACTIVE, Timestamp: twoMinutesAgo}, // heartbeat timed out
+	}}
+
+	ring := Ring{
+		cfg:                 Config{HeartbeatTimeout: time.Minute},
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
+	}
+
+	testOp := NewOp([]InstanceState{ACTIVE}, nil)
+
+	instanceDescs, err := ring.GetInstanceDescsForOperation(testOp)
+	require.NoError(t, err)
+	require.EqualValues(t, map[string]InstanceDesc{
+		"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1}, State: ACTIVE, Timestamp: now},
+	}, instanceDescs)
+}
+
 func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	now := time.Now()
 
@@ -2248,6 +2278,8 @@ func TestShuffleShardWithCaching(t *testing.T) {
 
 		lcs = append(lcs, lc)
 	}
+
+	time.Sleep(5 * time.Second)
 
 	// Wait until all instances in the ring are ACTIVE.
 	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/cespare/xxhash/v2"
+
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
 

@@ -126,7 +126,7 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all data fetched to execute a query in bytes.",
 		}, []string{"user"})
 
-		h.rejectedQueries = prometheus.NewCounterVec(
+		h.rejectedQueries = promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "cortex_rejected_queries_total",
 				Help: "The total number of queries that were rejected.",

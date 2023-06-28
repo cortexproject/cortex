@@ -169,7 +169,7 @@ func TestBucketWithGlobalMarkers_ShouldWorkCorrectlyWithBucketMetrics(t *testing
 	// global markers (intentionally in the middle of the chain) and
 	// user prefix.
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	bkt = objstore.BucketWithMetrics("", bkt, reg)
+	bkt = objstore.BucketWithMetrics("", bkt, prometheus.WrapRegistererWithPrefix("thanos_", reg))
 	bkt = BucketWithGlobalMarkers(bkt)
 	userBkt := bucket.NewUserBucketClient("user-1", bkt, nil)
 

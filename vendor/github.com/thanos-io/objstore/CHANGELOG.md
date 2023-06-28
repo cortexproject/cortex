@@ -20,6 +20,8 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#32](https://github.com/thanos-io/objstore/pull/32) Swift: Support authentication using application credentials.
 - [#41](https://github.com/thanos-io/objstore/pull/41) S3: Support S3 session token.
 - [#43](https://github.com/thanos-io/objstore/pull/43) filesystem: abort filesystem bucket operations if the context has been cancelled
+- [#44](https://github.com/thanos-io/objstore/pull/44) Add new metric to count total number of fetched bytes from bucket
+- [#50](https://github.com/thanos-io/objstore/pull/50) Add Huawei Cloud OBS Object Storage Support
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.

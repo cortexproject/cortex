@@ -45,7 +45,7 @@ type Bucket interface {
 	Upload(ctx context.Context, name string, r io.Reader) error
 
 	// Delete removes the object with the given name.
-	// If object does not exists in the moment of deletion, Delete should throw error.
+	// If object does not exist in the moment of deletion, Delete should throw error.
 	Delete(ctx context.Context, name string) error
 
 	// Name returns the bucket name for the provider.
@@ -57,11 +57,11 @@ type InstrumentedBucket interface {
 	Bucket
 
 	// WithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
-	// thanos_objstore_bucket_operation_failures_total metric.
+	// objstore_bucket_operation_failures_total metric.
 	WithExpectedErrs(IsOpFailureExpectedFunc) Bucket
 
 	// ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
-	// thanos_objstore_bucket_operation_failures_total metric.
+	// objstore_bucket_operation_failures_total metric.
 	// TODO(bwplotka): Remove this when moved to Go 1.14 and replace with InstrumentedBucketReader.
 	ReaderWithExpectedErrs(IsOpFailureExpectedFunc) BucketReader
 }
@@ -94,7 +94,7 @@ type InstrumentedBucketReader interface {
 	BucketReader
 
 	// ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
-	// thanos_objstore_bucket_operation_failures_total metric.
+	// objstore_bucket_operation_failures_total metric.
 	ReaderWithExpectedErrs(IsOpFailureExpectedFunc) BucketReader
 }
 
@@ -392,7 +392,7 @@ func DownloadDir(ctx context.Context, logger log.Logger, bkt BucketReader, origi
 	return nil
 }
 
-// IsOpFailureExpectedFunc allows to mark certain errors as expected, so they will not increment thanos_objstore_bucket_operation_failures_total metric.
+// IsOpFailureExpectedFunc allows to mark certain errors as expected, so they will not increment objstore_bucket_operation_failures_total metric.
 type IsOpFailureExpectedFunc func(error) bool
 
 var _ InstrumentedBucket = &metricBucket{}
@@ -404,26 +404,32 @@ func BucketWithMetrics(name string, b Bucket, reg prometheus.Registerer) *metric
 		bkt:                 b,
 		isOpFailureExpected: func(err error) bool { return false },
 		ops: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name:        "thanos_objstore_bucket_operations_total",
+			Name:        "objstore_bucket_operations_total",
 			Help:        "Total number of all attempted operations against a bucket.",
 			ConstLabels: prometheus.Labels{"bucket": name},
 		}, []string{"operation"}),
 
 		opsFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name:        "thanos_objstore_bucket_operation_failures_total",
+			Name:        "objstore_bucket_operation_failures_total",
 			Help:        "Total number of operations against a bucket that failed, but were not expected to fail in certain way from caller perspective. Those errors have to be investigated.",
 			ConstLabels: prometheus.Labels{"bucket": name},
 		}, []string{"operation"}),
 
+		opsFetchedBytes: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name:        "objstore_bucket_operation_fetched_bytes_total",
+			Help:        "Total number of bytes fetched from bucket, per operation.",
+			ConstLabels: prometheus.Labels{"bucket": name},
+		}, []string{"operation"}),
+
 		opsDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:        "thanos_objstore_bucket_operation_duration_seconds",
+			Name:        "objstore_bucket_operation_duration_seconds",
 			Help:        "Duration of successful operations against the bucket",
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 		}, []string{"operation"}),
 
 		lastSuccessfulUploadTime: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "thanos_objstore_bucket_last_successful_upload_time",
+			Name: "objstore_bucket_last_successful_upload_time",
 			Help: "Second timestamp of the last successful upload to the bucket.",
 		}, []string{"bucket"}),
 	}
@@ -439,6 +445,7 @@ func BucketWithMetrics(name string, b Bucket, reg prometheus.Registerer) *metric
 		bkt.ops.WithLabelValues(op)
 		bkt.opsFailures.WithLabelValues(op)
 		bkt.opsDuration.WithLabelValues(op)
+		bkt.opsFetchedBytes.WithLabelValues(op)
 	}
 	bkt.lastSuccessfulUploadTime.WithLabelValues(b.Name())
 	return bkt
@@ -451,6 +458,8 @@ type metricBucket struct {
 	opsFailures         *prometheus.CounterVec
 	isOpFailureExpected IsOpFailureExpectedFunc
 
+	opsFetchedBytes *prometheus.CounterVec
+
 	opsDuration              *prometheus.HistogramVec
 	lastSuccessfulUploadTime *prometheus.GaugeVec
 }
@@ -460,6 +469,7 @@ func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {
 		bkt:                      b.bkt,
 		ops:                      b.ops,
 		opsFailures:              b.opsFailures,
+		opsFetchedBytes:          b.opsFetchedBytes,
 		isOpFailureExpected:      fn,
 		opsDuration:              b.opsDuration,
 		lastSuccessfulUploadTime: b.lastSuccessfulUploadTime,
@@ -516,6 +526,7 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 		b.opsDuration,
 		b.opsFailures,
 		b.isOpFailureExpected,
+		b.opsFetchedBytes,
 	), nil
 }
 
@@ -536,6 +547,7 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		b.opsDuration,
 		b.opsFailures,
 		b.isOpFailureExpected,
+		b.opsFetchedBytes,
 	), nil
 }
 
@@ -611,9 +623,10 @@ type timingReadCloser struct {
 	duration          *prometheus.HistogramVec
 	failed            *prometheus.CounterVec
 	isFailureExpected IsOpFailureExpectedFunc
+	fetchedBytes      *prometheus.CounterVec
 }
 
-func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc) *timingReadCloser {
+func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec) *timingReadCloser {
 	// Initialize the metrics with 0.
 	dur.WithLabelValues(op)
 	failed.WithLabelValues(op)
@@ -627,6 +640,7 @@ func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramV
 		duration:          dur,
 		failed:            failed,
 		isFailureExpected: isFailureExpected,
+		fetchedBytes:      fetchedBytes,
 	}
 }
 
@@ -648,6 +662,7 @@ func (rc *timingReadCloser) Close() error {
 
 func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
 	n, err = rc.ReadCloser.Read(b)
+	rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
 	// Report metric just once.
 	if !rc.alreadyGotErr && err != nil && err != io.EOF {
 		if !rc.isFailureExpected(err) {

@@ -56,7 +56,7 @@ func TestMigrateBlockDeletionMarksToGlobalLocation(t *testing.T) {
 
 	t.Run("doesn't increase thanos_objstore_bucket_operation_failures_total for NotFound deletion markers", func(t *testing.T) {
 		reg := prometheus.NewPedanticRegistry()
-		bkt = objstore.BucketWithMetrics("", bkt, reg)
+		bkt = objstore.BucketWithMetrics("", bkt, prometheus.WrapRegistererWithPrefix("thanos_", reg))
 		require.NoError(t, bkt.Upload(ctx, path.Join("user-1", block2.String(), metadata.MetaFilename), strings.NewReader("{}")))
 		require.NoError(t, MigrateBlockDeletionMarksToGlobalLocation(ctx, bkt, "user-1", nil))
 

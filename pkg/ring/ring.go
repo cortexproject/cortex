@@ -344,6 +344,9 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 }
 
 // Get returns n (or more) instances which form the replicas for the given key.
+// This implementation guarantees:
+// - Stability: given the same ring, two invocations returns the same set for same operation.
+// - Consistency: adding/removing 1 instance from the ring returns set with no more than 1 difference for same operation.
 func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

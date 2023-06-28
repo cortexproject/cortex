@@ -488,6 +488,73 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 	}
 }
 
+func TestRing_Get_Stability(t *testing.T) {
+	const numOfInvocations = 10
+	const numOfTokensToTest = 10
+
+	tests := map[string]struct {
+		numOfZones        int
+		replicationFactor int
+	}{
+		"should return same set for same operation when zone awareness is disabled": {
+			numOfZones:        0,
+			replicationFactor: 3,
+		},
+		"should return same set when RF is equal to number of zones": {
+			numOfZones:        3,
+			replicationFactor: 3,
+		},
+		"should return same set when RF is less than number of zones": {
+			numOfZones:        3,
+			replicationFactor: 2,
+		},
+		"should return same set when RF is greater than number of zones": {
+			numOfZones:        3,
+			replicationFactor: 9,
+		},
+		"should return same set when number of instances in each zone is inconsistent": {
+			numOfZones:        3,
+			replicationFactor: 8,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			testValues := GenerateTokens(numOfInvocations, nil)
+			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+
+			ringDesc := &Desc{Ingesters: generateRingInstances(16, testData.numOfZones, 128)}
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ZoneAwarenessEnabled: testData.numOfZones > 0,
+					ReplicationFactor:    testData.replicationFactor,
+				},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
+			}
+
+			for i := 0; i < numOfTokensToTest; i++ {
+				expectedSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+				assert.NoError(t, err)
+				assert.Equal(t, testData.replicationFactor, len(expectedSet.Instances))
+
+				for j := 0; j < numOfInvocations; j++ {
+					newSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+					assert.NoError(t, err)
+					assert.Equal(t, expectedSet, newSet)
+				}
+			}
+
+		})
+	}
+}
+
 func TestRing_Get_Consistency(t *testing.T) {
 	// Number of tests to run.
 	const testCount = 10000
@@ -500,20 +567,36 @@ func TestRing_Get_Consistency(t *testing.T) {
 		replicationFactor int
 		numDiff           int
 	}{
-		"replication set should not change if ring did not chang, when RF is equal to number of zones": {
-			initialInstances:  16,
+		"replication set should not change if ring did not change, when RF is equal to number of zones": {
+			initialInstances:  5,
 			addedInstances:    0,
 			removedInstances:  0,
 			numZones:          3,
 			replicationFactor: 3,
 			numDiff:           0,
 		},
+		"replication set should not change if ring did not change, when RF is smaller than number of zones": {
+			initialInstances:  5,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 2,
+			numDiff:           0,
+		},
 		"replication set should not change if ring did not change, when RF is greater than number of zones": {
-			initialInstances:  16,
+			initialInstances:  11,
 			addedInstances:    0,
 			removedInstances:  0,
 			numZones:          3,
 			replicationFactor: 9,
+			numDiff:           0,
+		},
+		"replication set should not change if ring did not change, when num of instance per zone is inconsistent": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 8,
 			numDiff:           0,
 		},
 		"replication set diff should be equal to num of instance added, when RF is equal to number of zones": {
@@ -524,12 +607,28 @@ func TestRing_Get_Consistency(t *testing.T) {
 			replicationFactor: 3,
 			numDiff:           1,
 		},
+		"replication set diff should be equal to num of instance added, when RF is smaller than number of zones": {
+			initialInstances:  5,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 2,
+			numDiff:           1,
+		},
 		"replication set diff should be equal to num of instance added, when RF is greater than number of zones": {
 			initialInstances:  10,
 			addedInstances:    1,
 			removedInstances:  0,
 			numZones:          3,
 			replicationFactor: 9,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance added, when num of instance per zone is inconsistent": {
+			initialInstances:  10,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 8,
 			numDiff:           1,
 		},
 		"replication set diff should be equal to num of instance removed, when RF is equal to number of zones": {
@@ -540,12 +639,28 @@ func TestRing_Get_Consistency(t *testing.T) {
 			replicationFactor: 3,
 			numDiff:           1,
 		},
+		"replication set diff should be equal to num of instance removed, when RF is smaller than number of zones": {
+			initialInstances:  6,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 2,
+			numDiff:           1,
+		},
 		"replication set diff should be equal to num of instance removed, when RF is greater than number of zones": {
 			initialInstances:  11,
 			addedInstances:    0,
 			removedInstances:  1,
 			numZones:          3,
 			replicationFactor: 9,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when num of instance per zone is inconsistent": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 8,
 			numDiff:           1,
 		},
 	}
@@ -2207,7 +2322,12 @@ func generateRingInstances(numInstances, numZones, numTokens int) map[string]Ins
 	instances := make(map[string]InstanceDesc, numInstances)
 
 	for i := 1; i <= numInstances; i++ {
+		if numZones <= 0 {
+			numZones = -i
+		}
+
 		id, desc := generateRingInstance(i, i%numZones, numTokens)
+
 		instances[id] = desc
 	}
 
@@ -2217,6 +2337,10 @@ func generateRingInstances(numInstances, numZones, numTokens int) map[string]Ins
 func generateRingInstance(id, zone, numTokens int) (string, InstanceDesc) {
 	instanceID := fmt.Sprintf("instance-%d", id)
 	zoneID := fmt.Sprintf("zone-%d", zone)
+
+	if zone == -1 {
+		zoneID = ""
+	}
 
 	return instanceID, generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(numTokens, nil), time.Now())
 }

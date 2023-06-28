@@ -325,55 +325,214 @@ func compareRuleGroupDescToStateDesc(t *testing.T, expected *rulespb.RuleGroupDe
 func TestGetRules(t *testing.T) {
 	// ruler ID -> (user ID -> list of groups).
 	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
+	type rulesMap map[string][]*rulespb.RuleDesc
 
 	type testCase struct {
 		sharding         bool
 		shardingStrategy string
 		shuffleShardSize int
+		rulesRequest     RulesRequest
+		expectedCount    map[string]int
+	}
+
+	ruleMap := rulesMap{
+		"ruler1-user1-rule-group1": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+			{
+				Alert: "atest_user1_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler1-user1-rule-group2": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler1-user2-rule-group1": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler2-user1-rule-group3": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+			{
+				Alert: "atest_user1_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler2-user2-rule-group1": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+			{
+				Alert: "atest_user1_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler2-user2-rule-group2": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user2_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+			{
+				Alert: "atest_user2_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler2-user3-rule-group1": []*rulespb.RuleDesc{
+			{
+				Alert: "atest_user3_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler3-user2-rule-group1": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+			{
+				Alert: "atest_user1_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler3-user2-rule-group2": []*rulespb.RuleDesc{
+			{
+				Record: "rtest_user1_1",
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+			{
+				Alert: "atest_user1_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
+		"ruler3-user3-rule-group1": []*rulespb.RuleDesc{
+			{
+				Expr:   "sum(rate(node_cpu_seconds_total[3h:10m]))",
+				Record: "rtest_user1_1",
+			},
+			{
+				Alert: "atest_user1_1",
+				Expr:  "sum(rate(node_cpu_seconds_total[3h:10m]))",
+			},
+		},
 	}
 
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler1-user1-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Rules: ruleMap["ruler1-user1-rule-group2"]},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Rules: ruleMap["ruler1-user2-rule-group1"]},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user1-rule-group3"]},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user2-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user2-rule-group2"]},
+			},
+			"user3": {
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "latency-test", Name: "first", Interval: 10 * time.Second, Rules: ruleMap["ruler2-user3-rule-group1"]},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Rules: ruleMap["ruler3-user3-rule-group1"]},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Rules: ruleMap["ruler3-user2-rule-group1"]},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Rules: ruleMap["ruler3-user2-rule-group2"]},
 			},
 		},
 	}
 
 	testCases := map[string]testCase{
-		"No Sharding": {
+		"No Sharding with Rule Type Filter": {
 			sharding: false,
+			rulesRequest: RulesRequest{
+				Type: alertingRuleFilter,
+			},
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 4,
+				"user3": 2,
+			},
 		},
-		"Default Sharding": {
+		"Default Sharding with No Filter": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
+			expectedCount: map[string]int{
+				"user1": 5,
+				"user2": 9,
+				"user3": 3,
+			},
 		},
-		"Shuffle Sharding and ShardSize = 2": {
+		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter": {
 			sharding:         true,
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				Type: recordingRuleFilter,
+			},
+			expectedCount: map[string]int{
+				"user1": 3,
+				"user2": 5,
+				"user3": 1,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 and Rule Group Name Filter": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				RuleGroupNames: []string{"third"},
+			},
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 1,
+				"user3": 2,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 and Rule Group Name and Rule Type Filter": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				RuleGroupNames: []string{"second", "third"},
+				Type:           recordingRuleFilter,
+			},
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 2,
+				"user3": 1,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule Type and Namespace Filters": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulesRequest: RulesRequest{
+				Type:  alertingRuleFilter,
+				Files: []string{"latency-test"},
+			},
+			expectedCount: map[string]int{
+				"user1": 0,
+				"user2": 0,
+				"user3": 1,
+			},
 		},
 	}
 
@@ -446,13 +605,16 @@ func TestGetRules(t *testing.T) {
 			forEachRuler(func(_ string, r *Ruler) {
 				r.syncRules(context.Background(), rulerSyncReasonInitial)
 			})
-
 			for u := range allRulesByUser {
 				ctx := user.InjectOrgID(context.Background(), u)
 				forEachRuler(func(_ string, r *Ruler) {
-					rules, err := r.GetRules(ctx)
+					ruleStateDescriptions, err := r.GetRules(ctx, tc.rulesRequest)
 					require.NoError(t, err)
-					require.Equal(t, len(allRulesByUser[u]), len(rules))
+					rct := 0
+					for _, ruleStateDesc := range ruleStateDescriptions {
+						rct += len(ruleStateDesc.ActiveRules)
+					}
+					require.Equal(t, tc.expectedCount[u], rct)
 					if tc.sharding {
 						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 

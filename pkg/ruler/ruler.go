@@ -66,6 +66,9 @@ const (
 
 	// errors
 	errListAllUser = "unable to list the ruler users"
+
+	alertingRuleFilter  string = "alert"
+	recordingRuleFilter string = "record"
 )
 
 // Config is the configuration for the recording rules server.
@@ -645,33 +648,59 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, userID, rulesRequest)
 	}
 
-	return r.getLocalRules(userID)
+	return r.getLocalRules(userID, rulesRequest)
 }
 
-func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
 	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
 
-	for _, group := range groups {
-		interval := group.Interval()
+	sliceToSet := func(values []string) map[string]struct{} {
+		set := make(map[string]struct{}, len(values))
+		for _, v := range values {
+			set[v] = struct{}{}
+		}
+		return set
+	}
 
+	ruleNameSet := sliceToSet(rulesRequest.RuleNames)
+	ruleGroupNameSet := sliceToSet(rulesRequest.RuleGroupNames)
+	fileSet := sliceToSet(rulesRequest.Files)
+	ruleType := rulesRequest.Type
+
+	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
+	returnRecording := ruleType == "" || ruleType == recordingRuleFilter
+
+	for _, group := range groups {
 		// The mapped filename is url path escaped encoded to make handling `/` characters easier
 		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to decode rule filename")
 		}
+		if len(fileSet) > 0 {
+			if _, OK := fileSet[decodedNamespace]; !OK {
+				continue
+			}
+		}
+
+		if len(ruleGroupNameSet) > 0 {
+			if _, OK := ruleGroupNameSet[group.Name()]; !OK {
+				continue
+			}
+		}
+		interval := group.Interval()
 
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
@@ -685,6 +714,11 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			EvaluationDuration:  group.GetEvaluationTime(),
 		}
 		for _, r := range group.Rules() {
+			if len(ruleNameSet) > 0 {
+				if _, OK := ruleNameSet[r.Name()]; !OK {
+					continue
+				}
+			}
 			lastError := ""
 			if r.LastError() != nil {
 				lastError = r.LastError().Error()
@@ -693,7 +727,9 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
-				rule.ActiveAlerts()
+				if !returnAlerts {
+					continue
+				}
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
 					alerts = append(alerts, &AlertStateDesc{
@@ -725,6 +761,9 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			case *promRules.RecordingRule:
+				if !returnRecording {
+					continue
+				}
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
@@ -741,12 +780,15 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			}
 			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
-		groupDescs = append(groupDescs, groupDesc)
+		if len(groupDesc.ActiveRules) > 0 {
+			groupDescs = append(groupDescs, groupDesc)
+		}
 	}
+
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -779,7 +821,12 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
+		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{
+			RuleNames:      rulesRequest.GetRuleNames(),
+			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
+			Files:          rulesRequest.GetFiles(),
+			Type:           rulesRequest.GetType(),
+		})
 		if err != nil {
 			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}
@@ -801,7 +848,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID)
+	groupDescs, err := r.getLocalRules(userID, *in)
 	if err != nil {
 		return nil, err
 	}

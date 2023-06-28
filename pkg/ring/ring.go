@@ -364,8 +364,8 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 
 		// We use a slice instead of a map because it's faster to search within a
 		// slice than lookup a map for a very low number of items.
-		distinctHosts = bufHosts[:0]
-		zones         = resetZoneMap(bufZones)
+		distinctHosts       = bufHosts[:0]
+		numOfInstanceByZone = resetZoneMap(bufZones)
 	)
 
 	for i := start; len(distinctHosts) < replicationFactor && iterations < len(r.ringTokens); i++ {
@@ -380,7 +380,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 			return ReplicationSet{}, ErrInconsistentTokensInfo
 		}
 
-		// We want n *distinct* instances && distinct zones.
+		// We want n *distinct* instances.
 		if util.StringsContain(distinctHosts, info.InstanceID) {
 			continue
 		}
@@ -393,7 +393,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 				maxNumOfInstance++
 			}
 
-			if zones[info.Zone] >= maxNumOfInstance {
+			if numOfInstanceByZone[info.Zone] >= maxNumOfInstance {
 				continue
 			}
 		}
@@ -408,13 +408,13 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only add the zone if we are not going to extend,
 			// as we want to extend the instance in the same AZ.
-			if numOfInstance, ok := zones[info.Zone]; !ok {
-				zones[info.Zone] = 1
+			if numOfInstance, ok := numOfInstanceByZone[info.Zone]; !ok {
+				numOfInstanceByZone[info.Zone] = 1
 			} else if numOfInstance < maxInstancePerZone {
-				zones[info.Zone]++
+				numOfInstanceByZone[info.Zone]++
 			} else {
 				// This zone will have an extra instance
-				zones[info.Zone]++
+				numOfInstanceByZone[info.Zone]++
 				zonesWithExtraInstance--
 			}
 		}

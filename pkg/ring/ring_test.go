@@ -2322,8 +2322,8 @@ func generateRingInstances(numInstances, numZones, numTokens int) map[string]Ins
 	instances := make(map[string]InstanceDesc, numInstances)
 
 	for i := 1; i <= numInstances; i++ {
-		if numZones <= 0 {
-			numZones = -i
+		if numZones == 0 {
+			numZones = i
 		}
 
 		id, desc := generateRingInstance(i, i%numZones, numTokens)
@@ -2337,10 +2337,6 @@ func generateRingInstances(numInstances, numZones, numTokens int) map[string]Ins
 func generateRingInstance(id, zone, numTokens int) (string, InstanceDesc) {
 	instanceID := fmt.Sprintf("instance-%d", id)
 	zoneID := fmt.Sprintf("zone-%d", zone)
-
-	if zone == -1 {
-		zoneID = ""
-	}
 
 	return instanceID, generateRingInstanceWithInfo(instanceID, zoneID, GenerateTokens(numTokens, nil), time.Now())
 }

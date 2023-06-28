@@ -719,6 +719,147 @@ func TestRing_Get_Consistency(t *testing.T) {
 	}
 }
 
+func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
+	healthyTimestamp := time.Now().Unix()
+	unhealthyTimestamp := time.Now().Add(-2 * time.Minute).Unix()
+
+	tests := map[string]struct {
+		instances         map[string]InstanceDesc
+		numberOfZones     int
+		replicationFactor int
+		expectedInstances []InstanceDesc
+	}{
+		"should return exactly number of replication factor when there is no extended replica set": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     0,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     0,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Timestamp: healthyTimestamp},
+			},
+		},
+		"unhealthy instances should be excluded from the set": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: unhealthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+			},
+		},
+		"should return exactly number of replication factor when there is no extended replica set, when zone awareness is enabled": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when zone awareness is enabled": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-6": {Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when zone awareness is enabled and RF is greater than zones": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: JOINING, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-6": {Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+				"instance-7": {Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 4,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: JOINING, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ringDesc := &Desc{Ingesters: testData.instances}
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Minute,
+					ZoneAwarenessEnabled: testData.numberOfZones > 0,
+					ReplicationFactor:    testData.replicationFactor,
+				},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
+			}
+
+			testOperation := NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING })
+			set, err := ring.Get(0, testOperation, nil, nil, nil)
+			assert.NoError(t, err)
+			assert.Equal(t, testData.expectedInstances, set.Instances)
+		})
+	}
+}
+
 func TestRing_GetAllHealthy(t *testing.T) {
 	const heartbeatTimeout = time.Minute
 	now := time.Now()

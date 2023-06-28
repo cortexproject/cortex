@@ -56,9 +56,14 @@ func benchmarkBatch(b *testing.B, numInstances, numKeys int) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	r := Ring{
-		cfg:      cfg,
-		ringDesc: desc,
-		strategy: NewDefaultReplicationStrategy(),
+		cfg:                 cfg,
+		ringDesc:            desc,
+		strategy:            NewDefaultReplicationStrategy(),
+		ringTokens:          desc.GetTokens(),
+		ringZones:           getZones(desc.getTokensByZone()),
+		ringTokensByZone:    desc.getTokensByZone(),
+		ringInstanceByToken: desc.getTokensInfo(),
+		KVClient:            &MockClient{},
 	}
 
 	ctx := context.Background()

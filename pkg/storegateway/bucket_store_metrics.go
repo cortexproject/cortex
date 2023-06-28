@@ -134,7 +134,7 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"Number of postings compression and decompression errors.",
 			[]string{"op"}, nil),
 		cachedPostingsCompressionTimeSeconds: prometheus.NewDesc(
-			"cortex_bucket_store_cached_postings_compression_time_seconds",
+			"cortex_bucket_store_cached_postings_compression_time_seconds_total",
 			"Time spent compressing and decompressing postings when storing to / reading from postings cache.",
 			[]string{"op"}, nil),
 		cachedPostingsOriginalSizeBytes: prometheus.NewDesc(

@@ -3,14 +3,15 @@ package bucket
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
 
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
@@ -103,11 +104,13 @@ func Test_Thanos_Metrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	ctx := context.Background()
 
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	bkt = bucketWithMetrics(bkt, "", reg)
-	bkt.Get(ctx, "something")
+	m := &ClientMock{}
+	m.On("Get", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error"))
+	bkt := bucketWithMetrics(m, "", reg)
+	_, err := bkt.Get(ctx, "something")
+	require.Error(t, err)
 
-	// Should track the failure.
+	// Should report the metrics with `thanos_` prefix
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP thanos_objstore_bucket_operation_failures_total Total number of operations against a bucket that failed, but were not expected to fail in certain way from caller perspective. Those errors have to be investigated.
 		# TYPE thanos_objstore_bucket_operation_failures_total counter

@@ -488,6 +488,122 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 	}
 }
 
+func TestRing_Get_Consistency(t *testing.T) {
+	// Number of tests to run.
+	const testCount = 10000
+
+	tests := map[string]struct {
+		initialInstances  int
+		addedInstances    int
+		removedInstances  int
+		numZones          int
+		replicationFactor int
+		numDiff           int
+	}{
+		"replication set should not change if ring did not chang, when RF is equal to number of zones": {
+			initialInstances:  16,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 3,
+			numDiff:           0,
+		},
+		"replication set should not change if ring did not change, when RF is greater than number of zones": {
+			initialInstances:  16,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 9,
+			numDiff:           0,
+		},
+		"replication set diff should be equal to num of instance added, when RF is equal to number of zones": {
+			initialInstances:  5,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 3,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance added, when RF is greater than number of zones": {
+			initialInstances:  10,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 9,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when RF is equal to number of zones": {
+			initialInstances:  6,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 3,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when RF is greater than number of zones": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 9,
+			numDiff:           1,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			testValues := GenerateTokens(testCount, nil)
+			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+			for i := 0; i < testCount; i++ {
+				ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
+				ring := Ring{
+					cfg: Config{
+						HeartbeatTimeout:     time.Hour,
+						ZoneAwarenessEnabled: true,
+						ReplicationFactor:    testData.replicationFactor,
+					},
+					ringDesc:            ringDesc,
+					ringTokens:          ringDesc.GetTokens(),
+					ringTokensByZone:    ringDesc.getTokensByZone(),
+					ringInstanceByToken: ringDesc.getTokensInfo(),
+					ringZones:           getZones(ringDesc.getTokensByZone()),
+					strategy:            NewDefaultReplicationStrategy(),
+					KVClient:            &MockClient{},
+				}
+
+				set, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+				assert.NoError(t, err)
+				assert.Equal(t, testData.replicationFactor, len(set.Instances))
+
+				for i := 0; i < testData.addedInstances; i++ {
+					newID, newDesc := generateRingInstance(testData.initialInstances+i+1, 0, 128)
+					ringDesc.Ingesters[newID] = newDesc
+				}
+				for i := 0; i < testData.removedInstances; i++ {
+					delete(ringDesc.Ingesters, fmt.Sprintf("instance-%d", i))
+				}
+
+				ring.ringTokens = ringDesc.GetTokens()
+				ring.ringTokensByZone = ringDesc.getTokensByZone()
+				ring.ringInstanceByToken = ringDesc.getTokensInfo()
+				ring.ringZones = getZones(ringDesc.getTokensByZone())
+
+				newSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+				assert.NoError(t, err)
+				assert.Equal(t, testData.replicationFactor, len(newSet.Instances))
+
+				numDiff := 0
+				for _, desc := range newSet.Instances {
+					if !set.Includes(desc.Addr) {
+						numDiff++
+					}
+				}
+				assert.LessOrEqual(t, numDiff, testData.numDiff)
+			}
+		})
+	}
+}
+
 func TestRing_GetAllHealthy(t *testing.T) {
 	const heartbeatTimeout = time.Minute
 	now := time.Now()

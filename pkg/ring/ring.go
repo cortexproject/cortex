@@ -362,7 +362,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		// We use a slice instead of a map because it's faster to search within a
 		// slice than lookup a map for a very low number of items.
 		distinctHosts = bufHosts[:0]
-		zones         = clearZoneMap(bufZones)
+		zones         = resetZoneMap(bufZones)
 	)
 
 	for i := start; len(distinctHosts) < replicationFactor && iterations < len(r.ringTokens); i++ {
@@ -408,10 +408,10 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 			if numOfInstance, ok := zones[info.Zone]; !ok {
 				zones[info.Zone] = 1
 			} else if numOfInstance < maxInstancePerZone {
-				zones[info.Zone] += 1
+				zones[info.Zone]++
 			} else {
 				// This zone will have an extra instance
-				zones[info.Zone] += 1
+				zones[info.Zone]++
 				zonesWithExtraInstance--
 			}
 		}

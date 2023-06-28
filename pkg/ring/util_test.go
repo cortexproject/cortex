@@ -421,3 +421,19 @@ func TestWaitInstanceState_ExitsAfterActualStateEqualsState(t *testing.T) {
 	assert.Nil(t, err)
 	ring.AssertNumberOfCalls(t, "GetInstanceState", 1)
 }
+
+func TestResetZoneMap(t *testing.T) {
+	zoneMap := map[string]int{
+		"zone-1": 2,
+		"zone-2": 2,
+	}
+
+	newZoneMap := resetZoneMap(zoneMap)
+	assert.Equal(t, 0, len(newZoneMap))
+}
+
+func TestResetZoneMap_NilAsAnArgument(t *testing.T) {
+	zoneMap := resetZoneMap(nil)
+	zoneMap["zone-1"] = 1 // this should not panic
+	assert.Equal(t, 1, len(zoneMap))
+}

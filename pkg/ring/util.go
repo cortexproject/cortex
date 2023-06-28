@@ -148,7 +148,11 @@ func MakeBuffersForGet() (bufDescs []InstanceDesc, bufHosts []string, bufZones m
 	return
 }
 
-func clearZoneMap(zones map[string]int) map[string]int {
+func resetZoneMap(zones map[string]int) map[string]int {
+	if zones == nil {
+		return make(map[string]int, GetZoneSize)
+	}
+
 	for key := range zones {
 		delete(zones, key)
 	}

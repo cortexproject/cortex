@@ -56,9 +56,14 @@ func benchmarkBatch(b *testing.B, numInstances, numKeys int) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	r := Ring{
-		cfg:      cfg,
-		ringDesc: desc,
-		strategy: NewDefaultReplicationStrategy(),
+		cfg:                 cfg,
+		ringDesc:            desc,
+		strategy:            NewDefaultReplicationStrategy(),
+		ringTokens:          desc.GetTokens(),
+		ringZones:           getZones(desc.getTokensByZone()),
+		ringTokensByZone:    desc.getTokensByZone(),
+		ringInstanceByToken: desc.getTokensInfo(),
+		KVClient:            &MockClient{},
 	}
 
 	ctx := context.Background()
@@ -484,6 +489,378 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 					}
 				}
 			}
+		})
+	}
+}
+
+func TestRing_Get_Stability(t *testing.T) {
+	const numOfInvocations = 10
+	const numOfTokensToTest = 10
+
+	tests := map[string]struct {
+		numOfZones        int
+		replicationFactor int
+	}{
+		"should return same set for same operation when zone awareness is disabled": {
+			numOfZones:        0,
+			replicationFactor: 3,
+		},
+		"should return same set when RF is equal to number of zones": {
+			numOfZones:        3,
+			replicationFactor: 3,
+		},
+		"should return same set when RF is less than number of zones": {
+			numOfZones:        3,
+			replicationFactor: 2,
+		},
+		"should return same set when RF is greater than number of zones": {
+			numOfZones:        3,
+			replicationFactor: 9,
+		},
+		"should return same set when number of instances in each zone is inconsistent": {
+			numOfZones:        3,
+			replicationFactor: 8,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			testValues := GenerateTokens(numOfInvocations, nil)
+			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+
+			ringDesc := &Desc{Ingesters: generateRingInstances(16, testData.numOfZones, 128)}
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Hour,
+					ZoneAwarenessEnabled: testData.numOfZones > 0,
+					ReplicationFactor:    testData.replicationFactor,
+				},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
+			}
+
+			for i := 0; i < numOfTokensToTest; i++ {
+				expectedSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+				assert.NoError(t, err)
+				assert.Equal(t, testData.replicationFactor, len(expectedSet.Instances))
+
+				for j := 0; j < numOfInvocations; j++ {
+					newSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+					assert.NoError(t, err)
+					assert.Equal(t, expectedSet, newSet)
+				}
+			}
+
+		})
+	}
+}
+
+func TestRing_Get_Consistency(t *testing.T) {
+	// Number of tests to run.
+	const testCount = 10000
+
+	tests := map[string]struct {
+		initialInstances  int
+		addedInstances    int
+		removedInstances  int
+		numZones          int
+		replicationFactor int
+		numDiff           int
+	}{
+		"replication set should not change if ring did not change, when RF is equal to number of zones": {
+			initialInstances:  5,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 3,
+			numDiff:           0,
+		},
+		"replication set should not change if ring did not change, when RF is smaller than number of zones": {
+			initialInstances:  5,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 2,
+			numDiff:           0,
+		},
+		"replication set should not change if ring did not change, when RF is greater than number of zones": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 9,
+			numDiff:           0,
+		},
+		"replication set should not change if ring did not change, when num of instance per zone is inconsistent": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 8,
+			numDiff:           0,
+		},
+		"replication set diff should be equal to num of instance added, when RF is equal to number of zones": {
+			initialInstances:  5,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 3,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance added, when RF is smaller than number of zones": {
+			initialInstances:  5,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 2,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance added, when RF is greater than number of zones": {
+			initialInstances:  10,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 9,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance added, when num of instance per zone is inconsistent": {
+			initialInstances:  10,
+			addedInstances:    1,
+			removedInstances:  0,
+			numZones:          3,
+			replicationFactor: 8,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when RF is equal to number of zones": {
+			initialInstances:  6,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 3,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when RF is smaller than number of zones": {
+			initialInstances:  6,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 2,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when RF is greater than number of zones": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 9,
+			numDiff:           1,
+		},
+		"replication set diff should be equal to num of instance removed, when num of instance per zone is inconsistent": {
+			initialInstances:  11,
+			addedInstances:    0,
+			removedInstances:  1,
+			numZones:          3,
+			replicationFactor: 8,
+			numDiff:           1,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			testValues := GenerateTokens(testCount, nil)
+			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+			for i := 0; i < testCount; i++ {
+				ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
+				ring := Ring{
+					cfg: Config{
+						HeartbeatTimeout:     time.Hour,
+						ZoneAwarenessEnabled: true,
+						ReplicationFactor:    testData.replicationFactor,
+					},
+					ringDesc:            ringDesc,
+					ringTokens:          ringDesc.GetTokens(),
+					ringTokensByZone:    ringDesc.getTokensByZone(),
+					ringInstanceByToken: ringDesc.getTokensInfo(),
+					ringZones:           getZones(ringDesc.getTokensByZone()),
+					strategy:            NewDefaultReplicationStrategy(),
+					KVClient:            &MockClient{},
+				}
+
+				set, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+				assert.NoError(t, err)
+				assert.Equal(t, testData.replicationFactor, len(set.Instances))
+
+				for i := 0; i < testData.addedInstances; i++ {
+					newID, newDesc := generateRingInstance(testData.initialInstances+i+1, 0, 128)
+					ringDesc.Ingesters[newID] = newDesc
+				}
+				for i := 0; i < testData.removedInstances; i++ {
+					delete(ringDesc.Ingesters, fmt.Sprintf("instance-%d", i))
+				}
+
+				ring.ringTokens = ringDesc.GetTokens()
+				ring.ringTokensByZone = ringDesc.getTokensByZone()
+				ring.ringInstanceByToken = ringDesc.getTokensInfo()
+				ring.ringZones = getZones(ringDesc.getTokensByZone())
+
+				newSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
+				assert.NoError(t, err)
+				assert.Equal(t, testData.replicationFactor, len(newSet.Instances))
+
+				numDiff := 0
+				for _, desc := range newSet.Instances {
+					if !set.Includes(desc.Addr) {
+						numDiff++
+					}
+				}
+				assert.LessOrEqual(t, numDiff, testData.numDiff)
+			}
+		})
+	}
+}
+
+func TestRing_Get_ExtendedReplicationSet(t *testing.T) {
+	healthyTimestamp := time.Now().Unix()
+	unhealthyTimestamp := time.Now().Add(-2 * time.Minute).Unix()
+
+	tests := map[string]struct {
+		instances         map[string]InstanceDesc
+		numberOfZones     int
+		replicationFactor int
+		expectedInstances []InstanceDesc
+	}{
+		"should return exactly number of replication factor when there is no extended replica set": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     0,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     0,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Timestamp: healthyTimestamp},
+			},
+		},
+		"unhealthy instances should be excluded from the set": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Timestamp: unhealthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Timestamp: healthyTimestamp},
+			},
+		},
+		"should return exactly number of replication factor when there is no extended replica set, when zone awareness is enabled": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: ACTIVE, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: ACTIVE, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when zone awareness is enabled": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-6": {Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 3,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: ACTIVE, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+		"extended replica set should be included in the set, when zone awareness is enabled and RF is greater than zones": {
+			instances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-2": {Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				"instance-4": {Addr: "127.0.0.4", State: JOINING, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				"instance-6": {Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+				"instance-7": {Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+			numberOfZones:     3,
+			replicationFactor: 4,
+			expectedInstances: []InstanceDesc{
+				{Addr: "127.0.0.1", State: JOINING, Tokens: []uint32{1}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.2", State: JOINING, Tokens: []uint32{2}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.3", State: ACTIVE, Tokens: []uint32{3}, Zone: "zone-1", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.4", State: JOINING, Tokens: []uint32{4}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.5", State: ACTIVE, Tokens: []uint32{5}, Zone: "zone-2", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.6", State: ACTIVE, Tokens: []uint32{6}, Zone: "zone-3", Timestamp: healthyTimestamp},
+				{Addr: "127.0.0.7", State: ACTIVE, Tokens: []uint32{7}, Zone: "zone-3", Timestamp: healthyTimestamp},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ringDesc := &Desc{Ingesters: testData.instances}
+			ring := Ring{
+				cfg: Config{
+					HeartbeatTimeout:     time.Minute,
+					ZoneAwarenessEnabled: testData.numberOfZones > 0,
+					ReplicationFactor:    testData.replicationFactor,
+				},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
+			}
+
+			testOperation := NewOp([]InstanceState{JOINING, ACTIVE}, func(s InstanceState) bool { return s == JOINING })
+			set, err := ring.Get(0, testOperation, nil, nil, nil)
+			assert.NoError(t, err)
+			assert.Equal(t, testData.expectedInstances, set.Instances)
 		})
 	}
 }
@@ -2091,7 +2468,12 @@ func generateRingInstances(numInstances, numZones, numTokens int) map[string]Ins
 	instances := make(map[string]InstanceDesc, numInstances)
 
 	for i := 1; i <= numInstances; i++ {
+		if numZones == 0 {
+			numZones = i
+		}
+
 		id, desc := generateRingInstance(i, i%numZones, numTokens)
+
 		instances[id] = desc
 	}
 

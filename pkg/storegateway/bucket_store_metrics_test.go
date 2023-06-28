@@ -384,10 +384,10 @@ func TestBucketStoreMetrics(t *testing.T) {
 			cortex_bucket_store_cached_postings_compression_errors_total{op="encode"} 1170988
 			cortex_bucket_store_cached_postings_compression_errors_total{op="decode"} 1193507
 
-			# HELP cortex_bucket_store_cached_postings_compression_time_seconds Time spent compressing and decompressing postings when storing to / reading from postings cache.
-			# TYPE cortex_bucket_store_cached_postings_compression_time_seconds counter
-			cortex_bucket_store_cached_postings_compression_time_seconds{op="encode"} 1216026
-			cortex_bucket_store_cached_postings_compression_time_seconds{op="decode"} 1238545
+			# HELP cortex_bucket_store_cached_postings_compression_time_seconds_total Time spent compressing and decompressing postings when storing to / reading from postings cache.
+			# TYPE cortex_bucket_store_cached_postings_compression_time_seconds_total counter
+			cortex_bucket_store_cached_postings_compression_time_seconds_total{op="encode"} 1216026
+			cortex_bucket_store_cached_postings_compression_time_seconds_total{op="decode"} 1238545
 
 			# HELP cortex_bucket_store_cached_postings_original_size_bytes_total Original size of postings stored into cache.
 			# TYPE cortex_bucket_store_cached_postings_original_size_bytes_total counter

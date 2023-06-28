@@ -106,7 +106,7 @@ func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetric(t *testing.
 
 	// Mock some blocks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
-	bkt = objstore.BucketWithMetrics("test-bucket", bkt, registry)
+	bkt = objstore.BucketWithMetrics("test-bucket", bkt, prometheus.WrapRegistererWithPrefix("thanos_", registry))
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)

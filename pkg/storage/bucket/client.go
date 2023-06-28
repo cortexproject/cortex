@@ -141,5 +141,5 @@ func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus
 	return objstore.BucketWithMetrics(
 		"", // bucket label value
 		bucketClient,
-		prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg))
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, prometheus.WrapRegistererWithPrefix("thanos_", reg)))
 }

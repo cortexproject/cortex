@@ -128,6 +128,7 @@ Current object storage client implementations:
 | [Baidu BOS](#baidu-bos)                                                                   | Beta               | Production Usage      | no                | @yahaa                           |
 | [Local Filesystem](#filesystem)                                                           | Stable             | Testing and Demo only | yes               | @bwplotka                        |
 | [Oracle Cloud Infrastructure Object Storage](#oracle-cloud-infrastructure-object-storage) | Beta               | Production Usage      | yes               | @aarontams,@gaurav-05,@ericrrath |
+| [HuaweiCloud OBS](#huaweicloud-obs)                                                       | Beta               | Production Usage      | no               | @setoru                          |
 
 **Missing support to some object storage?** Check out [how to add your client section](#how-to-add-a-new-client-to-thanos)
 
@@ -289,7 +290,7 @@ Example working AWS IAM policy for user:
 To test the policy, set env vars for S3 access for *empty, not used* bucket as well as:
 
 ```
-THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI
+THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI,OBS
 THANOS_ALLOW_EXISTING_BUCKET_USE=true
 ```
 
@@ -323,7 +324,7 @@ We need access to CreateBucket and DeleteBucket and access to all buckets:
 }
 ```
 
-With this policy you should be able to run set `THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI` and unset `S3_BUCKET` and run all tests using `make test`.
+With this policy you should be able to run set `THANOS_TEST_OBJSTORE_SKIP=GCS,AZURE,SWIFT,COS,ALIYUNOSS,OCI,OBS` and unset `S3_BUCKET` and run all tests using `make test`.
 
 Details about AWS policies: https://docs.aws.amazon.com/AmazonS3/latest/dev/using-with-s3-actions.html
 
@@ -639,6 +640,41 @@ config:
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
+
+##### HuaweiCloud OBS
+
+To use HuaweiCloud OBS as an object store, you should apply for a HuaweiCloud Account to create an object storage bucket at first.
+More details: [HuaweiCloud OBS](https://support.huaweicloud.com/obs/index.html)
+
+To configure HuaweiCloud Account to use OBS as storage store you need to set these parameters in YAML format stored in a file:
+
+```yaml mdox-exec="go run scripts/cfggen/main.go --name=cos.Config"
+type: OBS                    
+config:                      
+  bucket: ""                 
+  endpoint: ""               
+  access_key: ""             
+  secret_key: ""
+  http_config:
+    idle_conn_timeout: 1m30s
+    response_header_timeout: 2m
+    insecure_skip_verify: false
+    tls_handshake_timeout: 10s
+    expect_continue_timeout: 1s
+    max_idle_conns: 100
+    max_idle_conns_per_host: 100
+    max_conns_per_host: 0
+    tls_config:
+      ca_file: ""
+      cert_file: ""
+      key_file: ""
+      server_name: ""
+      insecure_skip_verify: false
+    disable_compression: false
+prefix: ""
+```
+
+The `access_key` and `secret_key` field is required. The `http_config` field is optional for optimize HTTP transport settings. 
 
 #### How to add a new client to Thanos?
 

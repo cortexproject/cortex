@@ -31,6 +31,7 @@ type RingConfig struct {
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
+	TokensFilePath         string   `yaml:"tokens_file_path"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -63,6 +64,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceAddr, "compactor.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "compactor.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "compactor.ring.instance-id", hostname, "Instance ID to register in the ring.")
+	f.StringVar(&cfg.TokensFilePath, "compactor.ring.tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	// Timeout durations
 	f.DurationVar(&cfg.WaitActiveInstanceTimeout, "compactor.ring.wait-active-instance-timeout", 10*time.Minute, "Timeout for waiting on compactor to become ACTIVE in the ring.")
@@ -98,6 +100,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	lc.JoinAfter = 0
 	lc.MinReadyDuration = 0
 	lc.FinalSleep = 0
+	lc.TokensFilePath = cfg.TokensFilePath
 
 	// We use a safe default instead of exposing to config option to the user
 	// in order to simplify the config.

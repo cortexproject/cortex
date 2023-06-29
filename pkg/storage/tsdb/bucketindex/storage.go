@@ -6,10 +6,11 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/runutil"

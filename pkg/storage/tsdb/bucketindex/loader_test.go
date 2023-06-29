@@ -604,7 +604,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing
 	require.True(t, errors.Is(err, ErrCustomerManagedKeyError))
 
 	// Check cached
-	loader.checkCachedIndexes(ctx)
+	require.NoError(t, loader.checkCachedIndexes(ctx))
 
 	loader.bkt = bkt
 
@@ -623,7 +623,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing
 	test.Poll(t, 3*time.Second, nil, func() interface{} {
 		_, err := loader.GetIndex(ctx, "user-1")
 		// Check cached
-		loader.checkCachedIndexes(ctx)
+		require.NoError(t, loader.checkCachedIndexes(ctx))
 		return err
 	})
 

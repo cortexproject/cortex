@@ -95,15 +95,14 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 		return nil, nil, nil
 	}
 
-	if errors.Is(err, bucketindex.ErrBlockMetaKeyAccessDeniedErr) {
-		// Do not fail if the permission to the bucket key got revoked. We'll act as if the tenant has no bucket index, but the query
-		// will fail anyway in the querier (the querier fails in the querier if it cannot load the bucket index).
-		// This will cause the store-gateway to unload all blocks
+	if errors.Is(err, bucketindex.ErrCustomerManagedKeyError) {
+		// stop the job and return the error
+		// this error should be used to return Access Denied to the caller
 		level.Error(f.logger).Log("msg", "bucket index key permission revoked", "user", f.userID, "err", err)
 		f.metrics.Synced.WithLabelValues(keyAccessDenied).Set(1)
 		f.metrics.Submit()
 
-		return nil, nil, nil
+		return nil, nil, bucketindex.ErrCustomerManagedKeyError
 	}
 
 	if err != nil {

@@ -164,7 +164,7 @@ func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetricCustomerKey(
 	idx, partials, _, err := w.UpdateIndex(ctx, nil)
 	require.NoError(t, err)
 	assert.Len(t, partials, 1)
-	assert.True(t, errors.Is(partials[block2.ULID], ErrBlockMetaKeyAccessDeniedErr))
+	assert.True(t, errors.Is(partials[block2.ULID], errBlockMetaKeyAccessDeniedErr))
 	assertBucketIndexEqual(t, idx, bkt, userID,
 		[]tsdb.BlockMeta{block1},
 		[]*metadata.DeletionMark{})

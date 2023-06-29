@@ -7,7 +7,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
@@ -16,17 +15,20 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
 var (
-	ErrBlockMetaNotFound           = block.ErrorSyncMetaNotFound
-	ErrBlockMetaCorrupted          = block.ErrorSyncMetaCorrupted
-	ErrBlockMetaKeyAccessDeniedErr = errors.New("block meta file key access denied error")
-	ErrBlockDeletionMarkNotFound   = errors.New("block deletion mark not found")
-	ErrBlockDeletionMarkCorrupted  = errors.New("block deletion mark corrupted")
+	ErrBlockMetaNotFound          = block.ErrorSyncMetaNotFound
+	ErrBlockMetaCorrupted         = block.ErrorSyncMetaCorrupted
+	ErrBlockDeletionMarkNotFound  = errors.New("block deletion mark not found")
+	ErrBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
+
+	errBlockMetaKeyAccessDeniedErr = errors.New("block meta file key access denied error")
 )
 
 // Updater is responsible to generate an update in-memory bucket index.
@@ -110,7 +112,7 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Blo
 			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index", "block", id.String())
 			continue
 		}
-		if errors.Is(err, ErrBlockMetaKeyAccessDeniedErr) {
+		if errors.Is(err, errBlockMetaKeyAccessDeniedErr) {
 			partials[id] = err
 			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index due key permission", "block", id.String())
 			continue
@@ -135,7 +137,7 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 		return nil, ErrBlockMetaNotFound
 	}
 	if w.bkt.IsCustomerManagedKeyError(err) {
-		return nil, ErrBlockMetaKeyAccessDeniedErr
+		return nil, errBlockMetaKeyAccessDeniedErr
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "get block meta file: %v", metaFile)

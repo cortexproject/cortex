@@ -44,6 +44,12 @@ func TestApiStatusCodes(t *testing.T) {
 		},
 
 		{
+			err:            validation.AccessDeniedError("access denied"),
+			expectedString: "access denied",
+			expectedCode:   422,
+		},
+
+		{
 			err:            promql.ErrTooManySamples("query execution"),
 			expectedString: "too many samples",
 			expectedCode:   422,

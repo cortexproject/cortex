@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/assert"
@@ -240,4 +241,22 @@ func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIn
 	})
 
 	return finder
+}
+
+func TestBucketIndexBlocksFinder_GetBlocks_KeyPermissionDenied(t *testing.T) {
+	const userID = "user-1"
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	bkt = &cortex_testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			path.Join(userID, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+
+	finder := prepareBucketIndexBlocksFinder(t, bkt)
+
+	_, _, err := finder.GetBlocks(context.Background(), userID, 0, 100)
+	expected := validation.AccessDeniedError("error")
+	require.IsType(t, expected, err)
 }

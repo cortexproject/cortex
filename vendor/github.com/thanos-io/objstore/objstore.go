@@ -85,6 +85,9 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
+	// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+	IsCustomerManagedKeyError(err error) bool
+
 	// Attributes returns information about the specified object.
 	Attributes(ctx context.Context, name string) (ObjectAttributes, error)
 }
@@ -601,6 +604,10 @@ func (b *metricBucket) Delete(ctx context.Context, name string) error {
 
 func (b *metricBucket) IsObjNotFoundErr(err error) bool {
 	return b.bkt.IsObjNotFoundErr(err)
+}
+
+func (b *metricBucket) IsCustomerManagedKeyError(err error) bool {
+	return b.bkt.IsCustomerManagedKeyError(err)
 }
 
 func (b *metricBucket) Close() error {

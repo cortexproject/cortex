@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
@@ -15,8 +16,9 @@ import (
 )
 
 var (
-	ErrIndexNotFound  = errors.New("bucket index not found")
-	ErrIndexCorrupted = errors.New("bucket index corrupted")
+	ErrIndexNotFound           = errors.New("bucket index not found")
+	ErrIndexCorrupted          = errors.New("bucket index corrupted")
+	ErrCustomerManagedKeyError = errors.New("access denied: customer key")
 )
 
 // ReadIndex reads, parses and returns a bucket index from the bucket.
@@ -24,11 +26,16 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvi
 	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Get the bucket index.
-	reader, err := userBkt.WithExpectedErrs(userBkt.IsObjNotFoundErr).Get(ctx, IndexCompressedFilename)
+	reader, err := userBkt.WithExpectedErrs(tsdb.IsObjNotFoundOrCustomerManagedKeyErr(userBkt)).Get(ctx, IndexCompressedFilename)
 	if err != nil {
 		if userBkt.IsObjNotFoundErr(err) {
 			return nil, ErrIndexNotFound
 		}
+
+		if userBkt.IsCustomerManagedKeyError(err) {
+			return nil, ErrCustomerManagedKeyError
+		}
+
 		return nil, errors.Wrap(err, "read bucket index")
 	}
 	defer runutil.CloseWithLogOnErr(logger, reader, "close bucket index reader")

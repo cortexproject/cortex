@@ -19,6 +19,7 @@ import (
 
 const (
 	corruptedBucketIndex = "corrupted-bucket-index"
+	keyAccessDenied      = "key-access-denied"
 	noBucketIndex        = "no-bucket-index"
 )
 
@@ -93,6 +94,18 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 
 		return nil, nil, nil
 	}
+
+	if errors.Is(err, bucketindex.ErrBlockMetaKeyAccessDeniedErr) {
+		// Do not fail if the permission to the bucket key got revoked. We'll act as if the tenant has no bucket index, but the query
+		// will fail anyway in the querier (the querier fails in the querier if it cannot load the bucket index).
+		// This will cause the store-gateway to unload all blocks
+		level.Error(f.logger).Log("msg", "bucket index key permission revoked", "user", f.userID, "err", err)
+		f.metrics.Synced.WithLabelValues(keyAccessDenied).Set(1)
+		f.metrics.Submit()
+
+		return nil, nil, nil
+	}
+
 	if err != nil {
 		f.metrics.Synced.WithLabelValues(block.FailedMeta).Set(1)
 		f.metrics.Submit()

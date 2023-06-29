@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -17,14 +16,12 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -55,6 +52,37 @@ func TestBlocksCleaner(t *testing.T) {
 			testBlocksCleanerWithOptions(t, options)
 		})
 	}
+}
+
+func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
+	const userID = "user-1"
+
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	// Create blocks.
+	ctx := context.Background()
+	deletionDelay := 12 * time.Hour
+	bucketClient = &cortex_testutil.MockBucketFailure{
+		Bucket: bucketClient,
+		GetFailures: map[string]error{
+			path.Join(userID, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      deletionDelay,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	logger := log.NewNopLogger()
+	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, cfgProvider, logger, nil)
+	err := cleaner.cleanUser(ctx, userID, true)
+	require.NoError(t, err)
 }
 
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
@@ -254,7 +282,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	createDeletionMark(t, bucketClient, userID, block4, now.Add(-deletionDelay).Add(-time.Hour))
 
 	// To emulate a failure deleting a block, we wrap the bucket client in a mocked one.
-	bucketClient = &mockBucketFailure{
+	bucketClient = &cortex_testutil.MockBucketFailure{
 		Bucket:         bucketClient,
 		DeleteFailures: []string{path.Join(userID, block3.String(), metadata.MetaFilename)},
 	}
@@ -656,19 +684,6 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			"cortex_compactor_blocks_marked_for_deletion_total",
 		))
 	}
-}
-
-type mockBucketFailure struct {
-	objstore.Bucket
-
-	DeleteFailures []string
-}
-
-func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
-	if util.StringsContain(m.DeleteFailures, name) {
-		return errors.New("mocked delete failure")
-	}
-	return m.Bucket.Delete(ctx, name)
 }
 
 type mockConfigProvider struct {

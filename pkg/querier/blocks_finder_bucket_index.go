@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -62,6 +63,11 @@ func (f *BucketIndexBlocksFinder) GetBlocks(ctx context.Context, userID string, 
 		// so the bucket index hasn't been created yet.
 		return nil, nil, nil
 	}
+
+	if errors.Is(err, bucketindex.ErrCustomerManagedKeyError) {
+		return nil, nil, validation.AccessDeniedError(err.Error())
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}

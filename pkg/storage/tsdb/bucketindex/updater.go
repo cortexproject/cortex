@@ -7,6 +7,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
@@ -21,10 +22,11 @@ import (
 )
 
 var (
-	ErrBlockMetaNotFound          = block.ErrorSyncMetaNotFound
-	ErrBlockMetaCorrupted         = block.ErrorSyncMetaCorrupted
-	ErrBlockDeletionMarkNotFound  = errors.New("block deletion mark not found")
-	ErrBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
+	ErrBlockMetaNotFound           = block.ErrorSyncMetaNotFound
+	ErrBlockMetaCorrupted          = block.ErrorSyncMetaCorrupted
+	ErrBlockMetaKeyAccessDeniedErr = errors.New("block meta file key access denied error")
+	ErrBlockDeletionMarkNotFound   = errors.New("block deletion mark not found")
+	ErrBlockDeletionMarkCorrupted  = errors.New("block deletion mark corrupted")
 )
 
 // Updater is responsible to generate an update in-memory bucket index.
@@ -108,6 +110,11 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Blo
 			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index", "block", id.String())
 			continue
 		}
+		if errors.Is(err, ErrBlockMetaKeyAccessDeniedErr) {
+			partials[id] = err
+			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index due key permission", "block", id.String())
+			continue
+		}
 		if errors.Is(err, ErrBlockMetaCorrupted) {
 			partials[id] = err
 			level.Error(w.logger).Log("msg", "skipped block with corrupted meta.json when updating bucket index", "block", id.String(), "err", err)
@@ -123,9 +130,12 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	metaFile := path.Join(id.String(), block.MetaFilename)
 
 	// Get the block's meta.json file.
-	r, err := w.bkt.ReaderWithExpectedErrs(w.bkt.IsObjNotFoundErr).Get(ctx, metaFile)
+	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsObjNotFoundOrCustomerManagedKeyErr(w.bkt)).Get(ctx, metaFile)
 	if w.bkt.IsObjNotFoundErr(err) {
 		return nil, ErrBlockMetaNotFound
+	}
+	if w.bkt.IsCustomerManagedKeyError(err) {
+		return nil, ErrBlockMetaKeyAccessDeniedErr
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "get block meta file: %v", metaFile)

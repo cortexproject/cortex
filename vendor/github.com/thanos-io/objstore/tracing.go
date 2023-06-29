@@ -101,6 +101,10 @@ func (t TracingBucket) IsObjNotFoundErr(err error) bool {
 	return t.bkt.IsObjNotFoundErr(err)
 }
 
+func (t TracingBucket) IsCustomerManagedKeyError(err error) bool {
+	return t.bkt.IsCustomerManagedKeyError(err)
+}
+
 func (t TracingBucket) WithExpectedErrs(expectedFunc IsOpFailureExpectedFunc) Bucket {
 	if ib, ok := t.bkt.(InstrumentedBucket); ok {
 		return TracingBucket{bkt: ib.WithExpectedErrs(expectedFunc)}

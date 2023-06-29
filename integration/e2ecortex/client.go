@@ -31,6 +31,8 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+var DefaultFilter = RuleFilter{}
+
 // Client is a client used to interact with Cortex in integration tests
 type Client struct {
 	alertmanagerClient  promapi.Client
@@ -370,12 +372,14 @@ type RuleFilter struct {
 
 func addQueryParams(urlValues url.Values, paramName string, params ...string) {
 	for _, paramValue := range params {
-		urlValues.Add(paramName, paramValue)
+		if paramValue != "" {
+			urlValues.Add(paramName, paramValue)
+		}
 	}
 }
 
-// GetPrometheusRulesWithFilter fetches the rules from the Prometheus endpoint /api/v1/rules.
-func (c *Client) GetPrometheusRulesWithFilter(filter RuleFilter) ([]*ruler.RuleGroup, error) {
+// GetPrometheusRules fetches the rules from the Prometheus endpoint /api/v1/rules.
+func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, error) {
 	// Create HTTP request
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/api/v1/rules", c.rulerAddress), nil)
@@ -390,48 +394,6 @@ func (c *Client) GetPrometheusRulesWithFilter(filter RuleFilter) ([]*ruler.RuleG
 	addQueryParams(urlValues, "rule_group[]", filter.RuleGroupNames...)
 	addQueryParams(urlValues, "type", filter.RuleType)
 	req.URL.RawQuery = urlValues.Encode()
-
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-	defer cancel()
-
-	// Execute HTTP request
-	res, err := c.httpClient.Do(req.WithContext(ctx))
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Decode the response.
-	type response struct {
-		Status string              `json:"status"`
-		Data   ruler.RuleDiscovery `json:"data"`
-	}
-
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
-		return nil, err
-	}
-
-	if decoded.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data.RuleGroups, nil
-}
-
-// GetPrometheusRules fetches the rules from the Prometheus endpoint /api/v1/rules.
-func (c *Client) GetPrometheusRules() ([]*ruler.RuleGroup, error) {
-	// Create HTTP request
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/api/v1/rules", c.rulerAddress), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-Scope-OrgID", c.orgID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()

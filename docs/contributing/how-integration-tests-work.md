@@ -20,13 +20,13 @@ This will locally build the `quay.io/cortexproject/cortex:latest` image used by 
 Once the Docker image is built, you can run integration tests:
 
 ```
-go test -v -tags=requires_docker ./integration/...
+go test -v -tags=integration,requires_docker,integration_alertmanager,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz ./integration/...
 ```
 
-If you want to run a single test you can use a filter. For example, to only run `TestChunksStorageAllIndexBackends`:
+If you want to run a single test you can use a filter. For example, to only run `TestRulerAPISharding`:
 
 ```
-go test -v -tags=requires_docker ./integration -run "^TestChunksStorageAllIndexBackends$"
+go test -v -tags=integration,integration_ruler  -timeout 2400s -v -count=1 ./integration/... -run "^TestRulerAPISharding$"
 ```
 
 ### Supported environment variables

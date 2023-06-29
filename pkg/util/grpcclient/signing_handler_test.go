@@ -45,7 +45,7 @@ func TestUnarySigningHandler(t *testing.T) {
 		return nil, nil
 	})
 
-	require.ErrorIs(t, ErrSignatureMismatch, err)
+	require.ErrorIs(t, err, ErrSignatureMismatch)
 
 	// Return error when signature is not present
 	ctx = user.InjectOrgID(context.Background(), "user-")
@@ -54,5 +54,14 @@ func TestUnarySigningHandler(t *testing.T) {
 		return nil, nil
 	})
 
-	require.ErrorIs(t, ErrSignatureNotPresent, err)
+	require.ErrorIs(t, err, ErrSignatureNotPresent)
+
+	// Return error when multiples signatures are present
+	md[reqSignHeaderName] = append(md[reqSignHeaderName], "sig1", "sig2")
+	ctx = metadata.NewOutgoingContext(ctx, md)
+	err = UnarySigningClientInterceptor(ctx, "", w, w, nil, func(c context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+		ctx = c
+		return nil
+	})
+	require.ErrorIs(t, err, ErrMultipleSignaturePresent)
 }

@@ -14,6 +14,7 @@ var (
 
 const (
 	ErrDifferentSignaturePresent = errors.Error("different signature already present")
+	ErrMultipleSignaturePresent  = errors.Error("multiples signature present")
 	ErrSignatureNotPresent       = errors.Error("signature not present")
 	ErrSignatureMismatch         = errors.Error("signature mismatch")
 )
@@ -83,7 +84,7 @@ func UnarySigningClientInterceptor(ctx context.Context, method string, req, repl
 				return ErrDifferentSignaturePresent
 			}
 		} else {
-			return ErrDifferentSignaturePresent
+			return ErrMultipleSignaturePresent
 		}
 	} else {
 		md = md.Copy()

@@ -2193,7 +2193,7 @@ ha_tracker:
 
 # EXPERIMENTAL: If enabled, sign the write request between distributors and
 # ingesters.
-# CLI flag: -distributor.sign_write_requests
+# CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
 
 ring:

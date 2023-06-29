@@ -29,9 +29,9 @@ type Config struct {
 	BackoffOnRatelimits bool           `yaml:"backoff_on_ratelimits"`
 	BackoffConfig       backoff.Config `yaml:"backoff_config"`
 
-	TLSEnabled         bool             `yaml:"tls_enabled"`
-	TLS                tls.ClientConfig `yaml:",inline"`
-	EnableSignRequests bool             `yaml:"-"`
+	TLSEnabled               bool             `yaml:"tls_enabled"`
+	TLS                      tls.ClientConfig `yaml:",inline"`
+	SignWriteRequestsEnabled bool             `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -92,7 +92,7 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimiter(cfg)}, unaryClientInterceptors...)
 	}
 
-	if cfg.EnableSignRequests {
+	if cfg.SignWriteRequestsEnabled {
 		unaryClientInterceptors = append(unaryClientInterceptors, UnarySigningClientInterceptor)
 	}
 

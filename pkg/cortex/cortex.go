@@ -383,8 +383,8 @@ func (t *Cortex) setupGRPCHeaderForwarding() {
 }
 
 func (t *Cortex) setupRequestSigning() {
-	if t.Cfg.Distributor.EnableSignWriteRequests {
-		util_log.WarnExperimentalUse("Distributor EnableSignWriteRequests")
+	if t.Cfg.Distributor.SignWriteRequestsEnabled {
+		util_log.WarnExperimentalUse("Distributor SignWriteRequestsEnabled")
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcclient.UnarySigningServerInterceptor)
 	}
 }

@@ -315,12 +315,6 @@ func (i *Lifecycler) getTokens() Tokens {
 	return i.tokens
 }
 
-func (i *Lifecycler) getStateAndTokens() (InstanceState, Tokens) {
-	i.stateMtx.RLock()
-	defer i.stateMtx.RUnlock()
-	return i.state, i.tokens
-}
-
 func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.lifecyclerMetrics.tokensOwned.Set(float64(len(tokens)))
 
@@ -440,7 +434,9 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	if uint64(i.cfg.HeartbeatPeriod) > 0 {
 		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 		heartbeatTicker.Stop()
-		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod)), func() {
+		// We are jittering for at least half of the time and max the time of the heartbeat.
+		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
+		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
 			i.heartbeat()
 			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
 		})
@@ -806,7 +802,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
 		} else {
 			instanceDesc.Timestamp = time.Now().Unix()
-			instanceDesc.State, instanceDesc.Tokens = i.getStateAndTokens()
+			instanceDesc.State = i.GetState()
 			instanceDesc.Addr = i.Addr
 			instanceDesc.Zone = i.Zone
 			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()

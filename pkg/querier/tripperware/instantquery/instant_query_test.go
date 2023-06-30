@@ -23,13 +23,12 @@ import (
 
 func TestRequest(t *testing.T) {
 	t.Parallel()
-	now := time.Now()
 	codec := InstantQueryCodec
 
 	for _, tc := range []struct {
 		url         string
 		expectedURL string
-		expected    tripperware.Request
+		expected    *PrometheusRequest
 		expectedErr error
 	}{
 		{
@@ -60,10 +59,10 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29",
-			expectedURL: fmt.Sprintf("%s%d", "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=", now.Unix()),
+			expectedURL: "/api/v1/query?query=sum%28container_memory_rss%29+by+%28namespace%29&time=",
 			expected: &PrometheusRequest{
 				Path:  "/api/v1/query",
-				Time:  now.Unix() * 1e3,
+				Time:  0,
 				Query: "sum(container_memory_rss) by (namespace)",
 				Stats: "",
 				Headers: map[string][]string{
@@ -84,6 +83,11 @@ func TestRequest(t *testing.T) {
 			// Get a deep copy of the request with Context changed to ctx
 			r = r.Clone(ctx)
 
+			if tc.expected.Time == 0 {
+				now := time.Now()
+				tc.expectedURL = fmt.Sprintf("%s%d", tc.expectedURL, now.Unix())
+				tc.expected.Time = now.Unix() * 1e3
+			}
 			req, err := codec.DecodeRequest(ctx, r, []string{"Test-Header"})
 			if err != nil {
 				require.EqualValues(t, tc.expectedErr, err)

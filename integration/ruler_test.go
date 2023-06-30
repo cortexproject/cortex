@@ -382,7 +382,7 @@ func TestRulerSharding(t *testing.T) {
 	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
 
 	// Fetch the rules and ensure they match the configured ones.
-	actualGroups, err := c.GetPrometheusRules()
+	actualGroups, err := c.GetPrometheusRules(e2ecortex.DefaultFilter)
 	require.NoError(t, err)
 
 	var actualNames []string
@@ -542,7 +542,7 @@ func TestRulerAPISharding(t *testing.T) {
 	// For each test case, fetch the rules with configured filters, and ensure the results match.
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			actualGroups, err := c.GetPrometheusRulesWithFilter(tc.filter)
+			actualGroups, err := c.GetPrometheusRules(tc.filter)
 			require.NoError(t, err)
 			tc.resultCheckFn(t, actualGroups)
 		})

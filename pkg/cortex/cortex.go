@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"gopkg.in/yaml.v2"
 
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/api"
@@ -355,6 +357,7 @@ func New(cfg Config) (*Cortex, error) {
 
 	cortex.setupThanosTracing()
 	cortex.setupGRPCHeaderForwarding()
+	cortex.setupRequestSigning()
 
 	if err := cortex.setupModuleManager(); err != nil {
 		return nil, err
@@ -376,6 +379,13 @@ func (t *Cortex) setupGRPCHeaderForwarding() {
 	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor)
 		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor)
+	}
+}
+
+func (t *Cortex) setupRequestSigning() {
+	if t.Cfg.Distributor.SignWriteRequestsEnabled {
+		util_log.WarnExperimentalUse("Distributor SignWriteRequestsEnabled")
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcclient.UnarySigningServerInterceptor)
 	}
 }
 

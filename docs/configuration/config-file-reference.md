@@ -2196,6 +2196,11 @@ ha_tracker:
 # CLI flag: -distributor.extend-writes
 [extend_writes: <boolean> | default = true]
 
+# EXPERIMENTAL: If enabled, sign the write request between distributors and
+# ingesters.
+# CLI flag: -distributor.sign-write-requests
+[sign_write_requests: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,

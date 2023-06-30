@@ -106,11 +106,11 @@ func TestBucketIndexMetadataFetcher_Fetch_KeyPermissionDenied(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	ctx := context.Background()
 
-	bkt.MockGet(userID+"/bucket-index.json.gz", "c", bucketindex.ErrCustomerManagedKeyError)
+	bkt.MockGet(userID+"/bucket-index.json.gz", "c", bucket.ErrCustomerManagedKeyError)
 
 	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, log.NewNopLogger(), reg, nil)
 	metas, _, err := fetcher.Fetch(ctx)
-	require.ErrorIs(t, bucketindex.ErrCustomerManagedKeyError, err)
+	require.ErrorIs(t, bucket.ErrCustomerManagedKeyError, err)
 	assert.Empty(t, metas)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`

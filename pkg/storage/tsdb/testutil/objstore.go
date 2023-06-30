@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -46,6 +47,11 @@ func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
 }
 
 func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	for prefix, err := range m.GetFailures {
+		if strings.HasPrefix(name, prefix) {
+			return nil, err
+		}
+	}
 	if e, ok := m.GetFailures[name]; ok {
 		return nil, e
 	}
@@ -58,7 +64,7 @@ func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureEx
 		return &MockBucketFailure{Bucket: ibkt.WithExpectedErrs(expectedFunc), DeleteFailures: m.DeleteFailures, GetFailures: m.GetFailures}
 	}
 
-	return m.WithExpectedErrs(expectedFunc)
+	return m
 }
 
 func (m *MockBucketFailure) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.BucketReader {

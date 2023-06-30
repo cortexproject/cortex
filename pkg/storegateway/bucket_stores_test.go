@@ -33,12 +33,59 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/metadata"
 
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
+
+func TestBucketStores_CustomerKeyError(t *testing.T) {
+	userToMetric := map[string]string{
+		"user-1": "series_1",
+		"user-2": "series_2",
+	}
+
+	ctx := context.Background()
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.BucketIndex.Enabled = true
+
+	storageDir := t.TempDir()
+
+	for userID, metricName := range userToMetric {
+		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
+	}
+
+	b, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+
+	mBucket := &cortex_testutil.MockBucketFailure{
+		Bucket: b,
+		GetFailures: map[string]error{
+			"user-1": cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), mBucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Should set the error on user-1
+	require.NoError(t, stores.InitialSync(ctx))
+	require.ErrorIs(t, stores.stores["user-1"].err, bucket.ErrCustomerManagedKeyError)
+	require.ErrorIs(t, stores.stores["user-2"].err, nil)
+	require.NoError(t, stores.SyncBlocks(context.Background()))
+	require.ErrorIs(t, stores.stores["user-1"].err, bucket.ErrCustomerManagedKeyError)
+	require.ErrorIs(t, stores.stores["user-2"].err, nil)
+
+	// Cleaning the error
+	mBucket.GetFailures = map[string]error{}
+	require.NoError(t, stores.SyncBlocks(context.Background()))
+	require.ErrorIs(t, stores.stores["user-1"].err, nil)
+	require.ErrorIs(t, stores.stores["user-2"].err, nil)
+}
 
 func TestBucketStores_InitialSync(t *testing.T) {
 	t.Parallel()

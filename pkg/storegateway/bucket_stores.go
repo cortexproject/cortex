@@ -32,8 +32,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
@@ -234,7 +232,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 			for job := range jobs {
 				if err := f(ctx, job.store.BucketStore); err != nil {
-					if errors.Is(err, bucketindex.ErrCustomerManagedKeyError) {
+					if errors.Is(err, bucket.ErrCustomerManagedKeyError) {
 						job.store.err = err
 					} else {
 						errsMx.Lock()
@@ -300,7 +298,7 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return nil
 	}
 
-	if store.err != nil && errors.Is(store.err, bucketindex.ErrCustomerManagedKeyError) {
+	if store.err != nil && errors.Is(store.err, bucket.ErrCustomerManagedKeyError) {
 		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", store.err)
 	}
 
@@ -309,7 +307,7 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		ctx:                spanCtx,
 	})
 
-	if err != nil && errors.Is(err, bucketindex.ErrCustomerManagedKeyError) {
+	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
 		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 

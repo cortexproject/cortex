@@ -65,7 +65,7 @@ func (f *BucketIndexBlocksFinder) GetBlocks(ctx context.Context, userID string, 
 		return nil, nil, nil
 	}
 
-	if errors.Is(err, bucketindex.ErrCustomerManagedKeyError) {
+	if errors.Is(err, bucket.ErrCustomerManagedKeyError) {
 		return nil, nil, validation.AccessDeniedError(err.Error())
 	}
 

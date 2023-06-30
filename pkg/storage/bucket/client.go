@@ -40,6 +40,8 @@ var (
 	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
 
 	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
+
+	ErrCustomerManagedKeyError = errors.New("access denied: customer key")
 )
 
 // Config holds configuration for accessing long-term storage.

@@ -17,9 +17,8 @@ import (
 )
 
 var (
-	ErrIndexNotFound           = errors.New("bucket index not found")
-	ErrIndexCorrupted          = errors.New("bucket index corrupted")
-	ErrCustomerManagedKeyError = errors.New("access denied: customer key")
+	ErrIndexNotFound  = errors.New("bucket index not found")
+	ErrIndexCorrupted = errors.New("bucket index corrupted")
 )
 
 // ReadIndex reads, parses and returns a bucket index from the bucket.
@@ -34,7 +33,7 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvi
 		}
 
 		if userBkt.IsCustomerManagedKeyError(err) {
-			return nil, ErrCustomerManagedKeyError
+			return nil, bucket.ErrCustomerManagedKeyError
 		}
 
 		return nil, errors.Wrap(err, "read bucket index")

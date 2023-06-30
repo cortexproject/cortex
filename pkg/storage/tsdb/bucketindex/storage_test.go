@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,7 @@ func TestReadIndex_ShouldReturnErrorIfKeyAccessDeniedErr(t *testing.T) {
 		},
 	}
 	idx, err := ReadIndex(context.Background(), bkt, "user-1", nil, log.NewNopLogger())
-	require.Equal(t, ErrCustomerManagedKeyError, err)
+	require.Equal(t, bucket.ErrCustomerManagedKeyError, err)
 	require.Nil(t, idx)
 }
 

@@ -65,7 +65,11 @@ type BucketStores struct {
 
 	// Keeps a bucket store for each tenant.
 	storesMu sync.RWMutex
-	stores   map[string]*BucketStoreWithLastError
+	stores   map[string]*store.BucketStore
+
+	// Keeps the last sync error for the  bucket store for each tenant.
+	storesErrorsMu sync.RWMutex
+	storesErrors   map[string]error
 
 	// Metrics.
 	syncTimes         prometheus.Histogram
@@ -100,7 +104,8 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		limits:             limits,
 		bucket:             cachingBucket,
 		shardingStrategy:   shardingStrategy,
-		stores:             map[string]*BucketStoreWithLastError{},
+		stores:             map[string]*store.BucketStore{},
+		storesErrors: 		map[string]error{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
@@ -198,7 +203,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	type job struct {
 		userID string
-		store  *BucketStoreWithLastError
+		store  *store.BucketStore
 	}
 
 	wg := &sync.WaitGroup{}
@@ -231,16 +236,20 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 			defer wg.Done()
 
 			for job := range jobs {
-				if err := f(ctx, job.store.BucketStore); err != nil {
+				if err := f(ctx, job.store); err != nil {
 					if errors.Is(err, bucket.ErrCustomerManagedKeyError) {
-						job.store.err = err
+						u.storesErrorsMu.Lock()
+						u.storesErrors[job.userID] = err
+						u.storesErrorsMu.Unlock()
 					} else {
 						errsMx.Lock()
 						errs.Add(errors.Wrapf(err, "failed to synchronize TSDB blocks for user %s", job.userID))
 						errsMx.Unlock()
 					}
 				} else {
-					job.store.err = nil
+					u.storesErrorsMu.Lock()
+					delete(u.storesErrors, job.userID)
+					u.storesErrorsMu.Unlock()
 				}
 			}
 		}()
@@ -298,11 +307,13 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return nil
 	}
 
-	if store.err != nil && errors.Is(store.err, bucket.ErrCustomerManagedKeyError) {
-		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", store.err)
+	err := u.getStoreError(userID)
+
+	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 
-	err := store.Series(req, spanSeriesServer{
+	err = store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	})
@@ -366,10 +377,16 @@ func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
 	return users, err
 }
 
-func (u *BucketStores) getStore(userID string) *BucketStoreWithLastError {
+func (u *BucketStores) getStore(userID string) *store.BucketStore {
 	u.storesMu.RLock()
 	defer u.storesMu.RUnlock()
 	return u.stores[userID]
+}
+
+func (u *BucketStores) getStoreError(userID string) error {
+	u.storesErrorsMu.RLock()
+	defer u.storesErrorsMu.RUnlock()
+	return u.storesErrors[userID]
 }
 
 var (
@@ -409,7 +426,7 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	return bs.Close()
 }
 
-func isEmptyBucketStore(bs *BucketStoreWithLastError) bool {
+func isEmptyBucketStore(bs *store.BucketStore) bool {
 	min, max := bs.TimeRange()
 	return min == math.MaxInt64 && max == math.MinInt64
 }
@@ -418,7 +435,7 @@ func (u *BucketStores) syncDirForUser(userID string) string {
 	return filepath.Join(u.cfg.BucketStore.SyncDir, userID)
 }
 
-func (u *BucketStores) getOrCreateStore(userID string) (*BucketStoreWithLastError, error) {
+func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, error) {
 	// Check if the store already exists.
 	bs := u.getStore(userID)
 	if bs != nil {
@@ -522,7 +539,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*BucketStoreWithLastErro
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
 	}
 
-	s, err := store.NewBucketStore(
+	bs, err := store.NewBucketStore(
 		userBkt,
 		fetcher,
 		u.syncDirForUser(userID),
@@ -540,10 +557,6 @@ func (u *BucketStores) getOrCreateStore(userID string) (*BucketStoreWithLastErro
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	bs = &BucketStoreWithLastError{
-		BucketStore: s,
 	}
 
 	u.stores[userID] = bs

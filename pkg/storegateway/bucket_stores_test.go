@@ -29,8 +29,10 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"go.uber.org/atomic"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -74,17 +76,26 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 
 	// Should set the error on user-1
 	require.NoError(t, stores.InitialSync(ctx))
-	require.ErrorIs(t, stores.stores["user-1"].err, bucket.ErrCustomerManagedKeyError)
-	require.ErrorIs(t, stores.stores["user-2"].err, nil)
+	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyError)
+	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 	require.NoError(t, stores.SyncBlocks(context.Background()))
-	require.ErrorIs(t, stores.stores["user-1"].err, bucket.ErrCustomerManagedKeyError)
-	require.ErrorIs(t, stores.stores["user-2"].err, nil)
+	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyError)
+	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+
+	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
+	require.NoError(t, err)
 
 	// Cleaning the error
 	mBucket.GetFailures = map[string]error{}
 	require.NoError(t, stores.SyncBlocks(context.Background()))
-	require.ErrorIs(t, stores.stores["user-1"].err, nil)
-	require.ErrorIs(t, stores.stores["user-2"].err, nil)
+	require.ErrorIs(t, stores.storesErrors["user-1"], nil)
+	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
+	require.NoError(t, err)
+	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
+	require.NoError(t, err)
 }
 
 func TestBucketStores_InitialSync(t *testing.T) {

@@ -132,7 +132,7 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	metaFile := path.Join(id.String(), block.MetaFilename)
 
 	// Get the block's meta.json file.
-	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsObjNotFoundOrCustomerManagedKeyErr(w.bkt)).Get(ctx, metaFile)
+	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsCustomerManagedKeyError)).Get(ctx, metaFile)
 	if w.bkt.IsObjNotFoundErr(err) {
 		return nil, ErrBlockMetaNotFound
 	}

@@ -17,8 +17,13 @@ func HashBlockID(id ulid.ULID) uint32 {
 	return h
 }
 
-func IsObjNotFoundOrCustomerManagedKeyErr(bkt objstore.Bucket) objstore.IsOpFailureExpectedFunc {
+func IsOneOfTheExpectedErrors(f ...objstore.IsOpFailureExpectedFunc) objstore.IsOpFailureExpectedFunc {
 	return func(err error) bool {
-		return bkt.IsObjNotFoundErr(err) || bkt.IsCustomerManagedKeyError(err)
+		for _, f := range f {
+			if f(err) {
+				return true
+			}
+		}
+		return false
 	}
 }

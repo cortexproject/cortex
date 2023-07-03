@@ -76,24 +76,24 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 
 	// Should set the error on user-1
 	require.NoError(t, stores.InitialSync(ctx))
-	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyError)
+	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
 	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 	require.NoError(t, stores.SyncBlocks(context.Background()))
-	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyError)
+	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
 	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 
 	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
 	_, err = queryLabelsNames(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
 	_, err = queryLabelsValues(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
 	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
 	require.NoError(t, err)
 	_, err = queryLabelsNames(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
 	_, err = queryLabelsValues(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
 
 	// Cleaning the error
 	mBucket.GetFailures = map[string]error{}

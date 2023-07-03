@@ -115,7 +115,7 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
-		} else if errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+		} else if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 			level.Warn(l.logger).Log("msg", "key access denied when reading bucket index", "user", userID)
 		} else {
 			// We don't track ErrIndexNotFound as failure because it's a legit case (eg. a tenant just
@@ -198,7 +198,7 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 	l.loadAttempts.Inc()
 	startTime := time.Now()
 	idx, err := ReadIndex(readCtx, l.bkt, userID, l.cfgProvider, l.logger)
-	if err != nil && !errors.Is(err, ErrIndexNotFound) && !errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && !errors.Is(err, ErrIndexNotFound) && !errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 		l.loadFailures.Inc()
 		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
 		return

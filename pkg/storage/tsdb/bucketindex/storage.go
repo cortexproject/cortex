@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
@@ -33,7 +34,7 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvi
 		}
 
 		if userBkt.IsCustomerManagedKeyError(err) {
-			return nil, bucket.ErrCustomerManagedKeyError
+			return nil, cortex_errors.WithCause(bucket.ErrCustomerManagedKeyAccessDenied, err)
 		}
 
 		return nil, errors.Wrap(err, "read bucket index")

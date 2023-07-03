@@ -2,6 +2,7 @@ package bucketindex
 
 import (
 	"context"
+	"errors"
 	"path"
 	"strings"
 	"testing"
@@ -47,7 +48,7 @@ func TestReadIndex_ShouldReturnErrorIfKeyAccessDeniedErr(t *testing.T) {
 		},
 	}
 	idx, err := ReadIndex(context.Background(), bkt, "user-1", nil, log.NewNopLogger())
-	require.Equal(t, bucket.ErrCustomerManagedKeyError, err)
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	require.Nil(t, idx)
 }
 

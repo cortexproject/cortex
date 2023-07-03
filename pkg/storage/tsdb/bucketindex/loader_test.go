@@ -603,7 +603,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing
 	})
 
 	_, err := loader.GetIndex(ctx, user)
-	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyError))
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 
 	// Check cached
 	require.NoError(t, loader.checkCachedIndexes(ctx))
@@ -669,7 +669,7 @@ func TestLoader_GetIndex_ShouldCacheKeyDeniedErrors(t *testing.T) {
 	// Request the index multiple times.
 	for i := 0; i < 10; i++ {
 		_, err := loader.GetIndex(ctx, "user-1")
-		require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyError))
+		require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	}
 
 	// Ensure metrics have been updated accordingly.

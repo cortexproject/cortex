@@ -3,6 +3,7 @@ package storegateway
 import (
 	"bytes"
 	"context"
+	"errors"
 	"path"
 	"strings"
 	"testing"
@@ -106,11 +107,11 @@ func TestBucketIndexMetadataFetcher_Fetch_KeyPermissionDenied(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	ctx := context.Background()
 
-	bkt.MockGet(userID+"/bucket-index.json.gz", "c", bucket.ErrCustomerManagedKeyError)
+	bkt.MockGet(userID+"/bucket-index.json.gz", "c", bucket.ErrCustomerManagedKeyAccessDenied)
 
 	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, log.NewNopLogger(), reg, nil)
 	metas, _, err := fetcher.Fetch(ctx)
-	require.ErrorIs(t, bucket.ErrCustomerManagedKeyError, err)
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	assert.Empty(t, metas)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`

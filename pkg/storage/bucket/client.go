@@ -41,7 +41,7 @@ var (
 
 	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
 
-	ErrCustomerManagedKeyError = errors.New("access denied: customer key")
+	ErrCustomerManagedKeyAccessDenied = errors.New("access denied: customer key")
 )
 
 // Config holds configuration for accessing long-term storage.

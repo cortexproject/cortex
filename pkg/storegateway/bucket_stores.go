@@ -35,6 +35,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -232,7 +233,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 			for job := range jobs {
 				if err := f(ctx, job.store); err != nil {
-					if errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+					if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 						u.storesErrorsMu.Lock()
 						u.storesErrors[job.userID] = err
 						u.storesErrorsMu.Unlock()
@@ -304,7 +305,7 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 
 	err := u.getStoreError(userID)
 
-	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
 		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 
@@ -313,7 +314,7 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		ctx:                spanCtx,
 	})
 
-	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
 		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 
@@ -337,13 +338,13 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 
 	err := u.getStoreError(userID)
 
-	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
 		return nil, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 
 	resp, err := store.LabelNames(ctx, req)
 
-	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
 		return resp, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 
@@ -367,13 +368,13 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 
 	err := u.getStoreError(userID)
 
-	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
 		return nil, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 
 	resp, err := store.LabelValues(ctx, req)
 
-	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
 		return resp, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
 	}
 

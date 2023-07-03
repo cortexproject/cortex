@@ -325,6 +325,10 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
 	if errors.Is(err, bucketindex.ErrIndexCorrupted) {
 		level.Warn(userLogger).Log("msg", "found a corrupted bucket index, recreating it")
+	} else if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+		// Give up cleaning if we get access denied
+		level.Warn(userLogger).Log("msg", err.Error())
+		return nil
 	} else if err != nil && !errors.Is(err, bucketindex.ErrIndexNotFound) {
 		return err
 	}

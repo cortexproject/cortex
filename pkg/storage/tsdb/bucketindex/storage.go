@@ -10,7 +10,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
@@ -24,11 +27,16 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvi
 	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Get the bucket index.
-	reader, err := userBkt.WithExpectedErrs(userBkt.IsObjNotFoundErr).Get(ctx, IndexCompressedFilename)
+	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsCustomerManagedKeyError, userBkt.IsObjNotFoundErr)).Get(ctx, IndexCompressedFilename)
 	if err != nil {
 		if userBkt.IsObjNotFoundErr(err) {
 			return nil, ErrIndexNotFound
 		}
+
+		if userBkt.IsCustomerManagedKeyError(err) {
+			return nil, cortex_errors.WithCause(bucket.ErrCustomerManagedKeyAccessDenied, err)
+		}
+
 		return nil, errors.Wrap(err, "read bucket index")
 	}
 	defer runutil.CloseWithLogOnErr(logger, reader, "close bucket index reader")

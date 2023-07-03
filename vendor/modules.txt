@@ -832,7 +832,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20230522103316-23ebe2eacadd
+# github.com/thanos-io/objstore v0.0.0-20230629211010-ff1b35b9841a
 ## explicit; go 1.18
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp

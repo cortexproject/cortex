@@ -10,10 +10,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -569,6 +572,121 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 		cortex_bucket_index_loads_total 2
 	`),
 		"cortex_bucket_index_loads_total",
+	))
+}
+
+func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing.T) {
+	user := "user-1"
+	ctx := context.Background()
+	reg := prometheus.NewPedanticRegistry()
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	// Create the loader.
+	cfg := LoaderConfig{
+		CheckInterval:         time.Hour, // Intentionally high to not hit it.
+		UpdateOnStaleInterval: time.Hour, // Intentionally high to not hit it.
+		UpdateOnErrorInterval: 0,
+		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
+	}
+
+	mockedBkt := &cortex_testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			path.Join(user, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+
+	loader := NewLoader(cfg, mockedBkt, nil, log.NewNopLogger(), reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
+	})
+
+	_, err := loader.GetIndex(ctx, user)
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+
+	// Check cached
+	require.NoError(t, loader.checkCachedIndexes(ctx))
+
+	loader.bkt = bkt
+
+	// Upload the bucket index.
+	idx := &Index{
+		Version: IndexVersion1,
+		Blocks: Blocks{
+			{ID: ulid.MustNew(1, nil), MinTime: 10, MaxTime: 20},
+		},
+		BlockDeletionMarks: nil,
+		UpdatedAt:          time.Now().Unix(),
+	}
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
+
+	// Wait until the index has been updated in background.
+	test.Poll(t, 3*time.Second, nil, func() interface{} {
+		_, err := loader.GetIndex(ctx, "user-1")
+		// Check cached
+		require.NoError(t, loader.checkCachedIndexes(ctx))
+		return err
+	})
+
+	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, idx, actualIdx)
+
+	// Ensure metrics have been updated accordingly.
+	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_bucket_index_load_failures_total Total number of bucket index loading failures.
+		# TYPE cortex_bucket_index_load_failures_total counter
+		cortex_bucket_index_load_failures_total 0
+		# HELP cortex_bucket_index_loaded Number of bucket indexes currently loaded in-memory.
+		# TYPE cortex_bucket_index_loaded gauge
+		cortex_bucket_index_loaded 1
+	`),
+		"cortex_bucket_index_loaded", "cortex_bucket_index_load_failures_total",
+	))
+}
+
+func TestLoader_GetIndex_ShouldCacheKeyDeniedErrors(t *testing.T) {
+	user := "user-1"
+	ctx := context.Background()
+	reg := prometheus.NewPedanticRegistry()
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	bkt = &cortex_testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			path.Join(user, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+
+	// Create the loader.
+	loader := NewLoader(prepareLoaderConfig(), bkt, nil, log.NewNopLogger(), reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
+	})
+
+	// Request the index multiple times.
+	for i := 0; i < 10; i++ {
+		_, err := loader.GetIndex(ctx, "user-1")
+		require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+	}
+
+	// Ensure metrics have been updated accordingly.
+	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_bucket_index_load_failures_total Total number of bucket index loading failures.
+		# TYPE cortex_bucket_index_load_failures_total counter
+		cortex_bucket_index_load_failures_total 0
+		# HELP cortex_bucket_index_loaded Number of bucket indexes currently loaded in-memory.
+		# TYPE cortex_bucket_index_loaded gauge
+		cortex_bucket_index_loaded 0
+		# HELP cortex_bucket_index_loads_total Total number of bucket index loading attempts.
+		# TYPE cortex_bucket_index_loads_total counter
+		cortex_bucket_index_loads_total 1
+	`),
+		"cortex_bucket_index_loads_total",
+		"cortex_bucket_index_load_failures_total",
+		"cortex_bucket_index_loaded",
 	))
 }
 

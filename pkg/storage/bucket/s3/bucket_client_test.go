@@ -3,6 +3,7 @@ package s3
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -12,6 +13,49 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 )
+
+var (
+	errNotFound  = errors.New("not found")
+	errKeyDenied = errors.New("key denied")
+)
+
+func TestBucketWithRetries_ShouldRetry(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]struct {
+		err        error
+		retryCount int
+	}{
+		"should not retry on not found": {
+			err:        errNotFound,
+			retryCount: 1,
+		},
+		"should not retry on key access denied": {
+			err:        errKeyDenied,
+			retryCount: 1,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(*testing.T) {
+			m := mockBucket{
+				FailCount:   3,
+				errToReturn: tc.err,
+			}
+
+			b := BucketWithRetries{
+				logger:           log.NewNopLogger(),
+				bucket:           &m,
+				operationRetries: 5,
+				retryMinBackoff:  10 * time.Millisecond,
+				retryMaxBackoff:  time.Second,
+			}
+
+			_, _ = b.Get(context.Background(), "something")
+			require.Equal(t, 1, m.calledCount)
+		})
+	}
+}
 
 func TestBucketWithRetries_UploadSeekable(t *testing.T) {
 	t.Parallel()
@@ -102,6 +146,9 @@ func (f *fakeReader) Read(p []byte) (n int, err error) {
 type mockBucket struct {
 	FailCount       int
 	uploadedContent []byte
+	errToReturn     error
+
+	calledCount int
 }
 
 // Upload mocks objstore.Bucket.Upload()
@@ -135,7 +182,8 @@ func (m *mockBucket) Iter(ctx context.Context, dir string, f func(string) error,
 
 // Get mocks objstore.Bucket.Get()
 func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return nil, nil
+	m.calledCount++
+	return nil, m.errToReturn
 }
 
 // GetRange mocks objstore.Bucket.GetRange()
@@ -150,7 +198,12 @@ func (m *mockBucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // IsObjNotFoundErr mocks objstore.Bucket.IsObjNotFoundErr()
 func (m *mockBucket) IsObjNotFoundErr(err error) bool {
-	return false
+	return err == errNotFound
+}
+
+// IsCustomerManagedKeyError mocks objstore.Bucket.IsCustomerManagedKeyError()
+func (m *mockBucket) IsCustomerManagedKeyError(err error) bool {
+	return err == errKeyDenied
 }
 
 // ObjectSize mocks objstore.Bucket.Attributes()

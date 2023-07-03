@@ -10,6 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -62,6 +64,11 @@ func (f *BucketIndexBlocksFinder) GetBlocks(ctx context.Context, userID string, 
 		// so the bucket index hasn't been created yet.
 		return nil, nil, nil
 	}
+
+	if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+		return nil, nil, validation.AccessDeniedError(err.Error())
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}

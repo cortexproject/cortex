@@ -84,8 +84,16 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 
 	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
 	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	_, err = queryLabelsNames(stores, "user-1", "anything")
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	_, err = queryLabelsValues(stores, "user-1", "anything")
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
 	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
 	require.NoError(t, err)
+	_, err = queryLabelsNames(stores, "user-1", "anything")
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
+	_, err = queryLabelsValues(stores, "user-1", "anything")
+	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyError))
 
 	// Cleaning the error
 	mBucket.GetFailures = map[string]error{}
@@ -95,6 +103,10 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
 	require.NoError(t, err)
 	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
+	require.NoError(t, err)
+	_, err = queryLabelsNames(stores, "user-1", "anything")
+	require.NoError(t, err)
+	_, err = queryLabelsValues(stores, "user-1", "anything")
 	require.NoError(t, err)
 }
 
@@ -485,6 +497,34 @@ func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int
 	err := stores.Series(req, srv)
 
 	return srv.SeriesSet, srv.Warnings, err
+}
+
+func queryLabelsNames(stores *BucketStores, userID, metricName string) (*storepb.LabelNamesResponse, error) {
+	req := &storepb.LabelNamesRequest{
+		Matchers: []storepb.LabelMatcher{{
+			Type:  storepb.LabelMatcher_EQ,
+			Name:  labels.MetricName,
+			Value: metricName,
+		}},
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+	}
+
+	ctx := setUserIDToGRPCContext(context.Background(), userID)
+	return stores.LabelNames(ctx, req)
+}
+
+func queryLabelsValues(stores *BucketStores, userID, metricName string) (*storepb.LabelValuesResponse, error) {
+	req := &storepb.LabelValuesRequest{
+		Matchers: []storepb.LabelMatcher{{
+			Type:  storepb.LabelMatcher_EQ,
+			Name:  labels.MetricName,
+			Value: metricName,
+		}},
+		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+	}
+
+	ctx := setUserIDToGRPCContext(context.Background(), userID)
+	return stores.LabelValues(ctx, req)
 }
 
 func mockLoggingLevel() logging.Level {

@@ -335,7 +335,19 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 		return &storepb.LabelNamesResponse{}, nil
 	}
 
-	return store.LabelNames(ctx, req)
+	err := u.getStoreError(userID)
+
+	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+		return nil, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+	}
+
+	resp, err := store.LabelNames(ctx, req)
+
+	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+		return resp, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+	}
+
+	return resp, err
 }
 
 // LabelValues implements the Storegateway proto service.
@@ -353,7 +365,19 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 		return &storepb.LabelValuesResponse{}, nil
 	}
 
-	return store.LabelValues(ctx, req)
+	err := u.getStoreError(userID)
+
+	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+		return nil, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+	}
+
+	resp, err := store.LabelValues(ctx, req)
+
+	if err != nil && errors.Is(err, bucket.ErrCustomerManagedKeyError) {
+		return resp, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+	}
+
+	return resp, err
 }
 
 // scanUsers in the bucket and return the list of found users. If an error occurs while

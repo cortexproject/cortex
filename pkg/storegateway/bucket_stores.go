@@ -78,11 +78,6 @@ type BucketStores struct {
 	tenantsSynced     prometheus.Gauge
 }
 
-type BucketStoreWithLastError struct {
-	*store.BucketStore
-	err error
-}
-
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
@@ -105,7 +100,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		bucket:             cachingBucket,
 		shardingStrategy:   shardingStrategy,
 		stores:             map[string]*store.BucketStore{},
-		storesErrors: 		map[string]error{},
+		storesErrors:       map[string]error{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),

@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"

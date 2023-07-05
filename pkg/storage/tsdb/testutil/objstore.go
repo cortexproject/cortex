@@ -37,6 +37,10 @@ type MockBucketFailure struct {
 
 	DeleteFailures []string
 	GetFailures    map[string]error
+	UploadFailures map[string]error
+
+	UploadCalls int
+	GetCalls    int
 }
 
 func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
@@ -47,6 +51,7 @@ func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
 }
 
 func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	m.GetCalls++
 	for prefix, err := range m.GetFailures {
 		if strings.HasPrefix(name, prefix) {
 			return nil, err
@@ -57,6 +62,20 @@ func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser
 	}
 
 	return m.Bucket.Get(ctx, name)
+}
+
+func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader) error {
+	m.UploadCalls++
+	for prefix, err := range m.UploadFailures {
+		if strings.HasPrefix(name, prefix) {
+			return err
+		}
+	}
+	if e, ok := m.GetFailures[name]; ok {
+		return e
+	}
+
+	return m.Bucket.Upload(ctx, name, r)
 }
 
 func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {

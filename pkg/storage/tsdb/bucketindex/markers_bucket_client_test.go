@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -199,7 +200,7 @@ func TestBucketWithGlobalMarkers_ShouldRetryUpload(t *testing.T) {
 				originalPath := block1.String() + "/" + tc.mark
 				err := bkt.Upload(ctx, originalPath, strings.NewReader("{}"))
 				require.Equal(t, errors.New("test"), err)
-				require.Equal(t, mBucket.UploadCalls, 5)
+				require.Equal(t, mBucket.UploadCalls.Load(), int32(5))
 			})
 		}
 

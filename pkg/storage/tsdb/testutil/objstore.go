@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -37,6 +38,10 @@ type MockBucketFailure struct {
 
 	DeleteFailures []string
 	GetFailures    map[string]error
+	UploadFailures map[string]error
+
+	UploadCalls atomic.Int32
+	GetCalls    atomic.Int32
 }
 
 func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
@@ -47,6 +52,7 @@ func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
 }
 
 func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	m.GetCalls.Add(1)
 	for prefix, err := range m.GetFailures {
 		if strings.HasPrefix(name, prefix) {
 			return nil, err
@@ -57,6 +63,20 @@ func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser
 	}
 
 	return m.Bucket.Get(ctx, name)
+}
+
+func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader) error {
+	m.UploadCalls.Add(1)
+	for prefix, err := range m.UploadFailures {
+		if strings.HasPrefix(name, prefix) {
+			return err
+		}
+	}
+	if e, ok := m.GetFailures[name]; ok {
+		return e
+	}
+
+	return m.Bucket.Upload(ctx, name, r)
 }
 
 func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {

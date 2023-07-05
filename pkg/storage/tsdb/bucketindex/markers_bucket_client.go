@@ -38,12 +38,12 @@ func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Read
 	}
 
 	// Upload it to the global marker's location.
-	if err := b.parent.Upload(ctx, globalMarkPath, bytes.NewBuffer(body)); err != nil {
+	if err := b.parent.Upload(ctx, globalMarkPath, bytes.NewReader(body)); err != nil {
 		return err
 	}
 
 	// Upload it to the original location too.
-	return b.parent.Upload(ctx, name, bytes.NewBuffer(body))
+	return b.parent.Upload(ctx, name, bytes.NewReader(body))
 }
 
 // Delete implements objstore.Bucket.

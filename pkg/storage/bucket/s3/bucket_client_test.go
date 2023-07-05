@@ -60,21 +60,46 @@ func TestBucketWithRetries_ShouldRetry(t *testing.T) {
 func TestBucketWithRetries_UploadSeekable(t *testing.T) {
 	t.Parallel()
 
-	m := mockBucket{
-		FailCount: 3,
-	}
-	b := BucketWithRetries{
-		logger:           log.NewNopLogger(),
-		bucket:           &m,
-		operationRetries: 5,
-		retryMinBackoff:  10 * time.Millisecond,
-		retryMaxBackoff:  time.Second,
+	cases := map[string]struct {
+		readerFactory func(i string) io.Reader
+		input         string
+		err           error
+	}{
+		"should retry when seekable": {
+			err:   nil,
+			input: "test input",
+			readerFactory: func(i string) io.Reader {
+				return bytes.NewReader([]byte(i))
+			},
+		},
+
+		"should not retry when seekable": {
+			err:   fmt.Errorf("failed upload: 2"),
+			input: "test input",
+			readerFactory: func(i string) io.Reader {
+				return bytes.NewBuffer([]byte(i))
+			},
+		},
 	}
 
-	input := []byte("test input")
-	err := b.Upload(context.Background(), "dummy", bytes.NewReader(input))
-	require.NoError(t, err)
-	require.Equal(t, input, m.uploadedContent)
+	for name, tc := range cases {
+		t.Run(name, func(*testing.T) {
+			m := mockBucket{
+				FailCount: 3,
+			}
+			b := BucketWithRetries{
+				logger:           log.NewNopLogger(),
+				bucket:           &m,
+				operationRetries: 5,
+				retryMinBackoff:  10 * time.Millisecond,
+				retryMaxBackoff:  time.Second,
+			}
+
+			err := b.Upload(context.Background(), "dummy", tc.readerFactory(tc.input))
+			require.Equal(t, tc.err, err)
+			require.Equal(t, tc.input, string(m.uploadedContent))
+		})
+	}
 }
 
 func TestBucketWithRetries_UploadNonSeekable(t *testing.T) {

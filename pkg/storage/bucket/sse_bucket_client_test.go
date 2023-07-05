@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,6 +105,21 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 			assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(kmsEncryptionContext)), req.Header.Get("x-amz-server-side-encryption-context"))
 		})
 	}
+}
+
+func Test_shouldWrapSSeErrors(t *testing.T) {
+	cfgProvider := &mockTenantConfigProvider{}
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt = &cortex_testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			"Test": cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+	sseBkt := NewSSEBucketClient("user-1", bkt, cfgProvider)
+
+	_, err := sseBkt.Get(context.Background(), "Test")
+	require.True(t, sseBkt.IsCustomerManagedKeyError(err))
 }
 
 type mockTenantConfigProvider struct {

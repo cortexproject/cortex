@@ -26,6 +26,11 @@ func (e errWithCause) Unwrap() error {
 	return e.cause
 }
 
+// Err return the original error
+func (e errWithCause) Err() error {
+	return e.error
+}
+
 // WithCause wrappers err with a error cause
 func WithCause(err, cause error) error {
 	return errWithCause{

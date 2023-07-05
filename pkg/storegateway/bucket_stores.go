@@ -306,17 +306,13 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	err := u.getStoreError(userID)
 
 	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
-		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+		return httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
 	}
 
 	err = store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	})
-
-	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
-		return httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
-	}
 
 	return err
 }
@@ -339,14 +335,10 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 	err := u.getStoreError(userID)
 
 	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
-		return nil, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+		return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
 	}
 
 	resp, err := store.LabelNames(ctx, req)
-
-	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
-		return resp, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
-	}
 
 	return resp, err
 }
@@ -369,14 +361,10 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 	err := u.getStoreError(userID)
 
 	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
-		return nil, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
+		return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
 	}
 
 	resp, err := store.LabelValues(ctx, req)
-
-	if err != nil && cortex_errors.ErrorIs(err, u.bucket.IsCustomerManagedKeyError) {
-		return resp, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", err)
-	}
 
 	return resp, err
 }

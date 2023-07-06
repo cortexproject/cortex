@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -110,13 +108,11 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 
 func Test_shouldWrapSSeErrors(t *testing.T) {
 	cfgProvider := &mockTenantConfigProvider{}
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	bkt = &cortex_testutil.MockBucketFailure{
-		Bucket: bkt,
-		GetFailures: map[string]error{
-			"Test": cortex_testutil.ErrKeyAccessDeniedError,
-		},
-	}
+
+	bkt := &ClientMock{}
+
+	bkt.MockGet("Test", "someContent", errKeyPermissionDenied)
+
 	sseBkt := NewSSEBucketClient("user-1", bkt, cfgProvider)
 
 	_, err := sseBkt.Get(context.Background(), "Test")

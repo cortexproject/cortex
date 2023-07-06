@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid"
@@ -37,6 +36,8 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 
@@ -67,7 +68,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 
 	bucketIndexes := map[string]*bucketindex.Index{}
 	// Generate Bucket Index
-	for userID, _ := range userToMetric {
+	for userID := range userToMetric {
 		idx := &bucketindex.Index{
 			Version:   bucketindex.IndexVersion1,
 			UpdatedAt: time.Now().Unix(),

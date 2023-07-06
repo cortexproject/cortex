@@ -109,5 +109,5 @@ func (m *MockBucketFailure) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFai
 }
 
 func (m *MockBucketFailure) IsCustomerManagedKeyError(err error) bool {
-	return errors.Is(err, ErrKeyAccessDeniedError)
+	return errors.Is(errors.Cause(err), ErrKeyAccessDeniedError)
 }

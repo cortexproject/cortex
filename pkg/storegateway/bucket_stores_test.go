@@ -149,7 +149,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			_, err = queryLabelsNames(stores, "user-1", "series", 0, 100)
 			s, _ = status.FromError(err)
 			require.Equal(t, codes.PermissionDenied, s.Code())
-			_, err = queryLabelsValues(stores, "user-1", "series", 0, 100)
+			_, err = queryLabelsValues(stores, "user-1", "__name__", "series", 0, 100)
 			s, _ = status.FromError(err)
 			require.Equal(t, codes.PermissionDenied, s.Code())
 			_, _, err = querySeries(stores, "user-2", "series", 0, 100)
@@ -157,7 +157,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			_, err = queryLabelsNames(stores, "user-1", "series", 0, 100)
 			s, _ = status.FromError(err)
 			require.Equal(t, codes.PermissionDenied, s.Code())
-			_, err = queryLabelsValues(stores, "user-1", "series", 0, 100)
+			_, err = queryLabelsValues(stores, "user-1", "__name__", "series", 0, 100)
 			s, _ = status.FromError(err)
 			require.Equal(t, codes.PermissionDenied, s.Code())
 
@@ -172,7 +172,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			require.NoError(t, err)
 			_, err = queryLabelsNames(stores, "user-1", "series", 0, 100)
 			require.NoError(t, err)
-			_, err = queryLabelsValues(stores, "user-1", "series", 0, 100)
+			_, err = queryLabelsValues(stores, "user-1", "__name__", "series", 0, 100)
 			require.NoError(t, err)
 		})
 	}
@@ -583,11 +583,11 @@ func queryLabelsNames(stores *BucketStores, userID, metricName string, start, en
 	return stores.LabelNames(ctx, req)
 }
 
-func queryLabelsValues(stores *BucketStores, userID, metricName string, start, end int64) (*storepb.LabelValuesResponse, error) {
+func queryLabelsValues(stores *BucketStores, userID, labelName, metricName string, start, end int64) (*storepb.LabelValuesResponse, error) {
 	req := &storepb.LabelValuesRequest{
 		Start: start,
 		End:   end,
-		Label: "__name__",
+		Label: labelName,
 		Matchers: []storepb.LabelMatcher{{
 			Type:  storepb.LabelMatcher_EQ,
 			Name:  labels.MetricName,

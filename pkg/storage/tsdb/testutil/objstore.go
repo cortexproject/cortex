@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 )

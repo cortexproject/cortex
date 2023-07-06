@@ -4,13 +4,14 @@ import (
 	"context"
 	"io"
 
-	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/gogo/status"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"
 	"google.golang.org/grpc/codes"
+
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 
 	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 )
@@ -107,6 +108,7 @@ func (b *SSEBucketClient) Get(ctx context.Context, name string) (io.ReadCloser, 
 	r, err := b.bucket.Get(ctx, name)
 
 	if err != nil && b.IsCustomerManagedKeyError(err) {
+		// Store gateway will return the status if the returned error is an `status.Error`
 		return nil, cortex_errors.WithCause(err, status.Error(codes.PermissionDenied, err.Error()))
 	}
 

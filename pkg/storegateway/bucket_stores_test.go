@@ -72,7 +72,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			Version:   bucketindex.IndexVersion1,
 			UpdatedAt: time.Now().Unix(),
 		}
-		b.Iter(ctx, userID, func(s string) error {
+		err := b.Iter(ctx, userID, func(s string) error {
 			if id, isBlock := block.IsBlockDir(s); isBlock {
 				metaFile := path.Join(userID, id.String(), block.MetaFilename)
 				r, err := b.Get(ctx, metaFile)
@@ -89,7 +89,9 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			}
 			return nil
 		})
-		bucketindex.WriteIndex(ctx, b, userID, nil, idx)
+
+		require.NoError(t, err)
+		require.NoError(t, bucketindex.WriteIndex(ctx, b, userID, nil, idx))
 		bucketIndexes[userID] = idx
 	}
 

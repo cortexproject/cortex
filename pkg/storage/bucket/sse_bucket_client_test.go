@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+
+	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/util/flagext"

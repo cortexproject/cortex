@@ -2,11 +2,13 @@ package storegateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/status"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -29,11 +32,12 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 
@@ -46,8 +50,8 @@ import (
 
 func TestBucketStores_CustomerKeyError(t *testing.T) {
 	userToMetric := map[string]string{
-		"user-1": "series_1",
-		"user-2": "series_2",
+		"user-1": "series",
+		"user-2": "series",
 	}
 
 	ctx := context.Background()
@@ -62,52 +66,116 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 
 	b, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 
-	mBucket := &cortex_testutil.MockBucketFailure{
-		Bucket: b,
-		GetFailures: map[string]error{
-			"user-1": cortex_testutil.ErrKeyAccessDeniedError,
+	bucketIndexes := map[string]*bucketindex.Index{}
+	// Generate Bucket Index
+	for userID := range userToMetric {
+		idx := &bucketindex.Index{
+			Version:   bucketindex.IndexVersion1,
+			UpdatedAt: time.Now().Unix(),
+		}
+		err := b.Iter(ctx, userID, func(s string) error {
+			if id, isBlock := block.IsBlockDir(s); isBlock {
+				metaFile := path.Join(userID, id.String(), block.MetaFilename)
+				r, err := b.Get(ctx, metaFile)
+				require.NoError(t, err)
+				metaContent, err := io.ReadAll(r)
+				require.NoError(t, err)
+				// Unmarshal it.
+				m := thanos_metadata.Meta{}
+				if err := json.Unmarshal(metaContent, &m); err != nil {
+					require.NoError(t, err)
+				}
+
+				idx.Blocks = append(idx.Blocks, bucketindex.BlockFromThanosMeta(m))
+			}
+			return nil
+		})
+
+		require.NoError(t, err)
+		require.NoError(t, bucketindex.WriteIndex(ctx, b, userID, nil, idx))
+		bucketIndexes[userID] = idx
+	}
+
+	cases := map[string]struct {
+		mockInitialSync bool
+		GetFailures     map[string]error
+	}{
+		"should return ResourceExhausted when fail to get bucket index": {
+			mockInitialSync: true,
+			GetFailures: map[string]error{
+				"user-1/bucket-index.json.gz": cortex_testutil.ErrKeyAccessDeniedError,
+			},
+		},
+		"should return ResourceExhausted when fail to block index": {
+			mockInitialSync: false,
+			GetFailures: map[string]error{
+				"user-1/" + bucketIndexes["user-1"].Blocks[0].ID.String() + "/index": cortex_testutil.ErrKeyAccessDeniedError,
+			},
 		},
 	}
-	require.NoError(t, err)
 
-	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), mBucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
-	require.NoError(t, err)
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			mBucket := &cortex_testutil.MockBucketFailure{
+				Bucket: b,
+			}
+			require.NoError(t, err)
 
-	// Should set the error on user-1
-	require.NoError(t, stores.InitialSync(ctx))
-	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
-	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
-	require.NoError(t, stores.SyncBlocks(context.Background()))
-	require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
-	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+			reg := prometheus.NewPedanticRegistry()
+			stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), mBucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+			require.NoError(t, err)
 
-	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
-	_, err = queryLabelsNames(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
-	_, err = queryLabelsValues(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
-	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
-	require.NoError(t, err)
-	_, err = queryLabelsNames(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
-	_, err = queryLabelsValues(stores, "user-1", "anything")
-	require.Equal(t, err, httpgrpc.Errorf(int(codes.ResourceExhausted), "store error: %s", bucket.ErrCustomerManagedKeyAccessDenied))
+			if tc.mockInitialSync {
+				mBucket.GetFailures = tc.GetFailures
+			}
 
-	// Cleaning the error
-	mBucket.GetFailures = map[string]error{}
-	require.NoError(t, stores.SyncBlocks(context.Background()))
-	require.ErrorIs(t, stores.storesErrors["user-1"], nil)
-	require.ErrorIs(t, stores.storesErrors["user-2"], nil)
-	_, _, err = querySeries(stores, "user-1", "anything", 0, 100)
-	require.NoError(t, err)
-	_, _, err = querySeries(stores, "user-2", "anything", 0, 100)
-	require.NoError(t, err)
-	_, err = queryLabelsNames(stores, "user-1", "anything")
-	require.NoError(t, err)
-	_, err = queryLabelsValues(stores, "user-1", "anything")
-	require.NoError(t, err)
+			// Should set the error on user-1
+			require.NoError(t, stores.InitialSync(ctx))
+			if tc.mockInitialSync {
+				require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
+				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+			}
+			require.NoError(t, stores.SyncBlocks(context.Background()))
+			if tc.mockInitialSync {
+				require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
+				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+			}
+
+			mBucket.GetFailures = tc.GetFailures
+
+			_, _, err = querySeries(stores, "user-1", "series", 0, 100)
+			s, _ := status.FromError(err)
+			require.Equal(t, codes.PermissionDenied, s.Code())
+			_, err = queryLabelsNames(stores, "user-1", "series", 0, 100)
+			s, _ = status.FromError(err)
+			require.Equal(t, codes.PermissionDenied, s.Code())
+			_, err = queryLabelsValues(stores, "user-1", "__name__", "series", 0, 100)
+			s, _ = status.FromError(err)
+			require.Equal(t, codes.PermissionDenied, s.Code())
+			_, _, err = querySeries(stores, "user-2", "series", 0, 100)
+			require.NoError(t, err)
+			_, err = queryLabelsNames(stores, "user-1", "series", 0, 100)
+			s, _ = status.FromError(err)
+			require.Equal(t, codes.PermissionDenied, s.Code())
+			_, err = queryLabelsValues(stores, "user-1", "__name__", "series", 0, 100)
+			s, _ = status.FromError(err)
+			require.Equal(t, codes.PermissionDenied, s.Code())
+
+			// Cleaning the error
+			mBucket.GetFailures = map[string]error{}
+			require.NoError(t, stores.SyncBlocks(context.Background()))
+			require.ErrorIs(t, stores.storesErrors["user-1"], nil)
+			require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+			_, _, err = querySeries(stores, "user-1", "series", 0, 100)
+			require.NoError(t, err)
+			_, _, err = querySeries(stores, "user-2", "series", 0, 100)
+			require.NoError(t, err)
+			_, err = queryLabelsNames(stores, "user-1", "series", 0, 100)
+			require.NoError(t, err)
+			_, err = queryLabelsValues(stores, "user-1", "__name__", "series", 0, 100)
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestBucketStores_InitialSync(t *testing.T) {
@@ -499,8 +567,10 @@ func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int
 	return srv.SeriesSet, srv.Warnings, err
 }
 
-func queryLabelsNames(stores *BucketStores, userID, metricName string) (*storepb.LabelNamesResponse, error) {
+func queryLabelsNames(stores *BucketStores, userID, metricName string, start, end int64) (*storepb.LabelNamesResponse, error) {
 	req := &storepb.LabelNamesRequest{
+		Start: start,
+		End:   end,
 		Matchers: []storepb.LabelMatcher{{
 			Type:  storepb.LabelMatcher_EQ,
 			Name:  labels.MetricName,
@@ -513,8 +583,11 @@ func queryLabelsNames(stores *BucketStores, userID, metricName string) (*storepb
 	return stores.LabelNames(ctx, req)
 }
 
-func queryLabelsValues(stores *BucketStores, userID, metricName string) (*storepb.LabelValuesResponse, error) {
+func queryLabelsValues(stores *BucketStores, userID, labelName, metricName string, start, end int64) (*storepb.LabelValuesResponse, error) {
 	req := &storepb.LabelValuesRequest{
+		Start: start,
+		End:   end,
+		Label: labelName,
 		Matchers: []storepb.LabelMatcher{{
 			Type:  storepb.LabelMatcher_EQ,
 			Name:  labels.MetricName,

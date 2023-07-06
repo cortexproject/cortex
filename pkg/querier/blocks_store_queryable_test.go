@@ -638,6 +638,44 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"all store-gateways return PermissionDenied": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			expectedErr: validation.AccessDeniedError("PermissionDenied"),
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedSeriesResponses: []*storepb.SeriesResponse{
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+							mockHintsResponse(block1),
+						},
+						mockedSeriesStreamErr: status.Error(codes.PermissionDenied, "PermissionDenied"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedSeriesResponses: []*storepb.SeriesResponse{
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+							mockHintsResponse(block1),
+						},
+						mockedSeriesStreamErr: status.Error(codes.PermissionDenied, "PermissionDenied"),
+					}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
 		"multiple store-gateways has the block, but one of them fails to return on stream": {
 			finderResult: bucketindex.Blocks{
 				{ID: block1},

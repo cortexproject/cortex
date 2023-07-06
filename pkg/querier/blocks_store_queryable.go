@@ -648,6 +648,10 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 						if s.Code() == codes.ResourceExhausted {
 							return validation.LimitError(s.Message())
 						}
+
+						if s.Code() == codes.PermissionDenied {
+							return validation.AccessDeniedError(s.Message())
+						}
 					}
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
@@ -816,6 +820,10 @@ func (q *blocksStoreQuerier) fetchLabelNamesFromStore(
 						return validation.LimitError(s.Message())
 					}
 				}
+
+				if s.Code() == codes.PermissionDenied {
+					return validation.AccessDeniedError(s.Message())
+				}
 				return errors.Wrapf(err, "failed to fetch label names from %s", c.RemoteAddress())
 			}
 
@@ -906,6 +914,10 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 				if ok {
 					if s.Code() == codes.ResourceExhausted {
 						return validation.LimitError(s.Message())
+					}
+
+					if s.Code() == codes.PermissionDenied {
+						return validation.AccessDeniedError(s.Message())
 					}
 				}
 				return errors.Wrapf(err, "failed to fetch label values from %s", c.RemoteAddress())

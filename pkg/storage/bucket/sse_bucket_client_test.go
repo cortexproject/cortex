@@ -106,6 +106,19 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 	}
 }
 
+func Test_shouldWrapSSeErrors(t *testing.T) {
+	cfgProvider := &mockTenantConfigProvider{}
+
+	bkt := &ClientMock{}
+
+	bkt.MockGet("Test", "someContent", errKeyPermissionDenied)
+
+	sseBkt := NewSSEBucketClient("user-1", bkt, cfgProvider)
+
+	_, err := sseBkt.Get(context.Background(), "Test")
+	require.True(t, sseBkt.IsCustomerManagedKeyError(err))
+}
+
 type mockTenantConfigProvider struct {
 	s3SseType              string
 	s3KmsKeyID             string

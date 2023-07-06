@@ -51,6 +51,20 @@ func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
 	return m.Bucket.Delete(ctx, name)
 }
 
+func (m *MockBucketFailure) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
+	m.GetCalls.Add(1)
+	for prefix, err := range m.GetFailures {
+		if strings.HasPrefix(name, prefix) {
+			return nil, err
+		}
+	}
+	if e, ok := m.GetFailures[name]; ok {
+		return nil, e
+	}
+
+	return m.Bucket.GetRange(ctx, name, off, length)
+}
+
 func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	m.GetCalls.Add(1)
 	for prefix, err := range m.GetFailures {
@@ -96,5 +110,5 @@ func (m *MockBucketFailure) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFai
 }
 
 func (m *MockBucketFailure) IsCustomerManagedKeyError(err error) bool {
-	return errors.Is(err, ErrKeyAccessDeniedError)
+	return errors.Is(errors.Cause(err), ErrKeyAccessDeniedError)
 }

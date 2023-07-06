@@ -39,6 +39,9 @@ should read:
 1. [Getting started with Cortex](https://cortexmetrics.io/docs/getting-started/)
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/)
 
+There are also individual [guides](https://cortexmetrics.io/docs/guides/) to many tasks.
+Please review the important [security advice](https://cortexmetrics.io/docs/guides/security/) before deploying.
+
 For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
 ## Further reading

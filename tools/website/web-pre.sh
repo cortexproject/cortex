@@ -18,7 +18,7 @@ cp -r code-of-conduct.md CHANGELOG.md ${OUTPUT_CONTENT_DIR}
 cp GOVERNANCE.md ${OUTPUT_CONTENT_DIR}/contributing/governance.md
 cp images/* ${WEBSITE_DIR}/static/images
 
-# Add headers to special CODE_OF_CONDUCT.md and CHANGELOG.md files.
+# Add headers to special CODE_OF_CONDUCT.md, CHANGELOG.md and README.md files.
 echo "$(cat <<EOT
 ---
 title: Code of Conduct
@@ -51,6 +51,24 @@ weight: 1
 EOT
 )" > ${OUTPUT_CONTENT_DIR}/contributing/governance.md
 tail -n +2 GOVERNANCE.md >> ${OUTPUT_CONTENT_DIR}/contributing/governance.md
+
+echo "$(cat <<EOT
+---
+title: "Documentation"
+linkTitle: "Documentation"
+weight: 1
+menu:
+  main:
+    weight: 1
+---
+EOT
+)" > ${OUTPUT_CONTENT_DIR}/_index.md
+
+# Ignore the header and some of the badges.
+head -6 README.md | tail +2 >> ${OUTPUT_CONTENT_DIR}/_index.md
+
+# Ignore another header and write the rest of the file.
+tail +12 README.md >> ${OUTPUT_CONTENT_DIR}/_index.md
 
 ALL_DOC_CONTENT_FILES=`echo "${OUTPUT_CONTENT_DIR}/**/*.md ${OUTPUT_CONTENT_DIR}/*.md"`
 for file in $(find ${OUTPUT_CONTENT_DIR} -name '*.md')

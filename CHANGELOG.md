@@ -193,6 +193,10 @@
 * [BUGFIX] QueryFrontend/Querier: fixed regression added by #4863 where we stopped compressing the response between querier and query frontend. #4960
 * [BUGFIX] QueryFrontend/Querier: fixed fix response error to be ungzipped when status code is not 2xx. #4975
 
+### Known issues
+
+- Configsdb: Ruler configs doesn't work. Remove all configs from postgres database that have format Prometheus 1.x rule format before upgrading to v1.14.0 (see [5387](https://github.com/cortexproject/cortex/issues/5387))
+
 ## 1.13.0 2022-07-14
 
 * [CHANGE] Changed default for `-ingester.min-ready-duration` from 1 minute to 15 seconds. #4539

@@ -350,9 +350,9 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		// Give up cleaning if we get access denied
 		level.Warn(userLogger).Log("msg", "customer manager key access denied", "err", err)
 		idxs.Status = bucketindex.CustomerManagedKeyError
-		// Making the tenant non queryable until 2x the cleanup interval to give time to compactors and storegateways
+		// Making the tenant non queryable until 3x the cleanup interval to give time to compactors and storegateways
 		// to reload the bucket index in case the key access is re-granted
-		idxs.NonQueryableUntil = time.Now().Add(2 * c.cfg.CleanupInterval).Unix()
+		idxs.NonQueryableUntil = time.Now().Add(3 * c.cfg.CleanupInterval).Unix()
 		idxs.NonQueryableReason = bucketindex.CustomerManagedKeyError
 
 		// Update the bucket index update time

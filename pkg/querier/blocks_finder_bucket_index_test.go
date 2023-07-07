@@ -272,6 +272,9 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOldWithCustomerKeyErr
 			finder := prepareBucketIndexBlocksFinder(t, bkt)
 			_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
 			require.Equal(t, tc.err, err)
+			// Doing 2 times to return from the cache
+			_, _, err = finder.GetBlocks(ctx, userID, 10, 20)
+			require.Equal(t, tc.err, err)
 		})
 	}
 }

@@ -2292,7 +2292,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 		defer userDB.casState(activeShipping, active)
 
 		if idxs, err := bucketindex.ReadSyncStatus(ctx, i.TSDBState.bucket, userID, logutil.WithContext(ctx, i.logger)); err == nil {
-			// Skip blocks shipping if the bucket index failed to sync due CMK errors.
+			// Skip blocks shipping if the bucket index failed to sync due to CMK errors.
 			if idxs.Status == bucketindex.CustomerManagedKeyError {
 				level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "skipping shipping blocks due CustomerManagedKeyError", "user", userID)
 				return nil

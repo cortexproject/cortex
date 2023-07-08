@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -226,7 +227,8 @@ enqueueAgain:
 			case cancelCh <- freq.queryID:
 				// cancellation sent.
 			default:
-				// failed to cancel, ignore.
+				// failed to cancel, log it.
+				level.Warn(util_log.WithContext(ctx, f.log)).Log("msg", "failed to enqueue cancellation signal", "query_id", freq.queryID)
 			}
 		}
 		return nil, ctx.Err()

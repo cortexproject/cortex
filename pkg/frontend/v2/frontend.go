@@ -24,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -70,6 +71,9 @@ type Frontend struct {
 
 	schedulerWorkers *frontendSchedulerWorkers
 	requests         *requestsInProgress
+
+	// Metric for number of cancellation failed to send to query scheduler.
+	cancelFailedQueries prometheus.Counter
 }
 
 type frontendRequest struct {
@@ -133,6 +137,11 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Fronte
 		Help: "Number of schedulers this frontend is connected to.",
 	}, func() float64 {
 		return float64(f.schedulerWorkers.getWorkersCount())
+	})
+
+	f.cancelFailedQueries = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_query_frontend_cancel_failed_queries_total",
+		Help: "Total number of queries that are failed to be canceled due to cancel channel full.",
 	})
 
 	f.Service = services.NewIdleService(f.starting, f.stopping)
@@ -226,7 +235,9 @@ enqueueAgain:
 			case cancelCh <- freq.queryID:
 				// cancellation sent.
 			default:
-				// failed to cancel, ignore.
+				// failed to cancel, log it.
+				level.Warn(util_log.WithContext(ctx, f.log)).Log("msg", "failed to enqueue cancellation signal", "query_id", freq.queryID)
+				f.cancelFailedQueries.Inc()
 			}
 		}
 		return nil, ctx.Err()

@@ -48,6 +48,7 @@
 * [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
 * [BUGFIX] Store Gateway: Fix bug in store gateway ring comparison logic. #5426
 * [BUGFIX] Ring: Fix bug in consistency of Get func in a scaling zone-aware ring. #5429
+* [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
 
 ## 1.15.1 2023-04-26
 

@@ -8,13 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gogo/protobuf/proto"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+	"google.golang.org/protobuf/proto"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )

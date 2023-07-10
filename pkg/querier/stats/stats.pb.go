@@ -50,13 +50,13 @@ type Stats struct {
 	LimitHit string `protobuf:"bytes,8,opt,name=limit_hit,json=limitHit,proto3" json:"limit_hit,omitempty"`
 	// Query string
 	Query string `protobuf:"bytes,9,opt,name=query,proto3" json:"query,omitempty"`
-	// Start
+	// Start in Ms
 	StartInt int64 `protobuf:"varint,10,opt,name=start_int,json=startInt,proto3" json:"start_int,omitempty"`
-	// End
+	// End in Ms
 	EndInt int64 `protobuf:"varint,11,opt,name=end_int,json=endInt,proto3" json:"end_int,omitempty"`
-	// Step
+	// Step in Ms
 	StepInt int64 `protobuf:"varint,12,opt,name=step_int,json=stepInt,proto3" json:"step_int,omitempty"`
-	// Ts
+	// Ts in Ms
 	Ts int64 `protobuf:"varint,13,opt,name=ts,proto3" json:"ts,omitempty"`
 }
 

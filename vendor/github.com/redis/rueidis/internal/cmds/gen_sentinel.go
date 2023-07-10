@@ -42,6 +42,26 @@ func (c SentinelGetMasterAddrByNameMaster) Build() Completed {
 	return Completed(c)
 }
 
+type SentinelReplicas Completed
+
+func (b Builder) SentinelReplicas() (c SentinelReplicas) {
+	c = SentinelReplicas{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "SENTINEL", "REPLICAS")
+	return c
+}
+
+func (c SentinelReplicas) Master(master string) SentinelReplicasMaster {
+	c.cs.s = append(c.cs.s, master)
+	return (SentinelReplicasMaster)(c)
+}
+
+type SentinelReplicasMaster Completed
+
+func (c SentinelReplicasMaster) Build() Completed {
+	c.cs.Build()
+	return Completed(c)
+}
+
 type SentinelSentinels Completed
 
 func (b Builder) SentinelSentinels() (c SentinelSentinels) {

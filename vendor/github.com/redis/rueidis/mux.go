@@ -3,6 +3,7 @@ package rueidis
 import (
 	"context"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,11 +22,32 @@ type singleconnect struct {
 	g sync.WaitGroup
 }
 
+type batchcache struct {
+	cIndexes []int
+	commands []CacheableTTL
+}
+
+func (r *batchcache) Capacity() int {
+	return cap(r.commands)
+}
+
+func (r *batchcache) ResetLen(n int) {
+	r.cIndexes = r.cIndexes[:n]
+	r.commands = r.commands[:n]
+}
+
+var batchcachep = util.NewPool(func(capacity int) *batchcache {
+	return &batchcache{
+		cIndexes: make([]int, 0, capacity),
+		commands: make([]CacheableTTL, 0, capacity),
+	}
+})
+
 type conn interface {
 	Do(ctx context.Context, cmd Completed) RedisResult
 	DoCache(ctx context.Context, cmd Cacheable, ttl time.Duration) RedisResult
-	DoMulti(ctx context.Context, multi ...Completed) []RedisResult
-	DoMultiCache(ctx context.Context, multi ...CacheableTTL) []RedisResult
+	DoMulti(ctx context.Context, multi ...Completed) *redisresults
+	DoMultiCache(ctx context.Context, multi ...CacheableTTL) *redisresults
 	Receive(ctx context.Context, subscribe Completed, fn func(message PubSubMessage)) error
 	Info() map[string]RedisMessage
 	Error() error
@@ -48,6 +70,7 @@ type mux struct {
 	wire   []atomic.Value
 	sc     []*singleconnect
 	mu     []sync.Mutex
+	maxp   int
 }
 
 func makeMux(dst string, option *ClientOption, dialFn dialFn) *mux {
@@ -75,6 +98,7 @@ func newMux(dst string, option *ClientOption, init, dead wire, wireFn wireFn) *m
 		wire: make([]atomic.Value, multiplex),
 		mu:   make([]sync.Mutex, multiplex),
 		sc:   make([]*singleconnect, multiplex),
+		maxp: runtime.GOMAXPROCS(0),
 	}
 	for i := 0; i < len(m.wire); i++ {
 		m.wire[i].Store(init)
@@ -163,7 +187,7 @@ func (m *mux) Do(ctx context.Context, cmd Completed) (resp RedisResult) {
 	return resp
 }
 
-func (m *mux) DoMulti(ctx context.Context, multi ...Completed) (resp []RedisResult) {
+func (m *mux) DoMulti(ctx context.Context, multi ...Completed) (resp *redisresults) {
 	for _, cmd := range multi {
 		if cmd.IsBlock() {
 			goto block
@@ -185,10 +209,10 @@ func (m *mux) blocking(ctx context.Context, cmd Completed) (resp RedisResult) {
 	return resp
 }
 
-func (m *mux) blockingMulti(ctx context.Context, cmd []Completed) (resp []RedisResult) {
+func (m *mux) blockingMulti(ctx context.Context, cmd []Completed) (resp *redisresults) {
 	wire := m.pool.Acquire()
 	resp = wire.DoMulti(ctx, cmd...)
-	for _, res := range resp {
+	for _, res := range resp.s {
 		if res.NonRedisError() != nil { // abort the wire if blocking command return early (ex. context.DeadlineExceeded)
 			wire.Close()
 			break
@@ -207,11 +231,11 @@ func (m *mux) pipeline(ctx context.Context, cmd Completed) (resp RedisResult) {
 	return resp
 }
 
-func (m *mux) pipelineMulti(ctx context.Context, cmd []Completed) (resp []RedisResult) {
+func (m *mux) pipelineMulti(ctx context.Context, cmd []Completed) (resp *redisresults) {
 	slot := cmd[0].Slot() & uint16(len(m.wire)-1)
 	wire := m.pipe(slot)
 	resp = wire.DoMulti(ctx, cmd...)
-	for _, r := range resp {
+	for _, r := range resp.s {
 		if isBroken(r.NonRedisError(), wire) {
 			m.wire[slot].CompareAndSwap(wire, m.init)
 			return resp
@@ -230,7 +254,7 @@ func (m *mux) DoCache(ctx context.Context, cmd Cacheable, ttl time.Duration) Red
 	return resp
 }
 
-func (m *mux) DoMultiCache(ctx context.Context, multi ...CacheableTTL) (results []RedisResult) {
+func (m *mux) DoMultiCache(ctx context.Context, multi ...CacheableTTL) (results *redisresults) {
 	var slots map[uint16]int
 	var mask = uint16(len(m.wire) - 1)
 
@@ -247,32 +271,37 @@ func (m *mux) DoMultiCache(ctx context.Context, multi ...CacheableTTL) (results 
 		return m.doMultiCache(ctx, multi[0].Cmd.Slot()&mask, multi)
 	}
 
-	commands := make(map[uint16][]CacheableTTL, len(slots))
-	cIndexes := make(map[uint16][]int, len(slots))
+	batches := make(map[uint16]*batchcache, len(m.wire))
 	for slot, count := range slots {
-		cIndexes[slot] = make([]int, 0, count)
-		commands[slot] = make([]CacheableTTL, 0, count)
+		batches[slot] = batchcachep.Get(0, count)
 	}
 	for i, cmd := range multi {
-		slot := cmd.Cmd.Slot() & mask
-		commands[slot] = append(commands[slot], cmd)
-		cIndexes[slot] = append(cIndexes[slot], i)
+		batch := batches[cmd.Cmd.Slot()&mask]
+		batch.commands = append(batch.commands, cmd)
+		batch.cIndexes = append(batch.cIndexes, i)
 	}
 
-	results = make([]RedisResult, len(multi))
-	util.ParallelKeys(commands, func(slot uint16) {
-		for i, r := range m.doMultiCache(ctx, slot, commands[slot]) {
-			results[cIndexes[slot][i]] = r
+	results = resultsp.Get(len(multi), len(multi))
+	util.ParallelKeys(m.maxp, batches, func(slot uint16) {
+		batch := batches[slot]
+		resp := m.doMultiCache(ctx, slot, batch.commands)
+		for i, r := range resp.s {
+			results.s[batch.cIndexes[i]] = r
 		}
+		resultsp.Put(resp)
 	})
+
+	for _, batch := range batches {
+		batchcachep.Put(batch)
+	}
 
 	return results
 }
 
-func (m *mux) doMultiCache(ctx context.Context, slot uint16, multi []CacheableTTL) (resps []RedisResult) {
+func (m *mux) doMultiCache(ctx context.Context, slot uint16, multi []CacheableTTL) (resps *redisresults) {
 	wire := m.pipe(slot)
 	resps = wire.DoMultiCache(ctx, multi...)
-	for _, r := range resps {
+	for _, r := range resps.s {
 		if isBroken(r.NonRedisError(), wire) {
 			m.wire[slot].CompareAndSwap(wire, m.init)
 			return resps

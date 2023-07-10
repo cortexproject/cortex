@@ -51,6 +51,32 @@ func (c GraphConfigSetValue) Build() Completed {
 	return Completed(c)
 }
 
+type GraphConstraintCreate Completed
+
+func (b Builder) GraphConstraintCreate() (c GraphConstraintCreate) {
+	c = GraphConstraintCreate{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "GRAPH.CONSTRAINT", "CREATE")
+	return c
+}
+
+func (c GraphConstraintCreate) Build() Completed {
+	c.cs.Build()
+	return Completed(c)
+}
+
+type GraphConstraintDrop Completed
+
+func (b Builder) GraphConstraintDrop() (c GraphConstraintDrop) {
+	c = GraphConstraintDrop{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "GRAPH.CONSTRAINT", "DROP")
+	return c
+}
+
+func (c GraphConstraintDrop) Build() Completed {
+	c.cs.Build()
+	return Completed(c)
+}
+
 type GraphDelete Completed
 
 func (b Builder) GraphDelete() (c GraphDelete) {

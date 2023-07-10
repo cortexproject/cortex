@@ -1,7 +1,7 @@
 # rueidis
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/redis/rueidis.svg)](https://pkg.go.dev/github.com/redis/rueidis)
-[![Build status](https://badge.buildkite.com/d15fbd91b3b22b55c8d799564f84918a322118ae02590858c4.svg)](https://buildkite.com/rueian/rueidis)
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/redis/rueidis/tree/main.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/redis/rueidis/tree/main)
 [![Go Report Card](https://goreportcard.com/badge/github.com/redis/rueidis)](https://goreportcard.com/report/github.com/redis/rueidis)
 [![codecov](https://codecov.io/gh/redis/rueidis/branch/master/graph/badge.svg?token=wGTB8GdY06)](https://codecov.io/gh/redis/rueidis)
 
@@ -31,9 +31,7 @@ import (
 )
 
 func main() {
-	client, err := rueidis.NewClient(rueidis.ClientOption{
-		InitAddress: []string{"127.0.0.1:6379"},
-	})
+	client, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{"127.0.0.1:6379"}})
 	if err != nil {
 		panic(err)
 	}
@@ -42,8 +40,12 @@ func main() {
 	ctx := context.Background()
 	// SET key val NX
 	err = client.Do(ctx, client.B().Set().Key("key").Value("val").Nx().Build()).Error()
+	// HGETALL hm
+	hm, err := client.Do(ctx, client.B().Hgetall().Key("hm").Build()).AsStrMap()
 }
 ```
+
+Checkout more examples: [Command Response Cheatsheet](https://github.com/redis/rueidis#command-response-cheatsheet)
 
 ## Developer friendly Command Builder
 
@@ -397,6 +399,8 @@ client.Do(ctx, client.B().Lpop().Key("k").Build()).ToString()
 client.Do(ctx, client.B().Lpop().Key("k").Count(2).Build()).AsStrSlice()
 // FT.SEARCH
 client.Do(ctx, client.B().FtSearch().Index("idx").Query("@f:v").Build()).AsFtSearch()
+// GEOSEARCH
+client.Do(ctx, client.B().Geosearch().Key("k").Fromlonlat(1, 1).Bybox(1).Height(1).Km().Build()).AsGeosearch()
 ```
 
 ## Supporting Go mod 1.18
@@ -411,5 +415,5 @@ module mymodule
 
 go 1.18
 
-require github.com/redis/rueidis v1.0.0-go1.18
+require github.com/redis/rueidis v1.0.9-go1.18
 ```

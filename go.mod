@@ -79,6 +79,7 @@ require (
 require (
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/google/go-cmp v0.5.9
+	google.golang.org/protobuf v1.30.0
 )
 
 require (
@@ -224,7 +225,6 @@ require (
 	google.golang.org/genproto v0.0.0-20230526203410-71b5a4ffd15e // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230526203410-71b5a4ffd15e // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230526203410-71b5a4ffd15e // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

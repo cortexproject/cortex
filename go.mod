@@ -257,3 +257,7 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
+
+replace github.com/prometheus/client_model => github.com/prometheus/client_model v0.3.0
+
+replace github.com/prometheus/common => github.com/prometheus/common v0.42.0

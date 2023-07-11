@@ -60,17 +60,22 @@ func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix str
 
 // Validate the config.
 func (cfg *IndexCacheConfig) Validate() error {
-	if !util.StringsContain(supportedIndexCacheBackends, cfg.Backend) {
-		return errUnsupportedIndexCacheBackend
-	}
 
-	if cfg.Backend == IndexCacheBackendMemcached {
-		if err := cfg.Memcached.Validate(); err != nil {
-			return err
+	splitedBackends := strings.Split(cfg.Backend, ",")
+
+	for _, backend := range splitedBackends {
+		if !util.StringsContain(supportedIndexCacheBackends, backend) {
+			return errUnsupportedIndexCacheBackend
 		}
-	} else if cfg.Backend == IndexCacheBackendRedis {
-		if err := cfg.Redis.Validate(); err != nil {
-			return err
+
+		if backend == IndexCacheBackendMemcached {
+			if err := cfg.Memcached.Validate(); err != nil {
+				return err
+			}
+		} else if backend == IndexCacheBackendRedis {
+			if err := cfg.Redis.Validate(); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -87,16 +92,42 @@ func (cfg *InMemoryIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, pr
 
 // NewIndexCache creates a new index cache based on the input configuration.
 func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
-	switch cfg.Backend {
-	case IndexCacheBackendInMemory:
-		return newInMemoryIndexCache(cfg.InMemory, logger, registerer)
-	case IndexCacheBackendMemcached:
-		return newMemcachedIndexCache(cfg.Memcached, logger, registerer)
-	case IndexCacheBackendRedis:
-		return newRedisIndexCache(cfg.Redis, logger, registerer)
-	default:
-		return nil, errUnsupportedIndexCacheBackend
+	splitBackends := strings.Split(cfg.Backend, ",")
+	var caches []storecache.IndexCache
+
+	for i, backend := range splitBackends {
+		iReg := registerer
+
+		// Create the level label if we have more than one cache
+		if len(splitBackends) > 1 {
+			iReg = prometheus.WrapRegistererWith(prometheus.Labels{"level": fmt.Sprintf("L%v", i)}, registerer)
+		}
+
+		switch backend {
+		case IndexCacheBackendInMemory:
+			c, err := newInMemoryIndexCache(cfg.InMemory, logger, iReg)
+			if err != nil {
+				return c, err
+			}
+			caches = append(caches, c)
+		case IndexCacheBackendMemcached:
+			c, err := newMemcachedIndexCache(cfg.Memcached, logger, iReg)
+			if err != nil {
+				return c, err
+			}
+			caches = append(caches, c)
+		case IndexCacheBackendRedis:
+			c, err := newRedisIndexCache(cfg.Redis, logger, iReg)
+			if err != nil {
+				return c, err
+			}
+			caches = append(caches, c)
+		default:
+			return nil, errUnsupportedIndexCacheBackend
+		}
 	}
+
+	return newMultiLevelCache(caches...), nil
 }
 
 func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {

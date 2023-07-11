@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/thanos-io/thanos/pkg/block"
 	"os"
 	"path"
 	"path/filepath"
@@ -458,7 +459,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	userID := "test-user"
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{userID}, nil)
-	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D", userID + "/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
+	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D/meta.json", userID + "/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter(userID+"/markers/", nil, nil)
 	bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -512,8 +513,8 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockExists(path.Join("user-2", cortex_tsdb.TenantDeletionMarkPath), false, nil)
-	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
-	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
+	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -767,8 +768,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockExists(path.Join("user-2", cortex_tsdb.TenantDeletionMarkPath), false, nil)
-	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
-	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
+	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -998,8 +999,8 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucketClient.MockExists(path.Join("user-2", cortex_tsdb.TenantDeletionMarkPath), false, nil)
-	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX"}, nil)
-	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
+	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockIter("user-2/markers/", nil, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -1203,7 +1204,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 	// Keys with a value greater than 1 will be groups that should be compacted
 	groupHashes := make(map[uint32]int)
 	for _, userID := range userIDs {
-		blockDirectory := []string{}
+		blockFiles := []string{}
 
 		for blockID, blockTimes := range blocks {
 			blockVisitMarker := BlockVisitMarker{
@@ -1218,14 +1219,15 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 			bucketClient.MockGet(userID+"/"+blockID+"/visit-mark.json", string(visitMarkerFileContent), nil)
 			bucketClient.MockGetRequireUpload(userID+"/"+blockID+"/visit-mark.json", string(visitMarkerFileContent), nil)
 			bucketClient.MockUpload(userID+"/"+blockID+"/visit-mark.json", nil)
-			blockDirectory = append(blockDirectory, userID+"/"+blockID)
+			// Iter with recursive so expected to get objects rather than directories.
+			blockFiles = append(blockFiles, path.Join(userID, blockID, block.MetaFilename))
 
 			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted
 			groupHash := hashGroup(userID, blockTimes["startTime"], blockTimes["endTime"])
 			groupHashes[groupHash]++
 		}
 
-		bucketClient.MockIter(userID+"/", blockDirectory, nil)
+		bucketClient.MockIter(userID+"/", blockFiles, nil)
 		bucketClient.MockIter(userID+"/markers/", nil, nil)
 		bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)

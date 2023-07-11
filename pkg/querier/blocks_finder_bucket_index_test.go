@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+
 	"github.com/cortexproject/cortex/pkg/util/validation"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
@@ -219,6 +221,62 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOld(t *testing.T) {
 
 	_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
 	require.Equal(t, errBucketIndexTooOld, err)
+}
+
+func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOldWithCustomerKeyError(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user-1"
+
+	ctx := context.Background()
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	require.NoError(t, bucketindex.WriteIndex(ctx, bkt, userID, nil, &bucketindex.Index{
+		Version:            bucketindex.IndexVersion1,
+		Blocks:             bucketindex.Blocks{},
+		BlockDeletionMarks: bucketindex.BlockDeletionMarks{},
+		UpdatedAt:          time.Now().Unix(),
+	}))
+
+	testCases := map[string]struct {
+		err error
+		ss  bucketindex.Status
+	}{
+		"should return AccessDeniedError when CustomerManagedKeyError and still not queryable": {
+			err: validation.AccessDeniedError(bucket.ErrCustomerManagedKeyAccessDenied.Error()),
+			ss: bucketindex.Status{
+				Version:            bucketindex.SyncStatusFileVersion,
+				SyncTime:           time.Now().Unix(),
+				Status:             bucketindex.Ok,
+				NonQueryableReason: bucketindex.CustomerManagedKeyError,
+				NonQueryableUntil:  time.Now().Add(time.Minute * 10).Unix(),
+			},
+		},
+		"should not return error after NonQueryableUntil": {
+			ss: bucketindex.Status{
+				Version:            bucketindex.SyncStatusFileVersion,
+				SyncTime:           time.Now().Unix(),
+				Status:             bucketindex.Ok,
+				NonQueryableReason: bucketindex.CustomerManagedKeyError,
+				NonQueryableUntil:  time.Now().Add(-time.Minute * 10).Unix(),
+			},
+		},
+		"should not return error when UnknownStatus": {
+			ss: bucketindex.UnknownStatus,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			bucketindex.WriteSyncStatus(ctx, bkt, userID, tc.ss, log.NewNopLogger())
+			finder := prepareBucketIndexBlocksFinder(t, bkt)
+			_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
+			require.Equal(t, tc.err, err)
+			// Doing 2 times to return from the cache
+			_, _, err = finder.GetBlocks(ctx, userID, 10, 20)
+			require.Equal(t, tc.err, err)
+		})
+	}
 }
 
 func prepareBucketIndexBlocksFinder(t testing.TB, bkt objstore.Bucket) *BucketIndexBlocksFinder {

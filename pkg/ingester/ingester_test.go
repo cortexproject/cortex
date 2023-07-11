@@ -40,6 +40,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -2642,40 +2644,60 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 }
 
 func TestIngester_shipBlocks(t *testing.T) {
-	cfg := defaultIngesterTestConfig(t)
-	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
-
-	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Create the TSDB for 3 users and then replace the shipper with the mocked one
-	mocks := []*shipperMock{}
-	for _, userID := range []string{"user-1", "user-2", "user-3"} {
-		userDB, err := i.getOrCreateTSDB(userID, false)
-		require.NoError(t, err)
-		require.NotNil(t, userDB)
-
-		m := &shipperMock{}
-		m.On("Sync", mock.Anything).Return(0, nil)
-		mocks = append(mocks, m)
-
-		userDB.shipper = m
+	testCases := map[string]struct {
+		ss                   bucketindex.Status
+		expectetNumberOfCall int
+	}{
+		"should ship blocks if status ok": {
+			ss:                   bucketindex.Status{Version: bucketindex.IndexVersion1, Status: bucketindex.Ok},
+			expectetNumberOfCall: 1,
+		},
+		"should not ship on cmk errors": {
+			ss:                   bucketindex.Status{Version: bucketindex.IndexVersion1, Status: bucketindex.CustomerManagedKeyError},
+			expectetNumberOfCall: 0,
+		},
 	}
 
-	// Ship blocks and assert on the mocked shipper
-	i.shipBlocks(context.Background(), nil)
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
 
-	for _, m := range mocks {
-		m.AssertNumberOfCalls(t, "Sync", 1)
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
+
+			// Create ingester
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// Create the TSDB for 3 users and then replace the shipper with the mocked one
+			mocks := []*shipperMock{}
+			for _, userID := range []string{"user-1", "user-2", "user-3"} {
+				bucketindex.WriteSyncStatus(context.Background(), i.TSDBState.bucket, userID, tc.ss, log.NewNopLogger())
+				userDB, err := i.getOrCreateTSDB(userID, false)
+				require.NoError(t, err)
+				require.NotNil(t, userDB)
+
+				m := &shipperMock{}
+				m.On("Sync", mock.Anything).Return(0, nil)
+				mocks = append(mocks, m)
+
+				userDB.shipper = m
+			}
+
+			// Ship blocks and assert on the mocked shipper
+			i.shipBlocks(context.Background(), nil)
+
+			for _, m := range mocks {
+				m.AssertNumberOfCalls(t, "Sync", tc.expectetNumberOfCall)
+			}
+		})
 	}
 }
 

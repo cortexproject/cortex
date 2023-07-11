@@ -340,6 +340,9 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	if query := queryString.Get("query"); len(query) > 0 {
 		logMessage = append(logMessage, "query_length", len(query))
 	}
+	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
+		logMessage = append(logMessage, "user_agent", ua)
+	}
 
 	if error != nil {
 		s, ok := status.FromError(error)

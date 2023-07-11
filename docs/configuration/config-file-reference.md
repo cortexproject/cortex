@@ -1127,15 +1127,6 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.master-name
       [master_name: <string> | default = ""]
 
-      # Maximum number of socket connections.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.pool-size
-      [pool_size: <int> | default = 100]
-
-      # Specifies the minimum number of idle connections, which is useful when
-      # it is slow to establish new connections.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.min-idle-conns
-      [min_idle_conns: <int> | default = 10]
-
       # The maximum number of concurrent GetMulti() operations. If set to 0,
       # concurrency is unlimited.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-get-multi-concurrency
@@ -1165,16 +1156,6 @@ bucket_store:
       # Client write timeout.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.write-timeout
       [write_timeout: <duration> | default = 3s]
-
-      # Amount of time after which client closes idle connections. Should be
-      # less than server's timeout. -1 disables idle timeout check.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.idle-timeout
-      [idle_timeout: <duration> | default = 5m]
-
-      # Connection age at which client retires (closes) the connection. Default
-      # 0 is to not close aged connections.
-      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-conn-age
-      [max_conn_age: <duration> | default = 0s]
 
       # Whether to enable tls for redis connection.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-enabled
@@ -1286,15 +1267,6 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.master-name
       [master_name: <string> | default = ""]
 
-      # Maximum number of socket connections.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.pool-size
-      [pool_size: <int> | default = 100]
-
-      # Specifies the minimum number of idle connections, which is useful when
-      # it is slow to establish new connections.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.min-idle-conns
-      [min_idle_conns: <int> | default = 10]
-
       # The maximum number of concurrent GetMulti() operations. If set to 0,
       # concurrency is unlimited.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-get-multi-concurrency
@@ -1324,16 +1296,6 @@ bucket_store:
       # Client write timeout.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.write-timeout
       [write_timeout: <duration> | default = 3s]
-
-      # Amount of time after which client closes idle connections. Should be
-      # less than server's timeout. -1 disables idle timeout check.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.idle-timeout
-      [idle_timeout: <duration> | default = 5m]
-
-      # Connection age at which client retires (closes) the connection. Default
-      # 0 is to not close aged connections.
-      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-conn-age
-      [max_conn_age: <duration> | default = 0s]
 
       # Whether to enable tls for redis connection.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-enabled
@@ -1463,15 +1425,6 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.master-name
       [master_name: <string> | default = ""]
 
-      # Maximum number of socket connections.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.pool-size
-      [pool_size: <int> | default = 100]
-
-      # Specifies the minimum number of idle connections, which is useful when
-      # it is slow to establish new connections.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.min-idle-conns
-      [min_idle_conns: <int> | default = 10]
-
       # The maximum number of concurrent GetMulti() operations. If set to 0,
       # concurrency is unlimited.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-get-multi-concurrency
@@ -1501,16 +1454,6 @@ bucket_store:
       # Client write timeout.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.write-timeout
       [write_timeout: <duration> | default = 3s]
-
-      # Amount of time after which client closes idle connections. Should be
-      # less than server's timeout. -1 disables idle timeout check.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.idle-timeout
-      [idle_timeout: <duration> | default = 5m]
-
-      # Connection age at which client retires (closes) the connection. Default
-      # 0 is to not close aged connections.
-      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-conn-age
-      [max_conn_age: <duration> | default = 0s]
 
       # Whether to enable tls for redis connection.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-enabled

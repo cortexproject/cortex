@@ -53,7 +53,7 @@ func (c *singleClient) DoMulti(ctx context.Context, multi ...Completed) (resps [
 		return nil
 	}
 retry:
-	resps = c.conn.DoMulti(ctx, multi...)
+	resps = c.conn.DoMulti(ctx, multi...).s
 	if c.retry && allReadOnly(multi) {
 		for _, resp := range resps {
 			if c.isRetryable(resp.NonRedisError(), ctx) {
@@ -74,7 +74,7 @@ func (c *singleClient) DoMultiCache(ctx context.Context, multi ...CacheableTTL) 
 		return nil
 	}
 retry:
-	resps = c.conn.DoMultiCache(ctx, multi...)
+	resps = c.conn.DoMultiCache(ctx, multi...).s
 	if c.retry {
 		for _, resp := range resps {
 			if c.isRetryable(resp.NonRedisError(), ctx) {
@@ -173,7 +173,7 @@ func (c *dedicatedSingleClient) DoMulti(ctx context.Context, multi ...Completed)
 		retryable = allReadOnly(multi)
 	}
 retry:
-	resp = c.wire.DoMulti(ctx, multi...)
+	resp = c.wire.DoMulti(ctx, multi...).s
 	if retryable && anyRetryable(resp, c.wire, ctx) {
 		goto retry
 	}

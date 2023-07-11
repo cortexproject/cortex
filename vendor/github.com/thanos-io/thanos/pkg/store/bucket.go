@@ -271,13 +271,13 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	})
 
 	m.seriesFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-		Name:    "thanos_bucket_store_cached_series_fetch_duration_seconds",
+		Name:    "thanos_bucket_store_series_fetch_duration_seconds",
 		Help:    "The time it takes to fetch series to respond to a request sent to a store gateway. It includes both the time to fetch it from the cache and from storage in case of cache misses.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 
 	m.postingsFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-		Name:    "thanos_bucket_store_cached_postings_fetch_duration_seconds",
+		Name:    "thanos_bucket_store_postings_fetch_duration_seconds",
 		Help:    "The time it takes to fetch postings to respond to a request sent to a store gateway. It includes both the time to fetch it from the cache and from storage in case of cache misses.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
@@ -2457,13 +2457,13 @@ func (r *bucketIndexReader) fetchExpandedPostingsFromCache(ctx context.Context, 
 	}()
 	// If failed to decode or expand cached postings, return and expand postings again.
 	if err != nil {
-		level.Error(r.block.logger).Log("msg", "failed to decode cached expanded postings, refetch postings", "id", r.block.meta.ULID.String())
+		level.Error(r.block.logger).Log("msg", "failed to decode cached expanded postings, refetch postings", "id", r.block.meta.ULID.String(), "err", err)
 		return false, nil, nil
 	}
 
 	ps, err := ExpandPostingsWithContext(ctx, p)
 	if err != nil {
-		level.Error(r.block.logger).Log("msg", "failed to expand cached expanded postings, refetch postings", "id", r.block.meta.ULID.String())
+		level.Error(r.block.logger).Log("msg", "failed to expand cached expanded postings, refetch postings", "id", r.block.meta.ULID.String(), "err", err)
 		return false, nil, nil
 	}
 
@@ -2527,6 +2527,9 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 	// If we have a miss, mark key to be fetched in `ptrs` slice.
 	// Overlaps are well handled by partitioner, so we don't need to deduplicate keys.
 	for ix, key := range keys {
+		if err := ctx.Err(); err != nil {
+			return nil, closeFns, err
+		}
 		// Get postings for the given key from cache first.
 		if b, ok := fromCache[key]; ok {
 			r.stats.postingsTouched++

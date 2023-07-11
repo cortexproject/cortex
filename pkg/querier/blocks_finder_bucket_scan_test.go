@@ -95,7 +95,7 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 
 	// Mock the storage to simulate a failure when reading objects.
 	bucket.MockIter("", []string{"user-1"}, nil)
-	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
+	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json"}, nil)
 	bucket.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
 	bucket.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "invalid", errors.New("mocked error"))
 

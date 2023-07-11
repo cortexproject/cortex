@@ -8,13 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gogo/protobuf/proto"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
+	"google.golang.org/protobuf/proto"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -832,7 +831,7 @@ func (m *MergedMetricFamily) CreateMetricFamily() *dto.MetricFamily {
 
 	for _, metric := range m.metricMap.metrics {
 		for _, m := range metric {
-			metrics = append(metrics, &m.metric)
+			metrics = append(metrics, m.metric)
 		}
 	}
 
@@ -856,7 +855,7 @@ func MergeMetricFamilies(metricFamilies []MetricFamilyMap) (MetricFamilyMap, err
 			}
 
 			for _, metric := range metricFamily.Metric {
-				(mergedMap[metricName].metricMap).AddOrSetMetric(*metric, mergeFunc)
+				(mergedMap[metricName].metricMap).AddOrSetMetric(metric, mergeFunc)
 			}
 		}
 	}
@@ -924,7 +923,7 @@ type MetricMap struct {
 }
 
 type Metric struct {
-	metric dto.Metric
+	metric *dto.Metric
 	lock   sync.Mutex
 }
 
@@ -936,7 +935,7 @@ func NewMetricMap() MetricMap {
 
 // AddOrSetMetric - given a metric, see if there's another metric with the same labels. If not, add metric to list
 // If yes, call mergeFn to merge the two metrics in-place, and updating existing metric
-func (m *MetricMap) AddOrSetMetric(metric dto.Metric, mergeFn func(existing *dto.Metric, new *dto.Metric)) {
+func (m *MetricMap) AddOrSetMetric(metric *dto.Metric, mergeFn func(existing *dto.Metric, new *dto.Metric)) {
 	var metricLabels []string
 	for _, labelPair := range metric.GetLabel() {
 		metricLabels = append(metricLabels, fmt.Sprintf("%s=%s", labelPair.GetName(), labelPair.GetValue()))
@@ -953,7 +952,7 @@ func (m *MetricMap) AddOrSetMetric(metric dto.Metric, mergeFn func(existing *dto
 			same := m.compareLabels(existingMetric.metric.GetLabel(), metric.GetLabel())
 			if same {
 				existingMetric.lock.Lock()
-				mergeFn(&existingMetric.metric, &metric)
+				mergeFn(existingMetric.metric, metric)
 				existingMetric.lock.Unlock()
 				return
 			}

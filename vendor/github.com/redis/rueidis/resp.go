@@ -11,27 +11,65 @@ import (
 var errChunked = errors.New("unbounded redis message")
 var errOldNull = errors.New("RESP2 null")
 
+const (
+	typeBlobString     = byte('$')
+	typeSimpleString   = byte('+')
+	typeSimpleErr      = byte('-')
+	typeInteger        = byte(':')
+	typeNull           = byte('_')
+	typeEnd            = byte('.')
+	typeFloat          = byte(',')
+	typeBool           = byte('#')
+	typeBlobErr        = byte('!')
+	typeVerbatimString = byte('=')
+	typeBigNumber      = byte('(')
+	typeArray          = byte('*')
+	typeMap            = byte('%')
+	typeSet            = byte('~')
+	typeAttribute      = byte('|')
+	typePush           = byte('>')
+)
+
+var typeNames = make(map[byte]string, 16)
+
 type reader func(i *bufio.Reader) (RedisMessage, error)
 
 var readers = [256]reader{}
 
 func init() {
-	readers['$'] = readBlobString
-	readers['+'] = readSimpleString
-	readers['-'] = readSimpleString
-	readers[':'] = readInteger
-	readers['_'] = readNull
-	readers[','] = readSimpleString
-	readers['#'] = readBoolean
-	readers['!'] = readBlobString
-	readers['='] = readBlobString
-	readers['('] = readSimpleString
-	readers['*'] = readArray
-	readers['%'] = readMap
-	readers['~'] = readArray
-	readers['|'] = readMap
-	readers['>'] = readArray
-	readers['.'] = readNull
+	readers[typeBlobString] = readBlobString
+	readers[typeSimpleString] = readSimpleString
+	readers[typeSimpleErr] = readSimpleString
+	readers[typeInteger] = readInteger
+	readers[typeNull] = readNull
+	readers[typeFloat] = readSimpleString
+	readers[typeBool] = readBoolean
+	readers[typeBlobErr] = readBlobString
+	readers[typeVerbatimString] = readBlobString
+	readers[typeBigNumber] = readSimpleString
+	readers[typeArray] = readArray
+	readers[typeMap] = readMap
+	readers[typeSet] = readArray
+	readers[typeAttribute] = readMap
+	readers[typePush] = readArray
+	readers[typeEnd] = readNull
+
+	typeNames[typeBlobString] = "blob string"
+	typeNames[typeSimpleString] = "simple string"
+	typeNames[typeSimpleErr] = "simple error"
+	typeNames[typeInteger] = "int64"
+	typeNames[typeNull] = "null"
+	typeNames[typeFloat] = "float64"
+	typeNames[typeBool] = "boolean"
+	typeNames[typeBlobErr] = "blob error"
+	typeNames[typeVerbatimString] = "verbatim string"
+	typeNames[typeBigNumber] = "big number"
+	typeNames[typeArray] = "array"
+	typeNames[typeMap] = "map"
+	typeNames[typeSet] = "set"
+	typeNames[typeAttribute] = "attribute"
+	typeNames[typePush] = "push"
+	typeNames[typeEnd] = "null"
 }
 
 func readSimpleString(i *bufio.Reader) (m RedisMessage, err error) {
@@ -223,12 +261,12 @@ func readNextMessage(i *bufio.Reader) (m RedisMessage, err error) {
 		}
 		if m, err = fn(i); err != nil {
 			if err == errOldNull {
-				return RedisMessage{typ: '_'}, nil
+				return RedisMessage{typ: typeNull}, nil
 			}
 			return RedisMessage{}, err
 		}
 		m.typ = typ
-		if m.typ == '|' { // handle the attributes
+		if m.typ == typeAttribute { // handle the attributes
 			a := m     // clone the original m first, and then take address of the clone
 			attrs = &a // to avoid go compiler allocating the m on heap which causing worse performance.
 			m = RedisMessage{}

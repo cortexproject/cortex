@@ -397,47 +397,66 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_bucket_store_cached_postings_compressed_size_bytes_total counter
 			cortex_bucket_store_cached_postings_compressed_size_bytes_total 1283583
 
-			# HELP cortex_bucket_store_cached_series_fetch_duration_seconds Time it takes to fetch series to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
-			# TYPE cortex_bucket_store_cached_series_fetch_duration_seconds histogram
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.001"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.01"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.1"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.3"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="0.6"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="1"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="3"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="6"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="9"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="20"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="30"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="60"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="90"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="120"} 0
-			cortex_bucket_store_cached_series_fetch_duration_seconds_bucket{le="+Inf"} 3
-			cortex_bucket_store_cached_series_fetch_duration_seconds_sum 1.306102e+06
-			cortex_bucket_store_cached_series_fetch_duration_seconds_count 3
+			# HELP cortex_bucket_store_series_fetch_duration_seconds Time it takes to fetch series to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
+			# TYPE cortex_bucket_store_series_fetch_duration_seconds histogram
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="0.001"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="0.3"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="0.6"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="1"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="3"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="6"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="9"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="20"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="30"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="60"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="90"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="120"} 0
+			cortex_bucket_store_series_fetch_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_series_fetch_duration_seconds_sum 1.306102e+06
+			cortex_bucket_store_series_fetch_duration_seconds_count 3
+        	# HELP cortex_bucket_store_chunks_fetch_duration_seconds The total time spent fetching chunks within a single request a store gateway.
+        	# TYPE cortex_bucket_store_chunks_fetch_duration_seconds histogram
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="0.001"} 0
+            cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="0.01"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="0.1"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="0.3"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="0.6"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="1"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="3"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="6"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="9"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="20"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="30"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="60"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="90"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="120"} 0
+        	cortex_bucket_store_chunks_fetch_duration_seconds_bucket{le="+Inf"} 3
+        	cortex_bucket_store_chunks_fetch_duration_seconds_sum 1.328621e+06
+        	cortex_bucket_store_chunks_fetch_duration_seconds_count 3
         	# HELP cortex_bucket_store_empty_postings_total Total number of empty postings when fetching block series.
             # TYPE cortex_bucket_store_empty_postings_total counter
         	cortex_bucket_store_empty_postings_total 112595
-			# HELP cortex_bucket_store_cached_postings_fetch_duration_seconds Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
-			# TYPE cortex_bucket_store_cached_postings_fetch_duration_seconds histogram
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.001"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.01"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.1"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.3"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="0.6"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="1"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="3"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="6"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="9"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="20"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="30"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="60"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="90"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="120"} 0
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_bucket{le="+Inf"} 3
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_sum 1.328621e+06
-			cortex_bucket_store_cached_postings_fetch_duration_seconds_count 3
+			# HELP cortex_bucket_store_postings_fetch_duration_seconds Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.
+			# TYPE cortex_bucket_store_postings_fetch_duration_seconds histogram
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="0.001"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="0.01"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="0.1"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="0.3"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="0.6"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="1"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="3"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="6"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="9"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="20"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="30"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="60"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="90"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="120"} 0
+			cortex_bucket_store_postings_fetch_duration_seconds_bucket{le="+Inf"} 3
+			cortex_bucket_store_postings_fetch_duration_seconds_sum 1.328621e+06
+			cortex_bucket_store_postings_fetch_duration_seconds_count 3
 
 			# HELP cortex_bucket_store_indexheader_lazy_load_duration_seconds Duration of the index-header lazy loading in seconds.
 			# TYPE cortex_bucket_store_indexheader_lazy_load_duration_seconds histogram
@@ -587,6 +606,7 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 
 	m.seriesFetchDuration.Observe(58 * base)
 	m.postingsFetchDuration.Observe(59 * base)
+	m.chunkFetchDuration.Observe(59 * base)
 
 	m.indexHeaderLazyLoadCount.Add(60 * base)
 	m.indexHeaderLazyLoadFailedCount.Add(61 * base)
@@ -628,6 +648,7 @@ type mockedBucketStoreMetrics struct {
 
 	seriesFetchDuration   prometheus.Histogram
 	postingsFetchDuration prometheus.Histogram
+	chunkFetchDuration    prometheus.Histogram
 
 	indexHeaderLazyLoadCount         prometheus.Counter
 	indexHeaderLazyLoadFailedCount   prometheus.Counter
@@ -750,13 +771,18 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	})
 
 	m.seriesFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-		Name:    "thanos_bucket_store_cached_series_fetch_duration_seconds",
+		Name:    "thanos_bucket_store_series_fetch_duration_seconds",
 		Help:    "Time it takes to fetch series from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 	m.postingsFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-		Name:    "thanos_bucket_store_cached_postings_fetch_duration_seconds",
+		Name:    "thanos_bucket_store_postings_fetch_duration_seconds",
 		Help:    "Time it takes to fetch postings from a bucket to respond a query. It also includes the time it takes to cache fetch and store operations.",
+		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
+	})
+	m.chunkFetchDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_chunks_fetch_duration_seconds",
+		Help:    "The total time spent fetching chunks within a single request a store gateway.",
 		Buckets: []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 	})
 

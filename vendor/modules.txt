@@ -712,10 +712,10 @@ github.com/prometheus/client_golang/prometheus/promhttp
 github.com/prometheus/client_golang/prometheus/push
 github.com/prometheus/client_golang/prometheus/testutil
 github.com/prometheus/client_golang/prometheus/testutil/promlint
-# github.com/prometheus/client_model v0.3.0
-## explicit; go 1.9
+# github.com/prometheus/client_model v0.4.0
+## explicit; go 1.18
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.42.0
+# github.com/prometheus/common v0.44.0
 ## explicit; go 1.18
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -785,7 +785,7 @@ github.com/prometheus/prometheus/util/teststorage
 github.com/prometheus/prometheus/util/testutil
 github.com/prometheus/prometheus/util/zeropool
 github.com/prometheus/prometheus/web/api/v1
-# github.com/redis/rueidis v1.0.2-go1.18
+# github.com/redis/rueidis v1.0.10-go1.18
 ## explicit; go 1.18
 github.com/redis/rueidis
 github.com/redis/rueidis/internal/cmds
@@ -863,7 +863,7 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.31.1-0.20230627154113-7cfaf3fe2d43
+# github.com/thanos-io/thanos v0.31.1-0.20230711160112-df3a5f808726
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -1143,7 +1143,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/netutil
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.7.0
+# golang.org/x/oauth2 v0.8.0
 ## explicit; go 1.17
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler

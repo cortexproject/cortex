@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/redis/rueidis/internal/util"
@@ -12,7 +13,7 @@ import (
 // NewLuaScript creates a Lua instance whose Lua.Exec uses EVALSHA and EVAL.
 func NewLuaScript(script string) *Lua {
 	sum := sha1.Sum([]byte(script))
-	return &Lua{script: script, sha1: hex.EncodeToString(sum[:])}
+	return &Lua{script: script, sha1: hex.EncodeToString(sum[:]), maxp: runtime.GOMAXPROCS(0)}
 }
 
 // NewLuaScriptReadOnly creates a Lua instance whose Lua.Exec uses EVALSHA_RO and EVAL_RO.
@@ -26,6 +27,7 @@ func NewLuaScriptReadOnly(script string) *Lua {
 type Lua struct {
 	script   string
 	sha1     string
+	maxp     int
 	readonly bool
 }
 
@@ -38,7 +40,7 @@ func (s *Lua) Exec(ctx context.Context, c Client, keys, args []string) (resp Red
 	} else {
 		resp = c.Do(ctx, c.B().Evalsha().Sha1(s.sha1).Numkeys(int64(len(keys))).Key(keys...).Arg(args...).Build())
 	}
-	if err := resp.RedisError(); err != nil && err.IsNoScript() {
+	if err, ok := IsRedisErr(resp.Error()); ok && err.IsNoScript() {
 		if s.readonly {
 			resp = c.Do(ctx, c.B().EvalRo().Script(s.script).Numkeys(int64(len(keys))).Key(keys...).Arg(args...).Build())
 		} else {
@@ -59,7 +61,7 @@ type LuaExec struct {
 // Cross slot keys within single LuaExec are prohibited if the Client is a cluster client.
 func (s *Lua) ExecMulti(ctx context.Context, c Client, multi ...LuaExec) (resp []RedisResult) {
 	var e atomic.Value
-	util.ParallelVals(c.Nodes(), func(n Client) {
+	util.ParallelVals(s.maxp, c.Nodes(), func(n Client) {
 		if err := n.Do(ctx, n.B().ScriptLoad().Script(s.script).Build()).Error(); err != nil {
 			e.CompareAndSwap(nil, &errs{error: err})
 		}

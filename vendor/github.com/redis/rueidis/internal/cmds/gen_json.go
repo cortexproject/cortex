@@ -618,6 +618,45 @@ func (c JsonGetSpace) Cache() Cacheable {
 	return Cacheable(c)
 }
 
+type JsonMerge Completed
+
+func (b Builder) JsonMerge() (c JsonMerge) {
+	c = JsonMerge{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "JSON.MERGE")
+	return c
+}
+
+func (c JsonMerge) Key(key string) JsonMergeKey {
+	if c.ks&NoSlot == NoSlot {
+		c.ks = NoSlot | slot(key)
+	} else {
+		c.ks = check(c.ks, slot(key))
+	}
+	c.cs.s = append(c.cs.s, key)
+	return (JsonMergeKey)(c)
+}
+
+type JsonMergeKey Completed
+
+func (c JsonMergeKey) Path(path string) JsonMergePath {
+	c.cs.s = append(c.cs.s, path)
+	return (JsonMergePath)(c)
+}
+
+type JsonMergePath Completed
+
+func (c JsonMergePath) Value(value string) JsonMergeValue {
+	c.cs.s = append(c.cs.s, value)
+	return (JsonMergeValue)(c)
+}
+
+type JsonMergeValue Completed
+
+func (c JsonMergeValue) Build() Completed {
+	c.cs.Build()
+	return Completed(c)
+}
+
 type JsonMget Completed
 
 func (b Builder) JsonMget() (c JsonMget) {
@@ -673,6 +712,55 @@ func (c JsonMgetPath) Build() Completed {
 func (c JsonMgetPath) Cache() Cacheable {
 	c.cs.Build()
 	return Cacheable(c)
+}
+
+type JsonMset Completed
+
+func (b Builder) JsonMset() (c JsonMset) {
+	c = JsonMset{cs: get(), ks: b.ks}
+	c.cs.s = append(c.cs.s, "JSON.MSET")
+	return c
+}
+
+func (c JsonMset) Key(key string) JsonMsetTripletKey {
+	if c.ks&NoSlot == NoSlot {
+		c.ks = NoSlot | slot(key)
+	} else {
+		c.ks = check(c.ks, slot(key))
+	}
+	c.cs.s = append(c.cs.s, key)
+	return (JsonMsetTripletKey)(c)
+}
+
+type JsonMsetTripletKey Completed
+
+func (c JsonMsetTripletKey) Path(path string) JsonMsetTripletPath {
+	c.cs.s = append(c.cs.s, path)
+	return (JsonMsetTripletPath)(c)
+}
+
+type JsonMsetTripletPath Completed
+
+func (c JsonMsetTripletPath) Value(value string) JsonMsetTripletValue {
+	c.cs.s = append(c.cs.s, value)
+	return (JsonMsetTripletValue)(c)
+}
+
+type JsonMsetTripletValue Completed
+
+func (c JsonMsetTripletValue) Key(key string) JsonMsetTripletKey {
+	if c.ks&NoSlot == NoSlot {
+		c.ks = NoSlot | slot(key)
+	} else {
+		c.ks = check(c.ks, slot(key))
+	}
+	c.cs.s = append(c.cs.s, key)
+	return (JsonMsetTripletKey)(c)
+}
+
+func (c JsonMsetTripletValue) Build() Completed {
+	c.cs.Build()
+	return Completed(c)
 }
 
 type JsonNumincrby Completed

@@ -206,6 +206,11 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 	if err := bucketindex.DeleteIndex(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
 		return err
 	}
+
+	// Delete the bucket sync status
+	if err := bucketindex.DeleteIndexSyncStatus(ctx, c.bucketClient, userID); err != nil {
+		return err
+	}
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 
 	var deletedBlocks, failed int
@@ -321,15 +326,40 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		}
 	}
 
+	// Reading bucket index sync stats
+	idxs, err := bucketindex.ReadSyncStatus(ctx, c.bucketClient, userID, userLogger)
+
+	if err != nil {
+		level.Warn(userLogger).Log("msg", "error reading the bucket index status", "err", err)
+		idxs = bucketindex.Status{Version: bucketindex.SyncStatusFileVersion, NonQueryableReason: bucketindex.Unknown}
+	}
+
+	idxs.Status = bucketindex.Ok
+	idxs.SyncTime = time.Now().Unix()
+
 	// Read the bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
+
+	defer func() {
+		bucketindex.WriteSyncStatus(ctx, c.bucketClient, userID, idxs, userLogger)
+	}()
+
 	if errors.Is(err, bucketindex.ErrIndexCorrupted) {
 		level.Warn(userLogger).Log("msg", "found a corrupted bucket index, recreating it")
 	} else if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 		// Give up cleaning if we get access denied
-		level.Warn(userLogger).Log("msg", err.Error())
+		level.Warn(userLogger).Log("msg", "customer manager key access denied", "err", err)
+		idxs.Status = bucketindex.CustomerManagedKeyError
+		// Making the tenant non queryable until 3x the cleanup interval to give time to compactors and storegateways
+		// to reload the bucket index in case the key access is re-granted
+		idxs.NonQueryableUntil = time.Now().Add(3 * c.cfg.CleanupInterval).Unix()
+		idxs.NonQueryableReason = bucketindex.CustomerManagedKeyError
+
+		// Update the bucket index update time
+		c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
 		return nil
 	} else if err != nil && !errors.Is(err, bucketindex.ErrIndexNotFound) {
+		idxs.Status = bucketindex.GenericError
 		return err
 	}
 
@@ -348,6 +378,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
+		idxs.Status = bucketindex.GenericError
 		return err
 	}
 
@@ -398,7 +429,6 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(totalBlocksBlocksMarkedForNoCompaction))
 	c.tenantBucketIndexLastUpdate.WithLabelValues(userID).SetToCurrentTime()
 	c.tenantPartialBlocks.WithLabelValues(userID).Set(float64(len(partials)))
-
 	return nil
 }
 

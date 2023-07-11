@@ -65,7 +65,7 @@ func TestLoader_GetIndex_ShouldLazyLoadBucketIndex(t *testing.T) {
 
 	// Request the index multiple times.
 	for i := 0; i < 10; i++ {
-		actualIdx, err := loader.GetIndex(ctx, "user-1")
+		actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 		require.NoError(t, err)
 		assert.Equal(t, idx, actualIdx)
 	}
@@ -105,7 +105,7 @@ func TestLoader_GetIndex_ShouldCacheError(t *testing.T) {
 
 	// Request the index multiple times.
 	for i := 0; i < 10; i++ {
-		_, err := loader.GetIndex(ctx, "user-1")
+		_, _, err := loader.GetIndex(ctx, "user-1")
 		require.Equal(t, ErrIndexCorrupted, err)
 	}
 
@@ -141,7 +141,7 @@ func TestLoader_GetIndex_ShouldCacheIndexNotFoundError(t *testing.T) {
 
 	// Request the index multiple times.
 	for i := 0; i < 10; i++ {
-		_, err := loader.GetIndex(ctx, "user-1")
+		_, _, err := loader.GetIndex(ctx, "user-1")
 		require.Equal(t, ErrIndexNotFound, err)
 	}
 
@@ -193,7 +193,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -203,14 +203,14 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T)
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, 2, func() interface{} {
-		actualIdx, err := loader.GetIndex(ctx, "user-1")
+		actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 		if err != nil {
 			return 0
 		}
 		return len(actualIdx.Blocks)
 	})
 
-	actualIdx, err = loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err = loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -250,7 +250,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T)
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	_, err := loader.GetIndex(ctx, "user-1")
+	_, _, err := loader.GetIndex(ctx, "user-1")
 	assert.Equal(t, ErrIndexCorrupted, err)
 
 	// Upload the bucket index.
@@ -266,11 +266,11 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadFailure(t *testing.T)
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, nil, func() interface{} {
-		_, err := loader.GetIndex(ctx, "user-1")
+		_, _, err := loader.GetIndex(ctx, "user-1")
 		return err
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -303,7 +303,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousIndexNotFound(t *testing.
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	_, err := loader.GetIndex(ctx, "user-1")
+	_, _, err := loader.GetIndex(ctx, "user-1")
 	assert.Equal(t, ErrIndexNotFound, err)
 
 	// Upload the bucket index.
@@ -319,11 +319,11 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousIndexNotFound(t *testing.
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, nil, func() interface{} {
-		_, err := loader.GetIndex(ctx, "user-1")
+		_, _, err := loader.GetIndex(ctx, "user-1")
 		return err
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -367,7 +367,7 @@ func TestLoader_ShouldNotCacheCriticalErrorOnBackgroundUpdates(t *testing.T) {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -379,7 +379,7 @@ func TestLoader_ShouldNotCacheCriticalErrorOnBackgroundUpdates(t *testing.T) {
 		return testutil.ToFloat64(loader.loadFailures) > 0
 	})
 
-	actualIdx, err = loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err = loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -423,7 +423,7 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -447,7 +447,7 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 
 	// Try to get the index again. We expect no load attempt because the error has been cached.
 	prevLoads = testutil.ToFloat64(loader.loadAttempts)
-	actualIdx, err = loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err = loader.GetIndex(ctx, "user-1")
 	assert.Equal(t, ErrIndexNotFound, err)
 	assert.Nil(t, actualIdx)
 	assert.Equal(t, prevLoads, testutil.ToFloat64(loader.loadAttempts))
@@ -483,7 +483,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -495,7 +495,7 @@ func TestLoader_ShouldOffloadIndexIfNotFoundDuringBackgroundUpdates(t *testing.T
 		return testutil.ToFloat64(loader.loaded)
 	})
 
-	_, err = loader.GetIndex(ctx, "user-1")
+	_, _, err = loader.GetIndex(ctx, "user-1")
 	require.Equal(t, ErrIndexNotFound, err)
 
 	// Ensure metrics have been updated accordingly.
@@ -538,7 +538,7 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -561,7 +561,7 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 	))
 
 	// Load it again.
-	actualIdx, err = loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err = loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -602,7 +602,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	_, err := loader.GetIndex(ctx, user)
+	_, _, err := loader.GetIndex(ctx, user)
 	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 
 	// Check cached
@@ -623,13 +623,13 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing
 
 	// Wait until the index has been updated in background.
 	test.Poll(t, 3*time.Second, nil, func() interface{} {
-		_, err := loader.GetIndex(ctx, "user-1")
+		_, _, err := loader.GetIndex(ctx, "user-1")
 		// Check cached
 		require.NoError(t, loader.checkCachedIndexes(ctx))
 		return err
 	})
 
-	actualIdx, err := loader.GetIndex(ctx, "user-1")
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
 	require.NoError(t, err)
 	assert.Equal(t, idx, actualIdx)
 
@@ -668,7 +668,7 @@ func TestLoader_GetIndex_ShouldCacheKeyDeniedErrors(t *testing.T) {
 
 	// Request the index multiple times.
 	for i := 0; i < 10; i++ {
-		_, err := loader.GetIndex(ctx, "user-1")
+		_, _, err := loader.GetIndex(ctx, "user-1")
 		require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	}
 

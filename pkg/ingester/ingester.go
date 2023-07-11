@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
@@ -2288,6 +2290,14 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			return nil
 		}
 		defer userDB.casState(activeShipping, active)
+
+		if idxs, err := bucketindex.ReadSyncStatus(ctx, i.TSDBState.bucket, userID, logutil.WithContext(ctx, i.logger)); err == nil {
+			// Skip blocks shipping if the bucket index failed to sync due to CMK errors.
+			if idxs.Status == bucketindex.CustomerManagedKeyError {
+				level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "skipping shipping blocks due CustomerManagedKeyError", "user", userID)
+				return nil
+			}
+		}
 
 		uploaded, err := userDB.shipper.Sync(ctx)
 		if err != nil {

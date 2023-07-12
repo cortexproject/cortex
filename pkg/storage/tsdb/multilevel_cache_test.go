@@ -16,22 +16,40 @@ import (
 )
 
 func Test_MultiIndexCacheInstantiation(t *testing.T) {
-	reg := prometheus.NewRegistry()
-
 	s, err := miniredis.Run()
 	if err != nil {
 		testutil.Ok(t, err)
 	}
 	defer s.Close()
 
-	cfg := IndexCacheConfig{
-		Backend: "inmemory,redis",
-		Redis: RedisClientConfig{
-			Addresses: s.Addr(),
+	testCases := map[string]struct {
+		cfg          IndexCacheConfig
+		expectedType storecache.IndexCache
+	}{
+		"instantiate single backends": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory",
+			},
+			expectedType: &storecache.InMemoryIndexCache{},
+		},
+		"instantiate multiples backends": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,redis",
+				Redis: RedisClientConfig{
+					Addresses: s.Addr(),
+				},
+			},
+			expectedType: newMultiLevelCache(),
 		},
 	}
-	_, err = NewIndexCache(cfg, log.NewNopLogger(), reg)
-	require.NoError(t, err)
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			c, err := NewIndexCache(tc.cfg, log.NewNopLogger(), reg)
+			require.NoError(t, err)
+			require.IsType(t, tc.expectedType, c)
+		})
+	}
 }
 
 func Test_MultiLevelCache(t *testing.T) {

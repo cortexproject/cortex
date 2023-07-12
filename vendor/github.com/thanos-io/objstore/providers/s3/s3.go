@@ -418,7 +418,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {

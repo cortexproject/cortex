@@ -139,7 +139,7 @@ func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, regi
 		maxItemSize = maxCacheSize
 	}
 
-	return storecache.NewInMemoryIndexCacheWithConfig(logger, registerer, storecache.InMemoryIndexCacheConfig{
+	return storecache.NewInMemoryIndexCacheWithConfig(logger, nil, registerer, storecache.InMemoryIndexCacheConfig{
 		MaxSize:     maxCacheSize,
 		MaxItemSize: maxItemSize,
 	})
@@ -160,5 +160,5 @@ func newRedisIndexCache(cfg RedisClientConfig, logger log.Logger, registerer pro
 		return nil, errors.Wrapf(err, "create index cache redis client")
 	}
 
-	return storecache.NewRemoteIndexCache(logger, client, registerer)
+	return storecache.NewRemoteIndexCache(logger, client, nil, registerer)
 }

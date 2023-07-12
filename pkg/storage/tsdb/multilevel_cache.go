@@ -100,7 +100,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 }
 
 func newMultiLevelCache(c ...storecache.IndexCache) storecache.IndexCache {
-	if len(c) == 0 {
+	if len(c) == 1 {
 		return c[0]
 	}
 	return &multiLevelCache{

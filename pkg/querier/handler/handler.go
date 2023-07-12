@@ -452,11 +452,11 @@ func (api *API) query(r *http.Request) (result apiFuncResult) {
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return apiFuncResult{&queryData{
+	return apiFuncResult{createPrometheusInstantQueryResponse(&queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
-	}, nil, res.Warnings, qry.Close}
+	}), nil, res.Warnings, qry.Close}
 }
 
 func (api *API) formatQuery(r *http.Request) (result apiFuncResult) {
@@ -1959,15 +1959,6 @@ func createPrometheusResponse(queryResult interface{}) queryrange.PrometheusResp
 		sampleStreams := make([]tripperware.SampleStream, sampleStreamsLen)
 
 		for i := 0; i < sampleStreamsLen; i++ {
-			samplesLen := len(data.Result.(promql.Matrix)[i].Floats)
-			samples := make([]cortexpb.Sample, samplesLen)
-			for j := 0; j < samplesLen; j++ {
-				samples[j] = cortexpb.Sample{
-					Value:       data.Result.(promql.Matrix)[i].Floats[j].F,
-					TimestampMs: data.Result.(promql.Matrix)[i].Floats[j].T,
-				}
-			}
-
 			labelsLen := len(data.Result.(promql.Matrix)[i].Metric)
 			labels := make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
 			for j := 0; j < labelsLen; j++ {
@@ -1977,6 +1968,14 @@ func createPrometheusResponse(queryResult interface{}) queryrange.PrometheusResp
 				}
 			}
 
+			samplesLen := len(data.Result.(promql.Matrix)[i].Floats)
+			samples := make([]cortexpb.Sample, samplesLen)
+			for j := 0; j < samplesLen; j++ {
+				samples[j] = cortexpb.Sample{
+					Value:       data.Result.(promql.Matrix)[i].Floats[j].F,
+					TimestampMs: data.Result.(promql.Matrix)[i].Floats[j].T,
+				}
+			}
 			sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples}
 		}
 
@@ -2017,6 +2016,109 @@ func createPrometheusResponse(queryResult interface{}) queryrange.PrometheusResp
 	return queryrange.PrometheusResponse{
 		Status:    "",
 		Data:      queryrange.PrometheusData{},
+		ErrorType: "",
+		Error:     "",
+		Headers:   []*tripperware.PrometheusResponseHeader{},
+	}
+}
+
+func createPrometheusInstantQueryResponse(queryResult interface{}) instantquery.PrometheusInstantQueryResponse {
+	data, _ := queryResult.(*queryData)
+	if data != nil {
+		var instantQueryResult instantquery.PrometheusInstantQueryResult
+
+		switch string(data.ResultType) {
+		case "matrix":
+			matrixSamplesLen := len(data.Result.(promql.Matrix))
+			matrixSamples := make([]tripperware.SampleStream, matrixSamplesLen)
+
+			for i := 0; i < matrixSamplesLen; i++ {
+				labelsLen := len(data.Result.(promql.Matrix)[i].Metric)
+				labels := make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
+				for j := 0; j < labelsLen; j++ {
+					labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+						Name:  data.Result.(promql.Matrix)[i].Metric[j].Name,
+						Value: data.Result.(promql.Matrix)[i].Metric[j].Value,
+					}
+				}
+
+				samplesLen := len(data.Result.(promql.Matrix)[i].Floats)
+				samples := make([]cortexpb.Sample, samplesLen)
+				for j := 0; j < samplesLen; j++ {
+					samples[j] = cortexpb.Sample{
+						Value:       data.Result.(promql.Matrix)[i].Floats[j].F,
+						TimestampMs: data.Result.(promql.Matrix)[i].Floats[j].T,
+					}
+				}
+
+				matrixSamples[i] = tripperware.SampleStream{Labels: labels, Samples: samples}
+			}
+			instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_Matrix{Matrix: &instantquery.Matrix{SampleStreams: matrixSamples}}
+
+		case "vector":
+			vectorSamplesLen := len(data.Result.(promql.Vector))
+			vectorSamples := make([]*instantquery.Sample, vectorSamplesLen)
+
+			for i := 0; i < vectorSamplesLen; i++ {
+				labelsLen := len(data.Result.(promql.Vector)[i].Metric)
+				labels := make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
+				for j := 0; j < labelsLen; j++ {
+					labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+						Name:  data.Result.(promql.Vector)[i].Metric[j].Name,
+						Value: data.Result.(promql.Vector)[i].Metric[j].Value,
+					}
+				}
+
+				vectorSamples[i] = &instantquery.Sample{Labels: labels,
+					Sample: cortexpb.Sample{
+						TimestampMs: data.Result.(promql.Vector)[i].T,
+						Value:       data.Result.(promql.Vector)[i].F,
+					},
+				}
+			}
+			instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_Vector{Vector: &instantquery.Vector{Samples: vectorSamples}}
+
+		default:
+			// TODO: add scalar and string instant query responses
+		}
+
+		var stats *tripperware.PrometheusResponseStats
+
+		if data.Stats != nil {
+			builtin := data.Stats.Builtin()
+			queryableSamplesStatsPerStepLen := len(builtin.Samples.TotalQueryableSamplesPerStep)
+			queryableSamplesStatsPerStep := make([]*tripperware.PrometheusResponseQueryableSamplesStatsPerStep, queryableSamplesStatsPerStepLen)
+			for i := 0; i < queryableSamplesStatsPerStepLen; i++ {
+				queryableSamplesStatsPerStep[i] = &tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+					Value:       builtin.Samples.TotalQueryableSamplesPerStep[i].V,
+					TimestampMs: builtin.Samples.TotalQueryableSamplesPerStep[i].T,
+				}
+			}
+
+			statSamples := tripperware.PrometheusResponseSamplesStats{
+				TotalQueryableSamples:        builtin.Samples.TotalQueryableSamples,
+				TotalQueryableSamplesPerStep: queryableSamplesStatsPerStep,
+			}
+
+			stats = &tripperware.PrometheusResponseStats{Samples: &statSamples}
+		}
+
+		return instantquery.PrometheusInstantQueryResponse{
+			Status: "",
+			Data: instantquery.PrometheusInstantQueryData{
+				ResultType: string(data.ResultType),
+				Result:     instantQueryResult,
+				Stats:      stats,
+			},
+			ErrorType: "",
+			Error:     "",
+			Headers:   []*tripperware.PrometheusResponseHeader{},
+		}
+	}
+
+	return instantquery.PrometheusInstantQueryResponse{
+		Status:    "",
+		Data:      instantquery.PrometheusInstantQueryData{},
 		ErrorType: "",
 		Error:     "",
 		Headers:   []*tripperware.PrometheusResponseHeader{},

@@ -1045,8 +1045,9 @@ bucket_store:
   [consistency_delay: <duration> | default = 0s]
 
   index_cache:
-    # The index cache backend type. Supported values: inmemory, memcached,
-    # redis.
+    # The index cache backend type. Multiple cache backend can be provided as a
+    # comma-separated ordered list to enable the implementation of a cache
+    # hierarchy. Supported values: inmemory, memcached, redis.
     # CLI flag: -blocks-storage.bucket-store.index-cache.backend
     [backend: <string> | default = "inmemory"]
 

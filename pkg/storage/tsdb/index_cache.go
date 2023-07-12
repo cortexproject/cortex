@@ -51,7 +51,10 @@ func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. Supported values: %s.", strings.Join(supportedIndexCacheBackends, ", ")))
+	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. " +
+		"Multiple cache backend can be provided as a comma-separated ordered list to enable the implementation of a cache hierarchy. " +
+		"Supported values: %s.",
+	strings.Join(supportedIndexCacheBackends, ", ")))
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")

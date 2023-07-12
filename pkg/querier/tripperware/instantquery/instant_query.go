@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/gogo/protobuf/proto"
 	"io"
 	"net/http"
 	"net/url"
@@ -173,7 +174,7 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	}
 
 	var resp PrometheusInstantQueryResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
+	if err := proto.Unmarshal(buf, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 

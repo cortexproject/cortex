@@ -36,6 +36,7 @@ var (
 	supportedIndexCacheBackends = []string{IndexCacheBackendInMemory, IndexCacheBackendMemcached, IndexCacheBackendRedis}
 
 	errUnsupportedIndexCacheBackend = errors.New("unsupported index cache backend")
+	errDuplicatedIndexCacheBackend  = errors.New("duplicated index cache backend")
 	errNoIndexCacheAddresses        = errors.New("no index cache backend addresses")
 )
 
@@ -51,10 +52,10 @@ func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. " +
-		"Multiple cache backend can be provided as a comma-separated ordered list to enable the implementation of a cache hierarchy. " +
+	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. "+
+		"Multiple cache backend can be provided as a comma-separated ordered list to enable the implementation of a cache hierarchy. "+
 		"Supported values: %s.",
-	strings.Join(supportedIndexCacheBackends, ", ")))
+		strings.Join(supportedIndexCacheBackends, ", ")))
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
@@ -64,11 +65,16 @@ func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix str
 // Validate the config.
 func (cfg *IndexCacheConfig) Validate() error {
 
-	splitedBackends := strings.Split(cfg.Backend, ",")
+	splitBackends := strings.Split(cfg.Backend, ",")
+	configuredBackends := map[string]struct{}{}
 
-	for _, backend := range splitedBackends {
+	for _, backend := range splitBackends {
 		if !util.StringsContain(supportedIndexCacheBackends, backend) {
 			return errUnsupportedIndexCacheBackend
+		}
+
+		if _, ok := configuredBackends[backend]; ok {
+			return errors.WithMessagef(errDuplicatedIndexCacheBackend, "duplicated backend: %v", backend)
 		}
 
 		if backend == IndexCacheBackendMemcached {
@@ -80,6 +86,8 @@ func (cfg *IndexCacheConfig) Validate() error {
 				return err
 			}
 		}
+
+		configuredBackends[backend] = struct{}{}
 	}
 
 	return nil

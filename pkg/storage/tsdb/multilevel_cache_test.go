@@ -23,8 +23,9 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 	defer s.Close()
 
 	testCases := map[string]struct {
-		cfg          IndexCacheConfig
-		expectedType storecache.IndexCache
+		cfg                     IndexCacheConfig
+		expectedType            storecache.IndexCache
+		expectedValidationError error
 	}{
 		"instantiate single backends": {
 			cfg: IndexCacheConfig{
@@ -41,13 +42,25 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 			},
 			expectedType: newMultiLevelCache(),
 		},
+		"should not allow duplicate backends": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,inmemory",
+			},
+			expectedType:            &storecache.InMemoryIndexCache{},
+			expectedValidationError: errDuplicatedIndexCacheBackend,
+		},
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
-			c, err := NewIndexCache(tc.cfg, log.NewNopLogger(), reg)
-			require.NoError(t, err)
-			require.IsType(t, tc.expectedType, c)
+			if tc.expectedValidationError == nil {
+				require.NoError(t, tc.cfg.Validate())
+				c, err := NewIndexCache(tc.cfg, log.NewNopLogger(), reg)
+				require.NoError(t, err)
+				require.IsType(t, tc.expectedType, c)
+			} else {
+				require.ErrorIs(t, tc.cfg.Validate(), errDuplicatedIndexCacheBackend)
+			}
 		})
 	}
 }

@@ -143,7 +143,7 @@ func TestStateReplication(t *testing.T) {
 				require.NoError(t, s.WaitReady(ctx))
 			}
 
-			ch := s.AddState("nflog", &fakeState{}, reg)
+			ch := s.AddState("nflog:user-1", &fakeState{}, reg)
 
 			part := tt.message
 			d, err := part.Marshal()

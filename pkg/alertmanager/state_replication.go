@@ -3,6 +3,7 @@ package alertmanager
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,10 +132,10 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 	s.states[key] = cs
 
-	s.partialStateMergesTotal.WithLabelValues(key)
-	s.partialStateMergesFailed.WithLabelValues(key)
-	s.stateReplicationTotal.WithLabelValues(key)
-	s.stateReplicationFailed.WithLabelValues(key)
+	s.partialStateMergesTotal.WithLabelValues(getKeyWithoutUser(key))
+	s.partialStateMergesFailed.WithLabelValues(getKeyWithoutUser(key))
+	s.stateReplicationTotal.WithLabelValues(getKeyWithoutUser(key))
+	s.stateReplicationFailed.WithLabelValues(getKeyWithoutUser(key))
 
 	return &stateChannel{
 		s:   s,
@@ -144,18 +145,18 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 // MergePartialState merges a received partial message with an internal state.
 func (s *state) MergePartialState(p *clusterpb.Part) error {
-	s.partialStateMergesTotal.WithLabelValues(p.Key).Inc()
+	s.partialStateMergesTotal.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	st, ok := s.states[p.Key]
 	if !ok {
-		s.partialStateMergesFailed.WithLabelValues(p.Key).Inc()
+		s.partialStateMergesFailed.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
 		return fmt.Errorf("key not found while merging")
 	}
 
 	if err := st.Merge(p.Data); err != nil {
-		s.partialStateMergesFailed.WithLabelValues(p.Key).Inc()
+		s.partialStateMergesFailed.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
 		return err
 	}
 
@@ -285,9 +286,9 @@ func (s *state) running(ctx context.Context) error {
 				return nil
 			}
 
-			s.stateReplicationTotal.WithLabelValues(p.Key).Inc()
+			s.stateReplicationTotal.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
 			if err := s.replicator.ReplicateStateForUser(ctx, s.userID, p); err != nil {
-				s.stateReplicationFailed.WithLabelValues(p.Key).Inc()
+				s.stateReplicationFailed.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}
 		case <-ctx.Done():
@@ -313,4 +314,12 @@ type stateChannel struct {
 // Broadcast receives a message to be replicated by the state.
 func (c *stateChannel) Broadcast(b []byte) {
 	c.s.broadcast(c.key, b)
+}
+
+// getKeyWithoutUser used for trim the userID out of the metric label value.
+func getKeyWithoutUser(key string) string {
+	if strings.IndexByte(key, ':') < 0 {
+		return key
+	}
+	return key[:strings.IndexByte(key, ':')]
 }

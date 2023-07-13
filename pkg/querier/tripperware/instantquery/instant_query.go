@@ -210,8 +210,7 @@ func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
-	// Always ask gzip to the querier
-	h.Set("Accept-Encoding", "gzip")
+	h.Set("Accept-Encoding", "snappy")
 
 	req := &http.Request{
 		Method:     "GET",

@@ -133,6 +133,23 @@ func TestStats_AddFetchedSamples(t *testing.T) {
 	})
 }
 
+func TestStats_AddQueryInfoFields(t *testing.T) {
+	t.Parallel()
+	t.Run("add start, end, step, ts, and query fields", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddQuery("test_query")
+		stats.AddStart(10000)
+		stats.AddEnd(20000)
+		stats.AddStep(100)
+		stats.AddTs(15000)
+		assert.Equal(t, 10000, stats.LoadStart())
+		assert.Equal(t, 20000, stats.LoadEnd())
+		assert.Equal(t, 100, stats.LoadStep())
+		assert.Equal(t, 15000, stats.LoadTs())
+		assert.Equal(t, "test_query", stats.LoadQuery())
+	})
+}
+
 func TestStats_Merge(t *testing.T) {
 	t.Parallel()
 	t.Run("merge two stats objects", func(t *testing.T) {
@@ -170,6 +187,11 @@ func TestStats_Merge(t *testing.T) {
 		assert.Equal(t, uint64(0), stats1.LoadFetchedSeries())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedChunkBytes())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedDataBytes())
+		assert.Equal(t, int64(0), stats1.LoadStart())
+		assert.Equal(t, int64(0), stats1.LoadEnd())
+		assert.Equal(t, int64(0), stats1.LoadTs())
+		assert.Equal(t, int64(0), stats1.LoadStep())
+		assert.Equal(t, nil, stats1.LoadQuery())
 		checkExtraFields(t, []interface{}{}, stats1.LoadExtraFields())
 	})
 }

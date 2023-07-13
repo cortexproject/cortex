@@ -56,12 +56,12 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		oldBlockDeletionMarks = old.BlockDeletionMarks
 	}
 
-	blocks, partials, err := w.updateBlocks(ctx, oldBlocks)
+	blockDeletionMarks, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
-	blockDeletionMarks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
+	blocks, partials, err := w.updateBlocks(ctx, oldBlocks, deletedBlocks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -74,13 +74,19 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 	}, partials, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
-func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
+func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks map[ulid.ULID]struct{}) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
 	discovered := map[ulid.ULID]struct{}{}
 	partials = map[ulid.ULID]error{}
 
 	// Find all blocks in the storage.
 	err := w.bkt.Iter(ctx, "", func(name string) error {
 		if id, ok := block.IsBlockDir(name); ok {
+
+			if _, ok := deletedBlocks[id]; ok {
+				level.Warn(w.logger).Log("msg", "skipped block with missing global deletion marker", "block", id.String())
+				return nil
+			}
+
 			discovered[id] = struct{}{}
 		}
 		return nil
@@ -175,8 +181,9 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	return block, nil
 }
 
-func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, int64, error) {
+func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, int64, error) {
 	out := make([]*BlockDeletionMark, 0, len(old))
+	deletedBlocks := map[ulid.ULID]struct{}{}
 	discovered := map[ulid.ULID]struct{}{}
 	totalBlocksBlocksMarkedForNoCompaction := int64(0)
 
@@ -193,7 +200,7 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 		return nil
 	})
 	if err != nil {
-		return nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
+		return nil, nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
 	}
 
 	// Since deletion marks are immutable, all markers already existing in the index can just be copied.
@@ -201,6 +208,8 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 		if _, ok := discovered[m.ID]; ok {
 			out = append(out, m)
 			delete(discovered, m.ID)
+		} else {
+			deletedBlocks[m.ID] = struct{}{}
 		}
 	}
 
@@ -217,13 +226,13 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			continue
 		}
 		if err != nil {
-			return nil, totalBlocksBlocksMarkedForNoCompaction, err
+			return nil, nil, totalBlocksBlocksMarkedForNoCompaction, err
 		}
 
 		out = append(out, m)
 	}
 
-	return out, totalBlocksBlocksMarkedForNoCompaction, nil
+	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
 func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {

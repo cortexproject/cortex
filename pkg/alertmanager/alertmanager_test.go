@@ -114,7 +114,7 @@ route:
 
 var (
 	alert1 = model.Alert{
-		Labels:       model.LabelSet{"alert": "first"},
+		Labels:       model.LabelSet{"alert": "first", "alertname": "alert1"},
 		Annotations:  model.LabelSet{"job": "test"},
 		StartsAt:     time.Now(),
 		EndsAt:       time.Now(),
@@ -123,7 +123,7 @@ var (
 	alert1Size = alertSize(alert1)
 
 	alert2 = model.Alert{
-		Labels:       model.LabelSet{"alert": "second"},
+		Labels:       model.LabelSet{"alert": "second", "alertname": "alert2"},
 		Annotations:  model.LabelSet{"job": "test", "cluster": "prod"},
 		StartsAt:     time.Now(),
 		EndsAt:       time.Now(),
@@ -161,7 +161,7 @@ func TestAlertsLimiterWithCountLimit(t *testing.T) {
 
 	ops := []callbackOp{
 		{alert: &types.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errTooManyAlerts, 1), expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &types.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errTooManyAlerts, 1, alert2.Name()), expectedCount: 1, expectedTotalSize: alert1Size},
 		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},

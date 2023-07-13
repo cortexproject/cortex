@@ -80,19 +80,19 @@ func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.Ale
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		partialStateMergesFailed: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_failed_total",
 			Help: "Number of times we have failed to merge a partial state received for a key.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		stateReplicationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_state_replication_total",
 			Help: "Number of times we have tried to replicate a state to other alertmanagers.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		stateReplicationFailed: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_state_replication_failed_total",
 			Help: "Number of times we have failed to replicate a state to other alertmanagers.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		fetchReplicaStateTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "alertmanager_state_fetch_replica_state_total",
 			Help: "Number of times we have tried to read and merge the full state from another replica.",
@@ -132,10 +132,10 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 	s.states[key] = cs
 
-	s.partialStateMergesTotal.WithLabelValues(getKeyWithoutUser(key))
-	s.partialStateMergesFailed.WithLabelValues(getKeyWithoutUser(key))
-	s.stateReplicationTotal.WithLabelValues(getKeyWithoutUser(key))
-	s.stateReplicationFailed.WithLabelValues(getKeyWithoutUser(key))
+	s.partialStateMergesTotal.WithLabelValues(getStateTypeFromKey(key))
+	s.partialStateMergesFailed.WithLabelValues(getStateTypeFromKey(key))
+	s.stateReplicationTotal.WithLabelValues(getStateTypeFromKey(key))
+	s.stateReplicationFailed.WithLabelValues(getStateTypeFromKey(key))
 
 	return &stateChannel{
 		s:   s,
@@ -145,18 +145,18 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 // MergePartialState merges a received partial message with an internal state.
 func (s *state) MergePartialState(p *clusterpb.Part) error {
-	s.partialStateMergesTotal.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
+	s.partialStateMergesTotal.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	st, ok := s.states[p.Key]
 	if !ok {
-		s.partialStateMergesFailed.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
+		s.partialStateMergesFailed.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
 		return fmt.Errorf("key not found while merging")
 	}
 
 	if err := st.Merge(p.Data); err != nil {
-		s.partialStateMergesFailed.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
+		s.partialStateMergesFailed.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
 		return err
 	}
 
@@ -286,9 +286,9 @@ func (s *state) running(ctx context.Context) error {
 				return nil
 			}
 
-			s.stateReplicationTotal.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
+			s.stateReplicationTotal.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
 			if err := s.replicator.ReplicateStateForUser(ctx, s.userID, p); err != nil {
-				s.stateReplicationFailed.WithLabelValues(getKeyWithoutUser(p.Key)).Inc()
+				s.stateReplicationFailed.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}
 		case <-ctx.Done():
@@ -316,8 +316,8 @@ func (c *stateChannel) Broadcast(b []byte) {
 	c.s.broadcast(c.key, b)
 }
 
-// getKeyWithoutUser used for trim the userID out of the metric label value.
-func getKeyWithoutUser(key string) string {
+// getStateTypeFromKey used for get the state type out of the state key.
+func getStateTypeFromKey(key string) string {
 	if strings.IndexByte(key, ':') < 0 {
 		return key
 	}

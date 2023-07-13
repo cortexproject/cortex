@@ -34,7 +34,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -145,21 +144,10 @@ func NewQueryTripperware(
 				if isQueryRange {
 					return queryrange.RoundTrip(r)
 				} else if isQuery {
-					// If the given query is not shardable, use downstream roundtripper.
 					query := r.FormValue("query")
 					// Check subquery step size.
 					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, MaxStep); err != nil {
 						return nil, err
-					}
-
-					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
-					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
-					if numShards <= 1 {
-						return next.RoundTrip(r)
-					}
-					analysis, err := queryAnalyzer.Analyze(query)
-					if err != nil || !analysis.IsShardable() {
-						return next.RoundTrip(r)
 					}
 					return instantQuery.RoundTrip(r)
 				}

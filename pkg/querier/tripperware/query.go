@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"github.com/golang/snappy"
 	"io"
 	"net/http"
 	"sort"
@@ -226,6 +227,9 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
 
 		return io.ReadAll(gReader)
+	} else if strings.EqualFold(res.Header.Get("Content-Encoding"), "snappy") {
+		sReader := snappy.NewReader(buf)
+		return io.ReadAll(sReader)
 	}
 
 	return buf.Bytes(), nil

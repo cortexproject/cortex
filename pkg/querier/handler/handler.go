@@ -163,7 +163,7 @@ func (api *API) Register(r *route.Router) {
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
-		return api.ready(httputil.CompressionHandler{
+		return api.ready(CompressionHandler{
 			Handler: hf,
 		}.ServeHTTP)
 	}

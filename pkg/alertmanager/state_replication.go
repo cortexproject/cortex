@@ -3,6 +3,7 @@ package alertmanager
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,19 +80,19 @@ func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.Ale
 		partialStateMergesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_total",
 			Help: "Number of times we have received a partial state to merge for a key.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		partialStateMergesFailed: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_partial_state_merges_failed_total",
 			Help: "Number of times we have failed to merge a partial state received for a key.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		stateReplicationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_state_replication_total",
 			Help: "Number of times we have tried to replicate a state to other alertmanagers.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		stateReplicationFailed: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "alertmanager_state_replication_failed_total",
 			Help: "Number of times we have failed to replicate a state to other alertmanagers.",
-		}, []string{"key"}),
+		}, []string{"type"}),
 		fetchReplicaStateTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "alertmanager_state_fetch_replica_state_total",
 			Help: "Number of times we have tried to read and merge the full state from another replica.",
@@ -131,10 +132,11 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 	s.states[key] = cs
 
-	s.partialStateMergesTotal.WithLabelValues(key)
-	s.partialStateMergesFailed.WithLabelValues(key)
-	s.stateReplicationTotal.WithLabelValues(key)
-	s.stateReplicationFailed.WithLabelValues(key)
+	stateType := getStateTypeFromKey(key)
+	s.partialStateMergesTotal.WithLabelValues(stateType)
+	s.partialStateMergesFailed.WithLabelValues(stateType)
+	s.stateReplicationTotal.WithLabelValues(stateType)
+	s.stateReplicationFailed.WithLabelValues(stateType)
 
 	return &stateChannel{
 		s:   s,
@@ -144,18 +146,19 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 // MergePartialState merges a received partial message with an internal state.
 func (s *state) MergePartialState(p *clusterpb.Part) error {
-	s.partialStateMergesTotal.WithLabelValues(p.Key).Inc()
+	stateType := getStateTypeFromKey(p.Key)
+	s.partialStateMergesTotal.WithLabelValues(stateType).Inc()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	st, ok := s.states[p.Key]
 	if !ok {
-		s.partialStateMergesFailed.WithLabelValues(p.Key).Inc()
+		s.partialStateMergesFailed.WithLabelValues(stateType).Inc()
 		return fmt.Errorf("key not found while merging")
 	}
 
 	if err := st.Merge(p.Data); err != nil {
-		s.partialStateMergesFailed.WithLabelValues(p.Key).Inc()
+		s.partialStateMergesFailed.WithLabelValues(stateType).Inc()
 		return err
 	}
 
@@ -285,9 +288,10 @@ func (s *state) running(ctx context.Context) error {
 				return nil
 			}
 
-			s.stateReplicationTotal.WithLabelValues(p.Key).Inc()
+			stateType := getStateTypeFromKey(p.Key)
+			s.stateReplicationTotal.WithLabelValues(stateType).Inc()
 			if err := s.replicator.ReplicateStateForUser(ctx, s.userID, p); err != nil {
-				s.stateReplicationFailed.WithLabelValues(p.Key).Inc()
+				s.stateReplicationFailed.WithLabelValues(stateType).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}
 		case <-ctx.Done():
@@ -313,4 +317,13 @@ type stateChannel struct {
 // Broadcast receives a message to be replicated by the state.
 func (c *stateChannel) Broadcast(b []byte) {
 	c.s.broadcast(c.key, b)
+}
+
+// getStateTypeFromKey used for get the state type out of the state key.
+func getStateTypeFromKey(key string) string {
+	index := strings.IndexByte(key, ':')
+	if index < 0 {
+		return key
+	}
+	return key[:index]
 }

@@ -211,6 +211,17 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_notifications_total{integration="wechat",user="user2"} 20
 		cortex_alertmanager_notifications_total{integration="wechat",user="user3"} 200
 
+		# HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
+		# TYPE cortex_alertmanager_partial_state_merges_failed_total counter
+		cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user1"} 2
+		cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user2"} 20
+		cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user3"} 200
+		# HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
+		# TYPE cortex_alertmanager_partial_state_merges_total counter
+		cortex_alertmanager_partial_state_merges_total{type="nfl",user="user1"} 3
+		cortex_alertmanager_partial_state_merges_total{type="nfl",user="user2"} 30
+		cortex_alertmanager_partial_state_merges_total{type="nfl",user="user3"} 300
+
 		# HELP cortex_alertmanager_silences How many silences by state.
 		# TYPE cortex_alertmanager_silences gauge
 		cortex_alertmanager_silences{state="active",user="user1"} 1
@@ -506,6 +517,17 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
         	            cortex_alertmanager_notifications_total{integration="wechat",user="user2"} 20
         	            cortex_alertmanager_notifications_total{integration="wechat",user="user3"} 200
 
+        	            # HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
+        	            # TYPE cortex_alertmanager_partial_state_merges_failed_total counter
+        	            cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user1"} 2
+        	            cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user2"} 20
+        	            cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user3"} 200
+        	            # HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
+        	            # TYPE cortex_alertmanager_partial_state_merges_total counter
+        	            cortex_alertmanager_partial_state_merges_total{type="nfl",user="user1"} 3
+        	            cortex_alertmanager_partial_state_merges_total{type="nfl",user="user2"} 30
+        	            cortex_alertmanager_partial_state_merges_total{type="nfl",user="user3"} 300
+
         	            # HELP cortex_alertmanager_silences How many silences by state.
         	            # TYPE cortex_alertmanager_silences gauge
         	            cortex_alertmanager_silences{state="active",user="user1"} 1
@@ -758,6 +780,15 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
     		cortex_alertmanager_notifications_total{integration="wechat",user="user1"} 2
     		cortex_alertmanager_notifications_total{integration="wechat",user="user2"} 20
 
+    		# HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
+    		# TYPE cortex_alertmanager_partial_state_merges_failed_total counter
+    		cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user1"} 2
+    		cortex_alertmanager_partial_state_merges_failed_total{type="nfl",user="user2"} 20
+    		# HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
+    		# TYPE cortex_alertmanager_partial_state_merges_total counter
+    		cortex_alertmanager_partial_state_merges_total{type="nfl",user="user1"} 3
+    		cortex_alertmanager_partial_state_merges_total{type="nfl",user="user2"} 30
+
     		# HELP cortex_alertmanager_silences How many silences by state.
     		# TYPE cortex_alertmanager_silences gauge
     		cortex_alertmanager_silences{state="active",user="user1"} 1
@@ -897,6 +928,10 @@ func populateAlertmanager(base float64) *prometheus.Registry {
 	lm.count.Set(10 * base)
 	lm.size.Set(100 * base)
 	lm.insertFailures.Add(7 * base)
+
+	sr := newStateReplicationMetrics(reg)
+	sr.partialStateMergesFailed.WithLabelValues("nfl").Add(base * 2)
+	sr.partialStateMergesTotal.WithLabelValues("nfl").Add(base * 3)
 
 	return reg
 }
@@ -1128,5 +1163,26 @@ func newLimiterMetrics(r prometheus.Registerer) *limiterMetrics {
 		count:          count,
 		size:           size,
 		insertFailures: insertAlertFailures,
+	}
+}
+
+type stateReplicationMetrics struct {
+	partialStateMergesTotal  *prometheus.CounterVec
+	partialStateMergesFailed *prometheus.CounterVec
+}
+
+func newStateReplicationMetrics(r prometheus.Registerer) *stateReplicationMetrics {
+	partialStateMergesTotal := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "alertmanager_partial_state_merges_total",
+		Help: "Number of times we have received a partial state to merge for a key.",
+	}, []string{"type"})
+	partialStateMergesFailed := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "alertmanager_partial_state_merges_failed_total",
+		Help: "Number of times we have failed to merge a partial state received for a key.",
+	}, []string{"type"})
+
+	return &stateReplicationMetrics{
+		partialStateMergesTotal:  partialStateMergesTotal,
+		partialStateMergesFailed: partialStateMergesFailed,
 	}
 }

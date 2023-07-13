@@ -517,16 +517,16 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
         	            cortex_alertmanager_notifications_total{integration="wechat",user="user2"} 20
         	            cortex_alertmanager_notifications_total{integration="wechat",user="user3"} 200
 
-						# HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
-						# TYPE cortex_alertmanager_partial_state_merges_failed_total counter
-						cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user1"} 2
-						cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user2"} 20
-						cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user3"} 200
-						# HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
-						# TYPE cortex_alertmanager_partial_state_merges_total counter
-						cortex_alertmanager_partial_state_merges_total{key="nil",user="user1"} 3
-						cortex_alertmanager_partial_state_merges_total{key="nil",user="user2"} 30
-						cortex_alertmanager_partial_state_merges_total{key="nil",user="user3"} 300
+        	            # HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
+        	            # TYPE cortex_alertmanager_partial_state_merges_failed_total counter
+        	            cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user1"} 2
+        	            cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user2"} 20
+        	            cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user3"} 200
+        	            # HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
+        	            # TYPE cortex_alertmanager_partial_state_merges_total counter
+        	            cortex_alertmanager_partial_state_merges_total{key="nil",user="user1"} 3
+        	            cortex_alertmanager_partial_state_merges_total{key="nil",user="user2"} 30
+        	            cortex_alertmanager_partial_state_merges_total{key="nil",user="user3"} 300
 
         	            # HELP cortex_alertmanager_silences How many silences by state.
         	            # TYPE cortex_alertmanager_silences gauge
@@ -780,14 +780,14 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
     		cortex_alertmanager_notifications_total{integration="wechat",user="user1"} 2
     		cortex_alertmanager_notifications_total{integration="wechat",user="user2"} 20
 
-			# HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
-			# TYPE cortex_alertmanager_partial_state_merges_failed_total counter
-			cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user1"} 2
-			cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user2"} 20
-			# HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
-			# TYPE cortex_alertmanager_partial_state_merges_total counter
-			cortex_alertmanager_partial_state_merges_total{key="nil",user="user1"} 3
-			cortex_alertmanager_partial_state_merges_total{key="nil",user="user2"} 30
+    		# HELP cortex_alertmanager_partial_state_merges_failed_total Number of times we have failed to merge a partial state received for a key.
+    		# TYPE cortex_alertmanager_partial_state_merges_failed_total counter
+    		cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user1"} 2
+    		cortex_alertmanager_partial_state_merges_failed_total{key="nil",user="user2"} 20
+    		# HELP cortex_alertmanager_partial_state_merges_total Number of times we have received a partial state to merge for a key.
+    		# TYPE cortex_alertmanager_partial_state_merges_total counter
+    		cortex_alertmanager_partial_state_merges_total{key="nil",user="user1"} 3
+    		cortex_alertmanager_partial_state_merges_total{key="nil",user="user2"} 30
 
     		# HELP cortex_alertmanager_silences How many silences by state.
     		# TYPE cortex_alertmanager_silences gauge

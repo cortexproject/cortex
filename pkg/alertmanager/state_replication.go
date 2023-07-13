@@ -132,10 +132,11 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 	s.states[key] = cs
 
-	s.partialStateMergesTotal.WithLabelValues(getStateTypeFromKey(key))
-	s.partialStateMergesFailed.WithLabelValues(getStateTypeFromKey(key))
-	s.stateReplicationTotal.WithLabelValues(getStateTypeFromKey(key))
-	s.stateReplicationFailed.WithLabelValues(getStateTypeFromKey(key))
+	stateType := getStateTypeFromKey(key)
+	s.partialStateMergesTotal.WithLabelValues(stateType)
+	s.partialStateMergesFailed.WithLabelValues(stateType)
+	s.stateReplicationTotal.WithLabelValues(stateType)
+	s.stateReplicationFailed.WithLabelValues(stateType)
 
 	return &stateChannel{
 		s:   s,
@@ -145,18 +146,19 @@ func (s *state) AddState(key string, cs cluster.State, _ prometheus.Registerer) 
 
 // MergePartialState merges a received partial message with an internal state.
 func (s *state) MergePartialState(p *clusterpb.Part) error {
-	s.partialStateMergesTotal.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
+	stateType := getStateTypeFromKey(p.Key)
+	s.partialStateMergesTotal.WithLabelValues(stateType).Inc()
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	st, ok := s.states[p.Key]
 	if !ok {
-		s.partialStateMergesFailed.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
+		s.partialStateMergesFailed.WithLabelValues(stateType).Inc()
 		return fmt.Errorf("key not found while merging")
 	}
 
 	if err := st.Merge(p.Data); err != nil {
-		s.partialStateMergesFailed.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
+		s.partialStateMergesFailed.WithLabelValues(stateType).Inc()
 		return err
 	}
 
@@ -318,8 +320,9 @@ func (c *stateChannel) Broadcast(b []byte) {
 
 // getStateTypeFromKey used for get the state type out of the state key.
 func getStateTypeFromKey(key string) string {
-	if strings.IndexByte(key, ':') < 0 {
+	index := strings.IndexByte(key, ':')
+	if index < 0 {
 		return key
 	}
-	return key[:strings.IndexByte(key, ':')]
+	return key[:index]
 }

@@ -288,9 +288,10 @@ func (s *state) running(ctx context.Context) error {
 				return nil
 			}
 
-			s.stateReplicationTotal.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
+			stateType := getStateTypeFromKey(p.Key)
+			s.stateReplicationTotal.WithLabelValues(stateType).Inc()
 			if err := s.replicator.ReplicateStateForUser(ctx, s.userID, p); err != nil {
-				s.stateReplicationFailed.WithLabelValues(getStateTypeFromKey(p.Key)).Inc()
+				s.stateReplicationFailed.WithLabelValues(stateType).Inc()
 				level.Error(s.logger).Log("msg", "failed to replicate state to other alertmanagers", "user", s.userID, "key", p.Key, "err", err)
 			}
 		case <-ctx.Done():

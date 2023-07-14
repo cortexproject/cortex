@@ -510,7 +510,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
 
 	c, _, tsdbPlannerMock, _, registry := prepare(t, prepareConfig(), bucketClient, nil)
-	tsdbPlannerMock.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, errors.New("Failed to plan"))
+	tsdbPlannerMock.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, errors.New("Failed to plan"))
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
@@ -585,7 +585,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -850,7 +850,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 
 	c, _, tsdbPlanner, _, registry := prepare(t, prepareConfig(), bucketClient, nil)
 
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -907,7 +907,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -1004,7 +1004,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	tsdbCompac.On("Compact", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(b1, nil)
 
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
 		{
 			BlockMeta: tsdb.BlockMeta{
 				ULID:    b1,
@@ -1097,7 +1097,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	// in order to simplify tests (all in all, we just want to
 	// test our logic and not TSDB compactor which we expect to
 	// be already tested).
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
@@ -1193,7 +1193,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		// in order to simplify tests (all in all, we just want to
 		// test our logic and not TSDB compactor which we expect to
 		// be already tested).
-		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 	}
 
 	// Start all compactors
@@ -1325,7 +1325,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		// in order to simplify tests (all in all, we just want to
 		// test our logic and not TSDB compactor which we expect to
 		// be already tested).
-		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 	}
 
 	// Start all compactors
@@ -1814,7 +1814,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		// in order to simplify tests (all in all, we just want to
 		// test our logic and not TSDB compactor which we expect to
 		// be already tested).
-		tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+		tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 	}
 
 	require.Equal(t, 2, len(compactors))
@@ -1900,7 +1900,7 @@ func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
 	tsdbCompactor.On("Compact", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ulid.ULID{}, context.Canceled).Run(func(args mock.Arguments) {
 		cancel()
 	})
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything).Return([]*metadata.Meta{
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
 		{
 			BlockMeta: tsdb.BlockMeta{
 				ULID:    b1,

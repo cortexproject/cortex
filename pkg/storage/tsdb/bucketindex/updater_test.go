@@ -245,6 +245,43 @@ func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 	assert.Equal(t, nonCompactBlocks, int64(1))
 }
 
+func TestUpdater_UpdateIndex_ShouldSkipBlockMarkedForDeletionWithMissingGlobalMarker(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+
+	oldIdx := &Index{
+		Version: IndexVersion1,
+		Blocks: Blocks{&Block{
+			ID:         block2.ULID,
+			MinTime:    block2.MinTime,
+			MaxTime:    block2.MaxTime,
+			UploadedAt: getBlockUploadedAt(t, bkt, userID, block2.ULID),
+		}},
+		BlockDeletionMarks: BlockDeletionMarks{&BlockDeletionMark{
+			ID:           block2.ULID,
+			DeletionTime: time.Now().Add(-time.Minute).Unix(),
+		}},
+	}
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, partials, nonCompactBlocks, err := w.UpdateIndex(ctx, oldIdx)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1},
+		[]*metadata.DeletionMark{})
+	assert.Empty(t, partials)
+	assert.Empty(t, nonCompactBlocks)
+}
+
 func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 	const userID = "user-1"
 

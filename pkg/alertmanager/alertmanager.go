@@ -604,7 +604,7 @@ func (g *dispatcherLimits) MaxNumberOfAggregationGroups() int {
 }
 
 var (
-	errTooManyAlerts = "too many alerts, limit: %d"
+	errTooManyAlerts = "too many alerts, limit: %d, alert name: %s"
 	errAlertsTooBig  = "alerts too big, total size limit: %d bytes"
 )
 
@@ -670,7 +670,7 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 
 	if !existing && countLimit > 0 && (a.count+1) > countLimit {
 		a.failureCounter.Inc()
-		return fmt.Errorf(errTooManyAlerts, countLimit)
+		return fmt.Errorf(errTooManyAlerts, countLimit, alert.Name())
 	}
 
 	if existing {

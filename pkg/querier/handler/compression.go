@@ -23,17 +23,14 @@ type deflatedResponseWriter struct {
 	writer *zlib.Writer
 }
 
-// Writes HTTP response content data.
 func (c *deflatedResponseWriter) Write(p []byte) (int, error) {
 	return c.writer.Write(p)
 }
 
-// Close Closes the deflatedResponseWriter and ensures to flush all data before.
 func (c *deflatedResponseWriter) Close() {
 	c.writer.Close()
 }
 
-// Constructs a new deflatedResponseWriter to compress the original writer using 'deflate' compression.
 func newDeflateResponseWriter(writer http.ResponseWriter) *deflatedResponseWriter {
 	return &deflatedResponseWriter{
 		ResponseWriter: writer,
@@ -47,17 +44,14 @@ type snappyResponseWriter struct {
 	writer *snappy.Writer
 }
 
-// Writes HTTP response content data.
 func (c *snappyResponseWriter) Write(p []byte) (int, error) {
 	return c.writer.Write(p)
 }
 
-// Close Closes the snappyResponseWriter and ensures to flush all data before.
 func (c *snappyResponseWriter) Close() {
 	c.writer.Close()
 }
 
-// Constructs a new snappyResponseWriter to compress the original writer using 'deflate' compression.
 func newSnappyResponseWriter(writer http.ResponseWriter) *snappyResponseWriter {
 	return &snappyResponseWriter{
 		ResponseWriter: writer,

@@ -1647,13 +1647,18 @@ func (m *tsdbCompactorMock) Compact(dest string, dirs []string, open []*tsdb.Blo
 	return args.Get(0).(ulid.ULID), args.Error(1)
 }
 
+func (m *tsdbCompactorMock) CompactWithBlockPopulator(dest string, dirs []string, open []*tsdb.Block, blockPopulator tsdb.BlockPopulator) (uid ulid.ULID, err error) {
+	args := m.Called(dest, dirs, open, blockPopulator)
+	return args.Get(0).(ulid.ULID), args.Error(1)
+}
+
 type tsdbPlannerMock struct {
 	mock.Mock
 	noCompactMarkFilters []*compact.GatherNoCompactionMarkFilter
 }
 
-func (m *tsdbPlannerMock) Plan(ctx context.Context, metasByMinTime []*metadata.Meta) ([]*metadata.Meta, error) {
-	args := m.Called(ctx, metasByMinTime)
+func (m *tsdbPlannerMock) Plan(ctx context.Context, metasByMinTime []*metadata.Meta, errChan chan error, extensions any) ([]*metadata.Meta, error) {
+	args := m.Called(ctx, metasByMinTime, errChan, extensions)
 	return args.Get(0).([]*metadata.Meta), args.Error(1)
 }
 

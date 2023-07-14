@@ -400,9 +400,9 @@ type IsOpFailureExpectedFunc func(error) bool
 
 var _ InstrumentedBucket = &metricBucket{}
 
-// BucketWithMetrics takes a bucket and registers metrics with the given registry for
+// WrapWithMetrics takes a bucket and registers metrics with the given registry for
 // operations run against the bucket.
-func BucketWithMetrics(name string, b Bucket, reg prometheus.Registerer) *metricBucket {
+func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBucket {
 	bkt := &metricBucket{
 		bkt:                 b,
 		isOpFailureExpected: func(err error) bool { return false },

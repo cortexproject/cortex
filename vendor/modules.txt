@@ -832,7 +832,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20230710163637-47c0118da0ca
+# github.com/thanos-io/objstore v0.0.0-20230713070940-eb01c83b89a4
 ## explicit; go 1.18
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
@@ -841,7 +841,7 @@ github.com/thanos-io/objstore/providers/filesystem
 github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
-github.com/thanos-io/objstore/tracing
+github.com/thanos-io/objstore/tracing/opentracing
 # github.com/thanos-io/promql-engine v0.0.0-20230526105742-791d78b260ea
 ## explicit; go 1.19
 github.com/thanos-io/promql-engine/api
@@ -863,7 +863,7 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.31.1-0.20230712154708-a395c5dbd054
+# github.com/thanos-io/thanos v0.31.1-0.20230714171248-723dfd08764a
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

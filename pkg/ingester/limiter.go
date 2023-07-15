@@ -34,6 +34,7 @@ type Limiter struct {
 	shuffleShardingEnabled bool
 	shardByAllLabels       bool
 	zoneAwarenessEnabled   bool
+	adminContact           string
 }
 
 // NewLimiter makes a new in-memory series limiter
@@ -44,6 +45,7 @@ func NewLimiter(
 	shardByAllLabels bool,
 	replicationFactor int,
 	zoneAwarenessEnabled bool,
+	adminContact string,
 ) *Limiter {
 	return &Limiter{
 		limits:                 limits,
@@ -52,6 +54,7 @@ func NewLimiter(
 		shuffleShardingEnabled: shardingStrategy == util.ShardingStrategyShuffle,
 		shardByAllLabels:       shardByAllLabels,
 		zoneAwarenessEnabled:   zoneAwarenessEnabled,
+		adminContact:           adminContact,
 	}
 }
 
@@ -121,36 +124,52 @@ func (l *Limiter) formatMaxSeriesPerUserError(userID string) error {
 	actualLimit := l.maxSeriesPerUser(userID)
 	localLimit := l.limits.MaxLocalSeriesPerUser(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerUser(userID)
+	adminContact := l.adminContact
+	if len(l.adminContact) > 0 {
+		adminContact = "(" + l.adminContact + ") "
+	}
 
-	return fmt.Errorf("per-user series limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-user series limit of %d exceeded, please contact administrator %sto raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), adminContact, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) formatMaxSeriesPerMetricError(userID string) error {
 	actualLimit := l.maxSeriesPerMetric(userID)
 	localLimit := l.limits.MaxLocalSeriesPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalSeriesPerMetric(userID)
+	adminContact := l.adminContact
+	if len(l.adminContact) > 0 {
+		adminContact = "(" + l.adminContact + ") "
+	}
 
-	return fmt.Errorf("per-metric series limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-metric series limit of %d exceeded, please contact administrator %sto raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), adminContact, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) formatMaxMetadataPerUserError(userID string) error {
 	actualLimit := l.maxMetadataPerUser(userID)
 	localLimit := l.limits.MaxLocalMetricsWithMetadataPerUser(userID)
 	globalLimit := l.limits.MaxGlobalMetricsWithMetadataPerUser(userID)
+	adminContact := l.adminContact
+	if len(l.adminContact) > 0 {
+		adminContact = "(" + l.adminContact + ") "
+	}
 
-	return fmt.Errorf("per-user metric metadata limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-user metric metadata limit of %d exceeded, please contact administrator %sto raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), adminContact, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) formatMaxMetadataPerMetricError(userID string) error {
 	actualLimit := l.maxMetadataPerMetric(userID)
 	localLimit := l.limits.MaxLocalMetadataPerMetric(userID)
 	globalLimit := l.limits.MaxGlobalMetadataPerMetric(userID)
+	adminContact := l.adminContact
+	if len(l.adminContact) > 0 {
+		adminContact = "(" + l.adminContact + ") "
+	}
 
-	return fmt.Errorf("per-metric metadata limit of %d exceeded, please contact administrator to raise it (local limit: %d global limit: %d actual local limit: %d)",
-		minNonZero(localLimit, globalLimit), localLimit, globalLimit, actualLimit)
+	return fmt.Errorf("per-metric metadata limit of %d exceeded, please contact administrator %sto raise it (local limit: %d global limit: %d actual local limit: %d)",
+		minNonZero(localLimit, globalLimit), adminContact, localLimit, globalLimit, actualLimit)
 }
 
 func (l *Limiter) maxSeriesPerMetric(userID string) int {

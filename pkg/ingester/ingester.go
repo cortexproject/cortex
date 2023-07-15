@@ -124,6 +124,9 @@ type Config struct {
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+
+	// For admin contact details
+	AdminContactDetails string `yaml:"admin_contact"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -144,6 +147,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
+
+	f.StringVar(&cfg.AdminContactDetails, "ingester.admin-contact", "", "Add site administrator contact details for customising error messages")
 }
 
 func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
@@ -653,7 +658,9 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.DistributorShardingStrategy,
 		cfg.DistributorShardByAllLabels,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
-		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
+		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
+		cfg.AdminContactDetails,
+	)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 

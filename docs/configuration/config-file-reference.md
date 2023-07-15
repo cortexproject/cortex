@@ -2620,6 +2620,10 @@ instance_limits:
 # max-global-series-per-metric limits.
 # CLI flag: -ingester.ignore-series-limit-for-metric-names
 [ignore_series_limit_for_metric_names: <string> | default = ""]
+
+# Flag to add site administrator contact details for customising error messages
+# CLI flag: -ingester.admin-contact
+[admin_contact: <string> | default = ""]
 ```
 
 ### `ingester_client_config`

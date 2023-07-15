@@ -383,7 +383,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
 			)
-			actual, err := p.Plan(context.Background(), testData.blocks)
+			actual, err := p.Plan(context.Background(), testData.blocks, nil, nil)
 
 			if testData.expectedErr != nil {
 				assert.Equal(t, err, testData.expectedErr)

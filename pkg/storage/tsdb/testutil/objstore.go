@@ -30,7 +30,7 @@ func PrepareFilesystemBucket(t testing.TB) (objstore.Bucket, string) {
 	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	return objstore.BucketWithMetrics("test", bkt, nil), storageDir
+	return objstore.WrapWithMetrics(bkt, nil, "test"), storageDir
 }
 
 type MockBucketFailure struct {

@@ -60,7 +60,7 @@ type Bucket interface {
 	Upload(ctx context.Context, name string, r io.Reader) error
 
 	// Delete removes the object with the given name.
-	// If object does not exists in the moment of deletion, Delete should throw error.
+	// If object does not exist in the moment of deletion, Delete should throw error.
 	Delete(ctx context.Context, name string) error
 
 ```
@@ -88,7 +88,7 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// Attributes returns information about the specified object.
+	// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
 ```
 
 Those interfaces represent the object storage operations your code can use from `objstore` clients.
@@ -128,7 +128,7 @@ Current object storage client implementations:
 | [Baidu BOS](#baidu-bos)                                                                   | Beta               | Production Usage      | no                | @yahaa                           |
 | [Local Filesystem](#filesystem)                                                           | Stable             | Testing and Demo only | yes               | @bwplotka                        |
 | [Oracle Cloud Infrastructure Object Storage](#oracle-cloud-infrastructure-object-storage) | Beta               | Production Usage      | yes               | @aarontams,@gaurav-05,@ericrrath |
-| [HuaweiCloud OBS](#huaweicloud-obs)                                                       | Beta               | Production Usage      | no               | @setoru                          |
+| [HuaweiCloud OBS](#huaweicloud-obs)                                                       | Beta               | Production Usage      | no                | @setoru                          |
 
 **Missing support to some object storage?** Check out [how to add your client section](#how-to-add-a-new-client-to-thanos)
 
@@ -153,6 +153,7 @@ config:
   insecure: false
   signature_version2: false
   secret_key: ""
+  session_token: ""
   put_user_metadata: {}
   http_config:
     idle_conn_timeout: 1m30s
@@ -643,17 +644,16 @@ You can also include any of the optional configuration just like the example in 
 
 ##### HuaweiCloud OBS
 
-To use HuaweiCloud OBS as an object store, you should apply for a HuaweiCloud Account to create an object storage bucket at first.
-More details: [HuaweiCloud OBS](https://support.huaweicloud.com/obs/index.html)
+To use HuaweiCloud OBS as an object store, you should apply for a HuaweiCloud Account to create an object storage bucket at first. More details: [HuaweiCloud OBS](https://support.huaweicloud.com/obs/index.html)
 
 To configure HuaweiCloud Account to use OBS as storage store you need to set these parameters in YAML format stored in a file:
 
-```yaml mdox-exec="go run scripts/cfggen/main.go --name=cos.Config"
-type: OBS                    
-config:                      
-  bucket: ""                 
-  endpoint: ""               
-  access_key: ""             
+```yaml mdox-exec="go run scripts/cfggen/main.go --name=obs.Config"
+type: OBS
+config:
+  bucket: ""
+  endpoint: ""
+  access_key: ""
   secret_key: ""
   http_config:
     idle_conn_timeout: 1m30s
@@ -674,7 +674,7 @@ config:
 prefix: ""
 ```
 
-The `access_key` and `secret_key` field is required. The `http_config` field is optional for optimize HTTP transport settings. 
+The `access_key` and `secret_key` field is required. The `http_config` field is optional for optimize HTTP transport settings.
 
 #### How to add a new client to Thanos?
 

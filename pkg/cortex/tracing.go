@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/opentracing/opentracing-go"
-	objstoretracing "github.com/thanos-io/objstore/tracing"
+	objstoretracing "github.com/thanos-io/objstore/tracing/opentracing"
 	"github.com/thanos-io/thanos/pkg/tracing"
 	"google.golang.org/grpc"
 )

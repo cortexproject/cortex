@@ -501,7 +501,7 @@ func TestLimiter_FormatError(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "")
+	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it")
 
 	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded)
 	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")

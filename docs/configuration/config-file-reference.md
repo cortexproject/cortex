@@ -2623,7 +2623,7 @@ instance_limits:
 
 # Flag to add site administrator contact details for customising error messages
 # CLI flag: -ingester.admin-contact
-[admin_contact: <string> | default = ""]
+[admin_limit_message: <string> | default = "please contact administrator to raise it"]
 ```
 
 ### `ingester_client_config`

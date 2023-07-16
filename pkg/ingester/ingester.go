@@ -126,7 +126,7 @@ type Config struct {
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
 
 	// For admin contact details
-	AdminContactDetails string `yaml:"admin_contact"`
+	AdminLimitMessage string `yaml:"admin_limit_message"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -148,7 +148,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
 
-	f.StringVar(&cfg.AdminContactDetails, "ingester.admin-contact", "", "Add site administrator contact details for customising error messages")
+	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
+
 }
 
 func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
@@ -659,7 +660,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.DistributorShardByAllLabels,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
-		cfg.AdminContactDetails,
+		cfg.AdminLimitMessage,
 	)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID

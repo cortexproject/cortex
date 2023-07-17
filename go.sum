@@ -1164,8 +1164,8 @@ github.com/thanos-io/objstore v0.0.0-20230713070940-eb01c83b89a4 h1:SYs56N3zGaE8
 github.com/thanos-io/objstore v0.0.0-20230713070940-eb01c83b89a4/go.mod h1:Vc+D0zxX8fT7VOe8Gj0J6vzw0kcTrMCEgE140wCz1c0=
 github.com/thanos-io/promql-engine v0.0.0-20230526105742-791d78b260ea h1:kzK8sBn2+mo3NAxP+XjAjAqr1hwfxxFUy5CybaBkjAI=
 github.com/thanos-io/promql-engine v0.0.0-20230526105742-791d78b260ea/go.mod h1:eIgPaXWgOhNAv6CPPrgu09r0AtT7byBTZy+7WkX0D18=
-github.com/thanos-io/thanos v0.31.1-0.20230714171248-723dfd08764a h1:6GRazFOeBtPpoDFLO7s8AS5upOWPCzQ96mq/UpH/4QI=
-github.com/thanos-io/thanos v0.31.1-0.20230714171248-723dfd08764a/go.mod h1:PGAlwITP7IvWQXra3VbWomRqz8xrSlAR3ee6Z8k4No0=
+github.com/thanos-io/thanos v0.31.1-0.20230717161853-6fda58a6291f h1:gQbMvTAd6HXPmMgd2W9/TF5Pe37++A7oa5vYT4LQPEA=
+github.com/thanos-io/thanos v0.31.1-0.20230717161853-6fda58a6291f/go.mod h1:PGAlwITP7IvWQXra3VbWomRqz8xrSlAR3ee6Z8k4No0=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab/go.mod h1:eheTFp954zcWZXCU8d0AT76ftsQOTo4DTqkN/h3k1MY=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=

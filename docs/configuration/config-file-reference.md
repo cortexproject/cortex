@@ -2621,7 +2621,7 @@ instance_limits:
 # CLI flag: -ingester.ignore-series-limit-for-metric-names
 [ignore_series_limit_for_metric_names: <string> | default = ""]
 
-# Flag to add site administrator contact details for customising error messages
+# Customize the message contained in limit errors
 # CLI flag: -ingester.admin-limit-message
 [admin_limit_message: <string> | default = "please contact administrator to raise it"]
 ```

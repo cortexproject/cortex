@@ -226,6 +226,14 @@ func (s BlockDeletionMarks) GetULIDs() []ulid.ULID {
 	return ids
 }
 
+func (s BlockDeletionMarks) GetULIDSet() map[ulid.ULID]struct{} {
+	res := make(map[ulid.ULID]struct{})
+	for _, m := range s {
+		res[m.ID] = struct{}{}
+	}
+	return res
+}
+
 func (s BlockDeletionMarks) Clone() BlockDeletionMarks {
 	clone := make(BlockDeletionMarks, len(s))
 	for i, m := range s {

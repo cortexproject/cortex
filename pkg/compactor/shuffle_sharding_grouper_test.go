@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"path"
 	"testing"
 	"time"
 
@@ -359,11 +358,19 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				Name: "cortex_compactor_block_visit_marker_write_failed",
 				Help: "Number of block visit marker file failed to be written.",
 			})
+			partitionedGroupInfoReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_partitioned_group_info_read_failed",
+				Help: "Number of partitioned group info file failed to be read.",
+			})
+			partitionedGroupInfoWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+				Name: "cortex_compactor_partitioned_group_info_write_failed",
+				Help: "Number of partitioned group info file failed to be written.",
+			})
 
 			bkt := &bucket.ClientMock{}
 			blockVisitMarkerTimeout := 5 * time.Minute
 			for _, visitedBlock := range testData.visitedBlocks {
-				visitMarkerFile := path.Join(visitedBlock.id.String(), BlockVisitMarkerFile)
+				visitMarkerFile := GetBlockVisitMarkerFile(visitedBlock.id.String(), 0)
 				expireTime := time.Now()
 				if visitedBlock.isExpired {
 					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
@@ -409,6 +416,8 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				blockVisitMarkerTimeout,
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
+				partitionedGroupInfoReadFailed,
+				partitionedGroupInfoWriteFailed,
 				noCompactFilter,
 			)
 			actual, err := g.Groups(testData.blocks)

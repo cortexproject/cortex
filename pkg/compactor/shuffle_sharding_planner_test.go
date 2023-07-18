@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"testing"
 	"time"
 
@@ -342,7 +341,7 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			bkt := &bucket.ClientMock{}
 			for _, visitedBlock := range testData.visitedBlocks {
-				visitMarkerFile := path.Join(visitedBlock.id.String(), BlockVisitMarkerFile)
+				visitMarkerFile := GetBlockVisitMarkerFile(visitedBlock.id.String(), 0)
 				expireTime := time.Now()
 				if visitedBlock.isExpired {
 					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
@@ -383,7 +382,13 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
 			)
-			actual, err := p.Plan(context.Background(), testData.blocks, nil, nil)
+			actual, err := p.Plan(context.Background(), testData.blocks, nil, &CortexMetaExtensions{
+				PartitionInfo: &PartitionInfo{
+					PartitionCount:     1,
+					PartitionID:        0,
+					PartitionedGroupID: 1,
+				},
+			})
 
 			if testData.expectedErr != nil {
 				assert.Equal(t, err, testData.expectedErr)

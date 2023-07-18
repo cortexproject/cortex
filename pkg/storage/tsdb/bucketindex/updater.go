@@ -81,12 +81,6 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 	// Find all blocks in the storage.
 	err := w.bkt.Iter(ctx, "", func(name string) error {
 		if id, ok := block.IsBlockDir(name); ok {
-
-			if _, ok := deletedBlocks[id]; ok {
-				level.Warn(w.logger).Log("msg", "skipped block with missing global deletion marker", "block", id.String())
-				return nil
-			}
-
 			discovered[id] = struct{}{}
 		}
 		return nil
@@ -98,8 +92,13 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 	// Since blocks are immutable, all blocks already existing in the index can just be copied.
 	for _, b := range old {
 		if _, ok := discovered[b.ID]; ok {
-			blocks = append(blocks, b)
 			delete(discovered, b.ID)
+
+			if _, ok := deletedBlocks[b.ID]; ok {
+				level.Warn(w.logger).Log("msg", "skipped block with missing global deletion marker", "block", b.ID.String())
+				continue
+			}
+			blocks = append(blocks, b)
 		}
 	}
 

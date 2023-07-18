@@ -11,7 +11,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/common/route"
+	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"math"
 	"net/http"
 	"strconv"
@@ -62,8 +62,6 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("%s: %s", e.typ, e.err)
 }
 
-type StatsRenderer func(context.Context, *stats.Statistics, string) stats.QueryStats
-
 func defaultStatsRenderer(_ context.Context, s *stats.Statistics, param string) stats.QueryStats {
 	if param != "" {
 		return stats.NewQueryStats(s)
@@ -79,108 +77,59 @@ type response struct {
 	Warnings  []string    `json:"warnings,omitempty"`
 }
 
-type apiFuncResult struct {
-	data      interface{}
-	err       *apiError
-	warnings  storage.Warnings
-	finalizer func()
+type ApiFuncResult struct {
+	Data      interface{}
+	Err       *apiError
+	Warnings  storage.Warnings
+	Finalizer func()
 }
 
-type apiFunc func(r *http.Request) apiFuncResult
+type ApiFunc func(r *http.Request) ApiFuncResult
 
-// QueryEngine defines the interface for the *promql.Engine, so it can be replaced, wrapped or mocked.
-type QueryEngine interface {
-	SetQueryLogger(l promql.QueryLogger)
-	NewInstantQuery(ctx context.Context, q storage.Queryable, opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error)
-	NewRangeQuery(ctx context.Context, q storage.Queryable, opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error)
-}
-
-// API can register a set of endpoints in a router and handle
-// them using the provided storage and query engine.
 type API struct {
 	Queryable     storage.SampleAndChunkQueryable
-	QueryEngine   QueryEngine
-	now           func() time.Time
-	ready         func(http.HandlerFunc) http.HandlerFunc
-	logger        log.Logger
+	QueryEngine   v1.QueryEngine
+	Now           func() time.Time
+	Ready         func(http.HandlerFunc) http.HandlerFunc
+	Logger        log.Logger
 	CORSOrigin    *regexp.Regexp
-	isAgent       bool
-	statsRenderer StatsRenderer
+	IsAgent       bool
+	StatsRenderer v1.StatsRenderer
 }
 
 // NewAPI returns an initialized API type.
 func NewAPI(
-	qe QueryEngine,
+	qe v1.QueryEngine,
 	q storage.SampleAndChunkQueryable,
 	readyFunc func(http.HandlerFunc) http.HandlerFunc,
 	logger log.Logger,
 	isAgent bool,
 	corsOrigin *regexp.Regexp,
-	statsRenderer StatsRenderer,
+	statsRenderer v1.StatsRenderer,
 ) *API {
 	a := &API{
 		QueryEngine:   qe,
 		Queryable:     q,
-		now:           time.Now,
-		ready:         readyFunc,
-		logger:        logger,
+		Now:           time.Now,
+		Ready:         readyFunc,
+		Logger:        logger,
 		CORSOrigin:    corsOrigin,
-		isAgent:       isAgent,
-		statsRenderer: defaultStatsRenderer,
+		IsAgent:       isAgent,
+		StatsRenderer: defaultStatsRenderer,
 	}
 
 	if statsRenderer != nil {
-		a.statsRenderer = statsRenderer
+		a.StatsRenderer = statsRenderer
 	}
 
 	return a
 }
 
-func setUnavailStatusOnTSDBNotReady(r apiFuncResult) apiFuncResult {
-	if r.err != nil && errors.Cause(r.err.err) == tsdb.ErrNotReady {
-		r.err.typ = errorUnavailable
+func SetUnavailStatusOnTSDBNotReady(r ApiFuncResult) ApiFuncResult {
+	if r.Err != nil && errors.Cause(r.Err.err) == tsdb.ErrNotReady {
+		r.Err.typ = errorUnavailable
 	}
 	return r
-}
-
-// Register the API's endpoints in the given router.
-func (api *API) Register(r *route.Router) {
-	wrap := func(f apiFunc) http.HandlerFunc {
-		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			httputil.SetCORS(w, api.CORSOrigin, r)
-			result := setUnavailStatusOnTSDBNotReady(f(r))
-			if result.finalizer != nil {
-				defer result.finalizer()
-			}
-			if result.err != nil {
-				api.respondError(w, result.err, result.data)
-				return
-			}
-
-			if result.data != nil {
-				api.respond(w, result.data, result.warnings)
-				return
-			}
-			w.WriteHeader(http.StatusNoContent)
-		})
-		return api.ready(CompressionHandler{
-			Handler: hf,
-		}.ServeHTTP)
-	}
-
-	wrapAgent := func(f apiFunc) http.HandlerFunc {
-		return wrap(func(r *http.Request) apiFuncResult {
-			if api.isAgent {
-				return apiFuncResult{nil, &apiError{errorExec, errors.New("unavailable with Prometheus Agent")}, nil, nil}
-			}
-			return f(r)
-		})
-	}
-
-	r.Get("/query", wrapAgent(api.query))
-	r.Post("/query", wrapAgent(api.query))
-	r.Get("/query_range", wrapAgent(api.queryRange))
-	r.Post("/query_range", wrapAgent(api.queryRange))
 }
 
 type queryData struct {
@@ -189,14 +138,14 @@ type queryData struct {
 	Stats      stats.QueryStats `json:"stats,omitempty"`
 }
 
-func invalidParamError(err error, parameter string) apiFuncResult {
-	return apiFuncResult{nil, &apiError{
+func invalidParamError(err error, parameter string) ApiFuncResult {
+	return ApiFuncResult{nil, &apiError{
 		errorBadData, errors.Wrapf(err, "invalid parameter %q", parameter),
 	}, nil, nil}
 }
 
-func (api *API) query(r *http.Request) (result apiFuncResult) {
-	ts, err := parseTimeParam(r, "time", api.now())
+func (api *API) Query(r *http.Request) (result ApiFuncResult) {
+	ts, err := parseTimeParam(r, "time", api.Now())
 	if err != nil {
 		return invalidParamError(err, "time")
 	}
@@ -214,18 +163,18 @@ func (api *API) query(r *http.Request) (result apiFuncResult) {
 
 	opts, err := extractQueryOpts(r)
 	if err != nil {
-		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		return ApiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 	qry, err := api.QueryEngine.NewInstantQuery(ctx, api.Queryable, opts, r.FormValue("query"), ts)
 	if err != nil {
 		return invalidParamError(err, "query")
 	}
 
-	// From now on, we must only return with a finalizer in the result (to
+	// From now on, we must only return with a Finalizer in the result (to
 	// be called by the caller) or call qry.Close ourselves (which is
 	// required in the case of a panic).
 	defer func() {
-		if result.finalizer == nil {
+		if result.Finalizer == nil {
 			qry.Close()
 		}
 	}()
@@ -234,17 +183,17 @@ func (api *API) query(r *http.Request) (result apiFuncResult) {
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		return apiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
+		return ApiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
 	}
 
 	// Optional stats field in response if parameter "stats" is not empty.
-	sr := api.statsRenderer
+	sr := api.StatsRenderer
 	if sr == nil {
 		sr = defaultStatsRenderer
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return apiFuncResult{createPrometheusInstantQueryResponse(&queryData{
+	return ApiFuncResult{createPrometheusInstantQueryResponse(&queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
@@ -265,7 +214,7 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 	return opts, nil
 }
 
-func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
+func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	start, err := parseTime(r.FormValue("start"))
 	if err != nil {
 		return invalidParamError(err, "start")
@@ -291,7 +240,7 @@ func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if end.Sub(start)/step > 11000 {
 		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		return ApiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 
 	ctx := r.Context()
@@ -308,17 +257,17 @@ func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
 
 	opts, err := extractQueryOpts(r)
 	if err != nil {
-		return apiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		return ApiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
 	}
 	qry, err := api.QueryEngine.NewRangeQuery(ctx, api.Queryable, opts, r.FormValue("query"), start, end, step)
 	if err != nil {
 		return invalidParamError(err, "query")
 	}
-	// From now on, we must only return with a finalizer in the result (to
+	// From now on, we must only return with a Finalizer in the result (to
 	// be called by the caller) or call qry.Close ourselves (which is
 	// required in the case of a panic).
 	defer func() {
-		if result.finalizer == nil {
+		if result.Finalizer == nil {
 			qry.Close()
 		}
 	}()
@@ -327,17 +276,17 @@ func (api *API) queryRange(r *http.Request) (result apiFuncResult) {
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		return apiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
+		return ApiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
 	}
 
 	// Optional stats field in response if parameter "stats" is not empty.
-	sr := api.statsRenderer
+	sr := api.StatsRenderer
 	if sr == nil {
 		sr = defaultStatsRenderer
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return apiFuncResult{createPrometheusResponse(&queryData{
+	return ApiFuncResult{createPrometheusResponse(&queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
@@ -378,7 +327,7 @@ var (
 	maxTimeFormatted = maxTime.Format(time.RFC3339Nano)
 )
 
-func (api *API) respond(w http.ResponseWriter, data interface{}, warnings storage.Warnings) {
+func (api *API) Respond(w http.ResponseWriter, data interface{}, warnings storage.Warnings) {
 	statusMessage := statusSuccess
 	var warningStrings []string
 	for _, warning := range warnings {
@@ -396,12 +345,12 @@ func (api *API) respond(w http.ResponseWriter, data interface{}, warnings storag
 		prometheusInstantQueryResponse.Status = string(statusMessage)
 		b, err = proto.Marshal(&prometheusInstantQueryResponse)
 	default:
-		level.Error(api.logger).Log("msg", "error asserting response type")
+		level.Error(api.Logger).Log("msg", "error asserting response type")
 		http.Error(w, "error asserting response type", http.StatusInternalServerError)
 		return
 	}
 	if err != nil {
-		level.Error(api.logger).Log("msg", "error marshaling protobuf response", "err", err)
+		level.Error(api.Logger).Log("msg", "error marshaling protobuf response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -409,11 +358,11 @@ func (api *API) respond(w http.ResponseWriter, data interface{}, warnings storag
 	w.Header().Set("Content-Type", "application/protobuf")
 	w.WriteHeader(http.StatusOK)
 	if n, err := w.Write(b); err != nil {
-		level.Error(api.logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+		level.Error(api.Logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
 }
 
-func (api *API) respondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
+func (api *API) RespondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	b, err := json.Marshal(&response{
 		Status:    statusError,
@@ -422,7 +371,7 @@ func (api *API) respondError(w http.ResponseWriter, apiErr *apiError, data inter
 		Data:      data,
 	})
 	if err != nil {
-		level.Error(api.logger).Log("msg", "error marshaling json response", "err", err)
+		level.Error(api.Logger).Log("msg", "error marshaling json response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -448,7 +397,7 @@ func (api *API) respondError(w http.ResponseWriter, apiErr *apiError, data inter
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	if n, err := w.Write(b); err != nil {
-		level.Error(api.logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+		level.Error(api.Logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
 }
 

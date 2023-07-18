@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"github.com/prometheus/prometheus/util/httputil"
 	"html/template"
 	"net/http"
 	"path"
@@ -27,6 +28,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/handler"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -261,21 +263,40 @@ func NewQuerierHandler(
 
 	promRouter := route.New().WithPrefix(path.Join(prefix, "/api/v1"))
 	v1api.Register(promRouter)
-	queryPromRouter := route.New().WithPrefix(path.Join(prefix, "/api/v1"))
-	queryapi.Register(queryPromRouter)
 
 	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	v1api.Register(legacyPromRouter)
-	queryLegacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
-	queryapi.Register(queryLegacyPromRouter)
+
+	wrap := func(f qapi.ApiFunc) http.HandlerFunc {
+		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			httputil.SetCORS(w, queryapi.CORSOrigin, r)
+			result := qapi.SetUnavailStatusOnTSDBNotReady(f(r))
+			if result.Finalizer != nil {
+				defer result.Finalizer()
+			}
+			if result.Err != nil {
+				queryapi.RespondError(w, result.Err, result.Data)
+				return
+			}
+
+			if result.Data != nil {
+				queryapi.Respond(w, result.Data, result.Warnings)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		return queryapi.Ready(handler.CompressionHandler{
+			Handler: hf,
+		}.ServeHTTP)
+	}
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
-	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(queryPromRouter)
-	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(queryPromRouter)
+	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
+	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
 	router.Path(path.Join(prefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/labels")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
@@ -288,8 +309,8 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(queryLegacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(queryLegacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)

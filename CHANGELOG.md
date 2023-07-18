@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
 * [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276

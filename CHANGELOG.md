@@ -55,6 +55,7 @@
 * [BUGFIX] Ring: Fix bug in consistency of Get func in a scaling zone-aware ring. #5429
 * [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
 * [BUGFIX] Alertmanager: Remove the user id from state replication key metric label value. #5453
+* [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
 
 ## 1.15.1 2023-04-26
 

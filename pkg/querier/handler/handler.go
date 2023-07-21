@@ -508,7 +508,11 @@ func createPrometheusInstantQueryResponse(data *queryData) instantquery.Promethe
 			},
 		}
 	default:
-		// TODO: add scalar and string instant query responses
+		rawBytes, err := jsoniter.Marshal(data)
+		if err != nil {
+			// TODO: handler error
+		}
+		instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_RawBytes{RawBytes: rawBytes}
 	}
 
 	var stats *tripperware.PrometheusResponseStats

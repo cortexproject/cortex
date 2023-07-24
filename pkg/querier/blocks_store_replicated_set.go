@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 
 	"github.com/go-kit/log"
@@ -94,7 +95,7 @@ func (s *blocksStoreReplicationSet) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
-func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid.ULID, exclude map[ulid.ULID][]string, attemptedBlocksZones map[ulid.ULID]map[string]int) (map[BlocksStoreClient][]ulid.ULID, error) {
 	shards := map[string][]ulid.ULID{}
 
 	// If shuffle sharding is enabled, we should build a subring for the user,
@@ -118,12 +119,18 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 		}
 
 		// Pick a non excluded store-gateway instance.
-		addr := getNonExcludedInstanceAddr(set, exclude[blockID], s.balancingStrategy)
-		if addr == "" {
+		instance := getNonExcludedInstanceAddr(set, exclude[blockID], s.balancingStrategy, attemptedBlocksZones[blockID])
+		// A valid instance should have a non-empty address.
+		if instance.Addr == "" {
 			return nil, fmt.Errorf("no store-gateway instance left after checking exclude for block %s", blockID.String())
 		}
 
-		shards[addr] = append(shards[addr], blockID)
+		shards[instance.Addr] = append(shards[instance.Addr], blockID)
+		if _, ok := attemptedBlocksZones[blockID]; ok {
+			attemptedBlocksZones[blockID][instance.Zone] += 1
+		} else {
+			attemptedBlocksZones[blockID] = map[string]int{instance.Zone: 1}
+		}
 	}
 
 	clients := map[BlocksStoreClient][]ulid.ULID{}
@@ -141,7 +148,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 	return clients, nil
 }
 
-func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy) string {
+func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy, attemptedZones map[string]int) ring.InstanceDesc {
 	if balancingStrategy == randomLoadBalancing {
 		// Randomize the list of instances to not always query the same one.
 		rand.Shuffle(len(set.Instances), func(i, j int) {
@@ -149,11 +156,23 @@ func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balan
 		})
 	}
 
+	minAttempt := math.MaxInt
+	for _, c := range attemptedZones {
+		if c < minAttempt {
+			minAttempt = c
+		}
+	}
+	if minAttempt == math.MaxInt {
+		minAttempt = 0
+	}
 	for _, instance := range set.Instances {
-		if !util.StringsContain(exclude, instance.Addr) {
-			return instance.Addr
+		if util.StringsContain(exclude, instance.Addr) {
+			continue
+		}
+		if attemptedZones[instance.Zone] == minAttempt {
+			return instance
 		}
 	}
 
-	return ""
+	return ring.InstanceDesc{}
 }

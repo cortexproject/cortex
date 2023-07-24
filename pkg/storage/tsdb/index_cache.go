@@ -122,17 +122,25 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			}
 			caches = append(caches, c)
 		case IndexCacheBackendMemcached:
-			c, err := newMemcachedIndexCache(cfg.Memcached, logger, iReg)
+			c, err := newMemcachedIndexCacheClient(cfg.Memcached, logger, registerer)
 			if err != nil {
-				return c, err
+				return nil, err
 			}
-			caches = append(caches, c)
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg)
+			if err != nil {
+				return nil, err
+			}
+			caches = append(caches, cache)
 		case IndexCacheBackendRedis:
-			c, err := newRedisIndexCache(cfg.Redis, logger, iReg)
+			c, err := newRedisIndexCacheClient(cfg.Redis, logger, iReg)
 			if err != nil {
-				return c, err
+				return nil, err
 			}
-			caches = append(caches, c)
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg)
+			if err != nil {
+				return nil, err
+			}
+			caches = append(caches, cache)
 		default:
 			return nil, errUnsupportedIndexCacheBackend
 		}
@@ -156,20 +164,20 @@ func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, regi
 	})
 }
 
-func newMemcachedIndexCache(cfg MemcachedClientConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
+func newMemcachedIndexCacheClient(cfg MemcachedClientConfig, logger log.Logger, registerer prometheus.Registerer) (cacheutil.RemoteCacheClient, error) {
 	client, err := cacheutil.NewMemcachedClientWithConfig(logger, "index-cache", cfg.ToMemcachedClientConfig(), registerer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create index cache memcached client")
 	}
 
-	return storecache.NewMemcachedIndexCache(logger, client, registerer)
+	return client, err
 }
 
-func newRedisIndexCache(cfg RedisClientConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
+func newRedisIndexCacheClient(cfg RedisClientConfig, logger log.Logger, registerer prometheus.Registerer) (cacheutil.RemoteCacheClient, error) {
 	client, err := cacheutil.NewRedisClientWithConfig(logger, "index-cache", cfg.ToRedisClientConfig(), registerer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create index cache redis client")
 	}
 
-	return storecache.NewRemoteIndexCache(logger, client, nil, registerer)
+	return client, err
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/cacheutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
@@ -33,11 +34,21 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 			},
 			expectedType: &storecache.InMemoryIndexCache{},
 		},
-		"instantiate multiples backends": {
+		"instantiate multiples backends - inmemory/redis": {
 			cfg: IndexCacheConfig{
 				Backend: "inmemory,redis",
 				Redis: RedisClientConfig{
 					Addresses: s.Addr(),
+				},
+			},
+			expectedType: newMultiLevelCache(),
+		},
+		"instantiate multiples backends - inmemory/memcached": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,memcached",
+				Memcached: MemcachedClientConfig{
+					Addresses:           s.Addr(),
+					MaxAsyncConcurrency: 1000,
 				},
 			},
 			expectedType: newMultiLevelCache(),
@@ -58,6 +69,9 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 				c, err := NewIndexCache(tc.cfg, log.NewNopLogger(), reg)
 				require.NoError(t, err)
 				require.IsType(t, tc.expectedType, c)
+				// Make sure we don't have any conflict with the metrics names
+				_, err = cacheutil.NewMemcachedClientWithConfig(log.NewNopLogger(), "test", cacheutil.MemcachedClientConfig{MaxAsyncConcurrency: 2, Addresses: []string{s.Addr()}, DNSProviderUpdateInterval: 1}, reg)
+				require.NoError(t, err)
 			} else {
 				require.ErrorIs(t, tc.cfg.Validate(), errDuplicatedIndexCacheBackend)
 			}

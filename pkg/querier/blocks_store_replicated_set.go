@@ -37,6 +37,8 @@ type blocksStoreReplicationSet struct {
 	balancingStrategy loadBalancingStrategy
 	limits            BlocksStoreLimits
 
+	zoneAwarenessEnabled bool
+
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -50,13 +52,15 @@ func newBlocksStoreReplicationSet(
 	clientConfig ClientConfig,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	zoneAwarenessEnabled bool,
 ) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
-		storesRing:        storesRing,
-		clientsPool:       newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
-		shardingStrategy:  shardingStrategy,
-		balancingStrategy: balancingStrategy,
-		limits:            limits,
+		storesRing:           storesRing,
+		clientsPool:          newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
+		shardingStrategy:     shardingStrategy,
+		balancingStrategy:    balancingStrategy,
+		limits:               limits,
+		zoneAwarenessEnabled: zoneAwarenessEnabled,
 	}
 
 	var err error
@@ -119,17 +123,18 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 		}
 
 		// Pick a non excluded store-gateway instance.
-		instance := getNonExcludedInstanceAddr(set, exclude[blockID], s.balancingStrategy, attemptedBlocksZones[blockID])
+		instance := getNonExcludedInstanceAddr(set, exclude[blockID], s.balancingStrategy, s.zoneAwarenessEnabled, attemptedBlocksZones[blockID])
 		// A valid instance should have a non-empty address.
 		if instance.Addr == "" {
 			return nil, fmt.Errorf("no store-gateway instance left after checking exclude for block %s", blockID.String())
 		}
 
 		shards[instance.Addr] = append(shards[instance.Addr], blockID)
-		if _, ok := attemptedBlocksZones[blockID]; ok {
+		if s.zoneAwarenessEnabled {
+			if _, ok := attemptedBlocksZones[blockID]; !ok {
+				attemptedBlocksZones[blockID] = make(map[string]int, 0)
+			}
 			attemptedBlocksZones[blockID][instance.Zone] += 1
-		} else {
-			attemptedBlocksZones[blockID] = map[string]int{instance.Zone: 1}
 		}
 	}
 
@@ -148,7 +153,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 	return clients, nil
 }
 
-func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy, attemptedZones map[string]int) ring.InstanceDesc {
+func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy, zoneAwarenessEnabled bool, attemptedZones map[string]int) ring.InstanceDesc {
 	if balancingStrategy == randomLoadBalancing {
 		// Randomize the list of instances to not always query the same one.
 		rand.Shuffle(len(set.Instances), func(i, j int) {
@@ -157,19 +162,26 @@ func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balan
 	}
 
 	minAttempt := math.MaxInt
-	for _, c := range attemptedZones {
-		if c < minAttempt {
-			minAttempt = c
-		}
-	}
-	if minAttempt == math.MaxInt {
+	numOfZone := set.GetNumOfZones()
+	// There are still unattempted zones so we know min is 0.
+	if len(attemptedZones) < numOfZone {
 		minAttempt = 0
+	} else {
+		// Iterate over attempted zones and find the min attempts.
+		for _, c := range attemptedZones {
+			if c < minAttempt {
+				minAttempt = c
+			}
+		}
 	}
 	for _, instance := range set.Instances {
 		if util.StringsContain(exclude, instance.Addr) {
 			continue
 		}
-		if attemptedZones[instance.Zone] == minAttempt {
+		// If zone awareness is not enabled, pick first non-excluded instance.
+		// Otherwise, keep iterating until we find an instance in a zone where
+		// we have the least retries.
+		if !zoneAwarenessEnabled || attemptedZones[instance.Zone] == minAttempt {
 			return instance
 		}
 	}

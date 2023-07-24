@@ -134,7 +134,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 			if _, ok := attemptedBlocksZones[blockID]; !ok {
 				attemptedBlocksZones[blockID] = make(map[string]int, 0)
 			}
-			attemptedBlocksZones[blockID][instance.Zone] += 1
+			attemptedBlocksZones[blockID][instance.Zone]++
 		}
 	}
 

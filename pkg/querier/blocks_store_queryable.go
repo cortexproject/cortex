@@ -499,10 +499,10 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 		attemptedBlocks = map[ulid.ULID][]string{}
 		touchedStores   = map[string]struct{}{}
 
-		resQueriedBlocks = []ulid.ULID(nil)
+		resQueriedBlocks     = []ulid.ULID(nil)
+		attemptedBlocksZones = make(map[ulid.ULID]map[string]int, len(remainingBlocks))
 	)
 
-	attemptedBlocksZones := make(map[ulid.ULID]map[string]int, len(remainingBlocks))
 	for attempt := 1; attempt <= maxFetchSeriesAttempts; attempt++ {
 		// Find the set of store-gateway instances having the blocks. The exclude parameter is the
 		// map of blocks queried so far, with the list of store-gateway addresses for each block.

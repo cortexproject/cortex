@@ -431,6 +431,7 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 		partitionedGroups[partitionID] = partitionedGroup
 	}
 
+	defaultPartitionInfo := DefaultPartitionInfo
 	for _, blocksInSameTimeInterval := range blocksByMinTime {
 		numOfBlocks := len(blocksInSameTimeInterval)
 		numBlocksCheck := math.Log2(float64(numOfBlocks))
@@ -445,15 +446,13 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 				if partitionInfo == nil {
 					// For legacy blocks with level > 1, treat PartitionID is always 0.
 					// So it can be included in every partition.
-					partitionInfo = &PartitionInfo{
-						PartitionID: 0,
-					}
+					partitionInfo = &defaultPartitionInfo
 				}
-				if numOfBlocks < partitionCount {
-					for partitionID := partitionInfo.PartitionID; partitionID < partitionCount; partitionID += numOfBlocks {
+				if partitionInfo.PartitionCount < partitionCount {
+					for partitionID := partitionInfo.PartitionID; partitionID < partitionCount; partitionID += partitionInfo.PartitionCount {
 						addToPartitionedGroups([]*metadata.Meta{block}, partitionID)
 					}
-				} else if numOfBlocks == partitionCount {
+				} else if partitionInfo.PartitionCount == partitionCount {
 					addToPartitionedGroups([]*metadata.Meta{block}, partitionInfo.PartitionID)
 				} else {
 					addToPartitionedGroups([]*metadata.Meta{block}, partitionInfo.PartitionID%partitionCount)
@@ -612,6 +611,7 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 
 	var groups []blocksGroup
 
+	defaultPartitionInfo := DefaultPartitionInfo
 	for _, tr := range ranges {
 	nextGroup:
 		for _, group := range groupBlocksByRange(blocks, tr) {
@@ -630,22 +630,17 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 				}
 			}
 
+			// Ensure this group has at least one block having PartitionedGroupID is 0 or at least
+			// one block having different PartitionedGroupID as others. Because we don't want to
+			// compact a group of blocks all having same non-zero PartitionedGroupID.
 			firstBlockPartitionInfo, err := GetPartitionInfo(*group.blocks[0])
 			if err != nil || firstBlockPartitionInfo == nil {
-				firstBlockPartitionInfo = &PartitionInfo{
-					PartitionedGroupID: 0,
-					PartitionCount:     1,
-					PartitionID:        0,
-				}
+				firstBlockPartitionInfo = &defaultPartitionInfo
 			}
 			for _, block := range group.blocks {
 				blockPartitionInfo, err := GetPartitionInfo(*block)
 				if err != nil || blockPartitionInfo == nil {
-					blockPartitionInfo = &PartitionInfo{
-						PartitionedGroupID: 0,
-						PartitionCount:     1,
-						PartitionID:        0,
-					}
+					blockPartitionInfo = &defaultPartitionInfo
 				}
 				if blockPartitionInfo.PartitionedGroupID <= 0 || blockPartitionInfo.PartitionedGroupID != firstBlockPartitionInfo.PartitionedGroupID {
 					groups = append(groups, group)

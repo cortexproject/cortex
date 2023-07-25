@@ -16,6 +16,14 @@ type PartitionInfo struct {
 	PartitionID        int    `json:"partition_id"`
 }
 
+var (
+	DefaultPartitionInfo = PartitionInfo{
+		PartitionedGroupID: 0,
+		PartitionID:        0,
+		PartitionCount:     1,
+	}
+)
+
 func ConvertToCortexMetaExtensions(extensions any) (*CortexMetaExtensions, error) {
 	cortexExtensions, err := metadata.ConvertExtensions(extensions, &CortexMetaExtensions{})
 	if err != nil {

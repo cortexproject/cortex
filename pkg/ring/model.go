@@ -766,7 +766,7 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 
 		//Recheck if any instance was updated by the resolveConflict
 		//All ingesters in toUpdated have already passed the timestamp check, so we can skip checking again
-		for name, _ := range toUpdated.Ingesters {
+		for name := range toUpdated.Ingesters {
 			//name must appear in out Ingesters, so we can skip the contains key check
 			toUpdated.Ingesters[name] = out.Ingesters[name]
 		}

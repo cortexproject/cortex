@@ -38,10 +38,20 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
 		},
+		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, memcached)": {
+			blocksShardingStrategy:   "",
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
+		},
 		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
 			blocksShardingStrategy:   "",
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		},
+		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, redis)": {
+			blocksShardingStrategy:   "",
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
 		},
 		"blocks default sharding, ingester gRPC streaming disabled, inmemory index cache": {
 			blocksShardingStrategy:   "default",
@@ -101,6 +111,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, err)
 				defer s.Close()
 
+				numberOfCacheBackends := len(strings.Split(testCfg.indexCacheBackend, ","))
+
 				// Configure the blocks storage to frequently compact TSDB head
 				// and ship blocks to the storage.
 				flags := mergeFlags(BlocksStorageFlags(), map[string]string{
@@ -126,9 +138,10 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, s.StartAndWaitReady(consul, minio, memcached, redis))
 
 				// Add the cache address to the flags.
-				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendMemcached) {
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
+				}
+				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
@@ -241,7 +254,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
 				// Check the in-memory index cache metrics (in the store-gateway).
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(5+5+2), "thanos_store_index_cache_requests_total"))
+				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((5+5+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
@@ -257,13 +270,14 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(12+2), "thanos_store_index_cache_requests_total"))
+				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((12+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 
-				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
+				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendInMemory) {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(9), "thanos_store_index_cache_items"))             // as before
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(9), "thanos_store_index_cache_items_added_total")) // as before
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				}
+				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendMemcached) {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(23), "thanos_memcached_operations_total")) // as before + 2 gets
 				}
 

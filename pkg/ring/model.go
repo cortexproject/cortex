@@ -748,14 +748,17 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 		if !ok {
 			toDelete = append(toDelete, name)
 		} else if !ing.Equal(oing) {
-			if !tokensEqual(ing.Tokens, oing.Tokens) {
-				tokensChanged = true
-			}
 			if oing.Timestamp > ing.Timestamp {
 				toUpdated.Ingesters[name] = oing
+				if !tokensEqual(ing.Tokens, oing.Tokens) {
+					tokensChanged = true
+				}
 			} else if oing.Timestamp == ing.Timestamp && ing.State != LEFT && oing.State == LEFT {
 				// we accept LEFT even if timestamp hasn't changed
 				toUpdated.Ingesters[name] = oing
+				if !tokensEqual(ing.Tokens, oing.Tokens) {
+					tokensChanged = true
+				}
 			}
 		}
 	}

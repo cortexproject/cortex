@@ -42,6 +42,7 @@
 * [ENHANCEMENT] Store Gateway/Querier/Compactor: Handling CMK Access Denied errors. #5420 #5442 #5446
 * [ENHANCEMENT] Store Gateway: Implementing multi level index cache. #5451
 * [ENHANCEMENT] Alertmanager: Add the alert name in error log when it get throttled. #5456
+* [ENHANCEMENT] MultiKVStore: Add write consumed capacity for DDB Batch, Put, and Delete #5479
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
@@ -56,6 +57,7 @@
 * [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
 * [BUGFIX] Alertmanager: Remove the user id from state replication key metric label value. #5453
 * [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
+* [BUGFIX] MultiKVStore: When updating DDB KV Store, check the instance's timestamp. #5479
 
 ## 1.15.1 2023-04-26
 

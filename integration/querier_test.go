@@ -270,18 +270,27 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
+				var l0CacheHits float64
 				if numberOfCacheBackends > 1 {
 					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
 					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(6+5+3)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
 						labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
 					)))
 					// In case of L0 cache hits, store gateway might send fewer requests. Should be within range 12 ~ 14.
-					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(float64(12)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.EqualsAmong(float64(12), float64(14)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
 						labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
 					)))
-					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.LessOrEqual(float64(14)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+					l1IndexCacheRequests, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
 						labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
-					)))
+					))
+					require.NoError(t, err)
+					l0IndexCacheHits, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_hits_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
+					))
+					require.NoError(t, err)
+					// Make sure l1 cache requests + l0 cache hits is 14.
+					require.Equal(t, float64(14), l1IndexCacheRequests[0]+l0IndexCacheHits[0])
+					l0CacheHits = l0IndexCacheHits[0]
 				} else {
 					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(6+5+3)), "thanos_store_index_cache_requests_total"))
@@ -293,7 +302,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(9), "thanos_store_index_cache_items_added_total")) // as before
 				}
 				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendMemcached) {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(23), "thanos_memcached_operations_total")) // as before + 2 gets
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(23-l0CacheHits), "thanos_memcached_operations_total")) // as before + 2 gets - cache hits
 				}
 
 				// Query metadata.

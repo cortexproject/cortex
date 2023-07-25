@@ -70,7 +70,7 @@ type BlocksStoreSet interface {
 	// GetClientsFor returns the store gateway clients that should be used to
 	// query the set of blocks in input. The exclude parameter is the map of
 	// blocks -> store-gateway addresses that should be excluded.
-	GetClientsFor(userID string, blockIDs []ulid.ULID, exclude map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error)
+	GetClientsFor(userID string, blockIDs []ulid.ULID, exclude map[ulid.ULID][]string, attemptedBlocksZones map[ulid.ULID]map[string]int) (map[BlocksStoreClient][]ulid.ULID, error)
 }
 
 // BlocksFinder is the interface used to find blocks for a given user and time range.
@@ -228,7 +228,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			return nil, errors.Wrap(err, "failed to create store-gateway ring client")
 		}
 
-		stores, err = newBlocksStoreReplicationSet(storesRing, gatewayCfg.ShardingStrategy, randomLoadBalancing, limits, querierCfg.StoreGatewayClient, logger, reg)
+		stores, err = newBlocksStoreReplicationSet(storesRing, gatewayCfg.ShardingStrategy, randomLoadBalancing, limits, querierCfg.StoreGatewayClient, logger, reg, storesRingCfg.ZoneAwarenessEnabled)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create store set")
 		}
@@ -499,13 +499,14 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 		attemptedBlocks = map[ulid.ULID][]string{}
 		touchedStores   = map[string]struct{}{}
 
-		resQueriedBlocks = []ulid.ULID(nil)
+		resQueriedBlocks     = []ulid.ULID(nil)
+		attemptedBlocksZones = make(map[ulid.ULID]map[string]int, len(remainingBlocks))
 	)
 
 	for attempt := 1; attempt <= maxFetchSeriesAttempts; attempt++ {
 		// Find the set of store-gateway instances having the blocks. The exclude parameter is the
 		// map of blocks queried so far, with the list of store-gateway addresses for each block.
-		clients, err := q.stores.GetClientsFor(q.userID, remainingBlocks, attemptedBlocks)
+		clients, err := q.stores.GetClientsFor(q.userID, remainingBlocks, attemptedBlocks, attemptedBlocksZones)
 		if err != nil {
 			// If it's a retry and we get an error, it means there are no more store-gateways left
 			// from which running another attempt, so we're just stopping retrying.

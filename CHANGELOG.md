@@ -42,6 +42,7 @@
 * [ENHANCEMENT] Store Gateway/Querier/Compactor: Handling CMK Access Denied errors. #5420 #5442 #5446
 * [ENHANCEMENT] Store Gateway: Implementing multi level index cache. #5451
 * [ENHANCEMENT] Alertmanager: Add the alert name in error log when it get throttled. #5456
+* [ENHANCEMENT] Querier: Retry store gateway on different zones when zone awareness is enabled. #5476
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293

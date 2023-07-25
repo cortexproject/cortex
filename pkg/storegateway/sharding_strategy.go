@@ -182,7 +182,9 @@ func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLi
 		return ring
 	}
 
-	return ring.ShuffleShard(userID, shardSize)
+	// Zone stability is required for store gateway when shuffle shard, see
+	// https://github.com/cortexproject/cortex/issues/5467 for more details.
+	return ring.ShuffleShardWithZoneStability(userID, shardSize)
 }
 
 type shardingMetadataFilterAdapter struct {

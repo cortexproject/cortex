@@ -29,8 +29,8 @@ func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
 	}, []string{"operation", "status_code"}))
 
 	dynamodbUsageMetrics := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "dynamodb_kv_read_write_capacity_total",
-		Help: "Total used read / write capacity on dynamodb",
+		Name: "dynamodb_kv_consumed_capacity_total",
+		Help: "Total consumed capacity on dynamodb",
 	}, []string{"operation"})
 
 	dynamodbMetrics := dynamodbMetrics{

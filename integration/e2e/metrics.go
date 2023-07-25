@@ -137,6 +137,21 @@ func LessOrEqual(value float64) func(sums ...float64) bool {
 	}
 }
 
+// EqualsAmong is an isExpected function for WaitSumMetrics that returns true if the first sum is equal to any value provided.
+func EqualsAmong(values ...float64) func(sums ...float64) bool {
+	return func(sums ...float64) bool {
+		if len(sums) != 1 {
+			panic("equals among: expected one value")
+		}
+		for _, value := range values {
+			if sums[0] == value {
+				return true
+			}
+		}
+		return false
+	}
+}
+
 // EqualsAmongTwo is an isExpected function for WaitSumMetrics that returns true if first sum is equal to the second.
 // NOTE: Be careful on scrapes in between of process that changes two metrics. Those are
 // usually not atomic.

@@ -265,9 +265,9 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		var exists bool
 		instanceDesc, exists = ringDesc.Ingesters[l.cfg.ID]
 		if exists {
-			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String())
+			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ip", l.cfg.Addr, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String())
 		} else {
-			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ring", l.ringName)
+			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ip", l.cfg.Addr, "ring", l.ringName)
 		}
 
 		// We call the delegate to get the desired state right after the initialization.

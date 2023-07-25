@@ -751,7 +751,12 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 			if !tokensEqual(ing.Tokens, oing.Tokens) {
 				tokensChanged = true
 			}
-			toUpdated.Ingesters[name] = oing
+			if oing.Timestamp > ing.Timestamp {
+				toUpdated.Ingesters[name] = oing
+			} else if oing.Timestamp == ing.Timestamp && ing.State != LEFT && oing.State == LEFT {
+				// we accept LEFT even if timestamp hasn't changed
+				toUpdated.Ingesters[name] = oing
+			}
 		}
 	}
 
@@ -762,8 +767,15 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 		//Recheck if any instance was updated by the resolveConflict
 		for name, oing := range out.Ingesters {
 			ing, ok := d.Ingesters[name]
-			if !ok || !ing.Equal(oing) {
+			if !ok {
 				toUpdated.Ingesters[name] = oing
+			} else if !ing.Equal(oing) {
+				if oing.Timestamp > ing.Timestamp {
+					toUpdated.Ingesters[name] = oing
+				} else if oing.Timestamp == ing.Timestamp && ing.State != LEFT && oing.State == LEFT {
+					// we accept LEFT even if timestamp hasn't changed
+					toUpdated.Ingesters[name] = oing
+				}
 			}
 		}
 	}

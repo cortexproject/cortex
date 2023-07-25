@@ -123,7 +123,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 		}
 
 		// Pick a non excluded store-gateway instance.
-		instance := getNonExcludedInstanceAddr(set, exclude[blockID], s.balancingStrategy, s.zoneAwarenessEnabled, attemptedBlocksZones[blockID])
+		instance := getNonExcludedInstance(set, exclude[blockID], s.balancingStrategy, s.zoneAwarenessEnabled, attemptedBlocksZones[blockID])
 		// A valid instance should have a non-empty address.
 		if instance.Addr == "" {
 			return nil, fmt.Errorf("no store-gateway instance left after checking exclude for block %s", blockID.String())
@@ -153,7 +153,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 	return clients, nil
 }
 
-func getNonExcludedInstanceAddr(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy, zoneAwarenessEnabled bool, attemptedZones map[string]int) ring.InstanceDesc {
+func getNonExcludedInstance(set ring.ReplicationSet, exclude []string, balancingStrategy loadBalancingStrategy, zoneAwarenessEnabled bool, attemptedZones map[string]int) ring.InstanceDesc {
 	if balancingStrategy == randomLoadBalancing {
 		// Randomize the list of instances to not always query the same one.
 		rand.Shuffle(len(set.Instances), func(i, j int) {

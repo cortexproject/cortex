@@ -108,8 +108,7 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	now                    func() time.Time
-	noStepSubQueryInterval time.Duration
+	now func() time.Time
 }
 
 func newInstantQueryCodec() instantQueryCodec {
@@ -139,10 +138,6 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	}
 
 	result.Query = r.FormValue("query")
-	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
-		return nil, err
-	}
-
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 

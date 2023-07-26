@@ -142,15 +142,19 @@ func NewQueryTripperware(
 				activeUsers.UpdateUserTimestamp(userStr, time.Now())
 				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
-				if isQueryRange {
-					return queryrange.RoundTrip(r)
-				} else if isQuery {
-					// If the given query is not shardable, use downstream roundtripper.
+				if isQuery || isQueryRange {
 					query := r.FormValue("query")
 					// Check subquery step size.
 					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, MaxStep); err != nil {
 						return nil, err
 					}
+				}
+
+				if isQueryRange {
+					return queryrange.RoundTrip(r)
+				} else if isQuery {
+					// If the given query is not shardable, use downstream roundtripper.
+					query := r.FormValue("query")
 
 					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
 					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)

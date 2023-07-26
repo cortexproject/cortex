@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	PrometheusCodec        = NewPrometheusCodec(false, time.Minute)
-	ShardedPrometheusCodec = NewPrometheusCodec(false, time.Minute)
+	PrometheusCodec        = NewPrometheusCodec(false)
+	ShardedPrometheusCodec = NewPrometheusCodec(false)
 )
 
 func TestRoundTrip(t *testing.T) {

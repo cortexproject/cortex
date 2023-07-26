@@ -463,7 +463,6 @@ func TestGetRules(t *testing.T) {
 	testCases := map[string]testCase{
 		"No Sharding with Rule Type Filter": {
 			sharding: false,
-			replicationFactor: 1,
 			rulesRequest: RulesRequest{
 				Type: alertingRuleFilter,
 			},
@@ -474,9 +473,8 @@ func TestGetRules(t *testing.T) {
 			},
 		},
 		"Default Sharding with No Filter": {
-			sharding:          true,
-			shardingStrategy:  util.ShardingStrategyDefault,
-			replicationFactor: 1,
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
 			expectedCount: map[string]int{
 				"user1": 5,
 				"user2": 9,
@@ -494,10 +492,9 @@ func TestGetRules(t *testing.T) {
 			},
 		},
 		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter": {
-			sharding:          true,
-			shuffleShardSize:  2,
-			shardingStrategy:  util.ShardingStrategyShuffle,
-			replicationFactor: 1,
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -577,13 +574,18 @@ func TestGetRules(t *testing.T) {
 				cfg.ShardingStrategy = tc.shardingStrategy
 				cfg.EnableSharding = tc.sharding
 
+				rulerReplicationFactor := tc.replicationFactor
+				if rulerReplicationFactor == 0 {
+					rulerReplicationFactor = 1
+				}
+
 				cfg.Ring = RingConfig{
 					InstanceID:   id,
 					InstanceAddr: id,
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
-					ReplicationFactor: tc.replicationFactor,
+					ReplicationFactor: rulerReplicationFactor,
 				}
 
 				r := buildRuler(t, cfg, nil, store, rulerAddrMap)
@@ -686,6 +688,9 @@ func TestSharding(t *testing.T) {
 		user1 = "user1"
 		user2 = "user2"
 		user3 = "user3"
+		zone1 = "zone1"
+		zone2 = "zone2"
+		zone3 = "zone3"
 	)
 
 	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first"}
@@ -710,159 +715,171 @@ func TestSharding(t *testing.T) {
 	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
 
 	type testCase struct {
-		sharding         bool
-		shardingStrategy string
-		shuffleShardSize int
-		setupRing        func(*ring.Desc)
-		enabledUsers     []string
-		disabledUsers    []string
+		sharding          bool
+		shardingStrategy  string
+		shuffleShardSize  int
+		replicationFactor int
+		zoneAwareness     bool
+		setupRing         func(*ring.Desc)
+		enabledUsers      []string
+		disabledUsers     []string
 
 		expectedRules expectedRulesMap
 	}
 
-	const (
-		ruler1     = "ruler-1"
-		ruler1Host = "1.1.1.1"
-		ruler1Port = 9999
-		ruler1Addr = "1.1.1.1:9999"
-
-		ruler2     = "ruler-2"
-		ruler2Host = "2.2.2.2"
-		ruler2Port = 9999
-		ruler2Addr = "2.2.2.2:9999"
-
-		ruler3     = "ruler-3"
-		ruler3Host = "3.3.3.3"
-		ruler3Port = 9999
-		ruler3Addr = "3.3.3.3:9999"
-	)
+	type rulerDesc struct {
+		id   string
+		host string
+		port int
+		addr string
+		zone string
+	}
+	newRulerDesc := func(index int, zone string) rulerDesc {
+		host := fmt.Sprintf("%d.%d.%d.%d", index, index, index, index)
+		port := 9999
+		return rulerDesc{
+			id:   fmt.Sprintf("ruler-%d", index),
+			host: host,
+			port: port,
+			addr: fmt.Sprintf("%s:%d", host, port),
+			zone: zone,
+		}
+	}
+	rulerDescs := [...]rulerDesc{
+		newRulerDesc(1, zone1),
+		newRulerDesc(2, zone2),
+		newRulerDesc(3, zone3),
+		newRulerDesc(4, zone1),
+		newRulerDesc(5, zone2),
+		newRulerDesc(6, zone3),
+	}
 
 	testCases := map[string]testCase{
-		"no sharding": {
+		"0 no sharding": {
 			sharding:      false,
-			expectedRules: expectedRulesMap{ruler1: allRules},
+			expectedRules: expectedRulesMap{rulerDescs[0].id: allRules},
 		},
 
-		"no sharding, single user allowed": {
+		"1 no sharding, single user allowed": {
 			sharding:     false,
 			enabledUsers: []string{user1},
-			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+			expectedRules: expectedRulesMap{rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 				user1: {user1Group1, user1Group2},
 			}},
 		},
 
-		"no sharding, single user disabled": {
+		"2 no sharding, single user disabled": {
 			sharding:      false,
 			disabledUsers: []string{user1},
-			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+			expectedRules: expectedRulesMap{rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 				user2: {user2Group1},
 				user3: {user3Group1},
 			}},
 		},
 
-		"default sharding, single ruler": {
+		"3 default sharding, single ruler": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, []uint32{0}, ring.ACTIVE, time.Now())
 			},
-			expectedRules: expectedRulesMap{ruler1: allRules},
+			expectedRules: expectedRulesMap{rulerDescs[0].id: allRules},
 		},
 
-		"default sharding, single ruler, single enabled user": {
+		"4 default sharding, single ruler, single enabled user": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			enabledUsers:     []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, []uint32{0}, ring.ACTIVE, time.Now())
 			},
-			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+			expectedRules: expectedRulesMap{rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 				user1: {user1Group1, user1Group2},
 			}},
 		},
 
-		"default sharding, single ruler, single disabled user": {
+		"5 default sharding, single ruler, single disabled user": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			disabledUsers:    []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, []uint32{0}, ring.ACTIVE, time.Now())
 			},
-			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+			expectedRules: expectedRulesMap{rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 				user2: {user2Group1},
 				user3: {user3Group1},
 			}},
 		},
 
-		"default sharding, multiple ACTIVE rulers": {
+		"6 default sharding, multiple ACTIVE rulerDescs": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1},
 					user2: {user2Group1},
 				},
 
-				ruler2: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group2},
 					user3: {user3Group1},
 				},
 			},
 		},
 
-		"default sharding, multiple ACTIVE rulers, single enabled user": {
+		"7 default sharding, multiple ACTIVE rulerDescs, single enabled user": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			enabledUsers:     []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1},
 				},
 
-				ruler2: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group2},
 				},
 			},
 		},
 
-		"default sharding, multiple ACTIVE rulers, single disabled user": {
+		"8 default sharding, multiple ACTIVE rulerDescs, single disabled user": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 			disabledUsers:    []string{user1},
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user2: {user2Group1},
 				},
 
-				ruler2: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
 					user3: {user3Group1},
 				},
 			},
 		},
 
-		"default sharding, unhealthy ACTIVE ruler": {
+		"9 default sharding, unhealthy ACTIVE ruler": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.Ingesters[ruler2] = ring.InstanceDesc{
-					Addr:      ruler2Addr,
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.Ingesters[rulerDescs[1].id] = ring.InstanceDesc{
+					Addr:      rulerDescs[1].addr,
 					Timestamp: time.Now().Add(-time.Hour).Unix(),
 					State:     ring.ACTIVE,
 					Tokens:    sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}),
@@ -871,202 +888,293 @@ func TestSharding(t *testing.T) {
 
 			expectedRules: expectedRulesMap{
 				// This ruler doesn't get rules from unhealthy ruler (RF=1).
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1},
 					user2: {user2Group1},
 				},
-				ruler2: noRules,
+				rulerDescs[1].id: noRules,
 			},
 		},
 
-		"default sharding, LEAVING ruler": {
+		"10 default sharding, LEAVING ruler": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.LEAVING, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.LEAVING, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
 				// LEAVING ruler doesn't get any rules.
-				ruler1: noRules,
-				ruler2: allRules,
+				rulerDescs[0].id: noRules,
+				rulerDescs[1].id: allRules,
 			},
 		},
 
-		"default sharding, JOINING ruler": {
+		"11 default sharding, JOINING ruler": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.JOINING, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{user1Group1Token + 1, user2Group1Token + 1}), ring.JOINING, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group2Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
 				// JOINING ruler has no rules yet.
-				ruler1: noRules,
-				ruler2: allRules,
+				rulerDescs[0].id: noRules,
+				rulerDescs[1].id: allRules,
 			},
 		},
 
-		"shuffle sharding, single ruler": {
+		"12 shuffle sharding, single ruler": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{0}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: allRules,
+				rulerDescs[0].id: allRules,
 			},
 		},
 
-		"shuffle sharding, multiple rulers, shard size 1": {
+		"13 shuffle sharding, multiple rulerDescs, shard size 1": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1, userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: allRules,
-				ruler2: noRules,
+				rulerDescs[0].id: allRules,
+				rulerDescs[1].id: noRules,
 			},
 		},
 
 		// Same test as previous one, but with shard size=2. Second ruler gets all the rules.
-		"shuffle sharding, two rulers, shard size 2": {
+		"14 shuffle sharding, two rulerDescs, shard size 2": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
 				// Exact same tokens setup as previous test.
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1, userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{user1Group1Token + 1, user1Group2Token + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: noRules,
-				ruler2: allRules,
+				rulerDescs[0].id: noRules,
+				rulerDescs[1].id: allRules,
 			},
 		},
 
-		"shuffle sharding, two rulers, shard size 1, distributed users": {
+		"15 shuffle sharding, two rulerDescs, shard size 1, distributed users": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 1,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
-				ruler2: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
 			},
 		},
-		"shuffle sharding, three rulers, shard size 2": {
+		"16 shuffle sharding, three rulerDescs, shard size 2": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, "") + 1, user1Group2Token + 1, userToken(user2, 1, "") + 1, userToken(user3, 1, "") + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1},
 				},
-				ruler2: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group2},
 				},
-				ruler3: map[string]rulespb.RuleGroupList{
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
 			},
 		},
-		"shuffle sharding, three rulers, shard size 2, ruler2 has no users": {
+		"17 shuffle sharding, three rulerDescs, shard size 2, ruler2 has no users": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Token + 1, user1Group2Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1, userToken(user2, 1, "") + 1, user1Group1Token + 1, user1Group2Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, "") + 1, userToken(user3, 1, "") + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1, user1Group2},
 				},
-				ruler2: noRules, // Ruler2 owns token for user2group1, but user-2 will only be handled by ruler-1 and 3.
-				ruler3: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: noRules, // Ruler2 owns token for user2group1, but user-2 will only be handled by ruler-1 and 3.
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
 			},
 		},
 
-		"shuffle sharding, three rulers, shard size 2, single enabled user": {
+		"18 shuffle sharding, three rulerDescs, shard size 2, single enabled user": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 			enabledUsers:     []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, "") + 1, user1Group2Token + 1, userToken(user2, 1, "") + 1, userToken(user3, 1, "") + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group1},
 				},
-				ruler2: map[string]rulespb.RuleGroupList{
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
 					user1: {user1Group2},
 				},
-				ruler3: map[string]rulespb.RuleGroupList{},
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{},
 			},
 		},
 
-		"shuffle sharding, three rulers, shard size 2, single disabled user": {
+		"19 shuffle sharding, three rulerDescs, shard size 2, single disabled user": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyShuffle,
 			shuffleShardSize: 2,
 			disabledUsers:    []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
-				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
-				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, "") + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, "") + 1, user1Group2Token + 1, userToken(user2, 1, "") + 1, userToken(user3, 1, "") + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user2, 0, "") + 1, userToken(user3, 0, "") + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
 			},
 
 			expectedRules: expectedRulesMap{
-				ruler1: map[string]rulespb.RuleGroupList{},
-				ruler2: map[string]rulespb.RuleGroupList{},
-				ruler3: map[string]rulespb.RuleGroupList{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{},
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{},
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{
 					user2: {user2Group1},
 					user3: {user3Group1},
 				},
+			},
+		},
+
+		"20 shuffle sharding, three rulerDescs, shard size 3, zone awareness enabled, single disabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shuffleShardSize: 3,
+			zoneAwareness:    true,
+			disabledUsers:    []string{user3},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, zone1) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, zone2) + 1, user1Group2Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user2, 0, zone3) + 1, user2Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1},
+				},
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group2},
+				},
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{
+					user2: {user2Group1},
+				},
+			},
+		},
+
+		"21 shuffle sharding, three rulerDescs, shard size 3, replicationFactor 3, single enabled user": {
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  3,
+			replicationFactor: 3,
+			enabledUsers:      []string{user1},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, zone1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, zone2) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user1, 2, zone3) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[3].id, rulerDescs[3].addr, rulerDescs[3].zone, sortTokens([]uint32{userToken(user1, 3, zone1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[4].id, rulerDescs[4].addr, rulerDescs[4].zone, sortTokens([]uint32{userToken(user1, 4, zone2) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[5].id, rulerDescs[5].addr, rulerDescs[5].zone, sortTokens([]uint32{userToken(user1, 5, zone3) + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1, user1Group2},
+				},
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1, user1Group2},
+				},
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{},
+				rulerDescs[3].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1, user1Group2},
+				},
+				rulerDescs[4].id: map[string]rulespb.RuleGroupList{},
+				rulerDescs[5].id: map[string]rulespb.RuleGroupList{},
+			},
+		},
+
+		"22 shuffle sharding, three rulerDescs, shard size 3, replicationFactor 3, zone awareness enabled, single enabled user": {
+			sharding:          true,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  3,
+			replicationFactor: 3,
+			zoneAwareness:     true,
+			enabledUsers:      []string{user1},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(rulerDescs[0].id, rulerDescs[0].addr, rulerDescs[0].zone, sortTokens([]uint32{userToken(user1, 0, zone1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[1].id, rulerDescs[1].addr, rulerDescs[1].zone, sortTokens([]uint32{userToken(user1, 1, zone2) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[2].id, rulerDescs[2].addr, rulerDescs[2].zone, sortTokens([]uint32{userToken(user1, 2, zone3) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[3].id, rulerDescs[3].addr, rulerDescs[3].zone, sortTokens([]uint32{userToken(user1, 3, zone1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[4].id, rulerDescs[4].addr, rulerDescs[4].zone, sortTokens([]uint32{userToken(user1, 4, zone2) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(rulerDescs[5].id, rulerDescs[5].addr, rulerDescs[5].zone, sortTokens([]uint32{userToken(user1, 5, zone3) + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				rulerDescs[0].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1, user1Group2},
+				},
+				rulerDescs[1].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1, user1Group2},
+				},
+				rulerDescs[2].id: map[string]rulespb.RuleGroupList{
+					user1: {user1Group1, user1Group2},
+				},
+				rulerDescs[3].id: map[string]rulespb.RuleGroupList{},
+				rulerDescs[4].id: map[string]rulespb.RuleGroupList{},
+				rulerDescs[5].id: map[string]rulespb.RuleGroupList{},
 			},
 		},
 	}
@@ -1076,19 +1184,27 @@ func TestSharding(t *testing.T) {
 			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {
+			rulerReplicationFactor := tc.replicationFactor
+			if rulerReplicationFactor == 0 {
+				rulerReplicationFactor = 1
+			}
+
+			setupRuler := func(rulerInstance rulerDesc, forceRing *ring.Ring) *Ruler {
 				store := newMockRuleStore(allRules)
 				cfg := Config{
 					EnableSharding:   tc.sharding,
 					ShardingStrategy: tc.shardingStrategy,
 					Ring: RingConfig{
-						InstanceID:   id,
-						InstanceAddr: host,
-						InstancePort: port,
+						InstanceID:   rulerInstance.id,
+						InstanceAddr: rulerInstance.host,
+						InstancePort: rulerInstance.port,
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
-						HeartbeatTimeout: 1 * time.Minute,
+						HeartbeatTimeout:     1 * time.Minute,
+						ReplicationFactor:    rulerReplicationFactor,
+						ZoneAwarenessEnabled: tc.zoneAwareness,
+						InstanceZone:         rulerInstance.zone,
 					},
 					FlushCheckPeriod: 0,
 					EnabledTenants:   tc.enabledUsers,
@@ -1104,9 +1220,10 @@ func TestSharding(t *testing.T) {
 				return r
 			}
 
-			r1 := setupRuler(ruler1, ruler1Host, ruler1Port, nil)
+			rulers := [len(rulerDescs)]*Ruler{}
+			rulers[0] = setupRuler(rulerDescs[0], nil)
 
-			rulerRing := r1.ring
+			rulerRing := rulers[0].ring
 
 			// We start ruler's ring, but nothing else (not even lifecycler).
 			if rulerRing != nil {
@@ -1114,11 +1231,11 @@ func TestSharding(t *testing.T) {
 				t.Cleanup(rulerRing.StopAsync)
 			}
 
-			var r2, r3 *Ruler
 			if rulerRing != nil {
 				// Reuse ring from r1.
-				r2 = setupRuler(ruler2, ruler2Host, ruler2Port, rulerRing)
-				r3 = setupRuler(ruler3, ruler3Host, ruler3Port, rulerRing)
+				for i := 1; i < len(rulerDescs); i++ {
+					rulers[i] = setupRuler(rulerDescs[i], rulerRing)
+				}
 			}
 
 			if tc.setupRing != nil {
@@ -1137,16 +1254,16 @@ func TestSharding(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 
-			// Always add ruler1 to expected rulers, even if there is no ring (no sharding).
-			loadedRules1, err := r1.listRules(context.Background())
+			// Always add ruler1 to expected rulerDescs, even if there is no ring (no sharding).
+			loadedRules1, err := rulers[0].listRules(context.Background())
 			require.NoError(t, err)
 
 			expected := expectedRulesMap{
-				ruler1: loadedRules1,
+				rulerDescs[0].id: loadedRules1,
 			}
 
 			addToExpected := func(id string, r *Ruler) {
-				// Only expect rules from other rulers when using ring, and they are present in the ring.
+				// Only expect rules from other rulerDescs when using ring, and they are present in the ring.
 				if r != nil && rulerRing != nil && rulerRing.HasInstance(id) {
 					loaded, err := r.listRules(context.Background())
 					require.NoError(t, err)
@@ -1158,8 +1275,9 @@ func TestSharding(t *testing.T) {
 				}
 			}
 
-			addToExpected(ruler2, r2)
-			addToExpected(ruler3, r3)
+			for i := 1; i < len(rulerDescs); i++ {
+				addToExpected(rulerDescs[i].id, rulers[i])
+			}
 
 			require.Equal(t, tc.expectedRules, expected)
 		})
@@ -1167,8 +1285,8 @@ func TestSharding(t *testing.T) {
 }
 
 // User shuffle shard token.
-func userToken(user string, skip int) uint32 {
-	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user, "")))
+func userToken(user string, skip int, zone string) uint32 {
+	r := rand.New(rand.NewSource(util.ShuffleShardSeed(user, zone)))
 
 	for ; skip > 0; skip-- {
 		_ = r.Uint32()

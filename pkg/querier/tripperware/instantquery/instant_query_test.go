@@ -21,9 +21,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
+var (
+	codec = NewInstantQueryCodec(time.Minute)
+)
+
 func TestRequest(t *testing.T) {
 	t.Parallel()
-	codec := InstantQueryCodec
 
 	for _, tc := range []struct {
 		url         string
@@ -148,7 +151,7 @@ func TestGzippedResponse(t *testing.T) {
 					Header:     h,
 					Body:       io.NopCloser(responseBody),
 				}
-				r, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				r, err := codec.DecodeResponse(context.Background(), response, nil)
 				require.Equal(t, tc.err, err)
 
 				if err == nil {
@@ -195,7 +198,7 @@ func TestResponse(t *testing.T) {
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+			resp, err := codec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
 
 			// Reset response, as the above call will have consumed the body reader.
@@ -205,7 +208,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
-			resp2, err := InstantQueryCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := codec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -367,16 +370,16 @@ func TestMergeResponse(t *testing.T) {
 					Header:     http.Header{"Content-Type": []string{"application/json"}},
 					Body:       io.NopCloser(bytes.NewBuffer([]byte(r))),
 				}
-				dr, err := InstantQueryCodec.DecodeResponse(context.Background(), hr, nil)
+				dr, err := codec.DecodeResponse(context.Background(), hr, nil)
 				require.NoError(t, err)
 				resps = append(resps, dr)
 			}
-			resp, err := InstantQueryCodec.MergeResponse(context.Background(), tc.req, resps...)
+			resp, err := codec.MergeResponse(context.Background(), tc.req, resps...)
 			assert.Equal(t, err, tc.expectedErr)
 			if err != nil {
 				return
 			}
-			dr, err := InstantQueryCodec.EncodeResponse(context.Background(), resp)
+			dr, err := codec.EncodeResponse(context.Background(), resp)
 			assert.Equal(t, err, tc.expectedErr)
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, err, tc.expectedErr)
@@ -506,7 +509,7 @@ func Benchmark_Decode(b *testing.B) {
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				_, err := codec.DecodeResponse(context.Background(), response, nil)
 				require.NoError(b, err)
 			}
 		})

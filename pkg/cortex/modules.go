@@ -456,6 +456,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 	prometheusCodec := queryrange.NewPrometheusCodec(false, defaultSubQueryInterval)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
 	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, defaultSubQueryInterval)
+	instantQueryCodec := instantquery.NewInstantQueryCodec(defaultSubQueryInterval)
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
@@ -472,7 +473,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, queryAnalyzer)
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, queryAnalyzer, instantQueryCodec)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +484,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
 		prometheusCodec,
-		instantquery.InstantQueryCodec,
+		instantQueryCodec,
 		t.Overrides,
 		queryAnalyzer,
 		defaultSubQueryInterval,

@@ -148,15 +148,19 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2})
 			},
 		},
-		"[FetchMultiPostings] should fallback only the missing keys on l1": {
+		"[FetchMultiPostings] should fallback and backfill only the missing keys on l1": {
 			m1ExpectedCalls: map[string][][]interface{}{
 				"FetchMultiPostings": {{bID, []labels.Label{l1, l2}}},
+				"StorePostings":      {{bID, l2, v}},
 			},
 			m2ExpectedCalls: map[string][][]interface{}{
 				"FetchMultiPostings": {{bID, []labels.Label{l2}}},
 			},
 			m1MockedCalls: map[string][]interface{}{
 				"FetchMultiPostings": {map[labels.Label][]byte{l1: make([]byte, 1)}, []labels.Label{l2}},
+			},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchMultiPostings": {map[labels.Label][]byte{l2: v}, []labels.Label{}},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2})
@@ -185,15 +189,19 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2})
 			},
 		},
-		"[FetchMultiSeries] should fallback only the missing keys on l1": {
+		"[FetchMultiSeries] should fallback and backfill only the missing keys on l1": {
 			m1ExpectedCalls: map[string][][]interface{}{
 				"FetchMultiSeries": {{bID, []storage.SeriesRef{1, 2}}},
+				"StoreSeries":      {{bID, storage.SeriesRef(2), v}},
 			},
 			m2ExpectedCalls: map[string][][]interface{}{
 				"FetchMultiSeries": {{bID, []storage.SeriesRef{2}}},
 			},
 			m1MockedCalls: map[string][]interface{}{
-				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: make([]byte, 1)}, []storage.SeriesRef{2}},
+				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: v}, []storage.SeriesRef{2}},
+			},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchMultiSeries": {map[storage.SeriesRef][]byte{2: v}, []storage.SeriesRef{2}},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2})
@@ -211,12 +219,16 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2})
 			},
 		},
-		"[FetchExpandedPostings] Should fallback when miss": {
+		"[FetchExpandedPostings] Should fallback and backfill when miss": {
 			m1ExpectedCalls: map[string][][]interface{}{
+				"StoreExpandedPostings": {{bID, []*labels.Matcher{matcher}, v}},
 				"FetchExpandedPostings": {{bID, []*labels.Matcher{matcher}}},
 			},
 			m2ExpectedCalls: map[string][][]interface{}{
 				"FetchExpandedPostings": {{bID, []*labels.Matcher{matcher}}},
+			},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchExpandedPostings": {v, true},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher})

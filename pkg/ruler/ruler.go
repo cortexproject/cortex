@@ -816,7 +816,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			return nil, errors.Wrapf(err, "unable to get client for ruler %s", ing.Addr)
 		}
 
-		newGrps, err := grpcClient.(RulerClient).Rules(ctx, &RulesRequest{
+		newGrps, err := grpcClient.Rules(ctx, &RulesRequest{
 			RuleNames:      rulesRequest.GetRuleNames(),
 			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
 			Files:          rulesRequest.GetFiles(),

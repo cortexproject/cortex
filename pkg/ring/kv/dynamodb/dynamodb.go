@@ -157,28 +157,37 @@ func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) 
 	return keys, totalCapacity, nil
 }
 
-func (kv dynamodbKV) Delete(ctx context.Context, key dynamodbKey) error {
+func (kv dynamodbKV) Delete(ctx context.Context, key dynamodbKey) (float64, error) {
 	input := &dynamodb.DeleteItemInput{
 		TableName: kv.tableName,
 		Key:       generateItemKey(key),
 	}
-	_, err := kv.ddbClient.DeleteItemWithContext(ctx, input)
-	return err
+	totalCapacity := float64(0)
+	output, err := kv.ddbClient.DeleteItemWithContext(ctx, input)
+	if err != nil {
+		totalCapacity = getCapacityUnits(output.ConsumedCapacity)
+	}
+	return totalCapacity, err
 }
 
-func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) error {
+func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) (float64, error) {
 	input := &dynamodb.PutItemInput{
 		TableName: kv.tableName,
 		Item:      kv.generatePutItemRequest(key, data),
 	}
-	_, err := kv.ddbClient.PutItemWithContext(ctx, input)
-	return err
+	totalCapacity := float64(0)
+	output, err := kv.ddbClient.PutItemWithContext(ctx, input)
+	if err != nil {
+		totalCapacity = getCapacityUnits(output.ConsumedCapacity)
+	}
+	return totalCapacity, err
 }
 
-func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) (float64, error) {
+	totalCapacity := float64(0)
 	writeRequestSize := len(put) + len(delete)
 	if writeRequestSize == 0 {
-		return nil
+		return totalCapacity, nil
 	}
 
 	writeRequestsSlices := make([][]*dynamodb.WriteRequest, int(math.Ceil(float64(writeRequestSize)/float64(DdbBatchSizeLimit))))
@@ -220,15 +229,18 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 
 		resp, err := kv.ddbClient.BatchWriteItemWithContext(ctx, input)
 		if err != nil {
-			return err
+			return totalCapacity, err
+		}
+		for _, consumedCapacity := range resp.ConsumedCapacity {
+			totalCapacity += getCapacityUnits(consumedCapacity)
 		}
 
 		if resp.UnprocessedItems != nil && len(resp.UnprocessedItems) > 0 {
-			return fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
+			return totalCapacity, fmt.Errorf("error processing batch request for %s requests", resp.UnprocessedItems)
 		}
 	}
 
-	return nil
+	return totalCapacity, nil
 }
 
 func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, data []byte) map[string]*dynamodb.AttributeValue {

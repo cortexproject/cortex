@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
+	yamlv3 "gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/tracing"
@@ -250,6 +251,10 @@ func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
 		return errors.Wrap(err, "Error parsing config file")
 	}
 
+	if err := validateYAMLEmptyNodes(buf); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -260,6 +265,43 @@ func DumpYaml(cfg *cortex.Config) {
 	} else {
 		fmt.Printf("%s\n", out)
 	}
+}
+
+// validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
+// When an empty node is defined in YAML, the YAML parser sets the whole struct to its zero value
+// and so we loose all default values. It's very difficult to detect this case for the user, so we
+// try to prevent it (on the root level) with this custom validation.
+func validateYAMLEmptyNodes(buf []byte) error {
+	var document yamlv3.Node
+	if err := yamlv3.Unmarshal(buf, &document); err != nil {
+		return err
+	}
+	if document.Kind != yamlv3.DocumentNode {
+		return errors.New("invalid YAML document")
+	}
+	for _, node := range document.Content {
+		if node.Kind != yamlv3.MappingNode || len(node.Content) < 2 || node.Content[0].Kind != yamlv3.ScalarNode {
+			continue
+		}
+		foundEmptyNode := false
+		switch node.Content[1].Kind {
+		case yamlv3.MappingNode:
+			if len(node.Content[1].Content) == 0 {
+				// "key: {}"
+				foundEmptyNode = true
+			}
+		case yamlv3.ScalarNode:
+			if node.Content[1].Tag == "!!null" {
+				// "key: null" or "key:"
+				foundEmptyNode = true
+			}
+		}
+		if foundEmptyNode {
+			return fmt.Errorf("the %s configuration in YAML has been specified as an empty YAML node", node.Content[0].Value)
+		}
+		return nil
+	}
+	return nil
 }
 
 // expandEnv replaces ${var} or $var in config according to the values of the current environment variables.

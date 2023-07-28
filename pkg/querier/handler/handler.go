@@ -4,17 +4,16 @@ import (
 	"context"
 	"fmt"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"math"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -145,14 +144,15 @@ func invalidParamError(err error, parameter string) ApiFuncResult {
 }
 
 func (api *API) Query(r *http.Request) (result ApiFuncResult) {
-	ts, err := parseTimeParam(r, "time", api.Now())
+	tms, err := instantquery.ParseTimeParam(r, "time", api.Now().Unix())
+	ts := time.Unix(tms/1000, (tms%1000)*10e6)
 	if err != nil {
 		return invalidParamError(err, "time")
 	}
 	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
-		timeout, err := parseDuration(to)
+		timeout, err := time.ParseDuration(to)
 		if err != nil {
 			return invalidParamError(err, "timeout")
 		}
@@ -205,7 +205,7 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 		EnablePerStepStats: r.FormValue("stats") == "all",
 	}
 	if strDuration := r.FormValue("lookback_delta"); strDuration != "" {
-		duration, err := parseDuration(strDuration)
+		duration, err := time.ParseDuration(strDuration)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing lookback delta duration: %w", err)
 		}
@@ -215,11 +215,13 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 }
 
 func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
-	start, err := parseTime(r.FormValue("start"))
+	startMs, err := util.ParseTime(r.FormValue("start"))
+	start := time.Unix(startMs/1000, (startMs%1000)*10e6)
 	if err != nil {
 		return invalidParamError(err, "start")
 	}
-	end, err := parseTime(r.FormValue("end"))
+	endMs, err := util.ParseTime(r.FormValue("end"))
+	end := time.Unix(endMs/1000, (endMs%1000)*10e6)
 	if err != nil {
 		return invalidParamError(err, "end")
 	}
@@ -227,7 +229,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 		return invalidParamError(errors.New("end timestamp must not be before start time"), "end")
 	}
 
-	step, err := parseDuration(r.FormValue("step"))
+	step, err := time.ParseDuration(r.FormValue("step"))
 	if err != nil {
 		return invalidParamError(err, "step")
 	}
@@ -246,7 +248,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
-		timeout, err := parseDuration(to)
+		timeout, err := time.ParseDuration(to)
 		if err != nil {
 			return invalidParamError(err, "timeout")
 		}
@@ -399,55 +401,6 @@ func (api *API) RespondError(w http.ResponseWriter, apiErr *apiError, data inter
 	if n, err := w.Write(b); err != nil {
 		level.Error(api.Logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
-}
-
-func parseTimeParam(r *http.Request, paramName string, defaultValue time.Time) (time.Time, error) {
-	val := r.FormValue(paramName)
-	if val == "" {
-		return defaultValue, nil
-	}
-	result, err := parseTime(val)
-	if err != nil {
-		return time.Time{}, errors.Wrapf(err, "Invalid time value for '%s'", paramName)
-	}
-	return result, nil
-}
-
-func parseTime(s string) (time.Time, error) {
-	if t, err := strconv.ParseFloat(s, 64); err == nil {
-		s, ns := math.Modf(t)
-		ns = math.Round(ns*1000) / 1000
-		return time.Unix(int64(s), int64(ns*float64(time.Second))).UTC(), nil
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t, nil
-	}
-
-	// Stdlib's time parser can only handle 4 digit years. As a workaround until
-	// that is fixed we want to at least support our own boundary times.
-	// Context: https://github.com/prometheus/client_golang/issues/614
-	// Upstream issue: https://github.com/golang/go/issues/20555
-	switch s {
-	case minTimeFormatted:
-		return minTime, nil
-	case maxTimeFormatted:
-		return maxTime, nil
-	}
-	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
-}
-
-func parseDuration(s string) (time.Duration, error) {
-	if d, err := strconv.ParseFloat(s, 64); err == nil {
-		ts := d * float64(time.Second)
-		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
-			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", s)
-		}
-		return time.Duration(ts), nil
-	}
-	if d, err := model.ParseDuration(s); err == nil {
-		return time.Duration(d), nil
-	}
-	return 0, errors.Errorf("cannot parse %q to a valid duration", s)
 }
 
 func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {

@@ -133,7 +133,7 @@ func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
 func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Time, err = parseTimeParam(r, "time", c.now().Unix())
+	result.Time, err = ParseTimeParam(r, "time", c.now().Unix())
 	if err != nil {
 		return nil, decorateWithParamName(err, "time")
 	}
@@ -631,7 +631,7 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 	}
 }
 
-func parseTimeParam(r *http.Request, paramName string, defaultValue int64) (int64, error) {
+func ParseTimeParam(r *http.Request, paramName string, defaultValue int64) (int64, error) {
 	val := r.FormValue(paramName)
 	if val == "" {
 		val = strconv.FormatInt(defaultValue, 10)

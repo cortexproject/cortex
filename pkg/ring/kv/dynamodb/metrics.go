@@ -29,8 +29,8 @@ func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
 	}, []string{"operation", "status_code"}))
 
 	dynamodbUsageMetrics := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-		Name: "dynamodb_kv_read_capacity_total",
-		Help: "Total used read capacity on dynamodb",
+		Name: "dynamodb_kv_consumed_capacity_total",
+		Help: "Total consumed capacity on dynamodb",
 	}, []string{"operation"})
 
 	dynamodbMetrics := dynamodbMetrics{
@@ -66,19 +66,25 @@ func (d dynamodbInstrumentation) Query(ctx context.Context, key dynamodbKey, isP
 
 func (d dynamodbInstrumentation) Delete(ctx context.Context, key dynamodbKey) error {
 	return instrument.CollectedRequest(ctx, "Delete", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
-		return d.kv.Delete(ctx, key)
+		totalCapacity, err := d.kv.Delete(ctx, key)
+		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Delete").Add(totalCapacity)
+		return err
 	})
 }
 
 func (d dynamodbInstrumentation) Put(ctx context.Context, key dynamodbKey, data []byte) error {
 	return instrument.CollectedRequest(ctx, "Put", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
-		return d.kv.Put(ctx, key, data)
+		totalCapacity, err := d.kv.Put(ctx, key, data)
+		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Put").Add(totalCapacity)
+		return err
 	})
 }
 
 func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
 	return instrument.CollectedRequest(ctx, "Batch", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
-		return d.kv.Batch(ctx, put, delete)
+		totalCapacity, err := d.kv.Batch(ctx, put, delete)
+		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Batch").Add(totalCapacity)
+		return err
 	})
 }
 

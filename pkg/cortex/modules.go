@@ -451,11 +451,10 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	queryAnalyzer := querysharding.NewQueryAnalyzer()
-	defaultSubQueryInterval := t.Cfg.Querier.DefaultEvaluationInterval
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
-	prometheusCodec := queryrange.NewPrometheusCodec(false, defaultSubQueryInterval)
+	prometheusCodec := queryrange.NewPrometheusCodec(false)
 	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
-	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, defaultSubQueryInterval)
+	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true)
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
@@ -486,7 +485,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		instantquery.InstantQueryCodec,
 		t.Overrides,
 		queryAnalyzer,
-		defaultSubQueryInterval,
+		t.Cfg.Querier.DefaultEvaluationInterval,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

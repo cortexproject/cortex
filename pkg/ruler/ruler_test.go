@@ -18,6 +18,7 @@ import (
 
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 
 	"github.com/go-kit/log"
@@ -1181,8 +1182,13 @@ func TestSharding(t *testing.T) {
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+			ringKvStore, ringKVCleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			haTrackerKVStore, haTrackerKVCleanUp := consul.NewInMemoryClient(ha.GetReplicaDescCodec(), log.NewNopLogger(), nil)
+
+			t.Cleanup(func() {
+				assert.NoError(t, ringKVCleanUp.Close())
+				assert.NoError(t, haTrackerKVCleanUp.Close())
+			})
 
 			rulerReplicationFactor := tc.replicationFactor
 			if rulerReplicationFactor == 0 {
@@ -1199,7 +1205,7 @@ func TestSharding(t *testing.T) {
 						InstanceAddr: rulerInstance.host,
 						InstancePort: rulerInstance.port,
 						KVStore: kv.Config{
-							Mock: kvStore,
+							Mock: ringKvStore,
 						},
 						HeartbeatTimeout:     1 * time.Minute,
 						ReplicationFactor:    rulerReplicationFactor,
@@ -1209,6 +1215,16 @@ func TestSharding(t *testing.T) {
 					FlushCheckPeriod: 0,
 					EnabledTenants:   tc.enabledUsers,
 					DisabledTenants:  tc.disabledUsers,
+					HATrackerConfig: HATrackerConfig{
+						EnableHATracker:        true,
+						UpdateTimeout:          60 * time.Second,
+						UpdateTimeoutJitterMax: 0,
+						FailoverTimeout:        300 * time.Second,
+						KVStore: kv.Config{
+							Mock: haTrackerKVStore,
+						},
+						ReplicaID: rulerInstance.id,
+					},
 				}
 
 				r := buildRuler(t, cfg, nil, store, nil)
@@ -1239,7 +1255,7 @@ func TestSharding(t *testing.T) {
 			}
 
 			if tc.setupRing != nil {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := ringKvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()

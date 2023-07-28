@@ -126,6 +126,8 @@ type Config struct {
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
+
+	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
 }
 
 // Validate config and returns error on failure
@@ -149,6 +151,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.ClientTLSConfig.RegisterFlagsWithPrefix("ruler.client", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlags(f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 
@@ -194,7 +197,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type MultiTenantManager interface {
 	// SyncRuleGroups is used to sync the Manager with rules from the RuleStore.
 	// If existing user is missing in the ruleGroups map, its ruler manager will be stopped.
-	SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList)
+	SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList, ringChanged bool)
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
 	// Stop stops all Manager components.
@@ -415,10 +418,10 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
+func (r *Ruler) instanceOwnsRuleGroup(ring ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
 	hash := tokenForGroup(g)
 
-	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
+	rlrs, err := ring.Get(hash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
@@ -506,7 +509,7 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	}
 
 	// This will also delete local group files for users that are no longer in 'configs' map.
-	r.manager.SyncRuleGroups(ctx, configs)
+	r.manager.SyncRuleGroups(ctx, configs, reason == rulerSyncReasonRingChange)
 }
 
 func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGroupList, err error) {
@@ -549,7 +552,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := r.filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -607,7 +610,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := r.filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
@@ -627,13 +630,12 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 // filterRuleGroups returns map of rule groups that given instance "owns" based on supplied ring.
 // This function only uses User, Namespace, and Name fields of individual RuleGroups.
 //
-// Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
-// but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+// NOTE: this method operates on a ring passed as a parameter, not on Ruler.ring
+func (r *Ruler) filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
+		owned, err := r.instanceOwnsRuleGroup(ring, g, instanceAddr)
 		if err != nil {
 			ringCheckErrors.Inc()
 			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)

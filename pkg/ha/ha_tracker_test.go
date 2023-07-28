@@ -795,3 +795,69 @@ func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *HATracke
 		require.Equal(t, expectedMarkedForDeletion, markedForDeletion, "KV entry marked for deletion")
 	}
 }
+
+func TestMarkReplicaDeleted(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	kvStore, closer := consul.NewInMemoryClient(GetReplicaDescCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	require.NoError(t, kvStore.Put(ctx, "user1/g1", &ReplicaDesc{
+		ReceivedAt: timestamp.FromTime(now) - 5000,
+		Replica:    "r0",
+		DeletedAt:  0,
+	}))
+	require.NoError(t, kvStore.Put(ctx, "user2/g2", &ReplicaDesc{
+		ReceivedAt: timestamp.FromTime(now) - 5000,
+		Replica:    "r0",
+		DeletedAt:  0,
+	}))
+
+	haTracker, err := NewHATracker(HATrackerConfig{
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: kvStore},
+		UpdateTimeout:          time.Second,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        2 * time.Second,
+	}, nil, haTrackerStatusConfig, nil, "test-ha-tracker", util_log.Logger)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, haTracker))
+	defer services.StopAndAwaitTerminated(ctx, haTracker) //nolint:errcheck
+
+	require.NoError(t, haTracker.CheckReplica(ctx, "user1", "g3", "r1", now))
+	require.NoError(t, haTracker.CheckReplica(ctx, "user2", "g4", "r1", now))
+	require.NoError(t, haTracker.CheckReplica(ctx, "user3", "g5", "r1", now))
+
+	// wait for haTracker to update its internal elected map
+	for haTracker.electedLen() < 5 {
+		time.Sleep(time.Second)
+	}
+
+	haTracker.MarkReplicaDeleted(ctx, "r1")
+
+	verifyDeleted := func(key string, expectDeleted bool) {
+		data, err := kvStore.Get(ctx, key)
+		require.NoError(t, err)
+
+		replicaDesc := data.(*ReplicaDesc)
+		if expectDeleted {
+			require.LessOrEqual(t, now, timestamp.Time(replicaDesc.DeletedAt))
+		} else {
+			require.Equal(t, int64(0), replicaDesc.DeletedAt)
+		}
+	}
+
+	verifyDeleted("user1/g1", false)
+	verifyDeleted("user2/g2", false)
+	verifyDeleted("user1/g3", true)
+	verifyDeleted("user2/g4", true)
+	verifyDeleted("user3/g5", true)
+}
+
+func (c *HATracker) electedLen() int {
+	c.electedLock.Lock()
+	defer c.electedLock.Unlock()
+	return len(c.elected)
+}

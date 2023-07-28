@@ -1989,6 +1989,7 @@ The `consul_config` configures the consul client. The supported CLI flags `<pref
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `ruler.ha-tracker`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -2235,6 +2236,7 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 - `compactor.ring`
 - `distributor.ha-tracker`
 - `distributor.ring`
+- `ruler.ha-tracker`
 - `ruler.ring`
 - `store-gateway.sharding-ring`
 
@@ -3930,6 +3932,84 @@ ring:
 # Disable the rule_group label on exported metrics
 # CLI flag: -ruler.disable-rule-group-label
 [disable_rule_group_label: <boolean> | default = false]
+
+ha_tracker:
+  # Enable the ruler HA tracker. This flag is enabled automatically if ruler
+  # replication factor > 1, but it can be enabled explicitly, particularly when
+  # transitioning to HA.
+  # CLI flag: -ruler.ha-tracker.enable
+  [enable_ha_tracker: <boolean> | default = false]
+
+  # Update the timestamp in the KV store for a given replica only after this
+  # amount of time has passed since the current stored timestamp.
+  # CLI flag: -ruler.ha-tracker.update-timeout
+  [ha_tracker_update_timeout: <duration> | default = 15s]
+
+  # Maximum jitter applied to the update timeout, in order to spread the HA
+  # heartbeats over time.
+  # CLI flag: -ruler.ha-tracker.update-timeout-jitter-max
+  [ha_tracker_update_timeout_jitter_max: <duration> | default = 5s]
+
+  # If we don't receive any ticks from the accepted replica in this amount of
+  # time we will failover to the next replica. This value must be greater than
+  # the update timeout
+  # CLI flag: -ruler.ha-tracker.failover-timeout
+  [ha_tracker_failover_timeout: <duration> | default = 30s]
+
+  # Backend storage to use for the ring. Please be aware that memberlist is not
+  # supported by the HA tracker since gossip propagation is too slow for HA
+  # purposes.
+  kvstore:
+    # Backend storage to use for the ring. Supported values are: consul, etcd,
+    # inmemory, memberlist, multi.
+    # CLI flag: -ruler.ha-tracker.store
+    [store: <string> | default = "consul"]
+
+    # The prefix for the keys in the store. Should end with a /.
+    # CLI flag: -ruler.ha-tracker.prefix
+    [prefix: <string> | default = "ruler-ha-tracker/"]
+
+    dynamodb:
+      # Region to access dynamodb.
+      # CLI flag: -ruler.ha-tracker.dynamodb.region
+      [region: <string> | default = ""]
+
+      # Table name to use on dynamodb.
+      # CLI flag: -ruler.ha-tracker.dynamodb.table-name
+      [table_name: <string> | default = ""]
+
+      # Time to expire items on dynamodb.
+      # CLI flag: -ruler.ha-tracker.dynamodb.ttl-time
+      [ttl: <duration> | default = 0s]
+
+      # Time to refresh local ring with information on dynamodb.
+      # CLI flag: -ruler.ha-tracker.dynamodb.puller-sync-time
+      [puller_sync_time: <duration> | default = 1m]
+
+    # The consul_config configures the consul client.
+    # The CLI flags prefix for this block config is: ruler.ha-tracker
+    [consul: <consul_config>]
+
+    # The etcd_config configures the etcd client.
+    # The CLI flags prefix for this block config is: ruler.ha-tracker
+    [etcd: <etcd_config>]
+
+    multi:
+      # Primary backend storage used by multi-client.
+      # CLI flag: -ruler.ha-tracker.multi.primary
+      [primary: <string> | default = ""]
+
+      # Secondary backend storage used by multi-client.
+      # CLI flag: -ruler.ha-tracker.multi.secondary
+      [secondary: <string> | default = ""]
+
+      # Mirror writes to secondary store.
+      # CLI flag: -ruler.ha-tracker.multi.mirror-enabled
+      [mirror_enabled: <boolean> | default = false]
+
+      # Timeout for storing value to secondary store.
+      # CLI flag: -ruler.ha-tracker.multi.mirror-timeout
+      [mirror_timeout: <duration> | default = 2s]
 ```
 
 ### `ruler_storage_config`

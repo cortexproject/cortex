@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaveworks/common/httpgrpc"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -100,7 +102,11 @@ type recordingRule struct {
 	EvaluationTime float64       `json:"evaluationTime"`
 }
 
-func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
+func respondInternalServerError(logger log.Logger, w http.ResponseWriter, msg string) {
+	respondError(logger, w, http.StatusInternalServerError, msg)
+}
+
+func respondError(logger log.Logger, w http.ResponseWriter, statusCode int, msg string) {
 	b, err := json.Marshal(&response{
 		Status:    "error",
 		ErrorType: v1.ErrServer,
@@ -114,7 +120,7 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 		return
 	}
 
-	w.WriteHeader(http.StatusInternalServerError)
+	w.WriteHeader(statusCode)
 	if n, err := w.Write(b); err != nil {
 		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
@@ -162,7 +168,13 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found")
+		respondInternalServerError(logger, w, "no valid org id found")
+		return
+	}
+
+	quorumType, err := parseQuorumType(req.FormValue("quorum"))
+	if err != nil {
+		respondError(logger, w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -186,10 +198,14 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
+	rgs, err := a.ruler.GetRules(req.Context(), quorumType, rulesRequest)
 
 	if err != nil {
-		respondError(logger, w, err.Error())
+		if strings.Contains(err.Error(), errUnableToObtainQuorum) {
+			respondError(logger, w, http.StatusServiceUnavailable, err.Error())
+		} else {
+			respondInternalServerError(logger, w, err.Error())
+		}
 		return
 	}
 
@@ -258,7 +274,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
+		respondInternalServerError(logger, w, "unable to marshal the requested data")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -273,7 +289,13 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found")
+		respondInternalServerError(logger, w, "no valid org id found")
+		return
+	}
+
+	quorumType, err := parseQuorumType(req.FormValue("quorum"))
+	if err != nil {
+		respondError(logger, w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -281,10 +303,14 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	rulesRequest := RulesRequest{
 		Type: alertingRuleFilter,
 	}
-	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
+	rgs, err := a.ruler.GetRules(req.Context(), quorumType, rulesRequest)
 
 	if err != nil {
-		respondError(logger, w, err.Error())
+		if strings.Contains(err.Error(), errUnableToObtainQuorum) {
+			respondError(logger, w, http.StatusServiceUnavailable, err.Error())
+		} else {
+			respondInternalServerError(logger, w, err.Error())
+		}
 		return
 	}
 
@@ -312,7 +338,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
+		respondInternalServerError(logger, w, "unable to marshal the requested data")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -354,7 +380,7 @@ func respondAccepted(w http.ResponseWriter, logger log.Logger) {
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
+		respondInternalServerError(logger, w, "unable to marshal the requested data")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -431,7 +457,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 
 	userID, namespace, _, err := parseRequest(req, false, false)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
@@ -464,7 +490,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
@@ -486,7 +512,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
@@ -566,7 +592,7 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
@@ -576,7 +602,7 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
@@ -588,7 +614,7 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
@@ -598,9 +624,19 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		respondError(logger, w, err.Error())
+		respondInternalServerError(logger, w, err.Error())
 		return
 	}
 
 	respondAccepted(w, logger)
+}
+
+func parseQuorumType(s string) (QuorumType, error) {
+	if s == "" || s == "weak" {
+		return Weak, nil
+	} else if s == "strong" {
+		return Strong, nil
+	} else {
+		return Weak, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid quorum type", s)
+	}
 }

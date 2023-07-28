@@ -27,7 +27,7 @@ type HATrackerConfig struct {
 	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
 
 	// ID of this replica (instance ID)
-	ReplicaID string
+	ReplicaID string `yaml:"replica_id" doc:"hidden"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

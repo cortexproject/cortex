@@ -22,7 +22,7 @@ import (
 
 const (
 	// BlockVisitMarkerFileSuffix is the known suffix of json filename for representing the most recent compactor visit.
-	BlockVisitMarkerFileSuffix = "-visit-mark.json"
+	BlockVisitMarkerFileSuffix = "visit-mark.json"
 	// BlockVisitMarkerFilePrefix is the known prefix of json filename for representing the most recent compactor visit.
 	BlockVisitMarkerFilePrefix = "partition-"
 	// VisitMarkerVersion1 is the current supported version of visit-mark file.
@@ -66,7 +66,7 @@ func (b *BlockVisitMarker) isCompleted() bool {
 }
 
 func GetBlockVisitMarkerFile(blockID string, partitionID int) string {
-	return path.Join(blockID, fmt.Sprintf("%s%d%s", BlockVisitMarkerFilePrefix, partitionID, BlockVisitMarkerFileSuffix))
+	return path.Join(blockID, fmt.Sprintf("%s%d-%s", BlockVisitMarkerFilePrefix, partitionID, BlockVisitMarkerFileSuffix))
 }
 
 func ReadBlockVisitMarker(ctx context.Context, bkt objstore.InstrumentedBucketReader, logger log.Logger, blockID string, partitionID int, blockVisitMarkerReadFailed prometheus.Counter) (*BlockVisitMarker, error) {

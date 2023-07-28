@@ -8,12 +8,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
-	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -23,7 +24,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/httputil"
 	"github.com/prometheus/prometheus/util/stats"
 )
@@ -89,10 +89,7 @@ type API struct {
 	Queryable     storage.SampleAndChunkQueryable
 	QueryEngine   v1.QueryEngine
 	Now           func() time.Time
-	Ready         func(http.HandlerFunc) http.HandlerFunc
 	Logger        log.Logger
-	CORSOrigin    *regexp.Regexp
-	IsAgent       bool
 	StatsRenderer v1.StatsRenderer
 }
 
@@ -100,20 +97,14 @@ type API struct {
 func NewAPI(
 	qe v1.QueryEngine,
 	q storage.SampleAndChunkQueryable,
-	readyFunc func(http.HandlerFunc) http.HandlerFunc,
 	logger log.Logger,
-	isAgent bool,
-	corsOrigin *regexp.Regexp,
 	statsRenderer v1.StatsRenderer,
 ) *API {
 	a := &API{
 		QueryEngine:   qe,
 		Queryable:     q,
 		Now:           time.Now,
-		Ready:         readyFunc,
 		Logger:        logger,
-		CORSOrigin:    corsOrigin,
-		IsAgent:       isAgent,
 		StatsRenderer: defaultStatsRenderer,
 	}
 
@@ -122,13 +113,6 @@ func NewAPI(
 	}
 
 	return a
-}
-
-func SetUnavailStatusOnTSDBNotReady(r ApiFuncResult) ApiFuncResult {
-	if r.Err != nil && errors.Cause(r.Err.err) == tsdb.ErrNotReady {
-		r.Err.typ = errorUnavailable
-	}
-	return r
 }
 
 type queryData struct {
@@ -145,14 +129,14 @@ func invalidParamError(err error, parameter string) ApiFuncResult {
 
 func (api *API) Query(r *http.Request) (result ApiFuncResult) {
 	tms, err := instantquery.ParseTimeParam(r, "time", api.Now().Unix())
-	ts := time.Unix(tms/1000, (tms%1000)*10e6)
+	ts := time.Unix(tms/1000, (tms%1000)*10e6).UTC()
 	if err != nil {
 		return invalidParamError(err, "time")
 	}
 	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
-		timeout, err := time.ParseDuration(to)
+		timeout, err := parseDuration(to)
 		if err != nil {
 			return invalidParamError(err, "timeout")
 		}
@@ -216,12 +200,12 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 
 func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	startMs, err := util.ParseTime(r.FormValue("start"))
-	start := time.Unix(startMs/1000, (startMs%1000)*10e6)
+	start := time.Unix(startMs/1000, (startMs%1000)*10e6).UTC()
 	if err != nil {
 		return invalidParamError(err, "start")
 	}
 	endMs, err := util.ParseTime(r.FormValue("end"))
-	end := time.Unix(endMs/1000, (endMs%1000)*10e6)
+	end := time.Unix(endMs/1000, (endMs%1000)*10e6).UTC()
 	if err != nil {
 		return invalidParamError(err, "end")
 	}
@@ -229,7 +213,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 		return invalidParamError(errors.New("end timestamp must not be before start time"), "end")
 	}
 
-	step, err := time.ParseDuration(r.FormValue("step"))
+	step, err := parseDuration(r.FormValue("step"))
 	if err != nil {
 		return invalidParamError(err, "step")
 	}
@@ -248,7 +232,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	ctx := r.Context()
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
-		timeout, err := time.ParseDuration(to)
+		timeout, err := parseDuration(to)
 		if err != nil {
 			return invalidParamError(err, "timeout")
 		}
@@ -295,6 +279,20 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	}), nil, res.Warnings, qry.Close}
 }
 
+func parseDuration(s string) (time.Duration, error) {
+	if d, err := strconv.ParseFloat(s, 64); err == nil {
+		ts := d * float64(time.Second)
+		if ts > float64(math.MaxInt64) || ts < float64(math.MinInt64) {
+			return 0, errors.Errorf("cannot parse %q to a valid duration. It overflows int64", s)
+		}
+		return time.Duration(ts), nil
+	}
+	if d, err := model.ParseDuration(s); err == nil {
+		return time.Duration(d), nil
+	}
+	return 0, errors.Errorf("cannot parse %q to a valid duration", s)
+}
+
 func returnAPIError(err error) *apiError {
 	if err == nil {
 		return nil
@@ -330,22 +328,17 @@ var (
 )
 
 func (api *API) Respond(w http.ResponseWriter, data interface{}, warnings storage.Warnings) {
-	statusMessage := statusSuccess
 	var warningStrings []string
 	for _, warning := range warnings {
 		warningStrings = append(warningStrings, warning.Error())
 	}
 	var b []byte
 	var err error
-	switch data.(type) {
+	switch resp := data.(type) {
 	case queryrange.PrometheusResponse:
-		prometheusResponse, _ := data.(queryrange.PrometheusResponse)
-		prometheusResponse.Status = string(statusMessage)
-		b, err = proto.Marshal(&prometheusResponse)
+		b, err = proto.Marshal(&resp)
 	case instantquery.PrometheusInstantQueryResponse:
-		prometheusInstantQueryResponse, _ := data.(instantquery.PrometheusInstantQueryResponse)
-		prometheusInstantQueryResponse.Status = string(statusMessage)
-		b, err = proto.Marshal(&prometheusInstantQueryResponse)
+		b, err = proto.Marshal(&resp)
 	default:
 		level.Error(api.Logger).Log("msg", "error asserting response type")
 		http.Error(w, "error asserting response type", http.StatusInternalServerError)
@@ -406,7 +399,7 @@ func (api *API) RespondError(w http.ResponseWriter, apiErr *apiError, data inter
 func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {
 	if data == nil {
 		return queryrange.PrometheusResponse{
-			Status:    "",
+			Status:    string(statusSuccess),
 			Data:      queryrange.PrometheusData{},
 			ErrorType: "",
 			Error:     "",
@@ -423,7 +416,7 @@ func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {
 	}
 
 	return queryrange.PrometheusResponse{
-		Status: "",
+		Status: string(statusSuccess),
 		Data: queryrange.PrometheusData{
 			ResultType: string(data.ResultType),
 			Result:     *sampleStreams,
@@ -438,7 +431,7 @@ func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {
 func createPrometheusInstantQueryResponse(data *queryData) instantquery.PrometheusInstantQueryResponse {
 	if data == nil {
 		return instantquery.PrometheusInstantQueryResponse{
-			Status:    "",
+			Status:    string(statusSuccess),
 			Data:      instantquery.PrometheusInstantQueryData{},
 			ErrorType: "",
 			Error:     "",
@@ -447,14 +440,14 @@ func createPrometheusInstantQueryResponse(data *queryData) instantquery.Promethe
 	}
 
 	var instantQueryResult instantquery.PrometheusInstantQueryResult
-	switch string(data.ResultType) {
-	case "matrix":
+	switch data.Result.Type() {
+	case parser.ValueTypeMatrix:
 		instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_Matrix{
 			Matrix: &instantquery.Matrix{
 				SampleStreams: *getSampleStreams(data),
 			},
 		}
-	case "vector":
+	case parser.ValueTypeVector:
 		instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_Vector{
 			Vector: &instantquery.Vector{
 				Samples: *getSamples(data),
@@ -475,7 +468,7 @@ func createPrometheusInstantQueryResponse(data *queryData) instantquery.Promethe
 	}
 
 	return instantquery.PrometheusInstantQueryResponse{
-		Status: "",
+		Status: string(statusSuccess),
 		Data: instantquery.PrometheusInstantQueryData{
 			ResultType: string(data.ResultType),
 			Result:     instantQueryResult,

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"github.com/prometheus/prometheus/util/httputil"
 	"html/template"
 	"net/http"
 	"path"
@@ -246,10 +245,7 @@ func NewQuerierHandler(
 	queryapi := qapi.NewAPI(
 		engine,
 		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
-		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		logger,
-		false,
-		regexp.MustCompile(".*"),
 		nil,
 	)
 
@@ -278,8 +274,7 @@ func NewQuerierHandler(
 
 	wrap := func(f qapi.ApiFunc) http.HandlerFunc {
 		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			httputil.SetCORS(w, queryapi.CORSOrigin, r)
-			result := qapi.SetUnavailStatusOnTSDBNotReady(f(r))
+			result := f(r)
 			if result.Finalizer != nil {
 				defer result.Finalizer()
 			}
@@ -294,9 +289,9 @@ func NewQuerierHandler(
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
-		return queryapi.Ready(handler.CompressionHandler{
+		return handler.CompressionHandler{
 			Handler: hf,
-		}.ServeHTTP)
+		}.ServeHTTP
 	}
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
@@ -317,8 +312,8 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
+	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)

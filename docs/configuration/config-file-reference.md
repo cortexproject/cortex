@@ -3880,13 +3880,13 @@ ring:
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
-  # The replication factor to use when evaluating rule groups.
+  # The replication factor to use when evaluating rules.
   # CLI flag: -ruler.ring.replication-factor
   [replication_factor: <int> | default = 1]
 
-  # True to enable zone-awareness and replicate rule groups across different
-  # availability zones.
-  # CLI flag: -ruler.ring.zone-awareness-enabled
+  # True to enable zone-awareness and perform shuffle-sharding and replication
+  # across different zones.
+  # CLI flag: -ruler.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
   # Name of network interface to read address from.
@@ -3895,7 +3895,7 @@ ring:
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.
-  # CLI flag: -ruler.ring.instance-availability-zone
+  # CLI flag: -ruler.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
   # Number of tokens for each ruler.

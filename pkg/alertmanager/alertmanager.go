@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/alertmanager/notify/slack"
 	"github.com/prometheus/alertmanager/notify/sns"
 	"github.com/prometheus/alertmanager/notify/victorops"
+	"github.com/prometheus/alertmanager/notify/webex"
 	"github.com/prometheus/alertmanager/notify/webhook"
 	"github.com/prometheus/alertmanager/notify/wechat"
 	"github.com/prometheus/alertmanager/provider/mem"
@@ -526,6 +527,9 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 	}
 	for i, c := range nc.SNSConfigs {
 		add("sns", i, c, func(l log.Logger) (notify.Notifier, error) { return sns.New(c, tmpl, l, httpOps...) })
+	}
+	for i, c := range nc.WebexConfigs {
+		add("webex", i, c, func(l log.Logger) (notify.Notifier, error) { return webex.New(c, tmpl, l, httpOps...) })
 	}
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {

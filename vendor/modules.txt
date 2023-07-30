@@ -688,6 +688,7 @@ github.com/prometheus/alertmanager/notify/pushover
 github.com/prometheus/alertmanager/notify/slack
 github.com/prometheus/alertmanager/notify/sns
 github.com/prometheus/alertmanager/notify/victorops
+github.com/prometheus/alertmanager/notify/webex
 github.com/prometheus/alertmanager/notify/webhook
 github.com/prometheus/alertmanager/notify/wechat
 github.com/prometheus/alertmanager/pkg/labels

@@ -10,7 +10,7 @@ import (
 )
 
 var allowedIntegrationNames = []string{
-	"webhook", "email", "pagerduty", "opsgenie", "wechat", "slack", "victorops", "pushover", "sns", "webex",
+	"webhook", "email", "pagerduty", "opsgenie", "wechat", "slack", "victorops", "pushover", "sns", "telegram", "discord", "webex",
 }
 
 type NotificationRateLimitMap map[string]float64

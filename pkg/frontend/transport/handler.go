@@ -208,7 +208,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
 	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
-		f.parseURLValues(r, stats, queryString)
+		parseURLValues(r, stats, queryString, f.log)
 	}
 
 	if shouldReportSlowQuery {
@@ -256,7 +256,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (f *Handler) parseURLValues(r *http.Request, stats *querier_stats.QueryStats, values url.Values) {
+func parseURLValues(r *http.Request, stats *querier_stats.QueryStats, values url.Values, log log.Logger) {
 	query := values.Get("query")
 	step := values.Get("step")
 	start := values.Get("start")
@@ -271,7 +271,8 @@ func (f *Handler) parseURLValues(r *http.Request, stats *querier_stats.QueryStat
 		if len(ts) > 0 {
 			tsInt, err = util.ParseTime(ts)
 			if err != nil {
-				level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse time", "err", err)
+				level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse time", "ts", ts, "err", err)
+				return
 			}
 		} else {
 			tsInt = util.TimeToMillis(time.Now())
@@ -283,18 +284,21 @@ func (f *Handler) parseURLValues(r *http.Request, stats *querier_stats.QueryStat
 	//range query
 	stepInt, err = util.ParseDurationMs(step)
 	if err != nil {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse step", "err", err)
+		level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse step", "step", step, "err", err)
+		return
 	}
 	if len(start) > 0 {
 		startInt, err = util.ParseTime(start)
 		if err != nil {
-			level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse start", "err", err)
+			level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse start", "start", start, "err", err)
+			return
 		}
 	}
 	if len(end) > 0 {
 		endInt, err = util.ParseTime(end)
 		if err != nil {
-			level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "failed to parse end", "err", err)
+			level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse end", "end", end, "err", err)
+			return
 		}
 	}
 	stats.AddStart(startInt)

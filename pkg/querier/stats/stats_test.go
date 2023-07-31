@@ -191,7 +191,7 @@ func TestStats_Merge(t *testing.T) {
 		assert.Equal(t, int64(0), stats1.LoadEnd())
 		assert.Equal(t, int64(0), stats1.LoadTs())
 		assert.Equal(t, int64(0), stats1.LoadStep())
-		assert.Equal(t, nil, stats1.LoadQuery())
+		assert.Equal(t, "", stats1.LoadQuery())
 		checkExtraFields(t, []interface{}{}, stats1.LoadExtraFields())
 	})
 }

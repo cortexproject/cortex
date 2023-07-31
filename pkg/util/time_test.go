@@ -104,6 +104,48 @@ func TestParseTime(t *testing.T) {
 	}
 }
 
+func TestParseDurationMs(t *testing.T) {
+	var tests = []struct {
+		input  string
+		fail   bool
+		result int64
+	}{
+		{
+			input: "",
+			fail:  true,
+		}, {
+			input: "abc",
+			fail:  true,
+		}, {
+			input:  "30s",
+			result: 30000,
+		}, {
+			input:  "1m",
+			result: 60000,
+		}, {
+			input:  "10ms",
+			result: 10,
+		}, {
+			input:  "1m30s100ms",
+			result: 90100,
+		}, {
+			input:  "1m30s",
+			result: 90000,
+		},
+	}
+
+	for _, test := range tests {
+		ts, err := ParseDurationMs(test.input)
+		if test.fail {
+			require.Error(t, err)
+			continue
+		}
+
+		require.NoError(t, err)
+		assert.Equal(t, test.result, ts)
+	}
+}
+
 func TestNewDisableableTicker_Enabled(t *testing.T) {
 	stop, ch := NewDisableableTicker(10 * time.Millisecond)
 	defer stop()

@@ -431,7 +431,6 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 		partitionedGroups[partitionID] = partitionedGroup
 	}
 
-	defaultPartitionInfo := DefaultPartitionInfo
 	for _, blocksInSameTimeInterval := range blocksByMinTime {
 		numOfBlocks := len(blocksInSameTimeInterval)
 		numBlocksCheck := math.Log2(float64(numOfBlocks))
@@ -443,9 +442,10 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 				if err != nil {
 					return nil, err
 				}
-				if partitionInfo == nil {
+				if partitionInfo == nil || partitionInfo.PartitionCount < 1 {
 					// For legacy blocks with level > 1, treat PartitionID is always 0.
 					// So it can be included in every partition.
+					defaultPartitionInfo := DefaultPartitionInfo
 					partitionInfo = &defaultPartitionInfo
 				}
 				if partitionInfo.PartitionCount < partitionCount {
@@ -611,7 +611,6 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 
 	var groups []blocksGroup
 
-	defaultPartitionInfo := DefaultPartitionInfo
 	for _, tr := range ranges {
 	nextGroup:
 		for _, group := range groupBlocksByRange(blocks, tr) {
@@ -635,11 +634,13 @@ func groupBlocksByCompactableRanges(blocks []*metadata.Meta, ranges []int64) []b
 			// compact a group of blocks all having same non-zero PartitionedGroupID.
 			firstBlockPartitionInfo, err := GetPartitionInfo(*group.blocks[0])
 			if err != nil || firstBlockPartitionInfo == nil {
+				defaultPartitionInfo := DefaultPartitionInfo
 				firstBlockPartitionInfo = &defaultPartitionInfo
 			}
 			for _, block := range group.blocks {
 				blockPartitionInfo, err := GetPartitionInfo(*block)
 				if err != nil || blockPartitionInfo == nil {
+					defaultPartitionInfo := DefaultPartitionInfo
 					blockPartitionInfo = &defaultPartitionInfo
 				}
 				if blockPartitionInfo.PartitionedGroupID <= 0 || blockPartitionInfo.PartitionedGroupID != firstBlockPartitionInfo.PartitionedGroupID {

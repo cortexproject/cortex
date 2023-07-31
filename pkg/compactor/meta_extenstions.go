@@ -25,7 +25,10 @@ var (
 )
 
 func ConvertToCortexMetaExtensions(extensions any) (*CortexMetaExtensions, error) {
-	cortexExtensions, err := metadata.ConvertExtensions(extensions, &CortexMetaExtensions{})
+	defaultPartitionInfo := DefaultPartitionInfo
+	cortexExtensions, err := metadata.ConvertExtensions(extensions, &CortexMetaExtensions{
+		PartitionInfo: &defaultPartitionInfo,
+	})
 	if err != nil {
 		return nil, err
 	}

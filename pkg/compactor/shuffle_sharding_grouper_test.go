@@ -1194,6 +1194,33 @@ func TestGroupPartitioning(t *testing.T) {
 				},
 			},
 		},
+		"test part of blocks have partially invalid partition info": {
+			ranges:     []time.Duration{2 * time.Hour, 6 * time.Hour},
+			rangeStart: 1 * time.Hour.Milliseconds(),
+			rangeEnd:   9 * time.Hour.Milliseconds(),
+			indexSize:  int64(14),
+			indexLimit: int64(64),
+			blocks: map[*metadata.Meta]*PartitionInfo{
+				blocks[t1block1Ulid]: {}, blocks[t1block2Ulid]: nil,
+				blocks[t2block1Ulid]: {PartitionID: 0, PartitionCount: 4}, blocks[t2block2Ulid]: {PartitionID: 1, PartitionCount: 4},
+				blocks[t2block3Ulid]: nil, blocks[t2block4Ulid]: {PartitionID: 3, PartitionCount: 4},
+				blocks[t3block1Ulid]: {PartitionID: 0, PartitionCount: 8}, blocks[t3block2Ulid]: nil,
+				blocks[t3block3Ulid]: {PartitionID: 2, PartitionCount: 8}, blocks[t3block4Ulid]: {},
+				blocks[t3block5Ulid]: {PartitionID: 4, PartitionCount: 8}, blocks[t3block6Ulid]: {PartitionID: 0, PartitionCount: 0},
+				blocks[t3block7Ulid]: {PartitionID: 6, PartitionCount: 8}, blocks[t3block8Ulid]: nil},
+			expected: struct {
+				partitionCount int
+				partitions     map[int][]ulid.ULID
+			}{
+				partitionCount: 4,
+				partitions: map[int][]ulid.ULID{
+					0: {t1block1Ulid, t1block2Ulid, t2block1Ulid, t2block3Ulid, t3block1Ulid, t3block2Ulid, t3block4Ulid, t3block5Ulid, t3block6Ulid, t3block8Ulid},
+					1: {t1block1Ulid, t1block2Ulid, t2block2Ulid, t2block3Ulid, t3block2Ulid, t3block4Ulid, t3block6Ulid, t3block8Ulid},
+					2: {t1block1Ulid, t1block2Ulid, t2block3Ulid, t3block2Ulid, t3block3Ulid, t3block4Ulid, t3block6Ulid, t3block7Ulid, t3block8Ulid},
+					3: {t1block1Ulid, t1block2Ulid, t2block3Ulid, t2block4Ulid, t3block2Ulid, t3block4Ulid, t3block6Ulid, t3block8Ulid},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {

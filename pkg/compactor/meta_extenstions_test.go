@@ -1,9 +1,10 @@
 package compactor
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
-	"testing"
 )
 
 func TestGetPartitionedInfo(t *testing.T) {

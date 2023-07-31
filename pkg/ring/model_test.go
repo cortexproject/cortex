@@ -630,27 +630,27 @@ func TestDesc_FindDifference(t *testing.T) {
 			toDelete: []string{},
 		},
 		"same single instance, different state": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: JOINING}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: JOINING}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: JOINING, Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: JOINING, Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"same single instance, different registered timestamp": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 1}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 1, Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2, Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", State: ACTIVE, RegisteredTimestamp: 2, Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"instance in different zone": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "one"}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two"}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "one", Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two", Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Zone: "two", Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"same instance, different address": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr2"}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr2"}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr2", Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr2", Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"more instances in one ring": {
@@ -666,15 +666,15 @@ func TestDesc_FindDifference(t *testing.T) {
 			toDelete: []string{},
 		},
 		"different tokens": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1"}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"different tokens 2": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}, Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr1", Tokens: []uint32{1, 2, 4}, Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"different instances, conflictTokens new lose": {
@@ -684,9 +684,9 @@ func TestDesc_FindDifference(t *testing.T) {
 			toDelete: []string{},
 		},
 		"different instances, conflictTokens new win": {
-			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing5": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
-			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing5": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}, "ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}}},
-			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}}, "ing5": {Addr: "addr1", Tokens: []uint32{3}}}},
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing5": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 1000}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing5": {Addr: "addr1", Tokens: []uint32{1, 2, 3}, Timestamp: 1100}, "ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}, Timestamp: 1100}}},
+			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 4}, Timestamp: 1100}, "ing5": {Addr: "addr1", Tokens: []uint32{3}, Timestamp: 1100}}},
 			toDelete: []string{},
 		},
 		"same number of instances, using different IDs": {
@@ -694,6 +694,12 @@ func TestDesc_FindDifference(t *testing.T) {
 			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
 			toUpdate: &Desc{Ingesters: map[string]InstanceDesc{"ing2": {Addr: "addr1", Tokens: []uint32{1, 2, 3}}}},
 			toDelete: []string{"ing1"},
+		},
+		"old instance desc should not update newer instance desc": {
+			r1:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr_new", Tokens: []uint32{1, 2, 3}, Timestamp: int64(1000)}}},
+			r2:       &Desc{Ingesters: map[string]InstanceDesc{"ing1": {Addr: "addr_old", Tokens: []uint32{1, 2, 3}, Timestamp: int64(900)}}},
+			toUpdate: NewDesc(),
+			toDelete: []string{},
 		},
 	}
 

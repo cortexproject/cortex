@@ -34,7 +34,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor(t *testing.T) {
 	clientsCount := map[string]int{}
 
 	for i := 0; i < numGets; i++ {
-		clients, err := s.GetClientsFor("", []ulid.ULID{block1}, map[ulid.ULID][]string{})
+		clients, err := s.GetClientsFor("", []ulid.ULID{block1}, map[ulid.ULID][]string{}, nil)
 		require.NoError(t, err)
 		require.Len(t, clients, 1)
 
@@ -141,7 +141,7 @@ func TestBlocksStoreBalancedSet_GetClientsFor_Exclude(t *testing.T) {
 			require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
-			clients, err := s.GetClientsFor("", testData.queryBlocks, testData.exclude)
+			clients, err := s.GetClientsFor("", testData.queryBlocks, testData.exclude, nil)
 			assert.Equal(t, testData.expectedErr, err)
 
 			if testData.expectedErr == nil {

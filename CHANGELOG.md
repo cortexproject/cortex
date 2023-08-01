@@ -43,6 +43,8 @@
 * [ENHANCEMENT] Store Gateway/Querier/Compactor: Handling CMK Access Denied errors. #5420 #5442 #5446
 * [ENHANCEMENT] Store Gateway: Implementing multi level index cache. #5451
 * [ENHANCEMENT] Alertmanager: Add the alert name in error log when it get throttled. #5456
+* [ENHANCEMENT] Querier: Retry store gateway on different zones when zone awareness is enabled. #5476
+* [ENHANCEMENT] DDBKV: Change metric name from dynamodb_kv_read_capacity_total to dynamodb_kv_consumed_capacity_total and include Delete, Put, Batch dimension. #5481
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
@@ -56,7 +58,8 @@
 * [BUGFIX] Ring: Fix bug in consistency of Get func in a scaling zone-aware ring. #5429
 * [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
 * [BUGFIX] Alertmanager: Remove the user id from state replication key metric label value. #5453
-
+* [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
+* [BUGFIX] DDBKV: Disallow instance with older timestamp to update instance with newer timestamp. #5480
 ## 1.15.1 2023-04-26
 
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290

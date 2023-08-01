@@ -46,15 +46,10 @@ var (
 
 type prometheusCodec struct {
 	sharded bool
-
-	noStepSubQueryInterval time.Duration
 }
 
-func NewPrometheusCodec(sharded bool, noStepSubQueryInterval time.Duration) *prometheusCodec { //nolint:revive
-	return &prometheusCodec{
-		sharded:                sharded,
-		noStepSubQueryInterval: noStepSubQueryInterval,
-	}
+func NewPrometheusCodec(sharded bool) *prometheusCodec { //nolint:revive
+	return &prometheusCodec{sharded: sharded}
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -203,10 +198,6 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	}
 
 	result.Query = r.FormValue("query")
-	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
-		return nil, err
-	}
-
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 

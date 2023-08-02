@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	thanos_api "github.com/thanos-io/thanos/pkg/api"
 	"html/template"
 	"net/http"
 	"path"
@@ -263,19 +264,19 @@ func NewQuerierHandler(
 	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	v1api.Register(legacyPromRouter)
 
-	wrap := func(f qapi.ApiFunc) http.HandlerFunc {
+	wrap := func(f thanos_api.ApiFunc) http.HandlerFunc {
 		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			result := f(r)
-			if result.Finalizer != nil {
-				defer result.Finalizer()
+			data, warnings, err, finalizer := f(r)
+			if finalizer != nil {
+				defer finalizer()
 			}
-			if result.Err != nil {
-				queryapi.RespondError(w, result.Err, result.Data)
+			if err != nil {
+				queryapi.RespondError(w, err, data)
 				return
 			}
 
-			if result.Data != nil {
-				queryapi.Respond(w, result.Data, result.Warnings)
+			if data != nil {
+				queryapi.Respond(w, data, warnings)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)

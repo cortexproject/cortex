@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/httputil"
 	"github.com/prometheus/prometheus/util/stats"
+	thanos_api "github.com/thanos-io/thanos/pkg/api"
 )
 
 type status string
@@ -39,27 +40,9 @@ const (
 	statusClientClosedConnection = 499
 )
 
-type errorType string
-
 const (
-	errorNone        errorType = ""
-	errorTimeout     errorType = "timeout"
-	errorCanceled    errorType = "canceled"
-	errorExec        errorType = "execution"
-	errorBadData     errorType = "bad_data"
-	errorInternal    errorType = "internal"
-	errorUnavailable errorType = "unavailable"
-	errorNotFound    errorType = "not_found"
+	errorNotFound thanos_api.ErrorType = "not_found"
 )
-
-type apiError struct {
-	typ errorType
-	err error
-}
-
-func (e *apiError) Error() string {
-	return fmt.Sprintf("%s: %s", e.typ, e.err)
-}
 
 func defaultStatsRenderer(_ context.Context, s *stats.Statistics, param string) stats.QueryStats {
 	if param != "" {
@@ -69,21 +52,12 @@ func defaultStatsRenderer(_ context.Context, s *stats.Statistics, param string) 
 }
 
 type response struct {
-	Status    status      `json:"status"`
-	Data      interface{} `json:"data,omitempty"`
-	ErrorType errorType   `json:"errorType,omitempty"`
-	Error     string      `json:"error,omitempty"`
-	Warnings  []string    `json:"warnings,omitempty"`
+	Status    status               `json:"status"`
+	Data      interface{}          `json:"data,omitempty"`
+	ErrorType thanos_api.ErrorType `json:"errorType,omitempty"`
+	Error     string               `json:"error,omitempty"`
+	Warnings  []string             `json:"warnings,omitempty"`
 }
-
-type ApiFuncResult struct {
-	Data      interface{}
-	Err       *apiError
-	Warnings  storage.Warnings
-	Finalizer func()
-}
-
-type ApiFunc func(r *http.Request) ApiFuncResult
 
 type API struct {
 	Queryable     storage.SampleAndChunkQueryable
@@ -121,13 +95,13 @@ type queryData struct {
 	Stats      stats.QueryStats `json:"stats,omitempty"`
 }
 
-func invalidParamError(err error, parameter string) ApiFuncResult {
-	return ApiFuncResult{nil, &apiError{
-		errorBadData, errors.Wrapf(err, "invalid parameter %q", parameter),
-	}, nil, nil}
+func invalidParamError(err error, parameter string) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
+	return nil, nil, &thanos_api.ApiError{
+		thanos_api.ErrorBadData, errors.Wrapf(err, "invalid parameter %q", parameter),
+	}, nil
 }
 
-func (api *API) Query(r *http.Request) (result ApiFuncResult) {
+func (api *API) Query(r *http.Request) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
 	tms, err := instantquery.ParseTimeParam(r, "time", api.Now().Unix())
 	ts := time.Unix(tms/1000, (tms%1000)*10e6).UTC()
 	if err != nil {
@@ -147,7 +121,7 @@ func (api *API) Query(r *http.Request) (result ApiFuncResult) {
 
 	opts, err := extractQueryOpts(r)
 	if err != nil {
-		return ApiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		return nil, nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil
 	}
 	qry, err := api.QueryEngine.NewInstantQuery(ctx, api.Queryable, opts, r.FormValue("query"), ts)
 	if err != nil {
@@ -158,7 +132,7 @@ func (api *API) Query(r *http.Request) (result ApiFuncResult) {
 	// be called by the caller) or call qry.Close ourselves (which is
 	// required in the case of a panic).
 	defer func() {
-		if result.Finalizer == nil {
+		if finalizer == nil {
 			qry.Close()
 		}
 	}()
@@ -167,7 +141,7 @@ func (api *API) Query(r *http.Request) (result ApiFuncResult) {
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		return ApiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
+		return nil, res.Warnings, returnAPIError(res.Err), qry.Close
 	}
 
 	// Optional stats field in response if parameter "stats" is not empty.
@@ -177,11 +151,11 @@ func (api *API) Query(r *http.Request) (result ApiFuncResult) {
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return ApiFuncResult{createPrometheusInstantQueryResponse(&queryData{
+	return createPrometheusInstantQueryResponse(&queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
-	}), nil, res.Warnings, qry.Close}
+	}), res.Warnings, nil, qry.Close
 }
 
 func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
@@ -198,7 +172,7 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 	return opts, nil
 }
 
-func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
+func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
 	startMs, err := util.ParseTime(r.FormValue("start"))
 	start := time.Unix(startMs/1000, (startMs%1000)*10e6).UTC()
 	if err != nil {
@@ -226,7 +200,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	// This is sufficient for 60s resolution for a week or 1h resolution for a year.
 	if end.Sub(start)/step > 11000 {
 		err := errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-		return ApiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		return nil, nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil
 	}
 
 	ctx := r.Context()
@@ -243,7 +217,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 
 	opts, err := extractQueryOpts(r)
 	if err != nil {
-		return ApiFuncResult{nil, &apiError{errorBadData, err}, nil, nil}
+		return nil, nil, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, nil
 	}
 	qry, err := api.QueryEngine.NewRangeQuery(ctx, api.Queryable, opts, r.FormValue("query"), start, end, step)
 	if err != nil {
@@ -253,7 +227,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	// be called by the caller) or call qry.Close ourselves (which is
 	// required in the case of a panic).
 	defer func() {
-		if result.Finalizer == nil {
+		if finalizer == nil {
 			qry.Close()
 		}
 	}()
@@ -262,7 +236,7 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
-		return ApiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
+		return nil, res.Warnings, returnAPIError(res.Err), qry.Close
 	}
 
 	// Optional stats field in response if parameter "stats" is not empty.
@@ -272,11 +246,11 @@ func (api *API) QueryRange(r *http.Request) (result ApiFuncResult) {
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return ApiFuncResult{createPrometheusResponse(&queryData{
+	return createPrometheusResponse(&queryData{
 		ResultType: res.Value.Type(),
 		Result:     res.Value,
 		Stats:      qs,
-	}), nil, res.Warnings, qry.Close}
+	}), res.Warnings, nil, qry.Close
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -293,7 +267,7 @@ func parseDuration(s string) (time.Duration, error) {
 	return 0, errors.Errorf("cannot parse %q to a valid duration", s)
 }
 
-func returnAPIError(err error) *apiError {
+func returnAPIError(err error) *thanos_api.ApiError {
 	if err == nil {
 		return nil
 	}
@@ -305,18 +279,18 @@ func returnAPIError(err error) *apiError {
 
 	switch cause.(type) {
 	case promql.ErrQueryCanceled:
-		return &apiError{errorCanceled, err}
+		return &thanos_api.ApiError{thanos_api.ErrorCanceled, err}
 	case promql.ErrQueryTimeout:
-		return &apiError{errorTimeout, err}
+		return &thanos_api.ApiError{thanos_api.ErrorTimeout, err}
 	case promql.ErrStorage:
-		return &apiError{errorInternal, err}
+		return &thanos_api.ApiError{thanos_api.ErrorInternal, err}
 	}
 
 	if errors.Is(err, context.Canceled) {
-		return &apiError{errorCanceled, err}
+		return &thanos_api.ApiError{thanos_api.ErrorCanceled, err}
 	}
 
-	return &apiError{errorExec, err}
+	return &thanos_api.ApiError{thanos_api.ErrorExec, err}
 }
 
 var (
@@ -357,12 +331,12 @@ func (api *API) Respond(w http.ResponseWriter, data interface{}, warnings storag
 	}
 }
 
-func (api *API) RespondError(w http.ResponseWriter, apiErr *apiError, data interface{}) {
+func (api *API) RespondError(w http.ResponseWriter, apiErr *thanos_api.ApiError, data interface{}) {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	b, err := json.Marshal(&response{
 		Status:    statusError,
-		ErrorType: apiErr.typ,
-		Error:     apiErr.err.Error(),
+		ErrorType: apiErr.Typ,
+		Error:     apiErr.Err.Error(),
 		Data:      data,
 	})
 	if err != nil {
@@ -372,16 +346,16 @@ func (api *API) RespondError(w http.ResponseWriter, apiErr *apiError, data inter
 	}
 
 	var code int
-	switch apiErr.typ {
-	case errorBadData:
+	switch apiErr.Typ {
+	case thanos_api.ErrorBadData:
 		code = http.StatusBadRequest
-	case errorExec:
+	case thanos_api.ErrorExec:
 		code = http.StatusUnprocessableEntity
-	case errorCanceled:
+	case thanos_api.ErrorCanceled:
 		code = statusClientClosedConnection
-	case errorTimeout:
+	case thanos_api.ErrorTimeout:
 		code = http.StatusServiceUnavailable
-	case errorInternal:
+	case thanos_api.ErrorInternal:
 		code = http.StatusInternalServerError
 	case errorNotFound:
 		code = http.StatusNotFound

@@ -1968,6 +1968,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
+	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -1985,7 +1986,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
-		OutOfOrderTimeWindow:           time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {
@@ -2038,8 +2039,10 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
-			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
-			true,  // Allow out of order uploads. It's fine in Cortex's context.
+			func() bool {
+				return oooTimeWindow > 0 // Upload compacted blocks when OOO is enabled.
+			},
+			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
 		)
 

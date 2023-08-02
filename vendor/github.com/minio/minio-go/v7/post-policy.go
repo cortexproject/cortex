@@ -241,7 +241,7 @@ func (p *PostPolicy) SetSuccessStatusAction(status string) error {
 
 // SetUserMetadata - Set user metadata as a key/value couple.
 // Can be retrieved through a HEAD request or an event.
-func (p *PostPolicy) SetUserMetadata(key string, value string) error {
+func (p *PostPolicy) SetUserMetadata(key, value string) error {
 	if strings.TrimSpace(key) == "" || key == "" {
 		return errInvalidArgument("Key is empty")
 	}
@@ -283,7 +283,7 @@ func (p *PostPolicy) SetEncryption(sse encrypt.ServerSide) {
 
 // SetUserData - Set user data as a key/value couple.
 // Can be retrieved through a HEAD request or an event.
-func (p *PostPolicy) SetUserData(key string, value string) error {
+func (p *PostPolicy) SetUserData(key, value string) error {
 	if key == "" {
 		return errInvalidArgument("Key is empty")
 	}

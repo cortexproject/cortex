@@ -336,38 +336,38 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
 		},
-		//"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
-		//	blocksShardingEnabled:    false,
-		//	ingesterStreamingEnabled: false,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-		//	bucketIndexEnabled:       true,
-		//},
-		//"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
-		//	blocksShardingEnabled:    false,
-		//	ingesterStreamingEnabled: false,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		//	bucketIndexEnabled:       true,
-		//},
+		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
+			blocksShardingEnabled:    false,
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			bucketIndexEnabled:       true,
+		},
+		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
+			blocksShardingEnabled:    false,
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+			bucketIndexEnabled:       true,
+		},
 	}
 
 	for testName, testCfg := range tests {

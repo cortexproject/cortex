@@ -62,7 +62,7 @@ type PutObjectFanOutResponse struct {
 	ETag         string     `json:"etag,omitempty"`
 	VersionID    string     `json:"versionId,omitempty"`
 	LastModified *time.Time `json:"lastModified,omitempty"`
-	Error        error      `json:"error,omitempty"`
+	Error        string     `json:"error,omitempty"`
 }
 
 // PutObjectFanOut - is a variant of PutObject instead of writing a single object from a single

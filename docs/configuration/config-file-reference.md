@@ -1146,6 +1146,14 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-multi-batch-size
       [set_multi_batch_size: <int> | default = 100]
 
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
       # Client dial timeout.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.dial-timeout
       [dial_timeout: <duration> | default = 5s]
@@ -1285,6 +1293,14 @@ bucket_store:
       # The maximum size per batch for pipeline set.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-multi-batch-size
       [set_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
 
       # Client dial timeout.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.dial-timeout
@@ -1443,6 +1459,14 @@ bucket_store:
       # The maximum size per batch for pipeline set.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-multi-batch-size
       [set_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
 
       # Client dial timeout.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.dial-timeout

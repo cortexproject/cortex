@@ -471,6 +471,13 @@ GET <legacy-http-prefix>/api/v1/rules
 
 Prometheus-compatible rules endpoint to list alerting and recording rules that are currently loaded.
 
+Cortex adds support for the following optional parameters:
+
+| URL query parameter | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `quorum`            | [strong/weak], default=weak <br /><br /> Controls quorum resolution of rule groups when ruler data is replicated to more than 2 instances.  Quorum resolution occurs when rulers have different copies of the same rule group -- the version held by a majority of rulers will be selected. <br /><br /> - weak: Perform best-effort quorum resolution of replicated rule group data.  If quorum cannot be obtained for a given rule group, then use the most recently evaluated rule group. <br /><br /> - strong: Perform strict quorum resolution of replicated rule group data.  If quorum cannot be obtained for a given rule group, then HTTP 503 will be returned. |
+
+
 _For more information, please check out the Prometheus [rules](https://prometheus.io/docs/prometheus/latest/querying/api/#rules) documentation._
 
 _This experimental endpoint is disabled by default and can be enabled via the `-experimental.ruler.enable-api` CLI flag (or its respective YAML config option)._
@@ -487,6 +494,12 @@ GET <legacy-http-prefix>/api/v1/alerts
 ```
 
 Prometheus-compatible rules endpoint to list of all active alerts.
+
+Cortex adds support for the following optional parameters:
+
+| URL query parameter | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `quorum`            | [strong/weak], default=weak <br /><br /> Controls quorum resolution of rule groups when ruler data is replicated to more than 2 instances.  Quorum resolution occurs when rulers have different copies of the same rule group -- the version held by a majority of rulers will be selected. <br /><br /> - weak: Perform best-effort quorum resolution of replicated rule group data.  If quorum cannot be obtained for a given rule group, then use the most recently evaluated rule group. <br /><br /> - strong: Perform strict quorum resolution of replicated rule group data.  If quorum cannot be obtained for a given rule group, then HTTP 503 will be returned. |
 
 _For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation._
 

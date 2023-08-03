@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/timestamp"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -163,42 +162,9 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 		replicaGroups:       map[string]map[string]struct{}{},
 
 		trackerStatusConfig: trackerStatusConfig,
-
-		electedReplicaChanges: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "ha_tracker_elected_replica_changes_total",
-			Help: "The total number of times the elected replica has changed for a user ID/cluster.",
-		}, []string{"user", "cluster"}),
-		electedReplicaTimestamp: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "ha_tracker_elected_replica_timestamp_seconds",
-			Help: "The timestamp stored for the currently elected replica, from the KVStore.",
-		}, []string{"user", "cluster"}),
-		electedReplicaPropagationTime: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "ha_tracker_elected_replica_change_propagation_time_seconds",
-			Help:    "The time it for the distributor to update the replica change.",
-			Buckets: prometheus.DefBuckets,
-		}),
-		kvCASCalls: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "ha_tracker_kv_store_cas_total",
-			Help: "The total number of CAS calls to the KV store for a user ID/cluster.",
-		}, []string{"user", "cluster"}),
-
-		cleanupRuns: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "ha_tracker_replicas_cleanup_started_total",
-			Help: "Number of elected replicas cleanup loops started.",
-		}),
-		replicasMarkedForDeletion: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "ha_tracker_replicas_cleanup_marked_for_deletion_total",
-			Help: "Number of elected replicas marked for deletion.",
-		}),
-		deletedReplicas: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "ha_tracker_replicas_cleanup_deleted_total",
-			Help: "Number of elected replicas deleted from KV store.",
-		}),
-		markingForDeletionsFailed: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "ha_tracker_replicas_cleanup_delete_failed_total",
-			Help: "Number of elected replicas that failed to be marked for deletion, or deleted.",
-		}),
 	}
+
+	t.registerMetrics(reg)
 
 	if cfg.EnableHATracker {
 		client, err := kv.NewClient(
@@ -215,6 +181,56 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 
 	t.Service = services.NewBasicService(nil, t.loop, nil)
 	return t, nil
+}
+
+func (c *HATracker) registerMetrics(reg prometheus.Registerer) {
+	// HATracker metrics can be initialized as part of distributor and ruler instantiation,
+	// leading to potential duplicate registration errors, so we ignore that error here
+	registerOnce := func(reg prometheus.Registerer, x prometheus.Collector) prometheus.Collector {
+		if reg != nil {
+			if err := reg.Register(x); err != nil {
+				if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+					return are.ExistingCollector
+				}
+				panic(err)
+			}
+		}
+		return x
+	}
+
+	c.electedReplicaChanges = registerOnce(reg, prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ha_tracker_elected_replica_changes_total",
+		Help: "The total number of times the elected replica has changed for a user ID/cluster.",
+	}, []string{"user", "cluster"})).(*prometheus.CounterVec)
+	c.electedReplicaTimestamp = registerOnce(reg, prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "ha_tracker_elected_replica_timestamp_seconds",
+		Help: "The timestamp stored for the currently elected replica, from the KVStore.",
+	}, []string{"user", "cluster"})).(*prometheus.GaugeVec)
+	c.electedReplicaPropagationTime = registerOnce(reg, prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "ha_tracker_elected_replica_change_propagation_time_seconds",
+		Help:    "The time it for the distributor to update the replica change.",
+		Buckets: prometheus.DefBuckets,
+	})).(prometheus.Histogram)
+	c.kvCASCalls = registerOnce(reg, prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "ha_tracker_kv_store_cas_total",
+		Help: "The total number of CAS calls to the KV store for a user ID/cluster.",
+	}, []string{"user", "cluster"})).(*prometheus.CounterVec)
+	c.cleanupRuns = registerOnce(reg, prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ha_tracker_replicas_cleanup_started_total",
+		Help: "Number of elected replicas cleanup loops started.",
+	})).(prometheus.Counter)
+	c.replicasMarkedForDeletion = registerOnce(reg, prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ha_tracker_replicas_cleanup_marked_for_deletion_total",
+		Help: "Number of elected replicas marked for deletion.",
+	})).(prometheus.Counter)
+	c.deletedReplicas = registerOnce(reg, prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ha_tracker_replicas_cleanup_deleted_total",
+		Help: "Number of elected replicas deleted from KV store.",
+	})).(prometheus.Counter)
+	c.markingForDeletionsFailed = registerOnce(reg, prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "ha_tracker_replicas_cleanup_delete_failed_total",
+		Help: "Number of elected replicas that failed to be marked for deletion, or deleted.",
+	})).(prometheus.Counter)
 }
 
 // Follows pattern used by ring for WatchKey.
@@ -520,4 +536,36 @@ func (c *HATracker) SnapshotElectedReplicas() map[string]ReplicaDesc {
 		}
 	}
 	return electedCopy
+}
+
+// Performs a best-effort mark-deletion of all KV entries for the given replica.
+// This is mainly used for the Ruler use-case when we want to immediately relinquish leadership on shutdown.
+func (c *HATracker) MarkReplicaDeleted(ctx context.Context, replica string) {
+	c.electedLock.Lock()
+	defer c.electedLock.Unlock()
+
+	now := time.Now()
+	for key, desc := range c.elected {
+		if desc.Replica == replica {
+			err := c.markReplicaDescDeleted(ctx, key, replica, now)
+			if err != nil {
+				level.Warn(c.logger).Log("msg", "Error marking replica deleted", "key", key, "replica", replica, "err", err)
+			}
+		}
+	}
+}
+
+func (c *HATracker) markReplicaDescDeleted(ctx context.Context, key, replica string, now time.Time) error {
+	return c.client.CAS(ctx, key, func(in interface{}) (out interface{}, retry bool, err error) {
+		desc, ok := in.(*ReplicaDesc)
+		if ok && desc.Replica == replica && desc.DeletedAt == 0 {
+			return &ReplicaDesc{
+				Replica:    replica,
+				ReceivedAt: desc.ReceivedAt,
+				DeletedAt:  timestamp.FromTime(now),
+			}, false, nil
+		}
+		// existing entry either is using a different replica now, or was already marked deleted
+		return nil, false, nil
+	})
 }

@@ -2,8 +2,12 @@ package ruler
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,6 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/ha"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -35,7 +42,7 @@ func TestSyncRuleGroups(t *testing.T) {
 			},
 		},
 	}
-	m.SyncRuleGroups(context.Background(), userRules)
+	m.SyncRuleGroups(context.Background(), userRules, false)
 
 	mgr := getManager(m, user)
 	require.NotNil(t, mgr)
@@ -54,7 +61,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	}
 
 	// Passing empty map / nil stops all managers.
-	m.SyncRuleGroups(context.Background(), nil)
+	m.SyncRuleGroups(context.Background(), nil, false)
 	require.Nil(t, getManager(m, user))
 
 	// Make sure old manager was stopped.
@@ -72,7 +79,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	}
 
 	// Resync same rules as before. Previously this didn't restart the manager.
-	m.SyncRuleGroups(context.Background(), userRules)
+	m.SyncRuleGroups(context.Background(), userRules, false)
 
 	newMgr := getManager(m, user)
 	require.NotNil(t, newMgr)
@@ -94,6 +101,97 @@ func TestSyncRuleGroups(t *testing.T) {
 	test.Poll(t, 1*time.Second, false, func() interface{} {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
+}
+
+func TestEvalIterationFunc(t *testing.T) {
+	type testcase struct {
+		name               string
+		haTrackerEnabled   bool
+		electedReplica     string
+		evaluationExpected bool
+	}
+
+	testcases := []testcase{
+		{
+			name:               "no-ha-tracker",
+			haTrackerEnabled:   false,
+			electedReplica:     "dummy",
+			evaluationExpected: true,
+		},
+		{
+			name:               "ha-tracker-non-leader",
+			haTrackerEnabled:   true,
+			electedReplica:     "ruler-another",
+			evaluationExpected: false,
+		},
+		{
+			name:               "ha-tracker-leader",
+			haTrackerEnabled:   true,
+			electedReplica:     "ruler-test",
+			evaluationExpected: true,
+		},
+	}
+
+	ctx := context.Background()
+	now := time.Now()
+
+	for i, tc := range testcases {
+		t.Run(fmt.Sprintf("%d: %s", i, tc.name), func(t *testing.T) {
+			kvStore, cleanUp := consul.NewInMemoryClient(ha.GetReplicaDescCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
+
+			err := kvStore.Put(ctx, "testUser/testFile/testGroup", &ha.ReplicaDesc{
+				ReceivedAt: timestamp.FromTime(now) - 60,
+				Replica:    tc.electedReplica,
+				DeletedAt:  0,
+			})
+			require.NoError(t, err)
+
+			cfg := Config{
+				PollInterval: 5 * time.Second,
+				HATrackerConfig: HATrackerConfig{
+					EnableHATracker:        tc.haTrackerEnabled,
+					UpdateTimeout:          300 * time.Second,
+					UpdateTimeoutJitterMax: 0,
+					FailoverTimeout:        300 * time.Second,
+					KVStore: kv.Config{
+						Mock: kvStore,
+					},
+					ReplicaID: "ruler-test",
+				},
+			}
+
+			manager := newManager(t, cfg)
+
+			user := "testUser"
+
+			testRule := &mockRule{name: "testRule"}
+
+			g := promRules.NewGroup(promRules.GroupOptions{
+				Name:     "testGroup",
+				File:     "testFile",
+				Interval: time.Second,
+				Rules:    []promRules.Rule{testRule},
+				Opts: &promRules.ManagerOptions{
+					Appendable: NewPusherAppendable(&fakePusher{}, user, ruleLimits{}, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounter(prometheus.CounterOpts{})),
+					Logger:     log.NewNopLogger(),
+				},
+			})
+
+			require.True(t, g.GetLastEvalTimestamp().IsZero())
+
+			// first iteration will be skipped for ha-tracker-leader case
+			manager.evalIterationFunc(ctx, user, g, now)
+			time.Sleep(time.Second * 5)
+			manager.evalIterationFunc(ctx, user, g, now)
+
+			if tc.evaluationExpected {
+				require.Equal(t, now, g.GetLastEvalTimestamp())
+			} else {
+				require.True(t, g.GetLastEvalTimestamp().IsZero())
+			}
+		})
+	}
 }
 
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {

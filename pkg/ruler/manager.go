@@ -3,8 +3,10 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -14,11 +16,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
@@ -34,6 +38,10 @@ type DefaultMultiTenantManager struct {
 	userManagerMtx     sync.Mutex
 	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
+
+	haTracker              *ha.HATracker
+	groupStartTimestampMtx sync.Mutex
+	groupStartTimestamp    map[string]int64
 
 	// Per-user notifiers with separate queues.
 	notifiersMtx sync.Mutex
@@ -58,14 +66,28 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		reg.MustRegister(userManagerMetrics)
 	}
 
+	var haTracker *ha.HATracker
+	if cfg.HATrackerConfig.EnableHATracker || cfg.Ring.ReplicationFactor > 1 {
+		haTrackerStatusConfig := ha.HATrackerStatusConfig{
+			Title:             "Cortex Ruler HA Tracker Status",
+			ReplicaGroupLabel: "RuleGroup",
+		}
+		haTracker, err = ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(true), nil, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "ruler-hatracker", logger)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &DefaultMultiTenantManager{
-		cfg:                cfg,
-		notifierCfg:        ncfg,
-		managerFactory:     managerFactory,
-		notifiers:          map[string]*rulerNotifier{},
-		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]RulesManager{},
-		userManagerMetrics: userManagerMetrics,
+		cfg:                 cfg,
+		notifierCfg:         ncfg,
+		managerFactory:      managerFactory,
+		notifiers:           map[string]*rulerNotifier{},
+		mapper:              newMapper(cfg.RulePath, logger),
+		userManagers:        map[string]RulesManager{},
+		userManagerMetrics:  userManagerMetrics,
+		haTracker:           haTracker,
+		groupStartTimestamp: map[string]int64{},
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -91,11 +113,15 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 	}, nil
 }
 
-func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList, ringChanged bool) {
 	// A lock is taken to ensure if this function is called concurrently, then each call
 	// returns after the call map files and check for updates
 	r.userManagerMtx.Lock()
 	defer r.userManagerMtx.Unlock()
+
+	if ringChanged {
+		r.releaseGroupLeadership()
+	}
 
 	for userID, ruleGroup := range ruleGroups {
 		r.syncRulesToManager(ctx, userID, ruleGroup)
@@ -113,6 +139,9 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
+			if r.haTracker != nil {
+				r.haTracker.CleanupHATrackerMetricsForUser(userID)
+			}
 			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
@@ -149,7 +178,12 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
+
+		dedupeEvaluation := func(evalCtx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+			r.evalIterationFunc(evalCtx, user, g, evalTimestamp)
+		}
+
+		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), dedupeEvaluation)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
@@ -263,6 +297,8 @@ func (r *DefaultMultiTenantManager) Stop() {
 	r.userManagerMtx.Unlock()
 	level.Info(r.logger).Log("msg", "all user managers stopped")
 
+	r.releaseGroupLeadership()
+
 	// cleanup user rules directories
 	r.mapper.cleanup()
 }
@@ -298,4 +334,58 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	return errs
+}
+
+func (r *DefaultMultiTenantManager) evalIterationFunc(evalCtx context.Context, user string, g *promRules.Group, evalTimestamp time.Time) {
+	replicaGroup := RuleGroupReplicaGroup(g)
+	if r.haTracker != nil && r.haTracker.Cfg().EnableHATracker {
+		now := time.Now()
+
+		startTime := r.getGroupStartTime(replicaGroup)
+		if now.Before(startTime) {
+			level.Info(g.Logger()).Log("msg", "waiting to start evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "startTime", startTime)
+			if now.Add(g.Interval()).Before(startTime) {
+				// startTime is farther out than this
+				return
+			}
+			time.Sleep(time.Duration(startTime.UnixMilli()-now.UnixMilli()) * time.Millisecond)
+			if g.Interval() <= r.cfg.PollInterval {
+				// skip first iteration
+				return
+			}
+		}
+
+		err := r.haTracker.CheckReplica(evalCtx, user, replicaGroup, r.cfg.HATrackerConfig.ReplicaID, now)
+		if err != nil {
+			level.Debug(g.Logger()).Log("msg", "skipped group evaluation", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp, "err", err)
+			return
+		}
+	}
+	level.Debug(g.Logger()).Log("msg", "evaluating group", "user", user, "replicaGroup", replicaGroup, "evalTimestamp", evalTimestamp)
+	promRules.DefaultEvalIterationFunc(evalCtx, g, evalTimestamp)
+}
+
+func (r *DefaultMultiTenantManager) getGroupStartTime(replicaGroup string) time.Time {
+	r.groupStartTimestampMtx.Lock()
+	defer r.groupStartTimestampMtx.Unlock()
+
+	startTimestamp, ok := r.groupStartTimestamp[replicaGroup]
+	if ok {
+		return timestamp.Time(startTimestamp)
+	}
+	jitter := time.Duration(rand.Int63n(int64(r.cfg.PollInterval)))
+	startTime := time.Now().Add(jitter)
+	r.groupStartTimestamp[replicaGroup] = timestamp.FromTime(startTime)
+	return startTime
+}
+
+func (r *DefaultMultiTenantManager) releaseGroupLeadership() {
+	if r.haTracker != nil {
+		r.haTracker.MarkReplicaDeleted(context.Background(), r.cfg.HATrackerConfig.ReplicaID)
+		level.Info(r.logger).Log("msg", "released leadership of all groups")
+	}
+}
+
+func RuleGroupReplicaGroup(g *promRules.Group) string {
+	return fmt.Sprintf("%s/%s", g.File(), g.Name())
 }

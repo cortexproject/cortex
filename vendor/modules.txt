@@ -681,13 +681,16 @@ github.com/prometheus/alertmanager/inhibit
 github.com/prometheus/alertmanager/nflog
 github.com/prometheus/alertmanager/nflog/nflogpb
 github.com/prometheus/alertmanager/notify
+github.com/prometheus/alertmanager/notify/discord
 github.com/prometheus/alertmanager/notify/email
 github.com/prometheus/alertmanager/notify/opsgenie
 github.com/prometheus/alertmanager/notify/pagerduty
 github.com/prometheus/alertmanager/notify/pushover
 github.com/prometheus/alertmanager/notify/slack
 github.com/prometheus/alertmanager/notify/sns
+github.com/prometheus/alertmanager/notify/telegram
 github.com/prometheus/alertmanager/notify/victorops
+github.com/prometheus/alertmanager/notify/webex
 github.com/prometheus/alertmanager/notify/webhook
 github.com/prometheus/alertmanager/notify/wechat
 github.com/prometheus/alertmanager/pkg/labels
@@ -1366,6 +1369,9 @@ gopkg.in/alecthomas/kingpin.v2
 # gopkg.in/ini.v1 v1.67.0
 ## explicit
 gopkg.in/ini.v1
+# gopkg.in/telebot.v3 v3.1.3
+## explicit; go 1.13
+gopkg.in/telebot.v3
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit; go 1.15
 gopkg.in/yaml.v2

@@ -2,6 +2,8 @@ package storegateway
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -595,71 +597,73 @@ func TestShuffleShardingStrategy(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testName := testName
-		testData := testData
+		for _, zoneStableShuffleSharding := range []bool{false, true} {
+			testName := testName
+			testData := testData
 
-		t.Run(testName, func(t *testing.T) {
-			t.Parallel()
+			t.Run(fmt.Sprintf("%s %s", testName, strconv.FormatBool(zoneStableShuffleSharding)), func(t *testing.T) {
+				t.Parallel()
 
-			ctx := context.Background()
-			store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+				ctx := context.Background()
+				store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+				t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-			// Initialize the ring state.
-			require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
-				d := ring.NewDesc()
-				testData.setupRing(d)
-				return d, true, nil
-			}))
+				// Initialize the ring state.
+				require.NoError(t, store.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+					d := ring.NewDesc()
+					testData.setupRing(d)
+					return d, true, nil
+				}))
 
-			cfg := ring.Config{
-				ReplicationFactor:    testData.replicationFactor,
-				HeartbeatTimeout:     time.Minute,
-				SubringCacheDisabled: true,
-			}
-
-			r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
-			require.NoError(t, err)
-			require.NoError(t, services.StartAndAwaitRunning(ctx, r))
-			defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
-
-			// Wait until the ring client has synced.
-			require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
-
-			// Assert on filter users.
-			for _, expected := range testData.expectedUsers {
-				filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger())
-				assert.Equal(t, expected.users, filter.FilterUsers(ctx, []string{userID}))
-			}
-
-			// Assert on filter blocks.
-			for _, expected := range testData.expectedBlocks {
-				filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger())
-				synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"})
-				synced.WithLabelValues(shardExcludedMeta).Set(0)
-
-				metas := map[ulid.ULID]*metadata.Meta{
-					block1: {},
-					block2: {},
-					block3: {},
-					block4: {},
+				cfg := ring.Config{
+					ReplicationFactor:    testData.replicationFactor,
+					HeartbeatTimeout:     time.Minute,
+					SubringCacheDisabled: true,
 				}
 
-				err = filter.FilterBlocks(ctx, userID, metas, map[ulid.ULID]struct{}{}, synced)
+				r, err := ring.NewWithStoreClientAndStrategy(cfg, "test", "test", store, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
 				require.NoError(t, err)
+				require.NoError(t, services.StartAndAwaitRunning(ctx, r))
+				defer services.StopAndAwaitTerminated(ctx, r) //nolint:errcheck
 
-				var actualBlocks []ulid.ULID
-				for id := range metas {
-					actualBlocks = append(actualBlocks, id)
+				// Wait until the ring client has synced.
+				require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
+
+				// Assert on filter users.
+				for _, expected := range testData.expectedUsers {
+					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), zoneStableShuffleSharding) //nolint:govet
+					assert.Equal(t, expected.users, filter.FilterUsers(ctx, []string{userID}))
 				}
 
-				assert.ElementsMatch(t, expected.blocks, actualBlocks)
+				// Assert on filter blocks.
+				for _, expected := range testData.expectedBlocks {
+					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), zoneStableShuffleSharding) //nolint:govet
+					synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"})
+					synced.WithLabelValues(shardExcludedMeta).Set(0)
 
-				// Assert on the metric used to keep track of the blocks filtered out.
-				synced.Submit()
-				assert.Equal(t, float64(numAllBlocks-len(expected.blocks)), testutil.ToFloat64(synced))
-			}
-		})
+					metas := map[ulid.ULID]*metadata.Meta{
+						block1: {},
+						block2: {},
+						block3: {},
+						block4: {},
+					}
+
+					err = filter.FilterBlocks(ctx, userID, metas, map[ulid.ULID]struct{}{}, synced)
+					require.NoError(t, err)
+
+					var actualBlocks []ulid.ULID
+					for id := range metas {
+						actualBlocks = append(actualBlocks, id)
+					}
+
+					assert.ElementsMatch(t, expected.blocks, actualBlocks)
+
+					// Assert on the metric used to keep track of the blocks filtered out.
+					synced.Submit()
+					assert.Equal(t, float64(numAllBlocks-len(expected.blocks)), testutil.ToFloat64(synced))
+				}
+			})
+		}
 	}
 }
 

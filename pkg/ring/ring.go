@@ -68,6 +68,12 @@ type ReadRing interface {
 	// and size (number of instances).
 	ShuffleShard(identifier string, size int) ReadRing
 
+	// ShuffleShardWithZoneStability does the same as ShuffleShard but using a different shuffle sharding algorithm.
+	// It doesn't round up shard size to be divisible to number of zones and make sure when scaling up/down one
+	// shard size at a time, at most 1 instance can be changed.
+	// It is only used in Store Gateway for now.
+	ShuffleShardWithZoneStability(identifier string, size int) ReadRing
+
 	// GetInstanceState returns the current state of an instance or an error if the
 	// instance does not exist in the ring.
 	GetInstanceState(instanceID string) (InstanceState, error)
@@ -200,6 +206,8 @@ type Ring struct {
 type subringCacheKey struct {
 	identifier string
 	shardSize  int
+
+	zoneStableSharding bool
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
@@ -659,24 +667,16 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 // - Stability: given the same ring, two invocations returns the same result.
 //
 // - Consistency: adding/removing 1 instance from the ring generates a resulting
-// subring with no more then 1 difference.
+// subring with no more than 1 difference.
 //
 // - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
 // set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
-	// Nothing to do if the shard size is not smaller then the actual ring.
-	if size <= 0 || r.InstancesCount() <= size {
-		return r
-	}
+	return r.shuffleShardWithCache(identifier, size, false)
+}
 
-	if cached := r.getCachedShuffledSubring(identifier, size); cached != nil {
-		return cached
-	}
-
-	result := r.shuffleShard(identifier, size, 0, time.Now())
-
-	r.setCachedShuffledSubring(identifier, size, result)
-	return result
+func (r *Ring) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
+	return r.shuffleShardWithCache(identifier, size, true)
 }
 
 // ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes all instances
@@ -687,25 +687,49 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 //
 // This function doesn't support caching.
 func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
-	// Nothing to do if the shard size is not smaller then the actual ring.
+	// Nothing to do if the shard size is not smaller than the actual ring.
 	if size <= 0 || r.InstancesCount() <= size {
 		return r
 	}
 
-	return r.shuffleShard(identifier, size, lookbackPeriod, now)
+	return r.shuffleShard(identifier, size, lookbackPeriod, now, false)
 }
 
-func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) *Ring {
+func (r *Ring) shuffleShardWithCache(identifier string, size int, zoneStableSharding bool) ReadRing {
+	// Nothing to do if the shard size is not smaller than the actual ring.
+	if size <= 0 || r.InstancesCount() <= size {
+		return r
+	}
+
+	if cached := r.getCachedShuffledSubring(identifier, size, zoneStableSharding); cached != nil {
+		return cached
+	}
+
+	result := r.shuffleShard(identifier, size, 0, time.Now(), zoneStableSharding)
+
+	r.setCachedShuffledSubring(identifier, size, zoneStableSharding, result)
+	return result
+}
+
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) *Ring {
 	lookbackUntil := now.Add(-lookbackPeriod).Unix()
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	var numInstancesPerZone int
-	var actualZones []string
+	var (
+		numInstancesPerZone    int
+		actualZones            []string
+		zonesWithExtraInstance int
+	)
 
 	if r.cfg.ZoneAwarenessEnabled {
-		numInstancesPerZone = shardUtil.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
+		if zoneStableSharding {
+			numInstancesPerZone = size / len(r.ringZones)
+			zonesWithExtraInstance = size % len(r.ringZones)
+		} else {
+			numInstancesPerZone = shardUtil.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
+		}
 		actualZones = r.ringZones
 	} else {
 		numInstancesPerZone = size
@@ -735,7 +759,12 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		// To select one more instance while guaranteeing the "consistency" property,
 		// we do pick a random value from the generator and resolve uniqueness collisions
 		// (if any) continuing walking the ring.
-		for i := 0; i < numInstancesPerZone; i++ {
+		finalInstancesPerZone := numInstancesPerZone
+		if zonesWithExtraInstance > 0 {
+			zonesWithExtraInstance--
+			finalInstancesPerZone++
+		}
+		for i := 0; i < finalInstancesPerZone; i++ {
 			start := searchToken(tokens, random.Uint32())
 			iterations := 0
 			found := false
@@ -828,7 +857,7 @@ func (r *Ring) HasInstance(instanceID string) bool {
 	return ok
 }
 
-func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
+func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableSharding bool) *Ring {
 	if r.cfg.SubringCacheDisabled {
 		return nil
 	}
@@ -837,7 +866,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	defer r.mtx.RUnlock()
 
 	// if shuffledSubringCache map is nil, reading it returns default value (nil pointer).
-	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
+	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}]
 	if cached == nil {
 		return nil
 	}
@@ -856,7 +885,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	return cached
 }
 
-func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ring) {
+func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableSharding bool, subring *Ring) {
 	if subring == nil || r.cfg.SubringCacheDisabled {
 		return
 	}
@@ -868,7 +897,7 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 	// (which can happen between releasing the read lock and getting read-write lock).
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
-		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}] = subring
 	}
 }
 

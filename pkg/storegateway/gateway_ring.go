@@ -67,7 +67,7 @@ type RingConfig struct {
 	TokensFilePath                  string        `yaml:"tokens_file_path"`
 	ZoneAwarenessEnabled            bool          `yaml:"zone_awareness_enabled"`
 	KeepInstanceInTheRingOnShutdown bool          `yaml:"keep_instance_in_the_ring_on_shutdown"`
-	ZoneStableShuffleSharding       bool          `yaml:"zone_stable_shuffle_sharding"`
+	ZoneStableShuffleSharding       bool          `yaml:"zone_stable_shuffle_sharding" doc:"hidden"`
 
 	// Wait ring stability.
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`

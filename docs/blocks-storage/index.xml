@@ -1188,10 +1188,14 @@
 &lt;ul>
 &lt;li>&lt;code>default&lt;/code>&lt;/li>
 &lt;li>&lt;code>shuffle-sharding&lt;/code>&lt;/li>
+&lt;li>&lt;code>zone-stable-shuffle-sharding&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;p>The &lt;strong>&lt;code>default&lt;/code>&lt;/strong> sharding strategy spreads the blocks of each tenant across all store-gateway instances. It&amp;rsquo;s the easiest form of sharding supported, but doesn&amp;rsquo;t provide any workload isolation between different tenants.&lt;/p>
 &lt;p>The &lt;strong>&lt;code>shuffle-sharding&lt;/code>&lt;/strong> strategy spreads the blocks of a tenant across a subset of store-gateway instances. This way, the number of store-gateway instances loading blocks of a single tenant is limited and the blast radius of any issue that could be introduced by the tenant&amp;rsquo;s workload is limited to its shard instances.&lt;/p>
 &lt;p>The shuffle sharding strategy can be enabled via &lt;code>-store-gateway.sharding-strategy=shuffle-sharding&lt;/code> and requires the &lt;code>-store-gateway.tenant-shard-size&lt;/code> flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the &lt;code>store_gateway_tenant_shard_size&lt;/code> in the limits overrides.&lt;/p>
+&lt;p>The &lt;strong>&lt;code>zone-stable-shuffle-sharding&lt;/code>&lt;/strong> strategy achieves the same as the &lt;strong>&lt;code>shuffle-sharding&lt;/code>&lt;/strong> strategy, but using a different sharding algorithm. The new sharding algorithm ensures that when zone awareness is enabled, when shard size increases or decreases by one, the replicas for any block should only change at most by one instance. This is important for querying store gateway because a block can be retried at most 3 times.&lt;/p>
+&lt;p>Zone stable shuffle sharding can be enabled via &lt;code>-store-gateway.sharding-ring.zone-stable-shuffle-sharding&lt;/code> CLI flag.&lt;/p>
+&lt;p>It will become the default shuffle sharding strategy for store gateway in &lt;code>v1.17.0&lt;/code> release and the previous shuffle sharding algorithm will be removed in &lt;code>v1.18.0&lt;/code> release.&lt;/p>
 &lt;p>&lt;em>Please check out the &lt;a href="/docs/guides/shuffle-sharding/">shuffle sharding documentation&lt;/a> for more information about how it works.&lt;/em>&lt;/p>
 &lt;h3 id="auto-forget">Auto-forget&lt;/h3>
 &lt;p>When a store-gateway instance cleanly shutdowns, it automatically unregisters itself from the ring. However, in the event of a crash or node failure, the instance will not be unregistered from the ring, potentially leaving a spurious entry in the ring forever.&lt;/p>

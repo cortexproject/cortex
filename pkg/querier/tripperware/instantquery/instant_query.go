@@ -158,6 +158,10 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	log, ctx := spanlogger.New(ctx, "PrometheusInstantQueryResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
 		log.Error(err)

@@ -296,12 +296,16 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				}
 
 			case schedulerpb.TOO_MANY_REQUESTS_PER_TENANT:
-				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &frontendv2pb.QueryResultRequest{
-					HttpResponse: &httpgrpc.HTTPResponse{
-						Code: http.StatusTooManyRequests,
-						Body: []byte("too many outstanding requests"),
-					},
+				if req.retryOnTooManyOutstandingRequests {
+					req.enqueue <- enqueueResult{status: failed}
+				} else {
+					req.enqueue <- enqueueResult{status: waitForResponse}
+					req.response <- &frontendv2pb.QueryResultRequest{
+						HttpResponse: &httpgrpc.HTTPResponse{
+							Code: http.StatusTooManyRequests,
+							Body: []byte("too many outstanding requests"),
+						},
+					}
 				}
 			}
 

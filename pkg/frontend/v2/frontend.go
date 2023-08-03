@@ -86,6 +86,8 @@ type frontendRequest struct {
 
 	enqueue  chan enqueueResult
 	response chan *frontendv2pb.QueryResultRequest
+
+	retryOnTooManyOutstandingRequests bool
 }
 
 type enqueueStatus int
@@ -192,6 +194,8 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		// even if this goroutine goes away due to client context cancellation.
 		enqueue:  make(chan enqueueResult, 1),
 		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+
+		retryOnTooManyOutstandingRequests: f.schedulerWorkers.getWorkersCount() > 0,
 	}
 
 	f.requests.put(freq)

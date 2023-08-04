@@ -138,6 +138,7 @@ func TestResponse(t *testing.T) {
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
+			cancelCtx()
 		})
 	}
 }
@@ -717,9 +718,11 @@ func TestMergeAPIResponses(t *testing.T) {
 			output, err := PrometheusCodec.MergeResponse(ctx, nil, tc.input...)
 			require.Equal(t, tc.expectedErr, err)
 			if err != nil {
+				cancelCtx()
 				return
 			}
 			require.Equal(t, tc.expected, output)
+			cancelCtx()
 		})
 	}
 }

@@ -418,6 +418,7 @@ func TestMergeResponse(t *testing.T) {
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, tc.expectedErr, err)
 			assert.Equal(t, string(contents), tc.expectedResp)
+			cancelCtx()
 		})
 	}
 }

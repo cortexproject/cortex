@@ -398,6 +398,7 @@ func TestMergeResponse(t *testing.T) {
 				dr, err := InstantQueryCodec.DecodeResponse(ctx, hr, nil)
 				assert.Equal(t, tc.expectedDecodeErr, err)
 				if err != nil {
+					cancelCtx()
 					return
 				}
 				resps = append(resps, dr)
@@ -409,6 +410,7 @@ func TestMergeResponse(t *testing.T) {
 			resp, err := InstantQueryCodec.MergeResponse(ctx, tc.req, resps...)
 			assert.Equal(t, tc.expectedErr, err)
 			if err != nil {
+				cancelCtx()
 				return
 			}
 			dr, err := InstantQueryCodec.EncodeResponse(ctx, resp)

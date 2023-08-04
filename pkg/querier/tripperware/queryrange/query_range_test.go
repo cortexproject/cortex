@@ -123,6 +123,7 @@ func TestResponse(t *testing.T) {
 			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
 			assert.Equal(t, tc.expectedDecodeErr, err)
 			if err != nil {
+				cancelCtx()
 				return
 			}
 			assert.Equal(t, tc.expected, resp)

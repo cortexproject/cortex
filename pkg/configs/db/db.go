@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
@@ -77,7 +78,8 @@ func New(cfg Config) (DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Could not read database password file: %v", err)
 		}
-		u.User = url.UserPassword(u.User.Username(), string(passwordBytes))
+		password := strings.TrimSpace(string(passwordBytes))
+		u.User = url.UserPassword(u.User.Username(), password)
 	}
 
 	var d DB

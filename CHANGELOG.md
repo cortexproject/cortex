@@ -61,6 +61,8 @@
 * [BUGFIX] Alertmanager: Remove the user id from state replication key metric label value. #5453
 * [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
 * [BUGFIX] DDBKV: Disallow instance with older timestamp to update instance with newer timestamp. #5480
+* [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
+
 ## 1.15.1 2023-04-26
 
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290

@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"sync"
@@ -48,6 +49,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.TTL, prefix+"dynamodb.ttl-time", 0, "Time to expire items on dynamodb.")
 	f.DurationVar(&cfg.PullerSyncTime, prefix+"dynamodb.puller-sync-time", 60*time.Second, "Time to refresh local ring with information on dynamodb.")
 }
+
+var (
+	errNoChangeDeleted = errors.New("no change detected")
+)
 
 func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
 	dynamoDB, err := newDynamodbKV(cfg, logger)
@@ -183,6 +188,12 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 		if len(putRequests) > 0 || len(deleteRequests) > 0 {
 			return c.kv.Batch(ctx, putRequests, deleteRequests)
+		}
+
+		if len(putRequests) == 0 && len(deleteRequests) == 0 {
+			// no change detected, retry
+			level.Error(c.logger).Log("msg", "finding difference", "key", key, "err", err)
+			continue
 		}
 
 		return nil

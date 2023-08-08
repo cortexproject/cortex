@@ -192,7 +192,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {
 			// no change detected, retry
-			level.Error(c.logger).Log("msg", "finding difference", "key", key, "err", err)
+			level.Error(c.logger).Log("msg", "finding difference", "key", key, "err", errNoChangeDeleted)
 			continue
 		}
 

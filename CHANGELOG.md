@@ -64,6 +64,7 @@
 * [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
 * [BUGFIX] DDBKV: Disallow instance with older timestamp to update instance with newer timestamp. #5480
 * [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
+* [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
 
 ## 1.15.1 2023-04-26
 

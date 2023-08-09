@@ -2,7 +2,6 @@ package dynamodb
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"sync"
@@ -56,10 +55,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.DurationVar(&cfg.PullerSyncTime, prefix+"dynamodb.puller-sync-time", 60*time.Second, "Time to refresh local ring with information on dynamodb.")
 	f.IntVar(&cfg.MaxCasRetries, prefix+"dynamodb.max-cas-retries", maxCasRetries, "Maximum number of retries for DDB KV CAS.")
 }
-
-var (
-	errNoChangeDeleted = errors.New("no change detected")
-)
 
 func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
 	dynamoDB, err := newDynamodbKV(cfg, logger)
@@ -201,8 +196,7 @@ outer:
 		}
 
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {
-			// no change detected, retry
-			level.Error(c.logger).Log("msg", "finding difference", "key", key, "err", errNoChangeDeleted)
+			// no change detected, wait for 1 sec and retry
 			select {
 			case <-time.After(noChangeDetectedRetrySleep):
 				// ok

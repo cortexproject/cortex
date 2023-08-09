@@ -281,9 +281,6 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 
-	for h, hv := range r.Header {
-		resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
-	}
 	return &resp, nil
 }
 

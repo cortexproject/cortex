@@ -32,6 +32,7 @@ type RingConfig struct {
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 	TokensFilePath         string   `yaml:"tokens_file_path"`
+	UnregisterOnShutdown   bool     `yaml:"unregister_on_shutdown"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -65,6 +66,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.InstancePort, "compactor.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "compactor.ring.instance-id", hostname, "Instance ID to register in the ring.")
 	f.StringVar(&cfg.TokensFilePath, "compactor.ring.tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
+	f.BoolVar(&cfg.UnregisterOnShutdown, "compactor.ring.unregister-on-shutdown", true, "Unregister the compactor during shutdown if true.")
 
 	// Timeout durations
 	f.DurationVar(&cfg.WaitActiveInstanceTimeout, "compactor.ring.wait-active-instance-timeout", 10*time.Minute, "Timeout for waiting on compactor to become ACTIVE in the ring.")
@@ -94,7 +96,7 @@ func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
 	lc.Port = cfg.InstancePort
 	lc.ID = cfg.InstanceID
 	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.UnregisterOnShutdown = true
+	lc.UnregisterOnShutdown = cfg.UnregisterOnShutdown
 	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
 	lc.ObservePeriod = cfg.ObservePeriod
 	lc.JoinAfter = 0

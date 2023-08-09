@@ -5,12 +5,12 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"math"
 	"math/rand"
 	"net"
+	"runtime"
 	"strings"
 	"time"
-
-	"github.com/redis/rueidis/internal/cmds"
 )
 
 const (
@@ -174,18 +174,8 @@ type SentinelOption struct {
 
 // Client is the redis client interface for both single redis instance and redis cluster. It should be created from the NewClient()
 type Client interface {
-	// B is the getter function to the command builder for the client
-	// If the client is a cluster client, the command builder also prohibits cross key slots in one command.
-	B() cmds.Builder
-	// Do is the method sending user's redis command building from the B() to a redis node.
-	//  client.Do(ctx, client.B().Get().Key("k").Build()).ToString()
-	// All concurrent non-blocking commands will be pipelined automatically and have better throughput.
-	// Blocking commands will use another separated connection pool.
-	// The cmd parameter is recycled after passing into Do() and should not be reused.
-	Do(ctx context.Context, cmd Completed) (resp RedisResult)
-	// DoMulti takes multiple redis commands and sends them together, reducing RTT from the user code.
-	// The multi parameters are recycled after passing into DoMulti() and should not be reused.
-	DoMulti(ctx context.Context, multi ...Completed) (resp []RedisResult)
+	CoreClient
+
 	// DoCache is similar to Do, but it uses opt-in client side caching and requires a client side TTL.
 	// The explicit client side TTL specifies the maximum TTL on the client side.
 	// If the key's TTL on the server is smaller than the client side TTL, the client side TTL will be capped.
@@ -197,17 +187,10 @@ type Client interface {
 	// The in-memory cache size is configured by ClientOption.CacheSizeEachConn.
 	// The cmd parameter is recycled after passing into DoCache() and should not be reused.
 	DoCache(ctx context.Context, cmd Cacheable, ttl time.Duration) (resp RedisResult)
+
 	// DoMultiCache is similar to DoCache, but works with multiple cacheable commands across different slots.
 	// It will first group commands by slots and will send only cache missed commands to redis.
 	DoMultiCache(ctx context.Context, multi ...CacheableTTL) (resp []RedisResult)
-
-	// Receive accepts SUBSCRIBE, SSUBSCRIBE, PSUBSCRIBE command and a message handler.
-	// Receive will block and then return value only when the following cases:
-	//   1. return nil when received any unsubscribe/punsubscribe message related to the provided `subscribe` command.
-	//   2. return ErrClosing when the client is closed manually.
-	//   3. return ctx.Err() when the `ctx` is done.
-	//   4. return non-nil err when the provided `subscribe` command failed.
-	Receive(ctx context.Context, subscribe Completed, fn func(msg PubSubMessage)) error
 
 	// Dedicated acquire a connection from the blocking connection pool, no one else can use the connection
 	// during Dedicated. The main usage of Dedicated is CAS operation, which is WATCH + MULTI + EXEC.
@@ -222,26 +205,14 @@ type Client interface {
 	// Nodes returns each redis node this client known as rueidis.Client. This is useful if you want to
 	// send commands to some specific redis nodes in the cluster.
 	Nodes() map[string]Client
-
-	// Close will make further calls to the client be rejected with ErrClosing,
-	// and Close will wait until all pending calls finished.
-	Close()
 }
 
 // DedicatedClient is obtained from Client.Dedicated() and it will be bound to single redis connection and
 // no other commands can be pipelined in to this connection during Client.Dedicated().
 // If the DedicatedClient is obtained from cluster client, the first command to it must have a Key() to identify the redis node.
 type DedicatedClient interface {
-	// B is inherited from the Client
-	B() cmds.Builder
-	// Do is the same as Client's
-	// The cmd parameter is recycled after passing into Do() and should not be reused.
-	Do(ctx context.Context, cmd Completed) (resp RedisResult)
-	// DoMulti takes multiple redis commands and sends them together, reducing RTT from the user code.
-	// The multi parameters are recycled after passing into DoMulti() and should not be reused.
-	DoMulti(ctx context.Context, multi ...Completed) (resp []RedisResult)
-	// Receive is the same as Client's
-	Receive(ctx context.Context, subscribe Completed, fn func(msg PubSubMessage)) error
+	CoreClient
+
 	// SetPubSubHooks is an alternative way to processing Pub/Sub messages instead of using Receive.
 	// SetPubSubHooks is non-blocking and allows users to subscribe/unsubscribe channels later.
 	// Note that the hooks will be called sequentially but in another goroutine.
@@ -252,7 +223,31 @@ type DedicatedClient interface {
 	// and has at most one error describing the reason why the hooks will not be called anymore.
 	// Users can use the error channel to detect disconnection.
 	SetPubSubHooks(hooks PubSubHooks) <-chan error
-	// Close closes the dedicated connection and prevent the connection be put back into the pool.
+}
+
+// CoreClient is the minimum interface shared by the Client and the DedicatedClient.
+type CoreClient interface {
+	// B is the getter function to the command builder for the client
+	// If the client is a cluster client, the command builder also prohibits cross key slots in one command.
+	B() Builder
+	// Do is the method sending user's redis command building from the B() to a redis node.
+	//  client.Do(ctx, client.B().Get().Key("k").Build()).ToString()
+	// All concurrent non-blocking commands will be pipelined automatically and have better throughput.
+	// Blocking commands will use another separated connection pool.
+	// The cmd parameter is recycled after passing into Do() and should not be reused.
+	Do(ctx context.Context, cmd Completed) (resp RedisResult)
+	// DoMulti takes multiple redis commands and sends them together, reducing RTT from the user code.
+	// The multi parameters are recycled after passing into DoMulti() and should not be reused.
+	DoMulti(ctx context.Context, multi ...Completed) (resp []RedisResult)
+	// Receive accepts SUBSCRIBE, SSUBSCRIBE, PSUBSCRIBE command and a message handler.
+	// Receive will block and then return value only when the following cases:
+	//   1. return nil when received any unsubscribe/punsubscribe message related to the provided `subscribe` command.
+	//   2. return ErrClosing when the client is closed manually.
+	//   3. return ctx.Err() when the `ctx` is done.
+	//   4. return non-nil err when the provided `subscribe` command failed.
+	Receive(ctx context.Context, subscribe Completed, fn func(msg PubSubMessage)) error
+	// Close will make further calls to the client be rejected with ErrClosing,
+	// and Close will wait until all pending calls finished.
 	Close()
 }
 
@@ -319,7 +314,9 @@ func NewClient(option ClientOption) (client Client, err error) {
 
 func singleClientMultiplex(multiplex int) int {
 	if multiplex == 0 {
-		multiplex = 2
+		if multiplex = int(math.Log2(float64(runtime.GOMAXPROCS(0)))); multiplex >= 2 {
+			multiplex = 2
+		}
 	}
 	if multiplex < 0 {
 		multiplex = 0

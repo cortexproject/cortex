@@ -332,6 +332,24 @@ func (r RedisResult) AsFtSearch() (total int64, docs []FtSearchDoc, err error) {
 	return
 }
 
+func (r RedisResult) AsFtAggregate() (total int64, docs []map[string]string, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		total, docs, err = r.val.AsFtAggregate()
+	}
+	return
+}
+
+func (r RedisResult) AsFtAggregateCursor() (cursor, total int64, docs []map[string]string, err error) {
+	if r.err != nil {
+		err = r.err
+	} else {
+		cursor, total, docs, err = r.val.AsFtAggregateCursor()
+	}
+	return
+}
+
 func (r RedisResult) AsGeosearch() (locations []GeoLocation, err error) {
 	if r.err != nil {
 		err = r.err
@@ -758,7 +776,7 @@ func toZScore(values []RedisMessage) (s ZScore, err error) {
 		}
 		return s, err
 	}
-	panic(fmt.Sprintf("redis message is not a map/array/set or its length is not 2"))
+	panic("redis message is not a map/array/set or its length is not 2")
 }
 
 // AsZScore converts ZPOPMAX and ZPOPMIN command with count 1 response to a single ZScore
@@ -921,6 +939,33 @@ func (m *RedisMessage) AsFtSearch() (total int64, docs []FtSearchDoc, err error)
 	if err = m.Error(); err != nil {
 		return 0, nil, err
 	}
+	if m.IsMap() {
+		for i := 0; i < len(m.values); i += 2 {
+			switch m.values[i].string {
+			case "total_results":
+				total = m.values[i+1].integer
+			case "results":
+				records := m.values[i+1].values
+				docs = make([]FtSearchDoc, len(records))
+				for d, record := range records {
+					for j := 0; j < len(record.values); j += 2 {
+						switch record.values[j].string {
+						case "id":
+							docs[d].Key = record.values[j+1].string
+						case "extra_attributes":
+							docs[d].Doc, _ = record.values[j+1].AsStrMap()
+						}
+					}
+				}
+			case "error":
+				for _, e := range m.values[i+1].values {
+					e := e
+					return 0, nil, (*RedisError)(&e)
+				}
+			}
+		}
+		return
+	}
 	if len(m.values) > 0 {
 		total = m.values[0].integer
 		if len(m.values) > 2 && m.values[2].string == "" {
@@ -939,6 +984,57 @@ func (m *RedisMessage) AsFtSearch() (total int64, docs []FtSearchDoc, err error)
 	}
 	typ := m.typ
 	panic(fmt.Sprintf("redis message type %s is not a FT.SEARCH response", typeNames[typ]))
+}
+
+func (m *RedisMessage) AsFtAggregate() (total int64, docs []map[string]string, err error) {
+	if err = m.Error(); err != nil {
+		return 0, nil, err
+	}
+	if m.IsMap() {
+		for i := 0; i < len(m.values); i += 2 {
+			switch m.values[i].string {
+			case "total_results":
+				total = m.values[i+1].integer
+			case "results":
+				records := m.values[i+1].values
+				docs = make([]map[string]string, len(records))
+				for d, record := range records {
+					for j := 0; j < len(record.values); j += 2 {
+						switch record.values[j].string {
+						case "extra_attributes":
+							docs[d], _ = record.values[j+1].AsStrMap()
+						}
+					}
+				}
+			case "error":
+				for _, e := range m.values[i+1].values {
+					e := e
+					return 0, nil, (*RedisError)(&e)
+				}
+			}
+		}
+		return
+	}
+	if len(m.values) > 0 {
+		total = m.values[0].integer
+		docs = make([]map[string]string, len(m.values)-1)
+		for d, record := range m.values[1:] {
+			docs[d], _ = record.AsStrMap()
+		}
+		return
+	}
+	typ := m.typ
+	panic(fmt.Sprintf("redis message type %s is not a FT.AGGREGATE response", typeNames[typ]))
+}
+
+func (m *RedisMessage) AsFtAggregateCursor() (cursor, total int64, docs []map[string]string, err error) {
+	if m.IsArray() && len(m.values) == 2 && (m.values[0].IsArray() || m.values[0].IsMap()) {
+		total, docs, err = m.values[0].AsFtAggregate()
+		cursor = m.values[1].integer
+	} else {
+		total, docs, err = m.AsFtAggregate()
+	}
+	return
 }
 
 type GeoLocation struct {

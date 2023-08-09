@@ -133,6 +133,7 @@ type bucketStoreMetrics struct {
 	postingsSizeBytes     prometheus.Histogram
 	queriesDropped        *prometheus.CounterVec
 	seriesRefetches       prometheus.Counter
+	chunkRefetches        prometheus.Counter
 	emptyPostingCount     prometheus.Counter
 
 	cachedPostingsCompressions           *prometheus.CounterVec
@@ -240,6 +241,10 @@ func newBucketStoreMetrics(reg prometheus.Registerer) *bucketStoreMetrics {
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",
 		Help: "Total number of cases where configured estimated series bytes was not enough was to fetch series from index, resulting in refetch.",
+	})
+	m.chunkRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_chunk_refetches_total",
+		Help: "Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch.",
 	})
 
 	m.cachedPostingsCompressions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -2935,7 +2940,9 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []storage.Series
 		if err := bytesLimiter.Reserve(uint64(end - start)); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching series: %s", err)
 		}
+		r.mtx.Lock()
 		r.stats.DataDownloadedSizeSum += units.Base2Bytes(end - start)
+		r.mtx.Unlock()
 	}
 
 	b, err := r.block.readIndexRange(ctx, int64(start), int64(end-start))
@@ -3314,18 +3321,18 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 			continue
 		}
 
+		r.block.metrics.chunkRefetches.Inc()
 		// If we didn't fetch enough data for the chunk, fetch more.
-		r.mtx.Unlock()
-		locked = false
-
 		fetchBegin = time.Now()
-
 		// Read entire chunk into new buffer.
 		// TODO: readChunkRange call could be avoided for any chunk but last in this particular part.
 		if err := bytesLimiter.Reserve(uint64(chunkLen)); err != nil {
 			return httpgrpc.Errorf(int(codes.ResourceExhausted), "exceeded bytes limit while fetching chunks: %s", err)
 		}
 		r.stats.DataDownloadedSizeSum += units.Base2Bytes(chunkLen)
+		r.mtx.Unlock()
+		locked = false
+
 		nb, err := r.block.readChunkRange(ctx, seq, int64(pIdx.offset), int64(chunkLen), []byteRange{{offset: 0, length: chunkLen}})
 		if err != nil {
 			return errors.Wrapf(err, "preloaded chunk too small, expecting %d, and failed to fetch full chunk", chunkLen)

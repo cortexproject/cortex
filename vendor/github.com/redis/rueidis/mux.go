@@ -2,6 +2,7 @@ package rueidis
 
 import (
 	"context"
+	"math/rand"
 	"net"
 	"runtime"
 	"sync"
@@ -223,7 +224,7 @@ func (m *mux) blockingMulti(ctx context.Context, cmd []Completed) (resp *redisre
 }
 
 func (m *mux) pipeline(ctx context.Context, cmd Completed) (resp RedisResult) {
-	slot := cmd.Slot() & uint16(len(m.wire)-1)
+	slot := slotfn(len(m.wire), cmd.Slot(), cmd.NoReply())
 	wire := m.pipe(slot)
 	if resp = wire.Do(ctx, cmd); isBroken(resp.NonRedisError(), wire) {
 		m.wire[slot].CompareAndSwap(wire, m.init)
@@ -232,7 +233,7 @@ func (m *mux) pipeline(ctx context.Context, cmd Completed) (resp RedisResult) {
 }
 
 func (m *mux) pipelineMulti(ctx context.Context, cmd []Completed) (resp *redisresults) {
-	slot := cmd[0].Slot() & uint16(len(m.wire)-1)
+	slot := slotfn(len(m.wire), cmd[0].Slot(), cmd[0].NoReply())
 	wire := m.pipe(slot)
 	resp = wire.DoMulti(ctx, cmd...)
 	for _, r := range resp.s {
@@ -255,35 +256,39 @@ func (m *mux) DoCache(ctx context.Context, cmd Cacheable, ttl time.Duration) Red
 }
 
 func (m *mux) DoMultiCache(ctx context.Context, multi ...CacheableTTL) (results *redisresults) {
-	var slots map[uint16]int
+	var slots *muxslots
 	var mask = uint16(len(m.wire) - 1)
 
 	if mask == 0 {
 		return m.doMultiCache(ctx, 0, multi)
 	}
 
-	slots = make(map[uint16]int, len(m.wire))
+	slots = muxslotsp.Get(len(m.wire), len(m.wire))
 	for _, cmd := range multi {
-		slots[cmd.Cmd.Slot()&mask]++
+		slots.s[cmd.Cmd.Slot()&mask]++
 	}
 
-	if len(slots) == 1 {
+	if slots.LessThen(2) {
 		return m.doMultiCache(ctx, multi[0].Cmd.Slot()&mask, multi)
 	}
 
-	batches := make(map[uint16]*batchcache, len(m.wire))
-	for slot, count := range slots {
-		batches[slot] = batchcachep.Get(0, count)
+	batches := batchcachemaps.Get(len(m.wire), len(m.wire))
+	for slot, count := range slots.s {
+		if count > 0 {
+			batches.m[uint16(slot)] = batchcachep.Get(0, count)
+		}
 	}
+	muxslotsp.Put(slots)
+
 	for i, cmd := range multi {
-		batch := batches[cmd.Cmd.Slot()&mask]
+		batch := batches.m[cmd.Cmd.Slot()&mask]
 		batch.commands = append(batch.commands, cmd)
 		batch.cIndexes = append(batch.cIndexes, i)
 	}
 
 	results = resultsp.Get(len(multi), len(multi))
-	util.ParallelKeys(m.maxp, batches, func(slot uint16) {
-		batch := batches[slot]
+	util.ParallelKeys(m.maxp, batches.m, func(slot uint16) {
+		batch := batches.m[slot]
 		resp := m.doMultiCache(ctx, slot, batch.commands)
 		for i, r := range resp.s {
 			results.s[batch.cIndexes[i]] = r
@@ -291,9 +296,10 @@ func (m *mux) DoMultiCache(ctx context.Context, multi ...CacheableTTL) (results 
 		resultsp.Put(resp)
 	})
 
-	for _, batch := range batches {
+	for _, batch := range batches.m {
 		batchcachep.Put(batch)
 	}
+	batchcachemaps.Put(batches)
 
 	return results
 }
@@ -311,7 +317,7 @@ func (m *mux) doMultiCache(ctx context.Context, slot uint16, multi []CacheableTT
 }
 
 func (m *mux) Receive(ctx context.Context, subscribe Completed, fn func(message PubSubMessage)) error {
-	slot := subscribe.Slot() & uint16(len(m.wire)-1)
+	slot := slotfn(len(m.wire), subscribe.Slot(), subscribe.NoReply())
 	wire := m.pipe(slot)
 	err := wire.Receive(ctx, subscribe, fn)
 	if isBroken(err, wire) {
@@ -346,3 +352,73 @@ func (m *mux) Addr() string {
 func isBroken(err error, w wire) bool {
 	return err != nil && err != ErrClosing && w.Error() != nil
 }
+
+var rngPool = sync.Pool{
+	New: func() any {
+		return rand.New(rand.NewSource(time.Now().UnixNano()))
+	},
+}
+
+func fastrand(n int) (r int) {
+	s := rngPool.Get().(*rand.Rand)
+	r = s.Intn(n)
+	rngPool.Put(s)
+	return
+}
+
+func slotfn(n int, ks uint16, noreply bool) uint16 {
+	if n == 1 || ks == cmds.NoSlot || noreply {
+		return 0
+	}
+	return uint16(fastrand(n))
+}
+
+type muxslots struct {
+	s []int
+}
+
+func (r *muxslots) Capacity() int {
+	return cap(r.s)
+}
+
+func (r *muxslots) ResetLen(n int) {
+	r.s = r.s[:n]
+	for i := 0; i < n; i++ {
+		r.s[i] = 0
+	}
+}
+
+func (r *muxslots) LessThen(n int) bool {
+	count := 0
+	for _, value := range r.s {
+		if value > 0 {
+			if count++; count == n {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+var muxslotsp = util.NewPool(func(capacity int) *muxslots {
+	return &muxslots{s: make([]int, 0, capacity)}
+})
+
+type batchcachemap struct {
+	m map[uint16]*batchcache
+	n int
+}
+
+func (r *batchcachemap) Capacity() int {
+	return r.n
+}
+
+func (r *batchcachemap) ResetLen(n int) {
+	for k := range r.m {
+		delete(r.m, k)
+	}
+}
+
+var batchcachemaps = util.NewPool(func(capacity int) *batchcachemap {
+	return &batchcachemap{m: make(map[uint16]*batchcache, capacity), n: capacity}
+})

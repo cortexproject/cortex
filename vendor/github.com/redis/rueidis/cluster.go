@@ -75,7 +75,7 @@ type clusterClient struct {
 	sc     call
 	mu     sync.RWMutex
 	stop   uint32
-	cmd    cmds.Builder
+	cmd    Builder
 	retry  bool
 }
 
@@ -337,7 +337,7 @@ func (c *clusterClient) redirectOrNew(addr string, prev conn) (p conn) {
 	return p
 }
 
-func (c *clusterClient) B() cmds.Builder {
+func (c *clusterClient) B() Builder {
 	return c.cmd
 }
 
@@ -374,14 +374,14 @@ process:
 	return resp
 }
 
-func (c *clusterClient) _pickMulti(multi []Completed) (retries map[conn]*retry, last uint16) {
+func (c *clusterClient) _pickMulti(multi []Completed) (retries *connretry, last uint16) {
 	last = cmds.InitSlot
 	init := false
 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	count := make(map[conn]int, len(c.conns))
+	count := conncountp.Get(len(c.conns), len(c.conns))
 	for _, cmd := range multi {
 		if cmd.Slot() == cmds.InitSlot {
 			init = true
@@ -391,13 +391,14 @@ func (c *clusterClient) _pickMulti(multi []Completed) (retries map[conn]*retry, 
 		if p == nil {
 			return nil, 0
 		}
-		count[p]++
+		count.m[p]++
 	}
 
-	retries = make(map[conn]*retry, len(count))
-	for cc, n := range count {
-		retries[cc] = retryp.Get(0, n)
+	retries = connretryp.Get(len(count.m), len(count.m))
+	for cc, n := range count.m {
+		retries.m[cc] = retryp.Get(0, n)
 	}
+	conncountp.Put(count)
 
 	for i, cmd := range multi {
 		if cmd.Slot() != cmds.InitSlot {
@@ -407,7 +408,7 @@ func (c *clusterClient) _pickMulti(multi []Completed) (retries map[conn]*retry, 
 				panic(panicMixCxSlot)
 			}
 			cc := c.slots[cmd.Slot()]
-			re := retries[cc]
+			re := retries.m[cc]
 			re.commands = append(re.commands, cmd)
 			re.cIndexes = append(re.cIndexes, i)
 		}
@@ -416,7 +417,7 @@ func (c *clusterClient) _pickMulti(multi []Completed) (retries map[conn]*retry, 
 	return retries, last
 }
 
-func (c *clusterClient) pickMulti(multi []Completed) (map[conn]*retry, uint16, error) {
+func (c *clusterClient) pickMulti(multi []Completed) (*connretry, uint16, error) {
 	conns, slot := c._pickMulti(multi)
 	if conns == nil {
 		if err := c.refresh(); err != nil {
@@ -429,6 +430,56 @@ func (c *clusterClient) pickMulti(multi []Completed) (map[conn]*retry, uint16, e
 	return conns, slot, nil
 }
 
+func (c *clusterClient) doresultfn(ctx context.Context, results *redisresults, retries *connretry, mu *sync.Mutex, cc conn, cIndexes []int, commands []Completed, resps []RedisResult) {
+	for i, resp := range resps {
+		ii := cIndexes[i]
+		cm := commands[i]
+		results.s[ii] = resp
+		addr, mode := c.shouldRefreshRetry(resp.Error(), ctx)
+		if mode != RedirectNone {
+			nc := cc
+			if mode == RedirectRetry {
+				if !c.retry || !cm.IsReadOnly() {
+					continue
+				}
+			} else {
+				nc = c.redirectOrNew(addr, cc)
+			}
+			mu.Lock()
+			nr := retries.m[nc]
+			if nr == nil {
+				nr = retryp.Get(0, len(commands))
+				retries.m[nc] = nr
+			}
+			if mode == RedirectAsk {
+				nr.aIndexes = append(nr.aIndexes, ii)
+				nr.cAskings = append(nr.cAskings, cm)
+			} else {
+				nr.cIndexes = append(nr.cIndexes, ii)
+				nr.commands = append(nr.commands, cm)
+			}
+			mu.Unlock()
+		}
+	}
+}
+
+func (c *clusterClient) doretry(ctx context.Context, cc conn, results *redisresults, retries *connretry, re *retry, mu *sync.Mutex, wg *sync.WaitGroup) {
+	if len(re.commands) != 0 {
+		resps := cc.DoMulti(ctx, re.commands...)
+		c.doresultfn(ctx, results, retries, mu, cc, re.cIndexes, re.commands, resps.s)
+		resultsp.Put(resps)
+	}
+	if len(re.cAskings) != 0 {
+		resps := askingMulti(cc, ctx, re.cAskings)
+		c.doresultfn(ctx, results, retries, mu, cc, re.aIndexes, re.cAskings, resps.s)
+		resultsp.Put(resps)
+	}
+	if ctx.Err() == nil {
+		retryp.Put(re)
+	}
+	wg.Done()
+}
+
 func (c *clusterClient) DoMulti(ctx context.Context, multi ...Completed) []RedisResult {
 	if len(multi) == 0 {
 		return nil
@@ -438,9 +489,10 @@ func (c *clusterClient) DoMulti(ctx context.Context, multi ...Completed) []Redis
 	if err != nil {
 		return fillErrs(len(multi), err)
 	}
+	defer connretryp.Put(retries)
 
-	if len(retries) <= 1 {
-		for _, re := range retries {
+	if len(retries.m) <= 1 {
+		for _, re := range retries.m {
 			retryp.Put(re)
 		}
 		return c.doMulti(ctx, slot, multi)
@@ -450,61 +502,18 @@ func (c *clusterClient) DoMulti(ctx context.Context, multi ...Completed) []Redis
 	var mu sync.Mutex
 
 	results := resultsp.Get(len(multi), len(multi))
-	respsfn := func(cc conn, cIndexes []int, commands []Completed, resps []RedisResult) {
-		for i, resp := range resps {
-			ii := cIndexes[i]
-			cm := commands[i]
-			results.s[ii] = resp
-			addr, mode := c.shouldRefreshRetry(resp.Error(), ctx)
-			if c.retry && mode != RedirectNone && cm.IsReadOnly() {
-				nc := cc
-				if mode != RedirectRetry {
-					nc = c.redirectOrNew(addr, cc)
-				}
-				mu.Lock()
-				nr := retries[nc]
-				if nr == nil {
-					nr = retryp.Get(0, len(commands))
-					retries[nc] = nr
-				}
-				if mode == RedirectAsk {
-					nr.aIndexes = append(nr.aIndexes, ii)
-					nr.cAskings = append(nr.cAskings, cm)
-				} else {
-					nr.cIndexes = append(nr.cIndexes, ii)
-					nr.commands = append(nr.commands, cm)
-				}
-				mu.Unlock()
-			}
-		}
-	}
 
 retry:
-	wg.Add(len(retries))
+	wg.Add(len(retries.m))
 	mu.Lock()
-	for cc, re := range retries {
-		delete(retries, cc)
-		go func(cc conn, re *retry) {
-			if len(re.commands) != 0 {
-				resps := cc.DoMulti(ctx, re.commands...)
-				respsfn(cc, re.cIndexes, re.commands, resps.s)
-				resultsp.Put(resps)
-			}
-			if len(re.cAskings) != 0 {
-				resps := askingMulti(cc, ctx, re.cAskings)
-				respsfn(cc, re.aIndexes, re.cAskings, resps.s)
-				resultsp.Put(resps)
-			}
-			if ctx.Err() == nil {
-				retryp.Put(re)
-			}
-			wg.Done()
-		}(cc, re)
+	for cc, re := range retries.m {
+		delete(retries.m, cc)
+		go c.doretry(ctx, cc, results, retries, re, &mu, &wg)
 	}
 	mu.Unlock()
 	wg.Wait()
 
-	if len(retries) != 0 {
+	if len(retries.m) != 0 {
 		goto retry
 	}
 
@@ -624,27 +633,28 @@ func askingMultiCache(cc conn, ctx context.Context, multi []CacheableTTL) *redis
 	return results
 }
 
-func (c *clusterClient) _pickMultiCache(multi []CacheableTTL) map[conn]*retrycache {
+func (c *clusterClient) _pickMultiCache(multi []CacheableTTL) *connretrycache {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	count := make(map[conn]int, len(c.conns))
+	count := conncountp.Get(len(c.conns), len(c.conns))
 	for _, cmd := range multi {
 		p := c.slots[cmd.Cmd.Slot()]
 		if p == nil {
 			return nil
 		}
-		count[p]++
+		count.m[p]++
 	}
 
-	retries := make(map[conn]*retrycache, len(count))
-	for cc, n := range count {
-		retries[cc] = retrycachep.Get(0, n)
+	retries := connretrycachep.Get(len(count.m), len(count.m))
+	for cc, n := range count.m {
+		retries.m[cc] = retrycachep.Get(0, n)
 	}
+	conncountp.Put(count)
 
 	for i, cmd := range multi {
 		cc := c.slots[cmd.Cmd.Slot()]
-		re := retries[cc]
+		re := retries.m[cc]
 		re.commands = append(re.commands, cmd)
 		re.cIndexes = append(re.cIndexes, i)
 	}
@@ -652,7 +662,7 @@ func (c *clusterClient) _pickMultiCache(multi []CacheableTTL) map[conn]*retrycac
 	return retries
 }
 
-func (c *clusterClient) pickMultiCache(multi []CacheableTTL) (map[conn]*retrycache, error) {
+func (c *clusterClient) pickMultiCache(multi []CacheableTTL) (*connretrycache, error) {
 	conns := c._pickMultiCache(multi)
 	if conns == nil {
 		if err := c.refresh(); err != nil {
@@ -665,6 +675,56 @@ func (c *clusterClient) pickMultiCache(multi []CacheableTTL) (map[conn]*retrycac
 	return conns, nil
 }
 
+func (c *clusterClient) resultcachefn(ctx context.Context, results *redisresults, retries *connretrycache, mu *sync.Mutex, cc conn, cIndexes []int, commands []CacheableTTL, resps []RedisResult) {
+	for i, resp := range resps {
+		ii := cIndexes[i]
+		cm := commands[i]
+		results.s[ii] = resp
+		addr, mode := c.shouldRefreshRetry(resp.Error(), ctx)
+		if mode != RedirectNone {
+			nc := cc
+			if mode == RedirectRetry {
+				if !c.retry {
+					continue
+				}
+			} else {
+				nc = c.redirectOrNew(addr, cc)
+			}
+			mu.Lock()
+			nr := retries.m[nc]
+			if nr == nil {
+				nr = retrycachep.Get(0, len(commands))
+				retries.m[nc] = nr
+			}
+			if mode == RedirectAsk {
+				nr.aIndexes = append(nr.aIndexes, ii)
+				nr.cAskings = append(nr.cAskings, cm)
+			} else {
+				nr.cIndexes = append(nr.cIndexes, ii)
+				nr.commands = append(nr.commands, cm)
+			}
+			mu.Unlock()
+		}
+	}
+}
+
+func (c *clusterClient) doretrycache(ctx context.Context, cc conn, results *redisresults, retries *connretrycache, re *retrycache, mu *sync.Mutex, wg *sync.WaitGroup) {
+	if len(re.commands) != 0 {
+		resps := cc.DoMultiCache(ctx, re.commands...)
+		c.resultcachefn(ctx, results, retries, mu, cc, re.cIndexes, re.commands, resps.s)
+		resultsp.Put(resps)
+	}
+	if len(re.cAskings) != 0 {
+		resps := askingMultiCache(cc, ctx, re.cAskings)
+		c.resultcachefn(ctx, results, retries, mu, cc, re.aIndexes, re.cAskings, resps.s)
+		resultsp.Put(resps)
+	}
+	if ctx.Err() == nil {
+		retrycachep.Put(re)
+	}
+	wg.Done()
+}
+
 func (c *clusterClient) DoMultiCache(ctx context.Context, multi ...CacheableTTL) []RedisResult {
 	if len(multi) == 0 {
 		return nil
@@ -674,64 +734,24 @@ func (c *clusterClient) DoMultiCache(ctx context.Context, multi ...CacheableTTL)
 	if err != nil {
 		return fillErrs(len(multi), err)
 	}
+	defer connretrycachep.Put(retries)
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 
 	results := resultsp.Get(len(multi), len(multi))
-	respsfn := func(cc conn, cIndexes []int, commands []CacheableTTL, resps []RedisResult) {
-		for i, resp := range resps {
-			ii := cIndexes[i]
-			cm := commands[i]
-			results.s[ii] = resp
-			addr, mode := c.shouldRefreshRetry(resp.Error(), ctx)
-			if c.retry && mode != RedirectNone {
-				nc := cc
-				if mode != RedirectRetry {
-					nc = c.redirectOrNew(addr, cc)
-				}
-				mu.Lock()
-				nr := retries[nc]
-				if nr == nil {
-					nr = retrycachep.Get(0, len(commands))
-					retries[nc] = nr
-				}
-				if mode == RedirectAsk {
-					nr.aIndexes = append(nr.aIndexes, ii)
-					nr.cAskings = append(nr.cAskings, cm)
-				} else {
-					nr.cIndexes = append(nr.cIndexes, ii)
-					nr.commands = append(nr.commands, cm)
-				}
-				mu.Unlock()
-			}
-		}
-	}
 
 retry:
-	wg.Add(len(retries))
+	wg.Add(len(retries.m))
 	mu.Lock()
-	for cc, re := range retries {
-		delete(retries, cc)
-		go func(cc conn, re *retrycache) {
-			if len(re.commands) != 0 {
-				resps := cc.DoMultiCache(ctx, re.commands...)
-				respsfn(cc, re.cIndexes, re.commands, resps.s)
-				resultsp.Put(resps)
-			}
-			if len(re.cAskings) != 0 {
-				resps := askingMultiCache(cc, ctx, re.cAskings)
-				respsfn(cc, re.aIndexes, re.cAskings, resps.s)
-				resultsp.Put(resps)
-			}
-			retrycachep.Put(re)
-			wg.Done()
-		}(cc, re)
+	for cc, re := range retries.m {
+		delete(retries.m, cc)
+		go c.doretrycache(ctx, cc, results, retries, re, &mu, &wg)
 	}
 	mu.Unlock()
 	wg.Wait()
 
-	if len(retries) != 0 {
+	if len(retries.m) != 0 {
 		goto retry
 	}
 
@@ -819,7 +839,7 @@ type dedicatedClusterClient struct {
 	pshks  *pshks
 
 	mu    sync.Mutex
-	cmd   cmds.Builder
+	cmd   Builder
 	slot  uint16
 	mark  bool
 	retry bool
@@ -873,7 +893,7 @@ func (c *dedicatedClusterClient) release() {
 	c.mu.Unlock()
 }
 
-func (c *dedicatedClusterClient) B() cmds.Builder {
+func (c *dedicatedClusterClient) B() Builder {
 	return c.cmd
 }
 
@@ -995,3 +1015,60 @@ const (
 	panicMsgCxSlot = "cross slot command in Dedicated is prohibited"
 	panicMixCxSlot = "Mixing no-slot and cross slot commands in DoMulti is prohibited"
 )
+
+type conncount struct {
+	m map[conn]int
+	n int
+}
+
+func (r *conncount) Capacity() int {
+	return r.n
+}
+
+func (r *conncount) ResetLen(n int) {
+	for k := range r.m {
+		delete(r.m, k)
+	}
+}
+
+var conncountp = util.NewPool(func(capacity int) *conncount {
+	return &conncount{m: make(map[conn]int, capacity), n: capacity}
+})
+
+type connretry struct {
+	m map[conn]*retry
+	n int
+}
+
+func (r *connretry) Capacity() int {
+	return r.n
+}
+
+func (r *connretry) ResetLen(n int) {
+	for k := range r.m {
+		delete(r.m, k)
+	}
+}
+
+var connretryp = util.NewPool(func(capacity int) *connretry {
+	return &connretry{m: make(map[conn]*retry, capacity), n: capacity}
+})
+
+type connretrycache struct {
+	m map[conn]*retrycache
+	n int
+}
+
+func (r *connretrycache) Capacity() int {
+	return r.n
+}
+
+func (r *connretrycache) ResetLen(n int) {
+	for k := range r.m {
+		delete(r.m, k)
+	}
+}
+
+var connretrycachep = util.NewPool(func(capacity int) *connretrycache {
+	return &connretrycache{m: make(map[conn]*retrycache, capacity), n: capacity}
+})

@@ -51,12 +51,12 @@ type sentinelClient struct {
 	sc        call
 	mu        sync.Mutex
 	stop      uint32
-	cmd       cmds.Builder
+	cmd       Builder
 	retry     bool
 	replica   bool
 }
 
-func (c *sentinelClient) B() cmds.Builder {
+func (c *sentinelClient) B() Builder {
 	return c.cmd
 }
 

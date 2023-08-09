@@ -7,10 +7,10 @@ import (
 
 type queue interface {
 	PutOne(m Completed) chan RedisResult
-	PutMulti(m []Completed) chan RedisResult
+	PutMulti(m []Completed, resps []RedisResult) chan RedisResult
 	NextWriteCmd() (Completed, []Completed, chan RedisResult)
 	WaitForWrite() (Completed, []Completed, chan RedisResult)
-	NextResultCh() (Completed, []Completed, chan RedisResult, *sync.Cond)
+	NextResultCh() (Completed, []Completed, chan RedisResult, []RedisResult, *sync.Cond)
 }
 
 var _ queue = (*ring)(nil)
@@ -46,6 +46,7 @@ type node struct {
 	ch    chan RedisResult
 	one   Completed
 	multi []Completed
+	resps []RedisResult
 	mark  uint32
 	slept bool
 }
@@ -58,6 +59,7 @@ func (r *ring) PutOne(m Completed) chan RedisResult {
 	}
 	n.one = m
 	n.multi = nil
+	n.resps = nil
 	n.mark = 1
 	s := n.slept
 	n.c1.L.Unlock()
@@ -67,7 +69,7 @@ func (r *ring) PutOne(m Completed) chan RedisResult {
 	return n.ch
 }
 
-func (r *ring) PutMulti(m []Completed) chan RedisResult {
+func (r *ring) PutMulti(m []Completed, resps []RedisResult) chan RedisResult {
 	n := &r.store[atomic.AddUint64(&r.write, 1)&r.mask]
 	n.c1.L.Lock()
 	for n.mark != 0 {
@@ -75,6 +77,7 @@ func (r *ring) PutMulti(m []Completed) chan RedisResult {
 	}
 	n.one = Completed{}
 	n.multi = m
+	n.resps = resps
 	n.mark = 1
 	s := n.slept
 	n.c1.L.Unlock()
@@ -118,14 +121,14 @@ func (r *ring) WaitForWrite() (one Completed, multi []Completed, ch chan RedisRe
 }
 
 // NextResultCh should be only called by one dedicated thread
-func (r *ring) NextResultCh() (one Completed, multi []Completed, ch chan RedisResult, cond *sync.Cond) {
+func (r *ring) NextResultCh() (one Completed, multi []Completed, ch chan RedisResult, resps []RedisResult, cond *sync.Cond) {
 	r.read2++
 	p := r.read2 & r.mask
 	n := &r.store[p]
 	cond = n.c1
 	n.c1.L.Lock()
 	if n.mark == 2 {
-		one, multi, ch = n.one, n.multi, n.ch
+		one, multi, ch, resps = n.one, n.multi, n.ch, n.resps
 		n.mark = 0
 	} else {
 		r.read2--

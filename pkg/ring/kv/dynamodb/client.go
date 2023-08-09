@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	maxCasRetries              = 10          // max retries in CAS operation
-	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
+	maxCasRetries = 10 // max retries in CAS operation
 )
 
 // Config to create a ConsulClient
@@ -131,8 +130,6 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	bo := backoff.New(ctx, c.backoffConfig)
-
-outer:
 	for bo.Ongoing() {
 		c.ddbMetrics.dynamodbCasAttempts.Inc()
 		resp, _, err := c.kv.Query(ctx, dynamodbKey{primaryKey: key}, false)
@@ -196,13 +193,8 @@ outer:
 		}
 
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {
-			// no change detected, wait for 1 sec and retry
-			select {
-			case <-time.After(noChangeDetectedRetrySleep):
-				// ok
-			case <-ctx.Done():
-				break outer
-			}
+			// no change detected, retry
+			bo.Wait()
 			continue
 		}
 

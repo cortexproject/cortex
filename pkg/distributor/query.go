@@ -326,10 +326,17 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 				return nil, validation.LimitError(chunkLimitErr.Error())
 			}
 
+			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Chunkseries)+len(resp.Timeseries))
 			for _, series := range resp.Chunkseries {
-				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
-					return nil, validation.LimitError(limitErr.Error())
-				}
+				s = append(s, series.Labels)
+			}
+
+			for _, series := range resp.Timeseries {
+				s = append(s, series.Labels)
+			}
+
+			if limitErr := queryLimiter.AddSeries(s...); limitErr != nil {
+				return nil, validation.LimitError(limitErr.Error())
 			}
 
 			if chunkBytesLimitErr := queryLimiter.AddChunkBytes(resp.ChunksSize()); chunkBytesLimitErr != nil {
@@ -338,12 +345,6 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 
 			if dataBytesLimitErr := queryLimiter.AddDataBytes(resp.Size()); dataBytesLimitErr != nil {
 				return nil, validation.LimitError(dataBytesLimitErr.Error())
-			}
-
-			for _, series := range resp.Timeseries {
-				if limitErr := queryLimiter.AddSeries(series.Labels); limitErr != nil {
-					return nil, validation.LimitError(limitErr.Error())
-				}
 			}
 
 			result.Chunkseries = append(result.Chunkseries, resp.Chunkseries...)

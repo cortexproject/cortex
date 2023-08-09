@@ -1,10 +1,12 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -16,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -276,6 +280,74 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			if tt.additionalMetricsCheckFunc != nil {
 				tt.additionalMetricsCheckFunc(handler.(*Handler))
 			}
+		})
+	}
+}
+
+func TestParseURLValues(t *testing.T) {
+	userID := "12345"
+	var tests = []struct {
+		name     string
+		query    string
+		step     string
+		start    string
+		end      string
+		ts       string
+		startint int64
+		endint   int64
+		stepint  int64
+		tsint    int64
+		message  string
+	}{
+		{
+			name:     "test range query",
+			query:    "test",
+			step:     "10m",
+			start:    "100000",
+			end:      "200000",
+			startint: 100000000,
+			endint:   200000000,
+			stepint:  600000,
+		},
+		{
+			name:  "test instance query",
+			query: "test",
+			ts:    "100000",
+			tsint: 100000000,
+		},
+		{
+			name:    "test instant query with invalid timestamp",
+			query:   "test",
+			ts:      "abc",
+			message: "failed to parse time",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := log.NewLogfmtLogger(&buf)
+			ctx := user.InjectOrgID(context.Background(), userID)
+			req := httptest.NewRequest("GET", "/", nil)
+			req = req.WithContext(ctx)
+			qstats := &stats.QueryStats{}
+			urlValues := url.Values{}
+			urlValues.Set("query", tt.query)
+			urlValues.Set("start", tt.start)
+			urlValues.Set("end", tt.end)
+			urlValues.Set("step", tt.step)
+			urlValues.Set("time", tt.ts)
+			parseURLValues(req, qstats, urlValues, logger)
+			if tt.message != "" {
+				acutalLog := buf.String()
+				assert.Contains(t, acutalLog, tt.message)
+				return
+			}
+			assert.Equal(t, tt.query, qstats.LoadQuery())
+			assert.Equal(t, tt.startint, qstats.LoadStart())
+			assert.Equal(t, tt.endint, qstats.LoadEnd())
+			assert.Equal(t, tt.tsint, qstats.LoadTs())
+			assert.Equal(t, tt.stepint, qstats.LoadStep())
 		})
 	}
 }

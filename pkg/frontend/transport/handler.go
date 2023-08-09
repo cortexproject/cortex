@@ -208,6 +208,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	shouldReportSlowQuery := f.cfg.LogQueriesLongerThan != 0 && queryResponseTime > f.cfg.LogQueriesLongerThan
 	if shouldReportSlowQuery || f.cfg.QueryStatsEnabled {
 		queryString = f.parseRequestQueryString(r, buf)
+		parseURLValues(r, stats, queryString, f.log)
 	}
 
 	if shouldReportSlowQuery {
@@ -230,7 +231,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-
 		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
@@ -254,6 +254,56 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
+}
+
+func parseURLValues(r *http.Request, stats *querier_stats.QueryStats, values url.Values, log log.Logger) {
+	query := values.Get("query")
+	step := values.Get("step")
+	start := values.Get("start")
+	end := values.Get("end")
+	ts := values.Get("time")
+	var (
+		tsInt, startInt, endInt, stepInt int64
+		err                              error
+	)
+	stats.AddQuery(query)
+	if len(step) == 0 { // instant query
+		if len(ts) > 0 {
+			tsInt, err = util.ParseTime(ts)
+			if err != nil {
+				level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse time", "ts", ts, "err", err)
+				return
+			}
+		} else {
+			tsInt = util.TimeToMillis(time.Now())
+		}
+		stats.AddTs(tsInt)
+		return
+	}
+
+	//range query
+	stepInt, err = util.ParseDurationMs(step)
+	if err != nil {
+		level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse step", "step", step, "err", err)
+		return
+	}
+	if len(start) > 0 {
+		startInt, err = util.ParseTime(start)
+		if err != nil {
+			level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse start", "start", start, "err", err)
+			return
+		}
+	}
+	if len(end) > 0 {
+		endInt, err = util.ParseTime(end)
+		if err != nil {
+			level.Error(util_log.WithContext(r.Context(), log)).Log("msg", "failed to parse end", "end", end, "err", err)
+			return
+		}
+	}
+	stats.AddStart(startInt)
+	stats.AddEnd(endInt)
+	stats.AddStep(stepInt)
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {

@@ -108,6 +108,80 @@ func (s *QueryStats) LoadExtraFields() []interface{} {
 	return r
 }
 
+func (s *QueryStats) AddQuery(query string) {
+	if s == nil {
+		return
+	}
+	s.m.Lock()
+	defer s.m.Unlock()
+	s.Query = query
+}
+
+func (s *QueryStats) LoadQuery() string {
+	if s == nil {
+		return ""
+	}
+	s.m.Lock()
+	defer s.m.Unlock()
+	return s.Query
+}
+
+func (s *QueryStats) AddStart(start int64) {
+	if s == nil {
+		return
+	}
+	atomic.StoreInt64(&s.StartInt, start)
+}
+
+func (s *QueryStats) LoadStart() int64 {
+	if s == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&s.StartInt)
+}
+
+func (s *QueryStats) AddEnd(end int64) {
+	if s == nil {
+		return
+	}
+	atomic.StoreInt64(&s.EndInt, end)
+}
+
+func (s *QueryStats) LoadEnd() int64 {
+	if s == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&s.EndInt)
+}
+
+func (s *QueryStats) AddStep(step int64) {
+	if s == nil {
+		return
+	}
+	atomic.StoreInt64(&s.StepInt, step)
+}
+
+func (s *QueryStats) LoadStep() int64 {
+	if s == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&s.StepInt)
+}
+
+func (s *QueryStats) AddTs(ts int64) {
+	if s == nil {
+		return
+	}
+	atomic.StoreInt64(&s.Ts, ts)
+}
+
+func (s *QueryStats) LoadTs() int64 {
+	if s == nil {
+		return 0
+	}
+	return atomic.LoadInt64(&s.Ts)
+}
+
 func (s *QueryStats) LoadFetchedSeries() uint64 {
 	if s == nil {
 		return 0

@@ -28,4 +28,14 @@ message Stats {
   uint64 fetched_samples_count = 7;
   // The limit hit when executing the query
   string limit_hit = 8 [(gogoproto.nullable) = true];
+  // Query string
+  string query = 9;
+  // Start in Ms
+  int64 start_int = 10;
+  // End in Ms
+  int64 end_int = 11;
+  // Step in Ms
+  int64 step_int = 12;
+  // Ts in Ms
+  int64 ts = 13;
 }

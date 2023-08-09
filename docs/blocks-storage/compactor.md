@@ -273,6 +273,10 @@ compactor:
     # CLI flag: -compactor.ring.tokens-file-path
     [tokens_file_path: <string> | default = ""]
 
+    # Unregister the compactor during shutdown if true.
+    # CLI flag: -compactor.ring.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
     # Timeout for waiting on compactor to become ACTIVE in the ring.
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]

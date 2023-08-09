@@ -17,6 +17,7 @@ package tripperware
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"io"
 	"net/http"
 	"strings"
@@ -152,6 +153,18 @@ func NewQueryTripperware(
 				if isQueryRange {
 					return queryrange.RoundTrip(r)
 				} else if isQuery {
+					// If the given query is not shardable, use downstream roundtripper.
+					query := r.FormValue("query")
+
+					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
+					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
+					if numShards <= 1 {
+						return next.RoundTrip(r)
+					}
+					analysis, err := queryAnalyzer.Analyze(query)
+					if err != nil || !analysis.IsShardable() {
+						return next.RoundTrip(r)
+					}
 					return instantQuery.RoundTrip(r)
 				}
 				return next.RoundTrip(r)

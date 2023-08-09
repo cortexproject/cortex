@@ -251,6 +251,7 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 	}
 
 	h.Set("Accept-Encoding", "snappy")
+	h.Set("Accept", "application/x-protobuf")
 
 	req := &http.Request{
 		Method:     "GET",

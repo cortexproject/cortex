@@ -322,6 +322,10 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
     [consul: <consul_config>]
@@ -1863,6 +1867,10 @@ sharding_ring:
       # CLI flag: -compactor.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -compactor.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -2115,6 +2123,10 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -distributor.ha-tracker.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -2200,6 +2212,10 @@ ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -distributor.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -distributor.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -2492,6 +2508,10 @@ lifecycler:
         # Time to refresh local ring with information on dynamodb.
         # CLI flag: -dynamodb.puller-sync-time
         [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -3879,6 +3899,10 @@ ring:
       # CLI flag: -ruler.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -ruler.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
     [consul: <consul_config>]
@@ -4741,6 +4765,10 @@ sharding_ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

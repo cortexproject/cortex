@@ -46,15 +46,10 @@ var (
 
 type prometheusCodec struct {
 	sharded bool
-
-	noStepSubQueryInterval time.Duration
 }
 
-func NewPrometheusCodec(sharded bool, noStepSubQueryInterval time.Duration) *prometheusCodec { //nolint:revive
-	return &prometheusCodec{
-		sharded:                sharded,
-		noStepSubQueryInterval: noStepSubQueryInterval,
-	}
+func NewPrometheusCodec(sharded bool) *prometheusCodec { //nolint:revive
+	return &prometheusCodec{sharded: sharded}
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -150,12 +145,16 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Reques
 
 	// Merge the responses.
 	sort.Sort(byFirstTime(promResponses))
+	sampleStreams, err := matrixMerge(ctx, promResponses)
+	if err != nil {
+		return nil, err
+	}
 
 	response := PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
 			ResultType: model.ValMatrix.String(),
-			Result:     matrixMerge(promResponses),
+			Result:     sampleStreams,
 			Stats:      statsMerge(c.sharded, promResponses),
 		},
 	}
@@ -203,10 +202,6 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	}
 
 	result.Query = r.FormValue("query")
-	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
-		return nil, err
-	}
-
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 
@@ -271,6 +266,10 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
@@ -356,9 +355,12 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *tripperware.P
 	return tripperware.StatsMerge(output)
 }
 
-func matrixMerge(resps []*PrometheusResponse) []tripperware.SampleStream {
+func matrixMerge(ctx context.Context, resps []*PrometheusResponse) ([]tripperware.SampleStream, error) {
 	output := make(map[string]tripperware.SampleStream)
 	for _, resp := range resps {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if resp == nil {
 			continue
 		}
@@ -376,7 +378,7 @@ func matrixMerge(resps []*PrometheusResponse) []tripperware.SampleStream {
 		result = append(result, output[key])
 	}
 
-	return result
+	return result, nil
 }
 
 func parseDurationMs(s string) (int64, error) {

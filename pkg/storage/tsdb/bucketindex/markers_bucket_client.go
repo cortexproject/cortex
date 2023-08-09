@@ -38,12 +38,12 @@ func (b *globalMarkersBucket) Upload(ctx context.Context, name string, r io.Read
 	}
 
 	// Upload it to the global marker's location.
-	if err := b.parent.Upload(ctx, globalMarkPath, bytes.NewBuffer(body)); err != nil {
+	if err := b.parent.Upload(ctx, globalMarkPath, bytes.NewReader(body)); err != nil {
 		return err
 	}
 
 	// Upload it to the original location too.
-	return b.parent.Upload(ctx, name, bytes.NewBuffer(body))
+	return b.parent.Upload(ctx, name, bytes.NewReader(body))
 }
 
 // Delete implements objstore.Bucket.
@@ -98,6 +98,11 @@ func (b *globalMarkersBucket) Exists(ctx context.Context, name string) (bool, er
 // IsObjNotFoundErr implements objstore.Bucket.
 func (b *globalMarkersBucket) IsObjNotFoundErr(err error) bool {
 	return b.parent.IsObjNotFoundErr(err)
+}
+
+// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+func (b *globalMarkersBucket) IsCustomerManagedKeyError(err error) bool {
+	return b.parent.IsCustomerManagedKeyError(err)
 }
 
 // Attributes implements objstore.Bucket.

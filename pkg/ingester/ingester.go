@@ -16,6 +16,8 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
@@ -122,6 +124,9 @@ type Config struct {
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+
+	// For admin contact details
+	AdminLimitMessage string `yaml:"admin_limit_message"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -142,6 +147,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
+
+	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
+
 }
 
 func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
@@ -651,7 +659,9 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.DistributorShardingStrategy,
 		cfg.DistributorShardByAllLabels,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
-		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
+		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
+		cfg.AdminLimitMessage,
+	)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 
@@ -1958,6 +1968,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
+	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -1975,7 +1986,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
-		OutOfOrderTimeWindow:           time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {
@@ -2028,8 +2039,10 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
-			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
-			true,  // Allow out of order uploads. It's fine in Cortex's context.
+			func() bool {
+				return oooTimeWindow > 0 // Upload compacted blocks when OOO is enabled.
+			},
+			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
 		)
 
@@ -2288,6 +2301,14 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			return nil
 		}
 		defer userDB.casState(activeShipping, active)
+
+		if idxs, err := bucketindex.ReadSyncStatus(ctx, i.TSDBState.bucket, userID, logutil.WithContext(ctx, i.logger)); err == nil {
+			// Skip blocks shipping if the bucket index failed to sync due to CMK errors.
+			if idxs.Status == bucketindex.CustomerManagedKeyError {
+				level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "skipping shipping blocks due CustomerManagedKeyError", "user", userID)
+				return nil
+			}
+		}
 
 		uploaded, err := userDB.shipper.Sync(ctx)
 		if err != nil {

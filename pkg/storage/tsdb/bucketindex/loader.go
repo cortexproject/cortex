@@ -91,7 +91,7 @@ func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, cfgProvider bucke
 
 // GetIndex returns the bucket index for the given user. It returns the in-memory cached
 // index if available, or load it from the bucket otherwise.
-func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
+func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, error) {
 	l.indexesMx.RLock()
 	if entry := l.indexes[userID]; entry != nil {
 		idx := entry.index
@@ -101,7 +101,7 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 		// We don't check if the index is stale because it's the responsibility
 		// of the background job to keep it updated.
 		entry.requestedAt.Store(time.Now().Unix())
-		return idx, err
+		return idx, entry.syncStatus, err
 	}
 	l.indexesMx.RUnlock()
 
@@ -111,10 +111,12 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 	if err != nil {
 		// Cache the error, to avoid hammering the object store in case of persistent issues
 		// (eg. corrupted bucket index or not existing).
-		l.cacheIndex(userID, nil, err)
+		l.cacheIndex(userID, nil, UnknownStatus, err)
 
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
+		} else if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+			level.Warn(l.logger).Log("msg", "key access denied when reading bucket index", "user", userID)
 		} else {
 			// We don't track ErrIndexNotFound as failure because it's a legit case (eg. a tenant just
 			// started to remote write and its blocks haven't uploaded to storage yet).
@@ -122,25 +124,31 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, error) {
 			level.Error(l.logger).Log("msg", "unable to load bucket index", "user", userID, "err", err)
 		}
 
-		return nil, err
+		return nil, UnknownStatus, err
+	}
+
+	ss, err := ReadSyncStatus(ctx, l.bkt, userID, l.logger)
+
+	if err != nil {
+		level.Warn(l.logger).Log("msg", "unable to read bucket index status", "user", userID, "err", err)
 	}
 
 	// Cache the index.
-	l.cacheIndex(userID, idx, nil)
+	l.cacheIndex(userID, idx, ss, nil)
 
 	elapsedTime := time.Since(startTime)
 	l.loadDuration.Observe(elapsedTime.Seconds())
 	level.Info(l.logger).Log("msg", "loaded bucket index", "user", userID, "duration", elapsedTime)
-	return idx, nil
+	return idx, ss, nil
 }
 
-func (l *Loader) cacheIndex(userID string, idx *Index, err error) {
+func (l *Loader) cacheIndex(userID string, idx *Index, ss Status, err error) {
 	l.indexesMx.Lock()
 	defer l.indexesMx.Unlock()
 
 	// Not an issue if, due to concurrency, another index was already cached
 	// and we overwrite it: last will win.
-	l.indexes[userID] = newCachedIndex(idx, err)
+	l.indexes[userID] = newCachedIndex(idx, ss, err)
 }
 
 // checkCachedIndexes checks all cached indexes and, for each of them, does two things:
@@ -196,7 +204,7 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 	l.loadAttempts.Inc()
 	startTime := time.Now()
 	idx, err := ReadIndex(readCtx, l.bkt, userID, l.cfgProvider, l.logger)
-	if err != nil && !errors.Is(err, ErrIndexNotFound) {
+	if err != nil && !errors.Is(err, ErrIndexNotFound) && !errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 		l.loadFailures.Inc()
 		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
 		return
@@ -238,8 +246,9 @@ func (l *Loader) countLoadedIndexesMetric() float64 {
 type cachedIndex struct {
 	// We cache either the index or the error occurred while fetching it. They're
 	// mutually exclusive.
-	index *Index
-	err   error
+	index      *Index
+	syncStatus Status
+	err        error
 
 	// Unix timestamp (seconds) of when the index has been updated from the storage the last time.
 	updatedAt atomic.Int64
@@ -248,10 +257,11 @@ type cachedIndex struct {
 	requestedAt atomic.Int64
 }
 
-func newCachedIndex(idx *Index, err error) *cachedIndex {
+func newCachedIndex(idx *Index, ss Status, err error) *cachedIndex {
 	entry := &cachedIndex{
-		index: idx,
-		err:   err,
+		index:      idx,
+		err:        err,
+		syncStatus: ss,
 	}
 
 	now := time.Now()

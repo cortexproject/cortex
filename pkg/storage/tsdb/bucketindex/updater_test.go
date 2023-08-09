@@ -106,7 +106,7 @@ func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetric(t *testing.
 
 	// Mock some blocks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
-	bkt = objstore.BucketWithMetrics("test-bucket", bkt, registry)
+	bkt = objstore.WrapWithMetrics(bkt, prometheus.WrapRegistererWithPrefix("thanos_", registry), "test-bucket")
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block3 := testutil.MockStorageBlock(t, bkt, userID, 30, 40)
@@ -124,6 +124,50 @@ func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetric(t *testing.
 
 	assert.Len(t, partials, 1)
 	assert.True(t, errors.Is(partials[block3.ULID], ErrBlockMetaNotFound))
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
+			# HELP thanos_objstore_bucket_operation_failures_total Total number of operations against a bucket that failed, but were not expected to fail in certain way from caller perspective. Those errors have to be investigated.
+			# TYPE thanos_objstore_bucket_operation_failures_total counter
+			thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="attributes"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="delete"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="exists"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="get"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="get_range"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="iter"} 0
+            thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="upload"} 0
+		`), "thanos_objstore_bucket_operation_failures_total"))
+}
+
+func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetricCustomerKey(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	registry := prometheus.NewRegistry()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	bkt = objstore.WrapWithMetrics(bkt, prometheus.WrapRegistererWithPrefix("thanos_", registry), "test-bucket")
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+
+	bkt = &testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			path.Join(userID, block2.ULID.String(), "meta.json"): testutil.ErrKeyAccessDeniedError,
+		},
+	}
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, partials, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assert.Len(t, partials, 1)
+	assert.True(t, errors.Is(partials[block2.ULID], errBlockMetaKeyAccessDeniedErr))
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1},
+		[]*metadata.DeletionMark{})
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 			# HELP thanos_objstore_bucket_operation_failures_total Total number of operations against a bucket that failed, but were not expected to fail in certain way from caller perspective. Those errors have to be investigated.
@@ -199,6 +243,43 @@ func TestUpdater_UpdateIndex_ShouldSkipCorruptedDeletionMarks(t *testing.T) {
 		[]*metadata.DeletionMark{})
 	assert.Empty(t, partials)
 	assert.Equal(t, nonCompactBlocks, int64(1))
+}
+
+func TestUpdater_UpdateIndex_ShouldSkipBlockMarkedForDeletionWithMissingGlobalMarker(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+
+	oldIdx := &Index{
+		Version: IndexVersion1,
+		Blocks: Blocks{&Block{
+			ID:         block2.ULID,
+			MinTime:    block2.MinTime,
+			MaxTime:    block2.MaxTime,
+			UploadedAt: getBlockUploadedAt(t, bkt, userID, block2.ULID),
+		}},
+		BlockDeletionMarks: BlockDeletionMarks{&BlockDeletionMark{
+			ID:           block2.ULID,
+			DeletionTime: time.Now().Add(-time.Minute).Unix(),
+		}},
+	}
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, partials, nonCompactBlocks, err := w.UpdateIndex(ctx, oldIdx)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1},
+		[]*metadata.DeletionMark{})
+	assert.Empty(t, partials)
+	assert.Empty(t, nonCompactBlocks)
 }
 
 func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {

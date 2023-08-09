@@ -127,9 +127,10 @@ type Config struct {
 	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy string `yaml:"sharding_strategy"`
-	ShardByAllLabels bool   `yaml:"shard_by_all_labels"`
-	ExtendWrites     bool   `yaml:"extend_writes"`
+	ShardingStrategy         string `yaml:"sharding_strategy"`
+	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
+	ExtendWrites             bool   `yaml:"extend_writes"`
+	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -163,6 +164,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
+	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 
@@ -181,6 +183,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
+
 	return haHATrackerConfig.Validate()
 }
 

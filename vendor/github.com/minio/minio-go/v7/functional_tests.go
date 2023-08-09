@@ -141,7 +141,7 @@ func cleanEmptyEntries(fields log.Fields) log.Fields {
 }
 
 // log successful test runs
-func successLogger(testName string, function string, args map[string]interface{}, startTime time.Time) *log.Entry {
+func successLogger(testName, function string, args map[string]interface{}, startTime time.Time) *log.Entry {
 	// calculate the test case duration
 	duration := time.Since(startTime)
 	// log with the fields as per mint
@@ -151,7 +151,7 @@ func successLogger(testName string, function string, args map[string]interface{}
 
 // As few of the features are not available in Gateway(s) currently, Check if err value is NotImplemented,
 // and log as NA in that case and continue execution. Otherwise log as failure and return
-func logError(testName string, function string, args map[string]interface{}, startTime time.Time, alert string, message string, err error) {
+func logError(testName, function string, args map[string]interface{}, startTime time.Time, alert, message string, err error) {
 	// If server returns NotImplemented we assume it is gateway mode and hence log it as info and move on to next tests
 	// Special case for ComposeObject API as it is implemented on client side and adds specific error details like `Error in upload-part-copy` in
 	// addition to NotImplemented error returned from server
@@ -165,7 +165,7 @@ func logError(testName string, function string, args map[string]interface{}, sta
 }
 
 // log failed test runs
-func failureLog(testName string, function string, args map[string]interface{}, startTime time.Time, alert string, message string, err error) *log.Entry {
+func failureLog(testName, function string, args map[string]interface{}, startTime time.Time, alert, message string, err error) *log.Entry {
 	// calculate the test case duration
 	duration := time.Since(startTime)
 	var fields log.Fields
@@ -185,7 +185,7 @@ func failureLog(testName string, function string, args map[string]interface{}, s
 }
 
 // log not applicable test runs
-func ignoredLog(testName string, function string, args map[string]interface{}, startTime time.Time, alert string) *log.Entry {
+func ignoredLog(testName, function string, args map[string]interface{}, startTime time.Time, alert string) *log.Entry {
 	// calculate the test case duration
 	duration := time.Since(startTime)
 	// log with the fields as per mint
@@ -2471,7 +2471,8 @@ func testTrailingChecksums() {
 		PO             minio.PutObjectOptions
 	}{
 		// Currently there is no way to override the checksum type.
-		{header: "x-amz-checksum-crc32c",
+		{
+			header:         "x-amz-checksum-crc32c",
 			hasher:         crc32.New(crc32.MakeTable(crc32.Castagnoli)),
 			ChecksumCRC32C: "set",
 			PO: minio.PutObjectOptions{
@@ -2481,7 +2482,8 @@ func testTrailingChecksums() {
 				PartSize:             5 << 20,
 			},
 		},
-		{header: "x-amz-checksum-crc32c",
+		{
+			header:         "x-amz-checksum-crc32c",
 			hasher:         crc32.New(crc32.MakeTable(crc32.Castagnoli)),
 			ChecksumCRC32C: "set",
 			PO: minio.PutObjectOptions{
@@ -2491,7 +2493,8 @@ func testTrailingChecksums() {
 				PartSize:             6_645_654, // Rather arbitrary size
 			},
 		},
-		{header: "x-amz-checksum-crc32c",
+		{
+			header:         "x-amz-checksum-crc32c",
 			hasher:         crc32.New(crc32.MakeTable(crc32.Castagnoli)),
 			ChecksumCRC32C: "set",
 			PO: minio.PutObjectOptions{
@@ -2501,7 +2504,8 @@ func testTrailingChecksums() {
 				PartSize:             5 << 20,
 			},
 		},
-		{header: "x-amz-checksum-crc32c",
+		{
+			header:         "x-amz-checksum-crc32c",
 			hasher:         crc32.New(crc32.MakeTable(crc32.Castagnoli)),
 			ChecksumCRC32C: "set",
 			PO: minio.PutObjectOptions{

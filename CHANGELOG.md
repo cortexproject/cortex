@@ -1,6 +1,8 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
+* [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
 * [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276
@@ -11,6 +13,10 @@
 * [CHANGE] Ruler: Added user label to `cortex_ruler_write_requests_total`, `cortex_ruler_write_requests_failed_total`, `cortex_ruler_queries_total`, and `cortex_ruler_queries_failed_total` metrics. #5312
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290
 * [CHANGE] Ingester: Creating label `native-histogram-sample` on the `cortex_discarded_samples_total` to keep track of discarded native histogram samples. #5289
+* [CHANGE] Store Gateway: Rename `cortex_bucket_store_cached_postings_compression_time_seconds` to `cortex_bucket_store_cached_postings_compression_time_seconds_total`. #5431
+* [CHANGE] Store Gateway: Rename `cortex_bucket_store_cached_series_fetch_duration_seconds` to `cortex_bucket_store_series_fetch_duration_seconds` and `cortex_bucket_store_cached_postings_fetch_duration_seconds` to `cortex_bucket_store_postings_fetch_duration_seconds`. Add new metric `cortex_bucket_store_chunks_fetch_duration_seconds`. #5448
+* [CHANGE] Store Gateway: Remove `idle_timeout`, `max_conn_age`, `pool_size`, `min_idle_conns` fields for Redis index cache and caching bucket. #5448
+* [CHANGE] Store Gateway: Add flag `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` to enable store gateway to use zone stable shuffle sharding. #5489
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
 * [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
@@ -18,6 +24,8 @@
 * [FEATURE] Querier/StoreGateway: Allow the tenant shard sizes to be a percent of total instances. #5393
 * [FEATURE] Added the flag `-alertmanager.api-concurrency` to configure alert manager api concurrency limit. #5412
 * [FEATURE] Store Gateway: Add `-store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown` to skip unregistering instance from the ring in shutdown. #5421
+* [FEATURE] Ruler: Support for filtering rules in the API. #5417
+* [FEATURE] Compactor: Add `-compactor.ring.tokens-file-path` to store generated tokens locally. #5432
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
@@ -32,6 +40,12 @@
 * [ENHANCEMENT] Store Gateway: Add new metrics `cortex_bucket_store_sent_chunk_size_bytes`, `cortex_bucket_store_postings_size_bytes` and `cortex_bucket_store_empty_postings_total`. #5397
 * [ENHANCEMENT] Add jitter to lifecycler heartbeat. #5404
 * [ENHANCEMENT] Store Gateway: Add config `estimated_max_series_size_bytes` and `estimated_max_chunk_size_bytes` to address data overfetch. #5401
+* [ENHANCEMENT] Distributor/Ingester: Add experimental `-distributor.sign_write_requests` flag to sign the write requests. #5430
+* [ENHANCEMENT] Store Gateway/Querier/Compactor: Handling CMK Access Denied errors. #5420 #5442 #5446
+* [ENHANCEMENT] Store Gateway: Implementing multi level index cache. #5451
+* [ENHANCEMENT] Alertmanager: Add the alert name in error log when it get throttled. #5456
+* [ENHANCEMENT] Querier: Retry store gateway on different zones when zone awareness is enabled. #5476
+* [ENHANCEMENT] DDBKV: Change metric name from dynamodb_kv_read_capacity_total to dynamodb_kv_consumed_capacity_total and include Delete, Put, Batch dimension. #5481
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
@@ -42,6 +56,12 @@
 * [BUGFIX] Ring: Allow RF greater than number of zones to select more than one instance per zone #5411
 * [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
 * [BUGFIX] Store Gateway: Fix bug in store gateway ring comparison logic. #5426
+* [BUGFIX] Ring: Fix bug in consistency of Get func in a scaling zone-aware ring. #5429
+* [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
+* [BUGFIX] Alertmanager: Remove the user id from state replication key metric label value. #5453
+* [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
+* [BUGFIX] DDBKV: Disallow instance with older timestamp to update instance with newer timestamp. #5480
+* [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
 
 ## 1.15.1 2023-04-26
 
@@ -187,6 +207,10 @@
 * [BUGFIX] Storage/Bucket: fixed global mark missing on deletion. #4949
 * [BUGFIX] QueryFrontend/Querier: fixed regression added by #4863 where we stopped compressing the response between querier and query frontend. #4960
 * [BUGFIX] QueryFrontend/Querier: fixed fix response error to be ungzipped when status code is not 2xx. #4975
+
+### Known issues
+
+- Configsdb: Ruler configs doesn't work. Remove all configs from postgres database that have format Prometheus 1.x rule format before upgrading to v1.14.0 (see [5387](https://github.com/cortexproject/cortex/issues/5387))
 
 ## 1.13.0 2022-07-14
 

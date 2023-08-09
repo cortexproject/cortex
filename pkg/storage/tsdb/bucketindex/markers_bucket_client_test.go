@@ -3,9 +3,11 @@ package bucketindex
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -13,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -161,6 +165,48 @@ func TestGlobalMarkersBucket_isMark(t *testing.T) {
 	}
 }
 
+func TestBucketWithGlobalMarkers_ShouldRetryUpload(t *testing.T) {
+	ctx := context.Background()
+	block1 := ulid.MustNew(1, nil)
+
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	// Fail the global markers and the non-global marker
+	prefixErrors := []string{"", "marker"}
+
+	tests := []struct {
+		mark       string
+		globalpath string
+	}{
+		{
+			mark:       metadata.DeletionMarkFilename,
+			globalpath: "markers/" + block1.String() + "-deletion-mark.json",
+		},
+		{
+			mark:       metadata.NoCompactMarkFilename,
+			globalpath: "markers/" + block1.String() + "-no-compact-mark.json",
+		},
+	}
+
+	for _, tc := range tests {
+		for _, p := range prefixErrors {
+			t.Run(tc.mark+"/"+p, func(t *testing.T) {
+				mBucket := &cortex_testutil.MockBucketFailure{
+					Bucket:         bkt,
+					UploadFailures: map[string]error{p: errors.New("test")},
+				}
+				bkt, _ = s3.NewBucketWithRetries(mBucket, 5, 0, 0, log.NewNopLogger())
+				bkt = BucketWithGlobalMarkers(bkt)
+				originalPath := block1.String() + "/" + tc.mark
+				err := bkt.Upload(ctx, originalPath, strings.NewReader("{}"))
+				require.Equal(t, errors.New("test"), err)
+				require.Equal(t, mBucket.UploadCalls.Load(), int32(5))
+			})
+		}
+
+	}
+}
+
 func TestBucketWithGlobalMarkers_ShouldWorkCorrectlyWithBucketMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	ctx := context.Background()
@@ -169,7 +215,7 @@ func TestBucketWithGlobalMarkers_ShouldWorkCorrectlyWithBucketMetrics(t *testing
 	// global markers (intentionally in the middle of the chain) and
 	// user prefix.
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	bkt = objstore.BucketWithMetrics("", bkt, reg)
+	bkt = objstore.WrapWithMetrics(bkt, prometheus.WrapRegistererWithPrefix("thanos_", reg), "")
 	bkt = BucketWithGlobalMarkers(bkt)
 	userBkt := bucket.NewUserBucketClient("user-1", bkt, nil)
 

@@ -24,6 +24,13 @@ const (
 	GlobalIngestionRateStrategy = "global"
 )
 
+// AccessDeniedError are errors that do not comply with the limits specified.
+type AccessDeniedError string
+
+func (e AccessDeniedError) Error() string {
+	return string(e)
+}
+
 // LimitError are errors that do not comply with the limits specified.
 type LimitError string
 

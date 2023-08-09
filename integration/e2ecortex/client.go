@@ -31,6 +31,8 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+var DefaultFilter = RuleFilter{}
+
 // Client is a client used to interact with Cortex in integration tests
 type Client struct {
 	alertmanagerClient  promapi.Client
@@ -361,14 +363,37 @@ type ServerStatus struct {
 	} `json:"data"`
 }
 
+type RuleFilter struct {
+	Namespaces     []string
+	RuleGroupNames []string
+	RuleNames      []string
+	RuleType       string
+}
+
+func addQueryParams(urlValues url.Values, paramName string, params ...string) {
+	for _, paramValue := range params {
+		if paramValue != "" {
+			urlValues.Add(paramName, paramValue)
+		}
+	}
+}
+
 // GetPrometheusRules fetches the rules from the Prometheus endpoint /api/v1/rules.
-func (c *Client) GetPrometheusRules() ([]*ruler.RuleGroup, error) {
+func (c *Client) GetPrometheusRules(filter RuleFilter) ([]*ruler.RuleGroup, error) {
 	// Create HTTP request
+
 	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/prom/api/v1/rules", c.rulerAddress), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	urlValues := req.URL.Query()
+	addQueryParams(urlValues, "file[]", filter.Namespaces...)
+	addQueryParams(urlValues, "rule_name[]", filter.RuleNames...)
+	addQueryParams(urlValues, "rule_group[]", filter.RuleGroupNames...)
+	addQueryParams(urlValues, "type", filter.RuleType)
+	req.URL.RawQuery = urlValues.Encode()
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()

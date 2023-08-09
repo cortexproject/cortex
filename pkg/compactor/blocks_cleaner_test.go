@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -17,14 +16,12 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -55,6 +52,62 @@ func TestBlocksCleaner(t *testing.T) {
 			testBlocksCleanerWithOptions(t, options)
 		})
 	}
+}
+
+func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt = bucketindex.BucketWithGlobalMarkers(bkt)
+
+	// Create blocks.
+	ctx := context.Background()
+	deletionDelay := 12 * time.Hour
+	mbucket := &cortex_testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			path.Join(userID, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      deletionDelay,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+	}
+
+	logger := log.NewNopLogger()
+	scanner := tsdb.NewUsersScanner(mbucket, tsdb.AllUsers, logger)
+	cfgProvider := newMockConfigProvider()
+
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, cfgProvider, logger, nil)
+
+	// Clean User with no error
+	cleaner.bucketClient = bkt
+	err := cleaner.cleanUser(ctx, userID, false)
+	require.NoError(t, err)
+	s, err := bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
+	require.NoError(t, err)
+	require.Equal(t, bucketindex.Ok, s.Status)
+	require.Equal(t, int64(0), s.NonQueryableUntil)
+
+	// Clean with cmk error
+	cleaner.bucketClient = mbucket
+	err = cleaner.cleanUser(ctx, userID, false)
+	require.NoError(t, err)
+	s, err = bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
+	require.NoError(t, err)
+	require.Equal(t, bucketindex.CustomerManagedKeyError, s.Status)
+	require.Less(t, int64(0), s.NonQueryableUntil)
+
+	// Re grant access to the key
+	cleaner.bucketClient = bkt
+	err = cleaner.cleanUser(ctx, userID, false)
+	require.NoError(t, err)
+	s, err = bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
+	require.NoError(t, err)
+	require.Equal(t, bucketindex.Ok, s.Status)
+	require.Less(t, int64(0), s.NonQueryableUntil)
 }
 
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
@@ -204,6 +257,9 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		require.NoError(t, err)
 		assert.ElementsMatch(t, tc.expectedBlocks, idx.Blocks.GetULIDs())
 		assert.ElementsMatch(t, tc.expectedMarks, idx.BlockDeletionMarks.GetULIDs())
+		s, err := bucketindex.ReadSyncStatus(ctx, bucketClient, tc.userID, logger)
+		require.NoError(t, err)
+		require.Equal(t, bucketindex.Ok, s.Status)
 	}
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -254,7 +310,7 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 	createDeletionMark(t, bucketClient, userID, block4, now.Add(-deletionDelay).Add(-time.Hour))
 
 	// To emulate a failure deleting a block, we wrap the bucket client in a mocked one.
-	bucketClient = &mockBucketFailure{
+	bucketClient = &cortex_testutil.MockBucketFailure{
 		Bucket:         bucketClient,
 		DeleteFailures: []string{path.Join(userID, block3.String(), metadata.MetaFilename)},
 	}
@@ -357,6 +413,9 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []ulid.ULID{block1, block3}, idx.Blocks.GetULIDs())
 	assert.ElementsMatch(t, []ulid.ULID{block3}, idx.BlockDeletionMarks.GetULIDs())
+	s, err := bucketindex.ReadSyncStatus(ctx, bucketClient, userID, logger)
+	require.NoError(t, err)
+	require.Equal(t, bucketindex.Ok, s.Status)
 }
 
 func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShard(t *testing.T) {
@@ -656,19 +715,6 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 			"cortex_compactor_blocks_marked_for_deletion_total",
 		))
 	}
-}
-
-type mockBucketFailure struct {
-	objstore.Bucket
-
-	DeleteFailures []string
-}
-
-func (m *mockBucketFailure) Delete(ctx context.Context, name string) error {
-	if util.StringsContain(m.DeleteFailures, name) {
-		return errors.New("mocked delete failure")
-	}
-	return m.Bucket.Delete(ctx, name)
 }
 
 type mockConfigProvider struct {

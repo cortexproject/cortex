@@ -38,10 +38,20 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
 		},
+		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, memcached)": {
+			blocksShardingStrategy:   "",
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
+		},
 		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
 			blocksShardingStrategy:   "",
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		},
+		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, redis)": {
+			blocksShardingStrategy:   "",
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
 		},
 		"blocks default sharding, ingester gRPC streaming disabled, inmemory index cache": {
 			blocksShardingStrategy:   "default",
@@ -101,6 +111,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, err)
 				defer s.Close()
 
+				numberOfCacheBackends := len(strings.Split(testCfg.indexCacheBackend, ","))
+
 				// Configure the blocks storage to frequently compact TSDB head
 				// and ship blocks to the storage.
 				flags := mergeFlags(BlocksStorageFlags(), map[string]string{
@@ -126,9 +138,10 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, s.StartAndWaitReady(consul, minio, memcached, redis))
 
 				// Add the cache address to the flags.
-				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendMemcached) {
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
+				}
+				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
@@ -241,7 +254,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
 				// Check the in-memory index cache metrics (in the store-gateway).
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(5+5+2), "thanos_store_index_cache_requests_total"))
+				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((5+5+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
@@ -257,14 +270,39 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(12+2), "thanos_store_index_cache_requests_total"))
+				var l0CacheHits float64
+				if numberOfCacheBackends > 1 {
+					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(6+5+3)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
+					)))
+					// In case of L0 cache hits, store gateway might send fewer requests. Should be within range 12 ~ 14.
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.EqualsAmong(float64(12), float64(14)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
+					)))
+					l1IndexCacheRequests, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
+					))
+					require.NoError(t, err)
+					l0IndexCacheHits, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_hits_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
+					))
+					require.NoError(t, err)
+					// Make sure l1 cache requests + l0 cache hits is 14.
+					require.Equal(t, float64(14), l1IndexCacheRequests[0]+l0IndexCacheHits[0])
+					l0CacheHits = l0IndexCacheHits[0]
+				} else {
+					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(6+5+3)), "thanos_store_index_cache_requests_total"))
+				}
 				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendInMemory {
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(9), "thanos_store_index_cache_items"))             // as before
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(9), "thanos_store_index_cache_items_added_total")) // as before
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(23), "thanos_memcached_operations_total")) // as before + 2 gets
+				}
+				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(23-l0CacheHits), "thanos_memcached_operations_total")) // as before + 2 gets - cache hits
 				}
 
 				// Query metadata.
@@ -298,38 +336,38 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
 		},
-		//"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
-		//	blocksShardingEnabled:    false,
-		//	ingesterStreamingEnabled: false,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-		//	bucketIndexEnabled:       true,
-		//},
-		//"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
-		//	blocksShardingEnabled:    false,
-		//	ingesterStreamingEnabled: false,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		//},
-		//"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
-		//	blocksShardingEnabled:    true,
-		//	ingesterStreamingEnabled: true,
-		//	indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		//	bucketIndexEnabled:       true,
-		//},
+		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
+			blocksShardingEnabled:    false,
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			bucketIndexEnabled:       true,
+		},
+		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
+			blocksShardingEnabled:    false,
+			ingesterStreamingEnabled: false,
+			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		},
+		"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
+			blocksShardingEnabled:    true,
+			ingesterStreamingEnabled: true,
+			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+			bucketIndexEnabled:       true,
+		},
 	}
 
 	for testName, testCfg := range tests {

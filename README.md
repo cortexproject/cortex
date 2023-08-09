@@ -39,6 +39,9 @@ should read:
 1. [Getting started with Cortex](https://cortexmetrics.io/docs/getting-started/)
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/)
 
+There are also individual [guides](https://cortexmetrics.io/docs/guides/) to many tasks.
+Please review the important [security advice](https://cortexmetrics.io/docs/guides/security/) before deploying.
+
 For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
 ## Further reading
@@ -46,6 +49,7 @@ For a guide to contributing to Cortex, see the [contributor guidelines](https://
 To learn more about Cortex, consult the following talks and articles.
 
 ### Talks and articles
+- Apr 2023 KubeCon talk "How to Run a Rock Solid Multi-Tenant Prometheus" ([video](https://youtu.be/Pl5hEoRPLJU), [slides](https://static.sched.com/hosted_files/kccnceu2023/49/Kubecon2023.pptx.pdf))
 - Oct 2022 KubeCon talk "Current State and the Future of Cortex" ([video](https://youtu.be/u1SfBAGWHgQ), [slides](https://static.sched.com/hosted_files/kccncna2022/93/KubeCon%20%2B%20CloudNativeCon%20NA%202022%20PowerPoint%20-%20Cortex.pdf))
 - Oct 2021 KubeCon talk "Cortex: Intro and Production Tips" ([video](https://youtu.be/zNE_kGcUGuI), [slides](https://static.sched.com/hosted_files/kccncna2021/8e/KubeCon%202021%20NA%20Cortex%20Maintainer.pdf))
 - Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"

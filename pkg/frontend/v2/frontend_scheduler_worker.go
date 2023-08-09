@@ -171,7 +171,7 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 		schedulerAddr: schedulerAddr,
 		frontendAddr:  frontendAddr,
 		requestCh:     requestCh,
-		cancelCh:      make(chan uint64),
+		cancelCh:      make(chan uint64, 1000), // Use buffered channel to make sure we can always enqueue to cancel request context.
 	}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 

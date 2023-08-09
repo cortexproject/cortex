@@ -434,7 +434,9 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	if uint64(i.cfg.HeartbeatPeriod) > 0 {
 		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
 		heartbeatTicker.Stop()
-		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod)), func() {
+		// We are jittering for at least half of the time and max the time of the heartbeat.
+		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
+		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
 			i.heartbeat()
 			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
 		})

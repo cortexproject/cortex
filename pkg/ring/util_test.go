@@ -21,7 +21,7 @@ func (r *RingMock) Collect(ch chan<- prometheus.Metric) {}
 
 func (r *RingMock) Describe(ch chan<- *prometheus.Desc) {}
 
-func (r *RingMock) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
+func (r *RingMock) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) (ReplicationSet, error) {
 	args := r.Called(key, op, bufDescs, bufHosts, bufZones)
 	return args.Get(0).(ReplicationSet), args.Error(1)
 }
@@ -50,6 +50,11 @@ func (r *RingMock) InstancesCount() int {
 }
 
 func (r *RingMock) ShuffleShard(identifier string, size int) ReadRing {
+	args := r.Called(identifier, size)
+	return args.Get(0).(ReadRing)
+}
+
+func (r *RingMock) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
 	args := r.Called(identifier, size)
 	return args.Get(0).(ReadRing)
 }
@@ -420,4 +425,20 @@ func TestWaitInstanceState_ExitsAfterActualStateEqualsState(t *testing.T) {
 
 	assert.Nil(t, err)
 	ring.AssertNumberOfCalls(t, "GetInstanceState", 1)
+}
+
+func TestResetZoneMap(t *testing.T) {
+	zoneMap := map[string]int{
+		"zone-1": 2,
+		"zone-2": 2,
+	}
+
+	newZoneMap := resetZoneMap(zoneMap)
+	assert.Equal(t, 0, len(newZoneMap))
+}
+
+func TestResetZoneMap_NilAsAnArgument(t *testing.T) {
+	zoneMap := resetZoneMap(nil)
+	zoneMap["zone-1"] = 1 // this should not panic
+	assert.Equal(t, 1, len(zoneMap))
 }

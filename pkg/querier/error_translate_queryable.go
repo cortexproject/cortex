@@ -39,6 +39,9 @@ func TranslateToPromqlAPIError(err error) error {
 	case validation.LimitError:
 		// This will be returned with status code 422 by Prometheus API.
 		return err
+	case validation.AccessDeniedError:
+		// This will be returned with status code 422 by Prometheus API.
+		return err
 	default:
 		if errors.Is(err, context.Canceled) {
 			return err // 422

@@ -108,8 +108,7 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	now                    func() time.Time
-	noStepSubQueryInterval time.Duration
+	now func() time.Time
 }
 
 func newInstantQueryCodec() instantQueryCodec {
@@ -139,10 +138,6 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 	}
 
 	result.Query = r.FormValue("query")
-	if err := tripperware.SubQueryStepSizeCheck(result.Query, c.noStepSubQueryInterval, tripperware.MaxStep); err != nil {
-		return nil, err
-	}
-
 	result.Stats = r.FormValue("stats")
 	result.Path = r.URL.Path
 
@@ -162,6 +157,10 @@ func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, for
 func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "PrometheusInstantQueryResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
+
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	buf, err := tripperware.BodyBuffer(r, log)
 	if err != nil {
@@ -271,7 +270,7 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 	// For now, we only shard queries that returns a vector.
 	switch promResponses[0].Data.ResultType {
 	case model.ValVector.String():
-		v, err := vectorMerge(req, promResponses)
+		v, err := vectorMerge(ctx, req, promResponses)
 		if err != nil {
 			return nil, err
 		}
@@ -285,12 +284,17 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 			Stats: statsMerge(promResponses),
 		}
 	case model.ValMatrix.String():
+		sampleStreams, err := matrixMerge(ctx, promResponses)
+		if err != nil {
+			return nil, err
+		}
+
 		data = PrometheusInstantQueryData{
 			ResultType: model.ValMatrix.String(),
 			Result: PrometheusInstantQueryResult{
 				Result: &PrometheusInstantQueryResult_Matrix{
 					Matrix: &Matrix{
-						SampleStreams: matrixMerge(promResponses),
+						SampleStreams: sampleStreams,
 					},
 				},
 			},
@@ -307,7 +311,7 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 	return res, nil
 }
 
-func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryResponse) (*Vector, error) {
+func vectorMerge(ctx context.Context, req tripperware.Request, resps []*PrometheusInstantQueryResponse) (*Vector, error) {
 	output := map[string]*Sample{}
 	metrics := []string{} // Used to preserve the order for topk and bottomk.
 	sortPlan, err := sortPlanForQuery(req.GetQuery())
@@ -316,6 +320,9 @@ func vectorMerge(req tripperware.Request, resps []*PrometheusInstantQueryRespons
 	}
 	buf := make([]byte, 0, 1024)
 	for _, resp := range resps {
+		if err = ctx.Err(); err != nil {
+			return nil, err
+		}
 		if resp == nil {
 			continue
 		}
@@ -444,9 +451,12 @@ func sortPlanForQuery(q string) (sortPlan, error) {
 	return sortByLabels, nil
 }
 
-func matrixMerge(resps []*PrometheusInstantQueryResponse) []tripperware.SampleStream {
+func matrixMerge(ctx context.Context, resps []*PrometheusInstantQueryResponse) ([]tripperware.SampleStream, error) {
 	output := make(map[string]tripperware.SampleStream)
 	for _, resp := range resps {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if resp == nil {
 			continue
 		}
@@ -467,7 +477,7 @@ func matrixMerge(resps []*PrometheusInstantQueryResponse) []tripperware.SampleSt
 		result = append(result, output[key])
 	}
 
-	return result
+	return result, nil
 }
 
 // NewEmptyPrometheusInstantQueryResponse returns an empty successful Prometheus query range response.

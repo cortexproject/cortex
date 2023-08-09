@@ -407,7 +407,7 @@ func (s resultsCache) handleHit(ctx context.Context, r tripperware.Request, exte
 		return nil, nil, err
 	}
 	if len(requests) == 0 {
-		response, err := s.merger.MergeResponse(context.Background(), r, responses...)
+		response, err := s.merger.MergeResponse(ctx, r, responses...)
 		// No downstream requests so no need to write back to the cache.
 		return response, nil, err
 	}

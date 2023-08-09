@@ -2,6 +2,7 @@ package bucketindex
 
 import (
 	"context"
+	"errors"
 	"path"
 	"strings"
 	"testing"
@@ -9,6 +10,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -33,6 +36,19 @@ func TestReadIndex_ShouldReturnErrorIfIndexIsCorrupted(t *testing.T) {
 
 	idx, err := ReadIndex(ctx, bkt, userID, nil, log.NewNopLogger())
 	require.Equal(t, ErrIndexCorrupted, err)
+	require.Nil(t, idx)
+}
+
+func TestReadIndex_ShouldReturnErrorIfKeyAccessDeniedErr(t *testing.T) {
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt = &cortex_testutil.MockBucketFailure{
+		Bucket: bkt,
+		GetFailures: map[string]error{
+			path.Join("user-1", "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+		},
+	}
+	idx, err := ReadIndex(context.Background(), bkt, "user-1", nil, log.NewNopLogger())
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	require.Nil(t, idx)
 }
 

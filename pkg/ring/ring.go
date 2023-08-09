@@ -31,6 +31,10 @@ const (
 	// GetBufferSize is the suggested size of buffers passed to Ring.Get(). It's based on
 	// a typical replication factor 3, plus extra room for a JOINING + LEAVING instance.
 	GetBufferSize = 5
+
+	// GetZoneSize is the suggested size of zone map passed to Ring.Get(). It's based on
+	// a typical replication factor 3.
+	GetZoneSize = 3
 )
 
 // ReadRing represents the read interface to the ring.
@@ -39,7 +43,7 @@ type ReadRing interface {
 	// Get returns n (or more) instances which form the replicas for the given key.
 	// bufDescs, bufHosts and bufZones are slices to be overwritten for the return value
 	// to avoid memory allocation; can be nil, or created with ring.MakeBuffersForGet().
-	Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error)
+	Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) (ReplicationSet, error)
 
 	// GetAllHealthy returns all healthy instances in the ring, for the given operation.
 	// This function doesn't check if the quorum is honored, so doesn't fail if the number
@@ -63,6 +67,12 @@ type ReadRing interface {
 	// ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)
 	// and size (number of instances).
 	ShuffleShard(identifier string, size int) ReadRing
+
+	// ShuffleShardWithZoneStability does the same as ShuffleShard but using a different shuffle sharding algorithm.
+	// It doesn't round up shard size to be divisible to number of zones and make sure when scaling up/down one
+	// shard size at a time, at most 1 instance can be changed.
+	// It is only used in Store Gateway for now.
+	ShuffleShardWithZoneStability(identifier string, size int) ReadRing
 
 	// GetInstanceState returns the current state of an instance or an error if the
 	// instance does not exist in the ring.
@@ -196,6 +206,8 @@ type Ring struct {
 type subringCacheKey struct {
 	identifier string
 	shardSize  int
+
+	zoneStableSharding bool
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
@@ -340,7 +352,10 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 }
 
 // Get returns n (or more) instances which form the replicas for the given key.
-func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, bufZones []string) (ReplicationSet, error) {
+// This implementation guarantees:
+// - Stability: given the same ring, two invocations returns the same set for same operation.
+// - Consistency: adding/removing 1 instance from the ring returns set with no more than 1 difference for same operation.
+func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	if r.ringDesc == nil || len(r.ringTokens) == 0 {
@@ -348,16 +363,19 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 	}
 
 	var (
-		replicationFactor = r.cfg.ReplicationFactor
-		instances         = bufDescs[:0]
-		start             = searchToken(r.ringTokens, key)
-		iterations        = 0
+		replicationFactor      = r.cfg.ReplicationFactor
+		instances              = bufDescs[:0]
+		start                  = searchToken(r.ringTokens, key)
+		iterations             = 0
+		maxInstancePerZone     = replicationFactor / len(r.ringZones)
+		zonesWithExtraInstance = replicationFactor % len(r.ringZones)
 
 		// We use a slice instead of a map because it's faster to search within a
 		// slice than lookup a map for a very low number of items.
-		distinctHosts = bufHosts[:0]
-		distinctZones = bufZones[:0]
+		distinctHosts       = bufHosts[:0]
+		numOfInstanceByZone = resetZoneMap(bufZones)
 	)
+
 	for i := start; len(distinctHosts) < replicationFactor && iterations < len(r.ringTokens); i++ {
 		iterations++
 		// Wrap i around in the ring.
@@ -370,14 +388,20 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 			return ReplicationSet{}, ErrInconsistentTokensInfo
 		}
 
-		// We want n *distinct* instances && distinct zones.
+		// We want n *distinct* instances.
 		if util.StringsContain(distinctHosts, info.InstanceID) {
 			continue
 		}
 
 		// Ignore if the instances don't have a zone set.
 		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
-			if util.StringsContain(distinctZones, info.Zone) {
+			maxNumOfInstance := maxInstancePerZone
+			// If we still have room for zones with extra instance, increase the instance threshold by 1
+			if zonesWithExtraInstance > 0 {
+				maxNumOfInstance++
+			}
+
+			if numOfInstanceByZone[info.Zone] >= maxNumOfInstance {
 				continue
 			}
 		}
@@ -392,11 +416,14 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts, 
 		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
 			// We should only add the zone if we are not going to extend,
 			// as we want to extend the instance in the same AZ.
-			distinctZones = append(distinctZones, info.Zone)
-
-			if len(distinctZones) == len(r.ringZones) {
-				// reset the zones to repeatedly get hosts from distinct zones
-				distinctZones = distinctZones[:0]
+			if numOfInstance, ok := numOfInstanceByZone[info.Zone]; !ok {
+				numOfInstanceByZone[info.Zone] = 1
+			} else if numOfInstance < maxInstancePerZone {
+				numOfInstanceByZone[info.Zone]++
+			} else {
+				// This zone will have an extra instance
+				numOfInstanceByZone[info.Zone]++
+				zonesWithExtraInstance--
 			}
 		}
 
@@ -640,24 +667,16 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 // - Stability: given the same ring, two invocations returns the same result.
 //
 // - Consistency: adding/removing 1 instance from the ring generates a resulting
-// subring with no more then 1 difference.
+// subring with no more than 1 difference.
 //
 // - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
 // set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
-	// Nothing to do if the shard size is not smaller then the actual ring.
-	if size <= 0 || r.InstancesCount() <= size {
-		return r
-	}
+	return r.shuffleShardWithCache(identifier, size, false)
+}
 
-	if cached := r.getCachedShuffledSubring(identifier, size); cached != nil {
-		return cached
-	}
-
-	result := r.shuffleShard(identifier, size, 0, time.Now())
-
-	r.setCachedShuffledSubring(identifier, size, result)
-	return result
+func (r *Ring) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
+	return r.shuffleShardWithCache(identifier, size, true)
 }
 
 // ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes all instances
@@ -668,25 +687,49 @@ func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
 //
 // This function doesn't support caching.
 func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
-	// Nothing to do if the shard size is not smaller then the actual ring.
+	// Nothing to do if the shard size is not smaller than the actual ring.
 	if size <= 0 || r.InstancesCount() <= size {
 		return r
 	}
 
-	return r.shuffleShard(identifier, size, lookbackPeriod, now)
+	return r.shuffleShard(identifier, size, lookbackPeriod, now, false)
 }
 
-func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time) *Ring {
+func (r *Ring) shuffleShardWithCache(identifier string, size int, zoneStableSharding bool) ReadRing {
+	// Nothing to do if the shard size is not smaller than the actual ring.
+	if size <= 0 || r.InstancesCount() <= size {
+		return r
+	}
+
+	if cached := r.getCachedShuffledSubring(identifier, size, zoneStableSharding); cached != nil {
+		return cached
+	}
+
+	result := r.shuffleShard(identifier, size, 0, time.Now(), zoneStableSharding)
+
+	r.setCachedShuffledSubring(identifier, size, zoneStableSharding, result)
+	return result
+}
+
+func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) *Ring {
 	lookbackUntil := now.Add(-lookbackPeriod).Unix()
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
-	var numInstancesPerZone int
-	var actualZones []string
+	var (
+		numInstancesPerZone    int
+		actualZones            []string
+		zonesWithExtraInstance int
+	)
 
 	if r.cfg.ZoneAwarenessEnabled {
-		numInstancesPerZone = shardUtil.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
+		if zoneStableSharding {
+			numInstancesPerZone = size / len(r.ringZones)
+			zonesWithExtraInstance = size % len(r.ringZones)
+		} else {
+			numInstancesPerZone = shardUtil.ShuffleShardExpectedInstancesPerZone(size, len(r.ringZones))
+		}
 		actualZones = r.ringZones
 	} else {
 		numInstancesPerZone = size
@@ -716,7 +759,12 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 		// To select one more instance while guaranteeing the "consistency" property,
 		// we do pick a random value from the generator and resolve uniqueness collisions
 		// (if any) continuing walking the ring.
-		for i := 0; i < numInstancesPerZone; i++ {
+		finalInstancesPerZone := numInstancesPerZone
+		if zonesWithExtraInstance > 0 {
+			zonesWithExtraInstance--
+			finalInstancesPerZone++
+		}
+		for i := 0; i < finalInstancesPerZone; i++ {
 			start := searchToken(tokens, random.Uint32())
 			iterations := 0
 			found := false
@@ -809,7 +857,7 @@ func (r *Ring) HasInstance(instanceID string) bool {
 	return ok
 }
 
-func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
+func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableSharding bool) *Ring {
 	if r.cfg.SubringCacheDisabled {
 		return nil
 	}
@@ -818,7 +866,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	defer r.mtx.RUnlock()
 
 	// if shuffledSubringCache map is nil, reading it returns default value (nil pointer).
-	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}]
+	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}]
 	if cached == nil {
 		return nil
 	}
@@ -837,7 +885,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int) *Ring {
 	return cached
 }
 
-func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ring) {
+func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableSharding bool, subring *Ring) {
 	if subring == nil || r.cfg.SubringCacheDisabled {
 		return
 	}
@@ -849,7 +897,7 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, subring *Ri
 	// (which can happen between releasing the read lock and getting read-write lock).
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
-		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size}] = subring
+		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}] = subring
 	}
 }
 

@@ -74,10 +74,14 @@ type ClientOption struct {
 	Password   string
 	ClientName string
 
+	// ClientSetInfo will assign various info attributes to the current connection
+	ClientSetInfo []string
+
 	// InitAddress point to redis nodes.
 	// Rueidis will connect to them one by one and issue CLUSTER SLOT command to initialize the cluster client until success.
 	// If len(InitAddress) == 1 and the address is not running in cluster mode, rueidis will fall back to the single client mode.
 	// If ClientOption.Sentinel.MasterSet is set, then InitAddress will be used to connect sentinels
+	// You can bypass this behaviour by using ClientOption.ForceSingleClient.
 	InitAddress []string
 
 	// ClientTrackingOptions will be appended to CLIENT TRACKING ON command when the connection is established.
@@ -107,7 +111,7 @@ type ClientOption struct {
 
 	// PipelineMultiplex determines how many tcp connections used to pipeline commands to one redis instance.
 	// The default for single and sentinel clients is 2, which means 4 connections (2^2).
-	// The default for cluster client is 0, which means 1 connection (2^0).
+	// For cluster client, PipelineMultiplex doesn't have any effect.
 	PipelineMultiplex int
 
 	// ConnWriteTimeout is applied net.Conn.SetWriteDeadline and periodic PING to redis
@@ -127,6 +131,8 @@ type ClientOption struct {
 
 	// ShuffleInit is a handy flag that shuffles the InitAddress after passing to the NewClient() if it is true
 	ShuffleInit bool
+	// ClientNoTouch controls whether commands alter LRU/LFU stats
+	ClientNoTouch bool
 	// DisableRetry disables retrying read-only commands under network errors
 	DisableRetry bool
 	// DisableCache falls back Client.DoCache/Client.DoMultiCache to Client.Do/Client.DoMulti
@@ -135,6 +141,19 @@ type ClientOption struct {
 	AlwaysPipelining bool
 	// AlwaysRESP2 makes rueidis.Client always uses RESP2, otherwise it will try using RESP3 first.
 	AlwaysRESP2 bool
+	//  ForceSingleClient force the usage of a single client connection, without letting the lib guessing
+	//  if redis instance is a cluster or a single redis instance.
+	ForceSingleClient bool
+
+	// ReplicaOnly indicates that this client will only try to connect to readonly replicas of redis setup.
+	// currently, it is only implemented for sentinel client
+	ReplicaOnly bool
+
+	// ClientNoEvict sets the client eviction mode for the current connection.
+	// When turned on and client eviction is configured,
+	// the current connection will be excluded from the client eviction process
+	// even if we're above the configured client eviction threshold.
+	ClientNoEvict bool
 }
 
 // SentinelOption contains MasterSet,
@@ -279,9 +298,16 @@ func NewClient(option ClientOption) (client Client, err error) {
 		option.PipelineMultiplex = singleClientMultiplex(option.PipelineMultiplex)
 		return newSentinelClient(&option, makeConn)
 	}
+	pmbk := option.PipelineMultiplex
+	option.PipelineMultiplex = 0 // PipelineMultiplex is meaningless for cluster client
+
+	if option.ForceSingleClient {
+		option.PipelineMultiplex = singleClientMultiplex(pmbk)
+		return newSingleClient(&option, nil, makeConn)
+	}
 	if client, err = newClusterClient(&option, makeConn); err != nil {
 		if len(option.InitAddress) == 1 && (err.Error() == redisErrMsgCommandNotAllow || strings.Contains(strings.ToUpper(err.Error()), "CLUSTER")) {
-			option.PipelineMultiplex = singleClientMultiplex(option.PipelineMultiplex)
+			option.PipelineMultiplex = singleClientMultiplex(pmbk)
 			client, err = newSingleClient(&option, client.(*clusterClient).single(), makeConn)
 		} else if client != (*clusterClient)(nil) {
 			client.Close()

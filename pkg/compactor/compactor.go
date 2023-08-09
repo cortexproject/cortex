@@ -675,6 +675,15 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 			continue
 		}
 
+		// Skipping compaction if the  bucket index failed to sync due to CMK errors.
+		if idxs, err := bucketindex.ReadSyncStatus(ctx, c.bucketClient, userID, util_log.WithUserID(userID, c.logger)); err == nil {
+			if idxs.Status == bucketindex.CustomerManagedKeyError {
+				c.compactionRunSkippedTenants.Inc()
+				level.Info(c.logger).Log("msg", "skipping compactUser due CustomerManagedKeyError", "user", userID)
+				continue
+			}
+		}
+
 		ownedUsers[userID] = struct{}{}
 
 		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {

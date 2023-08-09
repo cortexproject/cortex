@@ -78,10 +78,10 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callb
 	var (
 		bufDescs [GetBufferSize]InstanceDesc
 		bufHosts [GetBufferSize]string
-		bufZones [GetBufferSize]string
+		bufZones = make(map[string]int, GetZoneSize)
 	)
 	for i, key := range keys {
-		replicationSet, err := r.Get(key, op, bufDescs[:0], bufHosts[:0], bufZones[:0])
+		replicationSet, err := r.Get(key, op, bufDescs[:0], bufHosts[:0], bufZones)
 		if err != nil {
 			cleanup()
 			return err

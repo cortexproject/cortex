@@ -15,6 +15,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
@@ -25,6 +27,8 @@ var (
 	ErrBlockMetaCorrupted         = block.ErrorSyncMetaCorrupted
 	ErrBlockDeletionMarkNotFound  = errors.New("block deletion mark not found")
 	ErrBlockDeletionMarkCorrupted = errors.New("block deletion mark corrupted")
+
+	errBlockMetaKeyAccessDeniedErr = errors.New("block meta file key access denied error")
 )
 
 // Updater is responsible to generate an update in-memory bucket index.
@@ -52,12 +56,12 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 		oldBlockDeletionMarks = old.BlockDeletionMarks
 	}
 
-	blocks, partials, err := w.updateBlocks(ctx, oldBlocks)
+	blockDeletionMarks, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 
-	blockDeletionMarks, totalBlocksBlocksMarkedForNoCompaction, err := w.updateBlockMarks(ctx, oldBlockDeletionMarks)
+	blocks, partials, err := w.updateBlocks(ctx, oldBlocks, deletedBlocks)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -70,7 +74,7 @@ func (w *Updater) UpdateIndex(ctx context.Context, old *Index) (*Index, map[ulid
 	}, partials, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
-func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
+func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks map[ulid.ULID]struct{}) (blocks []*Block, partials map[ulid.ULID]error, _ error) {
 	discovered := map[ulid.ULID]struct{}{}
 	partials = map[ulid.ULID]error{}
 
@@ -88,8 +92,13 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Blo
 	// Since blocks are immutable, all blocks already existing in the index can just be copied.
 	for _, b := range old {
 		if _, ok := discovered[b.ID]; ok {
-			blocks = append(blocks, b)
 			delete(discovered, b.ID)
+
+			if _, ok := deletedBlocks[b.ID]; ok {
+				level.Warn(w.logger).Log("msg", "skipped block with missing global deletion marker", "block", b.ID.String())
+				continue
+			}
+			blocks = append(blocks, b)
 		}
 	}
 
@@ -108,6 +117,11 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block) (blocks []*Blo
 			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index", "block", id.String())
 			continue
 		}
+		if errors.Is(err, errBlockMetaKeyAccessDeniedErr) {
+			partials[id] = err
+			level.Warn(w.logger).Log("msg", "skipped partial block when updating bucket index due key permission", "block", id.String())
+			continue
+		}
 		if errors.Is(err, ErrBlockMetaCorrupted) {
 			partials[id] = err
 			level.Error(w.logger).Log("msg", "skipped block with corrupted meta.json when updating bucket index", "block", id.String(), "err", err)
@@ -123,9 +137,12 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	metaFile := path.Join(id.String(), block.MetaFilename)
 
 	// Get the block's meta.json file.
-	r, err := w.bkt.ReaderWithExpectedErrs(w.bkt.IsObjNotFoundErr).Get(ctx, metaFile)
+	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsCustomerManagedKeyError)).Get(ctx, metaFile)
 	if w.bkt.IsObjNotFoundErr(err) {
 		return nil, ErrBlockMetaNotFound
+	}
+	if w.bkt.IsCustomerManagedKeyError(err) {
+		return nil, errBlockMetaKeyAccessDeniedErr
 	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "get block meta file: %v", metaFile)
@@ -163,8 +180,9 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	return block, nil
 }
 
-func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, int64, error) {
+func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark) ([]*BlockDeletionMark, map[ulid.ULID]struct{}, int64, error) {
 	out := make([]*BlockDeletionMark, 0, len(old))
+	deletedBlocks := map[ulid.ULID]struct{}{}
 	discovered := map[ulid.ULID]struct{}{}
 	totalBlocksBlocksMarkedForNoCompaction := int64(0)
 
@@ -181,7 +199,7 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 		return nil
 	})
 	if err != nil {
-		return nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
+		return nil, nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
 	}
 
 	// Since deletion marks are immutable, all markers already existing in the index can just be copied.
@@ -189,6 +207,8 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 		if _, ok := discovered[m.ID]; ok {
 			out = append(out, m)
 			delete(discovered, m.ID)
+		} else {
+			deletedBlocks[m.ID] = struct{}{}
 		}
 	}
 
@@ -205,13 +225,13 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			continue
 		}
 		if err != nil {
-			return nil, totalBlocksBlocksMarkedForNoCompaction, err
+			return nil, nil, totalBlocksBlocksMarkedForNoCompaction, err
 		}
 
 		out = append(out, m)
 	}
 
-	return out, totalBlocksBlocksMarkedForNoCompaction, nil
+	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
 func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {

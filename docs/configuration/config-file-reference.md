@@ -3532,6 +3532,11 @@ grpc_client_config:
   # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+# When multiple query-schedulers are available, re-enqueue queries that were
+# rejected due to too many outstanding requests.
+# CLI flag: -frontend.retry-on-too-many-outstanding-requests
+[retry_on_too_many_outstanding_requests: <boolean> | default = false]
+
 # Name of network interface to read address from. This address is sent to
 # query-scheduler and querier, which uses it to send the query response back to
 # query-frontend.

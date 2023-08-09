@@ -15,6 +15,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -32,8 +33,12 @@ import (
 type status string
 
 const (
-	statusSuccess status = "success"
-	statusError   status = "error"
+	statusSuccess       status = "success"
+	statusError         status = "error"
+	contentTypeHeader   string = "Content-Type"
+	acceptHeader        string = "Accept"
+	applicationProtobuf string = "application/x-protobuf"
+	applicationJson     string = "application/json"
 
 	// Non-standard status code (originally introduced by nginx) for the case when a client closes
 	// the connection while the server is still processing the request.
@@ -151,11 +156,28 @@ func (api *API) Query(r *http.Request) (data interface{}, warnings []error, erro
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return createPrometheusInstantQueryResponse(&queryData{
-		ResultType: res.Value.Type(),
-		Result:     res.Value,
-		Stats:      qs,
-	}), res.Warnings, nil, qry.Close
+	accept := strings.Split(r.Header.Get(acceptHeader), ",")[0]
+	switch accept {
+	case applicationProtobuf:
+		data = createPrometheusInstantQueryResponse(&queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+			Stats:      qs,
+		})
+	case applicationJson:
+		data = &queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+			Stats:      qs,
+		}
+	default:
+		data = &queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+			Stats:      qs,
+		}
+	}
+	return data, res.Warnings, nil, qry.Close
 }
 
 func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
@@ -246,11 +268,29 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 	}
 	qs := sr(ctx, qry.Stats(), r.FormValue("stats"))
 
-	return createPrometheusResponse(&queryData{
-		ResultType: res.Value.Type(),
-		Result:     res.Value,
-		Stats:      qs,
-	}), res.Warnings, nil, qry.Close
+	accept := strings.Split(r.Header.Get(acceptHeader), ",")[0]
+	switch accept {
+	case applicationProtobuf:
+		data = createPrometheusResponse(&queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+			Stats:      qs,
+		})
+	case applicationJson:
+		data = &queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+			Stats:      qs,
+		}
+	default:
+		data = &queryData{
+			ResultType: res.Value.Type(),
+			Result:     res.Value,
+			Stats:      qs,
+		}
+	}
+
+	return data, res.Warnings, nil, qry.Close
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -309,22 +349,37 @@ func (api *API) Respond(w http.ResponseWriter, data interface{}, warnings storag
 	var b []byte
 	var err error
 	switch resp := data.(type) {
-	case queryrange.PrometheusResponse:
-		b, err = proto.Marshal(&resp)
-	case instantquery.PrometheusInstantQueryResponse:
-		b, err = proto.Marshal(&resp)
+	case *queryrange.PrometheusResponse:
+		w.Header().Set(contentTypeHeader, applicationProtobuf)
+		for h, hv := range w.Header() {
+			resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
+		}
+		b, err = proto.Marshal(resp)
+	case *instantquery.PrometheusInstantQueryResponse:
+		w.Header().Set(contentTypeHeader, applicationProtobuf)
+		for h, hv := range w.Header() {
+			resp.Headers = append(resp.Headers, &tripperware.PrometheusResponseHeader{Name: h, Values: hv})
+		}
+		b, err = proto.Marshal(resp)
+	case *queryData:
+		w.Header().Set(contentTypeHeader, applicationJson)
+		json := jsoniter.ConfigCompatibleWithStandardLibrary
+		b, err = json.Marshal(&response{
+			Status:   statusSuccess,
+			Data:     data,
+			Warnings: warningStrings,
+		})
 	default:
 		level.Error(api.Logger).Log("msg", "error asserting response type")
 		http.Error(w, "error asserting response type", http.StatusInternalServerError)
 		return
 	}
 	if err != nil {
-		level.Error(api.Logger).Log("msg", "error marshaling protobuf response", "err", err)
+		level.Error(api.Logger).Log("msg", "error marshaling response", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/protobuf")
 	w.WriteHeader(http.StatusOK)
 	if n, err := w.Write(b); err != nil {
 		level.Error(api.Logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
@@ -363,16 +418,16 @@ func (api *API) RespondError(w http.ResponseWriter, apiErr *thanos_api.ApiError,
 		code = http.StatusInternalServerError
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(contentTypeHeader, applicationJson)
 	w.WriteHeader(code)
 	if n, err := w.Write(b); err != nil {
 		level.Error(api.Logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
 	}
 }
 
-func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {
+func createPrometheusResponse(data *queryData) *queryrange.PrometheusResponse {
 	if data == nil {
-		return queryrange.PrometheusResponse{
+		return &queryrange.PrometheusResponse{
 			Status:    string(statusSuccess),
 			Data:      queryrange.PrometheusData{},
 			ErrorType: "",
@@ -389,7 +444,7 @@ func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {
 		stats = &tripperware.PrometheusResponseStats{Samples: getStats(&builtin)}
 	}
 
-	return queryrange.PrometheusResponse{
+	return &queryrange.PrometheusResponse{
 		Status: string(statusSuccess),
 		Data: queryrange.PrometheusData{
 			ResultType: string(data.ResultType),
@@ -402,9 +457,9 @@ func createPrometheusResponse(data *queryData) queryrange.PrometheusResponse {
 	}
 }
 
-func createPrometheusInstantQueryResponse(data *queryData) instantquery.PrometheusInstantQueryResponse {
+func createPrometheusInstantQueryResponse(data *queryData) *instantquery.PrometheusInstantQueryResponse {
 	if data == nil {
-		return instantquery.PrometheusInstantQueryResponse{
+		return &instantquery.PrometheusInstantQueryResponse{
 			Status:    string(statusSuccess),
 			Data:      instantquery.PrometheusInstantQueryData{},
 			ErrorType: "",
@@ -441,7 +496,7 @@ func createPrometheusInstantQueryResponse(data *queryData) instantquery.Promethe
 		stats = &tripperware.PrometheusResponseStats{Samples: getStats(&builtin)}
 	}
 
-	return instantquery.PrometheusInstantQueryResponse{
+	return &instantquery.PrometheusInstantQueryResponse{
 		Status: string(statusSuccess),
 		Data: instantquery.PrometheusInstantQueryData{
 			ResultType: string(data.ResultType),

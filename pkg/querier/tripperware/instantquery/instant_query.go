@@ -211,6 +211,7 @@ func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 	}
 
 	h.Set("Accept-Encoding", "snappy")
+	h.Set("Accept", "application/x-protobuf")
 
 	req := &http.Request{
 		Method:     "GET",

@@ -91,3 +91,33 @@ services:
       - "7004:7004"
       - "7005:7005"
       - "7006:7006"
+  cluster5adapter:
+    image: redis:5-alpine
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        redis-server --port 7007 --save "" --appendonly no --cluster-enabled yes --cluster-config-file 7007.conf &
+        redis-server --port 7008 --save "" --appendonly no --cluster-enabled yes --cluster-config-file 7008.conf &
+        redis-server --port 7009 --save "" --appendonly no --cluster-enabled yes --cluster-config-file 7009.conf &
+        while ! redis-cli --cluster create 127.0.0.1:7007 127.0.0.1:7008 127.0.0.1:7009 --cluster-yes; do sleep 1; done
+        wait
+    ports:
+      - "7007:7007"
+      - "7008:7008"
+      - "7009:7009"
+  clusteradapter:
+    image: redis:7.2-rc-alpine
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        redis-server --port 7010 --save "" --appendonly no --cluster-enabled yes --cluster-config-file 7010.conf &
+        redis-server --port 7011 --save "" --appendonly no --cluster-enabled yes --cluster-config-file 7011.conf &
+        redis-server --port 7012 --save "" --appendonly no --cluster-enabled yes --cluster-config-file 7012.conf &
+        while ! redis-cli --cluster create 127.0.0.1:7010 127.0.0.1:7011 127.0.0.1:7012 --cluster-yes; do sleep 1; done
+        wait
+    ports:
+      - "7010:7010"
+      - "7011:7011"
+      - "7012:7012"

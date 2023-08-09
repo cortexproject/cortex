@@ -19,7 +19,10 @@ import (
 	"github.com/redis/rueidis/internal/util"
 )
 
-var noHello = regexp.MustCompile("unknown command .?HELLO.?")
+const LIB_NAME = "rueidis"
+const LIB_VER = "1.0.14"
+
+var noHello = regexp.MustCompile("unknown command .?(HELLO|hello).?")
 
 type wire interface {
 	Do(ctx context.Context, cmd Completed) RedisResult
@@ -158,19 +161,11 @@ func _newPipe(connFn func() (net.Conn, error), option *ClientOption, r2ps bool) 
 		helloCmd = append(helloCmd, "SETNAME", option.ClientName)
 	}
 
-	init := make([][]string, 0, 3)
+	init := make([][]string, 0, 4)
 	if option.ClientTrackingOptions == nil {
 		init = append(init, helloCmd, []string{"CLIENT", "TRACKING", "ON", "OPTIN"})
 	} else {
 		init = append(init, helloCmd, append([]string{"CLIENT", "TRACKING", "ON"}, option.ClientTrackingOptions...))
-	}
-	if option.ClientNoEvict {
-		init = append(init, []string{"CLIENT", "NO-EVICT", "ON"})
-	}
-	if option.ClientSetInfo != nil {
-		clientSetInfoCmd := []string{"CLIENT", "SETINFO"}
-		clientSetInfoCmd = append(clientSetInfoCmd, option.ClientSetInfo...)
-		init = append(init, clientSetInfoCmd)
 	}
 	if option.DisableCache {
 		init = init[:1]
@@ -180,6 +175,14 @@ func _newPipe(connFn func() (net.Conn, error), option *ClientOption, r2ps bool) 
 	}
 	if option.ClientNoTouch {
 		init = append(init, []string{"CLIENT", "NO-TOUCH", "ON"})
+	}
+	if option.ClientNoEvict {
+		init = append(init, []string{"CLIENT", "NO-EVICT", "ON"})
+	}
+	if option.ClientSetInfo != nil {
+		init = append(init, append([]string{"CLIENT", "SETINFO"}, option.ClientSetInfo...))
+	} else {
+		init = append(init, []string{"CLIENT", "SETINFO", "LIB-NAME", LIB_NAME, "LIB-VER", LIB_VER})
 	}
 
 	timeout := option.Dialer.Timeout
@@ -194,7 +197,7 @@ func _newPipe(connFn func() (net.Conn, error), option *ClientOption, r2ps bool) 
 	if !r2 && !r2ps {
 		resp := p.DoMulti(ctx, cmds.NewMultiCompleted(init)...)
 		defer resultsp.Put(resp)
-		for i, r := range resp.s {
+		for i, r := range resp.s[:len(resp.s)-1] { // skip error checking on the last CLIENT SETINFO
 			if i == 0 {
 				p.info, err = r.AsMap()
 			} else {
@@ -241,32 +244,31 @@ func _newPipe(connFn func() (net.Conn, error), option *ClientOption, r2ps bool) 
 		if option.ClientName != "" {
 			init = append(init, []string{"CLIENT", "SETNAME", option.ClientName})
 		}
-		if option.ClientNoEvict {
-			init = append(init, []string{"CLIENT", "NO-EVICT", "ON"})
-		}
-		if option.ClientSetInfo != nil {
-			clientSetInfoCmd := []string{"CLIENT", "SETINFO"}
-			clientSetInfoCmd = append(clientSetInfoCmd, option.ClientSetInfo...)
-			init = append(init, clientSetInfoCmd)
-		}
 		if option.SelectDB != 0 {
 			init = append(init, []string{"SELECT", strconv.Itoa(option.SelectDB)})
 		}
 		if option.ClientNoTouch {
 			init = append(init, []string{"CLIENT", "NO-TOUCH", "ON"})
 		}
-
+		if option.ClientNoEvict {
+			init = append(init, []string{"CLIENT", "NO-EVICT", "ON"})
+		}
+		if option.ClientSetInfo != nil {
+			init = append(init, append([]string{"CLIENT", "SETINFO"}, option.ClientSetInfo...))
+		} else {
+			init = append(init, []string{"CLIENT", "SETINFO", "LIB-NAME", LIB_NAME, "LIB-VER", LIB_VER})
+		}
+		p.version = 5
 		if len(init) != 0 {
 			resp := p.DoMulti(ctx, cmds.NewMultiCompleted(init)...)
 			defer resultsp.Put(resp)
-			for _, r := range resp.s {
+			for _, r := range resp.s[:len(resp.s)-1] { // skip error checking on the last CLIENT SETINFO
 				if err = r.Error(); err != nil {
 					p.Close()
 					return nil, err
 				}
 			}
 		}
-		p.version = 5
 	}
 	if p.onInvalidations != nil || option.AlwaysPipelining {
 		p.background()
@@ -290,6 +292,7 @@ func (p *pipe) _exit(err error) {
 }
 
 func (p *pipe) _background() {
+	p.conn.SetDeadline(time.Time{})
 	go func() {
 		p._exit(p._backgroundWrite())
 		close(p.close)
@@ -313,8 +316,7 @@ func (p *pipe) _background() {
 	}
 
 	var (
-		ones  = make([]Completed, 1)
-		multi []Completed
+		resps []RedisResult
 		ch    chan RedisResult
 		cond  *sync.Cond
 	)
@@ -332,13 +334,12 @@ func (p *pipe) _background() {
 			_, _, _ = p.queue.NextWriteCmd()
 		default:
 		}
-		if ones[0], multi, ch, cond = p.queue.NextResultCh(); ch != nil {
-			if multi == nil {
-				multi = ones
+		if _, _, ch, resps, cond = p.queue.NextResultCh(); ch != nil {
+			err := newErrResult(p.Error())
+			for i := range resps {
+				resps[i] = err
 			}
-			for range multi {
-				ch <- newErrResult(p.Error())
-			}
+			ch <- err
 			cond.L.Unlock()
 			cond.Signal()
 		} else {
@@ -405,6 +406,7 @@ func (p *pipe) _backgroundRead() (err error) {
 		cond  *sync.Cond
 		ones  = make([]Completed, 1)
 		multi []Completed
+		resps []RedisResult
 		ch    chan RedisResult
 		ff    int // fulfilled count
 		skip  int // skip rest push messages
@@ -415,10 +417,12 @@ func (p *pipe) _backgroundRead() (err error) {
 	)
 
 	defer func() {
+		resp := newErrResult(err)
 		if err != nil && ff < len(multi) {
-			for ; ff < len(multi); ff++ {
-				ch <- newErrResult(err)
+			for ; ff < len(resps); ff++ {
+				resps[ff] = resp
 			}
+			ch <- resp
 			cond.L.Unlock()
 			cond.Signal()
 		}
@@ -462,7 +466,7 @@ func (p *pipe) _backgroundRead() (err error) {
 		}
 		if ff == len(multi) {
 			ff = 0
-			ones[0], multi, ch, cond = p.queue.NextResultCh() // ch should not be nil, otherwise it must be a protocol bug
+			ones[0], multi, ch, resps, cond = p.queue.NextResultCh() // ch should not be nil, otherwise it must be a protocol bug
 			if ch == nil {
 				cond.L.Unlock()
 				// Redis will send sunsubscribe notification proactively in the event of slot migration.
@@ -523,8 +527,12 @@ func (p *pipe) _backgroundRead() (err error) {
 		} else if multi[ff].NoReply() && msg.string == "QUEUED" {
 			panic(multiexecsub)
 		}
-		ch <- newResult(msg, err)
+		resp := newResult(msg, err)
+		if resps != nil {
+			resps[ff] = resp
+		}
 		if ff++; ff == len(multi) {
+			ch <- resp
 			cond.L.Unlock()
 			cond.Signal()
 		}
@@ -853,6 +861,7 @@ func (p *pipe) DoMulti(ctx context.Context, multi ...Completed) *redisresults {
 			}
 			return resp
 		} else if p.r2psFn != nil {
+			resultsp.Put(resp)
 			return p._r2pipe().DoMulti(ctx, multi...)
 		}
 	}
@@ -896,7 +905,7 @@ func (p *pipe) DoMulti(ctx context.Context, multi ...Completed) *redisresults {
 			p.background()
 			goto queue
 		}
-		resp.s = p.syncDoMulti(dl, ok, resp.s, multi)
+		p.syncDoMulti(dl, ok, resp.s, multi)
 	} else {
 		err := newErrResult(p.Error())
 		for i := 0; i < len(resp.s); i++ {
@@ -910,34 +919,29 @@ func (p *pipe) DoMulti(ctx context.Context, multi ...Completed) *redisresults {
 	return resp
 
 queue:
-	ch := p.queue.PutMulti(multi)
-	var i int
+	ch := p.queue.PutMulti(multi, resp.s)
 	if ctxCh := ctx.Done(); ctxCh == nil {
-		for ; i < len(resp.s); i++ {
-			resp.s[i] = <-ch
-		}
+		<-ch
 	} else {
-		for ; i < len(resp.s); i++ {
-			select {
-			case resp.s[i] = <-ch:
-			case <-ctxCh:
-				goto abort
-			}
+		select {
+		case <-ch:
+		case <-ctxCh:
+			goto abort
 		}
 	}
 	atomic.AddInt32(&p.waits, -1)
 	atomic.AddInt32(&p.recvs, 1)
 	return resp
 abort:
-	go func(i int) {
-		for ; i < len(resp.s); i++ {
-			<-ch
-		}
+	go func(resp *redisresults) {
+		<-ch
+		resultsp.Put(resp)
 		atomic.AddInt32(&p.waits, -1)
 		atomic.AddInt32(&p.recvs, 1)
-	}(i)
+	}(resp)
+	resp = resultsp.Get(len(multi), len(multi))
 	err := newErrResult(ctx.Err())
-	for ; i < len(resp.s); i++ {
+	for i := 0; i < len(resp.s); i++ {
 		resp.s[i] = err
 	}
 	return resp
@@ -946,10 +950,10 @@ abort:
 func (p *pipe) syncDo(dl time.Time, dlOk bool, cmd Completed) (resp RedisResult) {
 	if dlOk {
 		p.conn.SetDeadline(dl)
-		defer p.conn.SetDeadline(time.Time{})
 	} else if p.timeout > 0 && !cmd.IsBlock() {
 		p.conn.SetDeadline(time.Now().Add(p.timeout))
-		defer p.conn.SetDeadline(time.Time{})
+	} else {
+		p.conn.SetDeadline(time.Time{})
 	}
 
 	var msg RedisMessage
@@ -970,10 +974,9 @@ func (p *pipe) syncDo(dl time.Time, dlOk bool, cmd Completed) (resp RedisResult)
 	return newResult(msg, err)
 }
 
-func (p *pipe) syncDoMulti(dl time.Time, dlOk bool, resp []RedisResult, multi []Completed) []RedisResult {
+func (p *pipe) syncDoMulti(dl time.Time, dlOk bool, resp []RedisResult, multi []Completed) {
 	if dlOk {
 		p.conn.SetDeadline(dl)
-		defer p.conn.SetDeadline(time.Time{})
 	} else if p.timeout > 0 {
 		for _, cmd := range multi {
 			if cmd.IsBlock() {
@@ -981,7 +984,8 @@ func (p *pipe) syncDoMulti(dl time.Time, dlOk bool, resp []RedisResult, multi []
 			}
 		}
 		p.conn.SetDeadline(time.Now().Add(p.timeout))
-		defer p.conn.SetDeadline(time.Time{})
+	} else {
+		p.conn.SetDeadline(time.Time{})
 	}
 process:
 	var err error
@@ -999,7 +1003,7 @@ process:
 		}
 		resp[i] = newResult(msg, err)
 	}
-	return resp
+	return
 abort:
 	if errors.Is(err, os.ErrDeadlineExceeded) {
 		err = context.DeadlineExceeded
@@ -1010,7 +1014,7 @@ abort:
 	for i := 0; i < len(resp); i++ {
 		resp[i] = newErrResult(err)
 	}
-	return resp
+	return
 }
 
 func syncRead(r *bufio.Reader) (m RedisMessage, err error) {

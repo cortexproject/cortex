@@ -16,12 +16,18 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
+const (
+	maxCasRetries              = 10          // max retries in CAS operation
+	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
+)
+
 // Config to create a ConsulClient
 type Config struct {
 	Region         string        `yaml:"region"`
 	TableName      string        `yaml:"table_name"`
 	TTL            time.Duration `yaml:"ttl"`
 	PullerSyncTime time.Duration `yaml:"puller_sync_time"`
+	MaxCasRetries  int           `yaml:"max_cas_retries"`
 }
 
 type Client struct {
@@ -48,6 +54,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.TableName, prefix+"dynamodb.table-name", "", "Table name to use on dynamodb.")
 	f.DurationVar(&cfg.TTL, prefix+"dynamodb.ttl-time", 0, "Time to expire items on dynamodb.")
 	f.DurationVar(&cfg.PullerSyncTime, prefix+"dynamodb.puller-sync-time", 60*time.Second, "Time to refresh local ring with information on dynamodb.")
+	f.IntVar(&cfg.MaxCasRetries, prefix+"dynamodb.max-cas-retries", maxCasRetries, "Maximum number of retries for DDB KV CAS.")
 }
 
 var (
@@ -65,7 +72,7 @@ func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometh
 	backoffConfig := backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: cfg.PullerSyncTime,
-		MaxRetries: 0,
+		MaxRetries: cfg.MaxCasRetries,
 	}
 
 	c := &Client{
@@ -129,7 +136,10 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
 	bo := backoff.New(ctx, c.backoffConfig)
+
+outer:
 	for bo.Ongoing() {
+		c.ddbMetrics.dynamodbCasAttempts.Inc()
 		resp, _, err := c.kv.Query(ctx, dynamodbKey{primaryKey: key}, false)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "error cas query", "key", key, "err", err)
@@ -193,6 +203,12 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {
 			// no change detected, retry
 			level.Error(c.logger).Log("msg", "finding difference", "key", key, "err", errNoChangeDeleted)
+			select {
+			case <-time.After(noChangeDetectedRetrySleep):
+				// ok
+			case <-ctx.Done():
+				break outer
+			}
 			continue
 		}
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 // vectorOperator evaluates an expression between two step vectors.
@@ -42,6 +43,7 @@ type vectorOperator struct {
 
 	// If true then 1/0 needs to be returned instead of the value.
 	returnBool bool
+	model.OperatorTelemetry
 }
 
 func NewVectorOperator(
@@ -51,6 +53,7 @@ func NewVectorOperator(
 	matching *parser.VectorMatching,
 	operation parser.ItemType,
 	returnBool bool,
+	opts *query.Options,
 ) (model.VectorOperator, error) {
 	op, err := newOperation(operation, true)
 	if err != nil {
@@ -63,7 +66,7 @@ func NewVectorOperator(
 	copy(groupings, matching.MatchingLabels)
 	slices.Sort(groupings)
 
-	return &vectorOperator{
+	o := &vectorOperator{
 		pool:           pool,
 		lhs:            lhs,
 		rhs:            rhs,
@@ -72,7 +75,24 @@ func NewVectorOperator(
 		operation:      op,
 		opType:         operation,
 		returnBool:     returnBool,
-	}, nil
+	}
+	o.OperatorTelemetry = &model.NoopTelemetry{}
+	if opts.EnableAnalysis {
+		o.OperatorTelemetry = &model.TrackedTelemetry{}
+	}
+	return o, nil
+}
+
+func (o *vectorOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	o.SetName("[*vectorOperator]")
+	next := make([]model.ObservableVectorOperator, 0, 2)
+	if obsnextParamOp, ok := o.lhs.(model.ObservableVectorOperator); ok {
+		next = append(next, obsnextParamOp)
+	}
+	if obsnext, ok := o.rhs.(model.ObservableVectorOperator); ok {
+		next = append(next, obsnext)
+	}
+	return o, next
 }
 
 func (o *vectorOperator) Explain() (me string, next []model.VectorOperator) {

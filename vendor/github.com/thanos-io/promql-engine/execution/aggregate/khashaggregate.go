@@ -10,6 +10,7 @@ import (
 	"math"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type kAggregate struct {
@@ -36,6 +38,7 @@ type kAggregate struct {
 	inputToHeap []*samplesHeap
 	heaps       []*samplesHeap
 	compare     func(float64, float64) bool
+	model.OperatorTelemetry
 }
 
 func NewKHashAggregate(
@@ -46,6 +49,7 @@ func NewKHashAggregate(
 	by bool,
 	labels []string,
 	stepsBatch int,
+	opts *query.Options,
 ) (model.VectorOperator, error) {
 	var compare func(float64, float64) bool
 
@@ -72,7 +76,10 @@ func NewKHashAggregate(
 		compare:     compare,
 		params:      make([]float64, stepsBatch),
 	}
-
+	a.OperatorTelemetry = &model.NoopTelemetry{}
+	if opts.EnableAnalysis {
+		a.OperatorTelemetry = &model.TrackedTelemetry{}
+	}
 	return a, nil
 }
 
@@ -81,6 +88,7 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 	if err != nil {
 		return nil, err
 	}
+	start := time.Now()
 	args, err := a.paramOp.Next(ctx)
 	if err != nil {
 		return nil, err
@@ -120,6 +128,7 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		a.next.GetPool().PutStepVector(vector)
 	}
 	a.next.GetPool().PutVectors(in)
+	a.AddExecutionTimeTaken(time.Since(start))
 
 	return result, nil
 }
@@ -138,6 +147,18 @@ func (a *kAggregate) GetPool() *model.VectorPool {
 	return a.vectorPool
 }
 
+func (a *kAggregate) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	a.SetName("[*kaggregate]")
+	next := make([]model.ObservableVectorOperator, 0, 2)
+	if obsnextParamOp, ok := a.paramOp.(model.ObservableVectorOperator); ok {
+		next = append(next, obsnextParamOp)
+	}
+	if obsnext, ok := a.next.(model.ObservableVectorOperator); ok {
+		next = append(next, obsnext)
+	}
+	return a, next
+}
+
 func (a *kAggregate) Explain() (me string, next []model.VectorOperator) {
 	if a.by {
 		return fmt.Sprintf("[*kaggregate] %v by (%v)", a.aggregation.String(), a.labels), []model.VectorOperator{a.paramOp, a.next}
@@ -150,14 +171,24 @@ func (a *kAggregate) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	hapsHash := make(map[uint64]*samplesHeap)
-	buf := make([]byte, 1024)
+	var (
+		// heapsHash is a map of hash of the series to output samples heap for that series.
+		heapsHash = make(map[uint64]*samplesHeap)
+		// hashingBuf is a buffer used for metric hashing.
+		hashingBuf = make([]byte, 1024)
+		// builder is a scratch builder used for creating output series.
+		builder labels.ScratchBuilder
+	)
+	labelsMap := make(map[string]struct{})
+	for _, lblName := range a.labels {
+		labelsMap[lblName] = struct{}{}
+	}
 	for i := 0; i < len(series); i++ {
-		hash, _, _ := hashMetric(series[i], !a.by, a.labels, buf)
-		h, ok := hapsHash[hash]
+		hash, _, _ := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
+		h, ok := heapsHash[hash]
 		if !ok {
 			h = &samplesHeap{compare: a.compare}
-			hapsHash[hash] = h
+			heapsHash[hash] = h
 			a.heaps = append(a.heaps, h)
 		}
 		a.inputToHeap = append(a.inputToHeap, h)
@@ -170,7 +201,7 @@ func (a *kAggregate) init(ctx context.Context) error {
 func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, SampleIDs []uint64, samples []float64) {
 	for i, sId := range SampleIDs {
 		h := a.inputToHeap[sId]
-		if h.Len() < k || h.compare(h.entries[0].total, samples[i]) || math.IsNaN(h.entries[0].total) {
+		if h.Len() < k || h.compare(h.entries[0].total, samples[i]) || (math.IsNaN(h.entries[0].total) && !math.IsNaN(samples[i])) {
 			if k == 1 && h.Len() == 1 {
 				h.entries[0].sId = sId
 				h.entries[0].total = samples[i]

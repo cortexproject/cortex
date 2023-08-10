@@ -201,6 +201,37 @@ func TestBlockFromThanosMeta(t *testing.T) {
 				SegmentsNum:    3,
 			},
 		},
+		"meta.json with Files and Index Stats": {
+			meta: metadata.Meta{
+				BlockMeta: tsdb.BlockMeta{
+					ULID:    blockID,
+					MinTime: 10,
+					MaxTime: 20,
+				},
+				Thanos: metadata.Thanos{
+					Files: []metadata.File{
+						{RelPath: "index"},
+						{RelPath: "chunks/000001"},
+						{RelPath: "chunks/000002"},
+						{RelPath: "chunks/000003"},
+						{RelPath: "tombstone"},
+					},
+					IndexStats: metadata.IndexStats{
+						SeriesMaxSize: 1000,
+						ChunkMaxSize:  1000,
+					},
+				},
+			},
+			expected: Block{
+				ID:             blockID,
+				MinTime:        10,
+				MaxTime:        20,
+				SegmentsFormat: SegmentsFormat1Based6Digits,
+				SegmentsNum:    3,
+				SeriesMaxSize:  1000,
+				ChunkMaxSize:   1000,
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -310,6 +341,35 @@ func TestBlock_ThanosMeta(t *testing.T) {
 					Version: metadata.ThanosVersion1,
 					Labels: map[string]string{
 						"__org_id__": userID,
+					},
+				},
+			},
+		},
+		"block with index stats": {
+			block: Block{
+				ID:             blockID,
+				MinTime:        10,
+				MaxTime:        20,
+				SegmentsFormat: SegmentsFormatUnknown,
+				SegmentsNum:    0,
+				SeriesMaxSize:  1000,
+				ChunkMaxSize:   500,
+			},
+			expected: &metadata.Meta{
+				BlockMeta: tsdb.BlockMeta{
+					ULID:    blockID,
+					MinTime: 10,
+					MaxTime: 20,
+					Version: metadata.TSDBVersion1,
+				},
+				Thanos: metadata.Thanos{
+					Version: metadata.ThanosVersion1,
+					Labels: map[string]string{
+						"__org_id__": userID,
+					},
+					IndexStats: metadata.IndexStats{
+						SeriesMaxSize: 1000,
+						ChunkMaxSize:  500,
 					},
 				},
 			},

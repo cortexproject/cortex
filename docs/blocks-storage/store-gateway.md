@@ -236,6 +236,10 @@ store_gateway:
         # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
         [puller_sync_time: <duration> | default = 1m]
 
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is:
       # store-gateway.sharding-ring

@@ -54,9 +54,10 @@ func Test_CAS_Backoff(t *testing.T) {
 
 	ddbMock.On("Query").Return(map[string][]byte{}, expectedErr).Once()
 	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
+	ddbMock.On("Batch", context.TODO(), map[dynamodbKey][]byte{}, []dynamodbKey{{primaryKey: "test", sortKey: "childkey"}}).Once()
 	codecMock.On("DecodeMultiKey").Return(descMock, nil).Twice()
 	descMock.On("Clone").Return(descMock).Once()
-	descMock.On("FindDifference", descMock).Return(descMock, []string{}, nil).Once()
+	descMock.On("FindDifference", descMock).Return(descMock, []string{"childkey"}, nil).Once()
 	codecMock.On("EncodeMultiKey").Return(map[string][]byte{}, nil).Twice()
 
 	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {

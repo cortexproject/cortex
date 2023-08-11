@@ -35,6 +35,7 @@ type Pusher interface {
 type PusherAppender struct {
 	failedWrites prometheus.Counter
 	totalWrites  prometheus.Counter
+	logger       log.Logger
 
 	ctx             context.Context
 	pusher          Pusher
@@ -85,6 +86,7 @@ func (a *PusherAppender) Commit() error {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
 			a.failedWrites.Inc()
+			level.Error(a.logger).Log("msg", "error writing rule result", "err", err)
 		}
 	}
 
@@ -111,15 +113,18 @@ type PusherAppendable struct {
 
 	totalWrites  prometheus.Counter
 	failedWrites prometheus.Counter
+
+	logger log.Logger
 }
 
-func NewPusherAppendable(pusher Pusher, userID string, limits RulesLimits, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
+func NewPusherAppendable(pusher Pusher, userID string, limits RulesLimits, totalWrites, failedWrites prometheus.Counter, logger log.Logger) *PusherAppendable {
 	return &PusherAppendable{
 		pusher:       pusher,
 		userID:       userID,
 		rulesLimits:  limits,
 		totalWrites:  totalWrites,
 		failedWrites: failedWrites,
+		logger:       logger,
 	}
 }
 
@@ -128,6 +133,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	return &PusherAppender{
 		failedWrites: t.failedWrites,
 		totalWrites:  t.totalWrites,
+		logger:       t.logger,
 
 		ctx:             ctx,
 		pusher:          t.pusher,
@@ -293,7 +299,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		failedWrites := failedWritesVec.WithLabelValues(userID)
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
+			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites, log.With(logger, "user", userID)),
 			Queryable:       q,
 			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),

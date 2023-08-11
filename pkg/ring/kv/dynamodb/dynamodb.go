@@ -159,8 +159,9 @@ func (kv dynamodbKV) Query(ctx context.Context, key dynamodbKey, isPrefix bool) 
 
 func (kv dynamodbKV) Delete(ctx context.Context, key dynamodbKey) (float64, error) {
 	input := &dynamodb.DeleteItemInput{
-		TableName: kv.tableName,
-		Key:       generateItemKey(key),
+		TableName:              kv.tableName,
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		Key:                    generateItemKey(key),
 	}
 	totalCapacity := float64(0)
 	output, err := kv.ddbClient.DeleteItemWithContext(ctx, input)
@@ -172,8 +173,9 @@ func (kv dynamodbKV) Delete(ctx context.Context, key dynamodbKey) (float64, erro
 
 func (kv dynamodbKV) Put(ctx context.Context, key dynamodbKey, data []byte) (float64, error) {
 	input := &dynamodb.PutItemInput{
-		TableName: kv.tableName,
-		Item:      kv.generatePutItemRequest(key, data),
+		TableName:              kv.tableName,
+		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		Item:                   kv.generatePutItemRequest(key, data),
 	}
 	totalCapacity := float64(0)
 	output, err := kv.ddbClient.PutItemWithContext(ctx, input)
@@ -222,6 +224,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey][]byte, dele
 
 	for _, slice := range writeRequestsSlices {
 		input := &dynamodb.BatchWriteItemInput{
+			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 			RequestItems: map[string][]*dynamodb.WriteRequest{
 				*kv.tableName: slice,
 			},

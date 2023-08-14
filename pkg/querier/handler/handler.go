@@ -159,7 +159,7 @@ func (api *API) Query(r *http.Request) (data interface{}, warnings []error, erro
 	accept := strings.Split(r.Header.Get(acceptHeader), ",")[0]
 	switch accept {
 	case applicationProtobuf:
-		data = createPrometheusInstantQueryResponse(&queryData{
+		data, err = createPrometheusInstantQueryResponse(&queryData{
 			ResultType: res.Value.Type(),
 			Result:     res.Value,
 			Stats:      qs,
@@ -176,6 +176,9 @@ func (api *API) Query(r *http.Request) (data interface{}, warnings []error, erro
 			Result:     res.Value,
 			Stats:      qs,
 		}
+	}
+	if err != nil {
+		return nil, res.Warnings, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, qry.Close
 	}
 	return data, res.Warnings, nil, qry.Close
 }
@@ -271,7 +274,7 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 	accept := strings.Split(r.Header.Get(acceptHeader), ",")[0]
 	switch accept {
 	case applicationProtobuf:
-		data = createPrometheusResponse(&queryData{
+		data, err = createPrometheusResponse(&queryData{
 			ResultType: res.Value.Type(),
 			Result:     res.Value,
 			Stats:      qs,
@@ -290,6 +293,9 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 		}
 	}
 
+	if err != nil {
+		return nil, res.Warnings, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, qry.Close
+	}
 	return data, res.Warnings, nil, qry.Close
 }
 
@@ -425,15 +431,9 @@ func (api *API) RespondError(w http.ResponseWriter, apiErr *thanos_api.ApiError,
 	}
 }
 
-func createPrometheusResponse(data *queryData) *queryrange.PrometheusResponse {
+func createPrometheusResponse(data *queryData) (*queryrange.PrometheusResponse, error) {
 	if data == nil {
-		return &queryrange.PrometheusResponse{
-			Status:    string(statusSuccess),
-			Data:      queryrange.PrometheusData{},
-			ErrorType: "",
-			Error:     "",
-			Headers:   []*tripperware.PrometheusResponseHeader{},
-		}
+		return nil, errors.New("no query response data")
 	}
 
 	sampleStreams := getSampleStreams(data)
@@ -454,29 +454,23 @@ func createPrometheusResponse(data *queryData) *queryrange.PrometheusResponse {
 		ErrorType: "",
 		Error:     "",
 		Headers:   []*tripperware.PrometheusResponseHeader{},
-	}
+	}, nil
 }
 
-func createPrometheusInstantQueryResponse(data *queryData) *instantquery.PrometheusInstantQueryResponse {
+func createPrometheusInstantQueryResponse(data *queryData) (*instantquery.PrometheusInstantQueryResponse, error) {
 	if data == nil {
-		return &instantquery.PrometheusInstantQueryResponse{
-			Status:    string(statusSuccess),
-			Data:      instantquery.PrometheusInstantQueryData{},
-			ErrorType: "",
-			Error:     "",
-			Headers:   []*tripperware.PrometheusResponseHeader{},
-		}
+		return nil, errors.New("no query response data")
 	}
 
 	var instantQueryResult instantquery.PrometheusInstantQueryResult
-	switch data.Result.Type() {
-	case parser.ValueTypeMatrix:
+	switch string(data.ResultType) {
+	case model.ValMatrix.String():
 		instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_Matrix{
 			Matrix: &instantquery.Matrix{
 				SampleStreams: *getSampleStreams(data),
 			},
 		}
-	case parser.ValueTypeVector:
+	case model.ValVector.String():
 		instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_Vector{
 			Vector: &instantquery.Vector{
 				Samples: *getSamples(data),
@@ -485,7 +479,7 @@ func createPrometheusInstantQueryResponse(data *queryData) *instantquery.Prometh
 	default:
 		rawBytes, err := jsoniter.Marshal(data)
 		if err != nil {
-			// TODO: handler error
+			return nil, err
 		}
 		instantQueryResult.Result = &instantquery.PrometheusInstantQueryResult_RawBytes{RawBytes: rawBytes}
 	}
@@ -506,7 +500,7 @@ func createPrometheusInstantQueryResponse(data *queryData) *instantquery.Prometh
 		ErrorType: "",
 		Error:     "",
 		Headers:   []*tripperware.PrometheusResponseHeader{},
-	}
+	}, nil
 }
 
 func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSamplesStats {

@@ -251,3 +251,15 @@ func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep)
 
 	return result
 }
+
+func (s *PrometheusResponseStats) MarshalJSON() ([]byte, error) {
+	stats := struct {
+		Samples *PrometheusResponseSamplesStats `json:"samples"`
+	}{
+		Samples: s.Samples,
+	}
+	if s.Samples.TotalQueryableSamplesPerStep == nil {
+		s.Samples.TotalQueryableSamplesPerStep = []*PrometheusResponseQueryableSamplesStatsPerStep{}
+	}
+	return json.Marshal(stats)
+}

@@ -612,6 +612,9 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 			Data:       s.Result.GetVector().Samples,
 			Stats:      s.Stats,
 		}
+		if res.Data == nil {
+			res.Data = []*Sample{}
+		}
 		return json.Marshal(res)
 	case model.ValMatrix.String():
 		res := struct {
@@ -622,6 +625,9 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 			ResultType: s.ResultType,
 			Data:       s.Result.GetMatrix().SampleStreams,
 			Stats:      s.Stats,
+		}
+		if res.Data == nil {
+			res.Data = []tripperware.SampleStream{}
 		}
 		return json.Marshal(res)
 	default:

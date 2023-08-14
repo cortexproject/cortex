@@ -19,7 +19,7 @@ When using the new configuration pattern it is important that any of the old con
 
 ### Cortex Alertmanager configuration
 
-Cortex Alertmanager can be uploaded via Cortex [Set Alertmanager  configuration API](../api/_index.md#set-alertmanager-configuration) or using Grafana Labs [Cortex Tools](https://github.com/grafana/cortex-tools).
+Cortex Alertmanager can be uploaded via Cortex [Set Alertmanager configuration API](../api/_index.md#set-alertmanager-configuration) or using [Cortex Tools](https://github.com/cortexproject/cortex-tools).
 
 Follow the instruction at the `cortextool` link above to download or update to the latest version of the tool.
 

@@ -11539,7 +11539,7 @@ Every block has a little metadata file named &lt;code>meta.json&lt;/code>. Thano
 &lt;p>Note that when using &lt;code>-alertmanager.sharding-enabled=true&lt;/code>, the following storage backends are not supported: &lt;code>local&lt;/code>, &lt;code>configdb&lt;/code>.&lt;/p>
 &lt;p>When using the new configuration pattern it is important that any of the old configuration pattern flags are unset (&lt;code>-alertmanager.storage&lt;/code>), as well as &lt;code>-&amp;lt;prefix&amp;gt;.configs.url&lt;/code>. This is because the old pattern still takes precedence over the new one. The old configuration pattern (&lt;code>-alertmanager.storage&lt;/code>) is marked as deprecated and will be removed by Cortex version 1.11. However this change doesn&amp;rsquo;t apply to &lt;code>-alertmanager.storage.path&lt;/code> and &lt;code>-alertmanager.storage.retention&lt;/code>.&lt;/p>
 &lt;h3 id="cortex-alertmanager-configuration">Cortex Alertmanager configuration&lt;/h3>
-&lt;p>Cortex Alertmanager can be uploaded via Cortex &lt;a href="/docs/api/#set-alertmanager-configuration">Set Alertmanager configuration API&lt;/a> or using Grafana Labs &lt;a href="https://github.com/grafana/cortex-tools">Cortex Tools&lt;/a>.&lt;/p>
+&lt;p>Cortex Alertmanager can be uploaded via Cortex &lt;a href="/docs/api/#set-alertmanager-configuration">Set Alertmanager configuration API&lt;/a> or using &lt;a href="https://github.com/cortexproject/cortex-tools">Cortex Tools&lt;/a>.&lt;/p>
 &lt;p>Follow the instruction at the &lt;code>cortextool&lt;/code> link above to download or update to the latest version of the tool.&lt;/p>
 &lt;p>To obtain the full help of how to use &lt;code>cortextool&lt;/code> for all commands and flags, use
 &lt;code>cortextool --help-long&lt;/code>.&lt;/p>

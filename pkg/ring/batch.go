@@ -3,11 +3,11 @@ package ring
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"sync"
 
 	"google.golang.org/grpc/status"
 
+	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 )
 
@@ -152,8 +152,8 @@ func (b *batchTracker) record(instance instance, err error) {
 		if err != nil {
 			// Track the number of errors by error family, and if it exceeds maxFailures
 			// shortcut the waiting rpc.
-			err = errors.Wrapf(err, "addr=%s state=%s zone=%s", instance.desc.Addr, instance.desc.State, instance.desc.Zone)
-			errCount := instance.itemTrackers[i].recordError(err)
+			wrappedErr := errors.Wrapf(err, "addr=%s state=%s zone=%s", instance.desc.Addr, instance.desc.State, instance.desc.Zone)
+			errCount := instance.itemTrackers[i].recordError(wrappedErr)
 			// We should return an error if we reach the maxFailure (quorum) on a given error family OR
 			// we dont have any remaining ingesters to try
 			// Ex: 2xx, 4xx, 5xx -> return 4xx

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -283,6 +284,9 @@ func TestDistributor_Push(t *testing.T) {
 				request := makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata)
 				response, err := ds[0].Push(ctx, request)
 				assert.Equal(t, tc.expectedResponse, response)
+				if err != nil {
+					err = errors.Cause(err)
+				}
 				assert.Equal(t, tc.expectedError, err)
 
 				// Check tracked Prometheus metrics. Since the Push() response is sent as soon as the quorum

@@ -578,7 +578,7 @@ prefix: ""
 
 ### Oracle Cloud Infrastructure Object Storage
 
-To configure Oracle Cloud Infrastructure (OCI) Object Storage as Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports either the default keypair or instance principal authentication.
+To configure Oracle Cloud Infrastructure (OCI) Object Storage as a Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports default keypair, instance principal, and OKE workload identity authentication.
 
 #### API Signing Key
 
@@ -641,6 +641,20 @@ config:
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
+
+#### OKE Workload Identity Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "oke-workload-identity"
+  bucket: ""
+  region: ""
+```
+
+The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
 
 ##### HuaweiCloud OBS
 

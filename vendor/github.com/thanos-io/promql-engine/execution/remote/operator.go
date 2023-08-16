@@ -24,17 +24,28 @@ type Execution struct {
 	opts            *query.Options
 	queryRangeStart time.Time
 	vectorSelector  model.VectorOperator
+	model.OperatorTelemetry
 }
 
 func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options) *Execution {
 	storage := newStorageFromQuery(query, opts)
-	return &Execution{
+	e := &Execution{
 		storage:         storage,
 		query:           query,
 		opts:            opts,
 		queryRangeStart: queryRangeStart,
 		vectorSelector:  scan.NewVectorSelector(pool, storage, opts, 0, 0, 1),
 	}
+	e.OperatorTelemetry = &model.NoopTelemetry{}
+	if opts.EnableAnalysis {
+		e.OperatorTelemetry = &model.TrackedTelemetry{}
+	}
+	return e
+}
+
+func (e *Execution) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	e.SetName("[*remoteExec]")
+	return e, nil
 }
 
 func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -42,7 +53,9 @@ func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (e *Execution) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
 	next, err := e.vectorSelector.Next(ctx)
+	e.AddExecutionTimeTaken(time.Since(start))
 	if next == nil {
 		// Closing the storage prematurely can lead to results from the query
 		// engine to be recycled. Because of this, we close the storage only
@@ -106,12 +119,15 @@ func (s *storageAdapter) executeQuery(ctx context.Context) {
 	case promql.Vector:
 		s.series = make([]engstore.SignedSeries, len(val))
 		for i, sample := range val {
+			series := promql.Series{Metric: sample.Metric}
+			if sample.H == nil {
+				series.Floats = []promql.FPoint{{T: sample.T, F: sample.F}}
+			} else {
+				series.Histograms = []promql.HPoint{{T: sample.T, H: sample.H}}
+			}
 			s.series[i] = engstore.SignedSeries{
 				Signature: uint64(i),
-				Series: promql.NewStorageSeries(promql.Series{
-					Metric: sample.Metric,
-					Floats: []promql.FPoint{{T: sample.T, F: sample.F}},
-				}),
+				Series:    promql.NewStorageSeries(series),
 			}
 		}
 	}

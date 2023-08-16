@@ -6,6 +6,8 @@ package binary
 import (
 	"math"
 
+	"github.com/prometheus/prometheus/model/histogram"
+
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/parser"
@@ -143,23 +145,19 @@ func (t *table) execBinaryOperation(lhs model.StepVector, rhs model.StepVector, 
 type operation func(operands [2]float64, valueIdx int) (float64, bool)
 
 var operations = map[string]operation{
-	"+": func(operands [2]float64, valueIdx int) (float64, bool) { return operands[0] + operands[1], true },
-	"-": func(operands [2]float64, valueIdx int) (float64, bool) { return operands[0] - operands[1], true },
-	"*": func(operands [2]float64, valueIdx int) (float64, bool) { return operands[0] * operands[1], true },
-	"/": func(operands [2]float64, valueIdx int) (float64, bool) { return operands[0] / operands[1], true },
-	"^": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return math.Pow(operands[0], operands[1]), true
-	},
-	"%": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return math.Mod(operands[0], operands[1]), true
-	},
-	"==": func(operands [2]float64, valueIdx int) (float64, bool) { return btof(operands[0] == operands[1]), true },
-	"!=": func(operands [2]float64, valueIdx int) (float64, bool) { return btof(operands[0] != operands[1]), true },
-	">":  func(operands [2]float64, valueIdx int) (float64, bool) { return btof(operands[0] > operands[1]), true },
-	"<":  func(operands [2]float64, valueIdx int) (float64, bool) { return btof(operands[0] < operands[1]), true },
-	">=": func(operands [2]float64, valueIdx int) (float64, bool) { return btof(operands[0] >= operands[1]), true },
-	"<=": func(operands [2]float64, valueIdx int) (float64, bool) { return btof(operands[0] <= operands[1]), true },
-	"atan2": func(operands [2]float64, valueIdx int) (float64, bool) {
+	"+":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] + operands[1], true },
+	"-":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] - operands[1], true },
+	"*":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] * operands[1], true },
+	"/":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] / operands[1], true },
+	"^":  func(operands [2]float64, _ int) (float64, bool) { return math.Pow(operands[0], operands[1]), true },
+	"%":  func(operands [2]float64, _ int) (float64, bool) { return math.Mod(operands[0], operands[1]), true },
+	"==": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] == operands[1]), true },
+	"!=": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] != operands[1]), true },
+	">":  func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] > operands[1]), true },
+	"<":  func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] < operands[1]), true },
+	">=": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] >= operands[1]), true },
+	"<=": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] <= operands[1]), true },
+	"atan2": func(operands [2]float64, _ int) (float64, bool) {
 		return math.Atan2(operands[0], operands[1]), true
 	},
 }
@@ -199,6 +197,42 @@ func newOperation(expr parser.ItemType, vectorBinOp bool) (operation, error) {
 		return o, nil
 	}
 	return nil, parse.UnsupportedOperationErr(expr)
+}
+
+// histogramFloatOperation is an operation defined one histogram and one float.
+type histogramFloatOperation func(lhsHist *histogram.FloatHistogram, rhsFloat float64) *histogram.FloatHistogram
+
+func undefinedHistogramOp(_ *histogram.FloatHistogram, _ float64) *histogram.FloatHistogram {
+	return nil
+}
+
+var lhsHistogramOperations = map[string]histogramFloatOperation{
+	"*": func(hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		return hist.Copy().Mul(float)
+	},
+	"/": func(hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		return hist.Copy().Div(float)
+	},
+}
+
+var rhsHistogramOperations = map[string]histogramFloatOperation{
+	"*": func(hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
+		return hist.Copy().Mul(float)
+	},
+}
+
+func getHistogramFloatOperation(expr parser.ItemType, scalarSide ScalarSide) histogramFloatOperation {
+	t := parser.ItemTypeStr[expr]
+	var operation histogramFloatOperation
+	if scalarSide == ScalarSideLeft {
+		operation = rhsHistogramOperations[t]
+	} else {
+		operation = lhsHistogramOperations[t]
+	}
+	if operation != nil {
+		return operation
+	}
+	return undefinedHistogramOp
 }
 
 // btof returns 1 if b is true, 0 otherwise.

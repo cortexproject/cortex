@@ -156,7 +156,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *Opts) pa
 	}
 	minEngineOverlap := labelRanges.minOverlap()
 
-	traverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
+	TraverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
 		// If the current operation is not distributive, stop the traversal.
 		if !isDistributive(current) {
 			return true

@@ -16,7 +16,8 @@ type Options struct {
 	LookbackDelta    time.Duration
 	ExtLookbackDelta time.Duration
 
-	StepsBatch int64
+	StepsBatch     int64
+	EnableAnalysis bool
 }
 
 func (o *Options) NumSteps() int {

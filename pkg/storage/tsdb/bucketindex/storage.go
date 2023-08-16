@@ -71,13 +71,13 @@ func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvi
 	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
 
 	// Get the bucket index.
-	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsCustomerManagedKeyError, userBkt.IsObjNotFoundErr)).Get(ctx, IndexCompressedFilename)
+	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, IndexCompressedFilename)
 	if err != nil {
 		if userBkt.IsObjNotFoundErr(err) {
 			return nil, ErrIndexNotFound
 		}
 
-		if userBkt.IsCustomerManagedKeyError(err) {
+		if userBkt.IsAccessDeniedErr(err) {
 			return nil, cortex_errors.WithCause(bucket.ErrCustomerManagedKeyAccessDenied, err)
 		}
 

@@ -1226,12 +1226,14 @@ func TestGroupPartitioning(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			compactorCfg := &Config{
-				BlockRanges:                    testData.ranges,
-				PartitionIndexSizeLimitInBytes: testData.indexLimit,
-				PartitionSeriesCountLimit:      testData.seriesLimit,
+				BlockRanges: testData.ranges,
 			}
 
-			limits := &validation.Limits{}
+			limits := &validation.Limits{
+				CompactorPartitionIndexSizeLimitInBytes: testData.indexLimit,
+				CompactorPartitionSeriesCountLimit:      testData.seriesLimit,
+			}
+
 			overrides, err := validation.NewOverrides(*limits, nil)
 			require.NoError(t, err)
 
@@ -1409,11 +1411,7 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 		rangeEnd:   testRangeEnd,
 		blocks:     updatedTestBlocks,
 	}
-	createGrouper := func(ctx context.Context, bkt objstore.Bucket, compactorCfg *Config) *ShuffleShardingGrouper {
-		limits := &validation.Limits{}
-		overrides, err := validation.NewOverrides(*limits, nil)
-		require.NoError(t, err)
-
+	createGrouper := func(ctx context.Context, bkt objstore.Bucket, compactorCfg *Config, overrides *validation.Overrides) *ShuffleShardingGrouper {
 		r := &RingMock{}
 
 		noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
@@ -1459,11 +1457,16 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 
 	// test base case
 	compactorCfg1 := &Config{
-		BlockRanges:                    testRanges,
-		PartitionIndexSizeLimitInBytes: int64(40),
+		BlockRanges: testRanges,
 	}
+	limits1 := &validation.Limits{
+		CompactorPartitionIndexSizeLimitInBytes: int64(40),
+	}
+
+	overrides1, err := validation.NewOverrides(*limits1, nil)
+	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(context.Background())
-	grouper1 := createGrouper(ctx, bkt, compactorCfg1)
+	grouper1 := createGrouper(ctx, bkt, compactorCfg1, overrides1)
 	partitionedGroup1, err := grouper1.generatePartitionBlockGroup(testGroup, partitionedGroupID)
 	cancel()
 	require.NoError(t, err)
@@ -1478,11 +1481,16 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 
 	// test limit increased
 	compactorCfg2 := &Config{
-		BlockRanges:                    testRanges,
-		PartitionIndexSizeLimitInBytes: int64(80),
+		BlockRanges: testRanges,
 	}
+	limits2 := &validation.Limits{
+		CompactorPartitionIndexSizeLimitInBytes: int64(80),
+	}
+
+	overrides2, err := validation.NewOverrides(*limits2, nil)
+	require.NoError(t, err)
 	ctx, cancel = context.WithCancel(context.Background())
-	grouper2 := createGrouper(ctx, bkt, compactorCfg2)
+	grouper2 := createGrouper(ctx, bkt, compactorCfg2, overrides2)
 	partitionedGroup2, err := grouper2.generatePartitionBlockGroup(testGroup, partitionedGroupID)
 	cancel()
 	require.NoError(t, err)
@@ -1495,11 +1503,16 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 
 	// test limit decreased
 	compactorCfg3 := &Config{
-		BlockRanges:                    testRanges,
-		PartitionIndexSizeLimitInBytes: int64(20),
+		BlockRanges: testRanges,
 	}
+	limits3 := &validation.Limits{
+		CompactorPartitionIndexSizeLimitInBytes: int64(20),
+	}
+
+	overrides3, err := validation.NewOverrides(*limits3, nil)
+	require.NoError(t, err)
 	ctx, cancel = context.WithCancel(context.Background())
-	grouper3 := createGrouper(ctx, bkt, compactorCfg3)
+	grouper3 := createGrouper(ctx, bkt, compactorCfg3, overrides3)
 	partitionedGroup3, err := grouper3.generatePartitionBlockGroup(testGroup, partitionedGroupID)
 	cancel()
 	require.NoError(t, err)
@@ -1508,6 +1521,238 @@ func TestPartitionStrategyChange_shouldUseOriginalPartitionedGroup(t *testing.T)
 	for _, partition := range partitionedGroup3.Partitions {
 		partitionID := partition.PartitionID
 		require.ElementsMatch(t, partitionMap[partitionID], partition.Blocks)
+	}
+}
+
+func TestGroupCalculatePartitionCount(t *testing.T) {
+	t0block1Ulid := ulid.MustNew(1, nil)
+	t0block2Ulid := ulid.MustNew(2, nil)
+	t0block3Ulid := ulid.MustNew(3, nil)
+	t0block4Ulid := ulid.MustNew(4, nil)
+
+	blocks :=
+		map[ulid.ULID]*metadata.Meta{
+			t0block1Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: t0block1Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds(), Stats: tsdb.BlockStats{
+					NumSeries: uint64(6),
+				}},
+				Thanos: metadata.Thanos{Labels: map[string]string{"external": "1"}, Files: []metadata.File{
+					{RelPath: thanosblock.IndexFilename, SizeBytes: int64(14)},
+				}},
+			},
+			t0block2Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: t0block2Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds(), Stats: tsdb.BlockStats{
+					NumSeries: uint64(6),
+				}},
+				Thanos: metadata.Thanos{Labels: map[string]string{"external": "1"}, Files: []metadata.File{
+					{RelPath: thanosblock.IndexFilename, SizeBytes: int64(14)},
+				}},
+			},
+			t0block3Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: t0block3Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds(), Stats: tsdb.BlockStats{
+					NumSeries: uint64(6),
+				}},
+				Thanos: metadata.Thanos{Labels: map[string]string{"external": "1"}, Files: []metadata.File{
+					{RelPath: thanosblock.IndexFilename, SizeBytes: int64(14)},
+				}},
+			},
+			t0block4Ulid: {
+				BlockMeta: tsdb.BlockMeta{ULID: t0block4Ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds(), Stats: tsdb.BlockStats{
+					NumSeries: uint64(6),
+				}},
+				Thanos: metadata.Thanos{Labels: map[string]string{"external": "1"}, Files: []metadata.File{
+					{RelPath: thanosblock.IndexFilename, SizeBytes: int64(14)},
+				}},
+			},
+		}
+
+	testCompactorID := "test-compactor"
+	userID := "test_workspace"
+
+	tests := map[string]struct {
+		indexLimit             int64
+		seriesLimit            int64
+		userLimit              *validation.Limits
+		blocks                 []*metadata.Meta
+		expectedPartitionCount int
+	}{
+		"test global index limit": {
+			indexLimit: int64(20),
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test global series limit": {
+			seriesLimit: int64(10),
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test both global index limit and global series limit are defined and global index limit gives more partitions": {
+			indexLimit:  int64(20),
+			seriesLimit: int64(20),
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test both global index limit and global series limit are defined and global index series gives more partitions": {
+			indexLimit:  int64(40),
+			seriesLimit: int64(10),
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test user index limit": {
+			userLimit: &validation.Limits{
+				CompactorPartitionIndexSizeLimitInBytes: int64(20),
+			},
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test user series limit": {
+			userLimit: &validation.Limits{
+				CompactorPartitionSeriesCountLimit: int64(10),
+			},
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test both user index limit and user series limit are defined and user index limit gives more partitions": {
+			userLimit: &validation.Limits{
+				CompactorPartitionIndexSizeLimitInBytes: int64(20),
+				CompactorPartitionSeriesCountLimit:      int64(20),
+			},
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test both user index limit and user series limit are defined and user index series gives more partitions": {
+			userLimit: &validation.Limits{
+				CompactorPartitionIndexSizeLimitInBytes: int64(40),
+				CompactorPartitionSeriesCountLimit:      int64(10),
+			},
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test both global index limit and user index limit are defined and user index limit is used": {
+			indexLimit: int64(1),
+			userLimit: &validation.Limits{
+				CompactorPartitionIndexSizeLimitInBytes: int64(20),
+			},
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+		"test both global series limit and user series limit are defined and user series limit is used": {
+			seriesLimit: int64(1),
+			userLimit: &validation.Limits{
+				CompactorPartitionSeriesCountLimit: int64(10),
+			},
+			blocks: []*metadata.Meta{
+				blocks[t0block1Ulid],
+				blocks[t0block2Ulid],
+				blocks[t0block3Ulid],
+				blocks[t0block4Ulid]},
+			expectedPartitionCount: 4,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ranges := []time.Duration{2 * time.Hour}
+			rangeStart := 1 * time.Hour.Milliseconds()
+			rangeEnd := 3 * time.Hour.Milliseconds()
+			compactorCfg := &Config{
+				BlockRanges: ranges,
+			}
+
+			limits := &validation.Limits{
+				CompactorPartitionIndexSizeLimitInBytes: testData.indexLimit,
+				CompactorPartitionSeriesCountLimit:      testData.seriesLimit,
+			}
+			tenantLimit := &mockTenantLimits{
+				limits: map[string]*validation.Limits{
+					userID: testData.userLimit,
+				},
+			}
+			overrides, err := validation.NewOverrides(*limits, tenantLimit)
+			require.NoError(t, err)
+
+			ring := &RingMock{}
+
+			bkt := &bucket.ClientMock{}
+
+			noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+				return make(map[ulid.ULID]*metadata.NoCompactMark)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			g := NewShuffleShardingGrouper(
+				ctx,
+				nil,
+				objstore.WithNoopInstr(bkt),
+				false, // Do not accept malformed indexes
+				true,  // Enable vertical compaction
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+				metadata.NoneFunc,
+				*compactorCfg,
+				ring,
+				"test-addr",
+				testCompactorID,
+				overrides,
+				userID,
+				10,
+				3,
+				1,
+				5*time.Minute,
+				nil,
+				nil,
+				nil,
+				nil,
+				noCompactFilter,
+			)
+			testGroup := blocksGroup{
+				rangeStart: rangeStart,
+				rangeEnd:   rangeEnd,
+				blocks:     testData.blocks,
+			}
+			actual := g.calculatePartitionCount(testGroup)
+			require.Equal(t, testData.expectedPartitionCount, actual)
+		})
 	}
 }
 
@@ -1572,3 +1817,15 @@ func (r *RingMock) HasInstance(instanceID string) bool {
 }
 
 func (r *RingMock) CleanupShuffleShardCache(identifier string) {}
+
+type mockTenantLimits struct {
+	limits map[string]*validation.Limits
+}
+
+func (l *mockTenantLimits) ByUserID(userID string) *validation.Limits {
+	return l.limits[userID]
+}
+
+func (l *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return l.limits
+}

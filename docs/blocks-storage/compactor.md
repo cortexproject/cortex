@@ -298,12 +298,4 @@ compactor:
   # When enabled, index verification will ignore out of order label names.
   # CLI flag: -compactor.accept-malformed-index
   [accept_malformed_index: <boolean> | default = false]
-
-  # Index size limit in bytes for each compaction partition. 0 means no limit
-  # CLI flag: -compactor.partition-index-size-limit-in-bytes
-  [partition_index_size_limit_in_bytes: <int> | default = 0]
-
-  # Time series count limit for each compaction partition. 0 means no limit
-  # CLI flag: -compactor.partition-series-count-limit
-  [partition_series_count_limit: <int> | default = 0]
 ```

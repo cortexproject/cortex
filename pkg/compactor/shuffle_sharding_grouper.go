@@ -360,8 +360,8 @@ func (g *ShuffleShardingGrouper) partitionBlockGroup(group blocksGroup, groupHas
 }
 
 func (g *ShuffleShardingGrouper) calculatePartitionCount(group blocksGroup) int {
-	indexSizeLimit := g.compactorCfg.PartitionIndexSizeLimitInBytes
-	seriesCountLimit := g.compactorCfg.PartitionSeriesCountLimit
+	indexSizeLimit := g.limits.CompactorPartitionIndexSizeLimitInBytes(g.userID)
+	seriesCountLimit := g.limits.CompactorPartitionSeriesCountLimit(g.userID)
 	totalIndexSizeInBytes := int64(0)
 	totalSeriesCount := int64(0)
 	for _, block := range group.blocks {

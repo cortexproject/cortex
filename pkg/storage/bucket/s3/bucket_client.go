@@ -126,7 +126,7 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error, operation
 		if lastErr == nil {
 			return nil
 		}
-		if b.bucket.IsObjNotFoundErr(lastErr) || b.bucket.IsCustomerManagedKeyError(lastErr) {
+		if b.bucket.IsObjNotFoundErr(lastErr) || b.bucket.IsAccessDeniedErr(lastErr) {
 			return lastErr
 		}
 		retries.Wait()
@@ -209,8 +209,8 @@ func (b *BucketWithRetries) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
 }
 
-func (b *BucketWithRetries) IsCustomerManagedKeyError(err error) bool {
-	return b.bucket.IsCustomerManagedKeyError(err)
+func (b *BucketWithRetries) IsAccessDeniedErr(err error) bool {
+	return b.bucket.IsAccessDeniedErr(err)
 }
 
 func (b *BucketWithRetries) Close() error {

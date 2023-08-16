@@ -116,7 +116,7 @@ func Test_shouldWrapSSeErrors(t *testing.T) {
 	sseBkt := NewSSEBucketClient("user-1", bkt, cfgProvider)
 
 	_, err := sseBkt.Get(context.Background(), "Test")
-	require.True(t, sseBkt.IsCustomerManagedKeyError(err))
+	require.True(t, sseBkt.IsAccessDeniedErr(err))
 }
 
 type mockTenantConfigProvider struct {

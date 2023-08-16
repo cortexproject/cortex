@@ -100,9 +100,9 @@ func (b *globalMarkersBucket) IsObjNotFoundErr(err error) bool {
 	return b.parent.IsObjNotFoundErr(err)
 }
 
-// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
-func (b *globalMarkersBucket) IsCustomerManagedKeyError(err error) bool {
-	return b.parent.IsCustomerManagedKeyError(err)
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *globalMarkersBucket) IsAccessDeniedErr(err error) bool {
+	return b.parent.IsAccessDeniedErr(err)
 }
 
 // Attributes implements objstore.Bucket.

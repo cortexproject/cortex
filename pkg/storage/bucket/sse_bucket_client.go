@@ -107,7 +107,7 @@ func (b *SSEBucketClient) Iter(ctx context.Context, dir string, f func(string) e
 func (b *SSEBucketClient) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	r, err := b.bucket.Get(ctx, name)
 
-	if err != nil && b.IsCustomerManagedKeyError(err) {
+	if err != nil && b.IsAccessDeniedErr(err) {
 		// Store gateway will return the status if the returned error is an `status.Error`
 		return nil, cortex_errors.WithCause(err, status.Error(codes.PermissionDenied, err.Error()))
 	}
@@ -118,7 +118,7 @@ func (b *SSEBucketClient) Get(ctx context.Context, name string) (io.ReadCloser, 
 // GetRange implements objstore.Bucket.
 func (b *SSEBucketClient) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	r, err := b.bucket.GetRange(ctx, name, off, length)
-	if err != nil && b.IsCustomerManagedKeyError(err) {
+	if err != nil && b.IsAccessDeniedErr(err) {
 		return nil, cortex_errors.WithCause(err, status.Error(codes.PermissionDenied, err.Error()))
 	}
 
@@ -135,13 +135,13 @@ func (b *SSEBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
 }
 
-// IsCustomerManagedKeyError implements objstore.Bucket.
-func (b *SSEBucketClient) IsCustomerManagedKeyError(err error) bool {
+// IsAccessDeniedErr implements objstore.Bucket.
+func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
 	// unwrap error
 	if se, ok := err.(interface{ Err() error }); ok {
-		return b.bucket.IsCustomerManagedKeyError(se.Err()) || b.bucket.IsCustomerManagedKeyError(err)
+		return b.bucket.IsAccessDeniedErr(se.Err()) || b.bucket.IsAccessDeniedErr(err)
 	}
-	return b.bucket.IsCustomerManagedKeyError(err)
+	return b.bucket.IsAccessDeniedErr(err)
 }
 
 // Attributes implements objstore.Bucket.

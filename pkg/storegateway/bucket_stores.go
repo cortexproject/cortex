@@ -235,7 +235,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 				if err := f(ctx, job.store); err != nil {
 					if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 						u.storesErrorsMu.Lock()
-						u.storesErrors[job.userID] = err
+						u.storesErrors[job.userID] = httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
 						u.storesErrorsMu.Unlock()
 					} else {
 						errsMx.Lock()
@@ -298,16 +298,19 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return fmt.Errorf("no userID")
 	}
 
-	store := u.getStore(userID)
+	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
-	if store == nil {
-		return nil
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return err
 	}
 
-	err := u.getStoreError(userID)
-
-	if err != nil && cortex_errors.ErrorIs(err, userBkt.IsCustomerManagedKeyError) {
-		return httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+	store := u.getStore(userID)
+	if store == nil {
+		return nil
 	}
 
 	err = store.Series(req, spanSeriesServer{
@@ -328,16 +331,19 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store := u.getStore(userID)
+	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
-	if store == nil {
-		return &storepb.LabelNamesResponse{}, nil
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return nil, err
 	}
 
-	err := u.getStoreError(userID)
-
-	if err != nil && cortex_errors.ErrorIs(err, userBkt.IsCustomerManagedKeyError) {
-		return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+	store := u.getStore(userID)
+	if store == nil {
+		return &storepb.LabelNamesResponse{}, nil
 	}
 
 	resp, err := store.LabelNames(ctx, req)
@@ -355,21 +361,22 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store := u.getStore(userID)
+	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return nil, err
+	}
+
+	store := u.getStore(userID)
 	if store == nil {
 		return &storepb.LabelValuesResponse{}, nil
 	}
 
-	err := u.getStoreError(userID)
-
-	if err != nil && cortex_errors.ErrorIs(err, userBkt.IsCustomerManagedKeyError) {
-		return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
-	}
-
-	resp, err := store.LabelValues(ctx, req)
-
-	return resp, err
+	return store.LabelValues(ctx, req)
 }
 
 // scanUsers in the bucket and return the list of found users. If an error occurs while

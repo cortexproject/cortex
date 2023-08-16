@@ -322,6 +322,10 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
     [consul: <consul_config>]
@@ -1146,6 +1150,14 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-multi-batch-size
       [set_multi_batch_size: <int> | default = 100]
 
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
       # Client dial timeout.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.dial-timeout
       [dial_timeout: <duration> | default = 5s]
@@ -1285,6 +1297,14 @@ bucket_store:
       # The maximum size per batch for pipeline set.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-multi-batch-size
       [set_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
 
       # Client dial timeout.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.dial-timeout
@@ -1443,6 +1463,14 @@ bucket_store:
       # The maximum size per batch for pipeline set.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-multi-batch-size
       [set_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
 
       # Client dial timeout.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.dial-timeout
@@ -1839,6 +1867,10 @@ sharding_ring:
       # CLI flag: -compactor.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -compactor.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
     [consul: <consul_config>]
@@ -1890,6 +1922,10 @@ sharding_ring:
   # shutdown and restored at startup.
   # CLI flag: -compactor.ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
+
+  # Unregister the compactor during shutdown if true.
+  # CLI flag: -compactor.ring.unregister-on-shutdown
+  [unregister_on_shutdown: <boolean> | default = true]
 
   # Timeout for waiting on compactor to become ACTIVE in the ring.
   # CLI flag: -compactor.ring.wait-active-instance-timeout
@@ -2095,6 +2131,10 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -distributor.ha-tracker.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -2180,6 +2220,10 @@ ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -distributor.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -distributor.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -2472,6 +2516,10 @@ lifecycler:
         # Time to refresh local ring with information on dynamodb.
         # CLI flag: -dynamodb.puller-sync-time
         [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -3007,7 +3055,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # is given in JSON format. Rate limit has the same meaning as
 # -alertmanager.notification-rate-limit, but only applies for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover, sns.
+# wechat, slack, victorops, pushover, sns, telegram, discord, webex.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 
@@ -3512,6 +3560,11 @@ grpc_client_config:
   # CLI flag: -frontend.grpc-client-config.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
+# When multiple query-schedulers are available, re-enqueue queries that were
+# rejected due to too many outstanding requests.
+# CLI flag: -frontend.retry-on-too-many-outstanding-requests
+[retry_on_too_many_outstanding_requests: <boolean> | default = false]
+
 # Name of network interface to read address from. This address is sent to
 # query-scheduler and querier, which uses it to send the query response back to
 # query-frontend.
@@ -3853,6 +3906,10 @@ ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -ruler.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -ruler.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
@@ -4716,6 +4773,10 @@ sharding_ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring

@@ -80,6 +80,10 @@ type Block struct {
 	SegmentsFormat string `json:"segments_format,omitempty"`
 	SegmentsNum    int    `json:"segments_num,omitempty"`
 
+	// Max size in bytes of series and chunk in the block.
+	SeriesMaxSize int64 `json:"series_max_size,omitempty"`
+	ChunkMaxSize  int64 `json:"chunk_max_size,omitempty"`
+
 	// UploadedAt is a unix timestamp (seconds precision) of when the block has been completed to be uploaded
 	// to the storage.
 	UploadedAt int64 `json:"uploaded_at"`
@@ -113,6 +117,10 @@ func (m *Block) ThanosMeta(userID string) *metadata.Meta {
 				cortex_tsdb.TenantIDExternalLabel: userID,
 			},
 			SegmentFiles: m.thanosMetaSegmentFiles(),
+			IndexStats: metadata.IndexStats{
+				SeriesMaxSize: m.SeriesMaxSize,
+				ChunkMaxSize:  m.ChunkMaxSize,
+			},
 		},
 	}
 }
@@ -143,6 +151,8 @@ func BlockFromThanosMeta(meta metadata.Meta) *Block {
 		MaxTime:        meta.MaxTime,
 		SegmentsFormat: segmentsFormat,
 		SegmentsNum:    segmentsNum,
+		SeriesMaxSize:  meta.Thanos.IndexStats.SeriesMaxSize,
+		ChunkMaxSize:   meta.Thanos.IndexStats.ChunkMaxSize,
 	}
 }
 

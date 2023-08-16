@@ -93,24 +93,39 @@ func TestResponse(t *testing.T) {
 	r := *parsedResponse
 	r.Headers = respHeaders
 	for i, tc := range []struct {
-		body     string
-		expected *PrometheusResponse
+		body                  string
+		expected              *PrometheusResponse
+		expectedDecodeErr     error
+		cancelCtxBeforeDecode bool
 	}{
 		{
 			body:     responseBody,
 			expected: &r,
 		},
+		{
+			body:                  responseBody,
+			cancelCtxBeforeDecode: true,
+			expectedDecodeErr:     context.Canceled,
+		},
 	} {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
+			ctx, cancelCtx := context.WithCancel(context.Background())
 			response := &http.Response{
 				StatusCode: 200,
 				Header:     http.Header{"Content-Type": []string{"application/json"}},
 				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 			}
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
-			require.NoError(t, err)
+			if tc.cancelCtxBeforeDecode {
+				cancelCtx()
+			}
+			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
+			assert.Equal(t, tc.expectedDecodeErr, err)
+			if err != nil {
+				cancelCtx()
+				return
+			}
 			assert.Equal(t, tc.expected, resp)
 
 			// Reset response, as the above call will have consumed the body reader.
@@ -123,6 +138,7 @@ func TestResponse(t *testing.T) {
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
+			cancelCtx()
 		})
 	}
 }
@@ -193,9 +209,11 @@ func TestResponseWithStats(t *testing.T) {
 func TestMergeAPIResponses(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name     string
-		input    []tripperware.Response
-		expected tripperware.Response
+		name        string
+		input       []tripperware.Response
+		expected    tripperware.Response
+		expectedErr error
+		cancelCtx   bool
 	}{
 		{
 			name:  "No responses shouldn't panic and return a non-null result and result type.",
@@ -208,7 +226,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "A single empty response shouldn't panic.",
 			input: []tripperware.Response{
@@ -227,7 +244,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "Multiple empty responses shouldn't panic.",
 			input: []tripperware.Response{
@@ -302,7 +318,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "Merging of responses when labels are in different order.",
 			input: []tripperware.Response{
@@ -327,7 +342,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "Merging of samples where there is single overlap.",
 			input: []tripperware.Response{
@@ -401,6 +415,41 @@ func TestMergeAPIResponses(t *testing.T) {
 			},
 		},
 		{
+			name: "Context cancel should cancel merge",
+			input: []tripperware.Response{
+				&PrometheusResponse{
+					Data: PrometheusData{
+						ResultType: matrix,
+						Result: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{},
+								Samples: []cortexpb.Sample{
+									{Value: 0, TimestampMs: 0},
+									{Value: 1, TimestampMs: 1},
+								},
+							},
+						},
+					},
+				},
+				&PrometheusResponse{
+					Data: PrometheusData{
+						ResultType: matrix,
+						Result: []tripperware.SampleStream{
+							{
+								Labels: []cortexpb.LabelAdapter{},
+								Samples: []cortexpb.Sample{
+									{Value: 2, TimestampMs: 2},
+									{Value: 3, TimestampMs: 3},
+								},
+							},
+						},
+					},
+				},
+			},
+			cancelCtx:   true,
+			expectedErr: context.Canceled,
+		},
+		{
 			name: "[stats] A single empty response shouldn't panic.",
 			input: []tripperware.Response{
 				&PrometheusResponse{
@@ -420,7 +469,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "[stats] Multiple empty responses shouldn't panic.",
 			input: []tripperware.Response{
@@ -448,7 +496,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "[stats] Basic merging of two responses.",
 			input: []tripperware.Response{
@@ -664,9 +711,18 @@ func TestMergeAPIResponses(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			output, err := PrometheusCodec.MergeResponse(context.Background(), nil, tc.input...)
-			require.NoError(t, err)
+			ctx, cancelCtx := context.WithCancel(context.Background())
+			if tc.cancelCtx {
+				cancelCtx()
+			}
+			output, err := PrometheusCodec.MergeResponse(ctx, nil, tc.input...)
+			require.Equal(t, tc.expectedErr, err)
+			if err != nil {
+				cancelCtx()
+				return
+			}
 			require.Equal(t, tc.expected, output)
+			cancelCtx()
 		})
 	}
 }

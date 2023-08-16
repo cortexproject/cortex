@@ -218,11 +218,14 @@ func TestMergeResponse(t *testing.T) {
 		Query: "sum(up)",
 	}
 	for _, tc := range []struct {
-		name         string
-		req          tripperware.Request
-		resps        []string
-		expectedResp string
-		expectedErr  error
+		name               string
+		req                tripperware.Request
+		resps              []string
+		expectedResp       string
+		expectedErr        error
+		cancelBeforeDecode bool
+		expectedDecodeErr  error
+		cancelBeforeMerge  bool
 	}{
 		{
 			name:         "empty response",
@@ -355,10 +358,31 @@ func TestMergeResponse(t *testing.T) {
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
 		},
+		{
+			name: "context cancelled before decoding response",
+			req:  defaultReq,
+			resps: []string{
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}]}}`,
+			},
+			expectedDecodeErr:  context.Canceled,
+			cancelBeforeDecode: true,
+		},
+		{
+			name: "context cancelled before merging response",
+			req:  defaultReq,
+			resps: []string{
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}]}}`,
+			},
+			expectedErr:       context.Canceled,
+			cancelBeforeMerge: true,
+		},
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			ctx, cancelCtx := context.WithCancel(context.Background())
 
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
@@ -367,20 +391,34 @@ func TestMergeResponse(t *testing.T) {
 					Header:     http.Header{"Content-Type": []string{"application/json"}},
 					Body:       io.NopCloser(bytes.NewBuffer([]byte(r))),
 				}
-				dr, err := InstantQueryCodec.DecodeResponse(context.Background(), hr, nil)
-				require.NoError(t, err)
+
+				if tc.cancelBeforeDecode {
+					cancelCtx()
+				}
+				dr, err := InstantQueryCodec.DecodeResponse(ctx, hr, nil)
+				assert.Equal(t, tc.expectedDecodeErr, err)
+				if err != nil {
+					cancelCtx()
+					return
+				}
 				resps = append(resps, dr)
 			}
-			resp, err := InstantQueryCodec.MergeResponse(context.Background(), tc.req, resps...)
-			assert.Equal(t, err, tc.expectedErr)
+
+			if tc.cancelBeforeMerge {
+				cancelCtx()
+			}
+			resp, err := InstantQueryCodec.MergeResponse(ctx, tc.req, resps...)
+			assert.Equal(t, tc.expectedErr, err)
 			if err != nil {
+				cancelCtx()
 				return
 			}
-			dr, err := InstantQueryCodec.EncodeResponse(context.Background(), resp)
-			assert.Equal(t, err, tc.expectedErr)
+			dr, err := InstantQueryCodec.EncodeResponse(ctx, resp)
+			assert.Equal(t, tc.expectedErr, err)
 			contents, err := io.ReadAll(dr.Body)
-			assert.Equal(t, err, tc.expectedErr)
+			assert.Equal(t, tc.expectedErr, err)
 			assert.Equal(t, string(contents), tc.expectedResp)
+			cancelCtx()
 		})
 	}
 }

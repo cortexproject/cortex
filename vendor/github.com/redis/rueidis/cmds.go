@@ -2,7 +2,10 @@ package rueidis
 
 import "github.com/redis/rueidis/internal/cmds"
 
-// Completed represents a completed Redis command, should be created by the Build() of command builder.
+// Builder represents a command builder. It should only be created from the client.B() method.
+type Builder = cmds.Builder
+
+// Completed represents a completed Redis command. It should only be created from the Build() of a command builder.
 type Completed = cmds.Completed
 
 // Cacheable represents a completed Redis command which supports server-assisted client side caching,

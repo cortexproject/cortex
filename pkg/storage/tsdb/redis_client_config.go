@@ -21,6 +21,8 @@ type RedisClientConfig struct {
 	GetMultiBatchSize      int `yaml:"get_multi_batch_size"`
 	MaxSetMultiConcurrency int `yaml:"max_set_multi_concurrency"`
 	SetMultiBatchSize      int `yaml:"set_multi_batch_size"`
+	MaxAsyncConcurrency    int `yaml:"max_async_concurrency"`
+	MaxAsyncBufferSize     int `yaml:"max_async_buffer_size"`
 
 	DialTimeout  time.Duration `yaml:"dial_timeout"`
 	ReadTimeout  time.Duration `yaml:"read_timeout"`
@@ -48,6 +50,8 @@ func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 	f.IntVar(&cfg.GetMultiBatchSize, prefix+"get-multi-batch-size", 100, "The maximum size per batch for mget.")
 	f.IntVar(&cfg.MaxSetMultiConcurrency, prefix+"max-set-multi-concurrency", 100, "The maximum number of concurrent SetMulti() operations. If set to 0, concurrency is unlimited.")
 	f.IntVar(&cfg.SetMultiBatchSize, prefix+"set-multi-batch-size", 100, "The maximum size per batch for pipeline set.")
+	f.IntVar(&cfg.MaxAsyncConcurrency, prefix+"max-async-concurrency", 50, "The maximum number of concurrent asynchronous operations can occur.")
+	f.IntVar(&cfg.MaxAsyncBufferSize, prefix+"max-async-buffer-size", 10000, "The maximum number of enqueued asynchronous operations allowed.")
 	f.StringVar(&cfg.MasterName, prefix+"master-name", "", "Specifies the master's name. Must be not empty for Redis Sentinel.")
 	f.IntVar(&cfg.CacheSize, prefix+"cache-size", 0, "If not zero then client-side caching is enabled. Client-side caching is when data is stored in memory instead of fetching data each time. See https://redis.io/docs/manual/client-side-caching/ for more info.")
 	f.BoolVar(&cfg.TLSEnabled, prefix+"tls-enabled", false, "Whether to enable tls for redis connection.")
@@ -82,6 +86,8 @@ func (cfg *RedisClientConfig) ToRedisClientConfig() cacheutil.RedisClientConfig 
 		MaxGetMultiConcurrency: cfg.MaxGetMultiConcurrency,
 		GetMultiBatchSize:      cfg.GetMultiBatchSize,
 		MaxSetMultiConcurrency: cfg.MaxSetMultiConcurrency,
+		MaxAsyncConcurrency:    cfg.MaxAsyncConcurrency,
+		MaxAsyncBufferSize:     cfg.MaxAsyncBufferSize,
 		SetMultiBatchSize:      cfg.SetMultiBatchSize,
 		TLSEnabled:             cfg.TLSEnabled,
 		TLSConfig: cacheutil.TLSConfig{

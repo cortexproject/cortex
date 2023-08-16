@@ -37,7 +37,8 @@ type blocksStoreReplicationSet struct {
 	balancingStrategy loadBalancingStrategy
 	limits            BlocksStoreLimits
 
-	zoneAwarenessEnabled bool
+	zoneAwarenessEnabled      bool
+	zoneStableShuffleSharding bool
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -53,14 +54,17 @@ func newBlocksStoreReplicationSet(
 	logger log.Logger,
 	reg prometheus.Registerer,
 	zoneAwarenessEnabled bool,
+	zoneStableShuffleSharding bool,
 ) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
-		storesRing:           storesRing,
-		clientsPool:          newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
-		shardingStrategy:     shardingStrategy,
-		balancingStrategy:    balancingStrategy,
-		limits:               limits,
-		zoneAwarenessEnabled: zoneAwarenessEnabled,
+		storesRing:        storesRing,
+		clientsPool:       newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
+		shardingStrategy:  shardingStrategy,
+		balancingStrategy: balancingStrategy,
+		limits:            limits,
+
+		zoneAwarenessEnabled:      zoneAwarenessEnabled,
+		zoneStableShuffleSharding: zoneStableShuffleSharding,
 	}
 
 	var err error
@@ -106,7 +110,7 @@ func (s *blocksStoreReplicationSet) GetClientsFor(userID string, blockIDs []ulid
 	// otherwise we just use the full ring.
 	var userRing ring.ReadRing
 	if s.shardingStrategy == util.ShardingStrategyShuffle {
-		userRing = storegateway.GetShuffleShardingSubring(s.storesRing, userID, s.limits)
+		userRing = storegateway.GetShuffleShardingSubring(s.storesRing, userID, s.limits, s.zoneStableShuffleSharding)
 	} else {
 		userRing = s.storesRing
 	}

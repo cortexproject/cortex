@@ -54,12 +54,19 @@ The store-gateway supports two sharding strategies:
 
 - `default`
 - `shuffle-sharding`
+- `zone-stable-shuffle-sharding`
 
 The **`default`** sharding strategy spreads the blocks of each tenant across all store-gateway instances. It's the easiest form of sharding supported, but doesn't provide any workload isolation between different tenants.
 
 The **`shuffle-sharding`** strategy spreads the blocks of a tenant across a subset of store-gateway instances. This way, the number of store-gateway instances loading blocks of a single tenant is limited and the blast radius of any issue that could be introduced by the tenant's workload is limited to its shard instances.
 
 The shuffle sharding strategy can be enabled via `-store-gateway.sharding-strategy=shuffle-sharding` and requires the `-store-gateway.tenant-shard-size` flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the `store_gateway_tenant_shard_size` in the limits overrides.
+
+The **`zone-stable-shuffle-sharding`** strategy achieves the same as the **`shuffle-sharding`** strategy, but using a different sharding algorithm. The new sharding algorithm ensures that when zone awareness is enabled, when shard size increases or decreases by one, the replicas for any block should only change at most by one instance. This is important for querying store gateway because a block can be retried at most 3 times.
+
+Zone stable shuffle sharding can be enabled via `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` CLI flag.
+
+It will become the default shuffle sharding strategy for store gateway in `v1.17.0` release and the previous shuffle sharding algorithm will be removed in `v1.18.0` release.
 
 _Please check out the [shuffle sharding documentation](../guides/shuffle-sharding.md) for more information about how it works._
 
@@ -228,6 +235,10 @@ store_gateway:
         # Time to refresh local ring with information on dynamodb.
         # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
         [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
 
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is:
@@ -707,6 +718,14 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-multi-batch-size
         [set_multi_batch_size: <int> | default = 100]
 
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
         # Client dial timeout.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.dial-timeout
         [dial_timeout: <duration> | default = 5s]
@@ -846,6 +865,14 @@ blocks_storage:
         # The maximum size per batch for pipeline set.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-multi-batch-size
         [set_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
 
         # Client dial timeout.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.dial-timeout
@@ -1005,6 +1032,14 @@ blocks_storage:
         # The maximum size per batch for pipeline set.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-multi-batch-size
         [set_multi_batch_size: <int> | default = 100]
+
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
 
         # Client dial timeout.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.dial-timeout

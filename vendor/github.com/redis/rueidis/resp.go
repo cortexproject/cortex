@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -149,7 +150,16 @@ func readMap(i *bufio.Reader) (m RedisMessage, err error) {
 	return m, err
 }
 
+const ok = "OK"
+const okrn = "OK\r\n"
+
 func readS(i *bufio.Reader) (string, error) {
+	if peek, _ := i.Peek(2); string(peek) == ok {
+		if peek, _ = i.Peek(4); string(peek) == okrn {
+			_, _ = i.Discard(4)
+			return ok, nil
+		}
+	}
 	bs, err := i.ReadBytes('\n')
 	if err != nil {
 		return "", err
@@ -235,7 +245,7 @@ func readA(i *bufio.Reader, length int64) (v []RedisMessage, err error) {
 }
 
 func writeB(o *bufio.Writer, id byte, str string) (err error) {
-	_ = writeS(o, id, strconv.Itoa(len(str)))
+	_ = writeN(o, id, len(str))
 	_, _ = o.WriteString(str)
 	_, err = o.WriteString("\r\n")
 	return err
@@ -244,6 +254,20 @@ func writeB(o *bufio.Writer, id byte, str string) (err error) {
 func writeS(o *bufio.Writer, id byte, str string) (err error) {
 	_ = o.WriteByte(id)
 	_, _ = o.WriteString(str)
+	_, err = o.WriteString("\r\n")
+	return err
+}
+
+func writeN(o *bufio.Writer, id byte, n int) (err error) {
+	_ = o.WriteByte(id)
+	if n < 10 {
+		_ = o.WriteByte(byte('0' + n))
+	} else {
+		for d := int(math.Pow10(int(math.Log10(float64(n))))); d > 0; d /= 10 {
+			_ = o.WriteByte(byte('0' + n/d))
+			n = n % d
+		}
+	}
 	_, err = o.WriteString("\r\n")
 	return err
 }
@@ -278,7 +302,7 @@ func readNextMessage(i *bufio.Reader) (m RedisMessage, err error) {
 }
 
 func writeCmd(o *bufio.Writer, cmd []string) (err error) {
-	err = writeS(o, '*', strconv.Itoa(len(cmd)))
+	err = writeN(o, '*', len(cmd))
 	for _, m := range cmd {
 		err = writeB(o, '$', m)
 	}

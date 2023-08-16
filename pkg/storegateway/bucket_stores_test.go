@@ -132,12 +132,16 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			// Should set the error on user-1
 			require.NoError(t, stores.InitialSync(ctx))
 			if tc.mockInitialSync {
-				require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
+				s, ok := status.FromError(stores.storesErrors["user-1"])
+				require.True(t, ok)
+				require.Equal(t, s.Code(), codes.PermissionDenied)
 				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 			}
 			require.NoError(t, stores.SyncBlocks(context.Background()))
 			if tc.mockInitialSync {
-				require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
+				s, ok := status.FromError(stores.storesErrors["user-1"])
+				require.True(t, ok)
+				require.Equal(t, s.Code(), codes.PermissionDenied)
 				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 			}
 

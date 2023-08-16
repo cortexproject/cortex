@@ -46,11 +46,15 @@ var (
 )
 
 type prometheusCodec struct {
-	sharded bool
+	sharded     bool
+	compression string
 }
 
-func NewPrometheusCodec(sharded bool) *prometheusCodec { //nolint:revive
-	return &prometheusCodec{sharded: sharded}
+func NewPrometheusCodec(sharded bool, compression string) *prometheusCodec { //nolint:revive
+	return &prometheusCodec{
+		sharded:     sharded,
+		compression: compression,
+	}
 }
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
@@ -220,7 +224,7 @@ func (c prometheusCodec) DecodeRequest(_ context.Context, r *http.Request, forwa
 	return &result, nil
 }
 
-func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
+func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -244,7 +248,9 @@ func (prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Request)
 		}
 	}
 
-	h.Set("Accept-Encoding", "snappy")
+	if c.compression == "snappy" || c.compression == "gzip" {
+		h.Set("Accept-Encoding", c.compression)
+	}
 	h.Set("Accept", "application/x-protobuf")
 
 	req := &http.Request{

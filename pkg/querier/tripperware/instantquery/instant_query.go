@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = newInstantQueryCodec()
+	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("")
 
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
@@ -109,11 +109,15 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	now func() time.Time
+	compression string
+	now         func() time.Time
 }
 
-func newInstantQueryCodec() instantQueryCodec {
-	return instantQueryCodec{now: time.Now}
+func NewInstantQueryCodec(compression string) instantQueryCodec {
+	return instantQueryCodec{
+		compression: compression,
+		now:         time.Now,
+	}
 }
 
 func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
@@ -180,7 +184,7 @@ func (instantQueryCodec) DecodeResponse(ctx context.Context, r *http.Response, _
 	return &resp, nil
 }
 
-func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
+func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Request) (*http.Request, error) {
 	promReq, ok := r.(*PrometheusRequest)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "invalid request format")
@@ -207,7 +211,9 @@ func (instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
-	h.Set("Accept-Encoding", "snappy")
+	if c.compression == "snappy" || c.compression == "gzip" {
+		h.Set("Accept-Encoding", c.compression)
+	}
 	h.Set("Accept", "application/x-protobuf")
 
 	req := &http.Request{

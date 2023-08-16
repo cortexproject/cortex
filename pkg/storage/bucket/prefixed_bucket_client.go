@@ -73,7 +73,7 @@ func (b *PrefixedBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
 }
 
-// IsAccessDeniedErr returns true if the permissions for key used to encrypt the object was revoked.
+// IsAccessDeniedErr returns true if access to object is denied.
 func (b *PrefixedBucketClient) IsAccessDeniedErr(err error) bool {
 	return b.bucket.IsAccessDeniedErr(err)
 }

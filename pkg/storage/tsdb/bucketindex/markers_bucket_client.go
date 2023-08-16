@@ -100,7 +100,7 @@ func (b *globalMarkersBucket) IsObjNotFoundErr(err error) bool {
 	return b.parent.IsObjNotFoundErr(err)
 }
 
-// IsAccessDeniedErr returns true if the permissions for key used to encrypt the object was revoked.
+// IsAccessDeniedErr returns true if access to object is denied.
 func (b *globalMarkersBucket) IsAccessDeniedErr(err error) bool {
 	return b.parent.IsAccessDeniedErr(err)
 }

@@ -74,6 +74,7 @@ func defaultRulerConfig(t testing.TB) Config {
 	cfg.Ring.ListenPort = 0
 	cfg.Ring.InstanceAddr = "localhost"
 	cfg.Ring.InstanceID = "localhost"
+	cfg.Ring.FinalSleep = 0
 	cfg.EnableQueryStats = false
 
 	return cfg

@@ -4,6 +4,7 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -29,6 +30,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore/providers/s3"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/integration/ca"
@@ -912,6 +914,127 @@ func TestRulerMetricsWhenIngesterFails(t *testing.T) {
 		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(2), []string{"cortex_ruler_write_requests_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
 
 		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_write_requests_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+	})
+}
+
+func TestRulerDisablesRuleGroups(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	const blockRangePeriod = 2 * time.Second
+	// Configure the ruler.
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+			// Evaluate rules often, so that we don't need to wait for metrics to show up.
+			"-ruler.evaluation-interval": "2s",
+			"-ruler.poll-interval":       "2s",
+			// No delay
+			"-ruler.evaluation-delay-duration": "0",
+
+			// We run single ingester only, no replication.
+			"-distributor.replication-factor": "1",
+
+			// Very low limit so that ruler hits it.
+			"-querier.max-fetched-chunks-per-query": "15",
+			"-querier.query-store-after":            (1 * time.Second).String(),
+			"-querier.query-ingesters-within":       (2 * time.Second).String(),
+		},
+	)
+
+	const namespace = "test"
+	const user = "user"
+	configFileName := "runtime-config.yaml"
+	bucketName := "cortex"
+
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses":     storeGateway.NetworkGRPCEndpoint(),
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       bucketName,
+		"-runtime-config.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-runtime-config.s3.insecure":          "true",
+		"-runtime-config.file":                 configFileName,
+		"-runtime-config.reload-period":        "2s",
+	})
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    bucketName,
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "runtime-config-test")
+
+	require.NoError(t, err)
+
+	// update runtime config
+	newRuntimeConfig := []byte(`overrides:
+  user:
+    disabled_rule_groups:
+      - name: bad_rule
+        namespace: test`)
+	require.NoError(t, client.Upload(context.Background(), configFileName, bytes.NewReader(newRuntimeConfig)))
+	time.Sleep(2 * time.Second)
+
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, ruler, storeGateway))
+
+	// Wait until both the distributor and ruler have updated the ring. The querier will also watch
+	// the store-gateway ring if blocks sharding is enabled.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1024), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", ruler.HTTPEndpoint(), user)
+	require.NoError(t, err)
+
+	expression := "absent(sum_over_time(metric{}[2s] offset 1h))"
+
+	t.Run("disable_rule_group", func(t *testing.T) {
+
+		ruleGroup := ruleGroupWithRule("bad_rule", "rule", expression)
+		ruleGroup.Interval = 2
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+
+		ruleGroup = ruleGroupWithRule("good_rule", "rule", expression)
+		ruleGroup.Interval = 2
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+
+		m1 := ruleGroupMatcher(user, namespace, "good_rule")
+
+		// Wait until ruler has loaded the group.
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_sync_rules_total"}, e2e.WaitMissingMetrics))
+
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m1), e2e.WaitMissingMetrics))
+
+		filter := e2ecortex.RuleFilter{}
+		actualGroups, err := c.GetPrometheusRules(filter)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(actualGroups))
+		assert.Equal(t, "good_rule", actualGroups[0].Name)
+		assert.Equal(t, "test", actualGroups[0].File)
 	})
 }
 

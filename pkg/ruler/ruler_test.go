@@ -85,6 +85,7 @@ type ruleLimits struct {
 	tenantShard          int
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
+	disabledRuleGroups   validation.DisabledRuleGroups
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -101,6 +102,10 @@ func (r ruleLimits) RulerMaxRuleGroupsPerTenant(_ string) int {
 
 func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
+}
+
+func (r ruleLimits) DisabledRuleGroups(userID string) validation.DisabledRuleGroups {
+	return r.disabledRuleGroups
 }
 
 func newEmptyQueryable() storage.Queryable {
@@ -1480,4 +1485,246 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, firedAtTime, currentTime)
 
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+}
+
+func TestRulerDisablesRuleGroups(t *testing.T) {
+	const (
+		ruler1     = "ruler-1"
+		ruler1Host = "1.1.1.1"
+		ruler1Port = 9999
+		ruler1Addr = "1.1.1.1:9999"
+
+		ruler2     = "ruler-2"
+		ruler2Host = "2.2.2.2"
+		ruler2Port = 9999
+		ruler2Addr = "2.2.2.2:9999"
+
+		ruler3     = "ruler-3"
+		ruler3Host = "3.3.3.3"
+		ruler3Port = 9999
+		ruler3Addr = "3.3.3.3:9999"
+	)
+	const (
+		user1 = "user1"
+		user2 = "user2"
+		user3 = "user3"
+	)
+
+	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace1", Name: "group1"}
+	user1Group2 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace1", Name: "group2"}
+	user2Group1 := &rulespb.RuleGroupDesc{User: user2, Namespace: "namespace1", Name: "group1"}
+	user3Group1 := &rulespb.RuleGroupDesc{User: user3, Namespace: "namespace1", Name: "group1"}
+
+	user1Group1Token := tokenForGroup(user1Group1)
+	user1Group2Token := tokenForGroup(user1Group2)
+	user2Group1Token := tokenForGroup(user2Group1)
+	user3Group1Token := tokenForGroup(user3Group1)
+
+	d := &querier.MockDistributor{}
+	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		model.Matrix{
+			&model.SampleStream{
+				Values: []model.SamplePair{},
+			},
+		}, nil)
+	querierConfig := querier.DefaultQuerierConfig()
+	querierConfig.IngesterStreaming = false
+
+	ruleGroupDesc := func(user, name, namespace string) *rulespb.RuleGroupDesc {
+		return &rulespb.RuleGroupDesc{
+			Name:      name,
+			Namespace: namespace,
+			User:      user,
+		}
+	}
+
+	ruleGroupWithRule := func(expr, user, name, namespace string) *rulespb.RuleGroupDesc {
+		rg := ruleGroupDesc(user, name, namespace)
+		rg.Rules = []*rulespb.RuleDesc{
+			{
+				Record: "RecordingRule",
+				Expr:   expr,
+			},
+		}
+		return rg
+	}
+
+	disabledRuleGroups := validation.DisabledRuleGroups{
+		validation.DisabledRuleGroup{
+			Namespace: "namespace1",
+			Name:      "group1",
+			User:      "user1",
+		},
+	}
+
+	for _, tc := range []struct {
+		name                      string
+		rules                     map[string]rulespb.RuleGroupList
+		expectedRuleGroupsForUser map[string]rulespb.RuleGroupList
+		sharding                  bool
+		shardingStrategy          string
+		setupRing                 func(*ring.Desc)
+		disabledRuleGroups        validation.DisabledRuleGroups
+	}{
+		{
+			name: "disables rule group - shuffle sharding",
+			rules: map[string]rulespb.RuleGroupList{
+				"user1": {ruleGroupWithRule("up[240m:1s]", "user1", "group1", "namespace1")},
+				"user2": {ruleGroupWithRule("up[240m:1s]", "user2", "group1", "namespace1")},
+			},
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			expectedRuleGroupsForUser: map[string]rulespb.RuleGroupList{
+				"user2": {ruleGroupDesc("user2", "group1", "namespace1")},
+			},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+			disabledRuleGroups: disabledRuleGroups,
+		},
+		{
+			name: "disables rule group - no sharding",
+			rules: map[string]rulespb.RuleGroupList{
+				"user1": {ruleGroupWithRule("up[240m:1s]", "user1", "group1", "namespace1")},
+				"user2": {ruleGroupWithRule("up[240m:1s]", "user2", "group1", "namespace1")},
+			},
+			sharding: false,
+			expectedRuleGroupsForUser: map[string]rulespb.RuleGroupList{
+				"user2": {ruleGroupDesc("user2", "group1", "namespace1")},
+			},
+			disabledRuleGroups: disabledRuleGroups,
+		},
+		{
+			name: "disables rule group - default sharding",
+			rules: map[string]rulespb.RuleGroupList{
+				"user1": {ruleGroupWithRule("up[240m:1s]", "user1", "group1", "namespace1")},
+				"user2": {ruleGroupWithRule("up[240m:1s]", "user2", "group1", "namespace1")},
+			},
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			expectedRuleGroupsForUser: map[string]rulespb.RuleGroupList{
+				"user2": {ruleGroupDesc("user2", "group1", "namespace1")},
+			},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+			disabledRuleGroups: disabledRuleGroups,
+		},
+		{
+			name: "disables rule group - default sharding",
+			rules: map[string]rulespb.RuleGroupList{
+				"user1": {ruleGroupWithRule("up[240m:1s]", "user1", "group1", "namespace1")},
+				"user2": {ruleGroupWithRule("up[240m:1s]", "user2", "group1", "namespace1")},
+			},
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			expectedRuleGroupsForUser: map[string]rulespb.RuleGroupList{
+				"user1": {ruleGroupDesc("user1", "group1", "namespace1")},
+				"user2": {ruleGroupDesc("user2", "group1", "namespace1")},
+			},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Token + 1, user3Group1Token + 1}), ring.ACTIVE, time.Now())
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {
+				store := newMockRuleStore(tc.rules)
+				cfg := Config{
+					EnableSharding:   tc.sharding,
+					ShardingStrategy: tc.shardingStrategy,
+					Ring: RingConfig{
+						InstanceID:   id,
+						InstanceAddr: host,
+						InstancePort: port,
+						KVStore: kv.Config{
+							Mock: kvStore,
+						},
+						HeartbeatTimeout: 1 * time.Minute,
+					},
+					FlushCheckPeriod: 0,
+				}
+
+				r := buildRuler(t, cfg, nil, store, nil)
+				r.limits = ruleLimits{evalDelay: 0, tenantShard: 3, disabledRuleGroups: tc.disabledRuleGroups}
+
+				if forceRing != nil {
+					r.ring = forceRing
+				}
+				return r
+			}
+
+			r1 := setupRuler(ruler1, ruler1Host, ruler1Port, nil)
+
+			rulerRing := r1.ring
+
+			// We start ruler's ring, but nothing else (not even lifecycler).
+			if rulerRing != nil {
+				require.NoError(t, services.StartAndAwaitRunning(context.Background(), rulerRing))
+				t.Cleanup(rulerRing.StopAsync)
+			}
+
+			var r2, r3 *Ruler
+			if rulerRing != nil {
+				// Reuse ring from r1.
+				r2 = setupRuler(ruler2, ruler2Host, ruler2Port, rulerRing)
+				r3 = setupRuler(ruler3, ruler3Host, ruler3Port, rulerRing)
+			}
+
+			if tc.setupRing != nil {
+				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+					d, _ := in.(*ring.Desc)
+					if d == nil {
+						d = ring.NewDesc()
+					}
+
+					tc.setupRing(d)
+
+					return d, true, nil
+				})
+				require.NoError(t, err)
+				// Wait a bit to make sure ruler's ring is updated.
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			actualRules := map[string]rulespb.RuleGroupList{}
+			loadedRules, err := r1.listRules(context.Background())
+			require.NoError(t, err)
+			for k, v := range loadedRules {
+				if len(v) > 0 {
+					actualRules[k] = v
+				}
+			}
+
+			fetchRules := func(id string, r *Ruler) {
+				// Only expect rules from other rulers when using ring, and they are present in the ring.
+				if r != nil && rulerRing != nil && rulerRing.HasInstance(id) {
+					loaded, err := r.listRules(context.Background())
+					require.NoError(t, err)
+
+					// Normalize nil map to empty one.
+					if loaded == nil {
+						loaded = map[string]rulespb.RuleGroupList{}
+					}
+					for k, v := range loaded {
+						actualRules[k] = v
+					}
+				}
+			}
+
+			fetchRules(ruler2, r2)
+			fetchRules(ruler3, r3)
+
+			require.Equal(t, tc.expectedRuleGroupsForUser, actualRules)
+		})
+	}
 }

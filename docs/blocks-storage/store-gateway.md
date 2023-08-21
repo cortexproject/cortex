@@ -309,6 +309,10 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
     [wait_stability_max_duration: <duration> | default = 5m]
 
+    # The sleep seconds when store-gateway is shutting down.
+    # CLI flag: -store-gateway.sharding-ring.final-sleep
+    [final_sleep: <duration> | default = 0s]
+
     # Name of network interface to read address from.
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
     [instance_interface_names: <list of string> | default = [eth0 en0]]

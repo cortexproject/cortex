@@ -55,6 +55,8 @@ type BasicLifecyclerConfig struct {
 	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
 	// which means unregistering.
 	KeepInstanceInTheRingOnShutdown bool
+
+	FinalSleep time.Duration
 }
 
 // BasicLifecycler is a basic ring lifecycler which allows to hook custom
@@ -225,6 +227,7 @@ func (l *BasicLifecycler) stopping(runningError error) error {
 	go func() {
 		defer close(done)
 		l.delegate.OnRingInstanceStopping(l)
+		time.Sleep(l.cfg.FinalSleep)
 	}()
 
 	// Heartbeat while the stopping delegate function is running.

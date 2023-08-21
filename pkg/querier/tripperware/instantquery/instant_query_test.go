@@ -5,6 +5,9 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
+	jsoniter "github.com/json-iterator/go"
 	"io"
 	"net/http"
 	"strconv"
@@ -14,7 +17,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -102,42 +104,71 @@ func TestRequest(t *testing.T) {
 	}
 }
 
-func TestGzippedResponse(t *testing.T) {
+func TestCompressedResponse(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		body   string
-		status int
-		err    error
+		name        string
+		compression string
+		promBody    PrometheusInstantQueryResponse
+		status      int
+		err         error
 	}{
 		{
-			body:   `{"status":"success","data":{"resultType":"string","result":[1,"foo"]}}`,
+			name:        "successful response",
+			compression: "gzip",
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValString.String(),
+					Result:     PrometheusInstantQueryResult{Result: &PrometheusInstantQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"]}`)}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					{Name: "Content-Encoding", Values: []string{"snappy"}},
+				},
+			},
 			status: 200,
 		},
 		{
-			body:   `error generic 400`,
-			status: 400,
-			err:    httpgrpc.Errorf(400, "error generic 400"),
-		},
-		{
-			status: 400,
-			err:    httpgrpc.Errorf(400, ""),
+			name:        "successful response",
+			compression: "snappy",
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValString.String(),
+					Result:     PrometheusInstantQueryResult{Result: &PrometheusInstantQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"]}`)}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					{Name: "Content-Encoding", Values: []string{"snappy"}},
+				},
+			},
+			status: 200,
 		},
 	} {
 		for _, c := range []bool{true, false} {
 			c := c
-			t.Run(fmt.Sprintf("compressed %t [%s]", c, tc.body), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s compressed %t [%s]", tc.compression, c, tc.name), func(t *testing.T) {
 				t.Parallel()
-
+				protobuf, err := proto.Marshal(&tc.promBody)
+				require.NoError(t, err)
+				responseBody := bytes.NewBuffer(protobuf)
 				h := http.Header{
-					"Content-Type": []string{"application/json"},
+					"Content-Type": []string{"application/x-protobuf"},
 				}
 
-				responseBody := bytes.NewBuffer([]byte(tc.body))
-				if c {
+				var buf bytes.Buffer
+				if c && tc.compression == "gzip" {
 					h.Set("Content-Encoding", "gzip")
-					var buf bytes.Buffer
 					w := gzip.NewWriter(&buf)
-					_, err := w.Write([]byte(tc.body))
+					_, err := w.Write(protobuf)
+					require.NoError(t, err)
+					w.Close()
+					responseBody = &buf
+				} else if c && tc.compression == "snappy" {
+					h.Set("Content-Encoding", "snappy")
+					w := snappy.NewBufferedWriter(&buf)
+					_, err := w.Write(protobuf)
 					require.NoError(t, err)
 					w.Close()
 					responseBody = &buf
@@ -152,10 +183,9 @@ func TestGzippedResponse(t *testing.T) {
 				require.Equal(t, tc.err, err)
 
 				if err == nil {
-					resp, err := json.Marshal(r)
+					resp, err := proto.Marshal(r)
 					require.NoError(t, err)
-
-					require.Equal(t, tc.body, string(resp))
+					require.Equal(t, protobuf, resp)
 				}
 			})
 		}
@@ -165,35 +195,156 @@ func TestGzippedResponse(t *testing.T) {
 func TestResponse(t *testing.T) {
 	t.Parallel()
 	for i, tc := range []struct {
-		body string
+		expectedResp string
+		promBody     PrometheusInstantQueryResponse
 	}{
 		{
-			body: `{"status":"success","data":{"resultType":"string","result":[1,"foo"]}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"string","result":[1,"foo"]}}`,
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValString.String(),
+					Result:     PrometheusInstantQueryResult{Result: &PrometheusInstantQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"]}`)}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+				},
+			},
 		},
 		{
-			body: `{"status":"success","data":{"resultType":"string","result":[1,"foo"],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"string","result":[1,"foo"],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValString.String(),
+					Result:     PrometheusInstantQueryResult{Result: &PrometheusInstantQueryResult_RawBytes{[]byte(`{"resultType":"string","result":[1,"foo"],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}`)}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+				},
+			},
 		},
 		{
-			body: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValMatrix.String(),
+					Result: PrometheusInstantQueryResult{
+						Result: &PrometheusInstantQueryResult_Matrix{
+							Matrix: &Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{"foo", "bar"},
+										},
+										Samples: []cortexpb.Sample{
+											{Value: 137, TimestampMs: 1000},
+											{Value: 137, TimestampMs: 2000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Stats: &tripperware.PrometheusResponseStats{
+						Samples: &tripperware.PrometheusResponseSamplesStats{
+							TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+								{Value: 5, TimestampMs: 1536673680000},
+								{Value: 5, TimestampMs: 1536673780000},
+							},
+							TotalQueryableSamples: 10,
+						},
+					},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+				},
+			},
 		},
 		{
-			body: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}]}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}]}}`,
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValMatrix.String(),
+					Result: PrometheusInstantQueryResult{
+						Result: &PrometheusInstantQueryResult_Matrix{
+							Matrix: &Matrix{
+								SampleStreams: []tripperware.SampleStream{
+									{
+										Labels: []cortexpb.LabelAdapter{
+											{"foo", "bar"},
+										},
+										Samples: []cortexpb.Sample{
+											{Value: 137, TimestampMs: 1000},
+											{Value: 137, TimestampMs: 2000},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+				},
+			},
 		},
 		{
-			body: `{"status":"success","data":{"resultType":"scalar","result":[1,"13"]}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"scalar","result":[1,"13"]}}`,
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValString.String(),
+					Result:     PrometheusInstantQueryResult{Result: &PrometheusInstantQueryResult_RawBytes{[]byte(`{"resultType":"scalar","result":[1,"13"]}`)}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+				},
+			},
 		},
 		{
-			body: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"1266464.0146205237"]}]}}`,
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"1266464.0146205237"]}]}}`,
+			promBody: PrometheusInstantQueryResponse{
+				Status: "success",
+				Data: PrometheusInstantQueryData{
+					ResultType: model.ValVector.String(),
+					Result: PrometheusInstantQueryResult{
+						Result: &PrometheusInstantQueryResult_Vector{
+							Vector: &Vector{
+								Samples: []*Sample{
+									{
+										Labels: []cortexpb.LabelAdapter{},
+										Sample: cortexpb.Sample{Value: 1266464.0146205237, TimestampMs: 1000},
+									},
+								},
+							},
+						},
+					},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+				},
+			},
 		},
 	} {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
+			json = jsoniter.Config{
+				EscapeHTML:             false, // No HTML in our responses.
+				SortMapKeys:            true,
+				ValidateJsonRawMessage: false,
+			}.Froze()
+			protobuf, err := proto.Marshal(&tc.promBody)
+			require.NoError(t, err)
+
 			response := &http.Response{
 				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
+				Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 			}
 			resp, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
@@ -202,8 +353,8 @@ func TestResponse(t *testing.T) {
 			response = &http.Response{
 				StatusCode:    200,
 				Header:        http.Header{"Content-Type": []string{"application/json"}},
-				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
-				ContentLength: int64(len(tc.body)),
+				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.expectedResp))),
+				ContentLength: int64(len(tc.expectedResp)),
 			}
 			resp2, err := InstantQueryCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
@@ -220,7 +371,7 @@ func TestMergeResponse(t *testing.T) {
 	for _, tc := range []struct {
 		name               string
 		req                tripperware.Request
-		resps              []string
+		resps              []*PrometheusInstantQueryResponse
 		expectedResp       string
 		expectedErr        error
 		cancelBeforeDecode bool
@@ -228,142 +379,835 @@ func TestMergeResponse(t *testing.T) {
 		cancelBeforeMerge  bool
 	}{
 		{
-			name:         "empty response",
-			req:          defaultReq,
-			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[]}}`},
+			name: "empty response",
+			req:  defaultReq,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: make([]*Sample, 0),
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[]}}`,
 		},
 		{
-			name:         "empty response with stats",
-			req:          defaultReq,
-			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[],"stats":{"samples":{"totalQueryableSamples":0,"totalQueryableSamplesPerStep":[]}}}}`},
+			name: "empty response with stats",
+			req:  defaultReq,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{},
+								},
+							},
+						},
+						Stats: &tripperware.PrometheusResponseStats{
+							Samples: &tripperware.PrometheusResponseSamplesStats{
+								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{},
+								TotalQueryableSamples:        0,
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[],"stats":{"samples":{"totalQueryableSamples":0,"totalQueryableSamplesPerStep":[]}}}}`,
 		},
 		{
-			name:         "single response",
-			req:          defaultReq,
-			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`},
+			name: "single response",
+			req:  defaultReq,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
 		},
 		{
-			name:         "single response with stats",
-			req:          defaultReq,
-			resps:        []string{`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`},
+			name: "single response with stats",
+			req:  defaultReq,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{Name: "__name__", Value: "up"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+						Stats: &tripperware.PrometheusResponseStats{
+							Samples: &tripperware.PrometheusResponseSamplesStats{
+								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+									{Value: 10, TimestampMs: 1000},
+								},
+								TotalQueryableSamples: 10,
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 		},
 		{
 			name: "duplicated response",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}]}}`,
 		},
 		{
 			name: "duplicated response with stats",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{Name: "__name__", Value: "up"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+						Stats: &tripperware.PrometheusResponseStats{
+							Samples: &tripperware.PrometheusResponseSamplesStats{
+								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+									{Value: 10, TimestampMs: 1000},
+								},
+								TotalQueryableSamples: 10,
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{Name: "__name__", Value: "up"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+						Stats: &tripperware.PrometheusResponseStats{
+							Samples: &tripperware.PrometheusResponseSamplesStats{
+								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+									{Value: 10, TimestampMs: 1000},
+								},
+								TotalQueryableSamples: 10,
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
 		},
 		{
 			name: "merge two responses",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 2000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
 		},
 		{
 			name: "merge two responses with sort",
 			req:  &PrometheusRequest{Query: "sort(sum by (job) (up))"},
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
 		},
 		{
 			name: "merge two responses with sort_desc",
 			req:  &PrometheusRequest{Query: "sort_desc(sum by (job) (up))"},
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
 		},
 		{
 			name: "merge two responses with topk",
 			req:  &PrometheusRequest{Query: "topk(10, up) by(job)"},
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
 		},
 		{
 			name: "merge two responses with stats",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+						Stats: &tripperware.PrometheusResponseStats{
+							Samples: &tripperware.PrometheusResponseSamplesStats{
+								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+									{Value: 10, TimestampMs: 1000},
+								},
+								TotalQueryableSamples: 10,
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{Name: "__name__", Value: "up"},
+												{Name: "job", Value: "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 2000},
+										},
+									},
+								},
+							},
+						},
+						Stats: &tripperware.PrometheusResponseStats{
+							Samples: &tripperware.PrometheusResponseSamplesStats{
+								TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+									{Value: 10, TimestampMs: 1000},
+								},
+								TotalQueryableSamples: 10,
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
 		},
 		{
 			name: "responses don't contain vector, should return an error",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"string","result":[1662682521.409,"foo"]}}`,
-				`{"status":"success","data":{"resultType":"string","result":[1662682521.409,"foo"]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValString.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_RawBytes{
+								RawBytes: []byte(`{"resultType":"string","result":[1662682521.409,"foo"]}`),
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValString.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_RawBytes{
+								RawBytes: []byte(`{"resultType":"string","result":[1662682521.409,"foo"]}`),
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedErr: fmt.Errorf("unexpected result type on instant query: %s", "string"),
 		},
 		{
 			name: "single matrix response",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up"},"values":[[1,"1"],[2,"2"]]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 1, TimestampMs: 1000},
+												{Value: 2, TimestampMs: 2000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"up"},"values":[[1,"1"],[2,"2"]]}]}}`,
 		},
 		{
 			name: "multiple matrix responses without duplicated series",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]}]}}`,
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"foo"},"values":[[3,"3"],[4,"4"]]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "foo"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 1, TimestampMs: 1000},
+												{Value: 2, TimestampMs: 2000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "bar"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 3, TimestampMs: 3000},
+												{Value: 4, TimestampMs: 4000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]},{"metric":{"__name__":"foo"},"values":[[3,"3"],[4,"4"]]}]}}`,
 		},
 		{
 			name: "multiple matrix responses with duplicated series, but not same samples",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]}]}}`,
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[3,"3"]]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "bar"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 1, TimestampMs: 1000},
+												{Value: 2, TimestampMs: 2000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "bar"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 3, TimestampMs: 3000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
 		},
 		{
 			name: "multiple matrix responses with duplicated series and same samples",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"]]}]}}`,
-				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "bar"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 1, TimestampMs: 1000},
+												{Value: 2, TimestampMs: 2000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValMatrix.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Matrix{
+								Matrix: &Matrix{
+									SampleStreams: []tripperware.SampleStream{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "bar"},
+											},
+											Samples: []cortexpb.Sample{
+												{Value: 1, TimestampMs: 1000},
+												{Value: 2, TimestampMs: 2000},
+												{Value: 3, TimestampMs: 3000},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"bar"},"values":[[1,"1"],[2,"2"],[3,"3"]]}]}}`,
 		},
 		{
 			name: "context cancelled before decoding response",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedDecodeErr:  context.Canceled,
 			cancelBeforeDecode: true,
@@ -371,9 +1215,55 @@ func TestMergeResponse(t *testing.T) {
 		{
 			name: "context cancelled before merging response",
 			req:  defaultReq,
-			resps: []string{
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
-				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}]}}`,
+			resps: []*PrometheusInstantQueryResponse{
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "foo"},
+											},
+											Sample: cortexpb.Sample{Value: 1, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
+				{
+					Status: "success",
+					Data: PrometheusInstantQueryData{
+						ResultType: model.ValVector.String(),
+						Result: PrometheusInstantQueryResult{
+							Result: &PrometheusInstantQueryResult_Vector{
+								Vector: &Vector{
+									Samples: []*Sample{
+										{
+											Labels: []cortexpb.LabelAdapter{
+												{"__name__", "up"},
+												{"job", "bar"},
+											},
+											Sample: cortexpb.Sample{Value: 2, TimestampMs: 1000},
+										},
+									},
+								},
+							},
+						},
+					},
+					Headers: []*tripperware.PrometheusResponseHeader{
+						{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					},
+				},
 			},
 			expectedErr:       context.Canceled,
 			cancelBeforeMerge: true,
@@ -386,10 +1276,11 @@ func TestMergeResponse(t *testing.T) {
 
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
+				protobuf, err := proto.Marshal(r)
 				hr := &http.Response{
 					StatusCode: 200,
-					Header:     http.Header{"Content-Type": []string{"application/json"}},
-					Body:       io.NopCloser(bytes.NewBuffer([]byte(r))),
+					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
+					Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 				}
 
 				if tc.cancelBeforeDecode {
@@ -417,7 +1308,7 @@ func TestMergeResponse(t *testing.T) {
 			assert.Equal(t, tc.expectedErr, err)
 			contents, err := io.ReadAll(dr.Body)
 			assert.Equal(t, tc.expectedErr, err)
-			assert.Equal(t, string(contents), tc.expectedResp)
+			assert.Equal(t, tc.expectedResp, string(contents))
 			cancelCtx()
 		})
 	}
@@ -533,7 +1424,7 @@ func Benchmark_Decode(b *testing.B) {
 				},
 			}
 
-			body, err := json.Marshal(r)
+			body, err := proto.Marshal(&r)
 			require.NoError(b, err)
 
 			b.ResetTimer()

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
-	jsoniter "github.com/json-iterator/go"
+	"github.com/weaveworks/common/httpgrpc"
 	"io"
 	"net/http"
 	"strconv"
@@ -111,14 +111,15 @@ func TestCompressedResponse(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		compression string
-		promBody    PrometheusInstantQueryResponse
+		jsonBody    string
+		promBody    *PrometheusInstantQueryResponse
 		status      int
 		err         error
 	}{
 		{
 			name:        "successful response",
 			compression: "gzip",
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValString.String(),
@@ -126,7 +127,7 @@ func TestCompressedResponse(t *testing.T) {
 				},
 				Headers: []*tripperware.PrometheusResponseHeader{
 					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
-					{Name: "Content-Encoding", Values: []string{"snappy"}},
+					{Name: "Content-Encoding", Values: []string{"gzip"}},
 				},
 			},
 			status: 200,
@@ -134,7 +135,7 @@ func TestCompressedResponse(t *testing.T) {
 		{
 			name:        "successful response",
 			compression: "snappy",
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValString.String(),
@@ -147,30 +148,62 @@ func TestCompressedResponse(t *testing.T) {
 			},
 			status: 200,
 		},
+		{
+			name:        `400 error`,
+			compression: `gzip`,
+			jsonBody:    `error generic 400`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, `error generic 400`),
+		},
+		{
+			name:        `400 error`,
+			compression: `snappy`,
+			jsonBody:    `error generic 400`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, `error generic 400`),
+		},
+		{
+			name:        `400 error empty body`,
+			compression: `gzip`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, ""),
+		},
+		{
+			name:        `400 error empty body`,
+			compression: `snappy`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, ""),
+		},
 	} {
 		for _, c := range []bool{true, false} {
 			c := c
 			t.Run(fmt.Sprintf("%s compressed %t [%s]", tc.compression, c, tc.name), func(t *testing.T) {
 				t.Parallel()
-				protobuf, err := proto.Marshal(&tc.promBody)
-				require.NoError(t, err)
-				responseBody := bytes.NewBuffer(protobuf)
-				h := http.Header{
-					"Content-Type": []string{"application/x-protobuf"},
+				h := http.Header{}
+				var b []byte
+				if tc.promBody != nil {
+					protobuf, err := proto.Marshal(tc.promBody)
+					b = protobuf
+					require.NoError(t, err)
+					h.Set("Content-Type", "application/x-protobuf")
+				} else {
+					b = []byte(tc.jsonBody)
+					h.Set("Content-Type", "application/json")
 				}
+				responseBody := bytes.NewBuffer(b)
 
 				var buf bytes.Buffer
 				if c && tc.compression == "gzip" {
 					h.Set("Content-Encoding", "gzip")
 					w := gzip.NewWriter(&buf)
-					_, err := w.Write(protobuf)
+					_, err := w.Write(b)
 					require.NoError(t, err)
 					w.Close()
 					responseBody = &buf
 				} else if c && tc.compression == "snappy" {
 					h.Set("Content-Encoding", "snappy")
 					w := snappy.NewBufferedWriter(&buf)
-					_, err := w.Write(protobuf)
+					_, err := w.Write(b)
 					require.NoError(t, err)
 					w.Close()
 					responseBody = &buf
@@ -181,13 +214,12 @@ func TestCompressedResponse(t *testing.T) {
 					Header:     h,
 					Body:       io.NopCloser(responseBody),
 				}
-				r, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+				resp, err := InstantQueryCodec.DecodeResponse(context.Background(), response, nil)
 				require.Equal(t, tc.err, err)
 
 				if err == nil {
-					resp, err := proto.Marshal(r)
 					require.NoError(t, err)
-					require.Equal(t, protobuf, resp)
+					require.Equal(t, tc.promBody, resp)
 				}
 			})
 		}
@@ -198,11 +230,11 @@ func TestResponse(t *testing.T) {
 	t.Parallel()
 	for i, tc := range []struct {
 		expectedResp string
-		promBody     PrometheusInstantQueryResponse
+		promBody     *PrometheusInstantQueryResponse
 	}{
 		{
 			expectedResp: `{"status":"success","data":{"resultType":"string","result":[1,"foo"]}}`,
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValString.String(),
@@ -215,7 +247,7 @@ func TestResponse(t *testing.T) {
 		},
 		{
 			expectedResp: `{"status":"success","data":{"resultType":"string","result":[1,"foo"],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValString.String(),
@@ -228,7 +260,7 @@ func TestResponse(t *testing.T) {
 		},
 		{
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValMatrix.String(),
@@ -266,7 +298,7 @@ func TestResponse(t *testing.T) {
 		},
 		{
 			expectedResp: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1,"137"],[2,"137"]]}]}}`,
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValMatrix.String(),
@@ -295,7 +327,7 @@ func TestResponse(t *testing.T) {
 		},
 		{
 			expectedResp: `{"status":"success","data":{"resultType":"scalar","result":[1,"13"]}}`,
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValString.String(),
@@ -308,7 +340,7 @@ func TestResponse(t *testing.T) {
 		},
 		{
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1,"1266464.0146205237"]}]}}`,
-			promBody: PrometheusInstantQueryResponse{
+			promBody: &PrometheusInstantQueryResponse{
 				Status: "success",
 				Data: PrometheusInstantQueryData{
 					ResultType: model.ValVector.String(),
@@ -337,13 +369,7 @@ func TestResponse(t *testing.T) {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-
-			json = jsoniter.Config{
-				EscapeHTML:             false, // No HTML in our responses.
-				SortMapKeys:            true,
-				ValidateJsonRawMessage: false,
-			}.Froze()
-			protobuf, err := proto.Marshal(&tc.promBody)
+			protobuf, err := proto.Marshal(tc.promBody)
 			require.NoError(t, err)
 
 			response := &http.Response{
@@ -1049,7 +1075,7 @@ func TestMergeResponse(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "foo"},
+												{"__name__", "bar"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 1, TimestampMs: 1000},
@@ -1075,7 +1101,7 @@ func TestMergeResponse(t *testing.T) {
 									SampleStreams: []tripperware.SampleStream{
 										{
 											Labels: []cortexpb.LabelAdapter{
-												{"__name__", "bar"},
+												{"__name__", "foo"},
 											},
 											Samples: []cortexpb.Sample{
 												{Value: 3, TimestampMs: 3000},

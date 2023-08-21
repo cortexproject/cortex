@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"github.com/gogo/protobuf/proto"
 	io "io"
 	"net/http"
 	"net/http/httptest"
@@ -296,7 +297,11 @@ func TestSplitByDay(t *testing.T) {
 				middleware.AuthenticateUser.Wrap(
 					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						actualCount.Inc()
-						_, _ = w.Write([]byte(responseBody))
+						resp := parsedResponse
+						resp.Headers = respHeaders
+						protobuf, err := proto.Marshal(resp)
+						require.NoError(t, err)
+						_, _ = w.Write(protobuf)
 					}),
 				),
 			)

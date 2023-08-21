@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"context"
 	"fmt"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"io"
 	"net/http"
 	"strconv"
@@ -93,17 +95,17 @@ func TestResponse(t *testing.T) {
 	r := *parsedResponse
 	r.Headers = respHeaders
 	for i, tc := range []struct {
-		body                  string
-		expected              *PrometheusResponse
+		promBody         *PrometheusResponse
+		expectedResponse string
 		expectedDecodeErr     error
 		cancelCtxBeforeDecode bool
 	}{
 		{
-			body:     responseBody,
-			expected: &r,
+			promBody:         &r,
+			expectedResponse: responseBody,
 		},
 		{
-			body:                  responseBody,
+			promBody:              &r,
 			cancelCtxBeforeDecode: true,
 			expectedDecodeErr:     context.Canceled,
 		},
@@ -111,11 +113,13 @@ func TestResponse(t *testing.T) {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
+			protobuf, err := proto.Marshal(tc.promBody)
+			require.NoError(t, err)
 			ctx, cancelCtx := context.WithCancel(context.Background())
 			response := &http.Response{
 				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
+				Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 			}
 			if tc.cancelCtxBeforeDecode {
 				cancelCtx()
@@ -126,14 +130,13 @@ func TestResponse(t *testing.T) {
 				cancelCtx()
 				return
 			}
-			assert.Equal(t, tc.expected, resp)
 
 			// Reset response, as the above call will have consumed the body reader.
 			response = &http.Response{
 				StatusCode:    200,
 				Header:        http.Header{"Content-Type": []string{"application/json"}},
-				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
-				ContentLength: int64(len(tc.body)),
+				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.expectedResponse))),
+				ContentLength: int64(len(tc.expectedResponse)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
@@ -146,12 +149,12 @@ func TestResponse(t *testing.T) {
 func TestResponseWithStats(t *testing.T) {
 	t.Parallel()
 	for i, tc := range []struct {
-		body     string
-		expected *PrometheusResponse
+		promBody         *PrometheusResponse
+		expectedResponse string
 	}{
 		{
-			body: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
-			expected: &PrometheusResponse{
+			expectedResponse: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1536673680,5],[1536673780,5]]}}}}`,
+			promBody: &PrometheusResponse{
 				Status: "success",
 				Data: PrometheusData{
 					ResultType: model.ValMatrix.String(),
@@ -182,22 +185,23 @@ func TestResponseWithStats(t *testing.T) {
 		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
-			tc.expected.Headers = respHeaders
+			tc.promBody.Headers = respHeaders
+			protobuf, err := proto.Marshal(tc.promBody)
+			require.NoError(t, err)
 			response := &http.Response{
 				StatusCode: 200,
-				Header:     http.Header{"Content-Type": []string{"application/json"}},
-				Body:       io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
+				Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
+				Body:       io.NopCloser(bytes.NewBuffer(protobuf)),
 			}
 			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
 			require.NoError(t, err)
-			assert.Equal(t, tc.expected, resp)
 
 			// Reset response, as the above call will have consumed the body reader.
 			response = &http.Response{
 				StatusCode:    200,
 				Header:        http.Header{"Content-Type": []string{"application/json"}},
-				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
-				ContentLength: int64(len(tc.body)),
+				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.expectedResponse))),
+				ContentLength: int64(len(tc.expectedResponse)),
 			}
 			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
 			require.NoError(t, err)
@@ -727,41 +731,134 @@ func TestMergeAPIResponses(t *testing.T) {
 	}
 }
 
-func TestGzippedResponse(t *testing.T) {
+func TestCompressedResponse(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		body   string
-		status int
-		err    error
+		name        string
+		compression string
+		jsonBody    string
+		promBody    *PrometheusResponse
+		status      int
+		err         error
 	}{
 		{
-			body:   `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[2,2],[3,3]]}}}}`,
+			name:        `successful response`,
+			compression: `gzip`,
+			promBody: &PrometheusResponse{
+				Status: StatusSuccess,
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+							},
+						},
+					},
+					Stats: &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{
+						TotalQueryableSamples: 20,
+						TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+							{Value: 2, TimestampMs: 2000},
+							{Value: 3, TimestampMs: 3000},
+						},
+					}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					{Name: "Content-Encoding", Values: []string{"gzip"}},
+				},
+			},
 			status: 200,
 		},
 		{
-			body:   `error generic 400`,
-			status: 400,
-			err:    httpgrpc.Errorf(400, `error generic 400`),
+			name:        `successful response`,
+			compression: `snappy`,
+			promBody: &PrometheusResponse{
+				Status: StatusSuccess,
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
+								{Value: 2, TimestampMs: 2000},
+								{Value: 3, TimestampMs: 3000},
+							},
+						},
+					},
+					Stats: &tripperware.PrometheusResponseStats{Samples: &tripperware.PrometheusResponseSamplesStats{
+						TotalQueryableSamples: 20,
+						TotalQueryableSamplesPerStep: []*tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
+							{Value: 2, TimestampMs: 2000},
+							{Value: 3, TimestampMs: 3000},
+						},
+					}},
+				},
+				Headers: []*tripperware.PrometheusResponseHeader{
+					{Name: "Content-Type", Values: []string{"application/x-protobuf"}},
+					{Name: "Content-Encoding", Values: []string{"snappy"}},
+				},
+			},
+			status: 200,
 		},
 		{
-			status: 400,
-			err:    httpgrpc.Errorf(400, ""),
+			name:        `400 error`,
+			compression: `gzip`,
+			jsonBody:    `error generic 400`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, `error generic 400`),
+		},
+		{
+			name:        `400 error`,
+			compression: `snappy`,
+			jsonBody:    `error generic 400`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, `error generic 400`),
+		},
+		{
+			name:        `400 error empty body`,
+			compression: `gzip`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, ""),
+		},
+		{
+			name:        `400 error empty body`,
+			compression: `snappy`,
+			status:      400,
+			err:         httpgrpc.Errorf(400, ""),
 		},
 	} {
 		for _, c := range []bool{true, false} {
 			c := c
-			t.Run(fmt.Sprintf("compressed %t [%s]", c, tc.body), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s compressed %t [%s]", tc.compression, c, tc.name), func(t *testing.T) {
 				t.Parallel()
-				h := http.Header{
-					"Content-Type": []string{"application/json"},
+				h := http.Header{}
+				var b []byte
+				if tc.promBody != nil {
+					protobuf, err := proto.Marshal(tc.promBody)
+					b = protobuf
+					require.NoError(t, err)
+					h.Set("Content-Type", "application/x-protobuf")
+				} else {
+					b = []byte(tc.jsonBody)
+					h.Set("Content-Type", "application/json")
 				}
+				responseBody := bytes.NewBuffer(b)
 
-				responseBody := bytes.NewBuffer([]byte(tc.body))
-				if c {
+				var buf bytes.Buffer
+				if c && tc.compression == "gzip" {
 					h.Set("Content-Encoding", "gzip")
-					var buf bytes.Buffer
 					w := gzip.NewWriter(&buf)
-					_, err := w.Write([]byte(tc.body))
+					_, err := w.Write(b)
+					require.NoError(t, err)
+					w.Close()
+					responseBody = &buf
+				} else if c && tc.compression == "snappy" {
+					h.Set("Content-Encoding", "snappy")
+					w := snappy.NewBufferedWriter(&buf)
+					_, err := w.Write(b)
 					require.NoError(t, err)
 					w.Close()
 					responseBody = &buf
@@ -772,14 +869,12 @@ func TestGzippedResponse(t *testing.T) {
 					Header:     h,
 					Body:       io.NopCloser(responseBody),
 				}
-				r, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+				resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
 				require.Equal(t, tc.err, err)
 
 				if err == nil {
-					resp, err := json.Marshal(r)
 					require.NoError(t, err)
-
-					require.Equal(t, tc.body, string(resp))
+					require.Equal(t, tc.promBody, resp)
 				}
 			})
 		}

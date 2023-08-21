@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"github.com/gogo/protobuf/proto"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,8 +21,8 @@ import (
 )
 
 var (
-	PrometheusCodec        = NewPrometheusCodec(false)
-	ShardedPrometheusCodec = NewPrometheusCodec(false)
+	PrometheusCodec        = NewPrometheusCodec(false, "")
+	ShardedPrometheusCodec = NewPrometheusCodec(false, "")
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -31,7 +32,11 @@ func TestRoundTrip(t *testing.T) {
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var err error
 				if r.RequestURI == query {
-					_, err = w.Write([]byte(responseBody))
+					resp := parsedResponse
+					resp.Headers = respHeaders
+					protobuf, err := proto.Marshal(resp)
+					require.NoError(t, err)
+					_, err = w.Write(protobuf)
 				} else {
 					_, err = w.Write([]byte("bar"))
 				}

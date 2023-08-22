@@ -227,7 +227,6 @@ func (l *BasicLifecycler) stopping(runningError error) error {
 	go func() {
 		defer close(done)
 		l.delegate.OnRingInstanceStopping(l)
-		time.Sleep(l.cfg.FinalSleep)
 	}()
 
 	// Heartbeat while the stopping delegate function is running.
@@ -254,6 +253,7 @@ heartbeatLoop:
 		level.Info(l.logger).Log("msg", "instance removed from the ring", "ring", l.ringName)
 	}
 
+	time.Sleep(l.cfg.FinalSleep)
 	return nil
 }
 

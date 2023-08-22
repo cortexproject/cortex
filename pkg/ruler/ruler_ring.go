@@ -62,7 +62,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("ruler.ring.", "rulers/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "ruler.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ruler.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which rulers are considered unhealthy within the ring. 0 = never (timeout disabled).")
-	f.DurationVar(&cfg.FinalSleep, "ruler.ring.final-sleep", 30*time.Second, "The sleep seconds when ruler is shutting down.")
+	f.DurationVar(&cfg.FinalSleep, "ruler.ring.final-sleep", 0*time.Second, "The sleep seconds when ruler is shutting down. Need to be close to or larger than KV Store information propagation delay")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}

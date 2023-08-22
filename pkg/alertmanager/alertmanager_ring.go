@@ -81,7 +81,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix(rfprefix, "alertmanagers/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, rfprefix+"heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, rfprefix+"heartbeat-timeout", time.Minute, "The heartbeat timeout after which alertmanagers are considered unhealthy within the ring. 0 = never (timeout disabled).")
-	f.DurationVar(&cfg.FinalSleep, rfprefix+"final-sleep", 30*time.Second, "The sleep seconds when alertmanager is shutting down.")
+	f.DurationVar(&cfg.FinalSleep, rfprefix+"final-sleep", 0*time.Second, "The sleep seconds when alertmanager is shutting down. Need to be close to or larger than KV Store information propagation delay")
 	f.IntVar(&cfg.ReplicationFactor, rfprefix+"replication-factor", 3, "The replication factor to use when sharding the alertmanager.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, rfprefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate alerts across different availability zones.")
 

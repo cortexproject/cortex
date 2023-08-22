@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -832,7 +831,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter),
 		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed),
 		c.blocksCompactor,
-		path.Join(c.compactorCfg.DataDir, "compact"),
+		c.compactDirForUser(userID),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
 		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
@@ -843,6 +842,13 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	if err := compactor.Compact(ctx); err != nil {
 		return errors.Wrap(err, "compaction")
+	}
+
+	// Remove all files on the compact root dir
+	// We do this only if there is no error because potentially on the next run we would not have to download
+	// everything again.
+	if err := os.RemoveAll(c.compactRootDir()); err != nil {
+		level.Error(c.logger).Log("msg", "failed to remove compaction work directory", "path", c.compactRootDir(), "err", err)
 	}
 
 	return nil
@@ -939,6 +945,16 @@ const compactorMetaPrefix = "compactor-meta-"
 // the directory used by the Thanos Syncer, whatever is the user ID.
 func (c *Compactor) metaSyncDirForUser(userID string) string {
 	return filepath.Join(c.compactorCfg.DataDir, compactorMetaPrefix+userID)
+}
+
+// compactDirForUser returns the directory to be used to download and compact the blocks for a user
+func (c *Compactor) compactDirForUser(userID string) string {
+	return filepath.Join(c.compactRootDir(), userID)
+}
+
+// compactRootDir returns the root directory to be used to download and compact blocks
+func (c *Compactor) compactRootDir() string {
+	return filepath.Join(c.compactorCfg.DataDir, "compact")
 }
 
 // This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.

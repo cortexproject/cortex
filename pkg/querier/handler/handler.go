@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware/instantquery"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
@@ -29,6 +28,8 @@ import (
 	"github.com/prometheus/prometheus/util/stats"
 	thanos_api "github.com/thanos-io/thanos/pkg/api"
 )
+
+type apiFunc func(r *http.Request) (interface{}, []error, *thanos_api.ApiError, func())
 
 type status string
 
@@ -107,8 +108,7 @@ func invalidParamError(err error, parameter string) (data interface{}, warnings 
 }
 
 func (api *API) Query(r *http.Request) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
-	tms, err := instantquery.ParseTimeParam(r, "time", api.Now().Unix())
-	ts := time.Unix(tms/1000, (tms%1000)*10e6).UTC()
+	ts, err := parseTimeParam(r, "time", api.Now())
 	if err != nil {
 		return invalidParamError(err, "time")
 	}
@@ -188,7 +188,7 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 		EnablePerStepStats: r.FormValue("stats") == "all",
 	}
 	if strDuration := r.FormValue("lookback_delta"); strDuration != "" {
-		duration, err := time.ParseDuration(strDuration)
+		duration, err := parseDuration(strDuration)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing lookback delta duration: %w", err)
 		}
@@ -198,13 +198,11 @@ func extractQueryOpts(r *http.Request) (*promql.QueryOpts, error) {
 }
 
 func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error, error *thanos_api.ApiError, finalizer func()) {
-	startMs, err := util.ParseTime(r.FormValue("start"))
-	start := time.Unix(startMs/1000, (startMs%1000)*10e6).UTC()
+	start, err := parseTime(r.FormValue("start"))
 	if err != nil {
 		return invalidParamError(err, "start")
 	}
-	endMs, err := util.ParseTime(r.FormValue("end"))
-	end := time.Unix(endMs/1000, (endMs%1000)*10e6).UTC()
+	end, err := parseTime(r.FormValue("end"))
 	if err != nil {
 		return invalidParamError(err, "end")
 	}
@@ -297,6 +295,41 @@ func (api *API) QueryRange(r *http.Request) (data interface{}, warnings []error,
 		return nil, res.Warnings, &thanos_api.ApiError{thanos_api.ErrorBadData, err}, qry.Close
 	}
 	return data, res.Warnings, nil, qry.Close
+}
+
+func parseTimeParam(r *http.Request, paramName string, defaultValue time.Time) (time.Time, error) {
+	val := r.FormValue(paramName)
+	if val == "" {
+		return defaultValue, nil
+	}
+	result, err := parseTime(val)
+	if err != nil {
+		return time.Time{}, errors.Wrapf(err, "Invalid time value for '%s'", paramName)
+	}
+	return result, nil
+}
+
+func parseTime(s string) (time.Time, error) {
+	if t, err := strconv.ParseFloat(s, 64); err == nil {
+		s, ns := math.Modf(t)
+		ns = math.Round(ns*1000) / 1000
+		return time.Unix(int64(s), int64(ns*float64(time.Second))).UTC(), nil
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+
+	// Stdlib's time parser can only handle 4 digit years. As a workaround until
+	// that is fixed we want to at least support our own boundary times.
+	// Context: https://github.com/prometheus/client_golang/issues/614
+	// Upstream issue: https://github.com/golang/go/issues/20555
+	switch s {
+	case minTimeFormatted:
+		return minTime, nil
+	case maxTimeFormatted:
+		return maxTime, nil
+	}
+	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -453,7 +486,6 @@ func createPrometheusResponse(data *queryData) (*queryrange.PrometheusResponse, 
 		},
 		ErrorType: "",
 		Error:     "",
-		Headers:   []*tripperware.PrometheusResponseHeader{},
 	}, nil
 }
 
@@ -499,7 +531,6 @@ func createPrometheusInstantQueryResponse(data *queryData) (*instantquery.Promet
 		},
 		ErrorType: "",
 		Error:     "",
-		Headers:   []*tripperware.PrometheusResponseHeader{},
 	}, nil
 }
 
@@ -527,20 +558,26 @@ func getSampleStreams(data *queryData) *[]tripperware.SampleStream {
 
 	for i := 0; i < sampleStreamsLen; i++ {
 		labelsLen := len(data.Result.(promql.Matrix)[i].Metric)
-		labels := make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
-		for j := 0; j < labelsLen; j++ {
-			labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
-				Name:  data.Result.(promql.Matrix)[i].Metric[j].Name,
-				Value: data.Result.(promql.Matrix)[i].Metric[j].Value,
+		var labels []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter
+		if labelsLen > 0 {
+			labels = make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
+			for j := 0; j < labelsLen; j++ {
+				labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+					Name:  data.Result.(promql.Matrix)[i].Metric[j].Name,
+					Value: data.Result.(promql.Matrix)[i].Metric[j].Value,
+				}
 			}
 		}
 
 		samplesLen := len(data.Result.(promql.Matrix)[i].Floats)
-		samples := make([]cortexpb.Sample, samplesLen)
-		for j := 0; j < samplesLen; j++ {
-			samples[j] = cortexpb.Sample{
-				Value:       data.Result.(promql.Matrix)[i].Floats[j].F,
-				TimestampMs: data.Result.(promql.Matrix)[i].Floats[j].T,
+		var samples []cortexpb.Sample
+		if samplesLen > 0 {
+			samples = make([]cortexpb.Sample, samplesLen)
+			for j := 0; j < samplesLen; j++ {
+				samples[j] = cortexpb.Sample{
+					Value:       data.Result.(promql.Matrix)[i].Floats[j].F,
+					TimestampMs: data.Result.(promql.Matrix)[i].Floats[j].T,
+				}
 			}
 		}
 		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples}
@@ -554,11 +591,14 @@ func getSamples(data *queryData) *[]*instantquery.Sample {
 
 	for i := 0; i < vectorSamplesLen; i++ {
 		labelsLen := len(data.Result.(promql.Vector)[i].Metric)
-		labels := make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
-		for j := 0; j < labelsLen; j++ {
-			labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
-				Name:  data.Result.(promql.Vector)[i].Metric[j].Name,
-				Value: data.Result.(promql.Vector)[i].Metric[j].Value,
+		var labels []github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter
+		if labelsLen > 0 {
+			labels = make([]github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter, labelsLen)
+			for j := 0; j < labelsLen; j++ {
+				labels[j] = github_com_cortexproject_cortex_pkg_cortexpb.LabelAdapter{
+					Name:  data.Result.(promql.Vector)[i].Metric[j].Name,
+					Value: data.Result.(promql.Vector)[i].Metric[j].Value,
+				}
 			}
 		}
 

@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Ruler: Add support for Limit field on RuleGroup. #5528
 * [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
 * [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409

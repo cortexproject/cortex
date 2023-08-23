@@ -69,6 +69,7 @@ type RuleGroup struct {
 	Interval       float64   `json:"interval"`
 	LastEvaluation time.Time `json:"lastEvaluation"`
 	EvaluationTime float64   `json:"evaluationTime"`
+	Limit          int64     `json:"limit"`
 }
 
 type rule interface{}
@@ -203,6 +204,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 			Interval:       g.Group.Interval.Seconds(),
 			LastEvaluation: g.GetEvaluationTimestamp(),
 			EvaluationTime: g.GetEvaluationDuration().Seconds(),
+			Limit:          g.Group.Limit,
 		}
 
 		for i, rl := range g.ActiveRules {

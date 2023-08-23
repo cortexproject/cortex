@@ -1663,7 +1663,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 		blocksGrouperFactory = DefaultBlocksGrouperFactory
 	}
 
-	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
+	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, tsdbPlanner, logs, registry

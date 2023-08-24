@@ -73,6 +73,8 @@ type Config struct {
 	corsRegexString string `yaml:"cors_origin"`
 
 	buildInfoEnabled bool `yaml:"build_info_enabled"`
+
+	ProtobufQuerierHandler bool `yaml:"protobuf_querier_handler"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -80,6 +82,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
 	f.BoolVar(&cfg.buildInfoEnabled, "api.build-info-enabled", false, "If enabled, build Info API will be served by query frontend or querier.")
+	f.BoolVar(&cfg.ProtobufQuerierHandler, "api.protobuf_querier_handler", false, "Enable using querier handler with protobuf response serialization for query range and unsharded instant query requests")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 

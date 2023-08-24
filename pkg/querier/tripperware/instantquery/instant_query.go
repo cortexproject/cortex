@@ -32,7 +32,7 @@ import (
 )
 
 var (
-	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("")
+	InstantQueryCodec tripperware.Codec = NewInstantQueryCodec("", true)
 
 	json = jsoniter.Config{
 		EscapeHTML:             false, // No HTML in our responses.
@@ -109,14 +109,22 @@ func (r *PrometheusRequest) WithStats(stats string) tripperware.Request {
 
 type instantQueryCodec struct {
 	tripperware.Codec
-	compression string
-	now         func() time.Time
+	compression    queryrange.Compression
+	enableProtobuf bool
+	now            func() time.Time
 }
 
-func NewInstantQueryCodec(compression string) instantQueryCodec {
+func NewInstantQueryCodec(c string, enableProtobuf bool) instantQueryCodec {
+	var compression queryrange.Compression
+	if c == "gzip" || c == "snappy" {
+		compression = queryrange.Compression(c)
+	} else {
+		compression = queryrange.DisableCompression
+	}
 	return instantQueryCodec{
-		compression: compression,
-		now:         time.Now,
+		compression:    compression,
+		enableProtobuf: enableProtobuf,
+		now:            time.Now,
 	}
 }
 
@@ -211,10 +219,14 @@ func (c instantQueryCodec) EncodeRequest(ctx context.Context, r tripperware.Requ
 		}
 	}
 
-	if c.compression == "snappy" || c.compression == "gzip" {
-		h.Set("Accept-Encoding", c.compression)
+	if c.compression == queryrange.SnappyCompression || c.compression == queryrange.GzipCompression {
+		h.Set("Accept-Encoding", string(c.compression))
 	}
-	h.Set("Accept", "application/x-protobuf")
+	if c.enableProtobuf {
+		h.Set("Accept", "application/x-protobuf")
+	} else {
+		h.Set("Accept", "application/json")
+	}
 
 	req := &http.Request{
 		Method:     "GET",

@@ -9,7 +9,6 @@ import (
 	"path"
 	"sync"
 
-	qapi "github.com/cortexproject/cortex/pkg/querier/handler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -29,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/handler"
+	qapi "github.com/cortexproject/cortex/pkg/querier/handler"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -291,8 +291,13 @@ func NewQuerierHandler(
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
-	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
-	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
+	if cfg.ProtobufQuerierHandler {
+		router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
+		router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
+	} else {
+		router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(promRouter)
+		router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(promRouter)
+	}
 	router.Path(path.Join(prefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/labels")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
@@ -305,8 +310,13 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
-	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
+	if cfg.ProtobufQuerierHandler {
+		router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
+		router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
+	} else {
+		router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
+		router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	}
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)

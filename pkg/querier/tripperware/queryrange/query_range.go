@@ -30,6 +30,14 @@ import (
 // StatusSuccess Prometheus success result.
 const StatusSuccess = "success"
 
+type Compression string
+
+const (
+	DisableCompression Compression = ""
+	GzipCompression    Compression = "gzip"
+	SnappyCompression  Compression = "snappy"
+)
+
 var (
 	matrix = model.ValMatrix.String()
 	json   = jsoniter.Config{
@@ -46,14 +54,22 @@ var (
 )
 
 type prometheusCodec struct {
-	sharded     bool
-	compression string
+	sharded        bool
+	compression    Compression
+	enableProtobuf bool
 }
 
-func NewPrometheusCodec(sharded bool, compression string) *prometheusCodec { //nolint:revive
+func NewPrometheusCodec(sharded bool, c string, enableProtobuf bool) *prometheusCodec { //nolint:revive
+	var compression Compression
+	if c == "gzip" || c == "snappy" {
+		compression = Compression(c)
+	} else {
+		compression = DisableCompression
+	}
 	return &prometheusCodec{
-		sharded:     sharded,
-		compression: compression,
+		sharded:        sharded,
+		compression:    compression,
+		enableProtobuf: enableProtobuf,
 	}
 }
 
@@ -254,10 +270,14 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 		}
 	}
 
-	if c.compression == "snappy" || c.compression == "gzip" {
-		h.Set("Accept-Encoding", c.compression)
+	if c.compression == SnappyCompression || c.compression == GzipCompression {
+		h.Set("Accept-Encoding", string(c.compression))
 	}
-	h.Set("Accept", "application/x-protobuf")
+	if c.enableProtobuf {
+		h.Set("Accept", "application/x-protobuf")
+	} else {
+		h.Set("Accept", "application/json")
+	}
 
 	req := &http.Request{
 		Method:     "GET",
@@ -270,7 +290,7 @@ func (c prometheusCodec) EncodeRequest(ctx context.Context, r tripperware.Reques
 	return req.WithContext(ctx), nil
 }
 
-func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
+func (c prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ tripperware.Request) (tripperware.Response, error) {
 	log, ctx := spanlogger.New(ctx, "ParseQueryRangeResponse") //nolint:ineffassign,staticcheck
 	defer log.Finish()
 
@@ -289,7 +309,12 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 	log.LogFields(otlog.Int("bytes", len(buf)))
 
 	var resp PrometheusResponse
-	if err := proto.Unmarshal(buf, &resp); err != nil {
+	if c.enableProtobuf {
+		err = proto.Unmarshal(buf, &resp)
+	} else {
+		err = json.Unmarshal(buf, &resp)
+	}
+	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 

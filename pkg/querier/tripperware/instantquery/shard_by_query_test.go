@@ -26,7 +26,7 @@ import (
 )
 
 func Test_shardQuery(t *testing.T) {
-	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, "")
+	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, "", true)
 	instantQueryCodec := InstantQueryCodec
 
 	type queries struct {

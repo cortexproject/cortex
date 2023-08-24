@@ -708,6 +708,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 				Namespace: string(decodedNamespace),
 				Interval:  interval,
 				User:      userID,
+				Limit:     int64(group.Limit()),
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),

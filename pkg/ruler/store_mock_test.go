@@ -110,6 +110,27 @@ var (
 			},
 		},
 	}
+	mockRulesLimit = map[string]rulespb.RuleGroupList{
+		"user1": {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "namespace1",
+				User:      "user1",
+				Limit:     5,
+				Rules: []*rulespb.RuleDesc{
+					{
+						Record: "UP_RULE",
+						Expr:   "up",
+					},
+					{
+						Alert: "UP_ALERT",
+						Expr:  "up < 1",
+					},
+				},
+				Interval: interval,
+			},
+		},
+	}
 )
 
 func newMockRuleStore(rules map[string]rulespb.RuleGroupList) *mockRuleStore {

@@ -127,10 +127,63 @@ func TestRuler_rules_special_characters(t *testing.T) {
 			},
 		},
 	})
-
 	require.Equal(t, string(expectedResponse), string(body))
 }
 
+func TestRuler_rules_limit(t *testing.T) {
+	store := newMockRuleStore(mockRulesLimit)
+	cfg := defaultRulerConfig(t)
+
+	r := newTestRuler(t, cfg, store, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
+	w := httptest.NewRecorder()
+	a.PrometheusRules(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	// Check status code and status response
+	responseJSON := response{}
+	err := json.Unmarshal(body, &responseJSON)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, responseJSON.Status, "success")
+
+	// Testing the running rules for user1 in the mock store
+	expectedResponse, _ := json.Marshal(response{
+		Status: "success",
+		Data: &RuleDiscovery{
+			RuleGroups: []*RuleGroup{
+				{
+					Name:  "group1",
+					File:  "namespace1",
+					Limit: 5,
+					Rules: []rule{
+						&recordingRule{
+							Name:   "UP_RULE",
+							Query:  "up",
+							Health: "unknown",
+							Type:   "recording",
+						},
+						&alertingRule{
+							Name:   "UP_ALERT",
+							Query:  "up < 1",
+							State:  "inactive",
+							Health: "unknown",
+							Type:   "alerting",
+							Alerts: []*Alert{},
+						},
+					},
+					Interval: 60,
+				},
+			},
+		},
+	})
+	require.Equal(t, string(expectedResponse), string(body))
+}
 func TestRuler_alerts(t *testing.T) {
 	store := newMockRuleStore(mockRules)
 	cfg := defaultRulerConfig(t)

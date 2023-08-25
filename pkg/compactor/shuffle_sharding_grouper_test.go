@@ -234,7 +234,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 2
 `,
 		},
 		"test group with one block visited": {
@@ -253,7 +253,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 2
 `,
 		},
 		"test group block visit marker file expired": {
@@ -273,7 +273,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 3
 `,
 		},
 		"test group with one block visited by current compactor": {
@@ -292,7 +292,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 1
+        	          cortex_compactor_remaining_planned_compactions 3
 `,
 		},
 		"test basic grouping with concurrency 2": {
@@ -305,7 +305,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 2
+        	          cortex_compactor_remaining_planned_compactions 3
 `,
 		},
 		"test should skip block with no compact marker": {

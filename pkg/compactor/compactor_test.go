@@ -178,7 +178,7 @@ func TestCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -197,12 +197,12 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	assert.Equal(t, prom_testutil.ToFloat64(c.compactionRunInterval), cfg.CompactionInterval.Seconds())
+	assert.Equal(t, prom_testutil.ToFloat64(c.CompactionRunInterval), cfg.CompactionInterval.Seconds())
 
 	assert.Equal(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
@@ -347,7 +347,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsFailed)
+		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -520,7 +520,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsFailed)
+		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -605,7 +605,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -739,7 +739,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -878,7 +878,7 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -940,7 +940,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -1138,7 +1138,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -1243,7 +1243,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-			return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
 
@@ -1387,7 +1387,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 60*time.Second, 2.0, func() interface{} {
-			return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
 
@@ -1939,7 +1939,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
 	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c1.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c1.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
@@ -1950,7 +1950,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
 	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c2.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted)
 	})
 
 	// Let's check how many users second compactor has.
@@ -2045,7 +2045,7 @@ func TestCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))

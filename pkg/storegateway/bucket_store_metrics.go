@@ -25,6 +25,7 @@ type BucketStoreMetrics struct {
 	seriesGetAllDuration  *prometheus.Desc
 	seriesMergeDuration   *prometheus.Desc
 	seriesRefetches       *prometheus.Desc
+	chunkRefetches        *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
 	queriesDropped        *prometheus.Desc
 	chunkSizeBytes        *prometheus.Desc
@@ -104,6 +105,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 		seriesRefetches: prometheus.NewDesc(
 			"cortex_bucket_store_series_refetches_total",
 			"Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
+			nil, nil),
+		chunkRefetches: prometheus.NewDesc(
+			"cortex_bucket_store_chunk_refetches_total",
+			"Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch.",
 			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
 			"cortex_bucket_store_series_result_series",
@@ -205,6 +210,7 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesGetAllDuration
 	out <- m.seriesMergeDuration
 	out <- m.seriesRefetches
+	out <- m.chunkRefetches
 	out <- m.resultSeriesCount
 	out <- m.queriesDropped
 	out <- m.chunkSizeBytes
@@ -247,6 +253,7 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfCounters(out, m.seriesRefetches, "thanos_bucket_store_series_refetches_total")
+	data.SendSumOfCounters(out, m.chunkRefetches, "thanos_bucket_store_chunk_refetches_total")
 	data.SendSumOfHistograms(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
 	data.SendSumOfCounters(out, m.queriesDropped, "thanos_bucket_store_queries_dropped_total")
 	data.SendSumOfHistograms(out, m.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")

@@ -105,13 +105,19 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 	}
 	l.indexesMx.RUnlock()
 
+	ss, err := ReadSyncStatus(ctx, l.bkt, userID, l.logger)
+
+	if err != nil {
+		level.Warn(l.logger).Log("msg", "unable to read bucket index status", "user", userID, "err", err)
+	}
+
 	startTime := time.Now()
 	l.loadAttempts.Inc()
 	idx, err := ReadIndex(ctx, l.bkt, userID, l.cfgProvider, l.logger)
 	if err != nil {
 		// Cache the error, to avoid hammering the object store in case of persistent issues
 		// (eg. corrupted bucket index or not existing).
-		l.cacheIndex(userID, nil, UnknownStatus, err)
+		l.cacheIndex(userID, nil, ss, err)
 
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Warn(l.logger).Log("msg", "bucket index not found", "user", userID)
@@ -124,13 +130,7 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 			level.Error(l.logger).Log("msg", "unable to load bucket index", "user", userID, "err", err)
 		}
 
-		return nil, UnknownStatus, err
-	}
-
-	ss, err := ReadSyncStatus(ctx, l.bkt, userID, l.logger)
-
-	if err != nil {
-		level.Warn(l.logger).Log("msg", "unable to read bucket index status", "user", userID, "err", err)
+		return nil, ss, err
 	}
 
 	// Cache the index.

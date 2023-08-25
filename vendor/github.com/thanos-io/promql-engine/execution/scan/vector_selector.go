@@ -47,6 +47,7 @@ type vectorSelector struct {
 
 	shard     int
 	numShards int
+	model.OperatorTelemetry
 }
 
 // NewVectorSelector creates operator which selects vector of series.
@@ -57,7 +58,7 @@ func NewVectorSelector(
 	offset time.Duration,
 	shard, numShards int,
 ) model.VectorOperator {
-	return &vectorSelector{
+	o := &vectorSelector{
 		storage:    selector,
 		vectorPool: pool,
 
@@ -72,6 +73,16 @@ func NewVectorSelector(
 		shard:     shard,
 		numShards: numShards,
 	}
+	o.OperatorTelemetry = &model.NoopTelemetry{}
+	if queryOpts.EnableAnalysis {
+		o.OperatorTelemetry = &model.TrackedTelemetry{}
+	}
+	return o
+}
+
+func (o *vectorSelector) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	o.SetName("[*vectorSelector]")
+	return o, nil
 }
 
 func (o *vectorSelector) Explain() (me string, next []model.VectorOperator) {
@@ -95,7 +106,7 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, ctx.Err()
 	default:
 	}
-
+	start := time.Now()
 	if o.currentStep > o.maxt {
 		return nil, nil
 	}
@@ -140,6 +151,7 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		o.step = 1
 	}
 	o.currentStep += o.step * int64(o.numSteps)
+	o.AddExecutionTimeTaken(time.Since(start))
 
 	return vectors, nil
 }

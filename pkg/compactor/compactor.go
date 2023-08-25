@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -310,12 +309,11 @@ type Compactor struct {
 
 	compactorCfg   Config
 	storageCfg     cortex_tsdb.BlocksStorageConfig
-	cfgProvider    ConfigProvider
 	logger         log.Logger
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
 	allowedTenants *util.AllowedTenants
-	limits         Limits
+	limits         *validation.Overrides
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -370,7 +368,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer, limits Limits) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -400,7 +398,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 		blockDeletableCheckerFactory = DefaultBlockDeletableCheckerFactory
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, cfgProvider, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, blockDeletableCheckerFactory, limits)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, blockDeletableCheckerFactory, limits)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -411,14 +409,13 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
-	cfgProvider ConfigProvider,
 	logger log.Logger,
 	registerer prometheus.Registerer,
 	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
 	blockDeletableCheckerFactory BlockDeletableCheckerFactory,
-	limits Limits,
+	limits *validation.Overrides,
 ) (*Compactor, error) {
 	var remainingPlannedCompactions prometheus.Gauge
 	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -430,7 +427,6 @@ func newCompactor(
 	c := &Compactor{
 		compactorCfg:                 compactorCfg,
 		storageCfg:                   storageCfg,
-		cfgProvider:                  cfgProvider,
 		parentLogger:                 logger,
 		logger:                       log.With(logger, "component", "compactor"),
 		registerer:                   registerer,
@@ -558,7 +554,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
 		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
-	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer, c.PartitionedGroupInfoReadFailed)
+	}, c.bucketClient, c.usersScanner, c.limits, c.parentLogger, c.registerer, c.PartitionedGroupInfoReadFailed)
 
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
@@ -803,7 +799,7 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.limits)
 
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
@@ -874,7 +870,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.blocksCompactor,
 		blockDeletableChecker,
 		shardedCompactionLifecycleCallback,
-		path.Join(c.compactorCfg.DataDir, "compact"),
+		c.compactDirForUser(userID),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
 		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
@@ -885,6 +881,13 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	if err := compactor.Compact(ctx); err != nil {
 		return errors.Wrap(err, "compaction")
+	}
+
+	// Remove all files on the compact root dir
+	// We do this only if there is no error because potentially on the next run we would not have to download
+	// everything again.
+	if err := os.RemoveAll(c.compactRootDir()); err != nil {
+		level.Error(c.logger).Log("msg", "failed to remove compaction work directory", "path", c.compactRootDir(), "err", err)
 	}
 
 	return nil
@@ -981,6 +984,16 @@ const compactorMetaPrefix = "compactor-meta-"
 // the directory used by the Thanos Syncer, whatever is the user ID.
 func (c *Compactor) metaSyncDirForUser(userID string) string {
 	return filepath.Join(c.compactorCfg.DataDir, compactorMetaPrefix+userID)
+}
+
+// compactDirForUser returns the directory to be used to download and compact the blocks for a user
+func (c *Compactor) compactDirForUser(userID string) string {
+	return filepath.Join(c.compactRootDir(), userID)
+}
+
+// compactRootDir returns the root directory to be used to download and compact blocks
+func (c *Compactor) compactRootDir() string {
+	return filepath.Join(c.compactorCfg.DataDir, "compact")
 }
 
 // This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.

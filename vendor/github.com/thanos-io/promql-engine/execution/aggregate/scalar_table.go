@@ -12,7 +12,6 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/parser"
@@ -102,24 +101,43 @@ func (t *scalarTable) size() int {
 	return len(t.outputs)
 }
 
-func hashMetric(metric labels.Labels, without bool, grouping []string, buf []byte) (uint64, string, labels.Labels) {
+func hashMetric(
+	builder labels.ScratchBuilder,
+	metric labels.Labels,
+	without bool,
+	grouping []string,
+	groupingSet map[string]struct{},
+	buf []byte,
+) (uint64, string, labels.Labels) {
 	buf = buf[:0]
+	builder.Reset()
+
 	if without {
-		lb := labels.NewBuilder(metric)
-		lb.Del(grouping...)
-		lb.Del(labels.MetricName)
+		metric.Range(func(lbl labels.Label) {
+			if lbl.Name == labels.MetricName {
+				return
+			}
+			if _, ok := groupingSet[lbl.Name]; ok {
+				return
+			}
+			builder.Add(lbl.Name, lbl.Value)
+		})
 		key, bytes := metric.HashWithoutLabels(buf, grouping...)
-		return key, string(bytes), lb.Labels()
+		return key, string(bytes), builder.Labels()
 	}
 
 	if len(grouping) == 0 {
 		return 0, "", labels.Labels{}
 	}
 
-	lb := labels.NewBuilder(metric)
-	lb.Keep(grouping...)
+	metric.Range(func(lbl labels.Label) {
+		if _, ok := groupingSet[lbl.Name]; !ok {
+			return
+		}
+		builder.Add(lbl.Name, lbl.Value)
+	})
 	key, bytes := metric.HashForLabels(buf, grouping...)
-	return key, string(bytes), lb.Labels()
+	return key, string(bytes), builder.Labels()
 }
 
 type newAccumulatorFunc func() *accumulator
@@ -279,45 +297,43 @@ func makeAccumulatorFunc(expr parser.ItemType) (newAccumulatorFunc, error) {
 	case "stddev":
 		return func() *accumulator {
 			var count float64
-			var mean, cMean float64
-			var aux, cAux float64
-			var hasValue bool
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-					count++
-					delta := v - (mean + cMean)
-					mean, cMean = function.KahanSumInc(delta/count, mean, cMean)
-					aux, cAux = function.KahanSumInc(delta*(v-(mean+cMean)), aux, cAux)
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					if count == 1 {
-						return 0, nil
-					}
-					return math.Sqrt((aux + cAux) / count), nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					count = 0
-					mean = 0
-					cMean = 0
-					aux = 0
-					cAux = 0
-				},
-			}
-		}, nil
-	case "stdvar":
-		return func() *accumulator {
-			var count float64
-			var mean, cMean float64
+			var mean float64
 			var value float64
 			var hasValue bool
 			return &accumulator{
 				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
 					hasValue = true
 					count++
-					delta := v - (mean + cMean)
+					delta := v - mean
+					mean += delta / count
+					value += delta * (v - mean)
+				},
+				ValueFunc: func() (float64, *histogram.FloatHistogram) {
+					if count == 1 {
+						return 0, nil
+					}
+					return math.Sqrt(value / count), nil
+				},
+				HasValue: func() bool { return hasValue },
+				Reset: func(_ float64) {
+					hasValue = false
+					count = 0
+					mean = 0
+					value = 0
+				},
+			}
+		}, nil
+	case "stdvar":
+		return func() *accumulator {
+			var count float64
+			var mean float64
+			var value float64
+			var hasValue bool
+			return &accumulator{
+				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
+					hasValue = true
+					count++
+					delta := v - mean
 					mean += delta / count
 					value = delta * (v - mean)
 				},
@@ -332,7 +348,6 @@ func makeAccumulatorFunc(expr parser.ItemType) (newAccumulatorFunc, error) {
 					hasValue = false
 					count = 0
 					mean = 0
-					cMean = 0
 					value = 0
 				},
 			}

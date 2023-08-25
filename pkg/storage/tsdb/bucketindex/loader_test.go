@@ -575,7 +575,7 @@ func TestLoader_ShouldOffloadIndexIfIdleTimeoutIsReachedDuringBackgroundUpdates(
 	))
 }
 
-func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing.T) {
+func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAccessDenied(t *testing.T) {
 	user := "user-1"
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()
@@ -602,11 +602,27 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAcessDenied(t *testing
 		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
 	})
 
-	_, _, err := loader.GetIndex(ctx, user)
+	_, ss, err := loader.GetIndex(ctx, user)
 	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+	require.Equal(t, Unknown, ss.Status)
+
+	// Verify is the index sync status is being returned
+	ss.Status = CustomerManagedKeyError
+	ss.NonQueryableReason = CustomerManagedKeyError
+	WriteSyncStatus(ctx, bkt, user, ss, log.NewNopLogger())
+
+	// Check not cached
+	loader.deleteCachedIndex(user)
+	_, ss, err = loader.GetIndex(ctx, user)
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+	require.Equal(t, CustomerManagedKeyError, ss.Status)
 
 	// Check cached
 	require.NoError(t, loader.checkCachedIndexes(ctx))
+
+	_, ss, err = loader.GetIndex(ctx, user)
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+	require.Equal(t, CustomerManagedKeyError, ss.Status)
 
 	loader.bkt = bkt
 

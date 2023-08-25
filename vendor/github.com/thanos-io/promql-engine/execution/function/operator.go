@@ -7,13 +7,11 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/efficientgo/core/errors"
-	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
@@ -30,96 +28,108 @@ type functionOperator struct {
 	vectorIndex int
 	nextOps     []model.VectorOperator
 
-	call         FunctionCall
+	call         functionCall
 	scalarPoints [][]float64
-	sampleBuf    []promql.Sample
+	model.OperatorTelemetry
 }
 
-type noArgFunctionOperator struct {
-	mint        int64
-	maxt        int64
-	step        int64
-	currentStep int64
-	stepsBatch  int
-	funcExpr    *parser.Call
-	call        FunctionCall
-	vectorPool  *model.VectorPool
-	series      []labels.Labels
-	sampleIDs   []uint64
-}
-
-func (o *noArgFunctionOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[*noArgFunctionOperator] %v()", o.funcExpr.Func.Name), []model.VectorOperator{}
-}
-
-func (o *noArgFunctionOperator) Series(_ context.Context) ([]labels.Labels, error) {
-	return o.series, nil
-}
-
-func (o *noArgFunctionOperator) GetPool() *model.VectorPool {
-	return o.vectorPool
-}
-
-func (o *noArgFunctionOperator) Next(_ context.Context) ([]model.StepVector, error) {
-	if o.currentStep > o.maxt {
-		return nil, nil
+func SetTelemetry(opts *query.Options) model.OperatorTelemetry {
+	if opts.EnableAnalysis {
+		return &model.TrackedTelemetry{}
 	}
-	fa := FunctionArgs{}
-	ret := o.vectorPool.GetVectorBatch()
-	for i := 0; i < o.stepsBatch && o.currentStep <= o.maxt; i++ {
-		sv := o.vectorPool.GetStepVector(o.currentStep)
-		fa.StepTime = o.currentStep
-		result := o.call(fa)
-		sv.Samples = []float64{result.F}
-		sv.SampleIDs = o.sampleIDs
-
-		ret = append(ret, sv)
-		o.currentStep += o.step
-	}
-
-	return ret, nil
+	return &model.NoopTelemetry{}
 }
 
-func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+func NewFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+	// Some functions need to be handled in special operators
+
+	switch funcExpr.Func.Name {
+	case "scalar":
+		return &scalarFunctionOperator{
+			next:              nextOps[0],
+			pool:              model.NewVectorPoolWithSize(stepsBatch, 1),
+			OperatorTelemetry: SetTelemetry(opts),
+		}, nil
+
+	case "label_join", "label_replace":
+		return &relabelFunctionOperator{
+			next:              nextOps[0],
+			funcExpr:          funcExpr,
+			OperatorTelemetry: SetTelemetry(opts),
+		}, nil
+
+	case "absent":
+		return &absentOperator{
+			next:              nextOps[0],
+			pool:              model.NewVectorPool(stepsBatch),
+			funcExpr:          funcExpr,
+			OperatorTelemetry: SetTelemetry(opts),
+		}, nil
+
+	case "histogram_quantile":
+		return &histogramOperator{
+			pool:              model.NewVectorPool(stepsBatch),
+			funcArgs:          funcExpr.Args,
+			once:              sync.Once{},
+			scalarOp:          nextOps[0],
+			vectorOp:          nextOps[1],
+			scalarPoints:      make([]float64, stepsBatch),
+			OperatorTelemetry: SetTelemetry(opts),
+		}, nil
+	}
+
+	// Short-circuit functions that take no args. Their only input is the step's timestamp.
+	if len(nextOps) == 0 {
+		return newNoArgsFunctionOperator(funcExpr, stepsBatch, opts)
+	}
+	// All remaining functions
+	return newInstantVectorFunctionOperator(funcExpr, nextOps, stepsBatch, opts)
+}
+
+func newNoArgsFunctionOperator(funcExpr *parser.Call, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+	call, ok := noArgFuncs[funcExpr.Func.Name]
+	if !ok {
+		return nil, parse.UnknownFunctionError(funcExpr.Func)
+	}
+
 	interval := opts.Step.Milliseconds()
 	// We set interval to be at least 1.
 	if interval == 0 {
 		interval = 1
 	}
 
+	op := &noArgFunctionOperator{
+		currentStep: opts.Start.UnixMilli(),
+		mint:        opts.Start.UnixMilli(),
+		maxt:        opts.End.UnixMilli(),
+		step:        interval,
+		stepsBatch:  stepsBatch,
+		funcExpr:    funcExpr,
+		call:        call,
+		vectorPool:  model.NewVectorPool(stepsBatch),
+	}
 	switch funcExpr.Func.Name {
-	case "scalar":
-		return &scalarFunctionOperator{
-			next: nextOps[0],
-			pool: model.NewVectorPool(stepsBatch),
-		}, nil
+	case "pi", "time":
+		op.sampleIDs = []uint64{0}
+	default:
+		// Other functions require non-nil labels.
+		op.series = []labels.Labels{{}}
+		op.sampleIDs = []uint64{0}
+	}
+	op.OperatorTelemetry = &model.NoopTelemetry{}
+	if opts.EnableAnalysis {
+		op.OperatorTelemetry = &model.TrackedTelemetry{}
 	}
 
-	// Short-circuit functions that take no args. Their only input is the step's timestamp.
-	if len(nextOps) == 0 {
+	return op, nil
+}
 
-		op := &noArgFunctionOperator{
-			currentStep: opts.Start.UnixMilli(),
-			mint:        opts.Start.UnixMilli(),
-			maxt:        opts.End.UnixMilli(),
-			step:        interval,
-			stepsBatch:  stepsBatch,
-			funcExpr:    funcExpr,
-			call:        call,
-			vectorPool:  model.NewVectorPool(stepsBatch),
-		}
-
-		switch funcExpr.Func.Name {
-		case "pi", "time":
-			op.sampleIDs = []uint64{0}
-		default:
-			// Other functions require non-nil labels.
-			op.series = []labels.Labels{{}}
-			op.sampleIDs = []uint64{0}
-		}
-
-		return op, nil
+func newInstantVectorFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+	call, ok := instantVectorFuncs[funcExpr.Func.Name]
+	if !ok {
+		return nil, parse.UnknownFunctionError(funcExpr.Func)
 	}
+
 	scalarPoints := make([][]float64, stepsBatch)
 	for i := 0; i < stepsBatch; i++ {
 		scalarPoints[i] = make([]float64, len(nextOps)-1)
@@ -130,7 +140,6 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 		funcExpr:     funcExpr,
 		vectorIndex:  0,
 		scalarPoints: scalarPoints,
-		sampleBuf:    make([]promql.Sample, 1),
 	}
 
 	for i := range funcExpr.Args {
@@ -139,15 +148,29 @@ func NewFunctionOperator(funcExpr *parser.Call, call FunctionCall, nextOps []mod
 			break
 		}
 	}
+	f.OperatorTelemetry = &model.NoopTelemetry{}
+	if opts.EnableAnalysis {
+		f.OperatorTelemetry = &model.TrackedTelemetry{}
+	}
 
 	// Check selector type.
-	// TODO(saswatamcode): Add support for matrix.
 	switch funcExpr.Args[f.vectorIndex].Type() {
 	case parser.ValueTypeVector, parser.ValueTypeScalar:
 		return f, nil
 	default:
 		return nil, errors.Wrapf(parse.ErrNotImplemented, "got %s:", funcExpr.String())
 	}
+}
+
+func (o *functionOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	o.SetName("[*functionOperator]")
+	obsOperators := make([]model.ObservableVectorOperator, 0, len(o.nextOps))
+	for _, operator := range o.nextOps {
+		if obsOperator, ok := operator.(model.ObservableVectorOperator); ok {
+			obsOperators = append(obsOperators, obsOperator)
+		}
+	}
+	return o, obsOperators
 }
 
 func (o *functionOperator) Explain() (me string, next []model.VectorOperator) {
@@ -176,7 +199,7 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
-
+	start := time.Now()
 	// Process non-variadic single/multi-arg instant vector and scalar input functions.
 	// Call next on vector input.
 	vectors, err := o.nextOps[o.vectorIndex].Next(ctx)
@@ -187,10 +210,6 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 	if len(vectors) == 0 {
 		return nil, nil
 	}
-	if o.funcExpr.Func.Name == "label_join" {
-		return vectors, nil
-	}
-
 	scalarIndex := 0
 	for i := range o.nextOps {
 		if i == o.vectorIndex {
@@ -213,22 +232,11 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		o.nextOps[i].GetPool().PutVectors(scalarVectors)
 		scalarIndex++
 	}
-	lblsBuilder := labels.ScratchBuilder{}
 	for batchIndex, vector := range vectors {
 		i := 0
-		fa := FunctionArgs{}
 		for i < len(vectors[batchIndex].Samples) {
-			o.sampleBuf[0].H = nil
-			o.sampleBuf[0].F = vector.Samples[i]
-			fa.Labels = o.series[0]
-			fa.Samples = o.sampleBuf
-			fa.StepTime = vector.T
-			fa.ScalarPoints = o.scalarPoints[batchIndex]
-			fa.LabelsBuilder = lblsBuilder
-			result := o.call(fa)
-
-			if result.T != InvalidSample.T {
-				vector.Samples[i] = result.F
+			if v, ok := o.call(vector.Samples[i], nil, o.scalarPoints[batchIndex]...); ok {
+				vector.Samples[i] = v
 				i++
 			} else {
 				// This operator modifies samples directly in the input vector to avoid allocations.
@@ -239,24 +247,19 @@ func (o *functionOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		i = 0
 		for i < len(vectors[batchIndex].Histograms) {
-			o.sampleBuf[0].H = vector.Histograms[i]
-			fa.Labels = o.series[0]
-			fa.Samples = o.sampleBuf
-			fa.StepTime = vector.T
-			fa.ScalarPoints = o.scalarPoints[batchIndex]
-			fa.LabelsBuilder = lblsBuilder
-			result := o.call(fa)
-
+			v, ok := o.call(0., vector.Histograms[i], o.scalarPoints[batchIndex]...)
 			// This operator modifies samples directly in the input vector to avoid allocations.
 			// All current functions for histograms produce a float64 sample. It's therefore safe to
 			// always remove the input histogram so that it does not propagate to the output.
 			sampleID := vectors[batchIndex].HistogramIDs[i]
 			vectors[batchIndex].RemoveHistogram(i)
-			if result.T != InvalidSample.T {
-				vectors[batchIndex].AppendSample(o.GetPool(), sampleID, result.F)
+			if ok {
+				vectors[batchIndex].AppendSample(o.GetPool(), sampleID, v)
 			}
 		}
 	}
+
+	o.AddExecutionTimeTaken(time.Since(start))
 
 	return vectors, nil
 }
@@ -269,58 +272,16 @@ func (o *functionOperator) loadSeries(ctx context.Context) error {
 			return
 		}
 
-		if o.funcExpr.Func.Name == "scalar" {
-			o.series = []labels.Labels{}
-			return
-		}
-
 		series, loadErr := o.nextOps[o.vectorIndex].Series(ctx)
 		if loadErr != nil {
 			err = loadErr
 			return
 		}
-
 		o.series = make([]labels.Labels, len(series))
 
-		var labelJoinDst string
-		var labelJoinSep string
-		var labelJoinSrcLabels []string
-		if o.funcExpr.Func.Name == "label_join" {
-			l := len(o.funcExpr.Args)
-			labelJoinDst = o.funcExpr.Args[1].(*parser.StringLiteral).Val
-			if !prommodel.LabelName(labelJoinDst).IsValid() {
-				err = errors.Newf("invalid destination label name in label_join: %s", labelJoinDst)
-				return
-			}
-			labelJoinSep = o.funcExpr.Args[2].(*parser.StringLiteral).Val
-			for j := 3; j < l; j++ {
-				labelJoinSrcLabels = append(labelJoinSrcLabels, o.funcExpr.Args[j].(*parser.StringLiteral).Val)
-			}
-		}
 		b := labels.ScratchBuilder{}
 		for i, s := range series {
-			lbls := s
-			switch o.funcExpr.Func.Name {
-			case "last_over_time":
-			case "label_join":
-				srcVals := make([]string, len(labelJoinSrcLabels))
-
-				for j, src := range labelJoinSrcLabels {
-					srcVals[j] = lbls.Get(src)
-				}
-				lb := labels.NewBuilder(lbls)
-
-				strval := strings.Join(srcVals, labelJoinSep)
-				if strval == "" {
-					lb.Del(labelJoinDst)
-				} else {
-					lb.Set(labelJoinDst, strval)
-				}
-
-				lbls = lb.Labels()
-			default:
-				lbls, _ = DropMetricName(s, b)
-			}
+			lbls, _ := DropMetricName(s, b)
 			o.series[i] = lbls
 		}
 	})

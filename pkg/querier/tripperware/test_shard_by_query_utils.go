@@ -46,18 +46,6 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 			expression: "count(sum without (pod) (http_requests_total))",
 		},
 		{
-			name:       "aggregate expression with label_replace",
-			expression: `sum by (pod) (label_replace(metric, "dst_label", "$1", "src_label", "re"))`,
-		},
-		{
-			name:       "aggregate without expression with label_replace",
-			expression: `sum without (pod) (label_replace(metric, "dst_label", "$1", "src_label", "re"))`,
-		},
-		{
-			name:       "binary expression",
-			expression: `http_requests_total{code="400"} / http_requests_total`,
-		},
-		{
 			name:       "binary expression with constant",
 			expression: `http_requests_total{code="400"} / 4`,
 		},
@@ -68,10 +56,6 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 		{
 			name:       "binary aggregation with different grouping labels",
 			expression: `sum by (pod) (http_requests_total{code="400"}) / sum by (cluster) (http_requests_total)`,
-		},
-		{
-			name:       "multiple binary expressions",
-			expression: `(http_requests_total{code="400"} + http_requests_total{code="500"}) / http_requests_total`,
 		},
 		{
 			name: "multiple binary expressions with empty vector matchers",
@@ -193,6 +177,11 @@ sum by (container) (
 			expression:     `sort_desc(avg(label_replace(label_replace(label_replace(count_over_time(container_memory_working_set_bytes{container!="", container!="POD", instance!="", }[1h] ), "node", "$1", "instance", "(.+)"), "container_name", "$1", "container", "(.+)"), "pod_name", "$1", "pod", "(.+)")*label_replace(label_replace(label_replace(avg_over_time(container_memory_working_set_bytes{container!="", container!="POD", instance!="", }[1h] ), "node", "$1", "instance", "(.+)"), "container_name", "$1", "container", "(.+)"), "pod_name", "$1", "pod", "(.+)")) by (namespace, container_name, pod_name, node, cluster_id))`,
 			shardingLabels: []string{"namespace", "cluster_id"},
 		},
+		{
+			name:           "aggregate expression with label_replace",
+			expression:     `sum by (pod) (label_replace(metric, "dst_label", "$1", "src_label", "re"))`,
+			shardingLabels: []string{"pod"},
+		},
 	}
 
 	// Shardable by labels instant queries with matrix response
@@ -233,7 +222,7 @@ sum by (container) (
 		{
 			name:           "binary expression with outer without grouping",
 			expression:     `sum(http_requests_total{code="400"} * http_requests_total) without (pod)`,
-			shardingLabels: []string{"pod"},
+			shardingLabels: []string{model.MetricNameLabel, "pod"},
 		},
 		{
 			name:           "binary expression with vector matching and outer without grouping",
@@ -267,6 +256,26 @@ http_requests_total`,
 			name:           "aggregate without expression with label_replace",
 			expression:     `sum without (pod) (label_replace(metric, "dst_label", "$1", "src_label", "re"))`,
 			shardingLabels: []string{"pod", "dst_label"},
+		},
+		{
+			name:           "binary expression",
+			expression:     `http_requests_total{code="400"} / http_requests_total`,
+			shardingLabels: []string{model.MetricNameLabel},
+		},
+		{
+			name:           "binary expression among vector and scalar",
+			expression:     `aaaa - bbb > 1000`,
+			shardingLabels: []string{model.MetricNameLabel},
+		},
+		{
+			name:           "binary expression with set operation",
+			expression:     `aaaa and bbb`,
+			shardingLabels: []string{model.MetricNameLabel},
+		},
+		{
+			name:           "multiple binary expressions",
+			expression:     `(http_requests_total{code="400"} + http_requests_total{code="500"}) / http_requests_total`,
+			shardingLabels: []string{model.MetricNameLabel},
 		},
 	}
 
@@ -324,6 +333,7 @@ http_requests_total`,
 			name:        fmt.Sprintf("non shardable query: %s", query.name),
 			path:        fmt.Sprintf(`/api/v1/query?time=120&query=%s`, url.QueryEscape(query.expression)),
 			codec:       instantQueryCodec,
+			shardSize:   2,
 			isShardable: false,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
@@ -334,6 +344,7 @@ http_requests_total`,
 			name:        fmt.Sprintf("non shardable query_range: %s", query.name),
 			path:        fmt.Sprintf(`/api/v1/query_range?start=1&end=2&step=1&query=%s`, url.QueryEscape(query.expression)),
 			codec:       shardedPrometheusCodec,
+			shardSize:   2,
 			isShardable: false,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,

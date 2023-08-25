@@ -98,41 +98,41 @@ func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 	}
 }
 
-func traverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(parent *parser.Expr, node *parser.Expr) bool) bool {
+func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(parent *parser.Expr, node *parser.Expr) bool) bool {
 	switch node := (*current).(type) {
 	case *parser.NumberLiteral:
 		return false
 	case *parser.StepInvariantExpr:
-		return traverseBottomUp(current, &node.Expr, transform)
+		return TraverseBottomUp(current, &node.Expr, transform)
 	case *parser.VectorSelector:
 		return transform(parent, current)
 	case *parser.MatrixSelector:
 		return transform(current, &node.VectorSelector)
 	case *parser.AggregateExpr:
-		if stop := traverseBottomUp(current, &node.Expr, transform); stop {
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
 			return stop
 		}
 		return transform(parent, current)
 	case *parser.Call:
 		for i := range node.Args {
-			if stop := traverseBottomUp(current, &node.Args[i], transform); stop {
+			if stop := TraverseBottomUp(current, &node.Args[i], transform); stop {
 				return stop
 			}
 		}
 		return transform(parent, current)
 	case *parser.BinaryExpr:
-		lstop := traverseBottomUp(current, &node.LHS, transform)
-		rstop := traverseBottomUp(current, &node.RHS, transform)
+		lstop := TraverseBottomUp(current, &node.LHS, transform)
+		rstop := TraverseBottomUp(current, &node.RHS, transform)
 		if lstop || rstop {
 			return true
 		}
 		return transform(parent, current)
 	case *parser.UnaryExpr:
-		return traverseBottomUp(current, &node.Expr, transform)
+		return TraverseBottomUp(current, &node.Expr, transform)
 	case *parser.ParenExpr:
-		return traverseBottomUp(current, &node.Expr, transform)
+		return TraverseBottomUp(current, &node.Expr, transform)
 	case *parser.SubqueryExpr:
-		return traverseBottomUp(current, &node.Expr, transform)
+		return TraverseBottomUp(current, &node.Expr, transform)
 	}
 
 	return true

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 
@@ -23,14 +24,26 @@ type concurrencyOperator struct {
 	next       model.VectorOperator
 	buffer     chan maybeStepVector
 	bufferSize int
+	model.OperatorTelemetry
 }
 
 func NewConcurrent(next model.VectorOperator, bufferSize int) model.VectorOperator {
-	return &concurrencyOperator{
+	c := &concurrencyOperator{
 		next:       next,
 		buffer:     make(chan maybeStepVector, bufferSize),
 		bufferSize: bufferSize,
 	}
+	c.OperatorTelemetry = &model.TrackedTelemetry{}
+	return c
+}
+
+func (c *concurrencyOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	c.SetName(("[*concurrencyOperator]"))
+	next := make([]model.ObservableVectorOperator, 0, 1)
+	if obsnext, ok := c.next.(model.ObservableVectorOperator); ok {
+		next = append(next, obsnext)
+	}
+	return c, next
 }
 
 func (c *concurrencyOperator) Explain() (me string, next []model.VectorOperator) {
@@ -52,6 +65,7 @@ func (c *concurrencyOperator) Next(ctx context.Context) ([]model.StepVector, err
 	default:
 	}
 
+	start := time.Now()
 	c.once.Do(func() {
 		go c.pull(ctx)
 		go c.drainBufferOnCancel(ctx)
@@ -64,6 +78,7 @@ func (c *concurrencyOperator) Next(ctx context.Context) ([]model.StepVector, err
 	if r.err != nil {
 		return nil, r.err
 	}
+	c.AddExecutionTimeTaken(time.Since(start))
 
 	return r.stepVector, nil
 }

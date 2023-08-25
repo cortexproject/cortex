@@ -71,12 +71,15 @@ type Config struct {
 
 	// This sets the Origin header value
 	corsRegexString string `yaml:"cors_origin"`
+
+	buildInfoEnabled bool `yaml:"build_info_enabled"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ResponseCompression, "api.response-compression-enabled", false, "Use GZIP compression for API responses. Some endpoints serve large YAML or JSON blobs which can benefit from compression.")
 	f.Var(&cfg.HTTPRequestHeadersToLog, "api.http-request-headers-to-log", "Which HTTP Request headers to add to logs")
+	f.BoolVar(&cfg.buildInfoEnabled, "api.build-info-enabled", false, "If enabled, build Info API will be served by query frontend or querier.")
 	cfg.RegisterFlagsWithPrefix("", f)
 }
 
@@ -389,8 +392,6 @@ func (a *API) RegisterQueryable(
 
 // RegisterQueryAPI registers the Prometheus API routes with the provided handler.
 func (a *API) RegisterQueryAPI(handler http.Handler) {
-	infoHandler := &buildInfoHandler{logger: a.logger}
-
 	hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		httputil.SetCORS(w, a.corsOrigin, r)
 		handler.ServeHTTP(w, r)
@@ -404,7 +405,6 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/label/{name}/values"), hf, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/series"), hf, true, "GET", "POST", "DELETE")
 	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/metadata"), hf, true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
 
 	// Register Legacy Routers
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/read"), hf, true, "POST")
@@ -415,11 +415,16 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/label/{name}/values"), hf, true, "GET")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/series"), hf, true, "GET", "POST", "DELETE")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/metadata"), hf, true, "GET")
-	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
+
+	if a.cfg.buildInfoEnabled {
+		infoHandler := &buildInfoHandler{logger: a.logger}
+		a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
+		a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
+	}
 }
 
-// RegisterQueryFrontend registers the Prometheus routes supported by the
-// Cortex querier service. Currently this can not be registered simultaneously
+// RegisterQueryFrontendHandler registers the Prometheus routes supported by the
+// Cortex querier service. Currently, this can not be registered simultaneously
 // with the Querier.
 func (a *API) RegisterQueryFrontendHandler(h http.Handler) {
 	a.RegisterQueryAPI(h)

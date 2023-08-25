@@ -393,6 +393,10 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_bucket_store_cached_postings_original_size_bytes_total counter
 			cortex_bucket_store_cached_postings_original_size_bytes_total 1261064
 
+        	# HELP cortex_bucket_store_chunk_refetches_total Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch.
+        	# TYPE cortex_bucket_store_chunk_refetches_total counter
+        	cortex_bucket_store_chunk_refetches_total 0
+
 			# HELP cortex_bucket_store_cached_postings_compressed_size_bytes_total Compressed size of postings stored into cache.
 			# TYPE cortex_bucket_store_cached_postings_compressed_size_bytes_total counter
 			cortex_bucket_store_cached_postings_compressed_size_bytes_total 1283583
@@ -634,6 +638,7 @@ type mockedBucketStoreMetrics struct {
 	seriesGetAllDuration  prometheus.Histogram
 	seriesMergeDuration   prometheus.Histogram
 	seriesRefetches       prometheus.Counter
+	chunkRefetches        prometheus.Counter
 	resultSeriesCount     prometheus.Histogram
 	chunkSizeBytes        prometheus.Histogram
 	postingsSizeBytes     prometheus.Histogram
@@ -747,6 +752,10 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	m.seriesRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_series_refetches_total",
 		Help: fmt.Sprintf("Total number of cases where %v bytes was not enough was to fetch series from index, resulting in refetch.", 64*1024),
+	})
+	m.chunkRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_chunk_refetches_total",
+		Help: "Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch",
 	})
 
 	m.cachedPostingsCompressions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{

@@ -91,6 +91,10 @@ api:
   # CLI flag: -server.cors-origin
   [cors_origin: <string> | default = ".*"]
 
+  # If enabled, build Info API will be served by query frontend or querier.
+  # CLI flag: -api.build-info-enabled
+  [build_info_enabled: <boolean> | default = false]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]

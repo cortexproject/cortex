@@ -230,7 +230,7 @@ func TestBuildInfoAPI(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := Config{}
+			cfg := Config{buildInfoEnabled: true}
 			version.Version = tc.version
 			version.Branch = tc.branch
 			version.Revision = tc.revision

@@ -369,6 +369,11 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # The sleep seconds when alertmanager is shutting down. Need to be close to or
+  # larger than KV Store information propagation delay
+  # CLI flag: -alertmanager.sharding-ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
@@ -3945,6 +3950,11 @@ ring:
   # CLI flag: -ruler.ring.num-tokens
   [num_tokens: <int> | default = 128]
 
+  # The sleep seconds when ruler is shutting down. Need to be close to or larger
+  # than KV Store information propagation delay
+  # CLI flag: -ruler.ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
+
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flush_period: <duration> | default = 1m]
@@ -4835,6 +4845,11 @@ sharding_ring:
   # anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
+
+  # The sleep seconds when store-gateway is shutting down. Need to be close to
+  # or larger than KV Store information propagation delay
+  # CLI flag: -store-gateway.sharding-ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
 
   # Name of network interface to read address from.
   # CLI flag: -store-gateway.sharding-ring.instance-interface-names

@@ -104,11 +104,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	}
 	defer notify.Drain(resp)
 
-	shouldRetry, err := n.retrier.Check(resp.StatusCode, resp.Body)
-	if err != nil {
-		return shouldRetry, notify.NewErrorWithReason(notify.GetFailureReasonFromStatusCode(resp.StatusCode), err)
-	}
-	return shouldRetry, err
+	return n.retrier.Check(resp.StatusCode, resp.Body)
 }
 
 // Create the JSON payload to be sent to the VictorOps API.

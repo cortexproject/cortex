@@ -17,6 +17,7 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/worker"
 )
 
@@ -48,7 +49,7 @@ func NewHashAggregate(
 	aggregation parser.ItemType,
 	by bool,
 	labels []string,
-	stepsBatch int,
+	opts *query.Options,
 ) (model.VectorOperator, error) {
 	newAccumulator, err := makeAccumulatorFunc(aggregation)
 	if err != nil {
@@ -61,15 +62,15 @@ func NewHashAggregate(
 	a := &aggregate{
 		next:           next,
 		paramOp:        paramOp,
-		params:         make([]float64, stepsBatch),
+		params:         make([]float64, opts.StepsBatch),
 		vectorPool:     points,
 		by:             by,
 		aggregation:    aggregation,
 		labels:         labels,
-		stepsBatch:     stepsBatch,
+		stepsBatch:     opts.StepsBatch,
 		newAccumulator: newAccumulator,
 	}
-	a.workers = worker.NewGroup(stepsBatch, a.workerTask)
+	a.workers = worker.NewGroup(opts.StepsBatch, a.workerTask)
 	a.OperatorTelemetry = &model.TrackedTelemetry{}
 
 	return a, nil

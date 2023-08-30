@@ -112,7 +112,8 @@ func newVectorAccumulator(expr parser.ItemType) (vectorAccumulator, error) {
 	case "avg":
 		return func(float64s []float64, histograms []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
 			if len(float64s) > 0 {
-				return floats.Sum(float64s) / float64(len(float64s)), nil, true
+				floats.Scale(1/float64(len(float64s)), float64s)
+				return floats.Sum(float64s), nil, true
 			}
 			return 0, nil, false
 		}, nil

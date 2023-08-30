@@ -272,9 +272,6 @@ func init() {
           "200": {
             "description": "Delete silence response"
           },
-          "404": {
-            "description": "A silence with the specified ID was not found"
-          },
           "500": {
             "$ref": "#/responses/InternalServerError"
           }
@@ -1079,9 +1076,6 @@ func init() {
         "responses": {
           "200": {
             "description": "Delete silence response"
-          },
-          "404": {
-            "description": "A silence with the specified ID was not found"
           },
           "500": {
             "description": "Internal server error",

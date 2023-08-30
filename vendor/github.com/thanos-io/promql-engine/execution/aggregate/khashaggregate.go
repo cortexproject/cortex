@@ -48,7 +48,6 @@ func NewKHashAggregate(
 	aggregation parser.ItemType,
 	by bool,
 	labels []string,
-	stepsBatch int,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
 	var compare func(float64, float64) bool
@@ -74,7 +73,7 @@ func NewKHashAggregate(
 		labels:      labels,
 		paramOp:     paramOp,
 		compare:     compare,
-		params:      make([]float64, stepsBatch),
+		params:      make([]float64, opts.StepsBatch),
 	}
 	a.OperatorTelemetry = &model.NoopTelemetry{}
 	if opts.EnableAnalysis {

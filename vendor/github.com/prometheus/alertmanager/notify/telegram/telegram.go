@@ -17,8 +17,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -50,7 +48,7 @@ func New(conf *config.TelegramConfig, t *template.Template, l log.Logger, httpOp
 		return nil, err
 	}
 
-	client, err := createTelegramClient(conf.APIUrl.String(), conf.ParseMode, httpclient)
+	client, err := createTelegramClient(conf.BotToken, conf.APIUrl.String(), conf.ParseMode, httpclient)
 	if err != nil {
 		return nil, err
 	}
@@ -85,11 +83,6 @@ func (n *Notifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, err
 		level.Warn(n.logger).Log("msg", "Truncated message", "alert", key, "max_runes", maxMessageLenRunes)
 	}
 
-	n.client.Token, err = n.getBotToken()
-	if err != nil {
-		return true, err
-	}
-
 	message, err := n.client.Send(telebot.ChatID(n.conf.ChatID), messageText, &telebot.SendOptions{
 		DisableNotification:   n.conf.DisableNotifications,
 		DisableWebPagePreview: true,
@@ -102,8 +95,10 @@ func (n *Notifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, err
 	return false, nil
 }
 
-func createTelegramClient(apiURL, parseMode string, httpClient *http.Client) (*telebot.Bot, error) {
+func createTelegramClient(token config.Secret, apiURL, parseMode string, httpClient *http.Client) (*telebot.Bot, error) {
+	secret := string(token)
 	bot, err := telebot.NewBot(telebot.Settings{
+		Token:     secret,
 		URL:       apiURL,
 		ParseMode: parseMode,
 		Client:    httpClient,
@@ -114,15 +109,4 @@ func createTelegramClient(apiURL, parseMode string, httpClient *http.Client) (*t
 	}
 
 	return bot, nil
-}
-
-func (n *Notifier) getBotToken() (string, error) {
-	if len(n.conf.BotTokenFile) > 0 {
-		content, err := os.ReadFile(n.conf.BotTokenFile)
-		if err != nil {
-			return "", fmt.Errorf("could not read %s: %w", n.conf.BotTokenFile, err)
-		}
-		return strings.TrimSpace(string(content)), nil
-	}
-	return string(n.conf.BotToken), nil
 }

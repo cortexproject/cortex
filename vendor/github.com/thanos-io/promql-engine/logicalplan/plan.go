@@ -5,12 +5,15 @@ package logicalplan
 
 import (
 	"fmt"
+	"math"
 	"time"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 var (
@@ -23,34 +26,24 @@ var DefaultOptimizers = []Optimizer{
 	MergeSelectsOptimizer{},
 }
 
-type Opts struct {
-	Start         time.Time
-	End           time.Time
-	Step          time.Duration
-	LookbackDelta time.Duration
-}
-
-func (o Opts) IsInstantQuery() bool {
-	return o.Start == o.End
-}
-
 type Plan interface {
 	Optimize([]Optimizer) Plan
 	Expr() parser.Expr
 }
 
 type Optimizer interface {
-	Optimize(expr parser.Expr, opts *Opts) parser.Expr
+	Optimize(expr parser.Expr, opts *query.Options) parser.Expr
 }
 
 type plan struct {
 	expr parser.Expr
-	opts *Opts
+	opts *query.Options
 }
 
-func New(expr parser.Expr, opts *Opts) Plan {
+func New(expr parser.Expr, opts *query.Options) Plan {
 	expr = preprocessExpr(expr, opts.Start, opts.End)
 	setOffsetForAtModifier(opts.Start.UnixMilli(), expr)
+	setOffsetForInnerSubqueries(expr, opts)
 
 	return &plan{
 		expr: expr,
@@ -256,10 +249,13 @@ func setOffsetForAtModifier(evalTime int64, expr parser.Expr) {
 		if ts == nil {
 			return originalOffset
 		}
-		// TODO: support subquery.
+		subqOffset, _, subqTs := subqueryTimes(path)
+		if subqTs != nil {
+			subqOffset += time.Duration(evalTime-*subqTs) * time.Millisecond
+		}
 
 		offsetForTs := time.Duration(evalTime-*ts) * time.Millisecond
-		offsetDiff := offsetForTs
+		offsetDiff := offsetForTs - subqOffset
 		return originalOffset + offsetDiff
 	}
 
@@ -274,6 +270,49 @@ func setOffsetForAtModifier(evalTime int64, expr parser.Expr) {
 
 		case *parser.SubqueryExpr:
 			n.Offset = getOffset(n.Timestamp, n.OriginalOffset, path)
+		}
+		return nil
+	})
+}
+
+// https://github.com/prometheus/prometheus/blob/dfae954dc1137568f33564e8cffda321f2867925/promql/engine.go#L754
+// subqueryTimes returns the sum of offsets and ranges of all subqueries in the path.
+// If the @ modifier is used, then the offset and range is w.r.t. that timestamp
+// (i.e. the sum is reset when we have @ modifier).
+// The returned *int64 is the closest timestamp that was seen. nil for no @ modifier.
+func subqueryTimes(path []parser.Node) (time.Duration, time.Duration, *int64) {
+	var (
+		subqOffset, subqRange time.Duration
+		ts                    int64 = math.MaxInt64
+	)
+	for _, node := range path {
+		if n, ok := node.(*parser.SubqueryExpr); ok {
+			subqOffset += n.OriginalOffset
+			subqRange += n.Range
+			if n.Timestamp != nil {
+				// The @ modifier on subquery invalidates all the offset and
+				// range till now. Hence resetting it here.
+				subqOffset = n.OriginalOffset
+				subqRange = n.Range
+				ts = *n.Timestamp
+			}
+		}
+	}
+	var tsp *int64
+	if ts != math.MaxInt64 {
+		tsp = &ts
+	}
+	return subqOffset, subqRange, tsp
+}
+
+func setOffsetForInnerSubqueries(expr parser.Expr, opts *query.Options) {
+	parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
+		switch n := node.(type) {
+		case *parser.SubqueryExpr:
+			nOpts := query.NestedOptionsForSubquery(opts, n)
+			setOffsetForAtModifier(nOpts.Start.UnixMilli(), n.Expr)
+			setOffsetForInnerSubqueries(n.Expr, nOpts)
+			return errors.New("stop iteration")
 		}
 		return nil
 	})

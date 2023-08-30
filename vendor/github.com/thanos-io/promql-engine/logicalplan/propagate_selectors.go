@@ -9,13 +9,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 // PropagateMatchersOptimizer implements matcher propagation between
 // two vector selectors in a binary expression.
 type PropagateMatchersOptimizer struct{}
 
-func (m PropagateMatchersOptimizer) Optimize(expr parser.Expr, _ *Opts) parser.Expr {
+func (m PropagateMatchersOptimizer) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
 	traverse(&expr, func(expr *parser.Expr) {
 		binOp, ok := (*expr).(*parser.BinaryExpr)
 		if !ok {

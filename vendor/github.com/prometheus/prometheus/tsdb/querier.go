@@ -414,6 +414,26 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 	if err != nil {
 		return nil, errors.Wrapf(err, "fetching values of label %s", name)
 	}
+
+	// If we have a matcher for the label name, we can filter out values that don't match
+	// before we fetch postings. This is especially useful for labels with many values.
+	// e.g. __name__ with a selector like {__name__="xyz"}
+	for _, m := range matchers {
+		if m.Name != name {
+			continue
+		}
+
+		// re-use the allValues slice to avoid allocations
+		// this is safe because the iteration is always ahead of the append
+		filteredValues := allValues[:0]
+		for _, v := range allValues {
+			if m.Matches(v) {
+				filteredValues = append(filteredValues, v)
+			}
+		}
+		allValues = filteredValues
+	}
+
 	valuesPostings := make([]index.Postings, len(allValues))
 	for i, value := range allValues {
 		valuesPostings[i], err = r.Postings(name, value)
@@ -801,74 +821,17 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 			break
 		}
 
-		switch hc := p.currChkMeta.Chunk.(type) {
-		case *chunkenc.HistogramChunk:
-			newChunk.(*chunkenc.HistogramChunk).SetCounterResetHeader(hc.GetCounterResetHeader())
-		case *safeHeadChunk:
-			if unwrapped, ok := hc.Chunk.(*chunkenc.HistogramChunk); ok {
-				newChunk.(*chunkenc.HistogramChunk).SetCounterResetHeader(unwrapped.GetCounterResetHeader())
-			} else {
-				err = fmt.Errorf("internal error, could not unwrap safeHeadChunk to histogram chunk: %T", hc.Chunk)
-			}
-		default:
-			err = fmt.Errorf("internal error, unknown chunk type %T when expecting histogram", p.currChkMeta.Chunk)
-		}
-		if err != nil {
-			break
-		}
-
-		var h *histogram.Histogram
-		t, h = p.currDelIter.AtHistogram()
-		p.curr.MinTime = t
-
-		// Detect missing gauge reset hint.
-		if h.CounterResetHint == histogram.GaugeType && newChunk.(*chunkenc.HistogramChunk).GetCounterResetHeader() != chunkenc.GaugeType {
-			err = fmt.Errorf("found gauge histogram in non gauge chunk")
-			break
-		}
-
-		app.AppendHistogram(t, h)
-
-		for vt := p.currDelIter.Next(); vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
+		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
 			if vt != chunkenc.ValHistogram {
 				err = fmt.Errorf("found value type %v in histogram chunk", vt)
 				break
 			}
+			var h *histogram.Histogram
 			t, h = p.currDelIter.AtHistogram()
-
-			// Defend against corrupted chunks.
-			if h.CounterResetHint == histogram.GaugeType {
-				pI, nI, bpI, bnI, _, _, okToAppend := app.(*chunkenc.HistogramAppender).AppendableGauge(h)
-				if !okToAppend {
-					err = errors.New("unable to append histogram due to unexpected schema change")
-					break
-				}
-				if len(pI)+len(nI)+len(bpI)+len(bnI) > 0 {
-					err = fmt.Errorf(
-						"bucket layout has changed unexpectedly: forward %d positive, %d negative, backward %d positive %d negative bucket interjections required",
-						len(pI), len(nI), len(bpI), len(bnI),
-					)
-					break
-				}
-			} else {
-				pI, nI, okToAppend, counterReset := app.(*chunkenc.HistogramAppender).Appendable(h)
-				if len(pI)+len(nI) > 0 {
-					err = fmt.Errorf(
-						"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
-						len(pI), len(nI),
-					)
-					break
-				}
-				if counterReset {
-					err = errors.New("detected unexpected counter reset in histogram")
-					break
-				}
-				if !okToAppend {
-					err = errors.New("unable to append histogram due to unexpected schema change")
-					break
-				}
+			_, _, app, err = app.AppendHistogram(nil, t, h, true)
+			if err != nil {
+				break
 			}
-			app.AppendHistogram(t, h)
 		}
 	case chunkenc.ValFloat:
 		newChunk = chunkenc.NewXORChunk()
@@ -893,75 +856,17 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 			break
 		}
 
-		switch hc := p.currChkMeta.Chunk.(type) {
-		case *chunkenc.FloatHistogramChunk:
-			newChunk.(*chunkenc.FloatHistogramChunk).SetCounterResetHeader(hc.GetCounterResetHeader())
-		case *safeHeadChunk:
-			if unwrapped, ok := hc.Chunk.(*chunkenc.FloatHistogramChunk); ok {
-				newChunk.(*chunkenc.FloatHistogramChunk).SetCounterResetHeader(unwrapped.GetCounterResetHeader())
-			} else {
-				err = fmt.Errorf("internal error, could not unwrap safeHeadChunk to float histogram chunk: %T", hc.Chunk)
-			}
-		default:
-			err = fmt.Errorf("internal error, unknown chunk type %T when expecting float histogram", p.currChkMeta.Chunk)
-		}
-		if err != nil {
-			break
-		}
-
-		var h *histogram.FloatHistogram
-		t, h = p.currDelIter.AtFloatHistogram()
-		p.curr.MinTime = t
-
-		// Detect missing gauge reset hint.
-		if h.CounterResetHint == histogram.GaugeType && newChunk.(*chunkenc.FloatHistogramChunk).GetCounterResetHeader() != chunkenc.GaugeType {
-			err = fmt.Errorf("found float gauge histogram in non gauge chunk")
-			break
-		}
-
-		app.AppendFloatHistogram(t, h)
-
-		for vt := p.currDelIter.Next(); vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
+		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
 			if vt != chunkenc.ValFloatHistogram {
 				err = fmt.Errorf("found value type %v in histogram chunk", vt)
 				break
 			}
+			var h *histogram.FloatHistogram
 			t, h = p.currDelIter.AtFloatHistogram()
-
-			// Defend against corrupted chunks.
-			if h.CounterResetHint == histogram.GaugeType {
-				pI, nI, bpI, bnI, _, _, okToAppend := app.(*chunkenc.FloatHistogramAppender).AppendableGauge(h)
-				if !okToAppend {
-					err = errors.New("unable to append histogram due to unexpected schema change")
-					break
-				}
-				if len(pI)+len(nI)+len(bpI)+len(bnI) > 0 {
-					err = fmt.Errorf(
-						"bucket layout has changed unexpectedly: forward %d positive, %d negative, backward %d positive %d negative bucket interjections required",
-						len(pI), len(nI), len(bpI), len(bnI),
-					)
-					break
-				}
-			} else {
-				pI, nI, okToAppend, counterReset := app.(*chunkenc.FloatHistogramAppender).Appendable(h)
-				if len(pI)+len(nI) > 0 {
-					err = fmt.Errorf(
-						"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
-						len(pI), len(nI),
-					)
-					break
-				}
-				if counterReset {
-					err = errors.New("detected unexpected counter reset in histogram")
-					break
-				}
-				if !okToAppend {
-					err = errors.New("unable to append histogram due to unexpected schema change")
-					break
-				}
+			_, _, app, err = app.AppendFloatHistogram(nil, t, h, true)
+			if err != nil {
+				break
 			}
-
-			app.AppendFloatHistogram(t, h)
 		}
 	default:
 		err = fmt.Errorf("populateWithDelChunkSeriesIterator: value type %v unsupported", valueType)

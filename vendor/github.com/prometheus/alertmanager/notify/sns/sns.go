@@ -83,10 +83,7 @@ func (n *Notifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, err
 	publishOutput, err := client.Publish(publishInput)
 	if err != nil {
 		if e, ok := err.(awserr.RequestFailure); ok {
-			retryable, error := n.retrier.Check(e.StatusCode(), strings.NewReader(e.Message()))
-
-			reasonErr := notify.NewErrorWithReason(notify.GetFailureReasonFromStatusCode(e.StatusCode()), error)
-			return retryable, reasonErr
+			return n.retrier.Check(e.StatusCode(), strings.NewReader(e.Message()))
 		}
 		return true, err
 	}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
@@ -281,36 +282,10 @@ func (o *functionOperator) loadSeries(ctx context.Context) error {
 
 		b := labels.ScratchBuilder{}
 		for i, s := range series {
-			lbls, _ := DropMetricName(s, b)
+			lbls, _ := extlabels.DropMetricName(s, b)
 			o.series[i] = lbls
 		}
 	})
 
 	return err
-}
-
-func DropMetricName(l labels.Labels, b labels.ScratchBuilder) (labels.Labels, labels.Label) {
-	return dropLabel(l, labels.MetricName, b)
-}
-
-// dropLabel removes the label with name from l and returns the dropped label.
-func dropLabel(l labels.Labels, name string, b labels.ScratchBuilder) (labels.Labels, labels.Label) {
-	var ret labels.Label
-
-	if l.IsEmpty() {
-		return l, labels.Label{}
-	}
-
-	b.Reset()
-
-	l.Range(func(l labels.Label) {
-		if l.Name == name {
-			ret = l
-			return
-		}
-
-		b.Add(l.Name, l.Value)
-	})
-
-	return b.Labels(), ret
 }

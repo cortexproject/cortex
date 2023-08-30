@@ -86,9 +86,9 @@ func TestRoundTrip(t *testing.T) {
 	u, err := url.Parse(s.URL)
 	require.NoError(t, err)
 
-	downstream := singleHostRoundTripper{
-		host: u.Host,
-		next: http.DefaultTransport,
+	downstream := SingleHostRoundTripper{
+		Host: u.Host,
+		Next: http.DefaultTransport,
 	}
 
 	middlewares := []Middleware{

@@ -17,6 +17,7 @@ package tripperware
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"io"
 	"net/http"
 	"strings"
@@ -34,7 +35,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.

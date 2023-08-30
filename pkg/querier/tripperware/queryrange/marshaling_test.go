@@ -3,6 +3,7 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"github.com/gogo/protobuf/proto"
 	io "io"
 	"math/rand"
 	"net/http"
@@ -22,7 +23,7 @@ func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
 
 	// Generate a mocked response and marshal it.
 	res := mockPrometheusResponse(numSeries, numSamplesPerSeries)
-	encodedRes, err := json.Marshal(res)
+	encodedRes, err := proto.Marshal(res)
 	require.NoError(b, err)
 	b.Log("test prometheus response size:", len(encodedRes))
 

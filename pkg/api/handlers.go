@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	thanos_api "github.com/thanos-io/thanos/pkg/api"
 	"html/template"
 	"net/http"
 	"path"
@@ -20,12 +21,14 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/storage"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
+	v1api "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/handler"
+	qapi "github.com/cortexproject/cortex/pkg/querier/handler"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -160,7 +163,7 @@ func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
-	engine v1.QueryEngine,
+	engine v1api.QueryEngine,
 	distributor Distributor,
 	tombstonesLoader purger.TombstonesLoader,
 	reg prometheus.Registerer,
@@ -194,28 +197,28 @@ func NewQuerierHandler(
 		Help:      "Current number of inflight requests to the querier.",
 	}, []string{"method", "route"})
 
-	api := v1.NewAPI(
+	v1api := v1api.NewAPI(
 		engine,
 		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
 		nil, // No remote write support.
 		exemplarQueryable,
-		func(ctx context.Context) v1.ScrapePoolsRetriever { return nil },
-		func(context.Context) v1.TargetRetriever { return &querier.DummyTargetRetriever{} },
-		func(context.Context) v1.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
+		func(ctx context.Context) v1api.ScrapePoolsRetriever { return nil },
+		func(context.Context) v1api.TargetRetriever { return &querier.DummyTargetRetriever{} },
+		func(context.Context) v1api.AlertmanagerRetriever { return &querier.DummyAlertmanagerRetriever{} },
 		func() config.Config { return config.Config{} },
 		map[string]string{}, // TODO: include configuration flags
-		v1.GlobalURLOptions{},
+		v1api.GlobalURLOptions{},
 		func(f http.HandlerFunc) http.HandlerFunc { return f },
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
 		logger,
-		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
+		func(context.Context) v1api.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		false,
 		regexp.MustCompile(".*"),
-		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
-		&v1.PrometheusVersion{
+		func() (v1api.RuntimeInfo, error) { return v1api.RuntimeInfo{}, errors.New("not implemented") },
+		&v1api.PrometheusVersion{
 			Version:   version.Version,
 			Branch:    version.Branch,
 			Revision:  version.Revision,
@@ -226,6 +229,13 @@ func NewQuerierHandler(
 		// This is used for the stats API which we should not support. Or find other ways to.
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
+		nil,
+	)
+
+	queryapi := qapi.NewAPI(
+		engine,
+		querier.NewErrorTranslateSampleAndChunkQueryable(queryable), // Translate errors to errors expected by API.
+		logger,
 		nil,
 	)
 
@@ -249,18 +259,45 @@ func NewQuerierHandler(
 	legacyPrefix := path.Join(cfg.ServerPrefix, cfg.LegacyHTTPPrefix)
 
 	promRouter := route.New().WithPrefix(path.Join(prefix, "/api/v1"))
-	api.Register(promRouter)
+	v1api.Register(promRouter)
 
 	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
-	api.Register(legacyPromRouter)
+	v1api.Register(legacyPromRouter)
+
+	wrap := func(f thanos_api.ApiFunc) http.HandlerFunc {
+		hf := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			data, warnings, err, finalizer := f(r)
+			if finalizer != nil {
+				defer finalizer()
+			}
+			if err != nil {
+				queryapi.RespondError(w, err, data)
+				return
+			}
+
+			if data != nil {
+				queryapi.Respond(w, data, warnings)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		return handler.CompressionHandler{
+			Handler: hf,
+		}.ServeHTTP
+	}
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
-	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(promRouter)
-	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(promRouter)
+	if cfg.ProtobufQuerierHandler {
+		router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
+		router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
+	} else {
+		router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(promRouter)
+		router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(promRouter)
+	}
 	router.Path(path.Join(prefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/labels")).Methods("GET", "POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
@@ -273,8 +310,13 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(distributor))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	if cfg.ProtobufQuerierHandler {
+		router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(wrap(queryapi.Query))
+		router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(wrap(queryapi.QueryRange))
+	} else {
+		router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(legacyPromRouter)
+		router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(legacyPromRouter)
+	}
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_exemplars")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/labels")).Methods("GET", "POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)
@@ -291,14 +333,14 @@ type buildInfoHandler struct {
 }
 
 type buildInfoResponse struct {
-	Status string                `json:"status"`
-	Data   *v1.PrometheusVersion `json:"data"`
+	Status string                   `json:"status"`
+	Data   *v1api.PrometheusVersion `json:"data"`
 }
 
 func (h *buildInfoHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
 	infoResponse := buildInfoResponse{
 		Status: "success",
-		Data: &v1.PrometheusVersion{
+		Data: &v1api.PrometheusVersion{
 			Version:   version.Version,
 			Branch:    version.Branch,
 			Revision:  version.Revision,

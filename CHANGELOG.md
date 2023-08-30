@@ -70,6 +70,7 @@
 * [BUGFIX] DDBKV: Disallow instance with older timestamp to update instance with newer timestamp. #5480
 * [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
 * [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
+* [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
 
 ## 1.15.1 2023-04-26
 

@@ -250,6 +250,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
+	for _, blockRange := range cfg.BlockRanges {
+		if blockRange == 0 {
+			return errors.New("compactor block range period cannot be zero")
+		}
+	}
 	// Each block range period should be divisible by the previous one.
 	for i := 1; i < len(cfg.BlockRanges); i++ {
 		if cfg.BlockRanges[i]%cfg.BlockRanges[i-1] != 0 {

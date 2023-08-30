@@ -227,6 +227,8 @@ func NewQuerierHandler(
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
 		nil,
+		false,
+		false,
 	)
 
 	router := mux.NewRouter()

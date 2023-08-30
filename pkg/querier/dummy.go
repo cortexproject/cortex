@@ -20,6 +20,11 @@ func (DummyTargetRetriever) TargetsDropped() map[string][]*scrape.Target {
 	return map[string][]*scrape.Target{}
 }
 
+// TargetsDroppedCounts implements targetRetriever.
+func (DummyTargetRetriever) TargetsDroppedCounts() map[string]int {
+	return map[string]int{}
+}
+
 // DummyAlertmanagerRetriever implements AlertmanagerRetriever.
 type DummyAlertmanagerRetriever struct{}
 

@@ -130,9 +130,22 @@ func NewAPI(
 	openAPI.SilencePostSilencesHandler = silence_ops.PostSilencesHandlerFunc(api.postSilencesHandler)
 
 	handleCORS := cors.Default().Handler
-	api.Handler = handleCORS(openAPI.Serve(nil))
+	api.Handler = handleCORS(setResponseHeaders(openAPI.Serve(nil)))
 
 	return &api, nil
+}
+
+var responseHeaders = map[string]string{
+	"Cache-Control": "no-store",
+}
+
+func setResponseHeaders(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for h, v := range responseHeaders {
+			w.Header().Set(h, v)
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 func (api *API) requestLogger(req *http.Request) log.Logger {
@@ -210,8 +223,8 @@ func (api *API) getReceiversHandler(params receiver_ops.GetReceiversParams) midd
 	defer api.mtx.RUnlock()
 
 	receivers := make([]*open_api_models.Receiver, 0, len(api.alertmanagerConfig.Receivers))
-	for _, r := range api.alertmanagerConfig.Receivers {
-		receivers = append(receivers, &open_api_models.Receiver{Name: &r.Name})
+	for i := range api.alertmanagerConfig.Receivers {
+		receivers = append(receivers, &open_api_models.Receiver{Name: &api.alertmanagerConfig.Receivers[i].Name})
 	}
 
 	return receiver_ops.NewGetReceiversOK().WithPayload(receivers)
@@ -621,6 +634,9 @@ func (api *API) deleteSilenceHandler(params silence_ops.DeleteSilenceParams) mid
 	sid := params.SilenceID.String()
 	if err := api.silences.Expire(sid); err != nil {
 		level.Error(logger).Log("msg", "Failed to expire silence", "err", err)
+		if err == silence.ErrNotFound {
+			return silence_ops.NewDeleteSilenceNotFound()
+		}
 		return silence_ops.NewDeleteSilenceInternalServerError().WithPayload(err.Error())
 	}
 	return silence_ops.NewDeleteSilenceOK()

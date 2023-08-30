@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"io"
 	"math"
 	"net/http"
@@ -400,7 +401,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
-func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
+func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) {
 	u.instanceSeriesCount.Sub(int64(len(metrics)))
 
 	for _, metric := range metrics {
@@ -1969,6 +1970,11 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		enableExemplars = true
 	}
 	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
+	walCompressType := wlog.CompressionNone
+	// TODO(yeya24): expose zstd compression for WAL.
+	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
+		walCompressType = wlog.CompressionSnappy
+	}
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -1977,7 +1983,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		NoLockfile:                     true,
 		StripeSize:                     i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		HeadChunksWriteBufferSize:      i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteBufferSize,
-		WALCompression:                 i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
+		WALCompression:                 walCompressType,
 		WALSegmentSize:                 i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback:        userDB,
 		BlocksToDelete:                 userDB.blocksToDelete,

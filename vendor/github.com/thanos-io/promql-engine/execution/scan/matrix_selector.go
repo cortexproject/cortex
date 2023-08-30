@@ -14,10 +14,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	engstore "github.com/thanos-io/promql-engine/execution/storage"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
@@ -241,7 +241,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 				// we have to copy it here.
 				// TODO(GiedriusS): could we identify somehow whether labels.Labels
 				// is reused between Select() calls?
-				lbls, _ = function.DropMetricName(lbls, b)
+				lbls, _ = extlabels.DropMetricName(lbls, b)
 			}
 
 			// If we are dealing with an extended range function we need to search further in the past for valid series.

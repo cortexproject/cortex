@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cespare/xxhash/v2"
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -31,8 +30,10 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type QueryType int
@@ -47,6 +48,7 @@ const (
 	subsystem    string    = "engine"
 	InstantQuery QueryType = 1
 	RangeQuery   QueryType = 2
+	stepsBatch             = 10
 )
 
 type Opts struct {
@@ -71,6 +73,10 @@ type Opts struct {
 	// EnableXFunctions enables custom xRate, xIncrease and xDelta functions.
 	// This will default to false.
 	EnableXFunctions bool
+
+	// EnableSubqueries enables the engine to handle subqueries without falling back to prometheus.
+	// This will default to false.
+	EnableSubqueries bool
 
 	// FallbackEngine
 	Engine v1.QueryEngine
@@ -121,7 +127,7 @@ func (l remoteEngine) LabelSets() []labels.Labels {
 	return l.labelSets
 }
 
-func (l remoteEngine) NewRangeQuery(ctx context.Context, opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
+func (l remoteEngine) NewRangeQuery(ctx context.Context, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	return l.engine.NewRangeQuery(ctx, l.q, opts, qs, start, end, interval)
 }
 
@@ -132,6 +138,7 @@ type distributedEngine struct {
 
 func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngine {
 	opts.LogicalOptimizers = []logicalplan.Optimizer{
+		logicalplan.PassthroughOptimizer{Endpoints: endpoints},
 		logicalplan.DistributedExecutionOptimizer{Endpoints: endpoints},
 	}
 
@@ -143,7 +150,7 @@ func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngi
 
 func (l distributedEngine) SetQueryLogger(log promql.QueryLogger) {}
 
-func (l distributedEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+func (l distributedEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	ts = ts.Truncate(time.Second)
@@ -151,7 +158,7 @@ func (l distributedEngine) NewInstantQuery(ctx context.Context, q storage.Querya
 	return l.remoteEngine.NewInstantQuery(ctx, q, opts, qs, ts)
 }
 
-func (l distributedEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts *promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
+func (l distributedEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	start = start.Truncate(time.Second)
@@ -218,6 +225,10 @@ func New(opts Opts) *compatibilityEngine {
 		metrics:           metrics,
 		extLookbackDelta:  opts.ExtLookbackDelta,
 		enableAnalysis:    opts.EnableAnalysis,
+		enableSubqueries:  opts.EnableSubqueries,
+		noStepSubqueryIntervalFn: func(d time.Duration) time.Duration {
+			return time.Duration(opts.NoStepSubqueryIntervalFn(d.Milliseconds()) * 1000000)
+		},
 	}
 }
 
@@ -233,26 +244,27 @@ type compatibilityEngine struct {
 	timeout           time.Duration
 	metrics           *engineMetrics
 
-	extLookbackDelta time.Duration
-	enableAnalysis   bool
+	extLookbackDelta         time.Duration
+	enableAnalysis           bool
+	enableSubqueries         bool
+	noStepSubqueryIntervalFn func(time.Duration) time.Duration
 }
 
 func (e *compatibilityEngine) SetQueryLogger(l promql.QueryLogger) {
 	e.prom.SetQueryLogger(l)
 }
 
-func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts *promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
 	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
 
 	if opts == nil {
-		opts = &promql.QueryOpts{}
+		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
 	}
-
-	if opts.LookbackDelta <= 0 {
-		opts.LookbackDelta = e.lookbackDelta
+	if opts.LookbackDelta() <= 0 {
+		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
 	}
 
 	// determine sorting order before optimizers run, we do this by looking for "sort"
@@ -260,15 +272,21 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 	// the presentation layer and not when computing the results.
 	resultSort := newResultSort(expr)
 
-	lplan := logicalplan.New(expr, &logicalplan.Opts{
-		Start:         ts,
-		End:           ts,
-		Step:          1,
-		LookbackDelta: opts.LookbackDelta,
-	})
-	lplan = lplan.Optimize(e.logicalOptimizers)
+	qOpts := &query.Options{
+		Context:                  ctx,
+		Start:                    ts,
+		End:                      ts,
+		Step:                     0,
+		StepsBatch:               stepsBatch,
+		LookbackDelta:            opts.LookbackDelta(),
+		ExtLookbackDelta:         e.extLookbackDelta,
+		EnableAnalysis:           e.enableAnalysis,
+		EnableSubqueries:         e.enableSubqueries,
+		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
+	}
 
-	exec, err := execution.New(ctx, lplan.Expr(), q, ts, ts, 0, opts.LookbackDelta, e.extLookbackDelta, e.enableAnalysis)
+	lplan := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
+	exec, err := execution.New(lplan.Expr(), q, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewInstantQuery(ctx, q, opts, qs, ts)
@@ -293,7 +311,7 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 	}, nil
 }
 
-func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts *promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
+func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
 	expr, err := parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
@@ -305,22 +323,27 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 	}
 
 	if opts == nil {
-		opts = &promql.QueryOpts{}
+		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
+	}
+	if opts.LookbackDelta() <= 0 {
+		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
 	}
 
-	if opts.LookbackDelta <= 0 {
-		opts.LookbackDelta = e.lookbackDelta
+	qOpts := &query.Options{
+		Context:                  ctx,
+		Start:                    start,
+		End:                      end,
+		Step:                     step,
+		StepsBatch:               stepsBatch,
+		LookbackDelta:            opts.LookbackDelta(),
+		ExtLookbackDelta:         e.extLookbackDelta,
+		EnableAnalysis:           e.enableAnalysis,
+		EnableSubqueries:         false, // not yet implemented for range queries.
+		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
 	}
 
-	lplan := logicalplan.New(expr, &logicalplan.Opts{
-		Start:         start,
-		End:           end,
-		Step:          step,
-		LookbackDelta: opts.LookbackDelta,
-	})
-	lplan = lplan.Optimize(e.logicalOptimizers)
-
-	exec, err := execution.New(ctx, lplan.Expr(), q, start, end, step, opts.LookbackDelta, e.extLookbackDelta, e.enableAnalysis)
+	lplan := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
+	exec, err := execution.New(lplan.Expr(), q, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewRangeQuery(ctx, q, opts, qs, start, end, step)
@@ -364,7 +387,7 @@ var _ ExplainableQuery = &compatibilityQuery{}
 
 type Query struct {
 	exec model.VectorOperator
-	opts *promql.QueryOpts
+	opts promql.QueryOpts
 }
 
 // Explain returns human-readable explanation of the created executor.
@@ -548,8 +571,8 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	if err != nil {
 		return newErrResult(ret, err)
 	}
-	if containsDuplicateLabelSet(resultSeries) {
-		return newErrResult(ret, errors.New("vector cannot contain metrics with the same labelset"))
+	if extlabels.ContainsDuplicateLabelSet(resultSeries) {
+		return newErrResult(ret, extlabels.ErrDuplicateLabelSet)
 	}
 
 	series := make([]promql.Series, len(resultSeries))
@@ -671,31 +694,13 @@ func newErrResult(r *promql.Result, err error) *promql.Result {
 	return r
 }
 
-func containsDuplicateLabelSet(series []labels.Labels) bool {
-	if len(series) <= 1 {
-		return false
-	}
-	var h uint64
-	buf := make([]byte, 0)
-	seen := make(map[uint64]struct{}, len(series))
-	for i := range series {
-		buf = buf[:0]
-		h = xxhash.Sum64(series[i].Bytes(buf))
-		if _, ok := seen[h]; ok {
-			return true
-		}
-		seen[h] = struct{}{}
-	}
-	return false
-}
-
 func (q *compatibilityQuery) Statement() promparser.Statement { return nil }
 
 // Stats always returns empty query stats for now to avoid panic.
 func (q *compatibilityQuery) Stats() *stats.Statistics {
 	var enablePerStepStats bool
 	if q.opts != nil {
-		enablePerStepStats = q.opts.EnablePerStepStats
+		enablePerStepStats = q.opts.EnablePerStepStats()
 	}
 	return &stats.Statistics{Timers: stats.NewQueryTimers(), Samples: stats.NewQuerySamples(enablePerStepStats)}
 }

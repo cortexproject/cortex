@@ -335,7 +335,7 @@ func makeAccumulatorFunc(expr parser.ItemType) (newAccumulatorFunc, error) {
 					count++
 					delta := v - mean
 					mean += delta / count
-					value = delta * (v - mean)
+					value += delta * (v - mean)
 				},
 				ValueFunc: func() (float64, *histogram.FloatHistogram) {
 					if count == 1 {

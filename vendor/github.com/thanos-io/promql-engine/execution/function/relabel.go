@@ -74,16 +74,37 @@ func (o *relabelFunctionOperator) loadSeries(ctx context.Context) (err error) {
 	return err
 }
 
+func unwrap(expr parser.Expr) (string, error) {
+	switch texpr := expr.(type) {
+	case *parser.StringLiteral:
+		return texpr.Val, nil
+	case *parser.ParenExpr:
+		return unwrap(texpr.Expr)
+	default:
+		return "", errors.New("unexpected type")
+	}
+}
+
 func (o *relabelFunctionOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
-	labelJoinDst := o.funcExpr.Args[1].(*parser.StringLiteral).Val
+	labelJoinDst, err := unwrap(o.funcExpr.Args[1])
+	if err != nil {
+		return errors.Wrap(err, "unable to unwrap string argument")
+	}
 	if !prommodel.LabelName(labelJoinDst).IsValid() {
 		return errors.Newf("invalid destination label name in label_join: %s", labelJoinDst)
 	}
 
 	var labelJoinSrcLabels []string
-	labelJoinSep := o.funcExpr.Args[2].(*parser.StringLiteral).Val
+	labelJoinSep, err := unwrap(o.funcExpr.Args[2])
+	if err != nil {
+		return errors.Wrap(err, "unable to unwrap string argument")
+	}
 	for j := 3; j < len(o.funcExpr.Args); j++ {
-		labelJoinSrcLabels = append(labelJoinSrcLabels, o.funcExpr.Args[j].(*parser.StringLiteral).Val)
+		srcLabel, err := unwrap(o.funcExpr.Args[j])
+		if err != nil {
+			return errors.Wrap(err, "unable to unwrap string argument")
+		}
+		labelJoinSrcLabels = append(labelJoinSrcLabels, srcLabel)
 	}
 	for i, s := range series {
 		lbls := s
@@ -103,13 +124,25 @@ func (o *relabelFunctionOperator) loadSeriesForLabelJoin(series []labels.Labels)
 	return nil
 }
 func (o *relabelFunctionOperator) loadSeriesForLabelReplace(series []labels.Labels) error {
-	labelReplaceDst := o.funcExpr.Args[1].(*parser.StringLiteral).Val
+	labelReplaceDst, err := unwrap(o.funcExpr.Args[1])
+	if err != nil {
+		return errors.Wrap(err, "unable to unwrap string argument")
+	}
 	if !prommodel.LabelName(labelReplaceDst).IsValid() {
 		return errors.Newf("invalid destination label name in label_replace: %s", labelReplaceDst)
 	}
-	labelReplaceRepl := o.funcExpr.Args[2].(*parser.StringLiteral).Val
-	labelReplaceSrc := o.funcExpr.Args[3].(*parser.StringLiteral).Val
-	labelReplaceRegexVal := o.funcExpr.Args[4].(*parser.StringLiteral).Val
+	labelReplaceRepl, err := unwrap(o.funcExpr.Args[2])
+	if err != nil {
+		return errors.Wrap(err, "unable to unwrap string argument")
+	}
+	labelReplaceSrc, err := unwrap(o.funcExpr.Args[3])
+	if err != nil {
+		return errors.Wrap(err, "unable to unwrap string argument")
+	}
+	labelReplaceRegexVal, err := unwrap(o.funcExpr.Args[4])
+	if err != nil {
+		return errors.Wrap(err, "unable to unwrap string argument")
+	}
 	labelReplaceRegex, err := regexp.Compile("^(?:" + labelReplaceRegexVal + ")$")
 	if err != nil {
 		return errors.Newf("invalid regular expression in label_replace(): %s", labelReplaceRegexVal)

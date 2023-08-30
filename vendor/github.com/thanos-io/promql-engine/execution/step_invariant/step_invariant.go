@@ -52,7 +52,6 @@ func NewStepInvariantOperator(
 	next model.VectorOperator,
 	expr parser.Expr,
 	opts *query.Options,
-	stepsBatch int,
 ) (model.VectorOperator, error) {
 	interval := opts.Step.Milliseconds()
 	// We set interval to be at least 1.
@@ -66,7 +65,7 @@ func NewStepInvariantOperator(
 		mint:        opts.Start.UnixMilli(),
 		maxt:        opts.End.UnixMilli(),
 		step:        interval,
-		stepsBatch:  stepsBatch,
+		stepsBatch:  opts.StepsBatch,
 		cacheResult: true,
 	}
 	// We do not duplicate results for range selectors since result is a matrix

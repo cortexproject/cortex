@@ -13,11 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/tsdb/chunks"
-
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
@@ -27,11 +22,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -48,6 +46,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -400,7 +399,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
-func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
+func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) {
 	u.instanceSeriesCount.Sub(int64(len(metrics)))
 
 	for _, metric := range metrics {
@@ -1969,6 +1968,11 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		enableExemplars = true
 	}
 	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
+	walCompressType := wlog.CompressionNone
+	// TODO(yeya24): expose zstd compression for WAL.
+	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
+		walCompressType = wlog.CompressionSnappy
+	}
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -1977,7 +1981,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		NoLockfile:                     true,
 		StripeSize:                     i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		HeadChunksWriteBufferSize:      i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteBufferSize,
-		WALCompression:                 i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
+		WALCompression:                 walCompressType,
 		WALSegmentSize:                 i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback:        userDB,
 		BlocksToDelete:                 userDB.blocksToDelete,

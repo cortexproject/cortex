@@ -13,7 +13,6 @@ import (
 type UserDefinedExpr interface {
 	parser.Expr
 	MakeExecutionOperator(
-		stepsBatch int,
 		vectors *model.VectorPool,
 		selectors *engstore.SelectorPool,
 		opts *query.Options,

@@ -34,6 +34,7 @@ func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
 				cluster.DefaultProbeInterval,
 				nil,
 				false,
+				"",
 			)
 		}
 

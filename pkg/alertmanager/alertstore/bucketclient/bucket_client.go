@@ -7,11 +7,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"

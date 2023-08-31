@@ -274,6 +274,11 @@ func failedRemote(err error) bool {
 			case "dial", "read", "write":
 				return true
 			}
+		} else if strings.HasPrefix(t.Net, "udp") {
+			switch t.Op {
+			case "write":
+				return true
+			}
 		}
 	}
 	return false
@@ -324,7 +329,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 	}()
 	if node.State == StateAlive {
 		if err := m.encodeAndSendMsg(node.FullAddress(), pingMsg, &ping); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send ping: %s", err)
+			m.logger.Printf("[ERR] memberlist: Failed to send UDP ping: %s", err)
 			if failedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
 			} else {
@@ -334,7 +339,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 	} else {
 		var msgs [][]byte
 		if buf, err := encode(pingMsg, &ping); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to encode ping message: %s", err)
+			m.logger.Printf("[ERR] memberlist: Failed to encode UDP ping message: %s", err)
 			return
 		} else {
 			msgs = append(msgs, buf.Bytes())
@@ -349,7 +354,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 
 		compound := makeCompoundMessage(msgs)
 		if err := m.rawSendMsgPacket(node.FullAddress(), &node.Node, compound.Bytes()); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send compound ping and suspect message to %s: %s", addr, err)
+			m.logger.Printf("[ERR] memberlist: Failed to send UDP compound ping and suspect message to %s: %s", addr, err)
 			if failedRemote(err) {
 				goto HANDLE_REMOTE_FAILURE
 			} else {
@@ -388,7 +393,7 @@ func (m *Memberlist) probeNode(node *nodeState) {
 		// probe interval it will give the TCP fallback more time, which
 		// is more active in dealing with lost packets, and it gives more
 		// time to wait for indirect acks/nacks.
-		m.logger.Printf("[DEBUG] memberlist: Failed ping: %s (timeout reached)", node.Name)
+		m.logger.Printf("[DEBUG] memberlist: Failed UDP ping: %s (timeout reached)", node.Name)
 	}
 
 HANDLE_REMOTE_FAILURE:
@@ -421,7 +426,7 @@ HANDLE_REMOTE_FAILURE:
 		}
 
 		if err := m.encodeAndSendMsg(peer.FullAddress(), indirectPingMsg, &ind); err != nil {
-			m.logger.Printf("[ERR] memberlist: Failed to send indirect ping: %s", err)
+			m.logger.Printf("[ERR] memberlist: Failed to send indirect UDP ping: %s", err)
 		}
 	}
 
@@ -444,7 +449,11 @@ HANDLE_REMOTE_FAILURE:
 			defer close(fallbackCh)
 			didContact, err := m.sendPingAndWaitForAck(node.FullAddress(), ping, deadline)
 			if err != nil {
-				m.logger.Printf("[ERR] memberlist: Failed fallback ping: %s", err)
+				var to string
+				if ne, ok := err.(net.Error); ok && ne.Timeout() {
+					to = fmt.Sprintf("timeout %s: ", probeInterval)
+				}
+				m.logger.Printf("[ERR] memberlist: Failed fallback TCP ping: %s%s", to, err)
 			} else {
 				fallbackCh <- didContact
 			}
@@ -469,7 +478,7 @@ HANDLE_REMOTE_FAILURE:
 	// any additional time here.
 	for didContact := range fallbackCh {
 		if didContact {
-			m.logger.Printf("[WARN] memberlist: Was able to connect to %s but other probes failed, network may be misconfigured", node.Name)
+			m.logger.Printf("[WARN] memberlist: Was able to connect to %s over TCP but UDP probes failed, network may be misconfigured", node.Name)
 			return
 		}
 	}
@@ -587,7 +596,7 @@ func (m *Memberlist) gossip() {
 	m.nodeLock.RUnlock()
 
 	// Compute the bytes available
-	bytesAvail := m.config.UDPBufferSize - compoundHeaderOverhead
+	bytesAvail := m.config.UDPBufferSize - compoundHeaderOverhead - labelOverhead(m.config.Label)
 	if m.config.EncryptionEnabled() {
 		bytesAvail -= encryptOverhead(m.encryptionVersion())
 	}

@@ -41,7 +41,7 @@ require (
 	github.com/opentracing-contrib/go-stdlib v1.0.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/alertmanager v0.25.1
+	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/client_golang v1.16.0
 	github.com/prometheus/client_model v0.4.0
 	github.com/prometheus/common v0.44.0
@@ -53,7 +53,7 @@ require (
 	github.com/stretchr/testify v1.8.4
 	github.com/thanos-io/objstore v0.0.0-20230816175749-20395bffdf26
 	github.com/thanos-io/promql-engine v0.0.0-20230821193351-e1ae4275b96e
-	github.com/thanos-io/thanos v0.32.1-0.20230830054458-fac3193b6dce
+	github.com/thanos-io/thanos v0.32.1-0.20230831143954-f75e44ac929c
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20221201103051-7c2720a9024d
 	go.etcd.io/etcd/api/v3 v3.5.9
@@ -109,7 +109,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.13.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.19 // indirect
 	github.com/aws/smithy-go v1.13.3 // indirect
-	github.com/benbjohnson/clock v1.3.3 // indirect
+	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
@@ -133,7 +133,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.20.0 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/loads v0.21.2 // indirect
-	github.com/go-openapi/runtime v0.25.0 // indirect
+	github.com/go-openapi/runtime v0.26.0 // indirect
 	github.com/go-openapi/spec v0.20.9 // indirect
 	github.com/go-openapi/validate v0.22.1 // indirect
 	github.com/gofrs/uuid v4.4.0+incompatible // indirect
@@ -246,7 +246,7 @@ replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915
 replace github.com/bradfitz/gomemcache => github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab
 
 // Replace memberlist with Grafana's fork which includes some fixes that haven't been merged upstream yet
-replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.2.5-0.20211201083710-c7bc8e9df94b
+replace github.com/hashicorp/memberlist => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe
 
 // Same version being used by thanos
 replace github.com/vimeo/galaxycache => github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e
@@ -264,5 +264,3 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
-
-replace github.com/prometheus/alertmanager v0.25.1 => github.com/prometheus/alertmanager v0.25.1-0.20230505130626-263ca5c9438e

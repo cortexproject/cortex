@@ -4,6 +4,7 @@
 * [FEATURE] Ruler: Add support for Limit field on RuleGroup. #5528
 * [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
 * [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
+* [FEATURE] AlertManager: Update version to v0.26.0 and bring in Microsoft Teams receiver. #5543
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
 * [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276

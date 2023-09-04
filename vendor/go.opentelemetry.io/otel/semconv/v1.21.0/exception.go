@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otlptrace // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+package semconv // import "go.opentelemetry.io/otel/semconv/v1.21.0"
 
-// Version is the current release version of the OpenTelemetry OTLP trace exporter in use.
-func Version() string {
-	return "1.17.0"
-}
+const (
+	// ExceptionEventName is the name of the Span event representing an exception.
+	ExceptionEventName = "exception"
+)

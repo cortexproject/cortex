@@ -2,6 +2,8 @@ package alertstore
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -14,8 +16,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 )
 
+var (
+	errAccessDenied = fmt.Errorf("access denied")
+)
+
 func TestAlertStore_ListAllUsers(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -40,7 +46,7 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 }
 
 func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -78,7 +84,7 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 }
 
 func TestStore_GetAlertConfigs(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -88,6 +94,15 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 			configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
 			require.NoError(t, err)
 			assert.Empty(t, configs)
+		}
+
+		// Treat Access denied as empty.
+		{
+			m.err = errAccessDenied
+			configs, err := store.GetAlertConfigs(ctx, []string{"user-1", "user-2"})
+			require.NoError(t, err)
+			assert.Empty(t, configs)
+			m.err = nil
 		}
 
 		// The storage contains some configs.
@@ -114,7 +129,7 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 }
 
 func TestAlertStore_DeleteAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, client interface{}) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client interface{}) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -132,6 +147,12 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, user2Cfg, config)
 
+		// Ensure we capture access denied error
+		m.err = errAccessDenied
+		_, err = store.GetAlertConfig(ctx, "user-1")
+		assert.Equal(t, alertspb.ErrAccessDenied, err)
+		m.err = nil
+
 		// Delete the config for user-1.
 		require.NoError(t, store.DeleteAlertConfig(ctx, "user-1"))
 
@@ -148,26 +169,27 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 	})
 }
 
-func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, client interface{})) {
+func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *mockBucket, client interface{})) {
 	bucketClient := objstore.NewInMemBucket()
-	bucketStore := bucketclient.NewBucketAlertStore(bucketClient, nil, log.NewNopLogger())
+	mBucketClient := &mockBucket{Bucket: bucketClient}
+	bucketStore := bucketclient.NewBucketAlertStore(mBucketClient, nil, log.NewNopLogger())
 
 	stores := map[string]struct {
 		store  AlertStore
 		client interface{}
 	}{
-		"bucket": {store: bucketStore, client: bucketClient},
+		"bucket": {store: bucketStore, client: mBucketClient},
 	}
 
 	for name, data := range stores {
 		t.Run(name, func(t *testing.T) {
-			testFn(t, data.store, data.client)
+			testFn(t, data.store, mBucketClient, data.client)
 		})
 	}
 }
 
 func objectExists(bucketClient interface{}, key string) (bool, error) {
-	if typed, ok := bucketClient.(*objstore.InMemBucket); ok {
+	if typed, ok := bucketClient.(objstore.Bucket); ok {
 		return typed.Exists(context.Background(), key)
 	}
 
@@ -189,7 +211,8 @@ func makeTestFullState(content string) alertspb.FullStateDesc {
 
 func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	store := bucketclient.NewBucketAlertStore(bucket, nil, log.NewNopLogger())
+	mBucketClient := &mockBucket{Bucket: bucket}
+	store := bucketclient.NewBucketAlertStore(mBucketClient, nil, log.NewNopLogger())
 	ctx := context.Background()
 
 	state1 := makeTestFullState("one")
@@ -206,6 +229,18 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		users, err := store.ListUsersWithFullState(ctx)
 		assert.NoError(t, err)
 		assert.ElementsMatch(t, []string{}, users)
+	}
+
+	// Test Access Denied
+	{
+		mBucketClient.err = errAccessDenied
+		_, err := store.GetFullState(ctx, "user-1")
+		assert.Equal(t, alertspb.ErrAccessDenied, err)
+
+		users, err := store.ListUsersWithFullState(ctx)
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, []string{}, users)
+		mBucketClient.err = nil
 	}
 
 	// The storage contains users.
@@ -255,4 +290,20 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		// Delete again (should be idempotent).
 		require.NoError(t, store.DeleteFullState(ctx, "user-1"))
 	}
+}
+
+type mockBucket struct {
+	objstore.Bucket
+	err error
+}
+
+func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.Bucket.Get(ctx, name)
+}
+
+func (m *mockBucket) IsAccessDeniedErr(err error) bool {
+	return err == errAccessDenied
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -76,8 +78,8 @@ func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string
 	err := concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(userIDs), fetchConcurrency, func(ctx context.Context, job interface{}) error {
 		userID := job.(string)
 
-		cfg, err := s.getAlertConfig(ctx, userID)
-		if s.alertsBucket.IsObjNotFoundErr(err) {
+		cfg, uBucket, err := s.getAlertConfig(ctx, userID)
+		if uBucket.IsObjNotFoundErr(err) || uBucket.IsAccessDeniedErr(err) {
 			return nil
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
@@ -95,9 +97,13 @@ func (s *BucketAlertStore) GetAlertConfigs(ctx context.Context, userIDs []string
 
 // GetAlertConfig implements alertstore.AlertStore.
 func (s *BucketAlertStore) GetAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
-	cfg, err := s.getAlertConfig(ctx, userID)
-	if s.alertsBucket.IsObjNotFoundErr(err) {
+	cfg, uBucket, err := s.getAlertConfig(ctx, userID)
+	if uBucket.IsObjNotFoundErr(err) {
 		return cfg, alertspb.ErrNotFound
+	}
+
+	if uBucket.IsAccessDeniedErr(err) {
+		return cfg, alertspb.ErrAccessDenied
 	}
 
 	return cfg, err
@@ -142,8 +148,12 @@ func (s *BucketAlertStore) GetFullState(ctx context.Context, userID string) (ale
 	fs := alertspb.FullStateDesc{}
 
 	err := s.get(ctx, bkt, fullStateName, &fs)
-	if s.amBucket.IsObjNotFoundErr(err) {
+	if bkt.IsObjNotFoundErr(err) {
 		return fs, alertspb.ErrNotFound
+	}
+
+	if bkt.IsAccessDeniedErr(err) {
+		return fs, alertspb.ErrAccessDenied
 	}
 
 	return fs, err
@@ -172,10 +182,11 @@ func (s *BucketAlertStore) DeleteFullState(ctx context.Context, userID string) e
 	return err
 }
 
-func (s *BucketAlertStore) getAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, error) {
+func (s *BucketAlertStore) getAlertConfig(ctx context.Context, userID string) (alertspb.AlertConfigDesc, objstore.Bucket, error) {
 	config := alertspb.AlertConfigDesc{}
-	err := s.get(ctx, s.getUserBucket(userID), userID, &config)
-	return config, err
+	userBkt := s.getUserBucket(userID)
+	err := s.get(ctx, userBkt, userID, &config)
+	return config, userBkt, err
 }
 
 func (s *BucketAlertStore) get(ctx context.Context, bkt objstore.Bucket, name string, msg proto.Message) error {
@@ -205,5 +216,6 @@ func (s *BucketAlertStore) getUserBucket(userID string) objstore.Bucket {
 }
 
 func (s *BucketAlertStore) getAlertmanagerUserBucket(userID string) objstore.Bucket {
-	return bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider).WithExpectedErrs(s.amBucket.IsObjNotFoundErr)
+	uBucket := bucket.NewUserBucketClient(userID, s.amBucket, s.cfgProvider)
+	return uBucket.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(uBucket.IsAccessDeniedErr, uBucket.IsObjNotFoundErr))
 }

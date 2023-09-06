@@ -85,6 +85,7 @@ type Config struct {
 	Store             alertstore.AlertStore
 	PersisterConfig   PersisterConfig
 	APIConcurrency    int
+	GCInterval        time.Duration
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -254,8 +255,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger, am.registry)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, am.cfg.GCInterval, callback, am.logger, am.registry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}

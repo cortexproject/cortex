@@ -78,8 +78,9 @@ type MultitenantAlertmanagerConfig struct {
 
 	Cluster ClusterConfig `yaml:"cluster"`
 
-	EnableAPI      bool `yaml:"enable_api"`
-	APIConcurrency int  `yaml:"api_concurrency"`
+	EnableAPI      bool          `yaml:"enable_api"`
+	APIConcurrency int           `yaml:"api_concurrency"`
+	GCInterval     time.Duration `yaml:"gc_interval"`
 
 	// For distributor.
 	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
@@ -119,7 +120,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
 	f.IntVar(&cfg.APIConcurrency, "alertmanager.api-concurrency", 0, "Maximum number of concurrent GET API requests before returning an error.")
-
+	f.DurationVar(&cfg.GCInterval, "alertmanager.alerts-gc-interval", 30*time.Minute, "Alertmanager alerts Garbage collection interval.")
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 	f.Var(&cfg.EnabledTenants, "alertmanager.enabled-tenants", "Comma separated list of tenants whose alerts this alertmanager can process. If specified, only these tenants will be handled by alertmanager, otherwise this alertmanager can process alerts from all tenants.")
 	f.Var(&cfg.DisabledTenants, "alertmanager.disabled-tenants", "Comma separated list of tenants whose alerts this alertmanager cannot process. If specified, a alertmanager that would normally pick the specified tenant(s) for processing will ignore them instead.")
@@ -969,6 +970,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		PersisterConfig:   am.cfg.Persister,
 		Limits:            am.limits,
 		APIConcurrency:    am.cfg.APIConcurrency,
+		GCInterval:        am.cfg.GCInterval,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

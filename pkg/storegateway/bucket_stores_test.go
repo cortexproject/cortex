@@ -514,6 +514,44 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 	}
 }
 
+func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.MaxInflightRequest = 10
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	stores.inflightRequestMu.Lock()
+	stores.inflightRequestCnt = 10
+	stores.inflightRequestMu.Unlock()
+	series, warnings, err := querySeries(stores, "user_id", "metric_name", 0, 0)
+	require.Errorf(t, err, "too many inflight requests in store gateway, limit = 10")
+	assert.Empty(t, series)
+	assert.Empty(t, warnings)
+}
+
+func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.MaxInflightRequest = 0 // disables the limit
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	stores.inflightRequestMu.Lock()
+	stores.inflightRequestCnt = 10
+	stores.inflightRequestMu.Unlock()
+	_, _, err = querySeries(stores, "user_id", "metric_name", 0, 0)
+	require.NoError(t, err)
+}
+
 func prepareStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)

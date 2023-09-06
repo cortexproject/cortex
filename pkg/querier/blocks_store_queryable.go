@@ -1116,6 +1116,8 @@ func isRetryableError(err error) bool {
 	switch status.Code(err) {
 	case codes.Unavailable:
 		return true
+	case codes.ResourceExhausted:
+		return errors.Is(err, storegateway.ErrTooManyInflightRequests)
 	default:
 		return false
 	}

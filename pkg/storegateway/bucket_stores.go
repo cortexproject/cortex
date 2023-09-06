@@ -3,6 +3,7 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/status"
 	"math"
 	"net/http"
 	"os"
@@ -72,12 +73,18 @@ type BucketStores struct {
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
 
+	// Keeps number of inflight requests
+	inflightRequestCnt int
+	inflightRequestMu  sync.RWMutex
+
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
 	tenantsDiscovered prometheus.Gauge
 	tenantsSynced     prometheus.Gauge
 }
+
+var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
@@ -293,6 +300,16 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
 	defer spanLog.Span.Finish()
 
+	maxInflightRequest := u.cfg.BucketStore.MaxInflightRequest
+	if maxInflightRequest > 0 {
+		if u.inflightRequestCnt >= maxInflightRequest {
+			return ErrTooManyInflightRequests
+		}
+
+		u.incrementInflightRequestCnt()
+		defer u.decrementInflightRequestCnt()
+	}
+
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
 		return fmt.Errorf("no userID")
@@ -319,6 +336,18 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	})
 
 	return err
+}
+
+func (u *BucketStores) incrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt++
+	u.inflightRequestMu.Unlock()
+}
+
+func (u *BucketStores) decrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt--
+	u.inflightRequestMu.Unlock()
 }
 
 // LabelNames implements the Storegateway proto service.

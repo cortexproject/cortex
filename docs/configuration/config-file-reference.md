@@ -433,6 +433,10 @@ cluster:
 # CLI flag: -alertmanager.api-concurrency
 [api_concurrency: <int> | default = 0]
 
+# Alertmanager alerts Garbage collection interval.
+# CLI flag: -alertmanager.alerts-gc-interval
+[gc_interval: <duration> | default = 30m]
+
 alertmanager_client:
   # Timeout for downstream alertmanagers.
   # CLI flag: -alertmanager.alertmanager-client.remote-timeout

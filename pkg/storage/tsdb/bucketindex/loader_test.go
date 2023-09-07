@@ -604,6 +604,7 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAccessDenied(t *testin
 
 	_, ss, err := loader.GetIndex(ctx, user)
 	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+	// SyncStatus does not exists
 	require.Equal(t, Unknown, ss.Status)
 
 	// Verify is the index sync status is being returned
@@ -611,8 +612,8 @@ func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousKeyAccessDenied(t *testin
 	ss.NonQueryableReason = CustomerManagedKeyError
 	WriteSyncStatus(ctx, bkt, user, ss, log.NewNopLogger())
 
-	// Check not cached
-	loader.deleteCachedIndex(user)
+	// Update the index with the new sync status
+	require.NoError(t, loader.checkCachedIndexes(ctx))
 	_, ss, err = loader.GetIndex(ctx, user)
 	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	require.Equal(t, CustomerManagedKeyError, ss.Status)

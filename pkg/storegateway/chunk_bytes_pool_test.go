@@ -31,11 +31,11 @@ func TestChunkBytesPool_Get(t *testing.T) {
 	p.Put(b)
 
 	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(fmt.Sprintf(`
-		# HELP cortex_bucket_store_chunk_pool_bytes_total Total bytes number of bytes pooled by operation.
-		# TYPE cortex_bucket_store_chunk_pool_bytes_total counter
-		cortex_bucket_store_chunk_pool_bytes_total{operation="Get",stats="Cap"} %d
-		cortex_bucket_store_chunk_pool_bytes_total{operation="Get",stats="Requested"} %d
-		cortex_bucket_store_chunk_pool_bytes_total{operation="Put",stats="Cap"} %d
-		cortex_bucket_store_chunk_pool_bytes_total{operation="Put",stats="Len"} %d
+		# HELP cortex_bucket_store_chunk_pool_operation_bytes_total Total bytes number of bytes pooled by operation.
+		# TYPE cortex_bucket_store_chunk_pool_operation_bytes_total counter
+		cortex_bucket_store_chunk_pool_operation_bytes_total{operation="get",stats="cap"} %d
+		cortex_bucket_store_chunk_pool_operation_bytes_total{operation="get",stats="requested"} %d
+		cortex_bucket_store_chunk_pool_operation_bytes_total{operation="put",stats="cap"} %d
+		cortex_bucket_store_chunk_pool_operation_bytes_total{operation="put",stats="len"} %d
 	`, store.EstimatedMaxChunkSize*3, store.EstimatedMaxChunkSize*2, store.EstimatedMaxChunkSize*2, len(testBytes)))))
 }

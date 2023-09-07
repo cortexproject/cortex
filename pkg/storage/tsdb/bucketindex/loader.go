@@ -96,12 +96,13 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 	if entry := l.indexes[userID]; entry != nil {
 		idx := entry.index
 		err := entry.err
+		ss := entry.syncStatus
 		l.indexesMx.RUnlock()
 
 		// We don't check if the index is stale because it's the responsibility
 		// of the background job to keep it updated.
 		entry.requestedAt.Store(time.Now().Unix())
-		return idx, entry.syncStatus, err
+		return idx, ss, err
 	}
 	l.indexesMx.RUnlock()
 

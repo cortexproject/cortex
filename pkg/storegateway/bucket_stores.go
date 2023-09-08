@@ -300,9 +300,9 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
 	defer spanLog.Span.Finish()
 
-	maxInflightRequest := u.cfg.BucketStore.MaxInflightRequests
-	if maxInflightRequest > 0 {
-		if u.inflightRequestCnt >= maxInflightRequest {
+	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
+	if maxInflightRequests > 0 {
+		if u.inflightRequestCnt >= maxInflightRequests {
 			return ErrTooManyInflightRequests
 		}
 

@@ -172,9 +172,6 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 		level.Debug(g.logger).Log("msg", "compactor is not on the current sub-ring skipping user", "user", g.userID)
 		return outGroups, nil
 	}
-	// Metrics for the remaining planned compactions
-	var remainingCompactions = 0.
-	defer func() { g.remainingPlannedCompactions.Set(remainingCompactions) }()
 
 	var groups []blocksGroup
 	for _, mainBlocks := range mainGroups {
@@ -250,11 +247,14 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			partitionAdded++
 
 			level.Debug(g.logger).Log("msg", "found available partition", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount)
-			remainingCompactions++
 		}
 		level.Info(g.logger).Log("msg", fmt.Sprintf("found available partitions: %d", partitionAdded))
 	}
 	level.Info(g.logger).Log("msg", fmt.Sprintf("total possible group for compaction: %d", len(blockGroups)))
+
+	// Metrics for the remaining planned compactions
+	var remainingCompactions = float64(len(blockGroups))
+	defer func() { g.remainingPlannedCompactions.Set(remainingCompactions) }()
 
 	for _, partitionedGroup := range blockGroups {
 		groupHash := partitionedGroup.groupHash

@@ -38,6 +38,14 @@ func (e LimitError) Error() string {
 	return string(e)
 }
 
+type DisabledRuleGroup struct {
+	Namespace string `yaml:"namespace"`
+	Name      string `yaml:"name"`
+	User      string `yaml:"-"`
+}
+
+type DisabledRuleGroups []DisabledRuleGroup
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
@@ -122,12 +130,13 @@ type Limits struct {
 	NotificationRateLimit               float64                  `yaml:"alertmanager_notification_rate_limit" json:"alertmanager_notification_rate_limit"`
 	NotificationRateLimitPerIntegration NotificationRateLimitMap `yaml:"alertmanager_notification_rate_limit_per_integration" json:"alertmanager_notification_rate_limit_per_integration"`
 
-	AlertmanagerMaxConfigSizeBytes             int `yaml:"alertmanager_max_config_size_bytes" json:"alertmanager_max_config_size_bytes"`
-	AlertmanagerMaxTemplatesCount              int `yaml:"alertmanager_max_templates_count" json:"alertmanager_max_templates_count"`
-	AlertmanagerMaxTemplateSizeBytes           int `yaml:"alertmanager_max_template_size_bytes" json:"alertmanager_max_template_size_bytes"`
-	AlertmanagerMaxDispatcherAggregationGroups int `yaml:"alertmanager_max_dispatcher_aggregation_groups" json:"alertmanager_max_dispatcher_aggregation_groups"`
-	AlertmanagerMaxAlertsCount                 int `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
-	AlertmanagerMaxAlertsSizeBytes             int `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
+	AlertmanagerMaxConfigSizeBytes             int                `yaml:"alertmanager_max_config_size_bytes" json:"alertmanager_max_config_size_bytes"`
+	AlertmanagerMaxTemplatesCount              int                `yaml:"alertmanager_max_templates_count" json:"alertmanager_max_templates_count"`
+	AlertmanagerMaxTemplateSizeBytes           int                `yaml:"alertmanager_max_template_size_bytes" json:"alertmanager_max_template_size_bytes"`
+	AlertmanagerMaxDispatcherAggregationGroups int                `yaml:"alertmanager_max_dispatcher_aggregation_groups" json:"alertmanager_max_dispatcher_aggregation_groups"`
+	AlertmanagerMaxAlertsCount                 int                `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
+	AlertmanagerMaxAlertsSizeBytes             int                `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
+	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -665,6 +674,26 @@ func (o *Overrides) AlertmanagerMaxAlertsCount(userID string) int {
 
 func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
 	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
+}
+
+func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
+	if o.tenantLimits != nil {
+		l := o.tenantLimits.ByUserID(userID)
+		if l != nil {
+			disabledRuleGroupsForUser := make(DisabledRuleGroups, len(l.DisabledRuleGroups))
+
+			for i, disabledRuleGroup := range l.DisabledRuleGroups {
+				disabledRuleGroupForUser := DisabledRuleGroup{
+					Namespace: disabledRuleGroup.Namespace,
+					Name:      disabledRuleGroup.Name,
+					User:      userID,
+				}
+				disabledRuleGroupsForUser[i] = disabledRuleGroupForUser
+			}
+			return disabledRuleGroupsForUser
+		}
+	}
+	return DisabledRuleGroups{}
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

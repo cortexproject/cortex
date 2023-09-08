@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -142,6 +144,7 @@ type RulesLimits interface {
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
+	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 }
 
 // EngineQueryFunc returns a new engine query function by passing an altered timestamp.

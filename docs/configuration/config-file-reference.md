@@ -3097,6 +3097,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # alerts will fail with a log message and metric increment. 0 = no limit.
 # CLI flag: -alertmanager.max-alerts-size-bytes
 [alertmanager_max_alerts_size_bytes: <int> | default = 0]
+
+# list of rule groups to disable
+[disabled_rule_groups: <list of rule groups to disable> | default = ]
 ```
 
 ### `memberlist_config`

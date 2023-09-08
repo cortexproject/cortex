@@ -21,6 +21,7 @@
 * [CHANGE] Store Gateway: Remove `idle_timeout`, `max_conn_age`, `pool_size`, `min_idle_conns` fields for Redis index cache and caching bucket. #5448
 * [CHANGE] Store Gateway: Add flag `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` to enable store gateway to use zone stable shuffle sharding. #5489
 * [CHANGE] Bucket Index: Add `series_max_size` and `chunk_max_size` to bucket index. #5489
+* [CHANGE] StoreGateway: Rename `cortex_bucket_store_chunk_pool_returned_bytes_total` and `cortex_bucket_store_chunk_pool_requested_bytes_total` to `cortex_bucket_store_chunk_pool_operation_bytes_total`. #5552
 * [CHANGE] Query Frontend/Querier: Make build info API disabled by default and add feature flag `api.build-info-enabled` to enable it. #5533
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338

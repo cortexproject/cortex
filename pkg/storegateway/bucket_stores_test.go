@@ -516,7 +516,7 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 
 func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *testing.T) {
 	cfg := prepareStorageConfig(t)
-	cfg.BucketStore.MaxInflightRequest = 10
+	cfg.BucketStore.MaxInflightRequests = 10
 	reg := prometheus.NewPedanticRegistry()
 	storageDir := t.TempDir()
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
@@ -536,7 +536,7 @@ func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *t
 
 func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
 	cfg := prepareStorageConfig(t)
-	cfg.BucketStore.MaxInflightRequest = 0 // disables the limit
+	cfg.BucketStore.MaxInflightRequests = 0 // disables the limit
 	reg := prometheus.NewPedanticRegistry()
 	storageDir := t.TempDir()
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})

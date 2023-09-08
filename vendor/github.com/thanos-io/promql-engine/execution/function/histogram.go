@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/parser"
 )
 
@@ -182,6 +183,9 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if extlabels.ContainsDuplicateLabelSetAfterDroppingName(series) {
+		return extlabels.ErrDuplicateLabelSet
+	}
 
 	var (
 		hashBuf      = make([]byte, 0, 256)
@@ -194,13 +198,13 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 	b := labels.ScratchBuilder{}
 	for i, s := range series {
 		hasBucketValue := true
-		lbls, bucketLabel := dropLabel(s, "le", b)
+		lbls, bucketLabel := extlabels.DropBucketLabel(s, b)
 		value, err := strconv.ParseFloat(bucketLabel.Value, 64)
 		if err != nil {
 			hasBucketValue = false
 		}
-		lbls, _ = DropMetricName(lbls, b)
 
+		lbls, _ = extlabels.DropMetricName(lbls, b)
 		hasher.Reset()
 		hashBuf = lbls.Bytes(hashBuf)
 		if _, err := hasher.Write(hashBuf); err != nil {

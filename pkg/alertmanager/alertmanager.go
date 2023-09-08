@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/notify/discord"
 	"github.com/prometheus/alertmanager/notify/email"
+	"github.com/prometheus/alertmanager/notify/msteams"
 	"github.com/prometheus/alertmanager/notify/opsgenie"
 	"github.com/prometheus/alertmanager/notify/pagerduty"
 	"github.com/prometheus/alertmanager/notify/pushover"
@@ -84,6 +85,7 @@ type Config struct {
 	Store             alertstore.AlertStore
 	PersisterConfig   PersisterConfig
 	APIConcurrency    int
+	GCInterval        time.Duration
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -253,8 +255,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-
-	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, 30*time.Minute, callback, am.logger, am.registry)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.marker, am.cfg.GCInterval, callback, am.logger, am.registry)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -482,7 +483,7 @@ func buildIntegrationsMap(nc []config.Receiver, tmpl *template.Template, firewal
 
 // buildReceiverIntegrations builds a list of integration notifiers off of a
 // receiver config.
-// Taken from https://github.com/prometheus/alertmanager/blob/263ca5c9438e/cmd/alertmanager/main.go#L134-L189.
+// Taken from https://github.com/prometheus/alertmanager/blob/d7b4f0c7322e7151d6e3b1e31cbc15361e295d8d/cmd/alertmanager/main.go#L135-L193.
 func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
 		errs         types.MultiError
@@ -538,6 +539,9 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 	}
 	for i, c := range nc.WebexConfigs {
 		add("webex", i, c, func(l log.Logger) (notify.Notifier, error) { return webex.New(c, tmpl, l, httpOps...) })
+	}
+	for i, c := range nc.MSTeamsConfigs {
+		add("msteams", i, c, func(l log.Logger) (notify.Notifier, error) { return msteams.New(c, tmpl, l) })
 	}
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {

@@ -125,7 +125,7 @@ func WriteIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProv
 	}
 
 	// Upload the index to the storage.
-	if err := bkt.Upload(ctx, IndexCompressedFilename, &gzipContent); err != nil {
+	if err := bkt.Upload(ctx, IndexCompressedFilename, bytes.NewReader(gzipContent.Bytes())); err != nil {
 		return errors.Wrap(err, "upload bucket index")
 	}
 

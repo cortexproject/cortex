@@ -115,6 +115,13 @@ func TestConfig_Validate(t *testing.T) {
 			initLimits: func(_ *validation.Limits) {},
 			expected:   errors.Errorf(errInvalidBlockRanges, 30*time.Hour, 24*time.Hour).Error(),
 		},
+		"should fail with duration values of zero": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 0, 24 * time.Hour, 30 * time.Hour}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errors.Errorf("compactor block range period cannot be zero").Error(),
+		},
 		"should pass with valid shuffle sharding config": {
 			setup: func(cfg *Config) {
 				cfg.ShardingStrategy = util.ShardingStrategyShuffle

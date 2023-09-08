@@ -29,6 +29,7 @@ const (
 	syncFromReplica  = "from-replica"
 	syncFromStorage  = "from-storage"
 	syncUserNotFound = "user-not-found"
+	syncAccessDenied = "user-access-denied"
 	syncFailed       = "failed"
 )
 
@@ -230,6 +231,11 @@ func (s *state) starting(ctx context.Context) error {
 	if errors.Is(err, alertspb.ErrNotFound) {
 		level.Info(s.logger).Log("msg", "no state for user in storage; proceeding", "user", s.userID)
 		s.initialSyncCompleted.WithLabelValues(syncUserNotFound).Inc()
+		return nil
+	}
+	if errors.Is(err, alertspb.ErrAccessDenied) {
+		level.Info(s.logger).Log("msg", "access deinied when trying to access user storage; proceeding", "user", s.userID)
+		s.initialSyncCompleted.WithLabelValues(syncAccessDenied).Inc()
 		return nil
 	}
 	if err == nil {

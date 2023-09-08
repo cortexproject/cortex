@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 // MergeSelectsOptimizer optimizes a binary expression where
@@ -20,7 +21,7 @@ import (
 // and apply an additional filter for {c="d"}.
 type MergeSelectsOptimizer struct{}
 
-func (m MergeSelectsOptimizer) Optimize(expr parser.Expr, _ *Opts) parser.Expr {
+func (m MergeSelectsOptimizer) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
 	heap := make(matcherHeap)
 	extractSelectors(heap, expr)
 	replaceMatchers(heap, &expr)

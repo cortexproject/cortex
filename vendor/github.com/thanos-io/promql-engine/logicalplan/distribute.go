@@ -14,6 +14,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type timeRange struct {
@@ -138,7 +139,7 @@ type DistributedExecutionOptimizer struct {
 	Endpoints api.RemoteEndpoints
 }
 
-func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *Opts) parser.Expr {
+func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Options) parser.Expr {
 	engines := m.Endpoints.Engines()
 	sort.Slice(engines, func(i, j int) bool {
 		return engines[i].MinT() < engines[j].MinT()
@@ -227,7 +228,7 @@ func newRemoteAggregation(rootAggregation *parser.AggregateExpr, engines []api.R
 // distributeQuery takes a PromQL expression in the form of *parser.Expr and a set of remote engines.
 // For each engine which matches the time range of the query, it creates a RemoteExecution scoped to the range of the engine.
 // All remote executions are wrapped in a Deduplicate logical node to make sure that results from overlapping engines are deduplicated.
-func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engines []api.RemoteEngine, opts *Opts, allowedStartOffset time.Duration) parser.Expr {
+func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engines []api.RemoteEngine, opts *query.Options, allowedStartOffset time.Duration) parser.Expr {
 	if isAbsent(*expr) {
 		return m.distributeAbsent(*expr, engines, opts)
 	}
@@ -271,7 +272,7 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 	}
 }
 
-func (m DistributedExecutionOptimizer) distributeAbsent(expr parser.Expr, engines []api.RemoteEngine, opts *Opts) parser.Expr {
+func (m DistributedExecutionOptimizer) distributeAbsent(expr parser.Expr, engines []api.RemoteEngine, opts *query.Options) parser.Expr {
 	queries := make(RemoteExecutions, 0, len(engines))
 	for i := range engines {
 		queries = append(queries, RemoteExecution{
@@ -302,7 +303,7 @@ func isAbsent(expr parser.Expr) bool {
 	return call.Func.Name == "absent" || call.Func.Name == "absent_over_time"
 }
 
-func getStartTimeForEngine(e api.RemoteEngine, opts *Opts, offset time.Duration, globalMinT int64) (time.Time, bool) {
+func getStartTimeForEngine(e api.RemoteEngine, opts *query.Options, offset time.Duration, globalMinT int64) (time.Time, bool) {
 	if e.MinT() > opts.End.UnixMilli() {
 		return time.Time{}, false
 	}
@@ -336,7 +337,7 @@ func getStartTimeForEngine(e api.RemoteEngine, opts *Opts, offset time.Duration,
 // engine min time and the query step size.
 // The purpose of this alignment is to make sure that the steps for the remote query
 // have the same timestamps as the ones for the central query.
-func calculateStepAlignedStart(opts *Opts, engineMinTime time.Time) time.Time {
+func calculateStepAlignedStart(opts *query.Options, engineMinTime time.Time) time.Time {
 	originalSteps := numSteps(opts.Start, opts.End, opts.Step)
 	remoteQuerySteps := numSteps(engineMinTime, opts.End, opts.Step)
 

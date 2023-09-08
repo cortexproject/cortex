@@ -91,6 +91,10 @@ api:
   # CLI flag: -server.cors-origin
   [cors_origin: <string> | default = ".*"]
 
+  # If enabled, build Info API will be served by query frontend or querier.
+  # CLI flag: -api.build-info-enabled
+  [build_info_enabled: <boolean> | default = false]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]
@@ -369,6 +373,11 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # The sleep seconds when alertmanager is shutting down. Need to be close to or
+  # larger than KV Store information propagation delay
+  # CLI flag: -alertmanager.sharding-ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
@@ -423,6 +432,10 @@ cluster:
 # Maximum number of concurrent GET API requests before returning an error.
 # CLI flag: -alertmanager.api-concurrency
 [api_concurrency: <int> | default = 0]
+
+# Alertmanager alerts Garbage collection interval.
+# CLI flag: -alertmanager.alerts-gc-interval
+[gc_interval: <duration> | default = 30m]
 
 alertmanager_client:
   # Timeout for downstream alertmanagers.
@@ -3055,7 +3068,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # is given in JSON format. Rate limit has the same meaning as
 # -alertmanager.notification-rate-limit, but only applies for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover, sns, telegram, discord, webex.
+# wechat, slack, victorops, pushover, sns, telegram, discord, webex, msteams.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 
@@ -3953,6 +3966,11 @@ ring:
   # CLI flag: -ruler.ring.num-tokens
   [num_tokens: <int> | default = 128]
 
+  # The sleep seconds when ruler is shutting down. Need to be close to or larger
+  # than KV Store information propagation delay
+  # CLI flag: -ruler.ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
+
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
 [flush_period: <duration> | default = 1m]
@@ -4843,6 +4861,11 @@ sharding_ring:
   # anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
+
+  # The sleep seconds when store-gateway is shutting down. Need to be close to
+  # or larger than KV Store information propagation delay
+  # CLI flag: -store-gateway.sharding-ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
 
   # Name of network interface to read address from.
   # CLI flag: -store-gateway.sharding-ring.instance-interface-names

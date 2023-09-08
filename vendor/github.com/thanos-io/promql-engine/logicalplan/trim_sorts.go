@@ -5,6 +5,7 @@ package logicalplan
 
 import (
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 // TrimSortFunctions trims sort functions. It can do that because for nested sort functions
@@ -14,7 +15,7 @@ import (
 type TrimSortFunctions struct {
 }
 
-func (TrimSortFunctions) Optimize(expr parser.Expr, _ *Opts) parser.Expr {
+func (TrimSortFunctions) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
 	TraverseBottomUp(nil, &expr, func(parent, current *parser.Expr) bool {
 		if current == nil || parent == nil {
 			return true

@@ -73,6 +73,8 @@ type RingConfig struct {
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
 	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
 
+	FinalSleep time.Duration `yaml:"final_sleep"`
+
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
@@ -108,6 +110,8 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	// Wait stability flags.
 	f.DurationVar(&cfg.WaitStabilityMinDuration, ringFlagsPrefix+"wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
 	f.DurationVar(&cfg.WaitStabilityMaxDuration, ringFlagsPrefix+"wait-stability-max-duration", 5*time.Minute, "Maximum time to wait for ring stability at startup. If the store-gateway ring keeps changing after this period of time, the store-gateway will start anyway.")
+
+	f.DurationVar(&cfg.FinalSleep, ringFlagsPrefix+"final-sleep", 0*time.Second, "The sleep seconds when store-gateway is shutting down. Need to be close to or larger than KV Store information propagation delay")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -150,5 +154,6 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 		TokensObservePeriod:             0,
 		NumTokens:                       RingNumTokens,
 		KeepInstanceInTheRingOnShutdown: cfg.KeepInstanceInTheRingOnShutdown,
+		FinalSleep:                      cfg.FinalSleep,
 	}, nil
 }

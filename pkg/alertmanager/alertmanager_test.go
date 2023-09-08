@@ -46,6 +46,7 @@ func createAlertmanagerAndSendAlerts(t *testing.T, alertGroups, groupsLimit, exp
 		TenantDataDir:   t.TempDir(),
 		ExternalURL:     &url.URL{Path: "/am"},
 		ShardingEnabled: false,
+		GCInterval:      30 * time.Minute,
 	}, reg)
 	require.NoError(t, err)
 	defer am.StopAndWait()

@@ -245,7 +245,7 @@ func btof(b bool) float64 {
 
 func shouldDropMetricName(op parser.ItemType, returnBool bool) bool {
 	switch op.String() {
-	case "+", "-", "*", "/", "%", "^":
+	case "+", "-", "*", "/", "%", "^", "atan2":
 		return true
 	}
 

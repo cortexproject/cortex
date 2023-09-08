@@ -12,8 +12,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
@@ -201,7 +201,7 @@ func (o *scalarOperator) loadSeries(ctx context.Context) error {
 		if !vectorSeries[i].IsEmpty() {
 			lbls := vectorSeries[i]
 			if shouldDropMetricName(o.opType, o.returnBool) {
-				lbls, _ = function.DropMetricName(lbls, b)
+				lbls, _ = extlabels.DropMetricName(lbls, b)
 			}
 			series[i] = lbls
 		} else {

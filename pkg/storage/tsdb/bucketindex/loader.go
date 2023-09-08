@@ -96,12 +96,13 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 	if entry := l.indexes[userID]; entry != nil {
 		idx := entry.index
 		err := entry.err
+		ss := entry.syncStatus
 		l.indexesMx.RUnlock()
 
 		// We don't check if the index is stale because it's the responsibility
 		// of the background job to keep it updated.
 		entry.requestedAt.Store(time.Now().Unix())
-		return idx, entry.syncStatus, err
+		return idx, ss, err
 	}
 	l.indexesMx.RUnlock()
 
@@ -203,6 +204,16 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 
 	l.loadAttempts.Inc()
 	startTime := time.Now()
+	ss, err := ReadSyncStatus(ctx, l.bkt, userID, l.logger)
+	if err != nil {
+		level.Warn(l.logger).Log("msg", "unable to read bucket index status", "user", userID, "err", err)
+	}
+
+	// Update Sync Status
+	l.indexesMx.Lock()
+	l.indexes[userID].syncStatus = ss
+	l.indexesMx.Unlock()
+
 	idx, err := ReadIndex(readCtx, l.bkt, userID, l.cfgProvider, l.logger)
 	if err != nil && !errors.Is(err, ErrIndexNotFound) && !errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 		l.loadFailures.Inc()
@@ -212,7 +223,7 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 
 	l.loadDuration.Observe(time.Since(startTime).Seconds())
 
-	// We cache it either it was successfully refreshed or wasn't found. An use case for caching the ErrIndexNotFound
+	// We cache it either it was successfully refreshed,  wasn't found or when is a CMK error. An use case for caching the ErrIndexNotFound
 	// is when a tenant has rules configured but hasn't started remote writing yet. Rules will be evaluated and
 	// bucket index loaded by the ruler.
 	l.indexesMx.Lock()

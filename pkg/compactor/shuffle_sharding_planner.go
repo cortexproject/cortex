@@ -95,7 +95,8 @@ func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMin
 			return nil, fmt.Errorf("block %s with partition ID %d is in completed status", blockID, partitionID)
 		}
 		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, partitionID, p.ringLifecyclerID) {
-			level.Warn(p.logger).Log("msg", "block is not visited by current compactor", "block_id", blockID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID)
+			level.Warn(p.logger).Log("msg", "block is not visited by current compactor", "block_id", blockID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID,
+				"marker_partitioned_group_id", blockVisitMarker.PartitionedGroupID, "marker_partition_id", blockVisitMarker.PartitionID, "marker_compactor_id", blockVisitMarker.CompactorID, "marker_visit_time", blockVisitMarker.VisitTime)
 			return nil, nil
 		}
 

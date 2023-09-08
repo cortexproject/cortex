@@ -1634,10 +1634,15 @@ func removeIgnoredLogs(input []string) []string {
 	}
 
 	out := make([]string, 0, len(input))
-	durationRe := regexp.MustCompile(`\s?duration=\S+`)
+	executionIDRe := regexp.MustCompile(`\s?duration=\S+`)
+	durationRe := regexp.MustCompile(`\s?execution_id=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]
+
+		// Remove any execution_id from logs.
+		log = executionIDRe.ReplaceAllString(log, "")
+
 		if strings.Contains(log, "block.MetaFetcher") || strings.Contains(log, "block.BaseFetcher") {
 			continue
 		}

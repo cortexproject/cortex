@@ -17,6 +17,12 @@ func WithUserID(userID string, l kitlog.Logger) kitlog.Logger {
 	return kitlog.With(l, "org_id", userID)
 }
 
+// WithExecutionID returns a Logger that has information about the execution id in
+// its details.
+func WithExecutionID(executionID string, l kitlog.Logger) kitlog.Logger {
+	return kitlog.With(l, "execution_id", executionID)
+}
+
 // WithTraceID returns a Logger that has information about the traceID in
 // its details.
 func WithTraceID(traceID string, l kitlog.Logger) kitlog.Logger {

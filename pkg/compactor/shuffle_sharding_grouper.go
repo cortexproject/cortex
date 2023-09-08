@@ -210,6 +210,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 		return iGroupKey < jGroupKey
 	})
 
+	var blockGroups []*blocksGroup
 	for _, group := range groups {
 		var blockIds []string
 		for _, block := range group.blocks {
@@ -234,6 +235,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 
 		partitionedGroupID := partitionedGroupInfo.PartitionedGroupID
 		partitionCount := partitionedGroupInfo.PartitionCount
+		partitionAdded := 0
 		for _, partition := range partitionedGroupInfo.Partitions {
 			partitionID := partition.PartitionID
 			partitionedGroup, err := createBlocksGroup(blocks, partition.Blocks, partitionedGroupInfo.RangeStart, partitionedGroupInfo.RangeEnd)
@@ -241,71 +243,89 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 				level.Error(g.logger).Log("msg", "unable to create partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err)
 				continue
 			}
-			if isVisited, err := g.isGroupVisited(partitionedGroup.blocks, partitionID, g.ringLifecyclerID); err != nil {
-				level.Warn(g.logger).Log("msg", "unable to check if blocks in partition are visited", "group hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err, "group", group.String())
-				continue
-			} else if isVisited {
-				level.Info(g.logger).Log("msg", "skipping group because at least one block in partition is visited", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
-				continue
-			}
+			partitionedGroup.groupHash = groupHash
+			partitionedGroup.partitionedGroupInfo = partitionedGroupInfo
+			partitionedGroup.partition = partition
+			blockGroups = append(blockGroups, partitionedGroup)
+			partitionAdded++
 
+			level.Debug(g.logger).Log("msg", "found available partition", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount)
 			remainingCompactions++
+		}
+		level.Info(g.logger).Log("msg", fmt.Sprintf("found available partitions: %d", partitionAdded))
+	}
+	level.Info(g.logger).Log("msg", fmt.Sprintf("total possible group for compaction: %d", len(blockGroups)))
 
-			if len(outGroups) < g.compactionConcurrency {
-				partitionedGroupKey := createGroupKeyWithPartitionID(groupHash, partitionID, *partitionedGroup)
+	for _, partitionedGroup := range blockGroups {
+		groupHash := partitionedGroup.groupHash
+		partitionedGroupID := partitionedGroup.partitionedGroupInfo.PartitionedGroupID
+		partitionCount := partitionedGroup.partitionedGroupInfo.PartitionCount
+		partitionID := partitionedGroup.partition.PartitionID
+		if isVisited, err := g.isGroupVisited(partitionedGroup.blocks, partitionID, g.ringLifecyclerID); err != nil {
+			level.Warn(g.logger).Log("msg", "unable to check if blocks in partition are visited", "group hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err, "group", partitionedGroup.String())
+			continue
+		} else if isVisited {
+			level.Info(g.logger).Log("msg", "skipping group because at least one block in partition is visited", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+			remainingCompactions--
+			continue
+		}
+		partitionedGroupKey := createGroupKeyWithPartitionID(groupHash, partitionID, *partitionedGroup)
 
-				level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group", partitionedGroup.String())
-				blockVisitMarker := BlockVisitMarker{
-					VisitTime:          time.Now().Unix(),
-					CompactorID:        g.ringLifecyclerID,
-					Status:             Pending,
-					PartitionedGroupID: partitionedGroupID,
-					PartitionID:        partitionID,
-					Version:            VisitMarkerVersion1,
-				}
-				markBlocksVisited(g.ctx, g.bkt, g.logger, partitionedGroup.blocks, blockVisitMarker, g.blockVisitMarkerWriteFailed)
+		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group", partitionedGroup.String())
+		blockVisitMarker := BlockVisitMarker{
+			VisitTime:          time.Now().Unix(),
+			CompactorID:        g.ringLifecyclerID,
+			Status:             Pending,
+			PartitionedGroupID: partitionedGroupID,
+			PartitionID:        partitionID,
+			Version:            VisitMarkerVersion1,
+		}
+		markBlocksVisited(g.ctx, g.bkt, g.logger, partitionedGroup.blocks, blockVisitMarker, g.blockVisitMarkerWriteFailed)
+		level.Info(g.logger).Log("msg", "marked blocks visited in group", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group", partitionedGroup.String())
 
-				resolution := partitionedGroup.blocks[0].Thanos.Downsample.Resolution
-				externalLabels := labels.FromMap(partitionedGroup.blocks[0].Thanos.Labels)
-				thanosGroup, err := compact.NewGroup(
-					log.With(g.logger, "groupKey", partitionedGroupKey, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "rangeStart", partitionedGroup.rangeStartTime().String(), "rangeEnd", partitionedGroup.rangeEndTime().String(), "externalLabels", externalLabels, "downsampleResolution", resolution),
-					g.bkt,
-					partitionedGroupKey,
-					externalLabels,
-					resolution,
-					g.acceptMalformedIndex,
-					true, // Enable vertical compaction.
-					g.compactions.WithLabelValues(partitionedGroupKey),
-					g.compactionRunsStarted.WithLabelValues(partitionedGroupKey),
-					g.compactionRunsCompleted.WithLabelValues(partitionedGroupKey),
-					g.compactionFailures.WithLabelValues(partitionedGroupKey),
-					g.verticalCompactions.WithLabelValues(partitionedGroupKey),
-					g.garbageCollectedBlocks,
-					g.blocksMarkedForDeletion,
-					g.blocksMarkedForNoCompact,
-					g.hashFunc,
-					g.blockFilesConcurrency,
-					g.blocksFetchConcurrency,
-				)
-				if err != nil {
-					level.Error(g.logger).Log("msg", "failed to create partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "blocks", partition.Blocks)
-				}
+		resolution := partitionedGroup.blocks[0].Thanos.Downsample.Resolution
+		externalLabels := labels.FromMap(partitionedGroup.blocks[0].Thanos.Labels)
+		thanosGroup, err := compact.NewGroup(
+			log.With(g.logger, "groupKey", partitionedGroupKey, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "rangeStart", partitionedGroup.rangeStartTime().String(), "rangeEnd", partitionedGroup.rangeEndTime().String(), "externalLabels", externalLabels, "downsampleResolution", resolution),
+			g.bkt,
+			partitionedGroupKey,
+			externalLabels,
+			resolution,
+			g.acceptMalformedIndex,
+			true, // Enable vertical compaction.
+			g.compactions.WithLabelValues(partitionedGroupKey),
+			g.compactionRunsStarted.WithLabelValues(partitionedGroupKey),
+			g.compactionRunsCompleted.WithLabelValues(partitionedGroupKey),
+			g.compactionFailures.WithLabelValues(partitionedGroupKey),
+			g.verticalCompactions.WithLabelValues(partitionedGroupKey),
+			g.garbageCollectedBlocks,
+			g.blocksMarkedForDeletion,
+			g.blocksMarkedForNoCompact,
+			g.hashFunc,
+			g.blockFilesConcurrency,
+			g.blocksFetchConcurrency,
+		)
+		if err != nil {
+			level.Error(g.logger).Log("msg", "failed to create partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "blocks", partitionedGroup.partition.Blocks)
+		}
 
-				for _, m := range partitionedGroup.blocks {
-					if err := thanosGroup.AppendMeta(m); err != nil {
-						level.Error(g.logger).Log("msg", "failed to add block to partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "block", m.ULID)
-					}
-				}
-				thanosGroup.SetExtensions(&CortexMetaExtensions{
-					PartitionInfo: &PartitionInfo{
-						PartitionedGroupID: partitionedGroupID,
-						PartitionCount:     partitionCount,
-						PartitionID:        partitionID,
-					},
-				})
-
-				outGroups = append(outGroups, thanosGroup)
+		for _, m := range partitionedGroup.blocks {
+			if err := thanosGroup.AppendMeta(m); err != nil {
+				level.Error(g.logger).Log("msg", "failed to add block to partitioned group", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "block", m.ULID)
 			}
+		}
+		thanosGroup.SetExtensions(&CortexMetaExtensions{
+			PartitionInfo: &PartitionInfo{
+				PartitionedGroupID: partitionedGroupID,
+				PartitionCount:     partitionCount,
+				PartitionID:        partitionID,
+			},
+		})
+
+		outGroups = append(outGroups, thanosGroup)
+		level.Debug(g.logger).Log("msg", "added partition to compaction groups", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount)
+		if len(outGroups) >= g.compactionConcurrency {
+			break
 		}
 	}
 
@@ -321,10 +341,8 @@ func (g *ShuffleShardingGrouper) generatePartitionBlockGroup(group blocksGroup, 
 	}
 	updatedPartitionedGroupInfo, err := UpdatePartitionedGroupInfo(g.ctx, g.bkt, g.logger, *partitionedGroupInfo, g.partitionedGroupInfoReadFailed, g.partitionedGroupInfoWriteFailed)
 	if err != nil {
-		level.Warn(g.logger).Log("msg", "unable to update partitioned group info", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "err", err)
 		return nil, err
 	}
-	level.Debug(g.logger).Log("msg", "generated partitioned groups", "groups", updatedPartitionedGroupInfo)
 	return updatedPartitionedGroupInfo, nil
 }
 
@@ -539,10 +557,13 @@ func createBlocksGroup(blocks map[ulid.ULID]*metadata.Meta, blockIDs []ulid.ULID
 
 // blocksGroup struct and functions copied and adjusted from https://github.com/cortexproject/cortex/pull/2616
 type blocksGroup struct {
-	rangeStart int64 // Included.
-	rangeEnd   int64 // Excluded.
-	blocks     []*metadata.Meta
-	key        string
+	rangeStart           int64 // Included.
+	rangeEnd             int64 // Excluded.
+	blocks               []*metadata.Meta
+	key                  string
+	groupHash            uint32
+	partitionedGroupInfo *PartitionedGroupInfo
+	partition            Partition
 }
 
 // overlaps returns whether the group range overlaps with the input group.

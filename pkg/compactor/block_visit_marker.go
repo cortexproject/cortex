@@ -141,7 +141,7 @@ func markBlocksVisited(
 		}
 		reader.Reset(visitMarkerFileContent)
 	}
-	level.Debug(logger).Log("msg", "marked block visited", "partition_id", marker.PartitionID, "blocks", generateBlocksInfo(blocks))
+	level.Debug(logger).Log("msg", "marked blocks visited", "partition_id", marker.PartitionID, "blocks", generateBlocksInfo(blocks))
 }
 
 func markBlocksVisitedHeartBeat(

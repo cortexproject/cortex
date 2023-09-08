@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	crypto_rand "crypto/rand"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -810,6 +811,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
 
 	ulogger := util_log.WithUserID(userID, c.logger)
+	ulogger = util_log.WithExecutionID(ulid.MustNew(ulid.Now(), crypto_rand.Reader).String(), ulogger)
 
 	// Filters out duplicate blocks that can be formed from two or more overlapping
 	// blocks that fully submatches the source blocks of the older blocks.

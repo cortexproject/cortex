@@ -301,13 +301,8 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	defer spanLog.Span.Finish()
 
 	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
-	if maxInflightRequests > 0 {
-		if u.inflightRequestCnt >= maxInflightRequests {
-			return ErrTooManyInflightRequests
-		}
-
-		u.incrementInflightRequestCnt()
-		defer u.decrementInflightRequestCnt()
+	if maxInflightRequests > 0 && u.getInflightRequestCnt() >= maxInflightRequests {
+		return ErrTooManyInflightRequests
 	}
 
 	userID := getUserIDFromGRPCContext(spanCtx)
@@ -330,12 +325,23 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return nil
 	}
 
+	if maxInflightRequests > 0 {
+		u.incrementInflightRequestCnt()
+		defer u.decrementInflightRequestCnt()
+	}
+
 	err = store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	})
 
 	return err
+}
+
+func (u *BucketStores) getInflightRequestCnt() int {
+	u.inflightRequestMu.RLock()
+	defer u.inflightRequestMu.RUnlock()
+	return u.inflightRequestCnt
 }
 
 func (u *BucketStores) incrementInflightRequestCnt() {

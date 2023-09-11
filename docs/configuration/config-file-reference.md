@@ -1643,6 +1643,11 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
   [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
 
+  # If true, Store Gateway will estimate postings size and try to lazily expand
+  # postings if it downloads less data than expanding all postings.
+  # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
+  [lazy_expanded_postings_enabled: <boolean> | default = false]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir

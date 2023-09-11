@@ -7,6 +7,7 @@
 * [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
 * [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
 * [FEATURE] AlertManager: Update version to v0.26.0 and bring in Microsoft Teams receiver. #5543
+* [FEATURE] Store Gateway: Support lazy expanded posting optimization. Added new flag `"blocks-storage.bucket-store.lazy-expanded-postings-enabled` and new metrics `cortex_bucket_store_lazy_expanded_postings_total`, `cortex_bucket_store_lazy_expanded_posting_size_bytes_total` and `cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total`. #5556.
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
 * [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276

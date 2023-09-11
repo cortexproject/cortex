@@ -552,6 +552,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			}
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
+		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
 	}
 	if u.logLevel.String() == "debug" {
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())

@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/storegateway"
 	"io"
 	"sort"
 	"strings"
@@ -35,6 +34,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"

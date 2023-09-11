@@ -3,7 +3,6 @@ package storegateway
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/status"
 	"math"
 	"net/http"
 	"os"
@@ -32,6 +31,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"

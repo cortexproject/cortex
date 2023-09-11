@@ -39,9 +39,9 @@ func (e LimitError) Error() string {
 }
 
 type DisabledRuleGroup struct {
-	Namespace string `yaml:"namespace"`
-	Name      string `yaml:"name"`
-	User      string `yaml:"-"`
+	Namespace string `yaml:"namespace" doc:"nocli|description=namespace in which the rule group belongs"`
+	Name      string `yaml:"name" doc:"nocli|description=name of the rule group"`
+	User      string `yaml:"-" doc:"nocli"`
 }
 
 type DisabledRuleGroups []DisabledRuleGroup

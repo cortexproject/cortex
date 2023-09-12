@@ -112,7 +112,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 		}
 
 		// Skip field types which are non configurable
-		if field.Type.Kind() == reflect.Func {
+		if field.Type.Kind() == reflect.Func || field.Type.Kind() == reflect.Pointer {
 			continue
 		}
 
@@ -123,7 +123,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 		}
 
 		// Handle custom fields in vendored libs upon which we have no control.
-		fieldEntry, err := getCustomFieldEntry(field, fieldValue, flags)
+		fieldEntry, err := getCustomFieldEntry(t, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -189,17 +189,45 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 			return nil, errors.Wrapf(err, "config=%s.%s", t.PkgPath(), t.Name())
 		}
 
-		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		fieldDefault := ""
+		if field.Type.Kind() == reflect.Slice {
+			sliceElementType := field.Type.Elem()
+			if sliceElementType.Kind() == reflect.Struct {
+				rootBlocks = append(rootBlocks, rootBlock{
+					name:       field.Type.Elem().Name(),
+					structType: field.Type.Elem(),
+				})
+				sliceElementBlock := &configBlock{
+					name: field.Type.Elem().Name(),
+					desc: "",
+				}
+				sliceElementCfg := reflect.New(sliceElementType).Interface()
+				otherBlocks, err := parseConfig(sliceElementBlock, sliceElementCfg, flags)
+
+				if err != nil {
+					return nil, err
+				}
+				if len(sliceElementBlock.entries) > 0 {
+					blocks = append(blocks, sliceElementBlock)
+				}
+
+				blocks = append(blocks, otherBlocks...)
+			}
+			fieldDefault = "[]"
+		}
+
+		fieldFlag, err := getFieldFlag(t, field, fieldValue, flags)
 		if err != nil {
 			return nil, errors.Wrapf(err, "config=%s.%s", t.PkgPath(), t.Name())
 		}
 		if fieldFlag == nil {
 			block.Add(&configEntry{
-				kind:      "field",
-				name:      fieldName,
-				required:  isFieldRequired(field),
-				fieldDesc: getFieldDescription(field, ""),
-				fieldType: fieldType,
+				kind:         "field",
+				name:         fieldName,
+				required:     isFieldRequired(field),
+				fieldDesc:    getFieldDescription(field, ""),
+				fieldType:    fieldType,
+				fieldDefault: fieldDefault,
 			})
 			continue
 		}
@@ -213,6 +241,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 			fieldType:    fieldType,
 			fieldDefault: fieldFlag.DefValue,
 		})
+
 	}
 
 	return blocks, nil
@@ -257,17 +286,14 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "[]*relabel.Config":
 		return "relabel_config...", nil
-	case "labels.Labels":
-		return "map of string to string", nil
-	case "validation.DisabledRuleGroups":
-		return "list of rule groups to disable", nil
 	}
 
 	// Fallback to auto-detection of built-in data types
 	switch t.Kind() {
+	case reflect.Struct:
+		return t.Name(), nil
 	case reflect.Bool:
 		return "boolean", nil
-
 	case reflect.Int:
 		fallthrough
 	case reflect.Int8:
@@ -314,8 +340,9 @@ func getFieldType(t reflect.Type) (string, error) {
 	}
 }
 
-func getFieldFlag(field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*flag.Flag, error) {
-	if isAbsentInCLI(field) {
+func getFieldFlag(parent reflect.Type, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*flag.Flag, error) {
+
+	if isAbsentInCLI(field) || ignoreCLI(parent) {
 		return nil, nil
 	}
 	fieldPtr := fieldValue.Addr().Pointer()
@@ -327,9 +354,9 @@ func getFieldFlag(field reflect.StructField, fieldValue reflect.Value, flags map
 	return fieldFlag, nil
 }
 
-func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*configEntry, error) {
+func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*configEntry, error) {
 	if field.Type == reflect.TypeOf(logging.Level{}) || field.Type == reflect.TypeOf(logging.Format{}) {
-		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -345,7 +372,7 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 		}, nil
 	}
 	if field.Type == reflect.TypeOf(flagext.URLValue{}) {
-		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +388,7 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 		}, nil
 	}
 	if field.Type == reflect.TypeOf(flagext.Secret{}) {
-		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -377,7 +404,7 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 		}, nil
 	}
 	if field.Type == reflect.TypeOf(model.Duration(0)) {
-		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -393,7 +420,7 @@ func getCustomFieldEntry(field reflect.StructField, fieldValue reflect.Value, fl
 		}, nil
 	}
 	if field.Type == reflect.TypeOf(flagext.Time{}) {
-		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
 		}
@@ -418,6 +445,13 @@ func isFieldHidden(f reflect.StructField) bool {
 
 func isAbsentInCLI(f reflect.StructField) bool {
 	return getDocTagFlag(f, "nocli")
+}
+
+func ignoreCLI(f reflect.Type) bool {
+	if ignore, OK := typesToIgnoreCLI[f.String()]; OK && ignore {
+		return true
+	}
+	return false
 }
 
 func isFieldRequired(f reflect.StructField) bool {

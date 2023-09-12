@@ -2862,7 +2862,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # List of metric relabel configurations. Note that in most situations, it is
 # more effective to use metrics relabeling directly in the Prometheus server,
 # e.g. remote_write.write_relabel_configs.
-[metric_relabel_configs: <relabel_config...> | default = ]
+[metric_relabel_configs: <relabel_config...> | default = []]
 
 # Enables support for exemplars in TSDB and sets the maximum number that will be
 # stored. less than zero means disabled. If the value is set to zero, cortex
@@ -3104,7 +3104,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 [alertmanager_max_alerts_size_bytes: <int> | default = 0]
 
 # list of rule groups to disable
-[disabled_rule_groups: <list of rule groups to disable> | default = ]
+[disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
 ```
 
 ### `memberlist_config`
@@ -3724,7 +3724,7 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 # Labels to add to all alerts.
-[external_labels: <map of string to string> | default = ]
+[external_labels: <list of Label> | default = []]
 
 ruler_client:
   # gRPC client max receive message size (bytes).
@@ -4936,4 +4936,22 @@ otel:
     # Skip validating server certificate.
     # CLI flag: -tracing.otel.tls.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `DisabledRuleGroup`
+
+```yaml
+# namespace in which the rule group belongs
+[namespace: <string> | default = ""]
+
+# name of the rule group
+[name: <string> | default = ""]
+```
+
+### `Label`
+
+```yaml
+[name: <string> | default = ""]
+
+[value: <string> | default = ""]
 ```

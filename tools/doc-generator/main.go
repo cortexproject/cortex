@@ -46,6 +46,11 @@ const (
 )
 
 var (
+	typesToIgnoreCLI = map[string]bool{
+		"labels.Label": true,
+		"flagext.CIDR": true,
+	}
+
 	// Ordered list of root blocks. The order is the same order that will
 	// follow the markdown generation.
 	rootBlocks = []rootBlock{

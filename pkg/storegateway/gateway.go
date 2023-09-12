@@ -40,7 +40,7 @@ const (
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
 
-	instanceLimitsMetric     = "cortex_store_gateway_instance_limits"
+	instanceLimitsMetric     = "cortex_storegateway_instance_limits"
 	instanceLimitsMetricHelp = "Instance limits used by this store gateway."
 	limitLabel               = "limit"
 )

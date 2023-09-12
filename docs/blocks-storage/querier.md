@@ -500,7 +500,7 @@ blocks_storage:
     [max_concurrent: <int> | default = 100]
 
     # Max number of inflight queries to execute against the long-term storage.
-    # THe limit is shared across all tenants. 0 to disable.
+    # The limit is shared across all tenants. 0 to disable.
     # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
     [max_inflight_requests: <int> | default = 0]
 

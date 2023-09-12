@@ -647,7 +647,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{
 						remoteAddr:      "1.1.1.1",
-						mockedSeriesErr: grpc.ErrClientConnClosing,
+						mockedSeriesErr: status.Error(codes.Canceled, "grpc: the client connection is closing"),
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{

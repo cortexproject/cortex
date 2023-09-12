@@ -639,6 +639,64 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"multiple store-gateways has the block, but one of them fails to return due to clientconn closing": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: grpc.ErrClientConnClosing,
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
+		"multiple store-gateways has the block, but one of them fails to return due to chunk pool exhaustion": {
+			finderResult: bucketindex.Blocks{
+				{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: status.Error(codes.Unknown, "load chunks: populate chunk: allocate chunk bytes: pool exhausted"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
 		"all store-gateways return PermissionDenied": {
 			finderResult: bucketindex.Blocks{
 				{ID: block1},

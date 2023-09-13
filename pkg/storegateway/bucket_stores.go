@@ -31,6 +31,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -72,12 +73,18 @@ type BucketStores struct {
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
 
+	// Keeps number of inflight requests
+	inflightRequestCnt int
+	inflightRequestMu  sync.RWMutex
+
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
 	tenantsDiscovered prometheus.Gauge
 	tenantsSynced     prometheus.Gauge
 }
+
+var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
@@ -313,12 +320,40 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return nil
 	}
 
+	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
+	if maxInflightRequests > 0 {
+		if u.getInflightRequestCnt() >= maxInflightRequests {
+			return ErrTooManyInflightRequests
+		}
+
+		u.incrementInflightRequestCnt()
+		defer u.decrementInflightRequestCnt()
+	}
+
 	err = store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	})
 
 	return err
+}
+
+func (u *BucketStores) getInflightRequestCnt() int {
+	u.inflightRequestMu.RLock()
+	defer u.inflightRequestMu.RUnlock()
+	return u.inflightRequestCnt
+}
+
+func (u *BucketStores) incrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt++
+	u.inflightRequestMu.Unlock()
+}
+
+func (u *BucketStores) decrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt--
+	u.inflightRequestMu.Unlock()
 }
 
 // LabelNames implements the Storegateway proto service.

@@ -1122,7 +1122,6 @@ func isRetryableError(err error) bool {
 	// https://github.com/grpc/grpc-go/blob/03172006f5d168fc646d87928d85cb9c4a480291/clientconn.go#L67
 	case codes.Canceled:
 		return strings.Contains(err.Error(), "grpc: the client connection is closing")
-	// TODO(yeya24): change Thanos to use ResourceExhausted for chunk pool error.
 	default:
 		return false
 	}

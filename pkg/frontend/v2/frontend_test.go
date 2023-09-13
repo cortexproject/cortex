@@ -115,6 +115,36 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 	require.Equal(t, []byte(body), resp.Body)
 }
 
+func TestFrontendRetryRequest(t *testing.T) {
+	// Frontend uses worker concurrency to compute number of retries. We use one less failure.
+	tries := atomic.NewInt64(3)
+	const (
+		body   = "hello world"
+		userID = "test"
+	)
+
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		try := tries.Dec()
+		if try > 0 {
+			go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+				Code: 500,
+				Body: []byte(body),
+			})
+		} else {
+			go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+				Code: 200,
+				Body: []byte(body),
+			})
+		}
+
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
+	})
+
+	res, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	require.NoError(t, err)
+	require.Equal(t, int32(200), res.Code)
+}
+
 func TestFrontendRetryEnqueue(t *testing.T) {
 	// Frontend uses worker concurrency to compute number of retries. We use one less failure.
 	failures := atomic.NewInt64(testFrontendWorkerConcurrency - 1)

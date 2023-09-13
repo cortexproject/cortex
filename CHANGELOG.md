@@ -1,11 +1,13 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Ruler: Add support for disabling rule groups. #5521
 * [FEATURE] Added the flag `-alertmanager.alerts-gc-interval` to configure alert manager alerts Garbage collection interval. #5550
 * [FEATURE] Ruler: Add support for Limit field on RuleGroup. #5528
 * [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
 * [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
 * [FEATURE] AlertManager: Update version to v0.26.0 and bring in Microsoft Teams receiver. #5543
+* [FEATURE] Store Gateway: Support lazy expanded posting optimization. Added new flag `"blocks-storage.bucket-store.lazy-expanded-postings-enabled` and new metrics `cortex_bucket_store_lazy_expanded_postings_total`, `cortex_bucket_store_lazy_expanded_posting_size_bytes_total` and `cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total`. #5556.
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
 * [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276
@@ -33,6 +35,7 @@
 * [FEATURE] Ruler: Support for filtering rules in the API. #5417
 * [FEATURE] Compactor: Add `-compactor.ring.tokens-file-path` to store generated tokens locally. #5432
 * [FEATURE] Query Frontend: Add `-frontend.retry-on-too-many-outstanding-requests` to re-enqueue 429 requests if there are multiple query-schedulers available. #5496
+* [FEATURE] Store Gateway: Add `-blocks-storage.bucket-store.max-inflight-requests`for store gateways to reject further requests upon reaching the limit. #5553
 * [FEATURE] Compactor: Implemented partitioning compactor based on proposal #4843. #5465
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
@@ -58,6 +61,7 @@
 * [ENHANCEMENT] Store Gateway: add metric `cortex_bucket_store_chunk_refetches_total` for number of chunk refetches. #5532
 * [ENHANCEMENT] BasicLifeCycler: allow final-sleep during shutdown #5517
 * [ENHANCEMENT] All: Handling CMK Access Denied errors. #5420 #5542
+* [ENHANCEMENT] Querier: Retry store gateway client connection closing gRPC error. #5558
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293

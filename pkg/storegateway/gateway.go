@@ -39,6 +39,10 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
+
+	instanceLimitsMetric     = "cortex_storegateway_instance_limits"
+	instanceLimitsMetricHelp = "Instance limits used by this store gateway."
+	limitLabel               = "limit"
 )
 
 var (
@@ -141,6 +145,22 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 	g.bucketSync.WithLabelValues(syncReasonInitial)
 	g.bucketSync.WithLabelValues(syncReasonPeriodic)
 	g.bucketSync.WithLabelValues(syncReasonRingChange)
+
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_inflight_requests"},
+	}).Set(float64(storageCfg.BucketStore.MaxInflightRequests))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_concurrent"},
+	}).Set(float64(storageCfg.BucketStore.MaxConcurrent))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_chunk_pool_bytes"},
+	}).Set(float64(storageCfg.BucketStore.MaxChunkPoolBytes))
 
 	// Init sharding strategy.
 	var shardingStrategy ShardingStrategy

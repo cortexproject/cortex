@@ -42,6 +42,10 @@ type BucketStoreMetrics struct {
 	postingsFetchDuration *prometheus.Desc
 	chunkFetchDuration    *prometheus.Desc
 
+	lazyExpandedPostingsCount                     *prometheus.Desc
+	lazyExpandedPostingSizeBytes                  *prometheus.Desc
+	lazyExpandedPostingSeriesOverfetchedSizeBytes *prometheus.Desc
+
 	indexHeaderLazyLoadCount         *prometheus.Desc
 	indexHeaderLazyLoadFailedCount   *prometheus.Desc
 	indexHeaderLazyUnloadCount       *prometheus.Desc
@@ -185,6 +189,19 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_indexheader_lazy_load_duration_seconds",
 			"Duration of the index-header lazy loading in seconds.",
 			nil, nil),
+
+		lazyExpandedPostingsCount: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_postings_total",
+			"Total number of lazy expanded postings when fetching block series.",
+			nil, nil),
+		lazyExpandedPostingSizeBytes: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_posting_size_bytes_total",
+			"Total number of lazy posting group size in bytes.",
+			nil, nil),
+		lazyExpandedPostingSeriesOverfetchedSizeBytes: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total",
+			"Total number of series size in bytes overfetched due to posting lazy expansion.",
+			nil, nil),
 	}
 }
 
@@ -232,6 +249,10 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.indexHeaderLazyUnloadCount
 	out <- m.indexHeaderLazyUnloadFailedCount
 	out <- m.indexHeaderLazyLoadDuration
+
+	out <- m.lazyExpandedPostingsCount
+	out <- m.lazyExpandedPostingSizeBytes
+	out <- m.lazyExpandedPostingSeriesOverfetchedSizeBytes
 }
 
 func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -275,4 +296,8 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadCount, "thanos_bucket_store_indexheader_lazy_unload_total")
 	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadFailedCount, "thanos_bucket_store_indexheader_lazy_unload_failed_total")
 	data.SendSumOfHistograms(out, m.indexHeaderLazyLoadDuration, "thanos_bucket_store_indexheader_lazy_load_duration_seconds")
+
+	data.SendSumOfCounters(out, m.lazyExpandedPostingsCount, "thanos_bucket_store_lazy_expanded_postings_total")
+	data.SendSumOfCounters(out, m.lazyExpandedPostingSizeBytes, "thanos_bucket_store_lazy_expanded_posting_size_bytes_total")
+	data.SendSumOfCounters(out, m.lazyExpandedPostingSeriesOverfetchedSizeBytes, "thanos_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total")
 }

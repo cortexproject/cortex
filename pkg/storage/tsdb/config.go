@@ -241,6 +241,7 @@ type BucketStoreConfig struct {
 	SyncDir                  string              `yaml:"sync_dir"`
 	SyncInterval             time.Duration       `yaml:"sync_interval"`
 	MaxConcurrent            int                 `yaml:"max_concurrent"`
+	MaxInflightRequests      int                 `yaml:"max_inflight_requests"`
 	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
 	MetaSyncConcurrency      int                 `yaml:"meta_sync_concurrency"`
@@ -260,6 +261,9 @@ type BucketStoreConfig struct {
 	// Controls whether index-header lazy loading is enabled.
 	IndexHeaderLazyLoadingEnabled     bool          `yaml:"index_header_lazy_loading_enabled"`
 	IndexHeaderLazyLoadingIdleTimeout time.Duration `yaml:"index_header_lazy_loading_idle_timeout"`
+
+	// Controls whether lazy expanded posting optimization is enabled or not.
+	LazyExpandedPostingsEnabled bool `yaml:"lazy_expanded_postings_enabled"`
 
 	// Controls the partitioner, used to aggregate multiple GET object API requests.
 	// The config option is hidden until experimental.
@@ -291,6 +295,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkPoolMinBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-min-bucket-size-bytes", ChunkPoolDefaultMinBucketSize, "Size - in bytes - of the smallest chunks pool bucket.")
 	f.IntVar(&cfg.ChunkPoolMaxBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-max-bucket-size-bytes", ChunkPoolDefaultMaxBucketSize, "Size - in bytes - of the largest chunks pool bucket.")
 	f.IntVar(&cfg.MaxConcurrent, "blocks-storage.bucket-store.max-concurrent", 100, "Max number of concurrent queries to execute against the long-term storage. The limit is shared across all tenants.")
+	f.IntVar(&cfg.MaxInflightRequests, "blocks-storage.bucket-store.max-inflight-requests", 0, "Max number of inflight queries to execute against the long-term storage. The limit is shared across all tenants. 0 to disable.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "blocks-storage.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "blocks-storage.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "blocks-storage.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
@@ -305,6 +310,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Uint64Var(&cfg.PartitionerMaxGapBytes, "blocks-storage.bucket-store.partitioner-max-gap-bytes", store.PartitionerMaxGapSize, "Max size - in bytes - of a gap for which the partitioner aggregates together two bucket GET object requests.")
 	f.Uint64Var(&cfg.EstimatedMaxSeriesSizeBytes, "blocks-storage.bucket-store.estimated-max-series-size-bytes", store.EstimatedMaxSeriesSize, "Estimated max series size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 64KB.")
 	f.Uint64Var(&cfg.EstimatedMaxChunkSizeBytes, "blocks-storage.bucket-store.estimated-max-chunk-size-bytes", store.EstimatedMaxChunkSize, "Estimated max chunk size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 16KiB.")
+	f.BoolVar(&cfg.LazyExpandedPostingsEnabled, "blocks-storage.bucket-store.lazy-expanded-postings-enabled", false, "If true, Store Gateway will estimate postings size and try to lazily expand postings if it downloads less data than expanding all postings.")
 }
 
 // Validate the config.

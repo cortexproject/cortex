@@ -71,6 +71,14 @@ const (
 	recordingRuleFilter string = "record"
 )
 
+type DisabledRuleGroupErr struct {
+	Message string
+}
+
+func (e *DisabledRuleGroupErr) Error() string {
+	return e.Message
+}
+
 // Config is the configuration for the recording rules server.
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
@@ -400,6 +408,17 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 	}
 }
 
+func ruleGroupDisabled(ruleGroup *rulespb.RuleGroupDesc, disabledRuleGroupsForUser validation.DisabledRuleGroups) bool {
+	for _, disabledRuleGroupForUser := range disabledRuleGroupsForUser {
+		if ruleGroup.Namespace == disabledRuleGroupForUser.Namespace &&
+			ruleGroup.Name == disabledRuleGroupForUser.Name &&
+			ruleGroup.User == disabledRuleGroupForUser.User {
+			return true
+		}
+	}
+	return false
+}
+
 var sep = []byte("/")
 
 func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
@@ -415,7 +434,8 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, instanceAddr string) (bool, error) {
+
 	hash := tokenForGroup(g)
 
 	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
@@ -423,7 +443,12 @@ func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAd
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	return rlrs.Instances[0].Addr == instanceAddr, nil
+	ownsRuleGroup := rlrs.Instances[0].Addr == instanceAddr
+	if ownsRuleGroup && ruleGroupDisabled(g, disabledRuleGroups) {
+		return false, &DisabledRuleGroupErr{Message: fmt.Sprintf("rule group %s, namespace %s, user %s is disabled", g.Name, g.Namespace, g.User)}
+	}
+
+	return ownsRuleGroup, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -533,7 +558,26 @@ func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGr
 }
 
 func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
-	return r.store.ListAllRuleGroups(ctx)
+	allRuleGroups, err := r.store.ListAllRuleGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for userID, groups := range allRuleGroups {
+		disabledRuleGroupsForUser := r.limits.DisabledRuleGroups(userID)
+		if len(disabledRuleGroupsForUser) == 0 {
+			continue
+		}
+		filteredGroupsForUser := rulespb.RuleGroupList{}
+		for _, group := range groups {
+			if !ruleGroupDisabled(group, disabledRuleGroupsForUser) {
+				filteredGroupsForUser = append(filteredGroupsForUser, group)
+			} else {
+				level.Info(r.logger).Log("msg", "rule group disabled", "name", group.Name, "namespace", group.Namespace, "user", group.User)
+			}
+		}
+		allRuleGroups[userID] = filteredGroupsForUser
+	}
+	return allRuleGroups, nil
 }
 
 func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
@@ -544,7 +588,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -602,7 +646,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
@@ -624,15 +668,21 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 //
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
+		owned, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr)
 		if err != nil {
-			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
-			continue
+			switch e := err.(type) {
+			case *DisabledRuleGroupErr:
+				level.Info(log).Log("msg", e.Message)
+				continue
+			default:
+				ringCheckErrors.Inc()
+				level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+				continue
+			}
 		}
 
 		if owned {

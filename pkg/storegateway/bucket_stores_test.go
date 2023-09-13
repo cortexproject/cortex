@@ -514,6 +514,48 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 	}
 }
 
+func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.MaxInflightRequests = 10
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	generateStorageBlock(t, storageDir, "user_id", "series_1", 0, 100, 15)
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(context.Background()))
+
+	stores.inflightRequestMu.Lock()
+	stores.inflightRequestCnt = 10
+	stores.inflightRequestMu.Unlock()
+	series, warnings, err := querySeries(stores, "user_id", "series_1", 0, 100)
+	assert.ErrorIs(t, err, ErrTooManyInflightRequests)
+	assert.Empty(t, series)
+	assert.Empty(t, warnings)
+}
+
+func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	generateStorageBlock(t, storageDir, "user_id", "series_1", 0, 100, 15)
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(context.Background()))
+
+	stores.inflightRequestMu.Lock()
+	stores.inflightRequestCnt = 10 // max_inflight_request is set to 0 by default = disabled
+	stores.inflightRequestMu.Unlock()
+	series, _, err := querySeries(stores, "user_id", "series_1", 0, 100)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(series))
+}
+
 func prepareStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)

@@ -75,7 +75,7 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 				End:   util.TimeToMillis(testData.reqEndTime),
 			}
 
-			limits := mockLimits{maxQueryLookback: testData.maxQueryLookback}
+			limits := tripperware.MockLimits{QueryLookback: testData.maxQueryLookback}
 			middleware := NewLimitsMiddleware(limits)
 
 			innerRes := NewEmptyPrometheusResponse()
@@ -163,7 +163,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 				End:   util.TimeToMillis(testData.reqEndTime),
 			}
 
-			limits := mockLimits{maxQueryLength: testData.maxQueryLength}
+			limits := tripperware.MockLimits{QueryLength: testData.maxQueryLength}
 			middleware := NewLimitsMiddleware(limits)
 
 			innerRes := NewEmptyPrometheusResponse()
@@ -191,32 +191,6 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			}
 		})
 	}
-}
-
-type mockLimits struct {
-	maxQueryLookback  time.Duration
-	maxQueryLength    time.Duration
-	maxCacheFreshness time.Duration
-}
-
-func (m mockLimits) MaxQueryLookback(string) time.Duration {
-	return m.maxQueryLookback
-}
-
-func (m mockLimits) MaxQueryLength(string) time.Duration {
-	return m.maxQueryLength
-}
-
-func (mockLimits) MaxQueryParallelism(string) int {
-	return 14 // Flag default.
-}
-
-func (m mockLimits) MaxCacheFreshness(string) time.Duration {
-	return m.maxCacheFreshness
-}
-
-func (m mockLimits) QueryVerticalShardSize(userID string) int {
-	return 0
 }
 
 type mockHandler struct {

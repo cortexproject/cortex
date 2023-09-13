@@ -1,4 +1,4 @@
-package queryrange
+package instantquery
 
 import (
 	"context"
@@ -15,25 +15,27 @@ import (
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 var (
-	PrometheusCodec        = NewPrometheusCodec(false)
-	ShardedPrometheusCodec = NewPrometheusCodec(false)
+	query        = "/api/v1/query?time=1536716898&query=sum by (label) (up)&stats=all"
+	responseBody = `{"status":"success","data":{"resultType":"vector","result":[]}}`
 )
 
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
+	var try atomic.Int32
 	s := httptest.NewServer(
 		middleware.AuthenticateUser.Wrap(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var err error
-				if r.RequestURI == query {
+				if try.Inc() > 2 {
 					_, err = w.Write([]byte(responseBody))
 				} else {
-					_, err = w.Write([]byte("bar"))
+					http.Error(w, `{"status":"error"}`, http.StatusInternalServerError)
 				}
 				if err != nil {
 					t.Fatal(err)
@@ -50,29 +52,27 @@ func TestRoundTrip(t *testing.T) {
 		host: u.Host,
 		next: http.DefaultTransport,
 	}
-
+	limits := tripperware.MockLimits{
+		ShardSize: 2,
+	}
 	qa := querysharding.NewQueryAnalyzer()
-	queyrangemiddlewares, _, err := Middlewares(Config{},
+	instantQueryMiddlewares, err := Middlewares(
 		log.NewNopLogger(),
-		tripperware.MockLimits{},
+		limits,
 		nil,
-		nil,
-		nil,
-		qa,
-		PrometheusCodec,
-		ShardedPrometheusCodec,
-		NewRetryMiddlewareMetrics(nil),
-	)
+		3,
+		qa)
 	require.NoError(t, err)
 
-	tw := tripperware.NewQueryTripperware(log.NewNopLogger(),
+	tw := tripperware.NewQueryTripperware(
+		log.NewNopLogger(),
 		nil,
 		nil,
-		queyrangemiddlewares,
 		nil,
-		PrometheusCodec,
+		instantQueryMiddlewares,
 		nil,
-		nil,
+		InstantQueryCodec,
+		limits,
 		qa,
 		time.Minute,
 	)
@@ -80,7 +80,6 @@ func TestRoundTrip(t *testing.T) {
 	for i, tc := range []struct {
 		path, expectedBody string
 	}{
-		{"/foo", "bar"},
 		{query, responseBody},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {

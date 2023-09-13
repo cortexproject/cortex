@@ -1116,6 +1116,12 @@ func isRetryableError(err error) bool {
 	switch status.Code(err) {
 	case codes.Unavailable:
 		return true
+	case codes.ResourceExhausted:
+		return errors.Is(err, storegateway.ErrTooManyInflightRequests)
+	// Client side connection closing, this error happens during store gateway deployment.
+	// https://github.com/grpc/grpc-go/blob/03172006f5d168fc646d87928d85cb9c4a480291/clientconn.go#L67
+	case codes.Canceled:
+		return strings.Contains(err.Error(), "grpc: the client connection is closing")
 	default:
 		return false
 	}

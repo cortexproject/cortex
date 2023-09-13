@@ -209,7 +209,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 				log.NewNopLogger(),
 				cfg,
 				constSplitter(day),
-				mockLimits{},
+				tripperware.MockLimits{},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,
@@ -974,7 +974,7 @@ func TestHandleHit(t *testing.T) {
 			sut := resultsCache{
 				extractor:      PrometheusResponseExtractor{},
 				minCacheExtent: 10,
-				limits:         mockLimits{},
+				limits:         tripperware.MockLimits{},
 				merger:         PrometheusCodec,
 				next: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
 					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
@@ -1004,7 +1004,7 @@ func TestResultsCache(t *testing.T) {
 		log.NewNopLogger(),
 		cfg,
 		constSplitter(day),
-		mockLimits{},
+		tripperware.MockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
@@ -1046,7 +1046,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		log.NewNopLogger(),
 		cfg,
 		constSplitter(day),
-		mockLimits{maxCacheFreshness: 10 * time.Minute},
+		tripperware.MockLimits{CacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
@@ -1087,13 +1087,13 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 		expectedResponse *PrometheusResponse
 	}{
 		{
-			fakeLimits:       mockLimits{maxCacheFreshness: 5 * time.Second},
+			fakeLimits:       tripperware.MockLimits{CacheFreshness: 5 * time.Second},
 			Handler:          nil,
 			expectedResponse: mkAPIResponse(int64(modelNow)-(50*1e3), int64(modelNow)-(10*1e3), 10),
 		},
 		{
 			// should not lookup cache because per-tenant override will be applied
-			fakeLimits: mockLimits{maxCacheFreshness: 10 * time.Minute},
+			fakeLimits: tripperware.MockLimits{CacheFreshness: 10 * time.Minute},
 			Handler: tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
 				return parsedResponse, nil
 			}),
@@ -1150,7 +1150,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		log.NewNopLogger(),
 		cfg,
 		constSplitter(day),
-		mockLimits{},
+		tripperware.MockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
 		nil,
@@ -1263,7 +1263,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				log.NewNopLogger(),
 				cfg,
 				constSplitter(day),
-				mockLimits{maxCacheFreshness: 10 * time.Minute},
+				tripperware.MockLimits{CacheFreshness: 10 * time.Minute},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
 				nil,

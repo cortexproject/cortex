@@ -441,7 +441,7 @@ http_requests_total`,
 			}
 
 			qa := thanosquerysharding.NewQueryAnalyzer()
-			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), mockLimits{shardSize: tt.shardSize}, tt.codec, qa))
+			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), MockLimits{ShardSize: tt.shardSize}, tt.codec, qa))
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
@@ -461,31 +461,31 @@ http_requests_total`,
 	}
 }
 
-type mockLimits struct {
-	maxQueryLookback  time.Duration
-	maxQueryLength    time.Duration
-	maxCacheFreshness time.Duration
-	shardSize         int
+type MockLimits struct {
+	QueryLookback  time.Duration
+	QueryLength    time.Duration
+	CacheFreshness time.Duration
+	ShardSize      int
 }
 
-func (m mockLimits) MaxQueryLookback(string) time.Duration {
-	return m.maxQueryLookback
+func (m MockLimits) MaxQueryLookback(string) time.Duration {
+	return m.QueryLookback
 }
 
-func (m mockLimits) MaxQueryLength(string) time.Duration {
-	return m.maxQueryLength
+func (m MockLimits) MaxQueryLength(string) time.Duration {
+	return m.QueryLength
 }
 
-func (mockLimits) MaxQueryParallelism(string) int {
+func (MockLimits) MaxQueryParallelism(string) int {
 	return 14 // Flag default.
 }
 
-func (m mockLimits) MaxCacheFreshness(string) time.Duration {
-	return m.maxCacheFreshness
+func (m MockLimits) MaxCacheFreshness(string) time.Duration {
+	return m.CacheFreshness
 }
 
-func (m mockLimits) QueryVerticalShardSize(userID string) int {
-	return m.shardSize
+func (m MockLimits) QueryVerticalShardSize(userID string) int {
+	return m.ShardSize
 }
 
 type singleHostRoundTripper struct {

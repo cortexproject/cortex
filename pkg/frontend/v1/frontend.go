@@ -176,7 +176,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		}
 	}
 
-	return f.retry.Do(func() (*httpgrpc.HTTPResponse, error) {
+	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		request := request{
 			request:     req,
 			originalCtx: ctx,

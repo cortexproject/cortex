@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,18 +12,18 @@ import (
 func TestRetry(t *testing.T) {
 	tries := atomic.NewInt64(3)
 	r := NewRetry(3, nil)
-
-	res, err := r.Do(func() (*httpgrpc.HTTPResponse, error) {
+	ctx := context.Background()
+	res, err := r.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		try := tries.Dec()
 		if try > 1 {
 			return &httpgrpc.HTTPResponse{
 				Code: 500,
 			}, nil
-		} else {
-			return &httpgrpc.HTTPResponse{
-				Code: 200,
-			}, nil
 		}
+		return &httpgrpc.HTTPResponse{
+			Code: 200,
+		}, nil
+
 	})
 
 	require.NoError(t, err)

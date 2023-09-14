@@ -188,7 +188,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return f.retry.Do(func() (*httpgrpc.HTTPResponse, error) {
+	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		freq := &frontendRequest{
 			queryID:      f.lastQueryID.Inc(),
 			request:      req,

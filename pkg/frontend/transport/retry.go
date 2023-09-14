@@ -25,7 +25,7 @@ func NewRetry(maxRetries int, reg prometheus.Registerer) *Retry {
 	}
 }
 
-func (r *Retry) Do(f func() (*httpgrpc.HTTPResponse, error)) (*httpgrpc.HTTPResponse, error) {
+func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)) (*httpgrpc.HTTPResponse, error) {
 	if r.maxRetries == 0 {
 		// Retries are disabled. Try only once.
 		return f()
@@ -39,8 +39,11 @@ func (r *Retry) Do(f func() (*httpgrpc.HTTPResponse, error)) (*httpgrpc.HTTPResp
 		err  error
 	)
 	for ; tries < r.maxRetries; tries++ {
-		resp, err = f()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 
+		resp, err = f()
 		if err != nil && err != context.Canceled {
 			continue // Retryable
 		} else if resp != nil && resp.Code/100 == 5 {

@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/thanos-io/thanos/pkg/pool"
 	"io"
 	"sort"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -1114,8 +1114,6 @@ func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount
 
 // only retry connection issues
 func isRetryableError(err error) bool {
-	s := status.Convert(err)
-	s.Err()
 	switch status.Code(err) {
 	case codes.Unavailable:
 		return true

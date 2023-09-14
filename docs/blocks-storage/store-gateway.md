@@ -236,6 +236,10 @@ store_gateway:
         # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
         [puller_sync_time: <duration> | default = 1m]
 
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is:
       # store-gateway.sharding-ring
@@ -304,6 +308,11 @@ store_gateway:
     # start anyway.
     # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
     [wait_stability_max_duration: <duration> | default = 5m]
+
+    # The sleep seconds when store-gateway is shutting down. Need to be close to
+    # or larger than KV Store information propagation delay
+    # CLI flag: -store-gateway.sharding-ring.final-sleep
+    [final_sleep: <duration> | default = 0s]
 
     # Name of network interface to read address from.
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
@@ -592,6 +601,11 @@ blocks_storage:
     # The limit is shared across all tenants.
     # CLI flag: -blocks-storage.bucket-store.max-concurrent
     [max_concurrent: <int> | default = 100]
+
+    # Max number of inflight queries to execute against the long-term storage.
+    # The limit is shared across all tenants. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
+    [max_inflight_requests: <int> | default = 0]
 
     # Maximum number of concurrent tenants synching blocks.
     # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
@@ -1194,6 +1208,11 @@ blocks_storage:
     # timeout' inactivity.
     # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
     [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
+
+    # If true, Store Gateway will estimate postings size and try to lazily
+    # expand postings if it downloads less data than expanding all postings.
+    # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
+    [lazy_expanded_postings_enabled: <boolean> | default = false]
 
   tsdb:
     # Local directory to store TSDBs in the ingesters.

@@ -18,6 +18,12 @@ type VectorPool struct {
 	histograms sync.Pool
 }
 
+func NewVectorPoolWithSize(stepsBatch, size int) *VectorPool {
+	pool := NewVectorPool(stepsBatch)
+	pool.SetStepSize(size)
+	return pool
+}
+
 func NewVectorPool(stepsBatch int) *VectorPool {
 	pool := &VectorPool{}
 	pool.vectors = sync.Pool{
@@ -40,7 +46,7 @@ func NewVectorPool(stepsBatch int) *VectorPool {
 	}
 	pool.histograms = sync.Pool{
 		New: func() any {
-			histograms := make([]*histogram.FloatHistogram, 0, pool.stepSize)
+			histograms := make([]*histogram.FloatHistogram, pool.stepSize)[:0]
 			return &histograms
 		},
 	}

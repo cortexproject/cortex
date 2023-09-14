@@ -7,11 +7,13 @@ import (
 	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type errorChan chan error
@@ -42,18 +44,36 @@ type coalesce struct {
 	inVectors [][]model.StepVector
 	// sampleOffsets holds per-operator offsets needed to map an input sample ID to an output sample ID.
 	sampleOffsets []uint64
+	model.OperatorTelemetry
 }
 
-func NewCoalesce(pool *model.VectorPool, operators ...model.VectorOperator) model.VectorOperator {
-	return &coalesce{
+func NewCoalesce(pool *model.VectorPool, opts *query.Options, operators ...model.VectorOperator) model.VectorOperator {
+	c := &coalesce{
 		pool:          pool,
 		sampleOffsets: make([]uint64, len(operators)),
 		operators:     operators,
 		inVectors:     make([][]model.StepVector, len(operators)),
 	}
+	c.OperatorTelemetry = &model.NoopTelemetry{}
+	if opts.EnableAnalysis {
+		c.OperatorTelemetry = &model.TrackedTelemetry{}
+	}
+	return c
+}
+
+func (c *coalesce) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	c.SetName("[*coalesce]")
+	obsOperators := make([]model.ObservableVectorOperator, 0, len(c.operators))
+	for _, operator := range c.operators {
+		if obsOperator, ok := operator.(model.ObservableVectorOperator); ok {
+			obsOperators = append(obsOperators, obsOperator)
+		}
+	}
+	return c, obsOperators
 }
 
 func (c *coalesce) Explain() (me string, next []model.VectorOperator) {
+
 	return "[*coalesce]", c.operators
 }
 
@@ -76,7 +96,7 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, ctx.Err()
 	default:
 	}
-
+	start := time.Now()
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
@@ -131,6 +151,7 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 		c.inVectors[opIdx] = nil
 		c.operators[opIdx].GetPool().PutVectors(vectors)
 	}
+	c.AddExecutionTimeTaken(time.Since(start))
 
 	if out == nil {
 		return nil, nil

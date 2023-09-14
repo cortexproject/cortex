@@ -9,11 +9,13 @@ import (
 	"math"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/parser"
 )
 
@@ -44,17 +46,19 @@ type histogramOperator struct {
 
 	// seriesBuckets are the buckets for each individual conventional histogram series.
 	seriesBuckets []buckets
+	model.OperatorTelemetry
 }
 
-func NewHistogramOperator(pool *model.VectorPool, args parser.Expressions, nextOps []model.VectorOperator, stepsBatch int) (model.VectorOperator, error) {
-	return &histogramOperator{
-		pool:         pool,
-		funcArgs:     args,
-		once:         sync.Once{},
-		scalarOp:     nextOps[0],
-		vectorOp:     nextOps[1],
-		scalarPoints: make([]float64, stepsBatch),
-	}, nil
+func (o *histogramOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
+	o.SetName("[*functionOperator]")
+	next := make([]model.ObservableVectorOperator, 0, 2)
+	if obsScalarOp, ok := o.scalarOp.(model.ObservableVectorOperator); ok {
+		next = append(next, obsScalarOp)
+	}
+	if obsVectorOp, ok := o.vectorOp.(model.ObservableVectorOperator); ok {
+		next = append(next, obsVectorOp)
+	}
+	return o, next
 }
 
 func (o *histogramOperator) Explain() (me string, next []model.VectorOperator) {
@@ -82,7 +86,7 @@ func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error
 		return nil, ctx.Err()
 	default:
 	}
-
+	start := time.Now()
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	if err != nil {
@@ -111,6 +115,7 @@ func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error
 		o.scalarOp.GetPool().PutStepVector(scalar)
 	}
 	o.scalarOp.GetPool().PutVectors(scalars)
+	o.AddExecutionTimeTaken(time.Since(start))
 
 	return o.processInputSeries(vectors)
 }
@@ -178,6 +183,9 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if extlabels.ContainsDuplicateLabelSetAfterDroppingName(series) {
+		return extlabels.ErrDuplicateLabelSet
+	}
 
 	var (
 		hashBuf      = make([]byte, 0, 256)
@@ -190,13 +198,13 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 	b := labels.ScratchBuilder{}
 	for i, s := range series {
 		hasBucketValue := true
-		lbls, bucketLabel := dropLabel(s, "le", b)
+		lbls, bucketLabel := extlabels.DropBucketLabel(s, b)
 		value, err := strconv.ParseFloat(bucketLabel.Value, 64)
 		if err != nil {
 			hasBucketValue = false
 		}
-		lbls, _ = DropMetricName(lbls, b)
 
+		lbls, _ = extlabels.DropMetricName(lbls, b)
 		hasher.Reset()
 		hashBuf = lbls.Bytes(hashBuf)
 		if _, err := hasher.Write(hashBuf); err != nil {

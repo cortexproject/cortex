@@ -9,6 +9,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+
+	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type SeriesSelector interface {
@@ -76,6 +78,7 @@ func (o *seriesSelector) loadSeries(ctx context.Context) error {
 		i++
 	}
 
+	warnings.AddToContext(seriesSet.Warnings(), ctx)
 	return seriesSet.Err()
 }
 

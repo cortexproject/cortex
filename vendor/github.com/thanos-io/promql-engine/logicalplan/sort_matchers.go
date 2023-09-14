@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/thanos-io/promql-engine/parser"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 // SortMatchers sorts all matchers in a selector so that
@@ -14,7 +15,7 @@ import (
 // can rely on this property.
 type SortMatchers struct{}
 
-func (m SortMatchers) Optimize(expr parser.Expr, _ *Opts) parser.Expr {
+func (m SortMatchers) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
 	traverse(&expr, func(node *parser.Expr) {
 		e, ok := (*node).(*parser.VectorSelector)
 		if !ok {

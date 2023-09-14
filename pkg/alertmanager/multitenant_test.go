@@ -82,7 +82,8 @@ func mockAlertmanagerConfig(t *testing.T) *MultitenantAlertmanagerConfig {
 	cfg.ShardingRing.InstanceID = "test"
 	cfg.ShardingRing.InstanceAddr = "127.0.0.1"
 	cfg.PollInterval = time.Minute
-
+	cfg.ShardingRing.FinalSleep = 0
+	cfg.GCInterval = 30 * time.Minute
 	return cfg
 }
 

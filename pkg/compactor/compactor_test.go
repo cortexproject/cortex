@@ -115,6 +115,13 @@ func TestConfig_Validate(t *testing.T) {
 			initLimits: func(_ *validation.Limits) {},
 			expected:   errors.Errorf(errInvalidBlockRanges, 30*time.Hour, 24*time.Hour).Error(),
 		},
+		"should fail with duration values of zero": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 0, 24 * time.Hour, 30 * time.Hour}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errors.Errorf("compactor block range period cannot be zero").Error(),
+		},
 		"should pass with valid shuffle sharding config": {
 			setup: func(cfg *Config) {
 				cfg.ShardingStrategy = util.ShardingStrategyShuffle
@@ -537,6 +544,47 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 		"cortex_compactor_runs_completed_total",
 		"cortex_compactor_runs_failed_total",
 	))
+}
+
+func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{"user-1"}, nil)
+	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
+	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
+	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
+
+	c, _, tsdbPlanner, _, _ := prepare(t, prepareConfig(), bucketClient, nil)
+
+	// Make sure the user folder is created and is being used
+	// This will be called during compaction
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		_, err := os.Stat(c.compactDirForUser("user-1"))
+		require.NoError(t, err)
+	}).Return([]*metadata.Meta{}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	// Wait until a run has completed.
+	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+	})
+
+	_, err := os.Stat(c.compactDirForUser("user-1"))
+	require.True(t, os.IsNotExist(err))
 }
 
 func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
@@ -1622,7 +1670,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 		blocksGrouperFactory = DefaultBlocksGrouperFactory
 	}
 
-	c, err := newCompactor(compactorCfg, storageCfg, overrides, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
+	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, tsdbPlanner, logs, registry

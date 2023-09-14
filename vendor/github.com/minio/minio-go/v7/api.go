@@ -127,7 +127,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.61"
+	libraryVersion = "v7.0.63"
 )
 
 // User Agent should always following the below style.
@@ -157,10 +157,6 @@ func New(endpoint string, opts *Options) (*Client, error) {
 	clnt, err := privateNew(endpoint, opts)
 	if err != nil {
 		return nil, err
-	}
-	// Google cloud storage should be set to signature V2, force it if not.
-	if s3utils.IsGoogleEndpoint(*clnt.endpointURL) {
-		clnt.overrideSignerType = credentials.SignatureV2
 	}
 	// If Amazon S3 set to signature v4.
 	if s3utils.IsAmazonEndpoint(*clnt.endpointURL) {

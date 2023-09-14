@@ -178,8 +178,8 @@ func (m *ClientMock) IsObjNotFoundErr(err error) bool {
 	return err == errObjectDoesNotExist
 }
 
-// IsCustomerManagedKeyError mocks objstore.Bucket.IsCustomerManagedKeyError()
-func (m *ClientMock) IsCustomerManagedKeyError(err error) bool {
+// IsAccessDeniedErr mocks objstore.Bucket.IsAccessDeniedErr()
+func (m *ClientMock) IsAccessDeniedErr(err error) bool {
 	return err == errKeyPermissionDenied
 }
 

@@ -91,6 +91,10 @@ api:
   # CLI flag: -server.cors-origin
   [cors_origin: <string> | default = ".*"]
 
+  # If enabled, build Info API will be served by query frontend or querier.
+  # CLI flag: -api.build-info-enabled
+  [build_info_enabled: <boolean> | default = false]
+
 # The server_config configures the HTTP and gRPC server of the launched
 # service(s).
 [server: <server_config>]
@@ -322,6 +326,10 @@ sharding_ring:
       # CLI flag: -alertmanager.sharding-ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -alertmanager.sharding-ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: alertmanager.sharding-ring
     [consul: <consul_config>]
@@ -364,6 +372,11 @@ sharding_ring:
   # availability zones.
   # CLI flag: -alertmanager.sharding-ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
+
+  # The sleep seconds when alertmanager is shutting down. Need to be close to or
+  # larger than KV Store information propagation delay
+  # CLI flag: -alertmanager.sharding-ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
 
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
@@ -419,6 +432,10 @@ cluster:
 # Maximum number of concurrent GET API requests before returning an error.
 # CLI flag: -alertmanager.api-concurrency
 [api_concurrency: <int> | default = 0]
+
+# Alertmanager alerts Garbage collection interval.
+# CLI flag: -alertmanager.alerts-gc-interval
+[gc_interval: <duration> | default = 30m]
 
 alertmanager_client:
   # Timeout for downstream alertmanagers.
@@ -1025,6 +1042,11 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.max-concurrent
   [max_concurrent: <int> | default = 100]
 
+  # Max number of inflight queries to execute against the long-term storage. The
+  # limit is shared across all tenants. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
+  [max_inflight_requests: <int> | default = 0]
+
   # Maximum number of concurrent tenants synching blocks.
   # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
   [tenant_sync_concurrency: <int> | default = 10]
@@ -1626,6 +1648,11 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
   [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
 
+  # If true, Store Gateway will estimate postings size and try to lazily expand
+  # postings if it downloads less data than expanding all postings.
+  # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
+  [lazy_expanded_postings_enabled: <boolean> | default = false]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir
@@ -1862,6 +1889,10 @@ sharding_ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -compactor.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -compactor.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: compactor.ring
@@ -2115,6 +2146,10 @@ ha_tracker:
       # CLI flag: -distributor.ha-tracker.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -distributor.ha-tracker.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ha-tracker
     [consul: <consul_config>]
@@ -2200,6 +2235,10 @@ ring:
       # Time to refresh local ring with information on dynamodb.
       # CLI flag: -distributor.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
+
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -distributor.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
 
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: distributor.ring
@@ -2492,6 +2531,10 @@ lifecycler:
         # Time to refresh local ring with information on dynamodb.
         # CLI flag: -dynamodb.puller-sync-time
         [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
 
       # The consul_config configures the consul client.
       [consul: <consul_config>]
@@ -2824,7 +2867,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # List of metric relabel configurations. Note that in most situations, it is
 # more effective to use metrics relabeling directly in the Prometheus server,
 # e.g. remote_write.write_relabel_configs.
-[metric_relabel_configs: <relabel_config...> | default = ]
+[metric_relabel_configs: <relabel_config...> | default = []]
 
 # Enables support for exemplars in TSDB and sets the maximum number that will be
 # stored. less than zero means disabled. If the value is set to zero, cortex
@@ -3027,7 +3070,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # is given in JSON format. Rate limit has the same meaning as
 # -alertmanager.notification-rate-limit, but only applies for specific
 # integration. Allowed integration names: webhook, email, pagerduty, opsgenie,
-# wechat, slack, victorops, pushover, sns, telegram, discord, webex.
+# wechat, slack, victorops, pushover, sns, telegram, discord, webex, msteams.
 # CLI flag: -alertmanager.notification-rate-limit-per-integration
 [alertmanager_notification_rate_limit_per_integration: <map of string to float64> | default = {}]
 
@@ -3064,6 +3107,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # alerts will fail with a log message and metric increment. 0 = no limit.
 # CLI flag: -alertmanager.max-alerts-size-bytes
 [alertmanager_max_alerts_size_bytes: <int> | default = 0]
+
+# list of rule groups to disable
+[disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
 ```
 
 ### `memberlist_config`
@@ -3683,7 +3729,7 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 # Labels to add to all alerts.
-[external_labels: <map of string to string> | default = ]
+[external_labels: <list of Label> | default = []]
 
 ruler_client:
   # gRPC client max receive message size (bytes).
@@ -3879,6 +3925,10 @@ ring:
       # CLI flag: -ruler.ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -ruler.ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: ruler.ring
     [consul: <consul_config>]
@@ -3920,6 +3970,11 @@ ring:
   # Number of tokens for each ruler.
   # CLI flag: -ruler.ring.num-tokens
   [num_tokens: <int> | default = 128]
+
+  # The sleep seconds when ruler is shutting down. Need to be close to or larger
+  # than KV Store information propagation delay
+  # CLI flag: -ruler.ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
 
 # Period with which to attempt to flush rule groups.
 # CLI flag: -ruler.flush-period
@@ -4742,6 +4797,10 @@ sharding_ring:
       # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
       [puller_sync_time: <duration> | default = 1m]
 
+      # Maximum number of retries for DDB KV CAS.
+      # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+      [max_cas_retries: <int> | default = 10]
+
     # The consul_config configures the consul client.
     # The CLI flags prefix for this block config is: store-gateway.sharding-ring
     [consul: <consul_config>]
@@ -4807,6 +4866,11 @@ sharding_ring:
   # anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
+
+  # The sleep seconds when store-gateway is shutting down. Need to be close to
+  # or larger than KV Store information propagation delay
+  # CLI flag: -store-gateway.sharding-ring.final-sleep
+  [final_sleep: <duration> | default = 0s]
 
   # Name of network interface to read address from.
   # CLI flag: -store-gateway.sharding-ring.instance-interface-names
@@ -4877,4 +4941,22 @@ otel:
     # Skip validating server certificate.
     # CLI flag: -tracing.otel.tls.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `DisabledRuleGroup`
+
+```yaml
+# namespace in which the rule group belongs
+[namespace: <string> | default = ""]
+
+# name of the rule group
+[name: <string> | default = ""]
+```
+
+### `Label`
+
+```yaml
+[name: <string> | default = ""]
+
+[value: <string> | default = ""]
 ```

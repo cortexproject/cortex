@@ -25,9 +25,11 @@ func MGet(client Client, ctx context.Context, keys []string) (ret map[string]Red
 	if len(keys) == 0 {
 		return make(map[string]RedisMessage), nil
 	}
-	if _, ok := client.(*singleClient); ok {
+	switch client.(type) {
+	case *singleClient, *sentinelClient:
 		return clientMGet(client, ctx, client.B().Mget().Key(keys...).Build(), keys)
 	}
+
 	cmds := make([]Completed, len(keys))
 	for i := range cmds {
 		cmds[i] = client.B().Get().Key(keys[i]).Build()
@@ -40,9 +42,12 @@ func MSet(client Client, ctx context.Context, kvs map[string]string) map[string]
 	if len(kvs) == 0 {
 		return make(map[string]error)
 	}
-	if _, ok := client.(*singleClient); ok {
+
+	switch client.(type) {
+	case *singleClient, *sentinelClient:
 		return clientMSet(client, ctx, "MSET", kvs, make(map[string]error, len(kvs)))
 	}
+
 	cmds := make([]Completed, 0, len(kvs))
 	keys := make([]string, 0, len(kvs))
 	for k, v := range kvs {
@@ -57,9 +62,12 @@ func MDel(client Client, ctx context.Context, keys []string) map[string]error {
 	if len(keys) == 0 {
 		return make(map[string]error)
 	}
-	if _, ok := client.(*singleClient); ok {
+
+	switch client.(type) {
+	case *singleClient, *sentinelClient:
 		return clientMDel(client, ctx, keys)
 	}
+
 	cmds := make([]Completed, len(keys))
 	for i, k := range keys {
 		cmds[i] = client.B().Del().Key(k).Build()
@@ -72,9 +80,12 @@ func MSetNX(client Client, ctx context.Context, kvs map[string]string) map[strin
 	if len(kvs) == 0 {
 		return make(map[string]error)
 	}
-	if _, ok := client.(*singleClient); ok {
+
+	switch client.(type) {
+	case *singleClient, *sentinelClient:
 		return clientMSet(client, ctx, "MSETNX", kvs, make(map[string]error, len(kvs)))
 	}
+
 	cmds := make([]Completed, 0, len(kvs))
 	keys := make([]string, 0, len(kvs))
 	for k, v := range kvs {
@@ -101,9 +112,12 @@ func JsonMGet(client Client, ctx context.Context, keys []string, path string) (r
 	if len(keys) == 0 {
 		return make(map[string]RedisMessage), nil
 	}
-	if _, ok := client.(*singleClient); ok {
+
+	switch client.(type) {
+	case *singleClient, *sentinelClient:
 		return clientMGet(client, ctx, client.B().JsonMget().Key(keys...).Path(path).Build(), keys)
 	}
+
 	cmds := make([]Completed, len(keys))
 	for i := range cmds {
 		cmds[i] = client.B().JsonGet().Key(keys[i]).Path(path).Build()
@@ -116,9 +130,12 @@ func JsonMSet(client Client, ctx context.Context, kvs map[string]string, path st
 	if len(kvs) == 0 {
 		return make(map[string]error)
 	}
-	if _, ok := client.(*singleClient); ok {
+
+	switch client.(type) {
+	case *singleClient, *sentinelClient:
 		return clientJSONMSet(client, ctx, kvs, path, make(map[string]error, len(kvs)))
 	}
+
 	cmds := make([]Completed, 0, len(kvs))
 	keys := make([]string, 0, len(kvs))
 	for k, v := range kvs {

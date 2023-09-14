@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
@@ -76,6 +77,28 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	actualIdx, err := ReadIndex(ctx, bkt, userID, nil, logger)
 	require.NoError(t, err)
 	assert.Equal(t, expectedIdx, actualIdx)
+}
+
+func TestReadIndex_ShouldRetryUpload(t *testing.T) {
+	const userID = "user-1"
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	mBucket := &cortex_testutil.MockBucketFailure{
+		Bucket:         bkt,
+		UploadFailures: map[string]error{userID: errors.New("test")},
+	}
+	bkt, _ = s3.NewBucketWithRetries(mBucket, 5, 0, 0, log.NewNopLogger())
+	bkt = BucketWithGlobalMarkers(bkt)
+
+	u := NewUpdater(bkt, userID, nil, logger)
+	expectedIdx, _, _, err := u.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	require.Error(t, WriteIndex(ctx, bkt, userID, nil, expectedIdx))
+	require.Equal(t, mBucket.UploadCalls.Load(), int32(5))
 }
 
 func BenchmarkReadIndex(b *testing.B) {

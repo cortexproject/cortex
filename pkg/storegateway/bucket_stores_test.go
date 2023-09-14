@@ -132,12 +132,16 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			// Should set the error on user-1
 			require.NoError(t, stores.InitialSync(ctx))
 			if tc.mockInitialSync {
-				require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
+				s, ok := status.FromError(stores.storesErrors["user-1"])
+				require.True(t, ok)
+				require.Equal(t, s.Code(), codes.PermissionDenied)
 				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 			}
 			require.NoError(t, stores.SyncBlocks(context.Background()))
 			if tc.mockInitialSync {
-				require.ErrorIs(t, stores.storesErrors["user-1"], bucket.ErrCustomerManagedKeyAccessDenied)
+				s, ok := status.FromError(stores.storesErrors["user-1"])
+				require.True(t, ok)
+				require.Equal(t, s.Code(), codes.PermissionDenied)
 				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
 			}
 
@@ -508,6 +512,48 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 			assert.Equal(t, testData.expectedSamples, len(samples))
 		})
 	}
+}
+
+func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.MaxInflightRequests = 10
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	generateStorageBlock(t, storageDir, "user_id", "series_1", 0, 100, 15)
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(context.Background()))
+
+	stores.inflightRequestMu.Lock()
+	stores.inflightRequestCnt = 10
+	stores.inflightRequestMu.Unlock()
+	series, warnings, err := querySeries(stores, "user_id", "series_1", 0, 100)
+	assert.ErrorIs(t, err, ErrTooManyInflightRequests)
+	assert.Empty(t, series)
+	assert.Empty(t, warnings)
+}
+
+func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	generateStorageBlock(t, storageDir, "user_id", "series_1", 0, 100, 15)
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(context.Background()))
+
+	stores.inflightRequestMu.Lock()
+	stores.inflightRequestCnt = 10 // max_inflight_request is set to 0 by default = disabled
+	stores.inflightRequestMu.Unlock()
+	series, _, err := querySeries(stores, "user_id", "series_1", 0, 100)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(series))
 }
 
 func prepareStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {

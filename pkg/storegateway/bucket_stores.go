@@ -31,6 +31,7 @@ import (
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -72,12 +73,18 @@ type BucketStores struct {
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
 
+	// Keeps number of inflight requests
+	inflightRequestCnt int
+	inflightRequestMu  sync.RWMutex
+
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
 	tenantsDiscovered prometheus.Gauge
 	tenantsSynced     prometheus.Gauge
 }
+
+var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
@@ -235,7 +242,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 				if err := f(ctx, job.store); err != nil {
 					if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
 						u.storesErrorsMu.Lock()
-						u.storesErrors[job.userID] = err
+						u.storesErrors[job.userID] = httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
 						u.storesErrorsMu.Unlock()
 					} else {
 						errsMx.Lock()
@@ -298,16 +305,29 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return fmt.Errorf("no userID")
 	}
 
-	store := u.getStore(userID)
+	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return err
+	}
+
+	store := u.getStore(userID)
 	if store == nil {
 		return nil
 	}
 
-	err := u.getStoreError(userID)
+	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
+	if maxInflightRequests > 0 {
+		if u.getInflightRequestCnt() >= maxInflightRequests {
+			return ErrTooManyInflightRequests
+		}
 
-	if err != nil && cortex_errors.ErrorIs(err, userBkt.IsCustomerManagedKeyError) {
-		return httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		u.incrementInflightRequestCnt()
+		defer u.decrementInflightRequestCnt()
 	}
 
 	err = store.Series(req, spanSeriesServer{
@@ -316,6 +336,24 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 	})
 
 	return err
+}
+
+func (u *BucketStores) getInflightRequestCnt() int {
+	u.inflightRequestMu.RLock()
+	defer u.inflightRequestMu.RUnlock()
+	return u.inflightRequestCnt
+}
+
+func (u *BucketStores) incrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt++
+	u.inflightRequestMu.Unlock()
+}
+
+func (u *BucketStores) decrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt--
+	u.inflightRequestMu.Unlock()
 }
 
 // LabelNames implements the Storegateway proto service.
@@ -328,16 +366,19 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store := u.getStore(userID)
+	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
-	if store == nil {
-		return &storepb.LabelNamesResponse{}, nil
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return nil, err
 	}
 
-	err := u.getStoreError(userID)
-
-	if err != nil && cortex_errors.ErrorIs(err, userBkt.IsCustomerManagedKeyError) {
-		return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+	store := u.getStore(userID)
+	if store == nil {
+		return &storepb.LabelNamesResponse{}, nil
 	}
 
 	resp, err := store.LabelNames(ctx, req)
@@ -355,21 +396,22 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 		return nil, fmt.Errorf("no userID")
 	}
 
-	store := u.getStore(userID)
+	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return nil, err
+	}
+
+	store := u.getStore(userID)
 	if store == nil {
 		return &storepb.LabelValuesResponse{}, nil
 	}
 
-	err := u.getStoreError(userID)
-
-	if err != nil && cortex_errors.ErrorIs(err, userBkt.IsCustomerManagedKeyError) {
-		return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
-	}
-
-	resp, err := store.LabelValues(ctx, req)
-
-	return resp, err
+	return store.LabelValues(ctx, req)
 }
 
 // scanUsers in the bucket and return the list of found users. If an error occurs while
@@ -545,6 +587,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			}
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
+		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
 	}
 	if u.logLevel.String() == "debug" {
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())

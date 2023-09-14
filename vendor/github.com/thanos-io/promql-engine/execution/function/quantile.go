@@ -182,9 +182,21 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 	var (
 		bucket histogram.Bucket[float64]
 		count  float64
-		it     = h.AllBucketIterator()
-		rank   = q * h.Count
+		it     histogram.BucketIterator[float64]
+		rank   float64
 	)
+
+	// if there are NaN observations in the histogram (h.Sum is NaN), use the forward iterator
+	// if the q < 0.5, use the forward iterator
+	// if the q >= 0.5, use the reverse iterator
+	if math.IsNaN(h.Sum) || q < 0.5 {
+		it = h.AllBucketIterator()
+		rank = q * h.Count
+	} else {
+		it = h.AllReverseBucketIterator()
+		rank = (1 - q) * h.Count
+	}
+
 	for it.Next() {
 		bucket = it.At()
 		count += bucket.Count
@@ -193,11 +205,12 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 		}
 	}
 	if bucket.Lower < 0 && bucket.Upper > 0 {
-		if len(h.NegativeBuckets) == 0 && len(h.PositiveBuckets) > 0 {
+		switch {
+		case len(h.NegativeBuckets) == 0 && len(h.PositiveBuckets) > 0:
 			// The result is in the zero bucket and the histogram has only
 			// positive buckets. So we consider 0 to be the lower bound.
 			bucket.Lower = 0
-		} else if len(h.PositiveBuckets) == 0 && len(h.NegativeBuckets) > 0 {
+		case len(h.PositiveBuckets) == 0 && len(h.NegativeBuckets) > 0:
 			// The result is in the zero bucket and the histogram has only
 			// negative buckets. So we consider 0 to be the upper bound.
 			bucket.Upper = 0
@@ -216,7 +229,17 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 		return bucket.Upper
 	}
 
-	rank -= count - bucket.Count
+	// NaN observations increase h.Count but not the total number of
+	// observations in the buckets. Therefore, we have to use the forward
+	// iterator to find percentiles. We recognize histograms containing NaN
+	// observations by checking if their h.Sum is NaN.
+	if math.IsNaN(h.Sum) || q < 0.5 {
+		rank -= count - bucket.Count
+	} else {
+		rank = count - rank
+	}
+
+	// TODO(codesome): Use a better estimation than linear.
 	return bucket.Lower + (bucket.Upper-bucket.Lower)*(rank/bucket.Count)
 }
 

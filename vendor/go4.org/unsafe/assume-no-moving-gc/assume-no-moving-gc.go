@@ -10,9 +10,10 @@
 // analysis keeps on the stack. Ensuring things aren't stack-allocated
 // is the caller's responsibility.
 //
-// This package is then updated for new Go versions when that
-// is still the case and explodes at runtime with a failure
-// otherwise, unless an environment variable overrides it.
+// This package is then updated as needed for new Go versions when
+// that is still the case and explodes at runtime with a failure
+// otherwise, with the idea that it's better to not start at all than
+// to silently corrupt your data at runtime.
 //
 // To use:
 //
@@ -20,15 +21,12 @@
 //
 // There is no API.
 //
-// It is intentional that this package will break code that's not updated
-// regularly to double check its assumptions about the world and new Go
-// versions. If you play stupid games with unsafe pointers, the stupid prize
-// is this maintenance cost. (The alternative would be memory corruption if
-// some unmaintained, unsafe library were built with a future version of Go
-// that worked very differently than when the unsafe library was built.)
-// Ideally you shouldn't write unsafe code, though.
+// As of Go 1.21, this package asks the Go runtime whether it can move
+// heap objects around. If you get an error on versions prior to that,
+// go get go4.org/unsafe/assume-no-moving-gc@latest and things will
+// work.
 //
 // The GitHub repo is at https://github.com/go4org/unsafe-assume-no-moving-gc
 package assume_no_moving_gc
 
-const env = "ASSUME_NO_MOVING_GC_UNSAFE_RISK_IT_WITH"
+const env = "ASSUME_NO_MOVING_GC_UNSAFE"

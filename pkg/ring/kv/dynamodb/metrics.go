@@ -19,6 +19,7 @@ type dynamodbInstrumentation struct {
 type dynamodbMetrics struct {
 	dynamodbRequestDuration *instrument.HistogramCollector
 	dynamodbUsageMetrics    *prometheus.CounterVec
+	dynamodbCasAttempts     prometheus.Counter
 }
 
 func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
@@ -33,9 +34,15 @@ func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
 		Help: "Total consumed capacity on dynamodb",
 	}, []string{"operation"})
 
+	dynamodbCasAttempts := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "dynamodb_kv_cas_attempt_total",
+		Help: "DynamoDB KV Store Attempted CAS operations",
+	})
+
 	dynamodbMetrics := dynamodbMetrics{
 		dynamodbRequestDuration: dynamodbRequestDurationCollector,
 		dynamodbUsageMetrics:    dynamodbUsageMetrics,
+		dynamodbCasAttempts:     dynamodbCasAttempts,
 	}
 	return &dynamodbMetrics
 }

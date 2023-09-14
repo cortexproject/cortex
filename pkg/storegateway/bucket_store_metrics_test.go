@@ -393,6 +393,10 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# TYPE cortex_bucket_store_cached_postings_original_size_bytes_total counter
 			cortex_bucket_store_cached_postings_original_size_bytes_total 1261064
 
+        	# HELP cortex_bucket_store_chunk_refetches_total Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch.
+        	# TYPE cortex_bucket_store_chunk_refetches_total counter
+        	cortex_bucket_store_chunk_refetches_total 0
+
 			# HELP cortex_bucket_store_cached_postings_compressed_size_bytes_total Compressed size of postings stored into cache.
 			# TYPE cortex_bucket_store_cached_postings_compressed_size_bytes_total counter
 			cortex_bucket_store_cached_postings_compressed_size_bytes_total 1283583
@@ -488,6 +492,15 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_indexheader_lazy_unload_total Total number of index-header lazy unload operations.
 			# TYPE cortex_bucket_store_indexheader_lazy_unload_total counter
 			cortex_bucket_store_indexheader_lazy_unload_total 1.396178e+06
+			# HELP cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total Total number of series size in bytes overfetched due to posting lazy expansion.
+			# TYPE cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total counter
+			cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total 180152
+			# HELP cortex_bucket_store_lazy_expanded_posting_size_bytes_total Total number of lazy posting group size in bytes.
+			# TYPE cortex_bucket_store_lazy_expanded_posting_size_bytes_total counter
+			cortex_bucket_store_lazy_expanded_posting_size_bytes_total 157633
+			# HELP cortex_bucket_store_lazy_expanded_postings_total Total number of lazy expanded postings when fetching block series.
+			# TYPE cortex_bucket_store_lazy_expanded_postings_total counter
+			cortex_bucket_store_lazy_expanded_postings_total 135114
         	# HELP cortex_bucket_store_postings_size_bytes Size in bytes of the postings for a single series call.
         	# TYPE cortex_bucket_store_postings_size_bytes histogram
         	cortex_bucket_store_postings_size_bytes_bucket{le="32"} 0
@@ -616,6 +629,10 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 
 	m.emptyPostingCount.Add(5 * base)
 
+	m.lazyExpandedPostingsCount.Add(6 * base)
+	m.lazyExpandedPostingSizeBytes.Add(7 * base)
+	m.lazyExpandedPostingSeriesOverfetchedSizeBytes.Add(8 * base)
+
 	return reg
 }
 
@@ -634,6 +651,7 @@ type mockedBucketStoreMetrics struct {
 	seriesGetAllDuration  prometheus.Histogram
 	seriesMergeDuration   prometheus.Histogram
 	seriesRefetches       prometheus.Counter
+	chunkRefetches        prometheus.Counter
 	resultSeriesCount     prometheus.Histogram
 	chunkSizeBytes        prometheus.Histogram
 	postingsSizeBytes     prometheus.Histogram
@@ -655,6 +673,10 @@ type mockedBucketStoreMetrics struct {
 	indexHeaderLazyUnloadCount       prometheus.Counter
 	indexHeaderLazyUnloadFailedCount prometheus.Counter
 	indexHeaderLazyLoadDuration      prometheus.Histogram
+
+	lazyExpandedPostingsCount                     prometheus.Counter
+	lazyExpandedPostingSizeBytes                  prometheus.Counter
+	lazyExpandedPostingSeriesOverfetchedSizeBytes prometheus.Counter
 }
 
 func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMetrics {
@@ -748,6 +770,10 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 		Name: "thanos_bucket_store_series_refetches_total",
 		Help: fmt.Sprintf("Total number of cases where %v bytes was not enough was to fetch series from index, resulting in refetch.", 64*1024),
 	})
+	m.chunkRefetches = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_chunk_refetches_total",
+		Help: "Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch",
+	})
 
 	m.cachedPostingsCompressions = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_cached_postings_compressions_total",
@@ -811,6 +837,21 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	m.emptyPostingCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_empty_postings_total",
 		Help: "Total number of empty postings when fetching block series.",
+	})
+
+	m.lazyExpandedPostingsCount = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_lazy_expanded_postings_total",
+		Help: "Total number of times when lazy expanded posting optimization applies.",
+	})
+
+	m.lazyExpandedPostingSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_lazy_expanded_posting_size_bytes_total",
+		Help: "Total number of lazy posting group size in bytes.",
+	})
+
+	m.lazyExpandedPostingSeriesOverfetchedSizeBytes = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "thanos_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total",
+		Help: "Total number of series size in bytes overfetched due to posting lazy expansion.",
 	})
 
 	return &m

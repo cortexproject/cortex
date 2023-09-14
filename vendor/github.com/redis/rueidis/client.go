@@ -11,7 +11,7 @@ import (
 type singleClient struct {
 	conn  conn
 	stop  uint32
-	cmd   cmds.Builder
+	cmd   Builder
 	retry bool
 }
 
@@ -28,11 +28,11 @@ func newSingleClient(opt *ClientOption, prev conn, connFn connFn) (*singleClient
 	return newSingleClientWithConn(conn, cmds.NewBuilder(cmds.NoSlot), !opt.DisableRetry), nil
 }
 
-func newSingleClientWithConn(conn conn, builder cmds.Builder, retry bool) *singleClient {
+func newSingleClientWithConn(conn conn, builder Builder, retry bool) *singleClient {
 	return &singleClient{cmd: builder, conn: conn, retry: retry}
 }
 
-func (c *singleClient) B() cmds.Builder {
+func (c *singleClient) B() Builder {
 	return c.cmd
 }
 
@@ -143,12 +143,12 @@ type dedicatedSingleClient struct {
 	conn conn
 	wire wire
 	mark uint32
-	cmd  cmds.Builder
+	cmd  Builder
 
 	retry bool
 }
 
-func (c *dedicatedSingleClient) B() cmds.Builder {
+func (c *dedicatedSingleClient) B() Builder {
 	return c.cmd
 }
 

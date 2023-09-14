@@ -85,8 +85,8 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
-	IsCustomerManagedKeyError(err error) bool
+	// IsAccessDeniedErr returns true if acces to object is denied.
+	IsAccessDeniedErr(err error) bool
 
 	// Attributes returns information about the specified object.
 	Attributes(ctx context.Context, name string) (ObjectAttributes, error)
@@ -424,6 +424,13 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 		}, []string{"operation"}),
 
+		opsTransferredBytes: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Name:        "objstore_bucket_operation_transferred_bytes",
+			Help:        "Number of bytes transferred from/to bucket per operation.",
+			ConstLabels: prometheus.Labels{"bucket": name},
+			Buckets:     prometheus.ExponentialBuckets(2<<14, 2, 16), // 32KiB, 64KiB, ... 1GiB
+		}, []string{"operation"}),
+
 		opsDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "objstore_bucket_operation_duration_seconds",
 			Help:        "Duration of successful operations against the bucket",
@@ -431,10 +438,11 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 		}, []string{"operation"}),
 
-		lastSuccessfulUploadTime: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "objstore_bucket_last_successful_upload_time",
-			Help: "Second timestamp of the last successful upload to the bucket.",
-		}, []string{"bucket"}),
+		lastSuccessfulUploadTime: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name:        "objstore_bucket_last_successful_upload_time",
+			Help:        "Second timestamp of the last successful upload to the bucket.",
+			ConstLabels: prometheus.Labels{"bucket": name},
+		}),
 	}
 	for _, op := range []string{
 		OpIter,
@@ -450,7 +458,14 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		bkt.opsDuration.WithLabelValues(op)
 		bkt.opsFetchedBytes.WithLabelValues(op)
 	}
-	bkt.lastSuccessfulUploadTime.WithLabelValues(b.Name())
+	// fetched bytes only relevant for get and getrange
+	for _, op := range []string{
+		OpGet,
+		OpGetRange,
+		// TODO: Add uploads
+	} {
+		bkt.opsTransferredBytes.WithLabelValues(op)
+	}
 	return bkt
 }
 
@@ -461,10 +476,10 @@ type metricBucket struct {
 	opsFailures         *prometheus.CounterVec
 	isOpFailureExpected IsOpFailureExpectedFunc
 
-	opsFetchedBytes *prometheus.CounterVec
-
+	opsFetchedBytes          *prometheus.CounterVec
+	opsTransferredBytes      *prometheus.HistogramVec
 	opsDuration              *prometheus.HistogramVec
-	lastSuccessfulUploadTime *prometheus.GaugeVec
+	lastSuccessfulUploadTime prometheus.Gauge
 }
 
 func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {
@@ -473,6 +488,7 @@ func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {
 		ops:                      b.ops,
 		opsFailures:              b.opsFailures,
 		opsFetchedBytes:          b.opsFetchedBytes,
+		opsTransferredBytes:      b.opsTransferredBytes,
 		isOpFailureExpected:      fn,
 		opsDuration:              b.opsDuration,
 		lastSuccessfulUploadTime: b.lastSuccessfulUploadTime,
@@ -530,6 +546,7 @@ func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, err
 		b.opsFailures,
 		b.isOpFailureExpected,
 		b.opsFetchedBytes,
+		b.opsTransferredBytes,
 	), nil
 }
 
@@ -551,6 +568,7 @@ func (b *metricBucket) GetRange(ctx context.Context, name string, off, length in
 		b.opsFailures,
 		b.isOpFailureExpected,
 		b.opsFetchedBytes,
+		b.opsTransferredBytes,
 	), nil
 }
 
@@ -581,7 +599,7 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 		}
 		return err
 	}
-	b.lastSuccessfulUploadTime.WithLabelValues(b.bkt.Name()).SetToCurrentTime()
+	b.lastSuccessfulUploadTime.SetToCurrentTime()
 	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return nil
 }
@@ -606,8 +624,8 @@ func (b *metricBucket) IsObjNotFoundErr(err error) bool {
 	return b.bkt.IsObjNotFoundErr(err)
 }
 
-func (b *metricBucket) IsCustomerManagedKeyError(err error) bool {
-	return b.bkt.IsCustomerManagedKeyError(err)
+func (b *metricBucket) IsAccessDeniedErr(err error) bool {
+	return b.bkt.IsAccessDeniedErr(err)
 }
 
 func (b *metricBucket) Close() error {
@@ -627,13 +645,15 @@ type timingReadCloser struct {
 
 	start             time.Time
 	op                string
+	readBytes         int64
 	duration          *prometheus.HistogramVec
 	failed            *prometheus.CounterVec
 	isFailureExpected IsOpFailureExpectedFunc
 	fetchedBytes      *prometheus.CounterVec
+	transferredBytes  *prometheus.HistogramVec
 }
 
-func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec) *timingReadCloser {
+func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) *timingReadCloser {
 	// Initialize the metrics with 0.
 	dur.WithLabelValues(op)
 	failed.WithLabelValues(op)
@@ -648,6 +668,8 @@ func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramV
 		failed:            failed,
 		isFailureExpected: isFailureExpected,
 		fetchedBytes:      fetchedBytes,
+		transferredBytes:  transferredBytes,
+		readBytes:         0,
 	}
 }
 
@@ -662,6 +684,7 @@ func (rc *timingReadCloser) Close() error {
 	}
 	if !rc.alreadyGotErr && err == nil {
 		rc.duration.WithLabelValues(rc.op).Observe(time.Since(rc.start).Seconds())
+		rc.transferredBytes.WithLabelValues(rc.op).Observe(float64(rc.readBytes))
 		rc.alreadyGotErr = true
 	}
 	return err
@@ -670,6 +693,7 @@ func (rc *timingReadCloser) Close() error {
 func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
 	n, err = rc.ReadCloser.Read(b)
 	rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
+	rc.readBytes += int64(n)
 	// Report metric just once.
 	if !rc.alreadyGotErr && err != nil && err != io.EOF {
 		if !rc.isFailureExpected(err) {

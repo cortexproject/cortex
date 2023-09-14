@@ -25,6 +25,7 @@ type BucketStoreMetrics struct {
 	seriesGetAllDuration  *prometheus.Desc
 	seriesMergeDuration   *prometheus.Desc
 	seriesRefetches       *prometheus.Desc
+	chunkRefetches        *prometheus.Desc
 	resultSeriesCount     *prometheus.Desc
 	queriesDropped        *prometheus.Desc
 	chunkSizeBytes        *prometheus.Desc
@@ -40,6 +41,10 @@ type BucketStoreMetrics struct {
 	seriesFetchDuration   *prometheus.Desc
 	postingsFetchDuration *prometheus.Desc
 	chunkFetchDuration    *prometheus.Desc
+
+	lazyExpandedPostingsCount                     *prometheus.Desc
+	lazyExpandedPostingSizeBytes                  *prometheus.Desc
+	lazyExpandedPostingSeriesOverfetchedSizeBytes *prometheus.Desc
 
 	indexHeaderLazyLoadCount         *prometheus.Desc
 	indexHeaderLazyLoadFailedCount   *prometheus.Desc
@@ -104,6 +109,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 		seriesRefetches: prometheus.NewDesc(
 			"cortex_bucket_store_series_refetches_total",
 			"Total number of cases where the built-in max series size was not enough to fetch series from index, resulting in refetch.",
+			nil, nil),
+		chunkRefetches: prometheus.NewDesc(
+			"cortex_bucket_store_chunk_refetches_total",
+			"Total number of cases where configured estimated chunk bytes was not enough was to fetch chunks from object store, resulting in refetch.",
 			nil, nil),
 		resultSeriesCount: prometheus.NewDesc(
 			"cortex_bucket_store_series_result_series",
@@ -180,6 +189,19 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_indexheader_lazy_load_duration_seconds",
 			"Duration of the index-header lazy loading in seconds.",
 			nil, nil),
+
+		lazyExpandedPostingsCount: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_postings_total",
+			"Total number of lazy expanded postings when fetching block series.",
+			nil, nil),
+		lazyExpandedPostingSizeBytes: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_posting_size_bytes_total",
+			"Total number of lazy posting group size in bytes.",
+			nil, nil),
+		lazyExpandedPostingSeriesOverfetchedSizeBytes: prometheus.NewDesc(
+			"cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total",
+			"Total number of series size in bytes overfetched due to posting lazy expansion.",
+			nil, nil),
 	}
 }
 
@@ -205,6 +227,7 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.seriesGetAllDuration
 	out <- m.seriesMergeDuration
 	out <- m.seriesRefetches
+	out <- m.chunkRefetches
 	out <- m.resultSeriesCount
 	out <- m.queriesDropped
 	out <- m.chunkSizeBytes
@@ -226,6 +249,10 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.indexHeaderLazyUnloadCount
 	out <- m.indexHeaderLazyUnloadFailedCount
 	out <- m.indexHeaderLazyLoadDuration
+
+	out <- m.lazyExpandedPostingsCount
+	out <- m.lazyExpandedPostingSizeBytes
+	out <- m.lazyExpandedPostingSeriesOverfetchedSizeBytes
 }
 
 func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
@@ -247,6 +274,7 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.seriesGetAllDuration, "thanos_bucket_store_series_get_all_duration_seconds")
 	data.SendSumOfHistograms(out, m.seriesMergeDuration, "thanos_bucket_store_series_merge_duration_seconds")
 	data.SendSumOfCounters(out, m.seriesRefetches, "thanos_bucket_store_series_refetches_total")
+	data.SendSumOfCounters(out, m.chunkRefetches, "thanos_bucket_store_chunk_refetches_total")
 	data.SendSumOfHistograms(out, m.resultSeriesCount, "thanos_bucket_store_series_result_series")
 	data.SendSumOfCounters(out, m.queriesDropped, "thanos_bucket_store_queries_dropped_total")
 	data.SendSumOfHistograms(out, m.chunkSizeBytes, "thanos_bucket_store_sent_chunk_size_bytes")
@@ -268,4 +296,8 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadCount, "thanos_bucket_store_indexheader_lazy_unload_total")
 	data.SendSumOfCounters(out, m.indexHeaderLazyUnloadFailedCount, "thanos_bucket_store_indexheader_lazy_unload_failed_total")
 	data.SendSumOfHistograms(out, m.indexHeaderLazyLoadDuration, "thanos_bucket_store_indexheader_lazy_load_duration_seconds")
+
+	data.SendSumOfCounters(out, m.lazyExpandedPostingsCount, "thanos_bucket_store_lazy_expanded_postings_total")
+	data.SendSumOfCounters(out, m.lazyExpandedPostingSizeBytes, "thanos_bucket_store_lazy_expanded_posting_size_bytes_total")
+	data.SendSumOfCounters(out, m.lazyExpandedPostingSeriesOverfetchedSizeBytes, "thanos_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total")
 }

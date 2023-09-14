@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
@@ -38,6 +39,9 @@ func TestRetry(t *testing.T) {
 		{
 			name: "don't retry 400s",
 			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
+				if try.Inc() == 5 {
+					return &PrometheusResponse{Status: "Hello World"}, nil
+				}
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 			}),
 			err: httpgrpc.Errorf(http.StatusBadRequest, "Bad Request"),
@@ -45,9 +49,22 @@ func TestRetry(t *testing.T) {
 		{
 			name: "retry 500s",
 			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
+				if try.Inc() == 5 {
+					return &PrometheusResponse{Status: "Hello World"}, nil
+				}
 				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error")
 			}),
-			err: httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error"),
+			resp: &PrometheusResponse{Status: "Hello World"},
+		},
+		{
+			name: "don't retry chunk pool exhaustion",
+			handler: tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
+				if try.Inc() == 5 {
+					return &PrometheusResponse{Status: "Hello World"}, nil
+				}
+				return nil, httpgrpc.Errorf(http.StatusInternalServerError, pool.ErrPoolExhausted.Error())
+			}),
+			err: httpgrpc.Errorf(http.StatusInternalServerError, pool.ErrPoolExhausted.Error()),
 		},
 		{
 			name: "last error",

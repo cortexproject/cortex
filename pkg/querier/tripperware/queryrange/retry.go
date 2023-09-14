@@ -3,11 +3,14 @@ package queryrange
 import (
 	"context"
 	"errors"
+	"strings"
+	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -72,9 +75,9 @@ func (r retry) Do(ctx context.Context, req tripperware.Request) (tripperware.Res
 			return nil, err
 		}
 
-		// Retry if we get a HTTP 500 or a non-HTTP error.
+		// Retry if we get an HTTP 500 or a non-HTTP error.
 		httpResp, ok := httpgrpc.HTTPResponseFromError(err)
-		if !ok || httpResp.Code/100 == 5 {
+		if !ok || isRetryableResponse(httpResp) {
 			lastErr = err
 			level.Error(util_log.WithContext(ctx, r.log)).Log("msg", "error processing request", "try", tries, "err", err)
 			continue
@@ -83,4 +86,21 @@ func (r retry) Do(ctx context.Context, req tripperware.Request) (tripperware.Res
 		return nil, err
 	}
 	return nil, lastErr
+}
+
+func isRetryableResponse(resp *httpgrpc.HTTPResponse) bool {
+	if resp.Code/100 != 5 {
+		return false
+	}
+
+	// If pool exhausted, retry at query frontend might make things worse.
+	// Rely on retries at querier level only.
+	if strings.Contains(yoloString(resp.Body), pool.ErrPoolExhausted.Error()) {
+		return false
+	}
+	return true
+}
+
+func yoloString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

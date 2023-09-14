@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"io"
 	"sort"
 	"strings"
@@ -1113,6 +1114,8 @@ func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount
 
 // only retry connection issues
 func isRetryableError(err error) bool {
+	s := status.Convert(err)
+	s.Err()
 	switch status.Code(err) {
 	case codes.Unavailable:
 		return true
@@ -1122,6 +1125,9 @@ func isRetryableError(err error) bool {
 	// https://github.com/grpc/grpc-go/blob/03172006f5d168fc646d87928d85cb9c4a480291/clientconn.go#L67
 	case codes.Canceled:
 		return strings.Contains(err.Error(), "grpc: the client connection is closing")
+	case codes.Unknown:
+		// Catch chunks pool exhaustion error only.
+		return strings.Contains(err.Error(), pool.ErrPoolExhausted.Error())
 	default:
 		return false
 	}

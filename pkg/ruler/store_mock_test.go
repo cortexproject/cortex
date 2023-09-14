@@ -12,8 +12,9 @@ import (
 )
 
 type mockRuleStore struct {
-	rules map[string]rulespb.RuleGroupList
-	mtx   sync.Mutex
+	rules    map[string]rulespb.RuleGroupList
+	errorMap map[string]error
+	mtx      sync.Mutex
 }
 
 var (
@@ -133,9 +134,10 @@ var (
 	}
 )
 
-func newMockRuleStore(rules map[string]rulespb.RuleGroupList) *mockRuleStore {
+func newMockRuleStore(rules map[string]rulespb.RuleGroupList, errorMap map[string]error) *mockRuleStore {
 	return &mockRuleStore{
-		rules: rules,
+		rules:    rules,
+		errorMap: errorMap,
 	}
 }
 
@@ -189,9 +191,11 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 	return result, nil
 }
 
-func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
+func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) (map[string]rulespb.RuleGroupList, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+	result := make(map[string]rulespb.RuleGroupList, len(groupsToLoad))
+	var err error
 
 	gm := make(map[string]*rulespb.RuleGroupDesc)
 	for _, gs := range m.rules {
@@ -205,15 +209,20 @@ func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[str
 	for _, gs := range groupsToLoad {
 		for _, gr := range gs {
 			user, namespace, name := gr.GetUser(), gr.GetNamespace(), gr.GetName()
+			if e, ok := m.errorMap[user]; ok {
+				err = e
+				continue
+			}
 			key := user + delim + base64.URLEncoding.EncodeToString([]byte(namespace)) + delim + base64.URLEncoding.EncodeToString([]byte(name))
 			mgr, ok := gm[key]
 			if !ok {
-				return fmt.Errorf("failed to get rule group user %s", gr.GetUser())
+				return nil, fmt.Errorf("failed to get rule group user %s", gr.GetUser())
 			}
 			*gr = *mgr
+			result[user] = append(result[user], gr)
 		}
 	}
-	return nil
+	return result, err
 }
 
 func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace string, group string) (*rulespb.RuleGroupDesc, error) {

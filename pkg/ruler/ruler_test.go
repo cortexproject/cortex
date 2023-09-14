@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -17,8 +18,6 @@ import (
 	"unsafe"
 
 	"github.com/thanos-io/objstore"
-
-	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -48,10 +47,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -218,7 +219,7 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 	}
 }
 
-func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, store rulestore.RuleStore, rulerAddrMap map[string]*Ruler) *Ruler {
+func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, store rulestore.RuleStore, rulerAddrMap map[string]*Ruler) (*Ruler, *DefaultMultiTenantManager) {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
@@ -235,11 +236,11 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
 	)
 	require.NoError(t, err)
-	return ruler
+	return ruler, manager
 }
 
 func newTestRuler(t *testing.T, rulerConfig Config, store rulestore.RuleStore, querierTestConfig *querier.TestConfig) *Ruler {
-	ruler := buildRuler(t, rulerConfig, querierTestConfig, store, nil)
+	ruler, _ := buildRuler(t, rulerConfig, querierTestConfig, store, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
 
 	// Ensure all rules are loaded before usage
@@ -293,7 +294,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 }
 
 func TestRuler_Rules(t *testing.T) {
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -552,7 +553,7 @@ func TestGetRules(t *testing.T) {
 			rulerAddrMap := map[string]*Ruler{}
 
 			createRuler := func(id string) *Ruler {
-				store := newMockRuleStore(allRulesByUser)
+				store := newMockRuleStore(allRulesByUser, nil)
 				cfg := defaultRulerConfig(t)
 
 				cfg.ShardingStrategy = tc.shardingStrategy
@@ -566,7 +567,7 @@ func TestGetRules(t *testing.T) {
 					},
 				}
 
-				r := buildRuler(t, cfg, nil, store, rulerAddrMap)
+				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {
@@ -1053,7 +1054,7 @@ func TestSharding(t *testing.T) {
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {
-				store := newMockRuleStore(allRules)
+				store := newMockRuleStore(allRules, nil)
 				cfg := Config{
 					EnableSharding:   tc.sharding,
 					ShardingStrategy: tc.shardingStrategy,
@@ -1071,7 +1072,7 @@ func TestSharding(t *testing.T) {
 					DisabledTenants:  tc.disabledUsers,
 				}
 
-				r := buildRuler(t, cfg, nil, store, nil)
+				r, _ := buildRuler(t, cfg, nil, store, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: tc.shuffleShardSize}
 
 				if forceRing != nil {
@@ -1157,6 +1158,81 @@ func sortTokens(tokens []uint32) []uint32 {
 		return tokens[i] < tokens[j]
 	})
 	return tokens
+}
+
+func Test_LoadPartialGroups(t *testing.T) {
+	const (
+		user1 = "user1"
+		user2 = "user2"
+		user3 = "user3"
+	)
+
+	const (
+		ruler1     = "ruler-1"
+		ruler1Host = "1.1.1.1"
+		ruler1Port = 9999
+	)
+
+	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first", Interval: time.Minute}
+	user1Group2 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second", Interval: time.Minute}
+	user2Group1 := &rulespb.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first", Interval: time.Minute}
+	user3Group1 := &rulespb.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first", Interval: time.Minute}
+
+	allRules := map[string]rulespb.RuleGroupList{
+		user1: {user1Group1, user1Group2},
+		user2: {user2Group1},
+		user3: {user3Group1},
+	}
+
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	store := newMockRuleStore(allRules, map[string]error{user1: fmt.Errorf("test")})
+	u, _ := url.Parse("")
+	cfg := Config{
+		EnableSharding:   true,
+		ExternalURL:      flagext.URLValue{URL: u},
+		PollInterval:     time.Millisecond * 100,
+		RingCheckPeriod:  time.Minute,
+		ShardingStrategy: util.ShardingStrategyShuffle,
+		Ring: RingConfig{
+			InstanceID:   ruler1,
+			InstanceAddr: ruler1Host,
+			InstancePort: ruler1Port,
+			KVStore: kv.Config{
+				Mock: kvStore,
+			},
+			HeartbeatTimeout: 1 * time.Minute,
+		},
+		FlushCheckPeriod: 0,
+	}
+
+	r1, manager := buildRuler(t, cfg, nil, store, nil)
+	r1.limits = ruleLimits{evalDelay: 0, tenantShard: 1}
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r1))
+	t.Cleanup(r1.StopAsync)
+
+	err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		d, _ := in.(*ring.Desc)
+		if d == nil {
+			d = ring.NewDesc()
+		}
+		d.AddIngester(ruler1, fmt.Sprintf("%v:%v", ruler1Host, ruler1Port), "", []uint32{0}, ring.ACTIVE, time.Now())
+		return d, true, nil
+	})
+
+	require.NoError(t, err)
+
+	test.Poll(t, time.Second*5, true, func() interface{} {
+		return len(r1.manager.GetRules(user2)) > 0 &&
+			len(r1.manager.GetRules(user3)) > 0
+	})
+
+	returned, err := r1.listRules(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, returned, allRules)
+	require.Equal(t, 2, len(manager.userManagers))
 }
 
 func TestDeleteTenantRuleGroups(t *testing.T) {
@@ -1267,7 +1343,7 @@ type ruleGroupKey struct {
 }
 
 func TestRuler_ListAllRules(t *testing.T) {
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -1400,7 +1476,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// NEXT, set up ruler config with outage tolerance = 1hr
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	rulerCfg := defaultRulerConfig(t)
 	rulerCfg.OutageTolerance, _ = time.ParseDuration("1h")
 
@@ -1434,7 +1510,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	}
 
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil)
+	r, _ := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil)
 	r.syncRules(context.Background(), rulerSyncReasonInitial)
 
 	// assert initial state of rule group
@@ -1638,7 +1714,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {
-				store := newMockRuleStore(tc.rules)
+				store := newMockRuleStore(tc.rules, nil)
 				cfg := Config{
 					EnableSharding:   tc.sharding,
 					ShardingStrategy: tc.shardingStrategy,
@@ -1654,7 +1730,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 					FlushCheckPeriod: 0,
 				}
 
-				r := buildRuler(t, cfg, nil, store, nil)
+				r, _ := buildRuler(t, cfg, nil, store, nil)
 				r.limits = ruleLimits{evalDelay: 0, tenantShard: 3, disabledRuleGroups: tc.disabledRuleGroups}
 
 				if forceRing != nil {

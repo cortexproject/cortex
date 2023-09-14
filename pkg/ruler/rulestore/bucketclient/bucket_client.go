@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -59,6 +60,11 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 	if userBucket.IsObjNotFoundErr(err) {
 		level.Debug(b.logger).Log("msg", "rule group does not exist", "user", userID, "key", objectKey)
 		return nil, rulestore.ErrGroupNotFound
+	}
+
+	if userBucket.IsAccessDeniedErr(err) {
+		level.Debug(b.logger).Log("msg", "permission denied when loading group", "user", userID, "key", objectKey)
+		return nil, rulestore.ErrAccessDenied
 	}
 
 	if err != nil {
@@ -165,8 +171,11 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 }
 
 // LoadRuleGroups implements rules.RuleStore.
-func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
+func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) (map[string]rulespb.RuleGroupList, error) {
 	ch := make(chan *rulespb.RuleGroupDesc)
+	loadedGroups := make(map[string]rulespb.RuleGroupList, len(groupsToLoad))
+	var e error
+	m := sync.Mutex{}
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will
 	// download all rule groups in parallel. We limit the number of workers to avoid a
@@ -177,17 +186,29 @@ func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[s
 			for gr := range ch {
 				user, namespace, group := gr.GetUser(), gr.GetNamespace(), gr.GetName()
 				if user == "" || namespace == "" || group == "" {
-					return fmt.Errorf("invalid rule group: user=%q, namespace=%q, group=%q", user, namespace, group)
+					m.Lock()
+					e = fmt.Errorf("invalid rule group: user=%q, namespace=%q, group=%q", user, namespace, group)
+					m.Unlock()
+					continue
 				}
 
 				gr, err := b.getRuleGroup(gCtx, user, namespace, group, gr) // reuse group pointer from the map.
 				if err != nil {
-					return errors.Wrapf(err, "get rule group user=%q, namespace=%q, name=%q", user, namespace, group)
+					m.Lock()
+					e = errors.Wrapf(err, "get rule group user=%q, namespace=%q, name=%q", user, namespace, group)
+					m.Unlock()
+					continue
 				}
 
 				if user != gr.User || namespace != gr.Namespace || group != gr.Name {
-					return fmt.Errorf("mismatch between requested rule group and loaded rule group, requested: user=%q, namespace=%q, group=%q, loaded: user=%q, namespace=%q, group=%q", user, namespace, group, gr.User, gr.Namespace, gr.Name)
+					m.Lock()
+					e = fmt.Errorf("mismatch between requested rule group and loaded rule group, requested: user=%q, namespace=%q, group=%q, loaded: user=%q, namespace=%q, group=%q", user, namespace, group, gr.User, gr.Namespace, gr.Name)
+					m.Unlock()
+					continue
 				}
+				m.Lock()
+				loadedGroups[user] = append(loadedGroups[user], gr)
+				m.Unlock()
 			}
 
 			return nil
@@ -210,7 +231,11 @@ outer:
 	}
 	close(ch)
 
-	return g.Wait()
+	if e := g.Wait(); e != nil {
+		return loadedGroups, e
+	}
+
+	return loadedGroups, e
 }
 
 // GetRuleGroup implements rules.RuleStore.

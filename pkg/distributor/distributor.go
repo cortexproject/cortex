@@ -1093,17 +1093,18 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
 				return nil, validation.LimitError(err.Error())
 			}
+			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 			for _, m := range resp.Metric {
-				if err := queryLimiter.AddSeries(m.Labels); err != nil {
-					return nil, validation.LimitError(err.Error())
-				}
+				s = append(s, m.Labels)
 				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
 				fingerprint := m.Fingerprint()
 				mutex.Lock()
 				(*metrics)[fingerprint] = m
 				mutex.Unlock()
 			}
-
+			if err := queryLimiter.AddSeries(s...); err != nil {
+				return nil, validation.LimitError(err.Error())
+			}
 			return nil, nil
 		})
 
@@ -1130,18 +1131,17 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 				} else if err != nil {
 					return nil, err
 				}
-
+				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
-
-					if err := queryLimiter.AddSeries(metric.Labels); err != nil {
-						return nil, validation.LimitError(err.Error())
-					}
-
+					s = append(s, metric.Labels)
 					fingerprint := m.Fingerprint()
 					mutex.Lock()
 					(*metrics)[fingerprint] = m
 					mutex.Unlock()
+				}
+				if err := queryLimiter.AddSeries(s...); err != nil {
+					return nil, validation.LimitError(err.Error())
 				}
 			}
 

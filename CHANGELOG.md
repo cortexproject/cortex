@@ -57,6 +57,7 @@
 * [ENHANCEMENT] Querier: Retry store gateway on different zones when zone awareness is enabled. #5476
 * [ENHANCEMENT] DDBKV: Change metric name from dynamodb_kv_read_capacity_total to dynamodb_kv_consumed_capacity_total and include Delete, Put, Batch dimension. #5481
 * [ENHANCEMENT] Compactor: allow unregisteronshutdown to be configurable. #5503
+* [ENHANCEMENT] Querier: Batch adding series to query limiter to optimize locking. #5505
 * [ENHANCEMENT] Store Gateway: add metric `cortex_bucket_store_chunk_refetches_total` for number of chunk refetches. #5532
 * [ENHANCEMENT] BasicLifeCycler: allow final-sleep during shutdown #5517
 * [ENHANCEMENT] All: Handling CMK Access Denied errors. #5420 #5542

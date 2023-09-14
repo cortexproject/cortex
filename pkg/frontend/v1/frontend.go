@@ -94,12 +94,11 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
 		limits: limits,
-		retry:  retry,
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
@@ -176,33 +175,31 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		}
 	}
 
-	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
-		request := request{
-			request:     req,
-			originalCtx: ctx,
+	request := request{
+		request:     req,
+		originalCtx: ctx,
 
-			// Buffer of 1 to ensure response can be written by the server side
-			// of the Process stream, even if this goroutine goes away due to
-			// client context cancellation.
-			err:      make(chan error, 1),
-			response: make(chan *httpgrpc.HTTPResponse, 1),
-		}
+		// Buffer of 1 to ensure response can be written by the server side
+		// of the Process stream, even if this goroutine goes away due to
+		// client context cancellation.
+		err:      make(chan error, 1),
+		response: make(chan *httpgrpc.HTTPResponse, 1),
+	}
 
-		if err := f.queueRequest(ctx, &request); err != nil {
-			return nil, err
-		}
+	if err := f.queueRequest(ctx, &request); err != nil {
+		return nil, err
+	}
 
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
 
-		case resp := <-request.response:
-			return resp, nil
+	case resp := <-request.response:
+		return resp, nil
 
-		case err := <-request.err:
-			return nil, err
-		}
-	})
+	case err := <-request.err:
+		return nil, err
+	}
 }
 
 // Process allows backends to pull requests from the frontend.

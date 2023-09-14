@@ -271,18 +271,22 @@ func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response, _ t
 		return nil, err
 	}
 
-	buf, err := tripperware.BodyBuffer(r, log)
-	if err != nil {
-		log.Error(err)
-		return nil, err
+	buf := bytes.NewBuffer(make([]byte, 0, r.ContentLength+bytes.MinRead))
+	if _, err := buf.ReadFrom(r.Body); err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	if r.StatusCode/100 != 2 {
+		return nil, httpgrpc.Errorf(r.StatusCode, string(buf.Bytes()))
 	}
 	if r.StatusCode/100 != 2 {
-		return nil, httpgrpc.Errorf(r.StatusCode, string(buf))
+		return nil, httpgrpc.Errorf(r.StatusCode, string(buf.Bytes()))
 	}
-	log.LogFields(otlog.Int("bytes", len(buf)))
+	body := buf.Bytes()
+	log.LogFields(otlog.Int("bytes", len(body)))
 
 	var resp PrometheusResponse
-	if err := json.Unmarshal(buf, &resp); err != nil {
+	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 	}
 

@@ -15,13 +15,14 @@ type GrpcRoundTripper interface {
 	RoundTripGRPC(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
 }
 
-func AdaptGrpcRoundTripperToHTTPRoundTripper(r GrpcRoundTripper) http.RoundTripper {
-	return &grpcRoundTripperAdapter{roundTripper: r}
+func AdaptGrpcRoundTripperToHTTPRoundTripper(r GrpcRoundTripper, retry *Retry) http.RoundTripper {
+	return &grpcRoundTripperAdapter{roundTripper: r, retry: retry}
 }
 
 // This adapter wraps GrpcRoundTripper and converted it into http.RoundTripper
 type grpcRoundTripperAdapter struct {
 	roundTripper GrpcRoundTripper
+	retry        *Retry
 }
 
 type buffer struct {
@@ -39,11 +40,16 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 		return nil, err
 	}
 
-	resp, err := a.roundTripper.RoundTripGRPC(r.Context(), req)
-	if err != nil {
-		return nil, err
-	}
+	return a.retry.Do(r.Context(), func() (*http.Response, error) {
+		resp, err := a.roundTripper.RoundTripGRPC(r.Context(), req)
+		if err != nil {
+			return nil, err
+		}
+		return httpGRPCRespToHTTPResp(resp), nil
+	})
+}
 
+func httpGRPCRespToHTTPResp(resp *httpgrpc.HTTPResponse) *http.Response {
 	httpResp := &http.Response{
 		StatusCode:    int(resp.Code),
 		Body:          &buffer{buff: resp.Body, ReadCloser: io.NopCloser(bytes.NewReader(resp.Body))},
@@ -53,5 +59,5 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 	for _, h := range resp.Headers {
 		httpResp.Header[h.Key] = h.Values
 	}
-	return httpResp, nil
+	return httpResp
 }

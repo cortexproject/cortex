@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
@@ -47,7 +48,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 
 	//logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, logger, nil)
+	f, err := NewFrontend(cfg, logger, nil, transport.NewRetry(3, nil))
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
@@ -116,7 +117,6 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 }
 
 func TestFrontendRetryRequest(t *testing.T) {
-	// Frontend uses worker concurrency to compute number of retries. We use one less failure.
 	tries := atomic.NewInt64(3)
 	const (
 		body   = "hello world"

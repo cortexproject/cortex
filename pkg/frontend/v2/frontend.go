@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -66,6 +67,8 @@ type Frontend struct {
 	cfg Config
 	log log.Logger
 
+	retry *transport.Retry
+
 	lastQueryID atomic.Uint64
 
 	// frontend workers will read from this channel, and send request to scheduler.
@@ -109,7 +112,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -122,6 +125,7 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Fronte
 		log:              log,
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
+		retry:            retry,
 		requests:         newRequestsInProgress(),
 	}
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
@@ -184,7 +188,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	return f.withRetry(func() (*httpgrpc.HTTPResponse, error) {
+	return f.retry.Do(func() (*httpgrpc.HTTPResponse, error) {
 		freq := &frontendRequest{
 			queryID:      f.lastQueryID.Inc(),
 			request:      req,
@@ -258,27 +262,6 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 			return resp.HttpResponse, nil
 		}
 	})
-}
-
-func (f *Frontend) withRetry(do func() (*httpgrpc.HTTPResponse, error)) (*httpgrpc.HTTPResponse, error) {
-	tries := 3
-	var (
-		resp *httpgrpc.HTTPResponse
-		err  error
-	)
-	for tries > 0 {
-		tries--
-		resp, err = do()
-
-		if err != nil && err != context.Canceled {
-			continue // Retryable
-		} else if resp != nil && resp.Code/100 == 5 {
-			continue // Retryable
-		} else {
-			break
-		}
-	}
-	return resp, err
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {

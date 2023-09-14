@@ -109,10 +109,6 @@ func Middlewares(
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("results_cache", metrics), queryCacheMiddleware)
 	}
 
-	if cfg.MaxRetries > 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("retry", metrics), NewRetryMiddleware(log, cfg.MaxRetries, NewRetryMiddlewareMetrics(registerer)))
-	}
-
 	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, shardedPrometheusCodec, queryAnalyzer))
 
 	return queryRangeMiddleware, c, nil

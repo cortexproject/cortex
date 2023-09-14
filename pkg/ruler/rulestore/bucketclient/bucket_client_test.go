@@ -127,7 +127,7 @@ func TestLoadPartialRules(t *testing.T) {
 	// Fail user1
 	mockedBucketClient.GetFailures["rules/user2"] = testutil.ErrKeyAccessDeniedError
 	loadedGroups, err = bucketStore.LoadRuleGroups(context.Background(), allGroups)
-	require.ErrorIs(t, err, rulestore.ErrAccessDenied)
+	require.ErrorContains(t, err, "access denied")
 	require.Equal(t, 2, len(loadedGroups))
 }
 

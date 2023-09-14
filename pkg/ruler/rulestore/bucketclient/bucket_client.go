@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 const (
@@ -174,7 +175,7 @@ func (b *BucketRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) (map[string]rulespb.RuleGroupList, error) {
 	ch := make(chan *rulespb.RuleGroupDesc)
 	loadedGroups := make(map[string]rulespb.RuleGroupList, len(groupsToLoad))
-	var e error
+	errs := multierror.MultiError{}
 	m := sync.Mutex{}
 
 	// Given we store one file per rule group. With this, we create a pool of workers that will
@@ -187,7 +188,7 @@ func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[s
 				user, namespace, group := gr.GetUser(), gr.GetNamespace(), gr.GetName()
 				if user == "" || namespace == "" || group == "" {
 					m.Lock()
-					e = fmt.Errorf("invalid rule group: user=%q, namespace=%q, group=%q", user, namespace, group)
+					errs.Add(fmt.Errorf("invalid rule group: user=%q, namespace=%q, group=%q", user, namespace, group))
 					m.Unlock()
 					continue
 				}
@@ -195,14 +196,14 @@ func (b *BucketRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[s
 				gr, err := b.getRuleGroup(gCtx, user, namespace, group, gr) // reuse group pointer from the map.
 				if err != nil {
 					m.Lock()
-					e = errors.Wrapf(err, "get rule group user=%q, namespace=%q, name=%q", user, namespace, group)
+					errs.Add(errors.Wrapf(err, "get rule group user=%q, namespace=%q, name=%q", user, namespace, group))
 					m.Unlock()
 					continue
 				}
 
 				if user != gr.User || namespace != gr.Namespace || group != gr.Name {
 					m.Lock()
-					e = fmt.Errorf("mismatch between requested rule group and loaded rule group, requested: user=%q, namespace=%q, group=%q, loaded: user=%q, namespace=%q, group=%q", user, namespace, group, gr.User, gr.Namespace, gr.Name)
+					errs.Add(fmt.Errorf("mismatch between requested rule group and loaded rule group, requested: user=%q, namespace=%q, group=%q, loaded: user=%q, namespace=%q, group=%q", user, namespace, group, gr.User, gr.Namespace, gr.Name))
 					m.Unlock()
 					continue
 				}
@@ -235,7 +236,7 @@ outer:
 		return loadedGroups, e
 	}
 
-	return loadedGroups, e
+	return loadedGroups, errs.Err()
 }
 
 // GetRuleGroup implements rules.RuleStore.

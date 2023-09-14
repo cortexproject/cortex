@@ -127,12 +127,12 @@ var (
 		return compactor, plannerFactory, nil
 	}
 
-	DefaultBlockDeletableCheckerFactory = func(_ context.Context, _ objstore.InstrumentedBucket, _ log.Logger, _ prometheus.Counter, _ prometheus.Counter) compact.BlockDeletableChecker {
+	DefaultBlockDeletableCheckerFactory = func(_ context.Context, _ objstore.InstrumentedBucket, _ log.Logger, _ Config, _ prometheus.Counter, _ prometheus.Counter, _ prometheus.Counter) compact.BlockDeletableChecker {
 		return compact.DefaultBlockDeletableChecker{}
 	}
 
-	PartitionCompactionBlockDeletableCheckerFactory = func(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, blockVisitMarkerReadFailed prometheus.Counter, partitionedGroupInfoWriteFailed prometheus.Counter) compact.BlockDeletableChecker {
-		return NewPartitionCompactionBlockDeletableChecker(ctx, bkt, logger, blockVisitMarkerReadFailed, partitionedGroupInfoWriteFailed)
+	PartitionCompactionBlockDeletableCheckerFactory = func(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, cfg Config, blocksMarkedForNoCompaction prometheus.Counter, blockVisitMarkerReadFailed prometheus.Counter, partitionedGroupInfoWriteFailed prometheus.Counter) compact.BlockDeletableChecker {
+		return NewPartitionCompactionBlockDeletableChecker(ctx, bkt, logger, cfg.MetaSyncConcurrency, blocksMarkedForNoCompaction, blockVisitMarkerReadFailed, partitionedGroupInfoWriteFailed)
 	}
 )
 
@@ -181,6 +181,8 @@ type BlockDeletableCheckerFactory func(
 	ctx context.Context,
 	bkt objstore.InstrumentedBucket,
 	logger log.Logger,
+	cfg Config,
+	blocksMarkedForNoCompaction prometheus.Counter,
 	blockVisitMarkerReadFailed prometheus.Counter,
 	partitionedGroupInfoReadFailed prometheus.Counter,
 ) compact.BlockDeletableChecker
@@ -864,7 +866,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return errors.Wrap(err, "failed to create syncer")
 	}
 
-	blockDeletableChecker := c.blockDeletableCheckerFactory(ctx, bucket, ulogger, c.BlockVisitMarkerReadFailed, c.PartitionedGroupInfoReadFailed)
+	blockDeletableChecker := c.blockDeletableCheckerFactory(ctx, bucket, ulogger, c.compactorCfg, c.BlocksMarkedForNoCompaction, c.BlockVisitMarkerReadFailed, c.PartitionedGroupInfoReadFailed)
 	shardedCompactionLifecycleCallback := ShardedCompactionLifecycleCallback{
 		userBucket:                     bucket,
 		partitionedGroupInfoReadFailed: c.PartitionedGroupInfoReadFailed,

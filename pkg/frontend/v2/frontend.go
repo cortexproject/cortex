@@ -18,6 +18,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -66,6 +67,8 @@ type Frontend struct {
 	cfg Config
 	log log.Logger
 
+	retry *transport.Retry
+
 	lastQueryID atomic.Uint64
 
 	// frontend workers will read from this channel, and send request to scheduler.
@@ -109,7 +112,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -122,6 +125,7 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Fronte
 		log:              log,
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
+		retry:            retry,
 		requests:         newRequestsInProgress(),
 	}
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
@@ -184,78 +188,80 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	freq := &frontendRequest{
-		queryID:      f.lastQueryID.Inc(),
-		request:      req,
-		userID:       userID,
-		statsEnabled: stats.IsEnabled(ctx),
+	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
+		freq := &frontendRequest{
+			queryID:      f.lastQueryID.Inc(),
+			request:      req,
+			userID:       userID,
+			statsEnabled: stats.IsEnabled(ctx),
 
-		cancel: cancel,
+			cancel: cancel,
 
-		// Buffer of 1 to ensure response or error can be written to the channel
-		// even if this goroutine goes away due to client context cancellation.
-		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+			// Buffer of 1 to ensure response or error can be written to the channel
+			// even if this goroutine goes away due to client context cancellation.
+			enqueue:  make(chan enqueueResult, 1),
+			response: make(chan *frontendv2pb.QueryResultRequest, 1),
 
-		retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
-	}
+			retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
+		}
 
-	f.requests.put(freq)
-	defer f.requests.delete(freq.queryID)
+		f.requests.put(freq)
+		defer f.requests.delete(freq.queryID)
 
-	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
+		retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
 
-enqueueAgain:
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	enqueueAgain:
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 
-	case f.requestsCh <- freq:
-		// Enqueued, let's wait for response.
-	}
+		case f.requestsCh <- freq:
+			// Enqueued, let's wait for response.
+		}
 
-	var cancelCh chan<- uint64
+		var cancelCh chan<- uint64
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 
-	case enqRes := <-freq.enqueue:
-		if enqRes.status == waitForResponse {
-			cancelCh = enqRes.cancelCh
-			break // go wait for response.
-		} else if enqRes.status == failed {
-			retries--
-			if retries > 0 {
-				goto enqueueAgain
+		case enqRes := <-freq.enqueue:
+			if enqRes.status == waitForResponse {
+				cancelCh = enqRes.cancelCh
+				break // go wait for response.
+			} else if enqRes.status == failed {
+				retries--
+				if retries > 0 {
+					goto enqueueAgain
+				}
 			}
+
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
 		}
 
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
-	}
-
-	select {
-	case <-ctx.Done():
-		if cancelCh != nil {
-			select {
-			case cancelCh <- freq.queryID:
-				// cancellation sent.
-			default:
-				// failed to cancel, log it.
-				level.Warn(util_log.WithContext(ctx, f.log)).Log("msg", "failed to enqueue cancellation signal", "query_id", freq.queryID)
-				f.cancelFailedQueries.Inc()
+		select {
+		case <-ctx.Done():
+			if cancelCh != nil {
+				select {
+				case cancelCh <- freq.queryID:
+					// cancellation sent.
+				default:
+					// failed to cancel, log it.
+					level.Warn(util_log.WithContext(ctx, f.log)).Log("msg", "failed to enqueue cancellation signal", "query_id", freq.queryID)
+					f.cancelFailedQueries.Inc()
+				}
 			}
-		}
-		return nil, ctx.Err()
+			return nil, ctx.Err()
 
-	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
-		}
+		case resp := <-freq.response:
+			if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
-		return resp.HttpResponse, nil
-	}
+			return resp.HttpResponse, nil
+		}
+	})
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {

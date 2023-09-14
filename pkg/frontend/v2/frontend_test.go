@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
@@ -26,7 +27,7 @@ import (
 
 const testFrontendWorkerConcurrency = 5
 
-func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) (*Frontend, *mockScheduler) {
+func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend, maxRetries int) (*Frontend, *mockScheduler) {
 	l, err := net.Listen("tcp", "")
 	require.NoError(t, err)
 
@@ -47,7 +48,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 
 	//logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, logger, nil)
+	f, err := NewFrontend(cfg, logger, nil, transport.NewRetry(maxRetries, nil))
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
@@ -107,12 +108,41 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		})
 
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
-	})
+	}, 0)
 
 	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), resp.Code)
 	require.Equal(t, []byte(body), resp.Body)
+}
+
+func TestFrontendRetryRequest(t *testing.T) {
+	tries := atomic.NewInt64(3)
+	const (
+		body   = "hello world"
+		userID = "test"
+	)
+
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		try := tries.Dec()
+		if try > 0 {
+			go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+				Code: 500,
+				Body: []byte(body),
+			})
+		} else {
+			go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+				Code: 200,
+				Body: []byte(body),
+			})
+		}
+
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
+	}, 3)
+
+	res, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	require.NoError(t, err)
+	require.Equal(t, int32(200), res.Code)
 }
 
 func TestFrontendRetryEnqueue(t *testing.T) {
@@ -135,7 +165,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 		})
 
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
-	})
+	}, 0)
 
 	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
@@ -144,7 +174,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 func TestFrontendEnqueueFailure(t *testing.T) {
 	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
-	})
+	}, 0)
 
 	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
 	require.Error(t, err)
@@ -152,7 +182,7 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 }
 
 func TestFrontendCancellation(t *testing.T) {
-	f, ms := setupFrontend(t, nil)
+	f, ms := setupFrontend(t, nil, 0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -178,7 +208,7 @@ func TestFrontendCancellation(t *testing.T) {
 }
 
 func TestFrontendFailedCancellation(t *testing.T) {
-	f, ms := setupFrontend(t, nil)
+	f, ms := setupFrontend(t, nil, 0)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

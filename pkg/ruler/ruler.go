@@ -519,14 +519,13 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 		return
 	}
 
-	err = r.store.LoadRuleGroups(ctx, configs)
+	loadedConfigs, err := r.store.LoadRuleGroups(ctx, configs)
 	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to load rules owned by this ruler", "err", err)
-		return
+		level.Warn(r.logger).Log("msg", "failed to load some rules owned by this ruler", "count", len(configs)-len(loadedConfigs), "err", err)
 	}
 
 	// This will also delete local group files for users that are no longer in 'configs' map.
-	r.manager.SyncRuleGroups(ctx, configs)
+	r.manager.SyncRuleGroups(ctx, loadedConfigs)
 }
 
 func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGroupList, err error) {
@@ -983,7 +982,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
 		}
 		userRules := map[string]rulespb.RuleGroupList{userID: rg}
-		if err := r.store.LoadRuleGroups(ctx, userRules); err != nil {
+		if userRules, err = r.store.LoadRuleGroups(ctx, userRules); err != nil {
 			return errors.Wrapf(err, "failed to load ruler config for user %s", userID)
 		}
 		data := map[string]map[string][]rulefmt.RuleGroup{userID: userRules[userID].Formatted()}

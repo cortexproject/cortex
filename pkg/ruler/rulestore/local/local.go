@@ -103,9 +103,9 @@ func (l *Client) ListRuleGroupsForUserAndNamespace(ctx context.Context, userID s
 	return l.loadAllRulesGroupsForUser(ctx, userID)
 }
 
-func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rulespb.RuleGroupList) error {
+func (l *Client) LoadRuleGroups(_ context.Context, load map[string]rulespb.RuleGroupList) (map[string]rulespb.RuleGroupList, error) {
 	// This Client already loads the rules in its List methods, there is nothing left to do here.
-	return nil
+	return load, nil
 }
 
 // GetRuleGroup implements RuleStore

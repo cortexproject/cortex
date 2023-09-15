@@ -81,6 +81,7 @@
 * [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
 * [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
+* [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
 
 ## 1.15.1 2023-04-26
 

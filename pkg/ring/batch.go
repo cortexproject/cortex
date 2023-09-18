@@ -3,11 +3,11 @@ package ring
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	"sync"
 
 	"google.golang.org/grpc/status"
 
-	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 )
 
@@ -152,7 +152,7 @@ func (b *batchTracker) record(instance instance, err error) {
 		if err != nil {
 			// Track the number of errors by error family, and if it exceeds maxFailures
 			// shortcut the waiting rpc.
-			wrappedErr := errors.Wrapf(err, "addr=%s state=%s zone=%s", instance.desc.Addr, instance.desc.State, instance.desc.Zone)
+			wrappedErr := httpgrpcutil.WrapHttpGrpcError(err, "addr=%s state=%s zone=%s", instance.desc.Addr, instance.desc.State, instance.desc.Zone)
 			errCount := instance.itemTrackers[i].recordError(wrappedErr)
 			// We should return an error if we reach the maxFailure (quorum) on a given error family OR
 			// we dont have any remaining ingesters to try
@@ -162,13 +162,13 @@ func (b *batchTracker) record(instance instance, err error) {
 			// Ex: 5xx, _, 5xx -> return 5xx
 			if errCount > int32(sampleTrackers[i].maxFailures) {
 				if b.rpcsFailed.Inc() == 1 {
-					b.err <- errors.Wrap(sampleTrackers[i].getError(), "maxFailure (quorum) on a given error family")
+					b.err <- httpgrpcutil.WrapHttpGrpcError(sampleTrackers[i].getError(), "maxFailure (quorum) on a given error family")
 				}
 				continue
 			}
 			if sampleTrackers[i].remaining.Dec() == 0 {
 				if b.rpcsFailed.Inc() == 1 {
-					b.err <- errors.Wrap(sampleTrackers[i].getError(), "not enough remaining instances to try")
+					b.err <- httpgrpcutil.WrapHttpGrpcError(sampleTrackers[i].getError(), "not enough remaining instances to try")
 				}
 				continue
 			}
@@ -187,7 +187,7 @@ func (b *batchTracker) record(instance instance, err error) {
 			// Ex: 4xx, 5xx, 2xx
 			if sampleTrackers[i].remaining.Dec() == 0 {
 				if b.rpcsFailed.Inc() == 1 {
-					b.err <- errors.Wrap(sampleTrackers[i].getError(), "not enough remaining instances to try")
+					b.err <- httpgrpcutil.WrapHttpGrpcError(sampleTrackers[i].getError(), "not enough remaining instances to try")
 				}
 			}
 		}

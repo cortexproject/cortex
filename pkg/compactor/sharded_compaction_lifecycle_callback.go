@@ -160,8 +160,8 @@ func (c ShardedCompactionLifecycleCallback) getMetaByBlockIDs(blocks []ulid.ULID
 			return nil, c.ctx.Err()
 		default:
 		}
+		blockID := b
 		g.Go(func() error {
-			blockID := b
 			metaReader, err := c.userBucket.ReaderWithExpectedErrs(c.userBucket.IsObjNotFoundErr).Get(c.ctx, path.Join(blockID.String(), metadata.MetaFilename))
 			if err != nil {
 				return err
@@ -192,7 +192,7 @@ func countSamplesFromMeta(blocks map[ulid.ULID]*metadata.Meta) uint64 {
 
 func getMetaInfo(blocks map[ulid.ULID]*metadata.Meta) string {
 	var ids []string
-	for b, _ := range blocks {
+	for b := range blocks {
 		ids = append(ids, b.String())
 	}
 	sort.Strings(ids)

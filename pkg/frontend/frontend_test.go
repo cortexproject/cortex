@@ -254,7 +254,7 @@ func testFrontend(t *testing.T, config CombinedFrontendConfig, handler http.Hand
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	rt, v1, v2, err := InitFrontend(config, frontendv1.MockLimits{}, 0, logger, nil)
+	rt, v1, v2, err := InitFrontend(config, frontendv1.MockLimits{}, 0, logger, nil, transport.NewRetry(0, nil))
 	require.NoError(t, err)
 	require.NotNil(t, rt)
 	// v1 will be nil if DownstreamURL is defined.

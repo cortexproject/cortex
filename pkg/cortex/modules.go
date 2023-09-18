@@ -498,7 +498,8 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 }
 
 func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
-	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.Overrides, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
+	retry := transport.NewRetry(t.Cfg.QueryRange.MaxRetries, prometheus.DefaultRegisterer)
+	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.Overrides, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer, retry)
 	if err != nil {
 		return nil, err
 	}

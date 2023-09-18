@@ -450,7 +450,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = a.store.LoadRuleGroups(req.Context(), map[string]rulespb.RuleGroupList{userID: rgs})
+	_, err = a.store.LoadRuleGroups(req.Context(), map[string]rulespb.RuleGroupList{userID: rgs})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

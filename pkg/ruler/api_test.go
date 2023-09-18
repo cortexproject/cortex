@@ -20,7 +20,7 @@ import (
 )
 
 func TestRuler_rules(t *testing.T) {
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -76,7 +76,7 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
-	store := newMockRuleStore(mockSpecialCharRules)
+	store := newMockRuleStore(mockSpecialCharRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -131,7 +131,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_rules_limit(t *testing.T) {
-	store := newMockRuleStore(mockRulesLimit)
+	store := newMockRuleStore(mockRulesLimit, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -185,7 +185,7 @@ func TestRuler_rules_limit(t *testing.T) {
 	require.Equal(t, string(expectedResponse), string(body))
 }
 func TestRuler_alerts(t *testing.T) {
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -220,7 +220,7 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -310,7 +310,7 @@ rules:
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	store := newMockRuleStore(mockRulesNamespaces)
+	store := newMockRuleStore(mockRulesNamespaces, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -348,7 +348,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_LimitsPerGroup(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -402,7 +402,7 @@ rules:
 }
 
 func TestRuler_RulerGroupLimits(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -463,7 +463,7 @@ rules:
 }
 
 func TestRuler_ProtoToRuleGroupYamlConvertion(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)

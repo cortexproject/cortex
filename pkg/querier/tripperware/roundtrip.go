@@ -127,10 +127,13 @@ func NewQueryTripperware(
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
+				isSeries := strings.HasSuffix(r.URL.Path, "/series")
 
 				op := "query"
 				if isQueryRange {
 					op = "query_range"
+				} else if isSeries {
+					op = "series"
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())

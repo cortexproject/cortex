@@ -58,10 +58,13 @@
 * [ENHANCEMENT] Querier: Retry store gateway on different zones when zone awareness is enabled. #5476
 * [ENHANCEMENT] DDBKV: Change metric name from dynamodb_kv_read_capacity_total to dynamodb_kv_consumed_capacity_total and include Delete, Put, Batch dimension. #5481
 * [ENHANCEMENT] Compactor: allow unregisteronshutdown to be configurable. #5503
+* [ENHANCEMENT] Querier: Batch adding series to query limiter to optimize locking. #5505
 * [ENHANCEMENT] Store Gateway: add metric `cortex_bucket_store_chunk_refetches_total` for number of chunk refetches. #5532
 * [ENHANCEMENT] BasicLifeCycler: allow final-sleep during shutdown #5517
 * [ENHANCEMENT] All: Handling CMK Access Denied errors. #5420 #5542
 * [ENHANCEMENT] Querier: Retry store gateway client connection closing gRPC error. #5558
+* [ENHANCEMENT] QueryFrontend: Add generic retry for all APIs. #5561.
+* [ENHANCEMENT] QueryFrontend: Add metric for number of series requests. #5373
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
@@ -80,6 +83,7 @@
 * [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
 * [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
+* [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
 
 ## 1.15.1 2023-04-26
 

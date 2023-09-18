@@ -65,18 +65,23 @@ func QueryLimiterFromContextWithFallback(ctx context.Context) *QueryLimiter {
 	return ql
 }
 
-// AddSeries adds the input series and returns an error if the limit is reached.
-func (ql *QueryLimiter) AddSeries(seriesLabels []cortexpb.LabelAdapter) error {
+// AddSeriesBatch adds the batch of input series and returns an error if the limit is reached.
+func (ql *QueryLimiter) AddSeries(series ...[]cortexpb.LabelAdapter) error {
 	// If the max series is unlimited just return without managing map
 	if ql.maxSeriesPerQuery == 0 {
 		return nil
 	}
-	fingerprint := client.FastFingerprint(seriesLabels)
+	fps := make([]model.Fingerprint, 0, len(series))
+	for _, s := range series {
+		fps = append(fps, client.FastFingerprint(s))
+	}
 
 	ql.uniqueSeriesMx.Lock()
 	defer ql.uniqueSeriesMx.Unlock()
+	for _, fp := range fps {
+		ql.uniqueSeries[fp] = struct{}{}
+	}
 
-	ql.uniqueSeries[fingerprint] = struct{}{}
 	if len(ql.uniqueSeries) > ql.maxSeriesPerQuery {
 		// Format error with max limit
 		return fmt.Errorf(ErrMaxSeriesHit, ql.maxSeriesPerQuery)

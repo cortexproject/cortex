@@ -283,7 +283,7 @@ func TestDistributor_Push(t *testing.T) {
 				request := makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata)
 				response, err := ds[0].Push(ctx, request)
 				assert.Equal(t, tc.expectedResponse, response)
-				assert.Equal(t, tc.expectedError, err)
+				assert.Equal(t, status.Code(tc.expectedError), status.Code(err))
 
 				// Check tracked Prometheus metrics. Since the Push() response is sent as soon as the quorum
 				// is reached, when we reach this point the 3rd ingester may not have received series/metadata

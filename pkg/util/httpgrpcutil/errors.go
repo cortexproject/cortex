@@ -2,11 +2,12 @@ package httpgrpcutil
 
 import (
 	"fmt"
-	"github.com/weaveworks/common/httpgrpc"
 	"net/http"
+
+	"github.com/weaveworks/common/httpgrpc"
 )
 
-func WrapHttpGrpcError(err error, format string, args ...interface{}) error {
+func WrapHTTPGrpcError(err error, format string, args ...interface{}) error {
 	if err == nil {
 		return nil
 	}

@@ -756,7 +756,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					"data_downloaded_size_sum", seriesQueryStats.DataDownloadedSizeSum,
 					"get_all_duration", seriesQueryStats.GetAllDuration,
 					"merge_duration", seriesQueryStats.MergeDuration,
-					"response_latency", time.Since(begin),
+					"response_time", time.Since(begin),
 				)
 			}
 

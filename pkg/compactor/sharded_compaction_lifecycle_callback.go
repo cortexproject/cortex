@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 
@@ -118,6 +119,7 @@ func (c ShardedCompactionLifecycleCallback) isSampleMissing(partitionedGroupInfo
 		level.Warn(c.logger).Log("msg", "samples are missing from result blocks", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "result_samples", resultSamples, "source_samples", sourceSamples, "result_blocks", resultBlocksInfo, "source_blocks", sourceBlocksInfo)
 		return true
 	}
+	level.Info(c.logger).Log("msg", "samples check complete successfully", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "result_samples", resultSamples, "source_samples", sourceSamples)
 	return false
 }
 
@@ -125,7 +127,8 @@ func (c ShardedCompactionLifecycleCallback) getBlocksByPartitionedGroupID(partit
 	blocks := make(map[ulid.ULID]*metadata.Meta)
 	for b, meta := range blocksMeta {
 		partitionInfo, err := GetPartitionInfo(*meta)
-		if err != nil {
+		if partitionInfo == nil || err != nil {
+			level.Debug(c.logger).Log("msg", "unable to get partition info for block", "block", b.String(), "meta", *meta)
 			continue
 		}
 		if partitionInfo.PartitionedGroupID == partitionedGroupInfo.PartitionedGroupID {
@@ -136,17 +139,41 @@ func (c ShardedCompactionLifecycleCallback) getBlocksByPartitionedGroupID(partit
 }
 
 func (c ShardedCompactionLifecycleCallback) getBlocksInTimeRange(rangeStart int64, rangeEnd int64) (map[ulid.ULID]*metadata.Meta, error) {
+	discovered := make(map[ulid.ULID]struct{})
 	idx, err := bucketindex.ReadUserIndex(c.ctx, c.userBucket, c.logger)
 	if err != nil {
 		return nil, err
 	}
 	var blockIDs []ulid.ULID
 	for _, b := range idx.Blocks {
+		discovered[b.ID] = struct{}{}
 		if b.MinTime >= rangeStart && b.MaxTime <= rangeEnd {
 			blockIDs = append(blockIDs, b.ID)
 		}
 	}
-	return c.getMetaByBlockIDs(blockIDs)
+	err = c.userBucket.Iter(c.ctx, "", func(name string) error {
+		if id, ok := block.IsBlockDir(name); ok {
+			if _, ok := discovered[id]; !ok {
+				blockIDs = append(blockIDs, id)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	blocks, err := c.getMetaByBlockIDs(blockIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[ulid.ULID]*metadata.Meta)
+	for id, b := range blocks {
+		if b.MinTime >= rangeStart && b.MaxTime <= rangeEnd {
+			level.Debug(c.logger).Log("msg", "found block in time range", "range_start", rangeStart, "range_end", rangeEnd, "block", id.String(), "block_range_start", b.MinTime, "block_range_end", b.MaxTime)
+			result[id] = b
+		}
+	}
+	return result, nil
 }
 
 func (c ShardedCompactionLifecycleCallback) getMetaByBlockIDs(blocks []ulid.ULID) (map[ulid.ULID]*metadata.Meta, error) {
@@ -171,6 +198,7 @@ func (c ShardedCompactionLifecycleCallback) getMetaByBlockIDs(blocks []ulid.ULID
 				return err
 			}
 			mtx.Lock()
+			level.Debug(c.logger).Log("msg", "read metadata for block", "block", blockID, "meta", *meta)
 			blocksMeta[blockID] = meta
 			mtx.Unlock()
 			return nil

@@ -76,9 +76,10 @@ func TestPartitionedGroupInfo(t *testing.T) {
 						},
 					},
 				},
-				RangeStart: rangeStart,
-				RangeEnd:   rangeEnd,
-				Version:    VisitMarkerVersion1,
+				RangeStart:   rangeStart,
+				RangeEnd:     rangeEnd,
+				CreationTime: time.Now().Unix(),
+				Version:      VisitMarkerVersion1,
 			},
 		},
 	} {

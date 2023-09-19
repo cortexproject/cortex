@@ -474,13 +474,17 @@ func (c *BlocksCleaner) findResultBlocksForPartitionedGroup(ctx context.Context,
 			level.Info(userLogger).Log("msg", "unable to get meta for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
 			continue
 		}
+		if meta.Compaction.Level == 1 {
+			level.Debug(userLogger).Log("msg", "skip level 1 block", "partitioned_group_id", partitionedGroupID, "block", b.String())
+			continue
+		}
 		partitionInfo, err := GetPartitionInfo(meta)
 		if err != nil {
 			level.Warn(userLogger).Log("msg", "failed to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String(), "err", err)
 			continue
 		}
 		if partitionInfo == nil {
-			level.Info(userLogger).Log("msg", "unable to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
+			level.Warn(userLogger).Log("msg", "unable to get partition info for block", "partitioned_group_id", partitionedGroupID, "block", b.String())
 			continue
 		}
 		if partitionInfo.PartitionedGroupID == partitionedGroupID {

@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
@@ -48,6 +49,7 @@ type PartitionedGroupInfo struct {
 	Partitions         []Partition `json:"partitions"`
 	RangeStart         int64       `json:"rangeStart"`
 	RangeEnd           int64       `json:"rangeEnd"`
+	CreationTime       int64       `json:"creation_time"`
 	// Version of the file.
 	Version int `json:"version"`
 }

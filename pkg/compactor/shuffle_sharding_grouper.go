@@ -371,6 +371,7 @@ func (g *ShuffleShardingGrouper) partitionBlockGroup(group blocksGroup, groupHas
 		Partitions:         partitions,
 		RangeStart:         group.rangeStart,
 		RangeEnd:           group.rangeEnd,
+		CreationTime:       time.Now().Unix(),
 		Version:            PartitionedGroupInfoVersion1,
 	}
 	return &partitionedGroupInfo, nil

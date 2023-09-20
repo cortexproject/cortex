@@ -110,9 +110,9 @@ func (c *ConfigRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 	return list, nil
 }
 
-func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
+func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) (map[string]rulespb.RuleGroupList, error) {
 	// Since ConfigRuleStore already Loads the rules in the List methods, there is nothing left to do here.
-	return nil
+	return groupsToLoad, nil
 }
 
 // GetRuleGroup is not implemented

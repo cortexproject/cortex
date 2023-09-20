@@ -10,6 +10,8 @@ import (
 var (
 	// ErrGroupNotFound is returned if a rule group does not exist
 	ErrGroupNotFound = errors.New("group does not exist")
+	// ErrAccessDenied is returned access denied error was returned when trying to laod the group
+	ErrAccessDenied = errors.New("access denied")
 	// ErrGroupNamespaceNotFound is returned if a namespace does not exist
 	ErrGroupNamespaceNotFound = errors.New("group namespace does not exist")
 	// ErrUserNotFound is returned if the user does not currently exist
@@ -30,10 +32,11 @@ type RuleStore interface {
 	// If namespace is empty, groups from all namespaces are returned.
 	ListRuleGroupsForUserAndNamespace(ctx context.Context, userID string, namespace string) (rulespb.RuleGroupList, error)
 
-	// LoadRuleGroups loads rules for each rule group in the map.
+	// LoadRuleGroups try to load rules for each rule group in the map.
+	// Returns a map with the loaded groups and any eventual error occurred while loading the groups
 	// Parameter with groups to load *MUST* be coming from one of the List methods.
 	// Reason is that some implementations don't do anything, since their List method already loads the rules.
-	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error
+	LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) (map[string]rulespb.RuleGroupList, error)
 
 	GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error)
 	SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error

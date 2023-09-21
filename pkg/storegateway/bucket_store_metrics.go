@@ -38,9 +38,11 @@ type BucketStoreMetrics struct {
 	cachedPostingsOriginalSizeBytes      *prometheus.Desc
 	cachedPostingsCompressedSizeBytes    *prometheus.Desc
 
-	seriesFetchDuration   *prometheus.Desc
-	postingsFetchDuration *prometheus.Desc
-	chunkFetchDuration    *prometheus.Desc
+	seriesFetchDuration    *prometheus.Desc
+	seriesFetchDurationSum *prometheus.Desc
+	postingsFetchDuration  *prometheus.Desc
+	chunkFetchDuration     *prometheus.Desc
+	chunkFetchDurationSum  *prometheus.Desc
 
 	lazyExpandedPostingsCount                     *prometheus.Desc
 	lazyExpandedPostingSizeBytes                  *prometheus.Desc
@@ -160,6 +162,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"cortex_bucket_store_series_fetch_duration_seconds",
 			"Time it takes to fetch series to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.",
 			nil, nil),
+		seriesFetchDurationSum: prometheus.NewDesc(
+			"cortex_bucket_store_series_fetch_duration_sum_seconds",
+			"The time it takes to fetch postings to respond to a request sent to a store gateway. It includes both the time to fetch it from the cache and from storage in case of cache misses.",
+			nil, nil),
 		postingsFetchDuration: prometheus.NewDesc(
 			"cortex_bucket_store_postings_fetch_duration_seconds",
 			"Time it takes to fetch postings to respond a request sent to store-gateway. It includes both the time to fetch it from cache and from storage in case of cache misses.",
@@ -167,6 +173,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 		chunkFetchDuration: prometheus.NewDesc(
 			"cortex_bucket_store_chunks_fetch_duration_seconds",
 			"The total time spent fetching chunks within a single request a store gateway.",
+			nil, nil),
+		chunkFetchDurationSum: prometheus.NewDesc(
+			"cortex_bucket_store_chunks_fetch_duration_sum_seconds",
+			"The total absolute time spent fetching chunks within a single request for one block.",
 			nil, nil),
 
 		indexHeaderLazyLoadCount: prometheus.NewDesc(
@@ -241,8 +251,10 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.cachedPostingsCompressedSizeBytes
 
 	out <- m.seriesFetchDuration
+	out <- m.seriesFetchDurationSum
 	out <- m.postingsFetchDuration
 	out <- m.chunkFetchDuration
+	out <- m.chunkFetchDurationSum
 
 	out <- m.indexHeaderLazyLoadCount
 	out <- m.indexHeaderLazyLoadFailedCount
@@ -288,8 +300,10 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersWithLabels(out, m.cachedPostingsCompressedSizeBytes, "thanos_bucket_store_cached_postings_compressed_size_bytes_total")
 
 	data.SendSumOfHistograms(out, m.seriesFetchDuration, "thanos_bucket_store_series_fetch_duration_seconds")
+	data.SendSumOfHistograms(out, m.seriesFetchDurationSum, "thanos_bucket_store_series_fetch_duration_sum_seconds")
 	data.SendSumOfHistograms(out, m.postingsFetchDuration, "thanos_bucket_store_postings_fetch_duration_seconds")
 	data.SendSumOfHistograms(out, m.chunkFetchDuration, "thanos_bucket_store_chunks_fetch_duration_seconds")
+	data.SendSumOfHistograms(out, m.chunkFetchDurationSum, "thanos_bucket_store_chunks_fetch_duration_sum_seconds")
 
 	data.SendSumOfCounters(out, m.indexHeaderLazyLoadCount, "thanos_bucket_store_indexheader_lazy_load_total")
 	data.SendSumOfCounters(out, m.indexHeaderLazyLoadFailedCount, "thanos_bucket_store_indexheader_lazy_load_failed_total")

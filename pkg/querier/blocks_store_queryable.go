@@ -609,6 +609,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				return errors.Wrapf(err, "failed to create series request")
 			}
 
+			begin := time.Now()
 			stream, err := c.Series(gCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
@@ -725,10 +726,10 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				"requested blocks", strings.Join(convertULIDsToString(blockIDs), " "),
 				"queried blocks", strings.Join(convertULIDsToString(myQueriedBlocks), " "))
 
-			// It is also interesting to look at data downloaded at store gateway even if
-			// no series got matched, but to reduce verbosity we are more interested in those
-			// matched case. With vertical sharding enabled it is easy to log too much.
-			if numSeries > 0 {
+			// Use number of blocks queried to check whether we should log the query
+			// or not. It might be logging too much but good to understand per request
+			// performance.
+			if seriesQueryStats.BlocksQueried > 0 {
 				level.Info(spanLog).Log("msg", "store gateway series request stats",
 					"instance", c.RemoteAddress(),
 					"queryable_chunk_bytes_fetched", chunkBytes,
@@ -753,6 +754,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					"chunks_fetch_count", seriesQueryStats.ChunksFetchCount,
 					"chunks_fetched_size_sum", seriesQueryStats.ChunksFetchedSizeSum,
 					"data_downloaded_size_sum", seriesQueryStats.DataDownloadedSizeSum,
+					"get_all_duration", seriesQueryStats.GetAllDuration,
+					"merge_duration", seriesQueryStats.MergeDuration,
+					"response_time", time.Since(begin),
 				)
 			}
 

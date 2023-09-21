@@ -64,6 +64,7 @@
 * [ENHANCEMENT] Querier: Retry store gateway client connection closing gRPC error. #5558
 * [ENHANCEMENT] QueryFrontend: Add generic retry for all APIs. #5561.
 * [ENHANCEMENT] QueryFrontend: Add metric for number of series requests. #5373
+* [ENHANCEMENT] Store Gateway: Add histogram metrics for total time spent fetching series and chunks per request. #5573
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293

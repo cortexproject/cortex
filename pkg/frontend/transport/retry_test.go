@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 )
@@ -39,6 +40,7 @@ func TestNoRetryOnChunkPoolExhaustion(t *testing.T) {
 		if try > 1 {
 			return &httpgrpc.HTTPResponse{
 				Code: 500,
+				Body: []byte(pool.ErrPoolExhausted.Error()),
 			}, nil
 		}
 		return &httpgrpc.HTTPResponse{

@@ -1,17 +1,15 @@
 package transport
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
-	"net/http"
 	"strings"
 	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/pool"
+	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
@@ -33,7 +31,7 @@ func NewRetry(maxRetries int, reg prometheus.Registerer) *Retry {
 	}
 }
 
-func (r *Retry) Do(ctx context.Context, f func() (*http.Response, error)) (*http.Response, error) {
+func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)) (*httpgrpc.HTTPResponse, error) {
 	if r.maxRetries == 0 {
 		// Retries are disabled. Try only once.
 		return f()
@@ -43,7 +41,7 @@ func (r *Retry) Do(ctx context.Context, f func() (*http.Response, error)) (*http
 	defer func() { r.retriesCount.Observe(float64(tries)) }()
 
 	var (
-		resp *http.Response
+		resp *httpgrpc.HTTPResponse
 		err  error
 	)
 	for ; tries < r.maxRetries; tries++ {
@@ -54,8 +52,11 @@ func (r *Retry) Do(ctx context.Context, f func() (*http.Response, error)) (*http
 		resp, err = f()
 		if err != nil && !errors.Is(err, context.Canceled) {
 			continue // Retryable
-		} else if resp != nil && resp.StatusCode/100 == 5 {
-			body, err := tripperware.BodyBuffer(resp, nil)
+		} else if resp != nil && resp.Code/100 == 5 {
+			// This is not that efficient as we might decode the body multiple
+			// times. But error response should be too large so we should be fine.
+			// TODO: investigate ways to decode only once.
+			body, err := tripperware.BodyBufferFromHTTPGRPCResponse(resp, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -64,8 +65,6 @@ func (r *Retry) Do(ctx context.Context, f func() (*http.Response, error)) (*http
 				continue
 			}
 
-			resp.Body = &buffer{buff: body, ReadCloser: io.NopCloser(bytes.NewReader(body))}
-			resp.ContentLength = int64(len(body))
 			return resp, nil
 		}
 		break
@@ -73,24 +72,14 @@ func (r *Retry) Do(ctx context.Context, f func() (*http.Response, error)) (*http
 	if err != nil {
 		return nil, err
 	}
-	// We always want to return decoded response body if possible.
-	body, err := tripperware.BodyBuffer(resp, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp.Body = &buffer{buff: body, ReadCloser: io.NopCloser(bytes.NewReader(body))}
-	resp.ContentLength = int64(len(body))
+
 	return resp, err
 }
 
 func isBodyRetryable(body string) bool {
 	// If pool exhausted, retry at query frontend might make things worse.
 	// Rely on retries at querier level only.
-	if strings.Contains(body, pool.ErrPoolExhausted.Error()) {
-		return false
-	}
-
-	return true
+	return !strings.Contains(body, pool.ErrPoolExhausted.Error())
 }
 
 func yoloString(b []byte) string {

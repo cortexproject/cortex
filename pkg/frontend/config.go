@@ -59,15 +59,15 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 			cfg.FrontendV2.Port = grpcListenPort
 		}
 
-		fr, err := v2.NewFrontend(cfg.FrontendV2, log, reg)
-		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr, retry), nil, fr, err
+		fr, err := v2.NewFrontend(cfg.FrontendV2, log, reg, retry)
+		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), nil, fr, err
 
 	default:
 		// No scheduler = use original frontend.
-		fr, err := v1.New(cfg.FrontendV1, limits, log, reg)
+		fr, err := v1.New(cfg.FrontendV1, limits, log, reg, retry)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr, retry), fr, nil, nil
+		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, nil
 	}
 }

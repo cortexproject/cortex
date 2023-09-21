@@ -7,10 +7,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
-	"github.com/thanos-io/thanos/pkg/pool"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -23,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/pool"
 
 	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -452,7 +451,7 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":                "1s",
 		"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-		"-blocks-storage.bucket-store.max_chunk_pool_bytes": "1",
+		"-blocks-storage.bucket-store.max-chunk-pool-bytes": "1",
 	})
 
 	// Start dependencies.
@@ -492,16 +491,18 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
 	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval": "5s",
 	}), "")
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval": "5s",
 		"-querier.frontend-address":                  queryFrontend.NetworkGRPCEndpoint(),
 	}), "")
-	require.NoError(t, s.StartAndWaitReady(queryFrontend, querier, storeGateway))
+	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
 	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
@@ -509,7 +510,7 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
 
 	// Query back the series.
-	c, err = e2ecortex.NewClient("", path.Join(queryFrontend.HTTPEndpoint(), "/prometheus"), "", "", "user-1")
+	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
 	// We expect request to hit chunk pool exhaustion.

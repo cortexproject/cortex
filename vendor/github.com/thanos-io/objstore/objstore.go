@@ -594,7 +594,7 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 	b.ops.WithLabelValues(op).Inc()
 
 	trc := newTimingReadCloser(
-		io.NopCloser(r),
+		NopCloserWithSize(r),
 		op,
 		b.opsDuration,
 		b.opsFailures,

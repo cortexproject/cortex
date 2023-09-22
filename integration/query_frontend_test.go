@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/pool"
 
 	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -435,4 +436,88 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	assertServiceMetricsPrefixes(t, Querier, querier)
 	assertServiceMetricsPrefixes(t, QueryFrontend, queryFrontend)
 	assertServiceMetricsPrefixes(t, QueryScheduler, queryScheduler)
+}
+
+func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":                "1s",
+		"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+		"-blocks-storage.bucket-store.max-chunk-pool-bytes": "1",
+	})
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components for the write path.
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+
+	// Wait until the distributor has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Push some series to Cortex.
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	seriesTimestamp := time.Now()
+	series2Timestamp := seriesTimestamp.Add(blockRangePeriod * 2)
+	series1, _ := generateSeries("series_1", seriesTimestamp, prompb.Label{Name: "job", Value: "test"})
+	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "job", Value: "test"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Wait until the TSDB head is compacted and shipped to the storage.
+	// The shipped block contains the 1st series, while the 2ns series is in the head.
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_shipper_uploads_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_created_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
+	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
+
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-blocks-storage.bucket-store.sync-interval": "5s",
+	}), "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-blocks-storage.bucket-store.sync-interval": "5s",
+		"-querier.frontend-address":                  queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
+
+	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+
+	// Query back the series.
+	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// We expect request to hit chunk pool exhaustion.
+	resp, body, err := c.QueryRaw(`{job="test"}`, series2Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	require.Contains(t, string(body), pool.ErrPoolExhausted.Error())
+	// We shouldn't be able to see any retries.
+	require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_query_frontend_retries"}, e2e.WaitMissingMetrics))
 }

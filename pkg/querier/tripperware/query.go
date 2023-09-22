@@ -231,6 +231,25 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
+	// if the response is gziped, lets unzip it here
+	headers := http.Header{}
+	for _, h := range res.Headers {
+		headers[h.Key] = h.Values
+	}
+	if strings.EqualFold(headers.Get("Content-Encoding"), "gzip") {
+		gReader, err := gzip.NewReader(bytes.NewBuffer(res.Body))
+		if err != nil {
+			return nil, err
+		}
+		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
+
+		return io.ReadAll(gReader)
+	}
+
+	return res.Body, nil
+}
+
 func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep) *PrometheusResponseStats {
 	keys := make([]int64, 0, len(stats))
 	for key := range stats {

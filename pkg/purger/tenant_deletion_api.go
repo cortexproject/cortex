@@ -52,7 +52,7 @@ func (api *TenantDeletionAPI) DeleteTenant(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err = cortex_tsdb.WriteTenantDeletionMark(r.Context(), api.bucketClient, userID, api.cfgProvider, cortex_tsdb.NewTenantDeletionMark(time.Now()))
+	err = cortex_tsdb.WriteTenantDeletionMark(r.Context(), api.bucketClient, userID, cortex_tsdb.NewTenantDeletionMark(time.Now()))
 	if err != nil {
 		level.Error(api.logger).Log("msg", "failed to write tenant deletion mark", "user", userID, "err", err)
 

@@ -3022,6 +3022,16 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -store-gateway.max-downloaded-bytes-per-request
 [max_downloaded_bytes_per_request: <int> | default = 0]
 
+# The maximum number of series to fetch per gRPC request in Store Gateway,
+# including Series/LabelNames/LabelValues requests. 0 to disable.
+# CLI flag: -store-gateway.max-series-per-request
+[max_series_per_request: <int> | default = 0]
+
+# The maximum number of chunks to fetch per gRPC request in Store Gateway for
+# Series requests. 0 to disable.
+# CLI flag: -store-gateway.max-chunks-per-request
+[max_chunks_per_request: <int> | default = 0]
+
 # Delete blocks containing samples older than the specified retention period. 0
 # to disable.
 # CLI flag: -compactor.blocks-retention-period

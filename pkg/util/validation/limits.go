@@ -112,6 +112,8 @@ type Limits struct {
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
 	MaxDownloadedBytesPerRequest int     `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
+	MaxSeriesPerRequest          int     `yaml:"max_series_per_request" json:"max_series_per_request"`
+	MaxChunksPerRequest          int     `yaml:"max_chunks_per_request" json:"max_chunks_per_request"`
 
 	// Compactor.
 	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
@@ -200,6 +202,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
 	f.IntVar(&l.MaxDownloadedBytesPerRequest, "store-gateway.max-downloaded-bytes-per-request", 0, "The maximum number of data bytes to download per gRPC request in Store Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.")
+	f.IntVar(&l.MaxSeriesPerRequest, "store-gateway.max-series-per-request", 0, "The maximum number of series to fetch per gRPC request in Store Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.")
+	f.IntVar(&l.MaxChunksPerRequest, "store-gateway.max-chunks-per-request", 0, "The maximum number of chunks to fetch per gRPC request in Store Gateway for Series requests. 0 to disable.")
 
 	// Alertmanager.
 	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
@@ -452,6 +456,18 @@ func (o *Overrides) MaxFetchedDataBytesPerQuery(userID string) int {
 // including any data fetched from cache or object storage.
 func (o *Overrides) MaxDownloadedBytesPerRequest(userID string) int {
 	return o.GetOverridesForUser(userID).MaxDownloadedBytesPerRequest
+}
+
+// MaxSeriesPerRequest returns the maximum number of series to download for each gRPC request in Store Gateway,
+// including any series fetched from cache or object storage.
+func (o *Overrides) MaxSeriesPerRequest(userID string) int {
+	return o.GetOverridesForUser(userID).MaxSeriesPerRequest
+}
+
+// MaxChunksPerRequest returns the maximum number of chunks to download for each gRPC request in Store Gateway,
+// including any chunks fetched from cache or object storage.
+func (o *Overrides) MaxChunksPerRequest(userID string) int {
+	return o.GetOverridesForUser(userID).MaxChunksPerRequest
 }
 
 // MaxQueryLookback returns the max lookback period of queries.

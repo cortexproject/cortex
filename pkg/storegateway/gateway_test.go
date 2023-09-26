@@ -1041,7 +1041,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 			//parallel testing causes data race
 			// Customise the limits.
 			limits := defaultLimitsConfig()
-			limits.MaxChunksPerQuery = testData.limit
+			limits.MaxChunksPerRequest = testData.limit
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 
@@ -1130,7 +1130,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 			//parallel testing causes data race
 			// Customise the limits.
 			limits := defaultLimitsConfig()
-			limits.MaxFetchedSeriesPerQuery = testData.limit
+			limits.MaxSeriesPerRequest = testData.limit
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 

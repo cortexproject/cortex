@@ -65,6 +65,7 @@
 * [ENHANCEMENT] All: Handling CMK Access Denied errors. #5420 #5542
 * [ENHANCEMENT] Querier: Retry store gateway client connection closing gRPC error. #5558
 * [ENHANCEMENT] QueryFrontend: Add generic retry for all APIs. #5561.
+* [ENHANCEMENT] Querier: Check context before notifying scheduler and frontend. #5565
 * [ENHANCEMENT] QueryFrontend: Add metric for number of series requests. #5373
 * [ENHANCEMENT] Store Gateway: Add histogram metrics for total time spent fetching series and chunks per request. #5573
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265

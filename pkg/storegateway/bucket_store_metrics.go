@@ -16,6 +16,7 @@ type BucketStoreMetrics struct {
 	blockLoadFailures     *prometheus.Desc
 	blockDrops            *prometheus.Desc
 	blockDropFailures     *prometheus.Desc
+	blockLoadDuration     *prometheus.Desc
 	blocksLoaded          *prometheus.Desc
 	seriesDataTouched     *prometheus.Desc
 	seriesDataFetched     *prometheus.Desc
@@ -74,6 +75,10 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 		blockDropFailures: prometheus.NewDesc(
 			"cortex_bucket_store_block_drop_failures_total",
 			"Total number of local blocks that failed to be dropped.",
+			nil, nil),
+		blockLoadDuration: prometheus.NewDesc(
+			"cortex_bucket_store_block_load_duration_seconds",
+			"The total time taken to load a block in seconds.",
 			nil, nil),
 		blocksLoaded: prometheus.NewDesc(
 			"cortex_bucket_store_blocks_loaded",
@@ -228,6 +233,7 @@ func (m *BucketStoreMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.blockLoadFailures
 	out <- m.blockDrops
 	out <- m.blockDropFailures
+	out <- m.blockLoadDuration
 	out <- m.blocksLoaded
 	out <- m.seriesDataTouched
 	out <- m.seriesDataFetched
@@ -274,6 +280,7 @@ func (m *BucketStoreMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.blockLoadFailures, "thanos_bucket_store_block_load_failures_total")
 	data.SendSumOfCounters(out, m.blockDrops, "thanos_bucket_store_block_drops_total")
 	data.SendSumOfCounters(out, m.blockDropFailures, "thanos_bucket_store_block_drop_failures_total")
+	data.SendSumOfHistograms(out, m.blockLoadDuration, "thanos_bucket_store_block_load_duration_seconds")
 
 	data.SendSumOfGaugesPerUser(out, m.blocksLoaded, "thanos_bucket_store_blocks_loaded")
 

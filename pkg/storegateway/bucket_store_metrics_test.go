@@ -41,6 +41,19 @@ func TestBucketStoreMetrics(t *testing.T) {
 			# HELP cortex_bucket_store_block_drops_total Total number of local blocks that were dropped.
 			# TYPE cortex_bucket_store_block_drops_total counter
 			cortex_bucket_store_block_drops_total 90076
+        	# HELP cortex_bucket_store_block_load_duration_seconds The total time taken to load a block in seconds.
+        	# TYPE cortex_bucket_store_block_load_duration_seconds histogram
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="0.1"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="0.5"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="1"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="10"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="20"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="30"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="60"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="120"} 0
+        	cortex_bucket_store_block_load_duration_seconds_bucket{le="+Inf"} 3
+        	cortex_bucket_store_block_load_duration_seconds_sum 112595
+        	cortex_bucket_store_block_load_duration_seconds_count 3
 
 			# HELP cortex_bucket_store_block_drop_failures_total Total number of local blocks that failed to be dropped.
 			# TYPE cortex_bucket_store_block_drop_failures_total counter
@@ -601,6 +614,7 @@ func populateMockedBucketStoreMetrics(base float64) *prometheus.Registry {
 	m.blockLoadFailures.Add(3 * base)
 	m.blockDrops.Add(4 * base)
 	m.blockDropFailures.Add(5 * base)
+	m.blockLoadDuration.Observe(5 * base)
 	m.seriesDataTouched.WithLabelValues("touched-a").Observe(6 * base)
 	m.seriesDataTouched.WithLabelValues("touched-b").Observe(7 * base)
 	m.seriesDataTouched.WithLabelValues("touched-c").Observe(8 * base)
@@ -684,6 +698,7 @@ type mockedBucketStoreMetrics struct {
 	blockLoadFailures     prometheus.Counter
 	blockDrops            prometheus.Counter
 	blockDropFailures     prometheus.Counter
+	blockLoadDuration     prometheus.Histogram
 	seriesDataTouched     *prometheus.HistogramVec
 	seriesDataFetched     *prometheus.HistogramVec
 	seriesDataSizeTouched *prometheus.HistogramVec
@@ -740,6 +755,11 @@ func newMockedBucketStoreMetrics(reg prometheus.Registerer) *mockedBucketStoreMe
 	m.blockDropFailures = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 		Name: "thanos_bucket_store_block_drop_failures_total",
 		Help: "Total number of local blocks that failed to be dropped.",
+	})
+	m.blockLoadDuration = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+		Name:    "thanos_bucket_store_block_load_duration_seconds",
+		Help:    "The total time taken to load a block in seconds.",
+		Buckets: []float64{0.1, 0.5, 1, 10, 20, 30, 60, 120},
 	})
 	m.blocksLoaded = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "thanos_bucket_store_blocks_loaded",

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -233,7 +234,11 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 		partitionedGroupID := partitionedGroupInfo.PartitionedGroupID
 		partitionCount := partitionedGroupInfo.PartitionCount
 		partitionAdded := 0
-		for _, partition := range partitionedGroupInfo.Partitions {
+		// Randomly pick partitions from partitioned group to avoid all compactors
+		// trying to get same partition at same time.
+		r := rand.New(rand.NewSource(time.Now().UnixMicro() + int64(hashString(g.ringLifecyclerID))))
+		for _, i := range r.Perm(len(partitionedGroupInfo.Partitions)) {
+			partition := partitionedGroupInfo.Partitions[i]
 			partitionID := partition.PartitionID
 			partitionedGroup, err := createBlocksGroup(blocks, partition.Blocks, partitionedGroupInfo.RangeStart, partitionedGroupInfo.RangeEnd)
 			if err != nil {
@@ -526,12 +531,17 @@ func (g *ShuffleShardingGrouper) checkSubringForCompactor() (bool, error) {
 // Get the hash of a group based on the UserID, and the starting and ending time of the group's range.
 func hashGroup(userID string, rangeStart int64, rangeEnd int64) uint32 {
 	groupString := fmt.Sprintf("%v%v%v", userID, rangeStart, rangeEnd)
-	groupHasher := fnv.New32a()
-	// Hasher never returns err.
-	_, _ = groupHasher.Write([]byte(groupString))
-	groupHash := groupHasher.Sum32()
 
-	return groupHash
+	return hashString(groupString)
+}
+
+func hashString(s string) uint32 {
+	hasher := fnv.New32a()
+	// Hasher never returns err.
+	_, _ = hasher.Write([]byte(s))
+	result := hasher.Sum32()
+
+	return result
 }
 
 func createGroupKey(groupHash uint32, group blocksGroup) string {

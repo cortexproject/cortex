@@ -79,17 +79,22 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 	partials = map[ulid.ULID]error{}
 
 	// Find all blocks in the storage.
+	begin := time.Now()
+	count := 0
 	err := w.bkt.Iter(ctx, "", func(name string) error {
 		if id, ok := block.IsBlockDir(name); ok {
 			discovered[id] = struct{}{}
 		}
+		count++
 		return nil
 	})
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "list blocks")
 	}
+	level.Info(w.logger).Log("msg", "finish iterating blocks", "iteration_count", count, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Since blocks are immutable, all blocks already existing in the index can just be copied.
+	begin = time.Now()
 	for _, b := range old {
 		if _, ok := discovered[b.ID]; ok {
 			delete(discovered, b.ID)
@@ -101,10 +106,12 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 			blocks = append(blocks, b)
 		}
 	}
+	level.Info(w.logger).Log("msg", "finish adding blocks", "old_blocks_count", len(old), "new_blocks_count", len(blocks), "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Remaining blocks are new ones and we have to fetch the meta.json for each of them, in order
 	// to find out if their upload has been completed (meta.json is uploaded last) and get the block
 	// information to store in the bucket index.
+	begin = time.Now()
 	for id := range discovered {
 		b, err := w.updateBlockIndexEntry(ctx, id)
 		if err == nil {
@@ -129,6 +136,7 @@ func (w *Updater) updateBlocks(ctx context.Context, old []*Block, deletedBlocks 
 		}
 		return nil, nil, err
 	}
+	level.Info(w.logger).Log("msg", "finish updating block entries", "discovered_blocks_count", len(discovered), "new_blocks_count", len(blocks), "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	return blocks, partials, nil
 }
@@ -187,6 +195,8 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 	totalBlocksBlocksMarkedForNoCompaction := int64(0)
 
 	// Find all markers in the storage.
+	begin := time.Now()
+	count := 0
 	err := w.bkt.Iter(ctx, MarkersPathname+"/", func(name string) error {
 		if blockID, ok := IsBlockDeletionMarkFilename(path.Base(name)); ok {
 			discovered[blockID] = struct{}{}
@@ -196,13 +206,16 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			totalBlocksBlocksMarkedForNoCompaction++
 		}
 
+		count++
 		return nil
 	})
 	if err != nil {
 		return nil, nil, totalBlocksBlocksMarkedForNoCompaction, errors.Wrap(err, "list block deletion marks")
 	}
+	level.Info(w.logger).Log("msg", "finish iterating markers", "iteration_count", count, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Since deletion marks are immutable, all markers already existing in the index can just be copied.
+	begin = time.Now()
 	for _, m := range old {
 		if _, ok := discovered[m.ID]; ok {
 			out = append(out, m)
@@ -211,8 +224,10 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 			deletedBlocks[m.ID] = struct{}{}
 		}
 	}
+	level.Info(w.logger).Log("msg", "finish getting deleted blocks", "old_blocks_count", len(old), "deleted_blocks_count", len(deletedBlocks), "deletion_markers_count", len(out), "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Remaining markers are new ones and we have to fetch them.
+	begin = time.Now()
 	for id := range discovered {
 		m, err := w.updateBlockDeletionMarkIndexEntry(ctx, id)
 		if errors.Is(err, ErrBlockDeletionMarkNotFound) {
@@ -230,6 +245,7 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 
 		out = append(out, m)
 	}
+	level.Info(w.logger).Log("msg", "finish getting new deletion markers", "discovered_blocks_count", len(discovered), "deletion_markers_count", len(out), "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
 }

@@ -13,6 +13,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -126,20 +128,28 @@ func markBlocksVisited(
 		blockVisitMarkerWriteFailed.Inc()
 		return
 	}
-	reader := bytes.NewReader(visitMarkerFileContent)
+	g, _ := errgroup.WithContext(ctx)
+	g.SetLimit(10)
 	for _, block := range blocks {
-		select {
-		// Exit early if possible.
-		case <-ctx.Done():
-			return
-		default:
-		}
-
 		blockID := block.ULID.String()
-		if err := UpdateBlockVisitMarker(ctx, bkt, blockID, marker.PartitionID, reader, blockVisitMarkerWriteFailed); err != nil {
-			level.Error(logger).Log("msg", "unable to upsert visit marker file content for block", "partition_id", marker.PartitionID, "block_id", blockID, "err", err)
-		}
-		reader.Reset(visitMarkerFileContent)
+		g.Go(func() error {
+			select {
+			// Exit early if possible.
+			case <-ctx.Done():
+				return nil
+			default:
+			}
+
+			reader := bytes.NewReader(visitMarkerFileContent)
+			if err := UpdateBlockVisitMarker(ctx, bkt, blockID, marker.PartitionID, reader, blockVisitMarkerWriteFailed); err != nil {
+				level.Error(logger).Log("msg", "unable to upsert visit marker file content for block", "partition_id", marker.PartitionID, "block_id", blockID, "err", err)
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		blockVisitMarkerWriteFailed.Inc()
+		return
 	}
 	level.Debug(logger).Log("msg", "marked blocks visited", "partition_id", marker.PartitionID, "blocks", generateBlocksInfo(blocks))
 }

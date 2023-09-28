@@ -642,12 +642,15 @@ func (c *Compactor) running(ctx context.Context) error {
 	// Run an initial compaction before starting the interval.
 	c.compactUsers(ctx)
 
-	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CompactionInterval, 0.05))
+	ticker := time.NewTicker(c.compactorCfg.CompactionInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
+			// Insert jitter right before compaction starts, so that there will always
+			// have jitter even compaction time is longer than CompactionInterval
+			time.Sleep(util.DurationWithPositiveJitter(c.compactorCfg.CompactionInterval, 0.1))
 			c.compactUsers(ctx)
 		case <-ctx.Done():
 			return nil

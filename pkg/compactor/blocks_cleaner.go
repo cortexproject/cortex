@@ -357,6 +357,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	idxs.SyncTime = time.Now().Unix()
 
 	// Read the bucket index.
+	begin := time.Now()
 	idx, err := bucketindex.ReadIndex(ctx, c.bucketClient, userID, c.cfgProvider, c.logger)
 
 	defer func() {
@@ -381,6 +382,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		idxs.Status = bucketindex.GenericError
 		return err
 	}
+	level.Info(userLogger).Log("msg", "finish reading index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Mark blocks for future deletion based on the retention period for the user.
 	// Note doing this before UpdateIndex, so it reads in the deletion marks.
@@ -394,15 +396,18 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 	}
 
 	// Generate an updated in-memory version of the bucket index.
+	begin = time.Now()
 	w := bucketindex.NewUpdater(c.bucketClient, userID, c.cfgProvider, c.logger)
 	idx, partials, totalBlocksBlocksMarkedForNoCompaction, err := w.UpdateIndex(ctx, idx)
 	if err != nil {
 		idxs.Status = bucketindex.GenericError
 		return err
 	}
+	level.Info(userLogger).Log("msg", "finish updating index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Delete blocks marked for deletion. We iterate over a copy of deletion marks because
 	// we'll need to manipulate the index (removing blocks which get deleted).
+	begin = time.Now()
 	blocksToDelete := make([]interface{}, 0, len(idx.BlockDeletionMarks))
 	var mux sync.Mutex
 	for _, mark := range idx.BlockDeletionMarks.Clone() {
@@ -411,8 +416,10 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		}
 		blocksToDelete = append(blocksToDelete, mark.ID)
 	}
+	level.Info(userLogger).Log("msg", "finish getting blocks to be deleted", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Concurrently deletes blocks marked for deletion, and removes blocks from index.
+	begin = time.Now()
 	_ = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
 		blockID := job.(ulid.ULID)
 
@@ -431,19 +438,26 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userID string, firstRun b
 		level.Info(userLogger).Log("msg", "deleted block marked for deletion", "block", blockID)
 		return nil
 	})
+	level.Info(userLogger).Log("msg", "finish deleting blocks", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	// Partial blocks with a deletion mark can be cleaned up. This is a best effort, so we don't return
 	// error if the cleanup of partial blocks fail.
 	if len(partials) > 0 {
+		begin = time.Now()
 		c.cleanUserPartialBlocks(ctx, partials, idx, userBucket, userLogger)
+		level.Info(userLogger).Log("msg", "finish cleaning partial blocks", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 
 	// Upload the updated index to the storage.
+	begin = time.Now()
 	if err := bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
 		return err
 	}
+	level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
+	begin = time.Now()
 	c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID, idx)
+	level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))

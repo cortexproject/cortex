@@ -33,8 +33,8 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 		partitionedGroupInfo PartitionedGroupInfo
 		blocks               map[ulid.ULID]struct {
 			expectComplete bool
-			visitMarkers   []BlockVisitMarker
 		}
+		visitMarkers []PartitionVisitMarker
 	}{
 		{
 			name: "all partitions are complete 1",
@@ -59,58 +59,37 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 				},
 				RangeStart: rangeStart,
 				RangeEnd:   rangeEnd,
-				Version:    VisitMarkerVersion1,
+				Version:    PartitionedGroupInfoVersion1,
 			},
 			blocks: map[ulid.ULID]struct {
 				expectComplete bool
-				visitMarkers   []BlockVisitMarker
 			}{
 				ulid0: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        0,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid1: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        0,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid2: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-					},
+				},
+			},
+			visitMarkers: []PartitionVisitMarker{
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        0,
+					CompactorID:        compactorID,
+					VisitTime:          timeBefore1h,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        1,
+					CompactorID:        compactorID,
+					VisitTime:          timeBefore1h,
+					Version:            PartitionVisitMarkerVersion1,
 				},
 			},
 		},
@@ -141,50 +120,45 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 				},
 				RangeStart: rangeStart,
 				RangeEnd:   rangeEnd,
-				Version:    VisitMarkerVersion1,
+				Version:    PartitionedGroupInfoVersion1,
 			},
 			blocks: map[ulid.ULID]struct {
 				expectComplete bool
-				visitMarkers   []BlockVisitMarker
 			}{
 				ulid0: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        0,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid1: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid2: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        2,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-					},
+				},
+			},
+			visitMarkers: []PartitionVisitMarker{
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        0,
+					CompactorID:        compactorID,
+					VisitTime:          timeNow,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        1,
+					CompactorID:        compactorID,
+					VisitTime:          timeNow,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        2,
+					CompactorID:        compactorID,
+					VisitTime:          timeNow,
+					Version:            PartitionVisitMarkerVersion1,
 				},
 			},
 		},
@@ -216,58 +190,45 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 				},
 				RangeStart: rangeStart,
 				RangeEnd:   rangeEnd,
-				Version:    VisitMarkerVersion1,
+				Version:    PartitionedGroupInfoVersion1,
 			},
 			blocks: map[ulid.ULID]struct {
 				expectComplete bool
-				visitMarkers   []BlockVisitMarker
 			}{
 				ulid0: {
 					expectComplete: false,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        0,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-						{
-							Status:             Pending,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid1: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid2: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        2,
-							CompactorID:        compactorID,
-							VisitTime:          timeBefore1h,
-							Version:            VisitMarkerVersion1,
-						},
-					},
+				},
+			},
+			visitMarkers: []PartitionVisitMarker{
+				{
+					Status:             Pending,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        0,
+					CompactorID:        compactorID,
+					VisitTime:          timeBefore1h,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        1,
+					CompactorID:        compactorID,
+					VisitTime:          timeBefore1h,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        2,
+					CompactorID:        compactorID,
+					VisitTime:          timeBefore1h,
+					Version:            PartitionVisitMarkerVersion1,
 				},
 			},
 		},
@@ -299,58 +260,45 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 				},
 				RangeStart: rangeStart,
 				RangeEnd:   rangeEnd,
-				Version:    VisitMarkerVersion1,
+				Version:    PartitionedGroupInfoVersion1,
 			},
 			blocks: map[ulid.ULID]struct {
 				expectComplete bool
-				visitMarkers   []BlockVisitMarker
 			}{
 				ulid0: {
 					expectComplete: false,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        0,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-						{
-							Status:             Pending,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-					},
 				},
 				ulid1: {
-					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        1,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-					},
+					expectComplete: false,
 				},
 				ulid2: {
 					expectComplete: true,
-					visitMarkers: []BlockVisitMarker{
-						{
-							Status:             Completed,
-							PartitionedGroupID: partitionedGroupID,
-							PartitionID:        2,
-							CompactorID:        compactorID,
-							VisitTime:          timeNow,
-							Version:            VisitMarkerVersion1,
-						},
-					},
+				},
+			},
+			visitMarkers: []PartitionVisitMarker{
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        0,
+					CompactorID:        compactorID,
+					VisitTime:          timeNow,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Pending,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        1,
+					CompactorID:        compactorID,
+					VisitTime:          timeNow,
+					Version:            PartitionVisitMarkerVersion1,
+				},
+				{
+					Status:             Completed,
+					PartitionedGroupID: partitionedGroupID,
+					PartitionID:        2,
+					CompactorID:        compactorID,
+					VisitTime:          timeNow,
+					Version:            PartitionVisitMarkerVersion1,
 				},
 			},
 		},
@@ -375,11 +323,11 @@ func TestPartitionCompactionCompleteChecker(t *testing.T) {
 					PartitionID:        -1,
 				},
 			})
+			for _, visitMarker := range tcase.visitMarkers {
+				visitMarkerFileContent, _ := json.Marshal(visitMarker)
+				bkt.MockGet(GetPartitionVisitMarkerFile(visitMarker.PartitionedGroupID, visitMarker.PartitionID), string(visitMarkerFileContent), nil)
+			}
 			for blockID, blockTCase := range tcase.blocks {
-				for _, visitMarker := range blockTCase.visitMarkers {
-					visitMarkerFileContent, _ := json.Marshal(visitMarker)
-					bkt.MockGet(GetBlockVisitMarkerFile(blockID.String(), visitMarker.PartitionID), string(visitMarkerFileContent), nil)
-				}
 				require.Equal(t, blockTCase.expectComplete, checker.CanDelete(&group, blockID))
 			}
 		})

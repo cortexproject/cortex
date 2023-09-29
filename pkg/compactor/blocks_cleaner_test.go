@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -141,7 +142,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createDeletionMark(t, bucketClient, "user-1", block4, now.Add(-deletionDelay).Add(time.Hour))             // Partial block hasn't reached the deletion threshold yet.
 	createDeletionMark(t, bucketClient, "user-1", block5, now.Add(-deletionDelay).Add(-time.Hour))            // Partial block reached the deletion threshold.
 	require.NoError(t, bucketClient.Delete(ctx, path.Join("user-1", block6.String(), metadata.MetaFilename))) // Partial block without deletion mark.
-	createBlockVisitMarker(t, bucketClient, "user-1", block11)                                                // Partial block only has visit marker.
+	createLegacyBlockVisitMarker(t, bucketClient, "user-1", block11)                                          // Partial block only has visit marker.
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, marked for deletion.
@@ -760,4 +761,26 @@ func (m *mockConfigProvider) S3SSEKMSKeyID(userID string) string {
 
 func (m *mockConfigProvider) S3SSEKMSEncryptionContext(userID string) string {
 	return ""
+}
+
+func createLegacyBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
+	content := mockBlockVisitMarker()
+	markPath := path.Join(userID, GetBlockVisitMarkerFile(blockID.String(), 0))
+
+	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
+}
+
+func mockBlockVisitMarker() string {
+	blockVisitMarker := BlockVisitMarker{
+		CompactorID: "dummy",
+		VisitTime:   time.Now().Unix(),
+		Version:     1,
+	}
+
+	content, err := json.Marshal(blockVisitMarker)
+	if err != nil {
+		panic("failed to marshal mocked block visit marker")
+	}
+
+	return string(content)
 }

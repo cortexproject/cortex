@@ -54,9 +54,9 @@ type ShuffleShardingGrouper struct {
 	ringLifecyclerID   string
 
 	noCompBlocksFunc                func() map[ulid.ULID]*metadata.NoCompactMark
-	blockVisitMarkerTimeout         time.Duration
-	blockVisitMarkerReadFailed      prometheus.Counter
-	blockVisitMarkerWriteFailed     prometheus.Counter
+	visitMarkerTimeout              time.Duration
+	visitMarkerReadFailed           prometheus.Counter
+	visitMarkerWriteFailed          prometheus.Counter
 	partitionedGroupInfoReadFailed  prometheus.Counter
 	partitionedGroupInfoWriteFailed prometheus.Counter
 }
@@ -82,9 +82,9 @@ func NewShuffleShardingGrouper(
 	blockFilesConcurrency int,
 	blocksFetchConcurrency int,
 	compactionConcurrency int,
-	blockVisitMarkerTimeout time.Duration,
-	blockVisitMarkerReadFailed prometheus.Counter,
-	blockVisitMarkerWriteFailed prometheus.Counter,
+	visitMarkerTimeout time.Duration,
+	visitMarkerReadFailed prometheus.Counter,
+	visitMarkerWriteFailed prometheus.Counter,
 	partitionedGroupInfoReadFailed prometheus.Counter,
 	partitionedGroupInfoWriteFailed prometheus.Counter,
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
@@ -135,9 +135,9 @@ func NewShuffleShardingGrouper(
 		blockFilesConcurrency:           blockFilesConcurrency,
 		blocksFetchConcurrency:          blocksFetchConcurrency,
 		compactionConcurrency:           compactionConcurrency,
-		blockVisitMarkerTimeout:         blockVisitMarkerTimeout,
-		blockVisitMarkerReadFailed:      blockVisitMarkerReadFailed,
-		blockVisitMarkerWriteFailed:     blockVisitMarkerWriteFailed,
+		visitMarkerTimeout:              visitMarkerTimeout,
+		visitMarkerReadFailed:           visitMarkerReadFailed,
+		visitMarkerWriteFailed:          visitMarkerWriteFailed,
 		partitionedGroupInfoReadFailed:  partitionedGroupInfoReadFailed,
 		partitionedGroupInfoWriteFailed: partitionedGroupInfoWriteFailed,
 		noCompBlocksFunc:                noCompBlocksFunc,
@@ -200,9 +200,9 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			return iRangeStart < jRangeStart
 		}
 
-		iGroupHash := hashGroup(g.userID, iRangeStart, iRangeEnd)
+		iGroupHash := HashGroup(g.userID, iRangeStart, iRangeEnd)
 		iGroupKey := createGroupKey(iGroupHash, iGroup)
-		jGroupHash := hashGroup(g.userID, jRangeStart, jRangeEnd)
+		jGroupHash := HashGroup(g.userID, jRangeStart, jRangeEnd)
 		jGroupKey := createGroupKey(jGroupHash, jGroup)
 		// Guarantee stable sort for tests.
 		return iGroupKey < jGroupKey
@@ -222,7 +222,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			continue
 		}
 
-		groupHash := hashGroup(g.userID, group.rangeStart, group.rangeEnd)
+		groupHash := HashGroup(g.userID, group.rangeStart, group.rangeEnd)
 
 		partitionedGroupInfo, err := g.generatePartitionBlockGroup(group, groupHash)
 		if err != nil {
@@ -266,18 +266,19 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 		partitionedGroupID := partitionedGroup.partitionedGroupInfo.PartitionedGroupID
 		partitionCount := partitionedGroup.partitionedGroupInfo.PartitionCount
 		partitionID := partitionedGroup.partition.PartitionID
-		if isVisited, err := g.isGroupVisited(partitionedGroup.blocks, partitionID, g.ringLifecyclerID); err != nil {
-			level.Warn(g.logger).Log("msg", "unable to check if blocks in partition are visited", "group hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err, "group", partitionedGroup.String())
+		if isVisited, err := g.isGroupVisited(partitionedGroupID, partitionID, g.ringLifecyclerID); err != nil {
+			level.Warn(g.logger).Log("msg", "unable to check if partition is visited", "group hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err, "group", partitionedGroup.String())
 			continue
 		} else if isVisited {
-			level.Info(g.logger).Log("msg", "skipping group because at least one block in partition is visited", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+			level.Info(g.logger).Log("msg", "skipping group because partition is visited", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
 			remainingCompactions--
 			continue
 		}
 		partitionedGroupKey := createGroupKeyWithPartitionID(groupHash, partitionID, *partitionedGroup)
 
 		level.Info(g.logger).Log("msg", "found compactable group for user", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group", partitionedGroup.String())
-		blockVisitMarker := BlockVisitMarker{
+		begin := time.Now()
+		partitionVisitMarker := PartitionVisitMarker{
 			VisitTime:          time.Now().Unix(),
 			CompactorID:        g.ringLifecyclerID,
 			Status:             Pending,
@@ -285,8 +286,8 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 			PartitionID:        partitionID,
 			Version:            VisitMarkerVersion1,
 		}
-		markBlocksVisited(g.ctx, g.bkt, g.logger, partitionedGroup.blocks, blockVisitMarker, g.blockVisitMarkerWriteFailed)
-		level.Info(g.logger).Log("msg", "marked blocks visited in group", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group", partitionedGroup.String())
+		markPartitionVisited(g.ctx, g.bkt, g.logger, partitionVisitMarker, g.visitMarkerWriteFailed)
+		level.Info(g.logger).Log("msg", "marked partition visited in group", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds(), "group", partitionedGroup.String())
 
 		resolution := partitionedGroup.blocks[0].Thanos.Downsample.Resolution
 		externalLabels := labels.FromMap(partitionedGroup.blocks[0].Thanos.Labels)
@@ -329,7 +330,9 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 
 		outGroups = append(outGroups, thanosGroup)
 		level.Debug(g.logger).Log("msg", "added partition to compaction groups", "group_hash", groupHash, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount)
-		if len(outGroups) >= g.compactionConcurrency {
+		// Grouper holds additional groups for compaction. In case, it lost
+		// competition for the first group it claimed.
+		if len(outGroups) >= g.compactionConcurrency+int(math.Min(float64(g.compactionConcurrency*3), 5)) {
 			break
 		}
 	}
@@ -492,26 +495,23 @@ func (g *ShuffleShardingGrouper) partitionBlocksGroup(partitionCount int, blocks
 	return partitionedGroups, nil
 }
 
-func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta, partitionID int, compactorID string) (bool, error) {
-	for _, block := range blocks {
-		blockID := block.ULID.String()
-		blockVisitMarker, err := ReadBlockVisitMarker(g.ctx, g.bkt, g.logger, blockID, partitionID, g.blockVisitMarkerReadFailed)
-		if err != nil {
-			if errors.Is(err, ErrorBlockVisitMarkerNotFound) {
-				level.Warn(g.logger).Log("msg", "no visit marker file for block", "partition_id", partitionID, "block_id", blockID)
-				continue
-			}
-			level.Error(g.logger).Log("msg", "unable to read block visit marker file", "partition_id", partitionID, "block_id", blockID, "err", err)
-			return true, err
+func (g *ShuffleShardingGrouper) isGroupVisited(partitionedGroupID uint32, partitionID int, compactorID string) (bool, error) {
+	partitionVisitMarker, err := ReadPartitionVisitMarker(g.ctx, g.bkt, g.logger, partitionedGroupID, partitionID, g.visitMarkerReadFailed)
+	if err != nil {
+		if errors.Is(err, ErrorPartitionVisitMarkerNotFound) {
+			level.Warn(g.logger).Log("msg", "no visit marker file for partition", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+			return false, nil
 		}
-		if blockVisitMarker.isCompleted() {
-			level.Info(g.logger).Log("msg", "block visit marker with partition ID is completed", "partition_id", partitionID, "block_id", blockID)
-			return true, nil
-		}
-		if compactorID != blockVisitMarker.CompactorID && blockVisitMarker.isVisited(g.blockVisitMarkerTimeout, partitionID) {
-			level.Info(g.logger).Log("msg", "visited block with partition ID", "partition_id", partitionID, "block_id", blockID)
-			return true, nil
-		}
+		level.Error(g.logger).Log("msg", "unable to read partition visit marker file", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err)
+		return true, err
+	}
+	if partitionVisitMarker.isCompleted() {
+		level.Info(g.logger).Log("msg", "partition visit marker with partition ID is completed", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+		return true, nil
+	}
+	if compactorID != partitionVisitMarker.CompactorID && partitionVisitMarker.isVisited(g.visitMarkerTimeout, partitionID) {
+		level.Info(g.logger).Log("msg", "visited partition with partition ID", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+		return true, nil
 	}
 	return false, nil
 }
@@ -528,8 +528,8 @@ func (g *ShuffleShardingGrouper) checkSubringForCompactor() (bool, error) {
 	return rs.Includes(g.ringLifecyclerAddr), nil
 }
 
-// Get the hash of a group based on the UserID, and the starting and ending time of the group's range.
-func hashGroup(userID string, rangeStart int64, rangeEnd int64) uint32 {
+// HashGroup Get the hash of a group based on the UserID, and the starting and ending time of the group's range.
+func HashGroup(userID string, rangeStart int64, rangeEnd int64) uint32 {
 	groupString := fmt.Sprintf("%v%v%v", userID, rangeStart, rangeEnd)
 
 	return hashString(groupString)

@@ -120,13 +120,13 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 	otherCompactorID := "other-compactor"
 
 	tests := map[string]struct {
-		concurrency   int
-		ranges        []time.Duration
-		blocks        map[ulid.ULID]*metadata.Meta
-		visitedBlocks []struct {
-			id          ulid.ULID
-			compactorID string
-			isExpired   bool
+		concurrency       int
+		ranges            []time.Duration
+		blocks            map[ulid.ULID]*metadata.Meta
+		visitedPartitions []struct {
+			partitionedGroupID uint32
+			compactorID        string
+			isExpired          bool
 		}
 		expected        [][]ulid.ULID
 		metrics         string
@@ -217,82 +217,63 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
         	          cortex_compactor_remaining_planned_compactions 0
 `,
 		},
-		"test group with all blocks visited": {
+		"test group with partition visited": {
 			concurrency: 1,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
+			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid]},
+			expected: [][]ulid.ULID{
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
+			},
+			visitedPartitions: []struct {
+				partitionedGroupID uint32
+				compactorID        string
+				isExpired          bool
+			}{
+				{partitionedGroupID: HashGroup("", 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()), compactorID: otherCompactorID, isExpired: false},
+			},
+			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
+        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
+        	          cortex_compactor_remaining_planned_compactions 1
+`,
+		},
+		"test group with partition visit marker file expired": {
+			concurrency: 1,
+			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
+			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
-			visitedBlocks: []struct {
-				id          ulid.ULID
-				compactorID string
-				isExpired   bool
+			visitedPartitions: []struct {
+				partitionedGroupID uint32
+				compactorID        string
+				isExpired          bool
 			}{
-				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
-				{id: block0hto1hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
+				{partitionedGroupID: HashGroup("", 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()), compactorID: otherCompactorID, isExpired: true},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
         	          cortex_compactor_remaining_planned_compactions 2
 `,
 		},
-		"test group with one block visited": {
+		"test group with partition visited by current compactor": {
 			concurrency: 1,
 			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
+			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid]},
 			expected: [][]ulid.ULID{
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
-			visitedBlocks: []struct {
-				id          ulid.ULID
-				compactorID string
-				isExpired   bool
+			visitedPartitions: []struct {
+				partitionedGroupID uint32
+				compactorID        string
+				isExpired          bool
 			}{
-				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: false},
+				{partitionedGroupID: HashGroup("", 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()), compactorID: testCompactorID, isExpired: false},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
         	          cortex_compactor_remaining_planned_compactions 2
-`,
-		},
-		"test group block visit marker file expired": {
-			concurrency: 1,
-			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
-			expected: [][]ulid.ULID{
-				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
-			},
-			visitedBlocks: []struct {
-				id          ulid.ULID
-				compactorID string
-				isExpired   bool
-			}{
-				{id: block1hto2hExt2Ulid, compactorID: otherCompactorID, isExpired: true},
-				{id: block0hto1hExt2Ulid, compactorID: otherCompactorID, isExpired: true},
-			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
-        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 3
-`,
-		},
-		"test group with one block visited by current compactor": {
-			concurrency: 1,
-			ranges:      []time.Duration{2 * time.Hour, 4 * time.Hour},
-			blocks:      map[ulid.ULID]*metadata.Meta{block1hto2hExt1Ulid: blocks[block1hto2hExt1Ulid], block3hto4hExt1Ulid: blocks[block3hto4hExt1Ulid], block0hto1hExt1Ulid: blocks[block0hto1hExt1Ulid], block2hto3hExt1Ulid: blocks[block2hto3hExt1Ulid], block1hto2hExt2Ulid: blocks[block1hto2hExt2Ulid], block0hto1hExt2Ulid: blocks[block0hto1hExt2Ulid]},
-			expected: [][]ulid.ULID{
-				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
-			},
-			visitedBlocks: []struct {
-				id          ulid.ULID
-				compactorID string
-				isExpired   bool
-			}{
-				{id: block1hto2hExt2Ulid, compactorID: testCompactorID, isExpired: false},
-			},
-			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
-        	          # TYPE cortex_compactor_remaining_planned_compactions gauge
-        	          cortex_compactor_remaining_planned_compactions 3
 `,
 		},
 		"test basic grouping with concurrency 2": {
@@ -302,6 +283,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			expected: [][]ulid.ULID{
 				{block1hto2hExt2Ulid, block0hto1hExt2Ulid},
 				{block1hto2hExt1Ulid, block0hto1hExt1Ulid},
+				{block3hto4hExt1Ulid, block2hto3hExt1Ulid},
 			},
 			metrics: `# HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted.
         	          # TYPE cortex_compactor_remaining_planned_compactions gauge
@@ -370,17 +352,19 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			})
 
 			bkt := &bucket.ClientMock{}
-			blockVisitMarkerTimeout := 5 * time.Minute
-			for _, visitedBlock := range testData.visitedBlocks {
-				visitMarkerFile := GetBlockVisitMarkerFile(visitedBlock.id.String(), 0)
+			visitMarkerTimeout := 5 * time.Minute
+			for _, visitedPartition := range testData.visitedPartitions {
+				visitMarkerFile := GetPartitionVisitMarkerFile(visitedPartition.partitionedGroupID, 0)
 				expireTime := time.Now()
-				if visitedBlock.isExpired {
-					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
+				if visitedPartition.isExpired {
+					expireTime = expireTime.Add(-1 * visitMarkerTimeout)
 				}
-				blockVisitMarker := BlockVisitMarker{
-					CompactorID: visitedBlock.compactorID,
-					VisitTime:   expireTime.Unix(),
-					Version:     VisitMarkerVersion1,
+				blockVisitMarker := PartitionVisitMarker{
+					CompactorID:        visitedPartition.compactorID,
+					PartitionedGroupID: visitedPartition.partitionedGroupID,
+					PartitionID:        0,
+					VisitTime:          expireTime.Unix(),
+					Version:            VisitMarkerVersion1,
 				}
 				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
 				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
@@ -415,7 +399,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				10,
 				3,
 				testData.concurrency,
-				blockVisitMarkerTimeout,
+				visitMarkerTimeout,
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
 				partitionedGroupInfoReadFailed,

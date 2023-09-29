@@ -14,16 +14,16 @@ import (
 )
 
 type ShuffleShardingPlanner struct {
-	ctx                                context.Context
-	bkt                                objstore.InstrumentedBucket
-	logger                             log.Logger
-	ranges                             []int64
-	noCompBlocksFunc                   func() map[ulid.ULID]*metadata.NoCompactMark
-	ringLifecyclerID                   string
-	blockVisitMarkerTimeout            time.Duration
-	blockVisitMarkerFileUpdateInterval time.Duration
-	blockVisitMarkerReadFailed         prometheus.Counter
-	blockVisitMarkerWriteFailed        prometheus.Counter
+	ctx                           context.Context
+	bkt                           objstore.InstrumentedBucket
+	logger                        log.Logger
+	ranges                        []int64
+	noCompBlocksFunc              func() map[ulid.ULID]*metadata.NoCompactMark
+	ringLifecyclerID              string
+	visitMarkerTimeout            time.Duration
+	visitMarkerFileUpdateInterval time.Duration
+	visitMarkerReadFailed         prometheus.Counter
+	visitMarkerWriteFailed        prometheus.Counter
 }
 
 func NewShuffleShardingPlanner(
@@ -33,22 +33,22 @@ func NewShuffleShardingPlanner(
 	ranges []int64,
 	noCompBlocksFunc func() map[ulid.ULID]*metadata.NoCompactMark,
 	ringLifecyclerID string,
-	blockVisitMarkerTimeout time.Duration,
-	blockVisitMarkerFileUpdateInterval time.Duration,
-	blockVisitMarkerReadFailed prometheus.Counter,
-	blockVisitMarkerWriteFailed prometheus.Counter,
+	visitMarkerTimeout time.Duration,
+	visitMarkerFileUpdateInterval time.Duration,
+	visitMarkerReadFailed prometheus.Counter,
+	visitMarkerWriteFailed prometheus.Counter,
 ) *ShuffleShardingPlanner {
 	return &ShuffleShardingPlanner{
-		ctx:                                ctx,
-		bkt:                                bkt,
-		logger:                             logger,
-		ranges:                             ranges,
-		noCompBlocksFunc:                   noCompBlocksFunc,
-		ringLifecyclerID:                   ringLifecyclerID,
-		blockVisitMarkerTimeout:            blockVisitMarkerTimeout,
-		blockVisitMarkerFileUpdateInterval: blockVisitMarkerFileUpdateInterval,
-		blockVisitMarkerReadFailed:         blockVisitMarkerReadFailed,
-		blockVisitMarkerWriteFailed:        blockVisitMarkerWriteFailed,
+		ctx:                           ctx,
+		bkt:                           bkt,
+		logger:                        logger,
+		ranges:                        ranges,
+		noCompBlocksFunc:              noCompBlocksFunc,
+		ringLifecyclerID:              ringLifecyclerID,
+		visitMarkerTimeout:            visitMarkerTimeout,
+		visitMarkerFileUpdateInterval: visitMarkerFileUpdateInterval,
+		visitMarkerReadFailed:         visitMarkerReadFailed,
+		visitMarkerWriteFailed:        visitMarkerWriteFailed,
 	}
 }
 
@@ -60,10 +60,25 @@ func (p *ShuffleShardingPlanner) Plan(ctx context.Context, metasByMinTime []*met
 	if partitionInfo == nil {
 		return nil, fmt.Errorf("partitionInfo cannot be nil")
 	}
-	return p.PlanWithPartition(ctx, metasByMinTime, partitionInfo.PartitionID, errChan)
+	return p.PlanWithPartition(ctx, metasByMinTime, partitionInfo.PartitionedGroupID, partitionInfo.PartitionID, errChan)
 }
 
-func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, partitionID int, errChan chan error) ([]*metadata.Meta, error) {
+func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, partitionedGroupID uint32, partitionID int, errChan chan error) ([]*metadata.Meta, error) {
+	partitionVisitMarker, err := ReadPartitionVisitMarker(p.ctx, p.bkt, p.logger, partitionedGroupID, partitionID, p.visitMarkerReadFailed)
+	if err != nil {
+		// shuffle_sharding_grouper should put visit marker file for blocks ready for
+		// compaction. So error should be returned if visit marker file does not exist.
+		return nil, fmt.Errorf("unable to get visit marker file for partition with partition ID %d, partitioned group ID %d: %s", partitionID, partitionedGroupID, err.Error())
+	}
+	if partitionVisitMarker.isCompleted() {
+		return nil, fmt.Errorf("partition with partition ID %d is in completed status", partitionID)
+	}
+	if !partitionVisitMarker.isVisitedByCompactor(p.visitMarkerTimeout, partitionID, p.ringLifecyclerID) {
+		level.Warn(p.logger).Log("msg", "partition is not visited by current compactor", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID,
+			"marker_partitioned_group_id", partitionVisitMarker.PartitionedGroupID, "marker_partition_id", partitionVisitMarker.PartitionID, "marker_compactor_id", partitionVisitMarker.CompactorID, "marker_visit_time", partitionVisitMarker.VisitTime)
+		return nil, nil
+	}
+
 	// Ensure all blocks fits within the largest range. This is a double check
 	// to ensure there's no bug in the previous blocks grouping, given this Plan()
 	// is just a pass-through.
@@ -74,7 +89,6 @@ func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMin
 	noCompactMarked := p.noCompBlocksFunc()
 	resultMetas := make([]*metadata.Meta, 0, len(metasByMinTime))
 
-	var partitionGroupID uint32
 	for _, b := range metasByMinTime {
 		blockID := b.ULID.String()
 		if _, excluded := noCompactMarked[b.ULID]; excluded {
@@ -85,31 +99,15 @@ func (p *ShuffleShardingPlanner) PlanWithPartition(_ context.Context, metasByMin
 			return nil, fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", blockID, b.MinTime, b.MaxTime, rangeStart, rangeEnd)
 		}
 
-		blockVisitMarker, err := ReadBlockVisitMarker(p.ctx, p.bkt, p.logger, blockID, partitionID, p.blockVisitMarkerReadFailed)
-		if err != nil {
-			// shuffle_sharding_grouper should put visit marker file for blocks ready for
-			// compaction. So error should be returned if visit marker file does not exist.
-			return nil, fmt.Errorf("unable to get visit marker file for block %s with partition ID %d: %s", blockID, partitionID, err.Error())
-		}
-		if blockVisitMarker.isCompleted() {
-			return nil, fmt.Errorf("block %s with partition ID %d is in completed status", blockID, partitionID)
-		}
-		if !blockVisitMarker.isVisitedByCompactor(p.blockVisitMarkerTimeout, partitionID, p.ringLifecyclerID) {
-			level.Warn(p.logger).Log("msg", "block is not visited by current compactor", "block_id", blockID, "partition_id", partitionID, "compactor_id", p.ringLifecyclerID,
-				"marker_partitioned_group_id", blockVisitMarker.PartitionedGroupID, "marker_partition_id", blockVisitMarker.PartitionID, "marker_compactor_id", blockVisitMarker.CompactorID, "marker_visit_time", blockVisitMarker.VisitTime)
-			return nil, nil
-		}
-
-		partitionGroupID = blockVisitMarker.PartitionedGroupID
 		resultMetas = append(resultMetas, b)
 	}
 
 	if len(resultMetas) < 2 {
-		level.Info(p.logger).Log("msg", "result meta size is less than 2", "partitioned_group_id", partitionGroupID, "partition_id", partitionID, "size", len(resultMetas))
+		level.Info(p.logger).Log("msg", "result meta size is less than 2", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "size", len(resultMetas))
 		return nil, nil
 	}
 
-	go markBlocksVisitedHeartBeat(p.ctx, p.bkt, p.logger, resultMetas, partitionGroupID, partitionID, p.ringLifecyclerID, p.blockVisitMarkerFileUpdateInterval, p.blockVisitMarkerWriteFailed, errChan)
+	go markPartitionVisitedHeartBeat(p.ctx, p.bkt, p.logger, partitionedGroupID, partitionID, p.ringLifecyclerID, p.visitMarkerFileUpdateInterval, p.visitMarkerWriteFailed, errChan)
 
 	return resultMetas, nil
 }

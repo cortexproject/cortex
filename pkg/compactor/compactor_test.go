@@ -670,24 +670,48 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-2 msg="started blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-1 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-2 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-2 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-2 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-1 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish cleaning partitioned group info files"`,
+		`level=info component=cleaner org_id=user-2 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish cleaning partitioned group info files"`,
 		`level=info component=cleaner org_id=user-2 msg="completed blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
-		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
-		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
 		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
 		`level=info component=compactor org_id=user-2 msg="start of GC"`,
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -802,9 +826,21 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating markers" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting new deletion markers" discovered_blocks_count=2 deletion_markers_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating block entries" discovered_blocks_count=2 new_blocks_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting blocks to be deleted"`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
+		`level=info component=cleaner org_id=user-1 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-1 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish cleaning partitioned group info files"`,
 		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
@@ -1203,24 +1239,48 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info component=compactor msg="compactor is ACTIVE in the ring"`,
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-2 msg="started blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-2 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-2 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-1 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-2 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish cleaning partitioned group info files"`,
 		`level=info component=cleaner org_id=user-2 msg="completed blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish cleaning partitioned group info files"`,
+		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
-		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
-		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
 		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
 		`level=info component=compactor org_id=user-2 msg="start of GC"`,
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
 
@@ -1246,8 +1306,6 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
-		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
-		bucketClient.MockUpload(userID+"/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", nil)
 		bucketClient.MockGet(userID+"/bucket-index-sync-status.json", "", nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
@@ -1354,23 +1412,23 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		blockFiles := []string{}
 
 		for blockID, blockTimes := range blocks {
-			groupHash := hashGroup(userID, blockTimes["startTime"], blockTimes["endTime"])
-			blockVisitMarker := BlockVisitMarker{
+			groupHash := HashGroup(userID, blockTimes["startTime"], blockTimes["endTime"])
+			partitionVisitMarker := PartitionVisitMarker{
 				CompactorID:        "test-compactor",
 				VisitTime:          time.Now().Unix(),
 				PartitionedGroupID: groupHash,
 				PartitionID:        0,
 				Status:             Pending,
-				Version:            VisitMarkerVersion1,
+				Version:            PartitionVisitMarkerVersion1,
 			}
-			visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
+			visitMarkerFileContent, _ := json.Marshal(partitionVisitMarker)
 			bucketClient.MockGet(userID+"/bucket-index-sync-status.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/no-compact-mark.json", "", nil)
-			bucketClient.MockGet(userID+"/"+blockID+"/partition-0-visit-mark.json", string(visitMarkerFileContent), nil)
-			bucketClient.MockGetRequireUpload(userID+"/"+blockID+"/partition-0-visit-mark.json", string(visitMarkerFileContent), nil)
-			bucketClient.MockUpload(userID+"/"+blockID+"/partition-0-visit-mark.json", nil)
+			bucketClient.MockGet(userID+"/partitioned-groups/visit-marks/"+fmt.Sprint(groupHash)+"/partition-0-visit-mark.json", string(visitMarkerFileContent), nil)
+			bucketClient.MockGetRequireUpload(userID+"/partitioned-groups/visit-marks/"+fmt.Sprint(groupHash)+"/partition-0-visit-mark.json", string(visitMarkerFileContent), nil)
+			bucketClient.MockUpload(userID+"/partitioned-groups/visit-marks/"+fmt.Sprint(groupHash)+"/partition-0-visit-mark.json", nil)
 			// Iter with recursive so expected to get objects rather than directories.
 			blockFiles = append(blockFiles, path.Join(userID, blockID, block.MetaFilename))
 
@@ -1580,13 +1638,6 @@ func createNoCompactionMark(t *testing.T, bkt objstore.Bucket, userID string, bl
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
 
-func createBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
-	content := mockBlockVisitMarker()
-	markPath := path.Join(userID, GetBlockVisitMarkerFile(blockID.String(), 0))
-
-	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
-}
-
 func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {
 	var compactor *Compactor
 	var log *concurrency.SyncBuffer
@@ -1635,7 +1686,7 @@ func removeIgnoredLogs(input []string) []string {
 
 	out := make([]string, 0, len(input))
 	executionIDRe := regexp.MustCompile(`\s?execution_id=\S+`)
-	durationRe := regexp.MustCompile(`\s?duration=\S+`)
+	durationRe := regexp.MustCompile(`\s?duration(_ms)?=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]
@@ -1804,7 +1855,7 @@ var (
 )
 
 func getPartitionedGroupID(userID string) string {
-	return fmt.Sprint(hashGroup(userID, BlockMinTime, BlockMaxTime))
+	return fmt.Sprint(HashGroup(userID, BlockMinTime, BlockMaxTime))
 }
 
 func mockBlockGroup(userID string, ids []string, bkt *bucket.ClientMock) *compact.Group {
@@ -1918,21 +1969,6 @@ func mockBlockMetaJSONWithTime(id string, orgID string, minTime int64, maxTime i
 	content, err := json.Marshal(meta)
 	if err != nil {
 		panic("failed to marshal mocked block meta")
-	}
-
-	return string(content)
-}
-
-func mockBlockVisitMarker() string {
-	blockVisitMarker := BlockVisitMarker{
-		CompactorID: "dummy",
-		VisitTime:   time.Now().Unix(),
-		Version:     1,
-	}
-
-	content, err := json.Marshal(blockVisitMarker)
-	if err != nil {
-		panic("failed to marshal mocked block visit marker")
 	}
 
 	return string(content)
@@ -2063,6 +2099,7 @@ func TestCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
 	content, err := json.Marshal(ss)
 	require.NoError(t, err)
 
+	partitionedGroupID := getPartitionedGroupID("user-1")
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
@@ -2071,16 +2108,15 @@ func TestCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", string(content), nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
 	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
+	bucketClient.MockGet("user-1/partitioned-groups/visit-marks/"+string(partitionedGroupID)+"/partition-0-visit-mark.json", "", nil)
 
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })

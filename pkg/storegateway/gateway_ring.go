@@ -72,6 +72,7 @@ type RingConfig struct {
 	// Wait ring stability.
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
 	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
+	WaitInstanceStateTimeout time.Duration `yaml:"wait_instance_state_timeout"`
 
 	FinalSleep time.Duration `yaml:"final_sleep"`
 
@@ -123,6 +124,9 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Defaults for internal settings.
 	cfg.RingCheckPeriod = 5 * time.Second
+
+	// Timeout durations
+	f.DurationVar(&cfg.WaitInstanceStateTimeout, ringFlagsPrefix+"wait-instance-state-timeout", 10*time.Minute, "Timeout for waiting on store-gateway to become desired state in the ring.")
 }
 
 func (cfg *RingConfig) ToRingConfig() ring.Config {

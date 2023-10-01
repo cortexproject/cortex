@@ -244,7 +244,10 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// make sure that when we'll run the initial sync we already know  the tokens
 		// assigned to this instance.
 		level.Info(g.logger).Log("msg", "waiting until store-gateway is JOINING in the ring")
-		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, g.gatewayCfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+			level.Error(g.logger).Log("msg", "store-gateway failed to become JOINING in the ring", "err", err)
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is JOINING in the ring")
@@ -285,7 +288,10 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// make sure that when we'll run the loop it won't be detected as a ring
 		// topology change.
 		level.Info(g.logger).Log("msg", "waiting until store-gateway is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, g.gatewayCfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+			level.Error(g.logger).Log("msg", "store-gateway failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is ACTIVE in the ring")

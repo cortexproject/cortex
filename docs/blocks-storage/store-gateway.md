@@ -309,6 +309,10 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
     [wait_stability_max_duration: <duration> | default = 5m]
 
+    # Timeout for waiting on store-gateway to become desired state in the ring.
+    # CLI flag: -store-gateway.sharding-ring.wait-instance-state-timeout
+    [wait_instance_state_timeout: <duration> | default = 10m]
+
     # The sleep seconds when store-gateway is shutting down. Need to be close to
     # or larger than KV Store information propagation delay
     # CLI flag: -store-gateway.sharding-ring.final-sleep

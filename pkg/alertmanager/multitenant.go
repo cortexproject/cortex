@@ -486,7 +486,10 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 
 		// We wait until the instance is in the JOINING state, once it does we know that tokens are assigned to this instance and we'll be ready to perform an initial sync of configs.
 		level.Info(am.logger).Log("msg", "waiting until alertmanager is JOINING in the ring")
-		if err = ring.WaitInstanceState(ctx, am.ring, am.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, am.cfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err = ring.WaitInstanceState(ctxWithTimeout, am.ring, am.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+			level.Error(am.logger).Log("msg", "alertmanager failed to become JOINING in the ring", "err", err)
 			return err
 		}
 		level.Info(am.logger).Log("msg", "alertmanager is JOINING in the ring")
@@ -519,7 +522,10 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 
 		// Wait until the ring client detected this instance in the ACTIVE state.
 		level.Info(am.logger).Log("msg", "waiting until alertmanager is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, am.ring, am.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, am.cfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, am.ring, am.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+			level.Error(am.logger).Log("msg", "alertmanager failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(am.logger).Log("msg", "alertmanager is ACTIVE in the ring")

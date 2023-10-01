@@ -49,7 +49,8 @@ type RingConfig struct {
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 
-	FinalSleep time.Duration `yaml:"final_sleep"`
+	FinalSleep               time.Duration `yaml:"final_sleep"`
+	WaitInstanceStateTimeout time.Duration `yaml:"wait_instance_state_timeout"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -94,6 +95,9 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceZone, rfprefix+"instance-availability-zone", "", "The availability zone where this instance is running. Required if zone-awareness is enabled.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
+
+	// Timeout durations
+	f.DurationVar(&cfg.WaitInstanceStateTimeout, rfprefix+"wait-instance-state-timeout", 10*time.Minute, "Timeout for waiting on alertmanager to become desired state in the ring.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the alertmanager

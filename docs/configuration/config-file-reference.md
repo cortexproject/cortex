@@ -1657,6 +1657,11 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
   [lazy_expanded_postings_enabled: <boolean> | default = false]
 
+  # Controls how many series to fetch per batch in Store Gateway. Default value
+  # is 10000.
+  # CLI flag: -blocks-storage.bucket-store.series-batch-size
+  [series_batch_size: <int> | default = 10000]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir

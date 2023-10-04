@@ -902,7 +902,7 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.32.4-0.20231001083734-531cdb1e8ec3
+# github.com/thanos-io/thanos v0.32.4-0.20231001083734-531cdb1e8ec3 => github.com/yeya24/thanos v0.2.2-0.20231004212406-91d264b9926a
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -1452,3 +1452,4 @@ sigs.k8s.io/yaml
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
+# github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20231004212406-91d264b9926a

@@ -37,8 +37,10 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 		"instantiate multiples backends - inmemory/redis": {
 			cfg: IndexCacheConfig{
 				Backend: "inmemory,redis",
-				Redis: RedisClientConfig{
-					Addresses: s.Addr(),
+				Redis: RedisIndexCacheConfig{
+					ClientConfig: RedisClientConfig{
+						Addresses: s.Addr(),
+					},
 				},
 			},
 			expectedType: newMultiLevelCache(),
@@ -46,9 +48,11 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 		"instantiate multiples backends - inmemory/memcached": {
 			cfg: IndexCacheConfig{
 				Backend: "inmemory,memcached",
-				Memcached: MemcachedClientConfig{
-					Addresses:           s.Addr(),
-					MaxAsyncConcurrency: 1000,
+				Memcached: MemcachedIndexCacheConfig{
+					ClientConfig: MemcachedClientConfig{
+						Addresses:           s.Addr(),
+						MaxAsyncConcurrency: 1000,
+					},
 				},
 			},
 			expectedType: newMultiLevelCache(),

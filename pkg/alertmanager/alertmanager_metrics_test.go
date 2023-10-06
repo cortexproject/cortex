@@ -60,6 +60,14 @@ func TestAlertmanagerMetricsStore(t *testing.T) {
 		cortex_alertmanager_config_hash{user="user1"} 0
 		cortex_alertmanager_config_hash{user="user2"} 0
 		cortex_alertmanager_config_hash{user="user3"} 0
+		# HELP cortex_alertmanager_dispatcher_alert_processing_duration_seconds Summary of latencies for the processing of alerts.
+		# TYPE cortex_alertmanager_dispatcher_alert_processing_duration_seconds summary
+		cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user1"} 0
+		cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user1"} 0
+		cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user2"} 0
+		cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user2"} 0
+		cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user3"} 0
+		cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user3"} 0
 		# HELP cortex_alertmanager_nflog_gc_duration_seconds Duration of the last notification log garbage collection cycle.
 		# TYPE cortex_alertmanager_nflog_gc_duration_seconds summary
 		cortex_alertmanager_nflog_gc_duration_seconds_sum 111
@@ -354,6 +362,14 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
         	            cortex_alertmanager_config_hash{user="user1"} 0
         	            cortex_alertmanager_config_hash{user="user2"} 0
         	            cortex_alertmanager_config_hash{user="user3"} 0
+						# HELP cortex_alertmanager_dispatcher_alert_processing_duration_seconds Summary of latencies for the processing of alerts.
+						# TYPE cortex_alertmanager_dispatcher_alert_processing_duration_seconds summary
+						cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user1"} 0
+						cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user1"} 0
+						cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user2"} 0
+						cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user2"} 0
+						cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user3"} 0
+						cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user3"} 0
 
         	            # HELP cortex_alertmanager_nflog_gc_duration_seconds Duration of the last notification log garbage collection cycle.
         	            # TYPE cortex_alertmanager_nflog_gc_duration_seconds summary
@@ -649,6 +665,12 @@ func TestAlertmanagerMetricsRemoval(t *testing.T) {
     		# TYPE cortex_alertmanager_config_hash gauge
     		cortex_alertmanager_config_hash{user="user1"} 0
     		cortex_alertmanager_config_hash{user="user2"} 0
+			# HELP cortex_alertmanager_dispatcher_alert_processing_duration_seconds Summary of latencies for the processing of alerts.
+			# TYPE cortex_alertmanager_dispatcher_alert_processing_duration_seconds summary
+			cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user1"} 0
+			cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user1"} 0
+			cortex_alertmanager_dispatcher_alert_processing_duration_seconds_sum{user="user2"} 0
+			cortex_alertmanager_dispatcher_alert_processing_duration_seconds_count{user="user2"} 0
 
     		# HELP cortex_alertmanager_nflog_gc_duration_seconds Duration of the last notification log garbage collection cycle.
     		# TYPE cortex_alertmanager_nflog_gc_duration_seconds summary

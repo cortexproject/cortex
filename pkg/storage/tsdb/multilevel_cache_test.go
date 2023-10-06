@@ -116,7 +116,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"StorePostings": {{bID, l1, v}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.StorePostings(bID, l1, v)
+				cache.StorePostings(bID, l1, v, "")
 			},
 		},
 		"[StoreSeries] Should store on all caches": {
@@ -127,7 +127,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"StoreSeries": {{bID, storage.SeriesRef(1), v}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.StoreSeries(bID, 1, v)
+				cache.StoreSeries(bID, 1, v, "")
 			},
 		},
 		"[StoreExpandedPostings] Should store on all caches": {
@@ -138,7 +138,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"StoreExpandedPostings": {{bID, []*labels.Matcher{matcher}, v}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.StoreExpandedPostings(bID, []*labels.Matcher{matcher}, v)
+				cache.StoreExpandedPostings(bID, []*labels.Matcher{matcher}, v, "")
 			},
 		},
 		"[FetchMultiPostings] Should fallback when all misses": {
@@ -149,7 +149,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiPostings": {{bID, []labels.Label{l1, l2}}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2})
+				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2}, "")
 			},
 		},
 		"[FetchMultiPostings] should fallback and backfill only the missing keys on l1": {
@@ -167,7 +167,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiPostings": {map[labels.Label][]byte{l2: v}, []labels.Label{}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2})
+				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2}, "")
 			},
 		},
 		"[FetchMultiPostings] should not fallback when all hit on l1": {
@@ -179,7 +179,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiPostings": {map[labels.Label][]byte{l1: make([]byte, 1), l2: make([]byte, 1)}, []labels.Label{}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2})
+				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2}, "")
 			},
 		},
 		"[FetchMultiSeries] Should fallback when all misses": {
@@ -190,7 +190,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiSeries": {{bID, []storage.SeriesRef{1, 2}}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2})
+				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2}, "")
 			},
 		},
 		"[FetchMultiSeries] should fallback and backfill only the missing keys on l1": {
@@ -208,7 +208,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiSeries": {map[storage.SeriesRef][]byte{2: v}, []storage.SeriesRef{2}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2})
+				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2}, "")
 			},
 		},
 		"[FetchMultiSeries] should not fallback when all hit on l1": {
@@ -220,7 +220,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: make([]byte, 1), 2: make([]byte, 1)}, []storage.SeriesRef{}},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2})
+				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2}, "")
 			},
 		},
 		"[FetchExpandedPostings] Should fallback and backfill when miss": {
@@ -235,7 +235,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchExpandedPostings": {v, true},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher})
+				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher}, "")
 			},
 		},
 		"[FetchExpandedPostings] should not fallback when all hit on l1": {
@@ -247,7 +247,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchExpandedPostings": {[]byte{}, true},
 			},
 			call: func(cache storecache.IndexCache) {
-				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher})
+				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher}, "")
 			},
 		},
 	}
@@ -276,11 +276,11 @@ type mockIndexCache struct {
 	mockedCalls map[string][]interface{}
 }
 
-func (m *mockIndexCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte) {
+func (m *mockIndexCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte, tenant string) {
 	m.calls["StorePostings"] = append(m.calls["StorePostings"], []interface{}{blockID, l, v})
 }
 
-func (m *mockIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.ULID, keys []labels.Label) (hits map[labels.Label][]byte, misses []labels.Label) {
+func (m *mockIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.ULID, keys []labels.Label, tenant string) (hits map[labels.Label][]byte, misses []labels.Label) {
 	m.calls["FetchMultiPostings"] = append(m.calls["FetchMultiPostings"], []interface{}{blockID, keys})
 	if m, ok := m.mockedCalls["FetchMultiPostings"]; ok {
 		return m[0].(map[labels.Label][]byte), m[1].([]labels.Label)
@@ -289,11 +289,11 @@ func (m *mockIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.ULID
 	return map[labels.Label][]byte{}, keys
 }
 
-func (m *mockIndexCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*labels.Matcher, v []byte) {
+func (m *mockIndexCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*labels.Matcher, v []byte, tenant string) {
 	m.calls["StoreExpandedPostings"] = append(m.calls["StoreExpandedPostings"], []interface{}{blockID, matchers, v})
 }
 
-func (m *mockIndexCache) FetchExpandedPostings(_ context.Context, blockID ulid.ULID, matchers []*labels.Matcher) ([]byte, bool) {
+func (m *mockIndexCache) FetchExpandedPostings(_ context.Context, blockID ulid.ULID, matchers []*labels.Matcher, tenant string) ([]byte, bool) {
 	m.calls["FetchExpandedPostings"] = append(m.calls["FetchExpandedPostings"], []interface{}{blockID, matchers})
 	if m, ok := m.mockedCalls["FetchExpandedPostings"]; ok {
 		return m[0].([]byte), m[1].(bool)
@@ -302,11 +302,11 @@ func (m *mockIndexCache) FetchExpandedPostings(_ context.Context, blockID ulid.U
 	return []byte{}, false
 }
 
-func (m *mockIndexCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte) {
+func (m *mockIndexCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte, tenant string) {
 	m.calls["StoreSeries"] = append(m.calls["StoreSeries"], []interface{}{blockID, id, v})
 }
 
-func (m *mockIndexCache) FetchMultiSeries(_ context.Context, blockID ulid.ULID, ids []storage.SeriesRef) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
+func (m *mockIndexCache) FetchMultiSeries(_ context.Context, blockID ulid.ULID, ids []storage.SeriesRef, tenant string) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
 	m.calls["FetchMultiSeries"] = append(m.calls["FetchMultiSeries"], []interface{}{blockID, ids})
 	if m, ok := m.mockedCalls["FetchMultiSeries"]; ok {
 		return m[0].(map[storage.SeriesRef][]byte), m[1].([]storage.SeriesRef)

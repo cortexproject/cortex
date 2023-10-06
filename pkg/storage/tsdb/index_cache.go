@@ -124,10 +124,7 @@ func (cfg *MemcachedIndexCacheConfig) Validate() error {
 	if err := cfg.ClientConfig.Validate(); err != nil {
 		return err
 	}
-	if err := storecache.ValidateEnabledItems(cfg.EnabledItems); err != nil {
-		return err
-	}
-	return nil
+	return storecache.ValidateEnabledItems(cfg.EnabledItems)
 }
 
 func (cfg *MemcachedIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -149,10 +146,7 @@ func (cfg *RedisIndexCacheConfig) Validate() error {
 	if err := cfg.ClientConfig.Validate(); err != nil {
 		return err
 	}
-	if err := storecache.ValidateEnabledItems(cfg.EnabledItems); err != nil {
-		return err
-	}
-	return nil
+	return storecache.ValidateEnabledItems(cfg.EnabledItems)
 }
 
 // NewIndexCache creates a new index cache based on the input configuration.

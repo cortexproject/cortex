@@ -14,26 +14,26 @@ type multiLevelCache struct {
 	caches []storecache.IndexCache
 }
 
-func (m *multiLevelCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte) {
+func (m *multiLevelCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte, tenant string) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(m.caches))
 	for _, c := range m.caches {
 		cache := c
 		go func() {
 			defer wg.Done()
-			cache.StorePostings(blockID, l, v)
+			cache.StorePostings(blockID, l, v, tenant)
 		}()
 	}
 	wg.Wait()
 }
 
-func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.ULID, keys []labels.Label) (hits map[labels.Label][]byte, misses []labels.Label) {
+func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.ULID, keys []labels.Label, tenant string) (hits map[labels.Label][]byte, misses []labels.Label) {
 	misses = keys
 	hits = map[labels.Label][]byte{}
 	backfillMap := map[storecache.IndexCache][]map[labels.Label][]byte{}
 	for i, c := range m.caches {
 		backfillMap[c] = []map[labels.Label][]byte{}
-		h, mi := c.FetchMultiPostings(ctx, blockID, misses)
+		h, mi := c.FetchMultiPostings(ctx, blockID, misses, tenant)
 		misses = mi
 
 		for label, bytes := range h {
@@ -53,7 +53,7 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 		for cache, hit := range backfillMap {
 			for _, values := range hit {
 				for l, b := range values {
-					cache.StorePostings(blockID, l, b)
+					cache.StorePostings(blockID, l, b, tenant)
 				}
 			}
 		}
@@ -62,24 +62,24 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 	return hits, misses
 }
 
-func (m *multiLevelCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*labels.Matcher, v []byte) {
+func (m *multiLevelCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*labels.Matcher, v []byte, tenant string) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(m.caches))
 	for _, c := range m.caches {
 		cache := c
 		go func() {
 			defer wg.Done()
-			cache.StoreExpandedPostings(blockID, matchers, v)
+			cache.StoreExpandedPostings(blockID, matchers, v, tenant)
 		}()
 	}
 	wg.Wait()
 }
 
-func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID ulid.ULID, matchers []*labels.Matcher) ([]byte, bool) {
+func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID ulid.ULID, matchers []*labels.Matcher, tenant string) ([]byte, bool) {
 	for i, c := range m.caches {
-		if d, h := c.FetchExpandedPostings(ctx, blockID, matchers); h {
+		if d, h := c.FetchExpandedPostings(ctx, blockID, matchers, tenant); h {
 			if i > 0 {
-				m.caches[i-1].StoreExpandedPostings(blockID, matchers, d)
+				m.caches[i-1].StoreExpandedPostings(blockID, matchers, d, tenant)
 			}
 			return d, h
 		}
@@ -88,27 +88,27 @@ func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID uli
 	return []byte{}, false
 }
 
-func (m *multiLevelCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte) {
+func (m *multiLevelCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte, tenant string) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(m.caches))
 	for _, c := range m.caches {
 		cache := c
 		go func() {
 			defer wg.Done()
-			cache.StoreSeries(blockID, id, v)
+			cache.StoreSeries(blockID, id, v, tenant)
 		}()
 	}
 	wg.Wait()
 }
 
-func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []storage.SeriesRef) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
+func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []storage.SeriesRef, tenant string) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
 	misses = ids
 	hits = map[storage.SeriesRef][]byte{}
 	backfillMap := map[storecache.IndexCache][]map[storage.SeriesRef][]byte{}
 
 	for i, c := range m.caches {
 		backfillMap[c] = []map[storage.SeriesRef][]byte{}
-		h, miss := c.FetchMultiSeries(ctx, blockID, misses)
+		h, miss := c.FetchMultiSeries(ctx, blockID, misses, tenant)
 		misses = miss
 
 		for label, bytes := range h {
@@ -128,7 +128,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 		for cache, hit := range backfillMap {
 			for _, values := range hit {
 				for m, b := range values {
-					cache.StoreSeries(blockID, m, b)
+					cache.StoreSeries(blockID, m, b, tenant)
 				}
 			}
 		}

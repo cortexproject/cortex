@@ -1083,6 +1083,11 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes
       [max_size_bytes: <int> | default = 1073741824]
 
+      # Selectively cache index item types. Supported values are Postings,
+      # ExpandedPostings and Series
+      # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.enabled-items
+      [enabled_items: <list of string> | default = []]
+
     memcached:
       # Comma separated list of memcached addresses. Supported prefixes are:
       # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
@@ -1129,6 +1134,11 @@ bucket_store:
       # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
+
+      # Selectively cache index item types. Supported values are Postings,
+      # ExpandedPostings and Series
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.enabled-items
+      [enabled_items: <list of string> | default = []]
 
     redis:
       # Comma separated list of redis addresses. Supported prefixes are: dns+
@@ -1225,6 +1235,11 @@ bucket_store:
       # https://redis.io/docs/manual/client-side-caching/ for more info.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
       [cache_size: <int> | default = 0]
+
+      # Selectively cache index item types. Supported values are Postings,
+      # ExpandedPostings and Series
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
+      [enabled_items: <list of string> | default = []]
 
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.

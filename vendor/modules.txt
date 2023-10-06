@@ -902,7 +902,7 @@ github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/parser
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.32.4-0.20231001083734-531cdb1e8ec3
+# github.com/thanos-io/thanos v0.32.5-0.20231006043659-79bbf34b4275
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

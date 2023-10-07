@@ -275,26 +275,22 @@ type querier struct {
 	stores              []QueryableWithFilter
 }
 
-// Select implements storage.Querier interface.
-// The bool passed is ignored because the series is always sorted.
-func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int64, int64, storage.Querier, []storage.Querier, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return storage.ErrSeriesSet(err)
+		return ctx, userID, 0, 0, nil, nil, err
 	}
 
 	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(q.limits.MaxFetchedSeriesPerQuery(userID), q.limits.MaxFetchedChunkBytesPerQuery(userID), q.limits.MaxChunksPerQuery(userID), q.limits.MaxFetchedDataBytesPerQuery(userID)))
 
 	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
-	if err == errEmptyTimeRange {
-		return storage.EmptySeriesSet()
-	} else if err != nil {
-		return storage.ErrSeriesSet(err)
+	if err != nil {
+		return ctx, userID, 0, 0, nil, nil, err
 	}
 
 	dqr, err := q.distributor.Querier(mint, maxt)
 	if err != nil {
-		return storage.ErrSeriesSet(err)
+		return ctx, userID, 0, 0, nil, nil, err
 	}
 	metadataQuerier := dqr
 
@@ -310,10 +306,22 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 		cqr, err := s.Querier(mint, maxt)
 		if err != nil {
-			return storage.ErrSeriesSet(err)
+			return ctx, userID, 0, 0, nil, nil, err
 		}
 
 		queriers = append(queriers, cqr)
+	}
+	return ctx, userID, mint, maxt, metadataQuerier, queriers, nil
+}
+
+// Select implements storage.Querier interface.
+// The bool passed is ignored because the series is always sorted.
+func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	ctx, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	if err == errEmptyTimeRange {
+		return storage.EmptySeriesSet()
+	} else if err != nil {
+		return storage.ErrSeriesSet(err)
 	}
 
 	log, ctx := spanlogger.New(ctx, "querier.Select")
@@ -421,46 +429,14 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(q.limits.MaxFetchedSeriesPerQuery(userID), q.limits.MaxFetchedChunkBytesPerQuery(userID), q.limits.MaxChunksPerQuery(userID), q.limits.MaxFetchedDataBytesPerQuery(userID)))
-
-	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
+	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
-
-	dqr, err := q.distributor.Querier(mint, maxt)
-	if err != nil {
-		return nil, nil, err
-	}
-	metadataQuerier := dqr
-
 	if !q.queryStoreForLabels {
 		return metadataQuerier.LabelValues(ctx, name, matchers...)
-	}
-
-	queriers := make([]storage.Querier, 0)
-	if q.distributor.UseQueryable(q.now, mint, maxt) {
-		queriers = append(queriers, dqr)
-	}
-
-	for _, s := range q.stores {
-		if !s.UseQueryable(q.now, mint, maxt) {
-			continue
-		}
-
-		cqr, err := s.Querier(mint, maxt)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		queriers = append(queriers, cqr)
 	}
 
 	if len(queriers) == 1 {
@@ -502,46 +478,15 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 }
 
 func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(q.limits.MaxFetchedSeriesPerQuery(userID), q.limits.MaxFetchedChunkBytesPerQuery(userID), q.limits.MaxChunksPerQuery(userID), q.limits.MaxFetchedDataBytesPerQuery(userID)))
-
-	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
+	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
 
-	dqr, err := q.distributor.Querier(mint, maxt)
-	if err != nil {
-		return nil, nil, err
-	}
-	metadataQuerier := dqr
-
 	if !q.queryStoreForLabels {
 		return metadataQuerier.LabelNames(ctx, matchers...)
-	}
-
-	queriers := make([]storage.Querier, 0)
-	if q.distributor.UseQueryable(q.now, mint, maxt) {
-		queriers = append(queriers, dqr)
-	}
-
-	for _, s := range q.stores {
-		if !s.UseQueryable(q.now, mint, maxt) {
-			continue
-		}
-
-		cqr, err := s.Querier(mint, maxt)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		queriers = append(queriers, cqr)
 	}
 
 	if len(queriers) == 1 {

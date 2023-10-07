@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/prometheus/util/annotations"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"

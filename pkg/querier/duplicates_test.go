@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"encoding/json"
-	"github.com/prometheus/prometheus/util/annotations"
 	"testing"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"

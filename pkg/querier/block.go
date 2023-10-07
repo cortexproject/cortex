@@ -1,19 +1,19 @@
 package querier
 
 import (
-	"github.com/prometheus/prometheus/util/annotations"
 	"math"
 	"sort"
-
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
-	"github.com/cortexproject/cortex/pkg/querier/series"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {

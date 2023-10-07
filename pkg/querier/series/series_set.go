@@ -17,17 +17,17 @@
 package series
 
 import (
-	"github.com/prometheus/prometheus/util/annotations"
 	"sort"
-
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/purger"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
+	
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/purger"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.

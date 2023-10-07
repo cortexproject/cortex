@@ -1467,7 +1467,7 @@ func createTSDBBlock(t *testing.T, bkt objstore.Bucket, userID string, minT, max
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, db.Compact())
+	require.NoError(t, db.Compact(context.Background()))
 	require.NoError(t, db.Snapshot(snapshotDir, true))
 
 	// Look for the created block (we expect one).

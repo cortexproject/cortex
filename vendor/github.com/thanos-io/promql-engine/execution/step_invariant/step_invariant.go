@@ -11,8 +11,9 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
 
@@ -141,7 +142,7 @@ func (u *stepInvariantOperator) cacheInputVector(ctx context.Context) error {
 		}
 		defer u.next.GetPool().PutVectors(in)
 
-		if len(in) == 0 || len(in[0].Samples) == 0 {
+		if len(in) == 0 || (len(in[0].Samples) == 0 && len(in[0].Histograms) == 0) {
 			return
 		}
 

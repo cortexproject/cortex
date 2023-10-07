@@ -7,7 +7,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/thanos-io/promql-engine/parser"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type Options struct {

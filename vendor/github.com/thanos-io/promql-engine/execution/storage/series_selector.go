@@ -61,13 +61,13 @@ func (o *seriesSelector) GetSeries(ctx context.Context, shard int, numShards int
 }
 
 func (o *seriesSelector) loadSeries(ctx context.Context) error {
-	querier, err := o.storage.Querier(ctx, o.mint, o.maxt)
+	querier, err := o.storage.Querier(o.mint, o.maxt)
 	if err != nil {
 		return err
 	}
 	defer querier.Close()
 
-	seriesSet := querier.Select(false, &o.hints, o.matchers...)
+	seriesSet := querier.Select(ctx, false, &o.hints, o.matchers...)
 	i := 0
 	for seriesSet.Next() {
 		s := seriesSet.At()

@@ -7,16 +7,18 @@ import (
 	"math"
 
 	"github.com/prometheus/prometheus/model/histogram"
+
+	"github.com/thanos-io/promql-engine/execution/parse"
 )
 
-type sample struct {
+type Sample struct {
 	T int64
 	F float64
 	H *histogram.FloatHistogram
 }
 
-type functionArgs struct {
-	Samples          []sample
+type FunctionArgs struct {
+	Samples          []Sample
 	StepTime         int64
 	SelectRange      int64
 	ScalarPoints     []float64
@@ -24,9 +26,9 @@ type functionArgs struct {
 	MetricAppearedTs *int64
 }
 
-type functionCall func(f functionArgs) (float64, *histogram.FloatHistogram, bool)
+type FunctionCall func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool)
 
-func instantValue(samples []sample, isRate bool) (float64, bool) {
+func instantValue(samples []Sample, isRate bool) (float64, bool) {
 	lastSample := samples[len(samples)-1]
 	previousSample := samples[len(samples)-2]
 
@@ -52,80 +54,80 @@ func instantValue(samples []sample, isRate bool) (float64, bool) {
 	return resultValue, true
 }
 
-var rangeVectorFuncs = map[string]functionCall{
-	"sum_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+var rangeVectorFuncs = map[string]FunctionCall{
+	"sum_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return sumOverTime(f.Samples), nil, true
 	},
-	"max_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"max_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return maxOverTime(f.Samples), nil, true
 	},
-	"min_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"min_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return minOverTime(f.Samples), nil, true
 	},
-	"avg_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"avg_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return avgOverTime(f.Samples), nil, true
 	},
-	"stddev_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"stddev_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return stddevOverTime(f.Samples), nil, true
 	},
-	"stdvar_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"stdvar_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return stdvarOverTime(f.Samples), nil, true
 	},
-	"count_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"count_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return countOverTime(f.Samples), nil, true
 	},
-	"last_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"last_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return f.Samples[len(f.Samples)-1].F, nil, true
 	},
-	"present_over_time": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"present_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return 1., nil, true
 	},
-	"changes": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"changes": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return changes(f.Samples), nil, true
 	},
-	"resets": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"resets": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
 		return resets(f.Samples), nil, true
 	},
-	"deriv": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"deriv": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) < 2 {
 			return 0., nil, false
 		}
 		return deriv(f.Samples), nil, true
 	},
-	"irate": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"irate": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		f.Samples = filterFloatOnlySamples(f.Samples)
 		if len(f.Samples) < 2 {
 			return 0., nil, false
@@ -136,7 +138,7 @@ var rangeVectorFuncs = map[string]functionCall{
 		}
 		return val, nil, true
 	},
-	"idelta": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"idelta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		f.Samples = filterFloatOnlySamples(f.Samples)
 		if len(f.Samples) < 2 {
 			return 0., nil, false
@@ -147,28 +149,28 @@ var rangeVectorFuncs = map[string]functionCall{
 		}
 		return val, nil, true
 	},
-	"rate": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"rate": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) < 2 {
 			return 0., nil, false
 		}
 		v, h := extrapolatedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset)
 		return v, h, true
 	},
-	"delta": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"delta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) < 2 {
 			return 0., nil, false
 		}
 		v, h := extrapolatedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset)
 		return v, h, true
 	},
-	"increase": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"increase": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) < 2 {
 			return 0., nil, false
 		}
 		v, h := extrapolatedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset)
 		return v, h, true
 	},
-	"xrate": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"xrate": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
@@ -178,7 +180,7 @@ var rangeVectorFuncs = map[string]functionCall{
 		v, h := extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		return v, h, true
 	},
-	"xdelta": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"xdelta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
@@ -188,7 +190,7 @@ var rangeVectorFuncs = map[string]functionCall{
 		v, h := extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		return v, h, true
 	},
-	"xincrease": func(f functionArgs) (float64, *histogram.FloatHistogram, bool) {
+	"xincrease": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
@@ -200,11 +202,19 @@ var rangeVectorFuncs = map[string]functionCall{
 	},
 }
 
+func NewRangeVectorFunc(name string) (FunctionCall, error) {
+	call, ok := rangeVectorFuncs[name]
+	if !ok {
+		return nil, parse.UnknownFunctionError(name)
+	}
+	return call, nil
+}
+
 // extrapolatedRate is a utility function for rate/increase/delta.
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // extrapolates if the first/last sample is close to the boundary, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extrapolatedRate(samples []sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
+func extrapolatedRate(samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64) (float64, *histogram.FloatHistogram) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -283,7 +293,7 @@ func extrapolatedRate(samples []sample, isCounter, isRate bool, stepTime int64, 
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // taking into account the last sample before the range start, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extendedRate(samples []sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram) {
+func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -370,7 +380,7 @@ func extendedRate(samples []sample, isCounter, isRate bool, stepTime int64, sele
 // histogramRate is a helper function for extrapolatedRate. It requires
 // points[0] to be a histogram. It returns nil if any other Point in points is
 // not a histogram.
-func histogramRate(points []sample, isCounter bool) *histogram.FloatHistogram {
+func histogramRate(points []Sample, isCounter bool) *histogram.FloatHistogram {
 	prev := points[0].H // We already know that this is a histogram.
 	last := points[len(points)-1].H
 	if last == nil {
@@ -416,7 +426,7 @@ func histogramRate(points []sample, isCounter bool) *histogram.FloatHistogram {
 	return h.Compact(0)
 }
 
-func maxOverTime(points []sample) float64 {
+func maxOverTime(points []Sample) float64 {
 	max := points[0].F
 	for _, v := range points {
 		if v.F > max || math.IsNaN(max) {
@@ -426,7 +436,7 @@ func maxOverTime(points []sample) float64 {
 	return max
 }
 
-func minOverTime(points []sample) float64 {
+func minOverTime(points []Sample) float64 {
 	min := points[0].F
 	for _, v := range points {
 		if v.F < min || math.IsNaN(min) {
@@ -436,11 +446,11 @@ func minOverTime(points []sample) float64 {
 	return min
 }
 
-func countOverTime(points []sample) float64 {
+func countOverTime(points []Sample) float64 {
 	return float64(len(points))
 }
 
-func avgOverTime(points []sample) float64 {
+func avgOverTime(points []Sample) float64 {
 	var mean, count, c float64
 	for _, v := range points {
 		count++
@@ -470,7 +480,7 @@ func avgOverTime(points []sample) float64 {
 	return mean + c
 }
 
-func sumOverTime(points []sample) float64 {
+func sumOverTime(points []Sample) float64 {
 	var sum, c float64
 	for _, v := range points {
 		sum, c = kahanSumInc(v.F, sum, c)
@@ -481,7 +491,7 @@ func sumOverTime(points []sample) float64 {
 	return sum + c
 }
 
-func stddevOverTime(points []sample) float64 {
+func stddevOverTime(points []Sample) float64 {
 	var count float64
 	var mean, cMean float64
 	var aux, cAux float64
@@ -494,7 +504,7 @@ func stddevOverTime(points []sample) float64 {
 	return math.Sqrt((aux + cAux) / count)
 }
 
-func stdvarOverTime(points []sample) float64 {
+func stdvarOverTime(points []Sample) float64 {
 	var count float64
 	var mean, cMean float64
 	var aux, cAux float64
@@ -507,7 +517,7 @@ func stdvarOverTime(points []sample) float64 {
 	return (aux + cAux) / count
 }
 
-func changes(points []sample) float64 {
+func changes(points []Sample) float64 {
 	var count float64
 	prev := points[0].F
 	count = 0
@@ -521,7 +531,7 @@ func changes(points []sample) float64 {
 	return count
 }
 
-func deriv(points []sample) float64 {
+func deriv(points []Sample) float64 {
 	// We pass in an arbitrary timestamp that is near the values in use
 	// to avoid floating point accuracy issues, see
 	// https://github.com/prometheus/prometheus/issues/2674
@@ -529,7 +539,7 @@ func deriv(points []sample) float64 {
 	return slope
 }
 
-func resets(points []sample) float64 {
+func resets(points []Sample) float64 {
 	count := 0
 	prev := points[0].F
 	for _, sample := range points[1:] {
@@ -543,7 +553,7 @@ func resets(points []sample) float64 {
 	return float64(count)
 }
 
-func linearRegression(Samples []sample, interceptTime int64) (slope, intercept float64) {
+func linearRegression(Samples []Sample, interceptTime int64) (slope, intercept float64) {
 	var (
 		n          float64
 		sumX, cX   float64
@@ -586,7 +596,7 @@ func linearRegression(Samples []sample, interceptTime int64) (slope, intercept f
 	return slope, intercept
 }
 
-func filterFloatOnlySamples(samples []sample) []sample {
+func filterFloatOnlySamples(samples []Sample) []Sample {
 	i := 0
 	for _, sample := range samples {
 		if sample.H == nil {

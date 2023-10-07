@@ -10,9 +10,10 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"gonum.org/v1/gonum/floats"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/parser"
 )
 
 type vectorAccumulator func([]float64, []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool)

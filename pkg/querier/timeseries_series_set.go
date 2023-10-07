@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"github.com/prometheus/prometheus/util/annotations"
 	"sort"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -43,7 +44,7 @@ func (t *timeSeriesSeriesSet) At() storage.Series {
 func (t *timeSeriesSeriesSet) Err() error { return nil }
 
 // Warnings implements storage.SeriesSet interface.
-func (t *timeSeriesSeriesSet) Warnings() storage.Warnings { return nil }
+func (t *timeSeriesSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // timeseries is a type wrapper that implements the storage.Series interface
 type timeseries struct {

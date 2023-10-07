@@ -166,7 +166,7 @@ func (p *myPusher) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 type myQueryable struct{}
 
-func (q *myQueryable) Querier(ctx context.Context, mint, maxt int64) (prom_storage.Querier, error) {
+func (q *myQueryable) Querier(mint, maxt int64) (prom_storage.Querier, error) {
 	return prom_storage.NoopQuerier(), nil
 }
 

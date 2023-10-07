@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"github.com/prometheus/prometheus/util/annotations"
 	"math"
 	"sort"
 
@@ -42,7 +43,7 @@ func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMa
 // Implementation of storage.SeriesSet, based on individual responses from store client.
 type blockQuerierSeriesSet struct {
 	series   []*storepb.Series
-	warnings storage.Warnings
+	warnings annotations.Annotations
 
 	// next response to process
 	next int
@@ -82,7 +83,7 @@ func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
 }
 
-func (bqss *blockQuerierSeriesSet) Warnings() storage.Warnings {
+func (bqss *blockQuerierSeriesSet) Warnings() annotations.Annotations {
 	return bqss.warnings
 }
 

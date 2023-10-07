@@ -13,25 +13,6 @@ var (
 	ErrDuplicateLabelSet = errors.New("vector cannot contain metrics with the same labelset")
 )
 
-func ContainsDuplicateLabelSet(series []labels.Labels) bool {
-	var (
-		buf  = make([]byte, 0, 256)
-		seen = make(map[uint64]struct{}, len(series))
-	)
-
-	for _, s := range series {
-		buf = buf[:0]
-
-		buf = s.Bytes(buf)
-		h := xxhash.Sum64(s.Bytes(buf))
-		if _, ok := seen[h]; ok {
-			return true
-		}
-		seen[h] = struct{}{}
-	}
-	return false
-}
-
 func ContainsDuplicateLabelSetAfterDroppingName(series []labels.Labels) bool {
 	var (
 		buf  = make([]byte, 0, 256)

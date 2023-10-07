@@ -239,6 +239,7 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 		})
 	}
 
+	parentCtx := ctx
 	run := func(ctx context.Context, jobIntf interface{}) error {
 		job, ok := jobIntf.(*stringSliceFuncJob)
 		if !ok {
@@ -246,7 +247,8 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 		}
 
 		var err error
-		newCtx := user.InjectOrgID(ctx, job.id)
+		// Based on parent ctx here as we are using lazy querier.
+		newCtx := user.InjectOrgID(parentCtx, job.id)
 		job.result, job.warnings, err = f(newCtx, job.querier)
 		if err != nil {
 			return errors.Wrapf(err, "error querying %s %s", rewriteLabelName(m.idLabelName), job.id)
@@ -289,11 +291,6 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 // Close releases the resources of the Querier.
 func (m *mergeQuerier) Close() error {
 	return nil
-	//errs := tsdb_errors.NewMulti()
-	//for pos, id := range m.ids {
-	//	errs.Add(errors.Wrapf(m.queriers[pos].Close(), "failed to close querier for %s %s", rewriteLabelName(m.idLabelName), id))
-	//}
-	//return errs.Err()
 }
 
 type selectJob struct {
@@ -335,12 +332,14 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		jobPos++
 	}
 
+	parentCtx := ctx
 	run := func(ctx context.Context, jobIntf interface{}) error {
 		job, ok := jobIntf.(*selectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
 		}
-		newCtx := user.InjectOrgID(ctx, ids[job.pos])
+		// Based on parent ctx here as we are using lazy querier.
+		newCtx := user.InjectOrgID(parentCtx, ids[job.pos])
 		seriesSets[job.pos] = &addLabelsSeriesSet{
 			upstream: job.querier.Select(newCtx, sortSeries, hints, filteredMatchers...),
 			labels: labels.Labels{

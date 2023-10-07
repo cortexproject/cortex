@@ -2,9 +2,8 @@ package concurrency
 
 import (
 	"context"
-	"sync"
-
 	"golang.org/x/sync/errgroup"
+	"sync"
 
 	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
@@ -96,7 +95,7 @@ func ForEach(ctx context.Context, jobs []interface{}, concurrency int, jobFunc f
 	return g.Wait()
 }
 
-// CreateJobsFromStrings is an utility to create jobs from an slice of strings.
+// CreateJobsFromStrings is a utility to create jobs from an slice of strings.
 func CreateJobsFromStrings(values []string) []interface{} {
 	jobs := make([]interface{}, len(values))
 	for i := 0; i < len(values); i++ {

@@ -7,7 +7,7 @@ require (
 	github.com/alecthomas/units v0.0.0-20211218093645-b94a6e3cc137
 	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/armon/go-metrics v0.4.1
-	github.com/aws/aws-sdk-go v1.44.327
+	github.com/aws/aws-sdk-go v1.45.24
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
 	github.com/cortexproject/promqlsmith v0.0.0-20230502194647-ed3e43bb7a52

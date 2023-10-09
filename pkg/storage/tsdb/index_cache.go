@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
@@ -31,6 +32,8 @@ const (
 	IndexCacheBackendDefault = IndexCacheBackendInMemory
 
 	defaultMaxItemSize = model.Bytes(128 * units.MiB)
+
+	defaultTTL = 24 * time.Hour
 )
 
 var (
@@ -178,7 +181,8 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			if err != nil {
 				return nil, err
 			}
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg)
+			// TODO(yeya24): expose TTL
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
 			if err != nil {
 				return nil, err
 			}
@@ -189,7 +193,8 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			if err != nil {
 				return nil, err
 			}
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg)
+			// TODO(yeya24): expose TTL
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
 			if err != nil {
 				return nil, err
 			}

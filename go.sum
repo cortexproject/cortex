@@ -1134,8 +1134,8 @@ github.com/prometheus/procfs v0.7.3/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1
 github.com/prometheus/procfs v0.8.0/go.mod h1:z7EfXMXOkbkqb9IINtpCn86r/to3BnA0uaxHdg830/4=
 github.com/prometheus/procfs v0.11.1 h1:xRC8Iq1yyca5ypa9n1EZnWZkt7dwcoRPQwX/5gwaUuI=
 github.com/prometheus/procfs v0.11.1/go.mod h1:eesXgaPo1q7lBpVMoMy0ZOFTth9hBn4W/y0/p/ScXhY=
-github.com/prometheus/prometheus v0.47.2-0.20231006112807-a5a4eab679cc h1:4WALucWqPlyAuHqe8Z6nagJhdooeI7kotaZSf4SgBQA=
-github.com/prometheus/prometheus v0.47.2-0.20231006112807-a5a4eab679cc/go.mod h1:UC0TwJiF90m2T3iYPQBKnGu8gv3s55dF/EgpTq8gyvo=
+github.com/prometheus/prometheus v0.47.2-0.20231009162353-f6d9c84fde6b h1:oiCf/rFBXXaDLyiK1MnMKYlSA7Xm2+SQePvXnl8bNUI=
+github.com/prometheus/prometheus v0.47.2-0.20231009162353-f6d9c84fde6b/go.mod h1:UC0TwJiF90m2T3iYPQBKnGu8gv3s55dF/EgpTq8gyvo=
 github.com/redis/rueidis v1.0.14-go1.18 h1:dGir5z8w8X1ex7JWO/Zx2FMBrZgQ8Yjm+lw9fPLSNGw=
 github.com/redis/rueidis v1.0.14-go1.18/go.mod h1:HGekzV3HbmzFmRK6j0xic8Z9119+ECoGMjeN1TV1NYU=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
@@ -1212,8 +1212,8 @@ github.com/thanos-io/objstore v0.0.0-20230921130928-63a603e651ed h1:iWQdY3S6DpWj
 github.com/thanos-io/objstore v0.0.0-20230921130928-63a603e651ed/go.mod h1:oJ82xgcBDzGJrEgUsjlTj6n01+ZWUMMUR8BlZzX5xDE=
 github.com/thanos-io/promql-engine v0.0.0-20231003153358-8605b6afba51 h1:Av62ac0O9wRbLI6xvtm51BBZnxHyEgLXV/YmiJpdogc=
 github.com/thanos-io/promql-engine v0.0.0-20231003153358-8605b6afba51/go.mod h1:vfXJv1JXNdLfHnjsHsLLJl5tyI7KblF76Wo5lZ9YC4Q=
-github.com/thanos-io/thanos v0.32.5-0.20231007234558-ef2d5d63b184 h1:HqqHXdLx023xEl1oCTvZOB/yoG4GPNvI47xQJQitI9Q=
-github.com/thanos-io/thanos v0.32.5-0.20231007234558-ef2d5d63b184/go.mod h1:JurTtSoGw1YUUJsC9bTYBoF66aoLoa9KXhoBqlr7vi4=
+github.com/thanos-io/thanos v0.32.5-0.20231009175812-6aeca7ec5c21 h1:wMAdhneoSZTAYa7jAijTDo7Uy4w/7yOWbe85DuN2QOA=
+github.com/thanos-io/thanos v0.32.5-0.20231009175812-6aeca7ec5c21/go.mod h1:tqT2FQHiOF16empgE3vvZrA++fN9Cx0lwmxlMmBaVzA=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab h1:7ZR3hmisBWw77ZpO1/o86g+JV3VKlk3d48jopJxzTjU=
 github.com/themihai/gomemcache v0.0.0-20180902122335-24332e2d58ab/go.mod h1:eheTFp954zcWZXCU8d0AT76ftsQOTo4DTqkN/h3k1MY=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=

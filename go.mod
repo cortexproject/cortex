@@ -46,14 +46,14 @@ require (
 	github.com/prometheus/client_model v0.4.0
 	github.com/prometheus/common v0.44.0
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.47.2-0.20231006112807-a5a4eab679cc
+	github.com/prometheus/prometheus v0.47.2-0.20231009162353-f6d9c84fde6b
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.4
 	github.com/thanos-io/objstore v0.0.0-20230921130928-63a603e651ed
 	github.com/thanos-io/promql-engine v0.0.0-20231003153358-8605b6afba51
-	github.com/thanos-io/thanos v0.32.5-0.20231007234558-ef2d5d63b184
+	github.com/thanos-io/thanos v0.32.5-0.20231009175812-6aeca7ec5c21
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20221201103051-7c2720a9024d
 	go.etcd.io/etcd/api/v3 v3.5.9

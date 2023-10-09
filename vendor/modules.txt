@@ -768,7 +768,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.47.2-0.20231006112807-a5a4eab679cc
+# github.com/prometheus/prometheus v0.47.2-0.20231009162353-f6d9c84fde6b
 ## explicit; go 1.20
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -903,7 +903,7 @@ github.com/thanos-io/promql-engine/extlabels
 github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.32.5-0.20231007234558-ef2d5d63b184
+# github.com/thanos-io/thanos v0.32.5-0.20231009175812-6aeca7ec5c21
 ## explicit; go 1.18
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

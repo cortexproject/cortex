@@ -873,6 +873,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		userBucket:                     bucket,
 		logger:                         ulogger,
 		metaSyncConcurrency:            c.compactorCfg.MetaSyncConcurrency,
+		compactDir:                     c.compactDirForUser(userID),
 		partitionedGroupInfoReadFailed: c.PartitionedGroupInfoReadFailed,
 	}
 	compactor, err := compact.NewBucketCompactorWithCheckerAndCallback(

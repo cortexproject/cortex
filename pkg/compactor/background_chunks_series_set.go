@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 type backgrounChunkSeriesSet struct {
@@ -26,7 +27,7 @@ func (b *backgrounChunkSeriesSet) Err() error {
 	return b.cs.Err()
 }
 
-func (b *backgrounChunkSeriesSet) Warnings() storage.Warnings {
+func (b *backgrounChunkSeriesSet) Warnings() annotations.Annotations {
 	return b.cs.Warnings()
 }
 

@@ -91,7 +91,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 		closers = append(closers, tombsr)
 
 		k, v := index.AllPostingsKey()
-		all, err := indexr.Postings(k, v)
+		all, err := indexr.Postings(ctx, k, v)
 		if err != nil {
 			return err
 		}

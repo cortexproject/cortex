@@ -13,10 +13,11 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/extlabels"
-	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
 
@@ -90,7 +91,7 @@ func NewFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, 
 func newNoArgsFunctionOperator(funcExpr *parser.Call, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	call, ok := noArgFuncs[funcExpr.Func.Name]
 	if !ok {
-		return nil, parse.UnknownFunctionError(funcExpr.Func)
+		return nil, UnknownFunctionError(funcExpr.Func.Name)
 	}
 
 	interval := opts.Step.Milliseconds()
@@ -128,7 +129,7 @@ func newNoArgsFunctionOperator(funcExpr *parser.Call, stepsBatch int, opts *quer
 func newInstantVectorFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	call, ok := instantVectorFuncs[funcExpr.Func.Name]
 	if !ok {
-		return nil, parse.UnknownFunctionError(funcExpr.Func)
+		return nil, UnknownFunctionError(funcExpr.Func.Name)
 	}
 
 	scalarPoints := make([][]float64, stepsBatch)

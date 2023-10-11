@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -57,10 +58,9 @@ type distributorQueryable struct {
 	queryStoreForLabels  bool
 }
 
-func (d distributorQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
 	return &distributorQuerier{
 		distributor:          d.distributor,
-		ctx:                  ctx,
 		mint:                 mint,
 		maxt:                 maxt,
 		streaming:            d.streaming,
@@ -78,7 +78,6 @@ func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bo
 
 type distributorQuerier struct {
 	distributor          Distributor
-	ctx                  context.Context
 	mint, maxt           int64
 	streaming            bool
 	streamingMetadata    bool
@@ -89,8 +88,8 @@ type distributorQuerier struct {
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *distributorQuerier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.Select")
+func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	log, ctx := spanlogger.New(ctx, "distributorQuerier.Select")
 	defer log.Span.Finish()
 
 	minT, maxT := q.mint, q.maxt
@@ -208,27 +207,27 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 	return storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 }
 
-func (q *distributorQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *distributorQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	var (
 		lvs []string
 		err error
 	)
 
 	if q.streamingMetadata {
-		lvs, err = q.distributor.LabelValuesForLabelNameStream(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
+		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
 	} else {
-		lvs, err = q.distributor.LabelValuesForLabelName(q.ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
+		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
 	}
 
 	return lvs, nil, err
 }
 
-func (q *distributorQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *distributorQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	if len(matchers) > 0 {
-		return q.labelNamesWithMatchers(matchers...)
+		return q.labelNamesWithMatchers(ctx, matchers...)
 	}
 
-	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.LabelNames")
+	log, ctx := spanlogger.New(ctx, "distributorQuerier.LabelNames")
 	defer log.Span.Finish()
 
 	var (
@@ -246,8 +245,8 @@ func (q *distributorQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, 
 }
 
 // labelNamesWithMatchers performs the LabelNames call by calling ingester's MetricsForLabelMatchers method
-func (q *distributorQuerier) labelNamesWithMatchers(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	log, ctx := spanlogger.New(q.ctx, "distributorQuerier.labelNamesWithMatchers")
+func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	log, ctx := spanlogger.New(ctx, "distributorQuerier.labelNamesWithMatchers")
 	defer log.Span.Finish()
 
 	var (

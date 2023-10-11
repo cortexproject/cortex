@@ -410,6 +410,8 @@ type BucketStore struct {
 
 	enabledLazyExpandedPostings bool
 
+	sortingStrategy sortingStrategy
+
 	blockEstimatedMaxSeriesFunc BlockEstimator
 	blockEstimatedMaxChunkFunc  BlockEstimator
 }
@@ -521,6 +523,15 @@ func WithLazyExpandedPostings(enabled bool) BucketStoreOption {
 	}
 }
 
+// WithDontResort disables series resorting in Store Gateway.
+func WithDontResort(true bool) BucketStoreOption {
+	return func(s *BucketStore) {
+		if true {
+			s.sortingStrategy = sortingStrategyNone
+		}
+	}
+}
+
 // NewBucketStore creates a new bucket backed store that implements the store API against
 // an object store bucket. It is optimized to work against high latency backends.
 func NewBucketStore(
@@ -563,6 +574,7 @@ func NewBucketStore(
 		enableSeriesResponseHints:   enableSeriesResponseHints,
 		enableChunkHashCalculation:  enableChunkHashCalculation,
 		seriesBatchSize:             SeriesBatchSize,
+		sortingStrategy:             sortingStrategyStore,
 	}
 
 	for _, option := range options {
@@ -1174,7 +1186,7 @@ OUTER:
 			continue
 		}
 
-		if err := b.indexr.LookupLabelsSymbols(b.symbolizedLset, &b.lset); err != nil {
+		if err := b.indexr.LookupLabelsSymbols(b.ctx, b.symbolizedLset, &b.lset); err != nil {
 			return errors.Wrap(err, "Lookup labels symbols")
 		}
 
@@ -1498,19 +1510,35 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 					return errors.Wrapf(err, "fetch postings for block %s", blk.meta.ULID)
 				}
 
-				resp := newEagerRespSet(
-					srv.Context(),
-					span,
-					10*time.Minute,
-					blk.meta.ULID.String(),
-					[]labels.Labels{blk.extLset},
-					onClose,
-					blockClient,
-					shardMatcher,
-					false,
-					s.metrics.emptyPostingCount.WithLabelValues(tenant),
-					nil,
-				)
+				var resp respSet
+				if s.sortingStrategy == sortingStrategyStore {
+					resp = newEagerRespSet(
+						srv.Context(),
+						span,
+						10*time.Minute,
+						blk.meta.ULID.String(),
+						[]labels.Labels{blk.extLset},
+						onClose,
+						blockClient,
+						shardMatcher,
+						false,
+						s.metrics.emptyPostingCount.WithLabelValues(tenant),
+						nil,
+					)
+				} else {
+					resp = newLazyRespSet(
+						srv.Context(),
+						span,
+						10*time.Minute,
+						blk.meta.ULID.String(),
+						[]labels.Labels{blk.extLset},
+						onClose,
+						blockClient,
+						shardMatcher,
+						false,
+						s.metrics.emptyPostingCount.WithLabelValues(tenant),
+					)
+				}
 
 				mtx.Lock()
 				respSets = append(respSets, resp)
@@ -1549,6 +1577,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 
 		level.Debug(s.logger).Log("msg", "stats query processed",
 			"request", req,
+			"tenant", tenant,
 			"stats", fmt.Sprintf("%+v", stats), "err", err)
 	}()
 
@@ -2665,8 +2694,8 @@ func matchersToPostingGroups(ctx context.Context, lvalsFn func(name string) ([]s
 		mergedPG.matchers = newSortedMatchers(matchers)
 		pgs = append(pgs, mergedPG)
 	}
-	slices.SortFunc(pgs, func(a, b *postingGroup) bool {
-		return a.name < b.name
+	slices.SortFunc(pgs, func(a, b *postingGroup) int {
+		return strings.Compare(a.name, b.name)
 	})
 	return pgs, nil
 }
@@ -3222,14 +3251,14 @@ func (r *bucketIndexReader) Close() error {
 }
 
 // LookupLabelsSymbols allows populates label set strings from symbolized label set.
-func (r *bucketIndexReader) LookupLabelsSymbols(symbolized []symbolizedLabel, lbls *labels.Labels) error {
+func (r *bucketIndexReader) LookupLabelsSymbols(ctx context.Context, symbolized []symbolizedLabel, lbls *labels.Labels) error {
 	*lbls = (*lbls)[:0]
 	for _, s := range symbolized {
-		ln, err := r.dec.LookupSymbol(s.name)
+		ln, err := r.dec.LookupSymbol(ctx, s.name)
 		if err != nil {
 			return errors.Wrap(err, "lookup label name")
 		}
-		lv, err := r.dec.LookupSymbol(s.value)
+		lv, err := r.dec.LookupSymbol(ctx, s.value)
 		if err != nil {
 			return errors.Wrap(err, "lookup label value")
 		}

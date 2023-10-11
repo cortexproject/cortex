@@ -8,7 +8,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/thanos-io/promql-engine/parser"
+	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
 )
 
 type FilteredSelector struct {
@@ -22,7 +23,7 @@ func (f FilteredSelector) String() string {
 
 func (f FilteredSelector) Pretty(level int) string { return f.String() }
 
-func (f FilteredSelector) PositionRange() parser.PositionRange { return parser.PositionRange{} }
+func (f FilteredSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
 
 func (f FilteredSelector) Type() parser.ValueType { return parser.ValueTypeVector }
 

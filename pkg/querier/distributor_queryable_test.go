@@ -50,10 +50,11 @@ func TestDistributorQuerier(t *testing.T) {
 		nil)
 
 	queryable := newDistributorQueryable(d, false, false, nil, 0, false)
-	querier, err := queryable.Querier(context.Background(), mint, maxt)
+	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	ctx := context.Background()
+	seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
 	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
@@ -142,7 +143,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 
 				ctx := user.InjectOrgID(context.Background(), "test")
 				queryable := newDistributorQueryable(distributor, streamingEnabled, streamingEnabled, nil, testData.queryIngestersWithin, testData.queryStoreForLabels)
-				querier, err := queryable.Querier(ctx, testData.queryMinT, testData.queryMaxT)
+				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
 				limits := DefaultLimitsConfig()
@@ -161,7 +162,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 					}
 				}
 
-				seriesSet := querier.Select(true, hints)
+				seriesSet := querier.Select(ctx, true, hints)
 				require.NoError(t, seriesSet.Err())
 
 				if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
@@ -231,10 +232,10 @@ func TestIngesterStreaming(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "0")
 	queryable := newDistributorQueryable(d, true, true, mergeChunks, 0, true)
-	querier, err := queryable.Querier(ctx, mint, maxt)
+	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt})
+	seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
 	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
@@ -309,10 +310,10 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "0")
 	queryable := newDistributorQueryable(d, true, true, mergeChunks, 0, true)
-	querier, err := queryable.Querier(ctx, mint, maxt)
+	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
-	seriesSet := querier.Select(true, &storage.SelectHints{Start: mint, End: maxt}, labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*"))
+	seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, labels.MustNewMatcher(labels.MatchRegexp, labels.MetricName, ".*"))
 	require.NoError(t, seriesSet.Err())
 
 	require.True(t, seriesSet.Next())
@@ -365,10 +366,11 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 				Return(metrics, nil)
 
 			queryable := newDistributorQueryable(d, false, streamingEnabled, nil, 0, true)
-			querier, err := queryable.Querier(context.Background(), mint, maxt)
+			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
-			names, warnings, err := querier.LabelNames(someMatchers...)
+			ctx := context.Background()
+			names, warnings, err := querier.LabelNames(ctx, someMatchers...)
 			require.NoError(t, err)
 			assert.Empty(t, warnings)
 			assert.Equal(t, labelNames, names)

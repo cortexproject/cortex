@@ -12,7 +12,8 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/thanos-io/promql-engine/parser"
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/thanos-io/promql-engine/query"
 )
 

@@ -14,18 +14,19 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/parse"
 	engstore "github.com/thanos-io/promql-engine/execution/storage"
 	"github.com/thanos-io/promql-engine/extlabels"
-	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
 
 type matrixScanner struct {
 	labels           labels.Labels
 	signature        uint64
-	previousSamples  []sample
+	previousSamples  []Sample
 	samples          *storage.BufferedSeriesIterator
 	metricAppearedTs *int64
 	deltaReduced     bool
@@ -34,7 +35,7 @@ type matrixScanner struct {
 type matrixSelector struct {
 	funcExpr *parser.Call
 	storage  engstore.SeriesSelector
-	call     functionCall
+	call     FunctionCall
 	scanners []matrixScanner
 	series   []labels.Labels
 	once     sync.Once
@@ -69,11 +70,12 @@ func NewMatrixSelector(
 	shard, numShard int,
 
 ) (model.VectorOperator, error) {
-	call, ok := rangeVectorFuncs[funcExpr.Func.Name]
-	if !ok {
-		return nil, parse.UnknownFunctionError(funcExpr.Func)
+	call, err := NewRangeVectorFunc(funcExpr.Func.Name)
+	if err != nil {
+		return nil, err
 	}
-	isExtFunction := parse.IsExtFunction(funcExpr.Func.Name)
+
+	isExtFunction := function.IsExtFunction(funcExpr.Func.Name)
 	m := &matrixSelector{
 		storage:    selector,
 		call:       call,
@@ -162,7 +164,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			maxt := seriesTs - o.offset
 			mint := maxt - o.selectRange
 
-			var rangeSamples []sample
+			var rangeSamples []Sample
 			var err error
 
 			if !o.isExtFunction {
@@ -179,7 +181,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok := o.call(functionArgs{
+			f, h, ok := o.call(FunctionArgs{
 				Samples:          rangeSamples,
 				StepTime:         seriesTs,
 				SelectRange:      o.selectRange,
@@ -272,7 +274,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 // into the [mint, maxt] range are retained; only points with later timestamps
 // are populated from the iterator.
 // TODO(fpetkovski): Add max samples limit.
-func selectPoints(it *storage.BufferedSeriesIterator, mint, maxt int64, out []sample) ([]sample, error) {
+func selectPoints(it *storage.BufferedSeriesIterator, mint, maxt int64, out []Sample) ([]Sample, error) {
 	if len(out) > 0 && out[len(out)-1].T >= mint {
 		// There is an overlap between previous and current ranges, retain common
 		// points. In most such cases:
@@ -309,7 +311,7 @@ loop:
 				continue loop
 			}
 			if t >= mint {
-				out = append(out, sample{T: t, H: fh})
+				out = append(out, Sample{T: t, H: fh})
 			}
 		case chunkenc.ValFloat:
 			t, v := buf.At()
@@ -318,7 +320,7 @@ loop:
 			}
 			// Values in the buffer are guaranteed to be smaller than maxt.
 			if t >= mint {
-				out = append(out, sample{T: t, F: v})
+				out = append(out, Sample{T: t, F: v})
 			}
 		}
 	}
@@ -328,12 +330,12 @@ loop:
 	case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
 		t, fh := it.AtFloatHistogram()
 		if t == maxt && !value.IsStaleNaN(fh.Sum) {
-			out = append(out, sample{T: t, H: fh})
+			out = append(out, Sample{T: t, H: fh})
 		}
 	case chunkenc.ValFloat:
 		t, v := it.At()
 		if t == maxt && !value.IsStaleNaN(v) {
-			out = append(out, sample{T: t, F: v})
+			out = append(out, Sample{T: t, F: v})
 		}
 	}
 
@@ -349,7 +351,7 @@ loop:
 // into the [mint, maxt] range are retained; only points with later timestamps
 // are populated from the iterator.
 // TODO(fpetkovski): Add max samples limit.
-func selectExtPoints(it *storage.BufferedSeriesIterator, mint, maxt int64, out []sample, extLookbackDelta int64, metricAppearedTs **int64) ([]sample, error) {
+func selectExtPoints(it *storage.BufferedSeriesIterator, mint, maxt int64, out []Sample, extLookbackDelta int64, metricAppearedTs **int64) ([]Sample, error) {
 	extMint := mint - extLookbackDelta
 
 	if len(out) > 0 && out[len(out)-1].T >= mint {
@@ -402,7 +404,7 @@ loop:
 				*metricAppearedTs = &t
 			}
 			if t >= mint {
-				out = append(out, sample{T: t, H: fh})
+				out = append(out, Sample{T: t, H: fh})
 			}
 		case chunkenc.ValFloat:
 			t, v := buf.At()
@@ -417,10 +419,10 @@ loop:
 			// exists at or before range start, add it and then keep replacing
 			// it with later points while not yet (strictly) inside the range.
 			if t >= mint || !appendedPointBeforeMint {
-				out = append(out, sample{T: t, F: v})
+				out = append(out, Sample{T: t, F: v})
 				appendedPointBeforeMint = true
 			} else {
-				out[len(out)-1] = sample{T: t, F: v}
+				out[len(out)-1] = Sample{T: t, F: v}
 			}
 
 		}
@@ -434,7 +436,7 @@ loop:
 			if *metricAppearedTs == nil {
 				*metricAppearedTs = &t
 			}
-			out = append(out, sample{T: t, H: fh})
+			out = append(out, Sample{T: t, H: fh})
 		}
 	case chunkenc.ValFloat:
 		t, v := it.At()
@@ -442,7 +444,7 @@ loop:
 			if *metricAppearedTs == nil {
 				*metricAppearedTs = &t
 			}
-			out = append(out, sample{T: t, F: v})
+			out = append(out, Sample{T: t, F: v})
 		}
 	}
 

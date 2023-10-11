@@ -280,12 +280,12 @@ func (u *userTSDB) Appender(ctx context.Context) storage.Appender {
 	return u.db.Appender(ctx)
 }
 
-func (u *userTSDB) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return u.db.Querier(ctx, mint, maxt)
+func (u *userTSDB) Querier(mint, maxt int64) (storage.Querier, error) {
+	return u.db.Querier(mint, maxt)
 }
 
-func (u *userTSDB) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
-	return u.db.ChunkQuerier(ctx, mint, maxt)
+func (u *userTSDB) ChunkQuerier(mint, maxt int64) (storage.ChunkQuerier, error) {
+	return u.db.ChunkQuerier(mint, maxt)
 }
 
 func (u *userTSDB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
@@ -304,8 +304,8 @@ func (u *userTSDB) Close() error {
 	return u.db.Close()
 }
 
-func (u *userTSDB) Compact() error {
-	return u.db.Compact()
+func (u *userTSDB) Compact(ctx context.Context) error {
+	return u.db.Compact(ctx)
 }
 
 func (u *userTSDB) StartTime() (int64, error) {
@@ -1273,14 +1273,14 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return &client.QueryResponse{}, nil
 	}
 
-	q, err := db.Querier(ctx, int64(from), int64(through))
+	q, err := db.Querier(int64(from), int64(through))
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
+	ss := q.Select(ctx, false, nil, matchers...)
 	if ss.Err() != nil {
 		return nil, ss.Err()
 	}
@@ -1429,7 +1429,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(ctx, mint, maxt)
+	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1438,7 +1438,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		q.Close()
 	}
 
-	vals, _, err := q.LabelValues(labelName, matchers...)
+	vals, _, err := q.LabelValues(ctx, labelName, matchers...)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1505,7 +1505,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(ctx, mint, maxt)
+	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1514,7 +1514,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		q.Close()
 	}
 
-	names, _, err := q.LabelNames()
+	names, _, err := q.LabelNames(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1585,7 +1585,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(ctx, mint, maxt)
+	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1612,12 +1612,12 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 				return nil, cleanup, ctx.Err()
 			}
 
-			seriesSet := q.Select(true, hints, matchers...)
+			seriesSet := q.Select(ctx, true, hints, matchers...)
 			sets = append(sets, seriesSet)
 		}
 		mergedSet = storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 	} else {
-		mergedSet = q.Select(false, hints, matchersSet[0]...)
+		mergedSet = q.Select(ctx, false, hints, matchersSet[0]...)
 	}
 
 	// Generate the response merging all series sets.
@@ -1783,14 +1783,14 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
-	q, err := db.ChunkQuerier(ctx, from, through)
+	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
 		return 0, 0, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
+	ss := q.Select(ctx, false, nil, matchers...)
 	if ss.Err() != nil {
 		return 0, 0, ss.Err()
 	}
@@ -2002,7 +2002,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op, although
 	// local blocks compaction may still take place if configured.
 	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
-	err = db.Compact()
+	err = db.Compact(context.TODO())
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
@@ -2400,7 +2400,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 
 		default:
 			reason = "regular"
-			err = userDB.Compact()
+			err = userDB.Compact(ctx)
 		}
 
 		if err != nil {

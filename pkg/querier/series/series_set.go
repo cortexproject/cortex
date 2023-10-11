@@ -19,14 +19,15 @@ package series
 import (
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/purger"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/purger"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
 // ConcreteSeriesSet implements storage.SeriesSet.
@@ -64,7 +65,7 @@ func (c *ConcreteSeriesSet) Err() error {
 }
 
 // Warnings implements storage.SeriesSet.
-func (c *ConcreteSeriesSet) Warnings() storage.Warnings {
+func (c *ConcreteSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 
@@ -232,7 +233,7 @@ func (d DeletedSeriesSet) Err() error {
 	return d.seriesSet.Err()
 }
 
-func (d DeletedSeriesSet) Warnings() storage.Warnings {
+func (d DeletedSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 
@@ -361,10 +362,10 @@ func (emptySeriesIterator) Err() error {
 
 type seriesSetWithWarnings struct {
 	wrapped  storage.SeriesSet
-	warnings storage.Warnings
+	warnings annotations.Annotations
 }
 
-func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings storage.Warnings) storage.SeriesSet {
+func NewSeriesSetWithWarnings(wrapped storage.SeriesSet, warnings annotations.Annotations) storage.SeriesSet {
 	return seriesSetWithWarnings{
 		wrapped:  wrapped,
 		warnings: warnings,
@@ -383,6 +384,7 @@ func (s seriesSetWithWarnings) Err() error {
 	return s.wrapped.Err()
 }
 
-func (s seriesSetWithWarnings) Warnings() storage.Warnings {
-	return append(s.wrapped.Warnings(), s.warnings...)
+func (s seriesSetWithWarnings) Warnings() annotations.Annotations {
+	w := s.wrapped.Warnings()
+	return w.Merge(s.warnings)
 }

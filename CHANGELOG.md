@@ -7,7 +7,8 @@
 * [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
 * [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
 * [FEATURE] AlertManager: Update version to v0.26.0 and bring in Microsoft Teams receiver. #5543
-* [FEATURE] Store Gateway: Support lazy expanded posting optimization. Added new flag `"blocks-storage.bucket-store.lazy-expanded-postings-enabled` and new metrics `cortex_bucket_store_lazy_expanded_postings_total`, `cortex_bucket_store_lazy_expanded_posting_size_bytes_total` and `cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total`. #5556.
+* [FEATURE] Store Gateway: Support lazy expanded posting optimization. Added new flag `blocks-storage.bucket-store.lazy-expanded-postings-enabled` and new metrics `cortex_bucket_store_lazy_expanded_postings_total`, `cortex_bucket_store_lazy_expanded_posting_size_bytes_total` and `cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total`. #5556.
+* [FEATURE] Store Gateway: Added new flag `blocks-storage.bucket-store.series-batch-size` to control how many series to fetch per batch in Store Gateway. #5582.
 * [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
 * [CHANGE] Query: Set CORS Origin headers for Query API #5388
 * [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276
@@ -25,6 +26,7 @@
 * [CHANGE] Bucket Index: Add `series_max_size` and `chunk_max_size` to bucket index. #5489
 * [CHANGE] StoreGateway: Rename `cortex_bucket_store_chunk_pool_returned_bytes_total` and `cortex_bucket_store_chunk_pool_requested_bytes_total` to `cortex_bucket_store_chunk_pool_operation_bytes_total`. #5552
 * [CHANGE] Query Frontend/Querier: Make build info API disabled by default and add feature flag `api.build-info-enabled` to enable it. #5533
+* [CHANGE] Purger: Do no use S3 tenant kms key when uploading deletion marker. #5575
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
 * [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
@@ -35,8 +37,10 @@
 * [FEATURE] Ruler: Support for filtering rules in the API. #5417
 * [FEATURE] Compactor: Add `-compactor.ring.tokens-file-path` to store generated tokens locally. #5432
 * [FEATURE] Query Frontend: Add `-frontend.retry-on-too-many-outstanding-requests` to re-enqueue 429 requests if there are multiple query-schedulers available. #5496
-* [FEATURE] Store Gateway: Add `-blocks-storage.bucket-store.max-inflight-requests`for store gateways to reject further requests upon reaching the limit. #5553
 * [FEATURE] Compactor: Implemented partitioning compactor based on proposal #4843. #5465
+* [FEATURE] Store Gateway: Add `-blocks-storage.bucket-store.max-inflight-requests` for store gateways to reject further requests upon reaching the limit. #5553
+* [FEATURE] Store Gateway: Add `cortex_bucket_store_block_load_duration_seconds` histogram to track time to load blocks. #5580
+* [FEATURE] AlertManager: Add `cortex_alertmanager_dispatcher_aggregation_groups` and `cortex_alertmanager_dispatcher_alert_processing_duration_seconds` metrics for dispatcher. #5592
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
@@ -64,7 +68,9 @@
 * [ENHANCEMENT] All: Handling CMK Access Denied errors. #5420 #5542
 * [ENHANCEMENT] Querier: Retry store gateway client connection closing gRPC error. #5558
 * [ENHANCEMENT] QueryFrontend: Add generic retry for all APIs. #5561.
+* [ENHANCEMENT] Querier: Check context before notifying scheduler and frontend. #5565
 * [ENHANCEMENT] QueryFrontend: Add metric for number of series requests. #5373
+* [ENHANCEMENT] Store Gateway: Add histogram metrics for total time spent fetching series and chunks per request. #5573
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
@@ -84,6 +90,7 @@
 * [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
 * [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
+* [BUGFIX] Store-Gateway and AlertManager: Add a `wait_instance_time_out` to WaitInstanceState context to avoid waiting forever. #5581
 
 ## 1.15.1 2023-04-26
 

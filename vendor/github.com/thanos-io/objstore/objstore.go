@@ -315,7 +315,7 @@ func DownloadFile(ctx context.Context, logger log.Logger, bkt BucketReader, src,
 
 	f, err := os.Create(dst)
 	if err != nil {
-		return errors.Wrap(err, "create file")
+		return errors.Wrapf(err, "create file %s", dst)
 	}
 	defer func() {
 		if err != nil {
@@ -327,7 +327,7 @@ func DownloadFile(ctx context.Context, logger log.Logger, bkt BucketReader, src,
 	defer logerrcapture.Do(logger, f.Close, "close block's output file")
 
 	if _, err = io.Copy(f, rc); err != nil {
-		return errors.Wrap(err, "copy object to file")
+		return errors.Wrapf(err, "copy object to file %s", src)
 	}
 	return nil
 }
@@ -458,11 +458,12 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		bkt.opsDuration.WithLabelValues(op)
 		bkt.opsFetchedBytes.WithLabelValues(op)
 	}
-	// fetched bytes only relevant for get and getrange
+
+	// fetched bytes only relevant for get, getrange and upload
 	for _, op := range []string{
 		OpGet,
 		OpGetRange,
-		// TODO: Add uploads
+		OpUpload,
 	} {
 		bkt.opsTransferredBytes.WithLabelValues(op)
 	}
@@ -592,15 +593,25 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 	const op = OpUpload
 	b.ops.WithLabelValues(op).Inc()
 
-	start := time.Now()
-	if err := b.bkt.Upload(ctx, name, r); err != nil {
+	trc := newTimingReadCloser(
+		NopCloserWithSize(r),
+		op,
+		b.opsDuration,
+		b.opsFailures,
+		b.isOpFailureExpected,
+		nil,
+		b.opsTransferredBytes,
+	)
+	defer trc.Close()
+	err := b.bkt.Upload(ctx, name, trc)
+	if err != nil {
 		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
 			b.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
 	b.lastSuccessfulUploadTime.SetToCurrentTime()
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+
 	return nil
 }
 
@@ -692,7 +703,10 @@ func (rc *timingReadCloser) Close() error {
 
 func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
 	n, err = rc.ReadCloser.Read(b)
-	rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
+	if rc.fetchedBytes != nil {
+		rc.fetchedBytes.WithLabelValues(rc.op).Add(float64(n))
+	}
+
 	rc.readBytes += int64(n)
 	// Report metric just once.
 	if !rc.alreadyGotErr && err != nil && err != io.EOF {

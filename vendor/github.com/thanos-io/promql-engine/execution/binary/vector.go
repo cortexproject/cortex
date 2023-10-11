@@ -6,43 +6,55 @@ package binary
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 
-	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 
+	"github.com/cespare/xxhash/v2"
+	"github.com/efficientgo/core/errors"
+	"github.com/zhangyunhao116/umap"
+
+	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/parser"
 	"github.com/thanos-io/promql-engine/query"
 )
+
+type joinBucket struct {
+	ats, bts int64
+	sid      uint64
+	val      float64
+}
 
 // vectorOperator evaluates an expression between two step vectors.
 type vectorOperator struct {
 	pool *model.VectorPool
 	once sync.Once
 
-	lhs            model.VectorOperator
-	rhs            model.VectorOperator
-	matching       *parser.VectorMatching
-	groupingLabels []string
-	operation      operation
-	opType         parser.ItemType
+	lhs          model.VectorOperator
+	rhs          model.VectorOperator
+	lhsSampleIDs []labels.Labels
+	rhsSampleIDs []labels.Labels
+	series       []labels.Labels
 
-	lhSampleIDs []labels.Labels
-	rhSampleIDs []labels.Labels
+	// join signature
+	sigFunc func(labels.Labels) uint64
 
-	// series contains the output series of the operator
-	series []labels.Labels
-	// The outputCache is an internal cache used to calculate
-	// the binary operation of the lhs and rhs operator.
-	outputCache []outputSample
-	// table is used to calculate the binary operation of two step vectors between
-	// the lhs and rhs operator.
-	table *table
+	// join helpers
+	lcJoinBuckets []*joinBucket
+	hcJoinBuckets []*joinBucket
+
+	outputMap *umap.Uint64Map
+
+	matching *parser.VectorMatching
+	opType   parser.ItemType
 
 	// If true then 1/0 needs to be returned instead of the value.
 	returnBool bool
+
 	model.OperatorTelemetry
 }
 
@@ -51,31 +63,20 @@ func NewVectorOperator(
 	lhs model.VectorOperator,
 	rhs model.VectorOperator,
 	matching *parser.VectorMatching,
-	operation parser.ItemType,
+	opType parser.ItemType,
 	returnBool bool,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
-	op, err := newOperation(operation, true)
-	if err != nil {
-		return nil, err
-	}
-
-	// Make a copy of MatchingLabels to avoid potential side-effects
-	// in some downstream operation.
-	groupings := make([]string, len(matching.MatchingLabels))
-	copy(groupings, matching.MatchingLabels)
-	slices.Sort(groupings)
-
 	o := &vectorOperator{
-		pool:           pool,
-		lhs:            lhs,
-		rhs:            rhs,
-		matching:       matching,
-		groupingLabels: groupings,
-		operation:      op,
-		opType:         operation,
-		returnBool:     returnBool,
+		pool:       pool,
+		lhs:        lhs,
+		rhs:        rhs,
+		matching:   matching,
+		opType:     opType,
+		returnBool: returnBool,
+		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
 	}
+
 	o.OperatorTelemetry = &model.NoopTelemetry{}
 	if opts.EnableAnalysis {
 		o.OperatorTelemetry = &model.TrackedTelemetry{}
@@ -103,75 +104,10 @@ func (o *vectorOperator) Explain() (me string, next []model.VectorOperator) {
 }
 
 func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	var err error
-	o.once.Do(func() { err = o.initOutputs(ctx) })
-	if err != nil {
+	if err := o.initOnce(ctx); err != nil {
 		return nil, err
 	}
-
 	return o.series, nil
-}
-
-func (o *vectorOperator) initOutputs(ctx context.Context) error {
-	var highCardSide []labels.Labels
-	var errChan = make(chan error, 1)
-	go func() {
-		var err error
-		highCardSide, err = o.lhs.Series(ctx)
-		if err != nil {
-			errChan <- err
-		}
-		close(errChan)
-	}()
-
-	lowCardSide, err := o.rhs.Series(ctx)
-	if err != nil {
-		return err
-	}
-	if err := <-errChan; err != nil {
-		return err
-	}
-
-	o.lhSampleIDs = highCardSide
-	o.rhSampleIDs = lowCardSide
-
-	if o.matching.Card == parser.CardOneToMany {
-		highCardSide, lowCardSide = lowCardSide, highCardSide
-	}
-
-	buf := make([]byte, 1024)
-	var includeLabels []string
-	if len(o.matching.Include) > 0 {
-		includeLabels = o.matching.Include
-	}
-	keepLabels := o.matching.Card != parser.CardOneToOne
-	keepName := !shouldDropMetricName(o.opType, o.returnBool)
-	highCardHashes, highCardInputMap := o.hashSeries(highCardSide, keepLabels, keepName, buf)
-	lowCardHashes, lowCardInputMap := o.hashSeries(lowCardSide, keepLabels, keepName, buf)
-	output, highCardOutputIndex, lowCardOutputIndex := o.join(highCardHashes, highCardInputMap, lowCardHashes, lowCardInputMap, includeLabels)
-
-	series := make([]labels.Labels, len(output))
-	for _, s := range output {
-		series[s.ID] = s.Metric
-	}
-	o.series = series
-
-	o.outputCache = make([]outputSample, len(series))
-	for i := range o.outputCache {
-		o.outputCache[i].lhT = -1
-	}
-	o.pool.SetStepSize(len(highCardSide))
-
-	o.table = newTable(
-		o.pool,
-		o.matching.Card,
-		o.operation,
-		o.outputCache,
-		newHighCardIndex(highCardOutputIndex),
-		lowCardinalityIndex(lowCardOutputIndex),
-	)
-
-	return nil
 }
 
 func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
@@ -179,6 +115,11 @@ func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+	}
+
+	// Some operators do not call Series of all their children.
+	if err := o.initOnce(ctx); err != nil {
+		return nil, err
 	}
 
 	var lhs []model.StepVector
@@ -208,35 +149,15 @@ func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, nil
 	}
 
-	var err error
-	o.once.Do(func() { err = o.initOutputs(ctx) })
-	if err != nil {
-		return nil, err
-	}
-
 	batch := o.pool.GetVectorBatch()
 	for i, vector := range lhs {
 		if i < len(rhs) {
-			step, err := o.table.execBinaryOperation(lhs[i], rhs[i], o.returnBool)
-			if err == nil {
-				batch = append(batch, step)
-				o.rhs.GetPool().PutStepVector(rhs[i])
-				continue
+			step, err := o.execBinaryOperation(lhs[i], rhs[i])
+			if err != nil {
+				return nil, err
 			}
-
-			var sampleID, duplicateSampleID labels.Labels
-			switch err.side {
-			case lhBinOpSide:
-				sampleID = o.lhSampleIDs[err.sampleID]
-				duplicateSampleID = o.lhSampleIDs[err.duplicateSampleID]
-			case rhBinOpSide:
-				sampleID = o.rhSampleIDs[err.sampleID]
-				duplicateSampleID = o.rhSampleIDs[err.duplicateSampleID]
-			}
-			group := sampleID.MatchLabels(o.matching.On, o.matching.MatchingLabels...)
-			msg := "found duplicate series for the match group %s on the %s hand-side of the operation: [%s, %s]" +
-				";many-to-many matching not allowed: matching labels must be unique on one side"
-			return nil, errors.Newf(msg, group, err.side, sampleID.String(), duplicateSampleID.String())
+			batch = append(batch, step)
+			o.rhs.GetPool().PutStepVector(rhs[i])
 		}
 		o.lhs.GetPool().PutStepVector(vector)
 	}
@@ -250,125 +171,393 @@ func (o *vectorOperator) GetPool() *model.VectorPool {
 	return o.pool
 }
 
-// hashSeries calculates the hash of each series from an input operator.
-// Since series from the high cardinality operator can map to multiple output series,
-// hashSeries returns an index from hash to a slice of resulting series, and
-// a map from input series ID to output series ID.
-// The latter can be used to build an array backed index from input model.Series to output model.Series,
-// avoiding expensive hashmap lookups.
-func (o *vectorOperator) hashSeries(series []labels.Labels, keepLabels, keepName bool, buf []byte) (map[uint64][]model.Series, map[uint64][]uint64) {
-	hashes := make(map[uint64][]model.Series)
-	inputIndex := make(map[uint64][]uint64)
-	for i, s := range series {
-		sig, lbls := signature(s, !o.matching.On, o.groupingLabels, keepLabels, keepName, buf)
-		if _, ok := hashes[sig]; !ok {
-			hashes[sig] = make([]model.Series, 0, 1)
-			inputIndex[sig] = make([]uint64, 0, 1)
-		}
-		hashes[sig] = append(hashes[sig], model.Series{
-			ID:     uint64(i),
-			Metric: lbls,
-		})
-		inputIndex[sig] = append(inputIndex[sig], uint64(i))
-	}
-
-	return hashes, inputIndex
+func (o *vectorOperator) initOnce(ctx context.Context) error {
+	var err error
+	o.once.Do(func() { err = o.init(ctx) })
+	return err
 }
 
-// join performs a join between series from the high cardinality and low cardinality operators.
-// It does that by using hash maps which point from series hash to the output series.
-// It also returns array backed indices for the high cardinality and low cardinality operators,
-// pointing from input model.Series ID to output model.Series ID.
-// The high cardinality operator can fail to join, which is why its index contains nullable values.
-// The low cardinality operator can join to multiple high cardinality series, which is why its index
-// points to an array of output series.
-func (o *vectorOperator) join(
-	highCardHashes map[uint64][]model.Series,
-	highCardInputIndex map[uint64][]uint64,
-	lowCardHashes map[uint64][]model.Series,
-	lowCardInputIndex map[uint64][]uint64,
-	includeLabels []string,
-) ([]model.Series, []*uint64, [][]uint64) {
-	// Output index points from output series ID
-	// to the actual series.
-	outputIndex := make([]model.Series, 0)
+func (o *vectorOperator) init(ctx context.Context) error {
+	var highCardSide []labels.Labels
+	var errChan = make(chan error, 1)
+	go func() {
+		var err error
+		highCardSide, err = o.lhs.Series(ctx)
+		if err != nil {
+			errChan <- err
+		}
+		close(errChan)
+	}()
 
-	// Prune high cardinality series which do not have a
-	// matching low cardinality series.
-	outputSize := 0
-	for hash, series := range highCardHashes {
-		outputSize += len(series)
-		if _, ok := lowCardHashes[hash]; !ok {
-			delete(highCardHashes, hash)
+	lowCardSide, err := o.rhs.Series(ctx)
+	if err != nil {
+		return err
+	}
+	if err := <-errChan; err != nil {
+		return err
+	}
+	o.lhsSampleIDs = highCardSide
+	o.rhsSampleIDs = lowCardSide
+
+	if o.matching.Card == parser.CardOneToMany {
+		highCardSide, lowCardSide = lowCardSide, highCardSide
+	}
+
+	o.initJoinTables(highCardSide, lowCardSide)
+
+	return nil
+}
+
+func (o *vectorOperator) execBinaryOperation(lhs, rhs model.StepVector) (model.StepVector, error) {
+	switch o.opType {
+	case parser.LAND:
+		return o.execBinaryAnd(lhs, rhs)
+	case parser.LOR:
+		return o.execBinaryOr(lhs, rhs)
+	case parser.LUNLESS:
+		return o.execBinaryUnless(lhs, rhs)
+	default:
+		return o.execBinaryArithmetic(lhs, rhs)
+	}
+}
+
+func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector) (model.StepVector, error) {
+	ts := lhs.T
+	step := o.pool.GetStepVector(ts)
+
+	for _, sampleID := range rhs.SampleIDs {
+		jp := o.lcJoinBuckets[sampleID]
+		jp.sid = sampleID
+		jp.ats = ts
+	}
+	for i, sampleID := range lhs.SampleIDs {
+		if jp := o.hcJoinBuckets[sampleID]; jp.ats == ts {
+			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), lhs.Samples[i])
+		}
+	}
+	return step, nil
+}
+
+func (o *vectorOperator) execBinaryOr(lhs, rhs model.StepVector) (model.StepVector, error) {
+	ts := lhs.T
+	step := o.pool.GetStepVector(ts)
+
+	for i, sampleID := range lhs.SampleIDs {
+		jp := o.hcJoinBuckets[sampleID]
+		jp.ats = ts
+		step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
+	}
+	for i, sampleID := range rhs.SampleIDs {
+		if jp := o.lcJoinBuckets[sampleID]; jp.ats != ts {
+			step.AppendSample(o.pool, o.outputSeriesID(0, sampleID+1), rhs.Samples[i])
+		}
+	}
+	return step, nil
+}
+
+func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector) (model.StepVector, error) {
+	ts := lhs.T
+	step := o.pool.GetStepVector(ts)
+
+	for _, sampleID := range rhs.SampleIDs {
+		jp := o.lcJoinBuckets[sampleID]
+		jp.ats = ts
+	}
+	for i, sampleID := range lhs.SampleIDs {
+		if jp := o.hcJoinBuckets[sampleID]; jp.ats != ts {
+			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
+		}
+	}
+	return step, nil
+}
+
+// TODO: add support for histogram.
+func (o *vectorOperator) computeBinaryPairing(hval, lval float64) (float64, bool) {
+	// operand is not commutative so we need to address potential swapping
+	if o.matching.Card == parser.CardOneToMany {
+		v, _, keep := vectorElemBinop(o.opType, lval, hval, nil, nil)
+		return v, keep
+	}
+	v, _, keep := vectorElemBinop(o.opType, hval, lval, nil, nil)
+	return v, keep
+}
+
+func (o *vectorOperator) execBinaryArithmetic(lhs, rhs model.StepVector) (model.StepVector, error) {
+	ts := lhs.T
+	step := o.pool.GetStepVector(ts)
+
+	var (
+		hcs, lcs model.StepVector
+	)
+
+	switch o.matching.Card {
+	case parser.CardManyToOne, parser.CardOneToOne:
+		hcs, lcs = lhs, rhs
+	case parser.CardOneToMany:
+		hcs, lcs = rhs, lhs
+	default:
+		return step, errors.Newf("Unexpected matching cardinality: %s", o.matching.Card.String())
+	}
+
+	for i, sampleID := range lcs.SampleIDs {
+		jp := o.lcJoinBuckets[sampleID]
+		// Hash collisions on the low-card-side would imply a many-to-many relation.
+		if jp.ats == ts {
+			return model.StepVector{}, o.newManyToManyMatchErrorOnLowCardSide(jp.sid, sampleID)
+		}
+		jp.sid = sampleID
+		jp.val = lcs.Samples[i]
+		jp.ats = ts
+	}
+
+	for i, sampleID := range hcs.SampleIDs {
+		jp := o.hcJoinBuckets[sampleID]
+		if jp.ats != ts {
 			continue
 		}
-	}
-	lowCardOutputSize := 0
-	for _, lowCardOutputs := range lowCardInputIndex {
-		lowCardOutputSize += len(lowCardOutputs)
-	}
-
-	highCardOutputIndex := make([]*uint64, outputSize)
-	lowCardOutputIndex := make([][]uint64, lowCardOutputSize)
-	for hash, highCardSeries := range highCardHashes {
-		for _, lowCardSeriesID := range lowCardInputIndex[hash] {
-			// Each low cardinality series can map to multiple output series.
-			lowCardOutputIndex[lowCardSeriesID] = make([]uint64, 0, len(highCardSeries))
+		// Hash collisions on the high card side are expected except if a one-to-one
+		// matching was requested and we have an implicit many-to-one match instead.
+		if jp.bts == ts && o.matching.Card == parser.CardOneToOne {
+			return model.StepVector{}, o.newImplicitManyToOneError()
 		}
+		jp.bts = ts
 
-		lowCardSeries := lowCardHashes[hash][0]
-		for i, output := range highCardSeries {
-			outputSeries := buildOutputSeries(uint64(len(outputIndex)), output, lowCardSeries, includeLabels)
-			outputIndex = append(outputIndex, outputSeries)
+		val, keep := o.computeBinaryPairing(hcs.Samples[i], jp.val)
+		if o.returnBool {
+			val = 0
+			if keep {
+				val = 1
+			}
+		} else if !keep {
+			continue
+		}
+		step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), val)
+	}
+	return step, nil
+}
+func (o *vectorOperator) newManyToManyMatchErrorOnLowCardSide(originalSampleId, duplicateSampleId uint64) error {
+	side := rhBinOpSide
+	labels := o.rhsSampleIDs
 
-			highCardSeriesID := highCardInputIndex[hash][i]
-			highCardOutputIndex[highCardSeriesID] = &outputSeries.ID
+	if o.matching.Card == parser.CardOneToMany {
+		side = lhBinOpSide
+		labels = o.lhsSampleIDs
+	}
+	return newManyToManyMatchError(o.matching, labels[duplicateSampleId], labels[originalSampleId], side)
+}
 
-			for _, lowCardSeriesID := range lowCardInputIndex[hash] {
-				lowCardOutputIndex[lowCardSeriesID] = append(lowCardOutputIndex[lowCardSeriesID], outputSeries.ID)
+func (o *vectorOperator) newImplicitManyToOneError() error {
+	return errors.New("multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)")
+}
+
+func (o *vectorOperator) outputSeriesID(hc, lc uint64) uint64 {
+	res, _ := o.outputMap.Load(cantorPairing(hc, lc))
+	return res
+}
+
+func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Labels) {
+	var (
+		joinBucketsByHash     = make(map[uint64]*joinBucket)
+		lcJoinBuckets         = make([]*joinBucket, len(lowCardSide))
+		hcJoinBuckets         = make([]*joinBucket, len(highCardSide))
+		lcHashToSeriesIDs     = make(map[uint64][]uint64, len(lowCardSide))
+		hcHashToSeriesIDs     = make(map[uint64][]uint64, len(highCardSide))
+		lcSampleIdToSignature = make(map[int]uint64, len(lowCardSide))
+		hcSampleIdToSignature = make(map[int]uint64, len(highCardSide))
+
+		outputMap = umap.New64(len(highCardSide))
+	)
+
+	// initialize join bucket mappings
+	for i := range lowCardSide {
+		sig := o.sigFunc(lowCardSide[i])
+		lcSampleIdToSignature[i] = sig
+		lcHashToSeriesIDs[sig] = append(lcHashToSeriesIDs[sig], uint64(i))
+		if jb, ok := joinBucketsByHash[sig]; ok {
+			lcJoinBuckets[i] = jb
+		} else {
+			jb := joinBucket{ats: -1, bts: -1}
+			joinBucketsByHash[sig] = &jb
+			lcJoinBuckets[i] = &jb
+		}
+	}
+	for i := range highCardSide {
+		sig := o.sigFunc(highCardSide[i])
+		hcSampleIdToSignature[i] = sig
+		hcHashToSeriesIDs[sig] = append(hcHashToSeriesIDs[sig], uint64(i))
+		if jb, ok := joinBucketsByHash[sig]; ok {
+			hcJoinBuckets[i] = jb
+		} else {
+			jb := joinBucket{ats: -1, bts: -1}
+			joinBucketsByHash[sig] = &jb
+			hcJoinBuckets[i] = &jb
+		}
+	}
+
+	// initialize series
+	h := &joinHelper{seen: make(map[uint64]int)}
+	switch o.opType {
+	case parser.LAND:
+		for i := range highCardSide {
+			sig := hcSampleIdToSignature[i]
+			lcs, ok := lcHashToSeriesIDs[sig]
+			if !ok {
+				continue
+			}
+			for _, lc := range lcs {
+				outputMap.Store(cantorPairing(uint64(i+1), uint64(lc+1)), uint64(h.append(highCardSide[i])))
+			}
+		}
+	case parser.LOR:
+		for i := range highCardSide {
+			outputMap.Store(cantorPairing(uint64(i+1), 0), uint64(h.append(highCardSide[i])))
+		}
+		for i := range lowCardSide {
+			outputMap.Store(cantorPairing(0, uint64(i+1)), uint64(h.append(lowCardSide[i])))
+		}
+	case parser.LUNLESS:
+		for i := range highCardSide {
+			outputMap.Store(cantorPairing(uint64(i+1), 0), uint64(h.append(highCardSide[i])))
+		}
+	default:
+		b := labels.NewBuilder(labels.EmptyLabels())
+		for i := range highCardSide {
+			sig := hcSampleIdToSignature[i]
+			lcs, ok := lcHashToSeriesIDs[sig]
+			if !ok {
+				continue
+			}
+			for _, lc := range lcs {
+				n := h.append(o.resultMetric(b, highCardSide[i], lowCardSide[lc]))
+				outputMap.Store(cantorPairing(uint64(i+1), uint64(lc+1)), uint64(n))
 			}
 		}
 	}
-
-	return outputIndex, highCardOutputIndex, lowCardOutputIndex
+	o.series = h.ls
+	o.outputMap = outputMap
+	o.lcJoinBuckets = lcJoinBuckets
+	o.hcJoinBuckets = hcJoinBuckets
 }
 
-func signature(metric labels.Labels, without bool, grouping []string, keepOriginalLabels, keepName bool, buf []byte) (uint64, labels.Labels) {
-	buf = buf[:0]
-	lb := labels.NewBuilder(metric)
-	if !keepName {
-		lb = lb.Del(labels.MetricName)
-	}
-	if without {
-		dropLabels := grouping
-		if !keepName {
-			dropLabels = append(grouping, labels.MetricName)
-		}
-		key, _ := metric.HashWithoutLabels(buf, dropLabels...)
-		if !keepOriginalLabels {
-			lb.Del(dropLabels...)
-		}
-		return key, lb.Labels()
-	}
-
-	if !keepOriginalLabels {
-		lb.Keep(grouping...)
-	}
-	if len(grouping) == 0 {
-		return 0, lb.Labels()
-	}
-
-	key, _ := metric.HashForLabels(buf, grouping...)
-	return key, lb.Labels()
+type joinHelper struct {
+	seen map[uint64]int
+	ls   []labels.Labels
+	n    int
 }
 
-func buildOutputSeries(seriesID uint64, highCardSeries, lowCardSeries model.Series, includeLabels []string) model.Series {
-	metricBuilder := labels.NewBuilder(highCardSeries.Metric)
-	if len(includeLabels) > 0 {
-		labels.NewBuilder(lowCardSeries.Metric).
-			Keep(includeLabels...).
-			Labels().
-			Range(func(l labels.Label) { metricBuilder.Set(l.Name, l.Value) })
+func cantorPairing(hc, lc uint64) uint64 {
+	return (hc+lc)*(hc+lc+1)/2 + lc
+}
+
+func (h *joinHelper) append(ls labels.Labels) int {
+	hash := ls.Hash()
+	if n, ok := h.seen[hash]; ok {
+		return n
 	}
-	return model.Series{ID: seriesID, Metric: metricBuilder.Labels()}
+	h.ls = append(h.ls, ls)
+	h.seen[hash] = h.n
+	h.n++
+
+	return h.n - 1
+}
+
+func (o *vectorOperator) resultMetric(b *labels.Builder, highCard, lowCard labels.Labels) labels.Labels {
+	b.Reset(highCard)
+
+	if shouldDropMetricName(o.opType, o.returnBool) {
+		b.Del(labels.MetricName)
+	}
+
+	if o.matching.Card == parser.CardOneToOne {
+		if o.matching.On {
+			b.Keep(o.matching.MatchingLabels...)
+		} else {
+			b.Del(o.matching.MatchingLabels...)
+		}
+	}
+	for _, ln := range o.matching.Include {
+		if v := lowCard.Get(ln); v != "" {
+			b.Set(ln, v)
+		} else {
+			b.Del(ln)
+		}
+	}
+	if o.returnBool {
+		b.Del(labels.MetricName)
+	}
+	return b.Labels()
+}
+
+func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
+	b := make([]byte, 256)
+	if on {
+		slices.Sort(names)
+		return func(lset labels.Labels) uint64 {
+			return xxhash.Sum64(lset.BytesWithLabels(b, names...))
+		}
+	}
+	names = append([]string{labels.MetricName}, names...)
+	slices.Sort(names)
+	return func(lset labels.Labels) uint64 {
+		return xxhash.Sum64(lset.BytesWithoutLabels(b, names...))
+	}
+}
+
+// Lifted from: https://github.com/prometheus/prometheus/blob/a38179c4e183d9b50b271167bf90050eda8ec3d1/promql/engine.go#L2430.
+// TODO: call with histogram values in followup PR.
+func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
+	switch op {
+	case parser.ADD:
+		if hlhs != nil && hrhs != nil {
+			// The histogram being added must have the larger schema
+			// code (i.e. the higher resolution).
+			if hrhs.Schema >= hlhs.Schema {
+				return 0, hlhs.Copy().Add(hrhs).Compact(0), true
+			}
+			return 0, hrhs.Copy().Add(hlhs).Compact(0), true
+		}
+		return lhs + rhs, nil, true
+	case parser.SUB:
+		if hlhs != nil && hrhs != nil {
+			// The histogram being subtracted must have the larger schema
+			// code (i.e. the higher resolution).
+			if hrhs.Schema >= hlhs.Schema {
+				return 0, hlhs.Copy().Sub(hrhs).Compact(0), true
+			}
+			return 0, hrhs.Copy().Mul(-1).Add(hlhs).Compact(0), true
+		}
+		return lhs - rhs, nil, true
+	case parser.MUL:
+		if hlhs != nil && hrhs == nil {
+			return 0, hlhs.Copy().Mul(rhs), true
+		}
+		if hlhs == nil && hrhs != nil {
+			return 0, hrhs.Copy().Mul(lhs), true
+		}
+		return lhs * rhs, nil, true
+	case parser.DIV:
+		if hlhs != nil && hrhs == nil {
+			return 0, hlhs.Copy().Div(rhs), true
+		}
+		return lhs / rhs, nil, true
+	case parser.POW:
+		return math.Pow(lhs, rhs), nil, true
+	case parser.MOD:
+		return math.Mod(lhs, rhs), nil, true
+	case parser.EQLC:
+		return lhs, nil, lhs == rhs
+	case parser.NEQ:
+		return lhs, nil, lhs != rhs
+	case parser.GTR:
+		return lhs, nil, lhs > rhs
+	case parser.LSS:
+		return lhs, nil, lhs < rhs
+	case parser.GTE:
+		return lhs, nil, lhs >= rhs
+	case parser.LTE:
+		return lhs, nil, lhs <= rhs
+	case parser.ATAN2:
+		return math.Atan2(lhs, rhs), nil, true
+	}
+	panic(errors.Newf("operator %q not allowed for operations between Vectors", op))
 }

@@ -378,6 +378,10 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.final-sleep
   [final_sleep: <duration> | default = 0s]
 
+  # Timeout for waiting on alertmanager to become desired state in the ring.
+  # CLI flag: -alertmanager.sharding-ring.wait-instance-state-timeout
+  [wait_instance_state_timeout: <duration> | default = 10m]
+
   # Name of network interface to read address from.
   # CLI flag: -alertmanager.sharding-ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
@@ -1079,6 +1083,11 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes
       [max_size_bytes: <int> | default = 1073741824]
 
+      # Selectively cache index item types. Supported values are Postings,
+      # ExpandedPostings and Series
+      # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.enabled-items
+      [enabled_items: <list of string> | default = []]
+
     memcached:
       # Comma separated list of memcached addresses. Supported prefixes are:
       # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
@@ -1125,6 +1134,11 @@ bucket_store:
       # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
+
+      # Selectively cache index item types. Supported values are Postings,
+      # ExpandedPostings and Series
+      # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.enabled-items
+      [enabled_items: <list of string> | default = []]
 
     redis:
       # Comma separated list of redis addresses. Supported prefixes are: dns+
@@ -1221,6 +1235,11 @@ bucket_store:
       # https://redis.io/docs/manual/client-side-caching/ for more info.
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
       [cache_size: <int> | default = 0]
+
+      # Selectively cache index item types. Supported values are Postings,
+      # ExpandedPostings and Series
+      # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
+      [enabled_items: <list of string> | default = []]
 
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -1652,6 +1671,11 @@ bucket_store:
   # postings if it downloads less data than expanding all postings.
   # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
   [lazy_expanded_postings_enabled: <boolean> | default = false]
+
+  # Controls how many series to fetch per batch in Store Gateway. Default value
+  # is 10000.
+  # CLI flag: -blocks-storage.bucket-store.series-batch-size
+  [series_batch_size: <int> | default = 10000]
 
 tsdb:
   # Local directory to store TSDBs in the ingesters.
@@ -4874,6 +4898,10 @@ sharding_ring:
   # anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
   [wait_stability_max_duration: <duration> | default = 5m]
+
+  # Timeout for waiting on store-gateway to become desired state in the ring.
+  # CLI flag: -store-gateway.sharding-ring.wait-instance-state-timeout
+  [wait_instance_state_timeout: <duration> | default = 10m]
 
   # The sleep seconds when store-gateway is shutting down. Need to be close to
   # or larger than KV Store information propagation delay

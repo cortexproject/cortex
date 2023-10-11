@@ -4,13 +4,14 @@
 package binary
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/parser"
 )
 
 type binOpSide string
@@ -21,122 +22,26 @@ const (
 )
 
 type errManyToManyMatch struct {
-	sampleID          uint64
-	duplicateSampleID uint64
-	side              binOpSide
+	matching *parser.VectorMatching
+	side     binOpSide
+
+	original, duplicate labels.Labels
 }
 
-func newManyToManyMatchError(sampleID, duplicateSampleID uint64, side binOpSide) *errManyToManyMatch {
+func newManyToManyMatchError(matching *parser.VectorMatching, original, duplicate labels.Labels, side binOpSide) *errManyToManyMatch {
 	return &errManyToManyMatch{
-		sampleID:          sampleID,
-		duplicateSampleID: duplicateSampleID,
-		side:              side,
+		original:  original,
+		duplicate: duplicate,
+		matching:  matching,
+		side:      side,
 	}
 }
 
-type outputSample struct {
-	lhT        int64
-	rhT        int64
-	lhSampleID uint64
-	rhSampleID uint64
-	v          float64
-}
-
-type table struct {
-	pool *model.VectorPool
-
-	operation operation
-	card      parser.VectorMatchCardinality
-
-	outputValues []outputSample
-	// highCardOutputIndex is a mapping from series ID of the high cardinality
-	// operator to an output series ID.
-	// During joins, each high cardinality series that has a matching
-	// low cardinality series will map to exactly one output series.
-	highCardOutputIndex outputIndex
-	// lowCardOutputIndex is a mapping from series ID of the low cardinality
-	// operator to an output series ID.
-	// Each series from the low cardinality operator can join with many
-	// series of the high cardinality operator.
-	lowCardOutputIndex outputIndex
-}
-
-func newTable(
-	pool *model.VectorPool,
-	card parser.VectorMatchCardinality,
-	operation operation,
-	outputValues []outputSample,
-	highCardOutputCache outputIndex,
-	lowCardOutputCache outputIndex,
-) *table {
-	for i := range outputValues {
-		outputValues[i].lhT = -1
-		outputValues[i].rhT = -1
-	}
-	return &table{
-		pool: pool,
-		card: card,
-
-		operation:           operation,
-		outputValues:        outputValues,
-		highCardOutputIndex: highCardOutputCache,
-		lowCardOutputIndex:  lowCardOutputCache,
-	}
-}
-
-func (t *table) execBinaryOperation(lhs model.StepVector, rhs model.StepVector, returnBool bool) (model.StepVector, *errManyToManyMatch) {
-	ts := lhs.T
-	step := t.pool.GetStepVector(ts)
-
-	lhsIndex, rhsIndex := t.highCardOutputIndex, t.lowCardOutputIndex
-	if t.card == parser.CardOneToMany {
-		lhsIndex, rhsIndex = rhsIndex, lhsIndex
-	}
-
-	for i, sampleID := range lhs.SampleIDs {
-		lhsVal := lhs.Samples[i]
-		outputSampleIDs := lhsIndex.outputSamples(sampleID)
-		for _, outputSampleID := range outputSampleIDs {
-			if t.card != parser.CardManyToOne && t.outputValues[outputSampleID].lhT == ts {
-				prevSampleID := t.outputValues[outputSampleID].lhSampleID
-				return model.StepVector{}, newManyToManyMatchError(prevSampleID, sampleID, lhBinOpSide)
-			}
-
-			t.outputValues[outputSampleID].lhSampleID = sampleID
-			t.outputValues[outputSampleID].lhT = lhs.T
-			t.outputValues[outputSampleID].v = lhsVal
-		}
-	}
-
-	for i, sampleID := range rhs.SampleIDs {
-		rhVal := rhs.Samples[i]
-		outputSampleIDs := rhsIndex.outputSamples(sampleID)
-		for _, outputSampleID := range outputSampleIDs {
-			outputSample := t.outputValues[outputSampleID]
-			if rhs.T != outputSample.lhT {
-				continue
-			}
-			if t.card != parser.CardOneToMany && outputSample.rhT == rhs.T {
-				prevSampleID := t.outputValues[outputSampleID].rhSampleID
-				return model.StepVector{}, newManyToManyMatchError(prevSampleID, sampleID, rhBinOpSide)
-			}
-			t.outputValues[outputSampleID].rhSampleID = sampleID
-			t.outputValues[outputSampleID].rhT = rhs.T
-
-			outputVal, keep := t.operation([2]float64{outputSample.v, rhVal}, 0)
-			if returnBool {
-				outputVal = 0
-				if keep {
-					outputVal = 1
-				}
-			} else if !keep {
-				continue
-			}
-			step.AppendSample(t.pool, outputSampleID, outputVal)
-		}
-	}
-
-	return step, nil
+func (e *errManyToManyMatch) Error() string {
+	group := e.original.MatchLabels(e.matching.On, e.matching.MatchingLabels...)
+	msg := "found duplicate series for the match group %s on the %s hand-side of the operation: [%s, %s]" +
+		";many-to-many matching not allowed: matching labels must be unique on one side"
+	return fmt.Sprintf(msg, group, e.side, e.original.String(), e.duplicate.String())
 }
 
 // operands is a length 2 array which contains lhs and rhs.
@@ -187,6 +92,10 @@ var vectorBinaryOperations = map[string]operation{
 
 func newOperation(expr parser.ItemType, vectorBinOp bool) (operation, error) {
 	t := parser.ItemTypeStr[expr]
+	if expr.IsSetOperator() && vectorBinOp {
+		// handled in the operator
+		return nil, nil
+	}
 	if expr.IsComparisonOperator() && vectorBinOp {
 		if o, ok := vectorBinaryOperations[t]; ok {
 			return o, nil
@@ -244,10 +153,10 @@ func btof(b bool) float64 {
 }
 
 func shouldDropMetricName(op parser.ItemType, returnBool bool) bool {
-	switch op.String() {
-	case "+", "-", "*", "/", "%", "^", "atan2":
+	switch op {
+	case parser.ADD, parser.SUB, parser.MUL, parser.DIV, parser.MOD, parser.POW, parser.ATAN2:
 		return true
+	default:
+		return op.IsComparisonOperator() && returnBool
 	}
-
-	return op.IsComparisonOperator() && returnBool
 }

@@ -4,8 +4,7 @@ import (
 	"fmt"
 
 	"github.com/efficientgo/core/errors"
-
-	"github.com/thanos-io/promql-engine/parser"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 var XFunctions = map[string]*parser.Function{
@@ -32,9 +31,9 @@ func IsExtFunction(functionName string) bool {
 	return ok
 }
 
-func UnknownFunctionError(f *parser.Function) error {
-	msg := fmt.Sprintf("unknown function: %s", f.Name)
-	if _, ok := parser.Functions[f.Name]; ok {
+func UnknownFunctionError(name string) error {
+	msg := fmt.Sprintf("unknown function: %s", name)
+	if _, ok := parser.Functions[name]; ok {
 		return errors.Wrap(ErrNotImplemented, msg)
 	}
 

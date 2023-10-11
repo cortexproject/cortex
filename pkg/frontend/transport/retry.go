@@ -2,10 +2,16 @@ package transport
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
+
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 type Retry struct {
@@ -44,13 +50,38 @@ func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)
 		}
 
 		resp, err = f()
-		if err != nil && err != context.Canceled {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			continue // Retryable
 		} else if resp != nil && resp.Code/100 == 5 {
-			continue // Retryable
-		} else {
-			break
+			// This is not that efficient as we might decode the body multiple
+			// times. But error response should be too large so we should be fine.
+			// TODO: investigate ways to decode only once.
+			body, err := tripperware.BodyBufferFromHTTPGRPCResponse(resp, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			if tries < r.maxRetries-1 && isBodyRetryable(yoloString(body)) {
+				continue
+			}
+
+			return resp, nil
 		}
+		break
 	}
+	if err != nil {
+		return nil, err
+	}
+
 	return resp, err
+}
+
+func isBodyRetryable(body string) bool {
+	// If pool exhausted, retry at query frontend might make things worse.
+	// Rely on retries at querier level only.
+	return !strings.Contains(body, pool.ErrPoolExhausted.Error())
+}
+
+func yoloString(b []byte) string {
+	return *((*string)(unsafe.Pointer(&b)))
 }

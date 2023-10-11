@@ -3,7 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
-	io "io"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -110,7 +111,7 @@ func (r ruleLimits) DisabledRuleGroups(userID string) validation.DisabledRuleGro
 }
 
 func newEmptyQueryable() storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		return emptyQuerier{}, nil
 	})
 }
@@ -118,11 +119,11 @@ func newEmptyQueryable() storage.Queryable {
 type emptyQuerier struct {
 }
 
-func (e emptyQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (e emptyQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (e emptyQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (e emptyQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
@@ -130,7 +131,7 @@ func (e emptyQuerier) Close() error {
 	return nil
 }
 
-func (e emptyQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (e emptyQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	return storage.EmptySeriesSet()
 }
 
@@ -141,12 +142,12 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 
 		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
 		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, purger.NewNoopTombstonesLoader(), reg, logger)
-		return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-			return q.Querier(ctx, mint, maxt)
+		return func(mint, maxt int64) (storage.Querier, error) {
+			return q.Querier(mint, maxt)
 		}
 	}
 
-	return func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return func(mint, maxt int64) (storage.Querier, error) {
 		return storage.NoopQuerier(), nil
 	}
 }

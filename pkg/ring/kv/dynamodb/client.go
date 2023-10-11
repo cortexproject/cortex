@@ -78,7 +78,7 @@ func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometh
 		staleData:      make(map[string]staleData),
 		backoffConfig:  backoffConfig,
 	}
-	level.Info(c.logger).Log("dynamodb kv initialized")
+	level.Info(c.logger).Log("msg", "dynamodb kv initialized")
 	return c, nil
 }
 

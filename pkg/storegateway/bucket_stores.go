@@ -572,7 +572,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		store.WithIndexCache(u.indexCache),
 		store.WithQueryGate(u.queryGate),
 		store.WithChunkPool(u.chunksPool),
-		store.WithSeriesBatchSize(store.SeriesBatchSize),
+		store.WithSeriesBatchSize(u.cfg.BucketStore.SeriesBatchSize),
 		store.WithBlockEstimatedMaxChunkFunc(func(m thanos_metadata.Meta) uint64 {
 			if m.Thanos.IndexStats.ChunkMaxSize > 0 &&
 				uint64(m.Thanos.IndexStats.ChunkMaxSize) < u.cfg.BucketStore.EstimatedMaxChunkSizeBytes {
@@ -588,6 +588,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
 		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
+		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
 	}
 	if u.logLevel.String() == "debug" {
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())

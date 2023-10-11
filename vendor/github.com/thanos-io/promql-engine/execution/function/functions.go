@@ -4,10 +4,15 @@
 package function
 
 import (
+	"fmt"
 	"math"
 	"time"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/promql/parser"
+
+	"github.com/thanos-io/promql-engine/execution/parse"
 )
 
 type functionCall func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool)
@@ -229,4 +234,37 @@ func month(t time.Time) float64 {
 
 func year(t time.Time) float64 {
 	return float64(t.Year())
+}
+
+var XFunctions = map[string]*parser.Function{
+	"xdelta": {
+		Name:       "xdelta",
+		ArgTypes:   []parser.ValueType{parser.ValueTypeMatrix},
+		ReturnType: parser.ValueTypeVector,
+	},
+	"xincrease": {
+		Name:       "xincrease",
+		ArgTypes:   []parser.ValueType{parser.ValueTypeMatrix},
+		ReturnType: parser.ValueTypeVector,
+	},
+	"xrate": {
+		Name:       "xrate",
+		ArgTypes:   []parser.ValueType{parser.ValueTypeMatrix},
+		ReturnType: parser.ValueTypeVector,
+	},
+}
+
+// IsExtFunction is a convenience function to determine whether extended range calculations are required.
+func IsExtFunction(functionName string) bool {
+	_, ok := XFunctions[functionName]
+	return ok
+}
+
+func UnknownFunctionError(name string) error {
+	msg := fmt.Sprintf("unknown function: %s", name)
+	if _, ok := parser.Functions[name]; ok {
+		return errors.Wrap(parse.ErrNotImplemented, msg)
+	}
+
+	return errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }

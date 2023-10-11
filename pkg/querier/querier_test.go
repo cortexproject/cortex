@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/util/annotations"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -55,9 +56,9 @@ type wrappedQuerier struct {
 	selectCallsArgs [][]interface{}
 }
 
-func (q *wrappedQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (q *wrappedQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	q.selectCallsArgs = append(q.selectCallsArgs, []interface{}{sortSeries, hints, matchers})
-	return q.Querier.Select(sortSeries, hints, matchers...)
+	return q.Querier.Select(ctx, sortSeries, hints, matchers...)
 }
 
 type wrappedSampleAndChunkQueryable struct {
@@ -65,8 +66,8 @@ type wrappedSampleAndChunkQueryable struct {
 	queriers []*wrappedQuerier
 }
 
-func (q *wrappedSampleAndChunkQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	querier, err := q.QueryableWithFilter.Querier(ctx, mint, maxt)
+func (q *wrappedSampleAndChunkQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
+	querier, err := q.QueryableWithFilter.Querier(mint, maxt)
 	wQuerier := &wrappedQuerier{Querier: querier}
 	q.queriers = append(q.queriers, wQuerier)
 	return wQuerier, err
@@ -424,7 +425,7 @@ func mockTSDB(t *testing.T, labels []labels.Labels, mint model.Time, samples int
 
 	require.NoError(t, app.Commit())
 
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		return tsdb.NewBlockQuerier(head, mint, maxt)
 	}), rSamples
 }
@@ -865,7 +866,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
+					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
 					// We apply the validation here again since when initializing querier we change the start/end time,
@@ -883,7 +884,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					}
 					matcher := labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test")
 
-					set := q.Select(false, hints, matcher)
+					set := q.Select(ctx, false, hints, matcher)
 					require.False(t, set.Next()) // Expected to be empty.
 					require.NoError(t, set.Err())
 
@@ -906,10 +907,10 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
+					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
-					_, _, err = q.LabelNames()
+					_, _, err = q.LabelNames(ctx)
 					require.NoError(t, err)
 
 					if !testData.expectedSkipped {
@@ -934,10 +935,10 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
+					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
-					_, _, err = q.LabelNames(matchers...)
+					_, _, err = q.LabelNames(ctx, matchers...)
 					require.NoError(t, err)
 
 					if !testData.expectedSkipped {
@@ -961,10 +962,10 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
 					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					q, err := queryable.Querier(ctx, util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
+					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
-					_, _, err = q.LabelValues(labels.MetricName)
+					_, _, err = q.LabelValues(ctx, labels.MetricName)
 					require.NoError(t, err)
 
 					if !testData.expectedSkipped {
@@ -1192,11 +1193,10 @@ func NewMockStoreQueryable(cfg Config, store mockStore) storage.Queryable {
 }
 
 func newMockStoreQueryable(store mockStore, chunkIteratorFunc chunkIteratorFunc) storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		return &mockStoreQuerier{
 			store:             store,
 			chunkIteratorFunc: chunkIteratorFunc,
-			ctx:               ctx,
 			mint:              mint,
 			maxt:              maxt,
 		}, nil
@@ -1206,14 +1206,13 @@ func newMockStoreQueryable(store mockStore, chunkIteratorFunc chunkIteratorFunc)
 type mockStoreQuerier struct {
 	store             mockStore
 	chunkIteratorFunc chunkIteratorFunc
-	ctx               context.Context
 	mint, maxt        int64
 }
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q *mockStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	userID, err := tenant.TenantID(q.ctx)
+func (q *mockStoreQuerier) Select(ctx context.Context, _ bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -1230,7 +1229,7 @@ func (q *mockStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 		return storage.EmptySeriesSet()
 	}
 
-	chunks, err := q.store.Get(q.ctx, userID, model.Time(minT), model.Time(maxT), matchers...)
+	chunks, err := q.store.Get(ctx, userID, model.Time(minT), model.Time(maxT), matchers...)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
@@ -1238,11 +1237,11 @@ func (q *mockStoreQuerier) Select(_ bool, sp *storage.SelectHints, matchers ...*
 	return partitionChunks(chunks, q.mint, q.maxt, q.chunkIteratorFunc)
 }
 
-func (q *mockStoreQuerier) LabelValues(name string, labels ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *mockStoreQuerier) LabelValues(ctx context.Context, name string, labels ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (q *mockStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q *mockStoreQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
@@ -1426,7 +1425,7 @@ type mockQueryableWithFilter struct {
 	useQueryableCalled bool
 }
 
-func (m *mockQueryableWithFilter) Querier(_ context.Context, _, _ int64) (storage.Querier, error) {
+func (m *mockQueryableWithFilter) Querier(_, _ int64) (storage.Querier, error) {
 	return nil, nil
 }
 

@@ -503,11 +503,6 @@ func (c *WebhookConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if c.URL != nil && c.URLFile != "" {
 		return fmt.Errorf("at most one of url & url_file must be configured")
 	}
-	if c.URL != nil {
-		if c.URL.Scheme != "https" && c.URL.Scheme != "http" {
-			return fmt.Errorf("scheme required for webhook url")
-		}
-	}
 	return nil
 }
 
@@ -694,6 +689,7 @@ type PushoverConfig struct {
 	Priority    string   `yaml:"priority,omitempty" json:"priority,omitempty"`
 	Retry       duration `yaml:"retry,omitempty" json:"retry,omitempty"`
 	Expire      duration `yaml:"expire,omitempty" json:"expire,omitempty"`
+	TTL         duration `yaml:"ttl,omitempty" json:"ttl,omitempty"`
 	HTML        bool     `yaml:"html" json:"html,omitempty"`
 }
 

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/alertmanager/alertobserver"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/pkg/labels"
@@ -188,20 +189,45 @@ receivers:
 	originalFiles, err := listFiles(storeDir)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(originalFiles))
-
-	cfg := mockAlertmanagerConfig(t)
-	cfg.DataDir = storeDir
-	reg := prometheus.NewPedanticRegistry()
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
-	require.NoError(t, err)
-	for i := 0; i < 5; i++ {
-		err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
-		require.NoError(t, err)
-		require.Len(t, am.alertmanagers, 2)
-		files, err := listFiles(storeDir)
-		require.NoError(t, err)
-		// Verify if the files were not deleted
-		require.Equal(t, originalFiles, files)
+	for _, tc := range []struct {
+		name       string
+		observerFn func(config *Config) alertobserver.LifeCycleObserver
+	}{
+		{
+			name: "running with alert observer",
+			observerFn: func(config *Config) alertobserver.LifeCycleObserver {
+				return &LogAlertLifeCycleObserver{}
+			},
+		},
+		{
+			name: "running without alert observer",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := mockAlertmanagerConfig(t)
+			cfg.AlertLifeCycleObserverFn = tc.observerFn
+			cfg.DataDir = storeDir
+			reg := prometheus.NewPedanticRegistry()
+			am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
+			require.NoError(t, err)
+			for i := 0; i < 5; i++ {
+				err = am.loadAndSyncConfigs(context.Background(), reasonPeriodic)
+				require.NoError(t, err)
+				require.Len(t, am.alertmanagers, 2)
+				files, err := listFiles(storeDir)
+				require.NoError(t, err)
+				// Verify if the files were not deleted
+				require.Equal(t, originalFiles, files)
+				// Verify that alertLCObserver is set when the provider function is present
+				for _, v := range am.alertmanagers {
+					if tc.observerFn == nil {
+						require.Nil(t, v.alertLCObserver)
+					} else {
+						require.NotNil(t, v.alertLCObserver)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -2217,6 +2243,7 @@ type mockAlertManagerLimits struct {
 	maxDispatcherAggregationGroups int
 	maxAlertsCount                 int
 	maxAlertsSizeBytes             int
+	alertLifeCycleObserverLevel    int
 }
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxConfigSize(tenant string) int {
@@ -2257,4 +2284,8 @@ func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsCount(_ string) int {
 
 func (m *mockAlertManagerLimits) AlertmanagerMaxAlertsSizeBytes(_ string) int {
 	return m.maxAlertsSizeBytes
+}
+
+func (m *mockAlertManagerLimits) AlertmanagerAlertLifeCycleObserverLevel(_ string) int {
+	return m.alertLifeCycleObserverLevel
 }

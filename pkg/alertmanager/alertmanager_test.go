@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/alertmanager/alertobserver"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,30 +40,8 @@ func createAlertmanagerAndSendAlerts(t *testing.T, alertGroups, groupsLimit, exp
 	user := "test"
 
 	reg := prometheus.NewPedanticRegistry()
-	am, err := New(&Config{
-		UserID:          user,
-		Logger:          log.NewNopLogger(),
-		Limits:          &mockAlertManagerLimits{maxDispatcherAggregationGroups: groupsLimit},
-		TenantDataDir:   t.TempDir(),
-		ExternalURL:     &url.URL{Path: "/am"},
-		ShardingEnabled: false,
-		GCInterval:      30 * time.Minute,
-	}, reg)
-	require.NoError(t, err)
+	am := createAlertmanager(t, user, reg, groupsLimit, nil)
 	defer am.StopAndWait()
-
-	cfgRaw := `receivers:
-- name: 'prod'
-
-route:
-  group_by: ['alertname']
-  group_wait: 10ms
-  group_interval: 10ms
-  receiver: 'prod'`
-
-	cfg, err := config.Load(cfgRaw)
-	require.NoError(t, err)
-	require.NoError(t, am.ApplyConfig(user, cfg, cfgRaw))
 
 	now := time.Now()
 
@@ -113,6 +92,33 @@ route:
 	})
 }
 
+func createAlertmanager(t *testing.T, user string, reg *prometheus.Registry, groupsLimit int, o alertobserver.LifeCycleObserver) *Alertmanager {
+	am, err := New(&Config{
+		UserID:          user,
+		Logger:          log.NewNopLogger(),
+		Limits:          &mockAlertManagerLimits{maxDispatcherAggregationGroups: groupsLimit},
+		TenantDataDir:   t.TempDir(),
+		ExternalURL:     &url.URL{Path: "/am"},
+		ShardingEnabled: false,
+		GCInterval:      30 * time.Minute,
+	}, reg, o)
+	require.NoError(t, err)
+
+	cfgRaw := `receivers:
+- name: 'prod'
+
+route:
+  group_by: ['alertname']
+  group_wait: 10ms
+  group_interval: 10ms
+  receiver: 'prod'`
+
+	cfg, err := config.Load(cfgRaw)
+	require.NoError(t, err)
+	require.NoError(t, am.ApplyConfig(user, cfg, cfgRaw))
+	return am
+}
+
 var (
 	alert1 = model.Alert{
 		Labels:       model.LabelSet{"alert": "first", "alertname": "alert1"},
@@ -152,7 +158,7 @@ func TestAlertsLimiterWithNoLimits(t *testing.T) {
 		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 	}
 
-	testLimiter(t, &mockAlertManagerLimits{}, ops)
+	testLimiter(t, &mockAlertManagerLimits{}, ops, nil)
 }
 
 func TestAlertsLimiterWithCountLimit(t *testing.T) {
@@ -171,7 +177,15 @@ func TestAlertsLimiterWithCountLimit(t *testing.T) {
 		{alert: &types.Alert{Alert: alert2}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 	}
 
-	testLimiter(t, &mockAlertManagerLimits{maxAlertsCount: 1}, ops)
+	testLimiter(t, &mockAlertManagerLimits{maxAlertsCount: 1}, ops, nil)
+	// make sure we log the event if the observer is set
+	logger := &FakeLogger{}
+	l := NewAlertLifeCycleObserverLimiter("fake", limits{tenant: "fake", limit: 1000})
+	o := NewLogAlertLifeCycleObserver(logger, "fake", l)
+	testLimiter(t, &mockAlertManagerLimits{maxAlertsCount: 1}, ops, o)
+	assert.Equal(t, 1, len(logger.loggedValues))
+	assert.Equal(t, "Rejected", logger.loggedValues[0]["msg"])
+	assert.Equal(t, "count limit", logger.loggedValues[0]["reason"])
 }
 
 func TestAlertsLimiterWithSizeLimit(t *testing.T) {
@@ -191,7 +205,15 @@ func TestAlertsLimiterWithSizeLimit(t *testing.T) {
 	// Prerequisite for this test. We set size limit to alert2Size, but inserting alert1 first will prevent insertion of alert2.
 	require.True(t, alert2Size > alert1Size)
 
-	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, ops)
+	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, ops, nil)
+	// make sure we log the event if the observer is set
+	logger := &FakeLogger{}
+	l := NewAlertLifeCycleObserverLimiter("fake", limits{tenant: "fake", limit: 1000})
+	o := NewLogAlertLifeCycleObserver(logger, "fake", l)
+	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, ops, o)
+	assert.Equal(t, 2, len(logger.loggedValues))
+	assert.Equal(t, "Rejected", logger.loggedValues[0]["msg"])
+	assert.Equal(t, "size limit", logger.loggedValues[0]["reason"])
 }
 
 func TestAlertsLimiterWithSizeLimitAndAnnotationUpdate(t *testing.T) {
@@ -203,21 +225,21 @@ func TestAlertsLimiterWithSizeLimitAndAnnotationUpdate(t *testing.T) {
 	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, []callbackOp{
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
 		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert2Size},
-	})
+	}, nil)
 
 	// Updating alert with larger annotations in the limit works fine.
 	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2WithMoreAnnotationsSize}, []callbackOp{
 		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
 		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
 		{alert: &types.Alert{Alert: alert2}, existing: true, expectedCount: 1, expectedTotalSize: alert2Size},
-	})
+	}, nil)
 }
 
 // testLimiter sends sequence of alerts to limiter, and checks if limiter updated reacted correctly.
-func testLimiter(t *testing.T, limits Limits, ops []callbackOp) {
+func testLimiter(t *testing.T, limits Limits, ops []callbackOp, o alertobserver.LifeCycleObserver) {
 	reg := prometheus.NewPedanticRegistry()
 
-	limiter := newAlertsLimiter("test", limits, reg)
+	limiter := newAlertsLimiter("test", limits, reg, o)
 
 	for ix, op := range ops {
 		if op.delete {
@@ -235,4 +257,41 @@ func testLimiter(t *testing.T, limits Limits, ops []callbackOp) {
 		assert.Equal(t, op.expectedCount, count, "wrong count, op %d", ix)
 		assert.Equal(t, op.expectedTotalSize, totalSize, "wrong total size, op %d", ix)
 	}
+}
+
+func TestRunAlertmanagerWithObserver(t *testing.T) {
+	logger := &FakeLogger{}
+	l := NewAlertLifeCycleObserverLimiter("fake", limits{tenant: "fake", limit: 1000})
+	o := NewLogAlertLifeCycleObserver(logger, "fake", l)
+
+	user := "test"
+
+	reg := prometheus.NewPedanticRegistry()
+	am := createAlertmanager(t, user, reg, 100, o)
+	defer am.StopAndWait()
+
+	now := time.Now()
+
+	inputAlerts := []*types.Alert{
+		{
+			Alert: model.Alert{
+				Labels: model.LabelSet{
+					"z": "y",
+				},
+				Annotations:  model.LabelSet{"foo": "bar"},
+				StartsAt:     now,
+				EndsAt:       now.Add(5 * time.Minute),
+				GeneratorURL: "http://example.com/prometheus",
+			},
+			UpdatedAt: now,
+			Timeout:   false,
+		},
+	}
+	require.NoError(t, am.alerts.Put(inputAlerts...))
+
+	test.Poll(t, 3*time.Second, true, func() interface{} {
+		logger.mtx.RLock()
+		defer logger.mtx.RUnlock()
+		return len(logger.loggedValues) > 10
+	})
 }

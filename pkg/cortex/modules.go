@@ -11,6 +11,7 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/alertobserver"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -638,6 +639,15 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
+	if t.Cfg.Alertmanager.AlertLifeCycleObserverFn == nil {
+		t.Cfg.Alertmanager.AlertLifeCycleObserverFn = func(config *alertmanager.Config) alertobserver.LifeCycleObserver {
+			if config.Limits == nil {
+				return nil
+			}
+			observerLimiter := alertmanager.NewAlertLifeCycleObserverLimiter(config.UserID, config.Limits)
+			return alertmanager.NewLogAlertLifeCycleObserver(config.Logger, config.UserID, observerLimiter)
+		}
+	}
 
 	// Initialise the store.
 	store, err := alertstore.NewAlertStore(context.Background(), t.Cfg.AlertmanagerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)

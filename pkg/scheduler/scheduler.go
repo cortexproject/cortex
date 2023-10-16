@@ -165,6 +165,11 @@ type schedulerRequest struct {
 	parentSpanContext opentracing.SpanContext
 }
 
+func (s schedulerRequest) IsHighPriority() bool {
+	//TODO implement me
+	return true
+}
+
 // FrontendLoop handles connection from frontend.
 func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_FrontendLoopServer) error {
 	frontendAddress, frontendCtx, err := s.frontendConnected(frontend)

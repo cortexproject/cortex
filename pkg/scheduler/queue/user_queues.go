@@ -53,7 +53,8 @@ type queues struct {
 }
 
 type userQueue struct {
-	ch chan Request
+	normalQueue       chan Request
+	highPriorityQueue chan Request
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
@@ -103,7 +104,7 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
+func (q *queues) getOrAddQueue(userID string, maxQueriers int, isHighPriority bool) chan Request {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -123,9 +124,10 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 			queueSize = q.maxUserQueueSize
 		}
 		uq = &userQueue{
-			ch:    make(chan Request, queueSize),
-			seed:  util.ShuffleShardSeed(userID, ""),
-			index: -1,
+			normalQueue:       make(chan Request, queueSize),
+			highPriorityQueue: make(chan Request, queueSize),
+			seed:              util.ShuffleShardSeed(userID, ""),
+			index:             -1,
 		}
 		q.userQueues[userID] = uq
 
@@ -150,7 +152,15 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) chan Request {
 		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
-	return uq.ch
+	if isHighPriority {
+		return uq.highPriorityQueue
+	}
+
+	return uq.normalQueue
+}
+
+func (q *queues) getTotalQueueSize(userID string) int {
+	return len(q.userQueues[userID].normalQueue) + len(q.userQueues[userID].highPriorityQueue)
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
@@ -182,7 +192,11 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (ch
 			}
 		}
 
-		return q.ch, u, uid
+		if len(q.highPriorityQueue) > 0 {
+			return q.highPriorityQueue, u, uid
+		}
+
+		return q.normalQueue, u, uid
 	}
 	return nil, "", uid
 }

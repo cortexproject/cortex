@@ -93,6 +93,11 @@ type request struct {
 	response chan *httpgrpc.HTTPResponse
 }
 
+func (r request) IsHighPriority() bool {
+	//TODO implement me
+	return true
+}
+
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	f := &Frontend{

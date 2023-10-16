@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,11 +23,11 @@ func TestQueues(t *testing.T) {
 	assert.Equal(t, "", u)
 
 	// Add queues: [one]
-	qOne := getOrAdd(t, uq, "one", 0)
+	qOne := getOrAdd(t, uq, "one", 0, false)
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qOne, qOne)
 
 	// [one two]
-	qTwo := getOrAdd(t, uq, "two", 0)
+	qTwo := getOrAdd(t, uq, "two", 0, false)
 	assert.NotEqual(t, qOne, qTwo)
 
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qOne, qTwo, qOne)
@@ -34,7 +35,7 @@ func TestQueues(t *testing.T) {
 
 	// [one two three]
 	// confirm fifo by adding a third queue and iterating to it
-	qThree := getOrAdd(t, uq, "three", 0)
+	qThree := getOrAdd(t, uq, "three", 0, false)
 
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qThree, qOne)
 
@@ -45,7 +46,7 @@ func TestQueues(t *testing.T) {
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qThree, qTwo)
 
 	// "four" is added at the beginning of the list: [four two three]
-	qFour := getOrAdd(t, uq, "four", 0)
+	qFour := getOrAdd(t, uq, "four", 0, false)
 
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qThree, qFour, qTwo, qThree)
 
@@ -92,7 +93,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	// Add user queues.
 	for u := 0; u < users; u++ {
 		uid := fmt.Sprintf("user-%d", u)
-		getOrAdd(t, uq, uid, maxQueriersPerUser)
+		getOrAdd(t, uq, uid, maxQueriersPerUser, false)
 
 		// Verify it has maxQueriersPerUser queriers assigned now.
 		qs := uq.userQueues[uid].queriers
@@ -156,9 +157,10 @@ func TestQueuesConsistency(t *testing.T) {
 			conns := map[string]int{}
 
 			for i := 0; i < 10000; i++ {
+				queue := uq.getOrAddQueue(generateTenant(r), 3, false)
 				switch r.Int() % 6 {
 				case 0:
-					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), 3))
+					assert.NotNil(t, queue)
 				case 1:
 					qid := generateQuerier(r)
 					_, _, luid := uq.getNextQueueForQuerier(lastUserIndexes[qid], qid)
@@ -207,7 +209,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	// Add user queues.
 	for i := 0; i < numUsers; i++ {
 		userID := fmt.Sprintf("user-%d", i)
-		getOrAdd(t, uq, userID, maxQueriersPerUser)
+		getOrAdd(t, uq, userID, maxQueriersPerUser, false)
 	}
 
 	// We expect querier-1 to have some users.
@@ -299,7 +301,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	// Add user queues.
 	for i := 0; i < numUsers; i++ {
 		userID := fmt.Sprintf("user-%d", i)
-		getOrAdd(t, uq, userID, maxQueriersPerUser)
+		getOrAdd(t, uq, userID, maxQueriersPerUser, false)
 	}
 
 	// We expect querier-1 to have some users.
@@ -359,11 +361,11 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan Request {
-	q := uq.getOrAddQueue(tenant, maxQueriers)
+func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int, isHighPriority bool) chan Request {
+	q := uq.getOrAddQueue(tenant, maxQueriers, isHighPriority)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
-	assert.Equal(t, q, uq.getOrAddQueue(tenant, maxQueriers))
+	assert.Equal(t, q, uq.getOrAddQueue(tenant, maxQueriers, isHighPriority))
 	return q
 }
 
@@ -435,6 +437,11 @@ func getUsersByQuerier(queues *queues, querierID string) []string {
 		}
 	}
 	return userIDs
+}
+
+func enqueueRequest(queue chan Request, request Request, wg *sync.WaitGroup) {
+	defer wg.Done()
+	queue <- request
 }
 
 func TestShuffleQueriers(t *testing.T) {

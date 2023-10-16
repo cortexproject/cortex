@@ -39,7 +39,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 			for j := 0; j < numTenants; j++ {
 				userID := strconv.Itoa(j)
 
-				err := queue.EnqueueRequest(userID, "request", 0, nil)
+				err := queue.EnqueueRequest(userID, MockRequest{}, 0, nil)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -79,7 +79,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 
 	queues := make([]*RequestQueue, 0, b.N)
 	users := make([]string, 0, numTenants)
-	requests := make([]string, 0, numTenants)
+	requests := make([]MockRequest, 0, numTenants)
 
 	for n := 0; n < b.N; n++ {
 		q := NewRequestQueue(maxOutstandingPerTenant, 0,
@@ -96,7 +96,7 @@ func BenchmarkQueueRequest(b *testing.B) {
 		queues = append(queues, q)
 
 		for j := 0; j < numTenants; j++ {
-			requests = append(requests, fmt.Sprintf("%d-%d", n, j))
+			requests = append(requests, MockRequest{id: fmt.Sprintf("%d-%d", n, j)})
 			users = append(users, strconv.Itoa(j))
 		}
 	}
@@ -149,7 +149,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Enqueue a request from an user which would be assigned to querier-1.
 	// NOTE: "user-1" hash falls in the querier-1 shard.
-	require.NoError(t, queue.EnqueueRequest("user-1", "request", 1, nil))
+	require.NoError(t, queue.EnqueueRequest("user-1", MockRequest{}, 1, nil))
 
 	startTime := time.Now()
 	querier2wg.Wait()
@@ -157,4 +157,50 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// We expect that querier-2 got the request only after querier-1 forget delay is passed.
 	assert.GreaterOrEqual(t, waitTime.Milliseconds(), forgetDelay.Milliseconds())
+}
+
+func TestRequestQueue_HighPriority(t *testing.T) {
+	queue := NewRequestQueue(3, 0,
+		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+		MockLimits{MaxOutstanding: 3},
+		nil,
+	)
+	ctx := context.Background()
+	queue.RegisterQuerierConnection("querier-1")
+
+	normalRequest1 := MockRequest{
+		id:             "normal query 1",
+		isHighPriority: false,
+	}
+	normalRequest2 := MockRequest{
+		id:             "normal query 1",
+		isHighPriority: false,
+	}
+	highPriorityRequest := MockRequest{
+		id:             "high priority query",
+		isHighPriority: true,
+	}
+
+	queue.EnqueueRequest("userID", normalRequest1, 1, func() {})
+	queue.EnqueueRequest("userID", normalRequest2, 1, func() {})
+	queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})
+
+	assert.Error(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})) // should fail due to maxOutstandingPerTenant = 3
+	assert.Equal(t, 3, queue.queues.getTotalQueueSize("userID"))
+	nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
+	assert.Equal(t, highPriorityRequest, nextRequest) // high priority request returned, although it was enqueued the last
+	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
+	assert.Equal(t, normalRequest1, nextRequest)
+	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
+	assert.Equal(t, normalRequest2, nextRequest)
+}
+
+type MockRequest struct {
+	id             string
+	isHighPriority bool
+}
+
+func (r MockRequest) IsHighPriority() bool {
+	return r.isHighPriority
 }

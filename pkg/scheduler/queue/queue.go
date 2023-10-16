@@ -44,7 +44,9 @@ func FirstUser() UserIndex {
 }
 
 // Request stored into the queue.
-type Request interface{}
+type Request interface {
+	IsHighPriority() bool
+}
 
 // RequestQueue holds incoming requests in per-user queues. It also assigns each user specified number of queriers,
 // and when querier asks for next request to handle (using GetNextRequestForQuerier), it returns requests
@@ -96,13 +98,21 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 	}
 
 	shardSize := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
-	queue := q.queues.getOrAddQueue(userID, shardSize)
+	queue := q.queues.getOrAddQueue(userID, shardSize, req.IsHighPriority())
+	maxOutstandingRequests := q.queues.limits.MaxOutstandingPerTenant(userID)
+
 	if queue == nil {
 		// This can only happen if userID is "".
 		return errors.New("no queue found")
 	}
 
 	q.totalRequests.WithLabelValues(userID).Inc()
+
+	if q.queues.getTotalQueueSize(userID) >= maxOutstandingRequests {
+		q.discardedRequests.WithLabelValues(userID).Inc()
+		return ErrTooManyRequests
+	}
+
 	select {
 	case queue <- req:
 		q.queueLength.WithLabelValues(userID).Inc()
@@ -112,9 +122,6 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 			successFn()
 		}
 		return nil
-	default:
-		q.discardedRequests.WithLabelValues(userID).Inc()
-		return ErrTooManyRequests
 	}
 }
 
@@ -152,7 +159,7 @@ FindQueue:
 		// Pick next request from the queue.
 		for {
 			request := <-queue
-			if len(queue) == 0 {
+			if q.queues.getTotalQueueSize(userID) == 0 {
 				q.queues.deleteQueue(userID)
 			}
 

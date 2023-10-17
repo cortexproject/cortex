@@ -152,7 +152,7 @@ FindQueue:
 	for {
 		queue, userID, idx := q.queues.getNextQueueForQuerier(last.last, querierID)
 		last.last = idx
-		if queue == nil {
+		if queue == nil || len(queue) < 1 {
 			break
 		}
 

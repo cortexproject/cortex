@@ -101,7 +101,8 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
-	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	MaxOutstandingPerTenant      int     `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	ReservedHighPriorityQueriers float64 `yaml:"reserved_high_priority_queriers" json:"reserved_high_priority_queriers"`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -188,6 +189,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
+	f.Float64Var(&l.ReservedHighPriorityQueriers, "frontend.reserved-high-priority-queriers", 0, "Number of reserved queriers to only handle high priority queue (either query frontend or query scheduler).")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -490,6 +492,11 @@ func (o *Overrides) MaxQueryParallelism(userID string) int {
 // of outstanding requests per tenant per request queue.
 func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 	return o.GetOverridesForUser(userID).MaxOutstandingPerTenant
+}
+
+// ReservedHighPriorityQueriers returns the number of reserved queriers that only handle high priority queue for the tenant.
+func (o *Overrides) ReservedHighPriorityQueriers(userID string) float64 {
+	return o.GetOverridesForUser(userID).ReservedHighPriorityQueriers
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.

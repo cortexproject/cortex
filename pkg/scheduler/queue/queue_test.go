@@ -159,7 +159,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 	assert.GreaterOrEqual(t, waitTime.Milliseconds(), forgetDelay.Milliseconds())
 }
 
-func TestRequestQueue_HighPriority(t *testing.T) {
+func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 	queue := NewRequestQueue(3, 0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
@@ -194,6 +194,43 @@ func TestRequestQueue_HighPriority(t *testing.T) {
 	assert.Equal(t, normalRequest1, nextRequest)
 	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
 	assert.Equal(t, normalRequest2, nextRequest)
+}
+
+func TestRequestQueue_ReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
+	queue := NewRequestQueue(3, 0,
+		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+		MockLimits{MaxOutstanding: 3, ReservedQueriers: 1},
+		nil,
+	)
+	ctx := context.Background()
+
+	queue.RegisterQuerierConnection("querier-1")
+
+	normalRequest := MockRequest{
+		id:             "normal query",
+		isHighPriority: false,
+	}
+	highPriorityRequest := MockRequest{
+		id:             "high priority query",
+		isHighPriority: true,
+	}
+
+	queue.EnqueueRequest("userID", normalRequest, 1, func() {})
+	queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})
+
+	nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
+	assert.Equal(t, highPriorityRequest, nextRequest)
+
+	ctxTimeout, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	time.AfterFunc(2*time.Second, func() {
+		queue.cond.Broadcast()
+	})
+	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctxTimeout, FirstUser(), "querier-1")
+	assert.Nil(t, nextRequest)
+	assert.Equal(t, 1, queue.queues.getTotalQueueSize("userID"))
 }
 
 type MockRequest struct {

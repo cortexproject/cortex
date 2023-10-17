@@ -189,7 +189,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
-	f.Float64Var(&l.ReservedHighPriorityQueriers, "frontend.reserved-high-priority-queriers", 0, "Number of reserved queriers to only handle high priority queue (either query frontend or query scheduler).")
+	f.Float64Var(&l.ReservedHighPriorityQueriers, "frontend.reserved-high-priority-queriers", 0, "Number of reserved queriers to only handle high priority queue (either query frontend or query scheduler). If the value is between 0 and 1, it will be used as a percentage of per-tenant queriers.")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")

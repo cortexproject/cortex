@@ -3041,6 +3041,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
 
+# Number of reserved queriers to only handle high priority queue (either query
+# frontend or query scheduler). If the value is between 0 and 1, it will be used
+# as a percentage of per-tenant queriers.
+# CLI flag: -frontend.reserved-high-priority-queriers
+[reserved_high_priority_queriers: <float> | default = 0]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration

@@ -1,6 +1,6 @@
-package util
+package query
 
-func IsHighPriorityQuery() bool {
+func IsHighPriority() bool {
 	// TODO: Implement
 	// query string <> regex
 	// query param <> start_time, end_time

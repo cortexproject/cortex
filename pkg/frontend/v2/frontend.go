@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -27,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/query"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -196,7 +196,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 			request:        req,
 			userID:         userID,
 			statsEnabled:   stats.IsEnabled(ctx),
-			isHighPriority: util.IsHighPriorityQuery(),
+			isHighPriority: query.IsHighPriority(),
 
 			cancel: cancel,
 

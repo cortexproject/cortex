@@ -3047,7 +3047,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.reserved-high-priority-queriers
 [reserved_high_priority_queriers: <float> | default = 0]
 
-# List of query definitions to be handled with a high priority.
+# List of query definitions to be treated as a high priority.
 [high_priority_queries: <list of HighPriorityQuery> | default = []]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
@@ -5045,15 +5045,15 @@ otel:
 
 ```yaml
 # Query string regex. If evaluated true (on top of meeting all other criteria),
-# query is handled with a high priority.
+# query is treated as a high priority.
 [regex: <string> | default = ""]
 
 # If query range falls between the start_time and end_time (on top of meeting
-# all other criteria), query is handled with a high priority.
+# all other criteria), query is treated as a high priority.
 [start_time: <duration> | default = 1h]
 
 # If query range falls between the start_time and end_time (on top of meeting
-# all other criteria), query is handled with a high priority.
+# all other criteria), query is treated as a high priority.
 [end_time: <duration> | default = 0s]
 ```
 

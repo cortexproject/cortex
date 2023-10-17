@@ -5,8 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,7 +24,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -214,6 +214,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 	}
 
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		queryStats, ctx := stats.ContextWithEmptyStats(ctx)
 		// If we've been passed a counter we want to record the wall time spent executing this request.
 		timer := prometheus.NewTimer(nil)
 		defer func() {
@@ -224,9 +225,29 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 			logMessage := []interface{}{
 				"msg", "query stats",
 				"component", "ruler",
-				"cortex_ruler_query_seconds_total", querySeconds,
-				"query", qs,
 			}
+			if origin := ctx.Value(promql.QueryOrigin{}); origin != nil {
+				queryLabels := origin.(map[string]interface{})
+				rgMap := queryLabels["ruleGroup"].(map[string]string)
+				logMessage = append(logMessage,
+					"rule_group", rgMap["name"],
+					"namespace", rgMap["file"],
+				)
+			}
+			ruleDetail := rules.FromOriginContext(ctx)
+			logMessage = append(logMessage,
+				"rule", ruleDetail.Name,
+				"rule_kind", ruleDetail.Kind,
+				"query", qs,
+				"cortex_ruler_query_seconds_total", querySeconds,
+				"query_wall_time_seconds", queryStats.WallTime,
+				"fetched_series_count", queryStats.FetchedSeriesCount,
+				"fetched_chunks_count", queryStats.FetchedChunksCount,
+				"fetched_samples_count", queryStats.FetchedSamplesCount,
+				"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
+				"fetched_data_bytes", queryStats.FetchedDataBytes,
+			)
+			logMessage = append(logMessage, queryStats.LoadExtraFields()...)
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
 		}()
 
@@ -295,10 +316,13 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		totalWrites := totalWritesVec.WithLabelValues(userID)
 		failedWrites := failedWritesVec.WithLabelValues(userID)
 
+		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID)
+		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
+			QueryFunc:       RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

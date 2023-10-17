@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Ruler: Add contextual info and query statistics to log
 * [FEATURE] Ruler: Add support for disabling rule groups. #5521
 * [FEATURE] Added the flag `-alertmanager.alerts-gc-interval` to configure alert manager alerts Garbage collection interval. #5550
 * [FEATURE] Ruler: Add support for Limit field on RuleGroup. #5528

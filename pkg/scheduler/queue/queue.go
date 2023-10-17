@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -108,6 +109,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 
 	q.totalRequests.WithLabelValues(userID).Inc()
 
+	fmt.Println("EnqueueRequest", q.queues.getTotalQueueSize(userID), maxOutstandingRequests)
 	if q.queues.getTotalQueueSize(userID) >= maxOutstandingRequests {
 		q.discardedRequests.WithLabelValues(userID).Inc()
 		return ErrTooManyRequests

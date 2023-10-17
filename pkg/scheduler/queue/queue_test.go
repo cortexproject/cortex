@@ -160,7 +160,7 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 }
 
 func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
-	queue := NewRequestQueue(3, 0,
+	queue := NewRequestQueue(100, 0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 		MockLimits{MaxOutstanding: 3},
@@ -182,9 +182,9 @@ func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 		isHighPriority: true,
 	}
 
-	assert.NotNil(t, queue.EnqueueRequest("userID", normalRequest1, 1, func() {}))
-	assert.NotNil(t, queue.EnqueueRequest("userID", normalRequest2, 1, func() {}))
-	assert.NotNil(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {}))
+	assert.Nil(t, queue.EnqueueRequest("userID", normalRequest1, 1, func() {}))
+	assert.Nil(t, queue.EnqueueRequest("userID", normalRequest2, 1, func() {}))
+	assert.Nil(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {}))
 
 	assert.Error(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})) // should fail due to maxOutstandingPerTenant = 3
 	assert.Equal(t, 3, queue.queues.getTotalQueueSize("userID"))
@@ -197,7 +197,7 @@ func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 }
 
 func TestRequestQueue_ReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
-	queue := NewRequestQueue(3, 0,
+	queue := NewRequestQueue(100, 0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
 		MockLimits{MaxOutstanding: 3, ReservedQueriers: 1},

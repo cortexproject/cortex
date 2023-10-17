@@ -22,7 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
-	"github.com/cortexproject/cortex/pkg/util/query"
+	util_query "github.com/cortexproject/cortex/pkg/util/query"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -347,7 +347,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	now := time.Now()
 	req.enqueueTime = now
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
-	req.isHighPriority = query.IsHighPriority()
+	req.isHighPriority = util_query.IsHighPriority()
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroFloat64PerTenant(tenantIDs, f.limits.MaxQueriersPerUser)

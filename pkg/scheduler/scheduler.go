@@ -167,7 +167,7 @@ type schedulerRequest struct {
 
 func (s schedulerRequest) IsHighPriority() bool {
 	//TODO implement me
-	return true
+	return false
 }
 
 // FrontendLoop handles connection from frontend.

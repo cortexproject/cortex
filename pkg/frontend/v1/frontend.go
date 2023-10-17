@@ -95,7 +95,7 @@ type request struct {
 
 func (r request) IsHighPriority() bool {
 	//TODO implement me
-	return true
+	return false
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.

@@ -1,4 +1,4 @@
-# Go CORS handler [![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/rs/cors) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/rs/cors/master/LICENSE) [![build](https://img.shields.io/travis/rs/cors.svg?style=flat)](https://travis-ci.org/rs/cors) [![Coverage](http://gocover.io/_badge/github.com/rs/cors)](http://gocover.io/github.com/rs/cors)
+# Go CORS handler [![godoc](http://img.shields.io/badge/godoc-reference-blue.svg?style=flat)](https://godoc.org/github.com/rs/cors) [![license](http://img.shields.io/badge/license-MIT-red.svg?style=flat)](https://raw.githubusercontent.com/rs/cors/master/LICENSE) [![Go Coverage](https://github.com/rs/cors/wiki/coverage.svg)](https://raw.githack.com/wiki/rs/cors/coverage.html)
 
 CORS is a `net/http` handler implementing [Cross Origin Resource Sharing W3 specification](http://www.w3.org/TR/cors/) in Golang.
 
@@ -102,15 +102,18 @@ See [API documentation](http://godoc.org/github.com/rs/cors) for more info.
 
 ## Benchmarks
 
-    BenchmarkWithout          20000000    64.6 ns/op      8 B/op    1 allocs/op
-    BenchmarkDefault          3000000      469 ns/op    114 B/op    2 allocs/op
-    BenchmarkAllowedOrigin    3000000      608 ns/op    114 B/op    2 allocs/op
-    BenchmarkPreflight        20000000    73.2 ns/op      0 B/op    0 allocs/op
-    BenchmarkPreflightHeader  20000000    73.6 ns/op      0 B/op    0 allocs/op
-    BenchmarkParseHeaderList  2000000      847 ns/op    184 B/op    6 allocs/op
-    BenchmarkParse…Single     5000000      290 ns/op     32 B/op    3 allocs/op
-    BenchmarkParse…Normalized 2000000      776 ns/op    160 B/op    6 allocs/op
-
+goos: darwin
+goarch: arm64
+pkg: github.com/rs/cors
+BenchmarkWithout-10             352671961       3.317 ns/op       0 B/op       0 allocs/op
+BenchmarkDefault-10              18261723       65.63 ns/op       0 B/op       0 allocs/op
+BenchmarkAllowedOrigin-10        13309591       90.21 ns/op       0 B/op       0 allocs/op
+BenchmarkPreflight-10             7247728       166.9 ns/op       0 B/op       0 allocs/op
+BenchmarkPreflightHeader-10       5915437       202.9 ns/op       0 B/op       0 allocs/op
+BenchmarkWildcard/match-10      250336476       4.784 ns/op       0 B/op       0 allocs/op
+BenchmarkWildcard/too_short-10 1000000000       0.6354 ns/op       0 B/op       0 allocs/op
+PASS
+ok  	github.com/rs/cors	9.613s
 ## Licenses
 
 All source code is licensed under the [MIT License](https://raw.github.com/rs/cors/master/LICENSE).

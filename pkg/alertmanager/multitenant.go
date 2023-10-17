@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/alertobserver"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	amconfig "github.com/prometheus/alertmanager/config"
@@ -90,6 +91,8 @@ type MultitenantAlertmanagerConfig struct {
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
+
+	AlertLifeCycleObserverFn func(config *Config) alertobserver.LifeCycleObserver `yaml:"-"`
 }
 
 type ClusterConfig struct {
@@ -227,6 +230,9 @@ type Limits interface {
 	// AlertmanagerMaxAlertsSizeBytes returns total max size of alerts that tenant can have active at the same time. 0 = no limit.
 	// Size of the alert is computed from alert labels, annotations and generator URL.
 	AlertmanagerMaxAlertsSizeBytes(tenant string) int
+
+	// AlertmanagerAlertLifeCycleObserverLevel returns an int that controls how much logs the LifeCycleObserver will collect. 0 = no logs.
+	AlertmanagerAlertLifeCycleObserverLevel(tenant string) int
 }
 
 // A MultitenantAlertmanager manages Alertmanager instances for multiple
@@ -961,7 +967,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		return nil, errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
 	}
 
-	newAM, err := New(&Config{
+	c := &Config{
 		UserID:            userID,
 		TenantDataDir:     tenantDir,
 		Logger:            am.logger,
@@ -977,7 +983,14 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		Limits:            am.limits,
 		APIConcurrency:    am.cfg.APIConcurrency,
 		GCInterval:        am.cfg.GCInterval,
-	}, reg)
+	}
+
+	var o alertobserver.LifeCycleObserver
+	if am.cfg.AlertLifeCycleObserverFn != nil {
+		o = am.cfg.AlertLifeCycleObserverFn(c)
+	}
+
+	newAM, err := New(c, reg, o)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
 	}

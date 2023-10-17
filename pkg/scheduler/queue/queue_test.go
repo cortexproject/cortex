@@ -182,9 +182,9 @@ func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 		isHighPriority: true,
 	}
 
-	queue.EnqueueRequest("userID", normalRequest1, 1, func() {})
-	queue.EnqueueRequest("userID", normalRequest2, 1, func() {})
-	queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})
+	assert.NotNil(t, queue.EnqueueRequest("userID", normalRequest1, 1, func() {}))
+	assert.NotNil(t, queue.EnqueueRequest("userID", normalRequest2, 1, func() {}))
+	assert.NotNil(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {}))
 
 	assert.Error(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})) // should fail due to maxOutstandingPerTenant = 3
 	assert.Equal(t, 3, queue.queues.getTotalQueueSize("userID"))
@@ -216,8 +216,8 @@ func TestRequestQueue_ReservedQueriersShouldOnlyGetHighPriorityQueries(t *testin
 		isHighPriority: true,
 	}
 
-	queue.EnqueueRequest("userID", normalRequest, 1, func() {})
-	queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})
+	assert.NotNil(t, queue.EnqueueRequest("userID", normalRequest, 1, func() {}))
+	assert.NotNil(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {}))
 
 	nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
 	assert.Equal(t, highPriorityRequest, nextRequest)

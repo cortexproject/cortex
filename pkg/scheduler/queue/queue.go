@@ -113,16 +113,14 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		return ErrTooManyRequests
 	}
 
-	select {
-	case queue <- req:
-		q.queueLength.WithLabelValues(userID).Inc()
-		q.cond.Broadcast()
-		// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
-		if successFn != nil {
-			successFn()
-		}
-		return nil
+	queue <- req
+	q.queueLength.WithLabelValues(userID).Inc()
+	q.cond.Broadcast()
+	// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
+	if successFn != nil {
+		successFn()
 	}
+	return nil
 }
 
 // GetNextRequestForQuerier find next user queue and takes the next request off of it. Will block if there are no requests.

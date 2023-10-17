@@ -88,14 +88,14 @@ type request struct {
 	queueSpan   opentracing.Span
 	originalCtx context.Context
 
-	request  *httpgrpc.HTTPRequest
-	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	request        *httpgrpc.HTTPRequest
+	err            chan error
+	response       chan *httpgrpc.HTTPResponse
+	isHighPriority bool
 }
 
 func (r request) IsHighPriority() bool {
-	//TODO implement me
-	return false
+	return r.isHighPriority
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
@@ -346,6 +346,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	now := time.Now()
 	req.enqueueTime = now
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
+	req.isHighPriority = util.IsHighPriorityQuery()
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroFloat64PerTenant(tenantIDs, f.limits.MaxQueriersPerUser)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -82,10 +83,11 @@ type Frontend struct {
 }
 
 type frontendRequest struct {
-	queryID      uint64
-	request      *httpgrpc.HTTPRequest
-	userID       string
-	statsEnabled bool
+	queryID        uint64
+	request        *httpgrpc.HTTPRequest
+	userID         string
+	statsEnabled   bool
+	isHighPriority bool
 
 	cancel context.CancelFunc
 
@@ -190,10 +192,11 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 
 	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		freq := &frontendRequest{
-			queryID:      f.lastQueryID.Inc(),
-			request:      req,
-			userID:       userID,
-			statsEnabled: stats.IsEnabled(ctx),
+			queryID:        f.lastQueryID.Inc(),
+			request:        req,
+			userID:         userID,
+			statsEnabled:   stats.IsEnabled(ctx),
+			isHighPriority: util.IsHighPriorityQuery(),
 
 			cancel: cancel,
 

@@ -154,6 +154,7 @@ type schedulerRequest struct {
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
+	isHighPriority  bool
 
 	enqueueTime time.Time
 
@@ -166,8 +167,7 @@ type schedulerRequest struct {
 }
 
 func (s schedulerRequest) IsHighPriority() bool {
-	//TODO implement me
-	return false
+	return s.isHighPriority
 }
 
 // FrontendLoop handles connection from frontend.
@@ -298,6 +298,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
+		isHighPriority:  msg.IsHighPriority,
 	}
 
 	now := time.Now()

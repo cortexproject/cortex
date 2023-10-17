@@ -227,7 +227,7 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 				required:     isFieldRequired(field),
 				fieldDesc:    getFieldDescription(field, ""),
 				fieldType:    fieldType,
-				fieldDefault: fieldDefault,
+				fieldDefault: getFieldDefault(field, fieldDefault),
 			})
 			continue
 		}
@@ -468,6 +468,14 @@ func getFieldDescription(f reflect.StructField, fallback string) string {
 	}
 
 	return fallback
+}
+
+func getFieldDefault(f reflect.StructField, fieldDefault string) string {
+	if defaultValue := getDocTagValue(f, "default"); defaultValue != "" {
+		return defaultValue
+	}
+
+	return fieldDefault
 }
 
 func isRootBlock(t reflect.Type) (string, string, bool) {

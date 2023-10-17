@@ -46,6 +46,12 @@ type DisabledRuleGroup struct {
 
 type DisabledRuleGroups []DisabledRuleGroup
 
+type HighPriorityQuery struct {
+	Regex     string        `yaml:"regex" doc:"nocli|description=Query string regex. If evaluated true (on top of meeting all other criteria), query is handled with a high priority."`
+	StartTime time.Duration `yaml:"start_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is handled with a high priority.|default=1h"`
+	EndTime   time.Duration `yaml:"end_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is handled with a high priority.|default=0s"`
+}
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
@@ -101,8 +107,9 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
-	MaxOutstandingPerTenant      int     `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
-	ReservedHighPriorityQueriers float64 `yaml:"reserved_high_priority_queriers" json:"reserved_high_priority_queriers"`
+	MaxOutstandingPerTenant      int                 `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	ReservedHighPriorityQueriers float64             `yaml:"reserved_high_priority_queriers" json:"reserved_high_priority_queriers"`
+	HighPriorityQueries          []HighPriorityQuery `yaml:"high_priority_queries" json:"high_priority_queries" doc:"nocli|description=List of query definitions to be handled with a high priority."`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -497,6 +504,11 @@ func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 // ReservedHighPriorityQueriers returns the number of reserved queriers that only handle high priority queue for the tenant.
 func (o *Overrides) ReservedHighPriorityQueriers(userID string) float64 {
 	return o.GetOverridesForUser(userID).ReservedHighPriorityQueriers
+}
+
+// HighPriorityQueries returns list of definitions for high priority query.
+func (o *Overrides) HighPriorityQueries(userID string) []HighPriorityQuery {
+	return o.GetOverridesForUser(userID).HighPriorityQueries
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.

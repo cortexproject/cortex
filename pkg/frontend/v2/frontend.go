@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/scheduler"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -65,10 +68,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Frontend struct {
 	services.Service
 
-	cfg Config
-	log log.Logger
-
-	retry *transport.Retry
+	cfg    Config
+	log    log.Logger
+	limits scheduler.Limits
+	retry  *transport.Retry
 
 	lastQueryID atomic.Uint64
 
@@ -114,7 +117,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
+func NewFrontend(cfg Config, limits scheduler.Limits, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -124,6 +127,7 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *t
 
 	f := &Frontend{
 		cfg:              cfg,
+		limits:           limits,
 		log:              log,
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
@@ -167,7 +171,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	if s := f.State(); s != services.Running {
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
@@ -196,7 +200,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 			request:        req,
 			userID:         userID,
 			statsEnabled:   stats.IsEnabled(ctx),
-			isHighPriority: util_query.IsHighPriority(),
+			isHighPriority: util_query.IsHighPriority(requestParams, f.limits.HighPriorityQueries(userID)),
 
 			cancel: cancel,
 

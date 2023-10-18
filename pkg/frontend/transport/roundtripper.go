@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
@@ -12,7 +13,7 @@ import (
 
 // GrpcRoundTripper is similar to http.RoundTripper, but works with HTTP requests converted to protobuf messages.
 type GrpcRoundTripper interface {
-	RoundTripGRPC(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
+	RoundTripGRPC(context.Context, url.Values, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
 }
 
 func AdaptGrpcRoundTripperToHTTPRoundTripper(r GrpcRoundTripper) http.RoundTripper {
@@ -39,7 +40,7 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 		return nil, err
 	}
 
-	resp, err := a.roundTripper.RoundTripGRPC(r.Context(), req)
+	resp, err := a.roundTripper.RoundTripGRPC(r.Context(), r.Form, req)
 	if err != nil {
 		return nil, err
 	}

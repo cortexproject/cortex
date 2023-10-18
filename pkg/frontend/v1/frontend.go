@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-kit/log"
@@ -53,11 +54,16 @@ type Limits interface {
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
 	Queriers float64
+	Queries  []validation.HighPriorityQuery
 	queue.MockLimits
 }
 
 func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
 	return l.Queriers
+}
+
+func (l MockLimits) HighPriorityQueries(_ string) []validation.HighPriorityQuery {
+	return l.Queries
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -171,7 +177,7 @@ func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
@@ -182,10 +188,17 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		}
 	}
 
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
+
 	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		request := request{
-			request:     req,
-			originalCtx: ctx,
+			request:        req,
+			originalCtx:    ctx,
+			isHighPriority: util_query.IsHighPriority(requestParams, f.limits.HighPriorityQueries(userID)),
 
 			// Buffer of 1 to ensure response can be written by the server side
 			// of the Process stream, even if this goroutine goes away due to
@@ -347,7 +360,6 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	now := time.Now()
 	req.enqueueTime = now
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
-	req.isHighPriority = util_query.IsHighPriority()
 
 	// aggregate the max queriers limit in the case of a multi tenant query
 	maxQueriers := validation.SmallestPositiveNonZeroFloat64PerTenant(tenantIDs, f.limits.MaxQueriersPerUser)

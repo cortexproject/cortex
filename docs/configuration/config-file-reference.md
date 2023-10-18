@@ -5050,7 +5050,7 @@ otel:
 
 # If query range falls between the start_time and end_time (on top of meeting
 # all other criteria), query is treated as a high priority.
-[start_time: <duration> | default = 1h]
+[start_time: <duration> | default = 0s]
 
 # If query range falls between the start_time and end_time (on top of meeting
 # all other criteria), query is treated as a high priority.

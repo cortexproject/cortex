@@ -48,7 +48,7 @@ type DisabledRuleGroups []DisabledRuleGroup
 
 type HighPriorityQuery struct {
 	Regex     string        `yaml:"regex" doc:"nocli|description=Query string regex. If evaluated true (on top of meeting all other criteria), query is treated as a high priority."`
-	StartTime time.Duration `yaml:"start_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=1h"`
+	StartTime time.Duration `yaml:"start_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
 	EndTime   time.Duration `yaml:"end_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
 }
 

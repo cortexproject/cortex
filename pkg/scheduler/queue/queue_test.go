@@ -200,7 +200,7 @@ func TestRequestQueue_ReservedQueriersShouldOnlyGetHighPriorityQueries(t *testin
 	queue := NewRequestQueue(0, 0,
 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-		MockLimits{MaxOutstanding: 3, ReservedQueriers: 1},
+		MockLimits{MaxOutstanding: 3, reservedHighPriorityQueriers: 1},
 		nil,
 	)
 	ctx := context.Background()

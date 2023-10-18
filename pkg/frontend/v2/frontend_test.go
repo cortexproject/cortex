@@ -3,11 +3,14 @@ package v2
 import (
 	"context"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
@@ -48,7 +51,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 
 	//logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, logger, nil, transport.NewRetry(maxRetries, nil))
+	f, err := NewFrontend(cfg, queue.MockLimits{}, logger, nil, transport.NewRetry(maxRetries, nil))
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)
@@ -110,7 +113,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	}, 0)
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), url.Values{}, &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), resp.Code)
 	require.Equal(t, []byte(body), resp.Body)
@@ -140,7 +143,7 @@ func TestFrontendRetryRequest(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	}, 3)
 
-	res, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	res, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), url.Values{}, &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), res.Code)
 }
@@ -167,7 +170,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	}, 0)
 
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), url.Values{}, &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 }
 
@@ -176,7 +179,7 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 	}, 0)
 
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), url.Values{}, &httpgrpc.HTTPRequest{})
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "failed to enqueue request"))
 }
@@ -187,7 +190,7 @@ func TestFrontendCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), url.Values{}, &httpgrpc.HTTPRequest{})
 	require.EqualError(t, err, context.DeadlineExceeded.Error())
 	require.Nil(t, resp)
 
@@ -236,7 +239,7 @@ func TestFrontendFailedCancellation(t *testing.T) {
 	}()
 
 	// send request
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), url.Values{}, &httpgrpc.HTTPRequest{})
 	require.EqualError(t, err, context.Canceled.Error())
 	require.Nil(t, resp)
 

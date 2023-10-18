@@ -6,6 +6,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/validation"
+
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
@@ -21,6 +23,9 @@ type Limits interface {
 	// If ReservedHighPriorityQueriers is capped by MaxQueriersPerUser.
 	// If less than 1, it will be applied as a percentage of MaxQueriersPerUser.
 	ReservedHighPriorityQueriers(user string) float64
+
+	// HighPriorityQueries returns list of definitions for high priority query.
+	HighPriorityQueries(user string) []validation.HighPriorityQuery
 }
 
 // querier holds information about a querier registered in the queue.
@@ -374,8 +379,14 @@ func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, rese
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	MaxOutstanding   int
-	ReservedQueriers float64
+	MaxOutstanding               int
+	maxQueriersPerUser           float64
+	reservedHighPriorityQueriers float64
+	highPriorityQueries          []validation.HighPriorityQuery
+}
+
+func (l MockLimits) MaxQueriersPerUser(user string) float64 {
+	return l.maxQueriersPerUser
 }
 
 func (l MockLimits) MaxOutstandingPerTenant(_ string) int {
@@ -383,5 +394,9 @@ func (l MockLimits) MaxOutstandingPerTenant(_ string) int {
 }
 
 func (l MockLimits) ReservedHighPriorityQueriers(_ string) float64 {
-	return l.ReservedQueriers
+	return l.reservedHighPriorityQueriers
+}
+
+func (l MockLimits) HighPriorityQueries(_ string) []validation.HighPriorityQuery {
+	return l.highPriorityQueries
 }

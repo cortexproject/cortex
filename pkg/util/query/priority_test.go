@@ -11,22 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func Test_IsHighPriority_DefaultValues(t *testing.T) {
-	now := time.Now()
-	config := []validation.HighPriorityQuery{
-		{}, // By default, it should match all queries happened at "now"
-	}
-
-	assert.True(t, IsHighPriority(url.Values{
-		"query": []string{"count(up)"},
-		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
-	assert.False(t, IsHighPriority(url.Values{
-		"query": []string{"count(up)"},
-		"time":  []string{strconv.FormatInt(now.Add(-1*time.Second).UnixMilli(), 10)},
-	}, config))
-}
-
 func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	now := time.Now()
 	config := []validation.HighPriorityQuery{
@@ -38,11 +22,11 @@ func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 
 	config = []validation.HighPriorityQuery{
 		{
@@ -53,11 +37,11 @@ func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 
 	config = []validation.HighPriorityQuery{
 		{
@@ -71,11 +55,11 @@ func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 
 	config = []validation.HighPriorityQuery{
 		{
@@ -89,11 +73,11 @@ func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 
 	config = []validation.HighPriorityQuery{
 		{
@@ -104,11 +88,26 @@ func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
+
+	config = []validation.HighPriorityQuery{
+		{
+			Regex: "",
+		},
+	}
+
+	assert.True(t, IsHighPriority(url.Values{
+		"query": []string{"sum(up)"},
+		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
+	}, now, config))
+	assert.True(t, IsHighPriority(url.Values{
+		"query": []string{"count(up)"},
+		"time":  []string{strconv.FormatInt(now.UnixMilli(), 10)},
+	}, now, config))
 }
 
 func Test_IsHighPriority_ShouldBeBetweenStartAndEndTime(t *testing.T) {
@@ -123,32 +122,32 @@ func Test_IsHighPriority_ShouldBeBetweenStartAndEndTime(t *testing.T) {
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-2*time.Hour).UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-1*time.Hour).UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-30*time.Minute).UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-1*time.Minute).UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-2*time.Hour).UnixMilli(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-30*time.Minute).UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.True(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-1*time.Hour).UnixMilli(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-30*time.Minute).UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 	assert.False(t, IsHighPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-1*time.Hour).UnixMilli(), 10)},
 		"end":   []string{strconv.FormatInt(now.UnixMilli(), 10)},
-	}, config))
+	}, now, config))
 }

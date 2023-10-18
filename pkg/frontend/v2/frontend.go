@@ -171,7 +171,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, timestamp time.Time, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	if s := f.State(); s != services.Running {
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
@@ -200,7 +200,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, 
 			request:        req,
 			userID:         userID,
 			statsEnabled:   stats.IsEnabled(ctx),
-			isHighPriority: util_query.IsHighPriority(requestParams, f.limits.HighPriorityQueries(userID)),
+			isHighPriority: util_query.IsHighPriority(requestParams, timestamp, f.limits.HighPriorityQueries(userID)),
 
 			cancel: cancel,
 

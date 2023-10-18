@@ -177,7 +177,7 @@ func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, timestamp time.Time, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
@@ -198,7 +198,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, 
 		request := request{
 			request:        req,
 			originalCtx:    ctx,
-			isHighPriority: util_query.IsHighPriority(requestParams, f.limits.HighPriorityQueries(userID)),
+			isHighPriority: util_query.IsHighPriority(requestParams, timestamp, f.limits.HighPriorityQueries(userID)),
 
 			// Buffer of 1 to ensure response can be written by the server side
 			// of the Process stream, even if this goroutine goes away due to

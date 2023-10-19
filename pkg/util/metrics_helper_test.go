@@ -3,12 +3,6 @@ package util
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
-	"sort"
-	"strconv"
-	"testing"
-	"time"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -16,6 +10,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+	"math/rand"
+	"sort"
+	"strconv"
+	"testing"
+	"time"
 )
 
 func TestSum(t *testing.T) {
@@ -990,6 +989,114 @@ func TestUserRegistries_AddUserRegistry_ReplaceRegistry(t *testing.T) {
 	`)))
 }
 
+func TestUserRegistries_AppendUserRegistry(t *testing.T) {
+	tm := setupTestMetrics()
+
+	mainRegistry := prometheus.NewPedanticRegistry()
+	mainRegistry.MustRegister(tm)
+
+	newReg := prometheus.NewRegistry()
+	appendedUserID := 5
+	newCardinality := 2
+	tm.regs.AppendUserRegistry(strconv.Itoa(appendedUserID), newReg)
+	populateMetricsDataForUser(newReg, appendedUserID, newCardinality)
+
+	require.NoError(t, testutil.GatherAndCompare(mainRegistry, bytes.NewBufferString(`
+			# HELP counter help
+			# TYPE counter counter
+	# Counter increases by 10 (value for user 5, times 2)
+			counter 85
+	
+			# HELP counter_labels help
+			# TYPE counter_labels counter
+	# Counter per label increases by 10 (value for user 5, times 2)
+			counter_labels{label_one="a"} 85
+	
+			# HELP counter_user help
+			# TYPE counter_user counter
+	# Per-user counter for user 5 increases by 10 (value for user 5, times 2)
+			counter_user{user="1"} 5
+			counter_user{user="2"} 10
+			counter_user{user="3"} 15
+			counter_user{user="4"} 20
+			counter_user{user="5"} 35
+	
+			# HELP gauge help
+			# TYPE gauge gauge
+	# Gauge increases by 10 (value for user 5, times 2)
+			gauge 85
+	
+			# HELP gauge_labels help
+			# TYPE gauge_labels gauge
+	# Gauge increases by 10 (value for user 5, times 2)
+			gauge_labels{label_one="a"} 85
+	
+			# HELP gauge_user help
+			# TYPE gauge_user gauge
+	# Gauge for user 5 increases by 10 (value for user 5, times 2)
+			gauge_user{user="1"} 5
+			gauge_user{user="2"} 10
+			gauge_user{user="3"} 15
+			gauge_user{user="4"} 20
+			gauge_user{user="5"} 35
+	
+			# HELP histogram help
+			# TYPE histogram histogram
+	# Histogram bucket le 5 increases by 2 (user 5 got 2 samples)
+	# Histogram bucket +Inf increases by 2 (user 5 got 2 samples)
+	# Histogram sum increases by 10 (value for user 5, times 2)
+	# Histogram count increases by 2 (user 5 got 2 samples)
+			histogram_bucket{le="1"} 5
+			histogram_bucket{le="3"} 15
+			histogram_bucket{le="5"} 27
+			histogram_bucket{le="+Inf"} 27
+			histogram_sum 85
+			histogram_count 27
+	
+			# HELP histogram_labels help
+			# TYPE histogram_labels histogram
+	# Histogram per label bucket le 5 increases by 2 (user 5 got 2 samples)
+	# Histogram per label bucket +Inf increases by 2 (user 5 got 2 samples)
+	# Histogram per label sum increases by 10 (value for user 5, times 2)
+	# Histogram per label count increases by 2 (user 5 got 2 samples)
+			histogram_labels_bucket{label_one="a",le="1"} 5
+			histogram_labels_bucket{label_one="a",le="3"} 15
+			histogram_labels_bucket{label_one="a",le="5"} 27
+			histogram_labels_bucket{label_one="a",le="+Inf"} 27
+			histogram_labels_sum{label_one="a"} 85
+			histogram_labels_count{label_one="a"} 27
+	
+			# HELP summary help
+			# TYPE summary summary
+	# Summary sum increases by 10 (value for user 5, times 2)
+	# Summary count increases by 2 (user 5 got 2 samples)
+			summary_sum 85
+			summary_count 27
+	
+			# HELP summary_labels help
+			# TYPE summary_labels summary
+	# Summary per label sum increases by 10 (value for user 5, times 2)
+	# Summary per label count increases by 2 (user 5 got 2 samples)
+			summary_labels_sum{label_one="a"} 85
+			summary_labels_count{label_one="a"} 27
+	
+			# HELP summary_user help
+			# TYPE summary_user summary
+	# Summary sum for user 5 increases by 10 (value for user 5, times 2)
+	# Summary label count for user 5 increases by 2 (user 5 got 2 samples)
+			summary_user_sum{user="1"} 5
+			summary_user_count{user="1"} 5
+			summary_user_sum{user="2"} 10
+			summary_user_count{user="2"} 5
+			summary_user_sum{user="3"} 15
+			summary_user_count{user="3"} 5
+			summary_user_sum{user="4"} 20
+			summary_user_count{user="4"} 5
+			summary_user_sum{user="5"} 35
+			summary_user_count{user="5"} 7
+	`)))
+}
+
 func setupTestMetrics() *testMetrics {
 	const numUsers = 5
 	const cardinality = 5
@@ -999,31 +1106,35 @@ func setupTestMetrics() *testMetrics {
 	for userID := 1; userID <= numUsers; userID++ {
 		reg := prometheus.NewRegistry()
 
-		labelNames := []string{"label_one", "label_two"}
-
-		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
-		for i := 0; i < cardinality; i++ {
-			g.WithLabelValues("a", strconv.Itoa(i)).Set(float64(userID))
-		}
-
-		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
-		for i := 0; i < cardinality; i++ {
-			c.WithLabelValues("a", strconv.Itoa(i)).Add(float64(userID))
-		}
-
-		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{1, 3, 5}}, labelNames)
-		for i := 0; i < cardinality; i++ {
-			h.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
-		}
-
-		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
-		for i := 0; i < cardinality; i++ {
-			s.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
-		}
+		populateMetricsDataForUser(reg, userID, cardinality)
 
 		tm.regs.AddUserRegistry(strconv.Itoa(userID), reg)
 	}
 	return tm
+}
+
+func populateMetricsDataForUser(reg prometheus.Registerer, userID int, cardinality int) {
+	labelNames := []string{"label_one", "label_two"}
+
+	g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
+	for i := 0; i < cardinality; i++ {
+		g.WithLabelValues("a", strconv.Itoa(i)).Set(float64(userID))
+	}
+
+	c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
+	for i := 0; i < cardinality; i++ {
+		c.WithLabelValues("a", strconv.Itoa(i)).Add(float64(userID))
+	}
+
+	h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{1, 3, 5}}, labelNames)
+	for i := 0; i < cardinality; i++ {
+		h.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
+	}
+
+	s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
+	for i := 0; i < cardinality; i++ {
+		s.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
+	}
 }
 
 type testMetrics struct {

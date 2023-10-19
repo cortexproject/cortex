@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	thanosquerysharding "github.com/thanos-io/thanos/pkg/querysharding"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querysharding"

@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/thanos/pkg/querysharding"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -15,7 +16,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -44,7 +44,7 @@ func TestBlockQuerierSeries(t *testing.T) {
 					{Name: "foo", Value: "bar"},
 				},
 				Chunks: []storepb.AggrChunk{
-					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: mockTSDBChunkData()}},
+					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.XOR, Data: mockTSDBChunkData()}},
 				},
 			},
 			expectedMetric: labels.Labels{
@@ -59,7 +59,7 @@ func TestBlockQuerierSeries(t *testing.T) {
 			series: &storepb.Series{
 				Labels: []labelpb.ZLabel{{Name: "foo", Value: "bar"}},
 				Chunks: []storepb.AggrChunk{
-					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: []byte{0, 1}}},
+					{MinTime: minTimestamp.Unix() * 1000, MaxTime: maxTimestamp.Unix() * 1000, Raw: &storepb.Chunk{Type: storepb.XOR, Data: []byte{0, 1}}},
 				},
 			},
 			expectedMetric: labels.Labels{labels.Label{Name: "foo", Value: "bar"}},
@@ -259,7 +259,7 @@ func createAggrChunk(minTime, maxTime int64, samples ...promql.FPoint) storepb.A
 		MinTime: minTime,
 		MaxTime: maxTime,
 		Raw: &storepb.Chunk{
-			Type: storepb.Chunk_XOR,
+			Type: storepb.XOR,
 			Data: chunk.Bytes(),
 		},
 	}

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid"
@@ -31,7 +32,6 @@ import (
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
@@ -425,7 +425,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			// Sync user stores and count the number of times the callback is called.
 			var storesCount atomic.Int32
-			err = stores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
+			err = stores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *BucketStore) error {
 				storesCount.Inc()
 				return nil
 			})
@@ -597,11 +597,11 @@ func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int
 		MinTime: minT,
 		MaxTime: maxT,
 		Matchers: []storepb.LabelMatcher{{
-			Type:  storepb.LabelMatcher_EQ,
+			Type:  storepb.EQ,
 			Name:  labels.MetricName,
 			Value: metricName,
 		}},
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		PartialResponseStrategy: storepb.ABORT,
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
@@ -616,11 +616,11 @@ func queryLabelsNames(stores *BucketStores, userID, metricName string, start, en
 		Start: start,
 		End:   end,
 		Matchers: []storepb.LabelMatcher{{
-			Type:  storepb.LabelMatcher_EQ,
+			Type:  storepb.EQ,
 			Name:  labels.MetricName,
 			Value: metricName,
 		}},
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		PartialResponseStrategy: storepb.ABORT,
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
@@ -633,11 +633,11 @@ func queryLabelsValues(stores *BucketStores, userID, labelName, metricName strin
 		End:   end,
 		Label: labelName,
 		Matchers: []storepb.LabelMatcher{{
-			Type:  storepb.LabelMatcher_EQ,
+			Type:  storepb.EQ,
 			Name:  labels.MetricName,
 			Value: metricName,
 		}},
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		PartialResponseStrategy: storepb.ABORT,
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)

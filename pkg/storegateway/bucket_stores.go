@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
@@ -24,9 +25,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
 	"github.com/thanos-io/thanos/pkg/pool"
-	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
 	"google.golang.org/grpc/codes"
@@ -60,14 +59,14 @@ type BucketStores struct {
 	chunksPool pool.Bytes
 
 	// Partitioner shared across all tenants.
-	partitioner store.Partitioner
+	partitioner Partitioner
 
 	// Gate used to limit query concurrency across all tenants.
 	queryGate gate.Gate
 
 	// Keeps a bucket store for each tenant.
 	storesMu sync.RWMutex
-	stores   map[string]*store.BucketStore
+	stores   map[string]*BucketStore
 
 	// Keeps the last sync error for the  bucket store for each tenant.
 	storesErrorsMu sync.RWMutex
@@ -107,7 +106,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		limits:             limits,
 		bucket:             cachingBucket,
 		shardingStrategy:   shardingStrategy,
-		stores:             map[string]*store.BucketStore{},
+		stores:             map[string]*BucketStore{},
 		storesErrors:       map[string]error{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
@@ -154,7 +153,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -167,12 +166,12 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
 func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *BucketStore) error {
 		return s.SyncBlocks(ctx)
 	})
 }
 
-func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -196,7 +195,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 	return lastErr
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
 		if returnErr == nil {
@@ -206,7 +205,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 	type job struct {
 		userID string
-		store  *store.BucketStore
+		store  *BucketStore
 	}
 
 	wg := &sync.WaitGroup{}
@@ -430,7 +429,7 @@ func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
 	return users, err
 }
 
-func (u *BucketStores) getStore(userID string) *store.BucketStore {
+func (u *BucketStores) getStore(userID string) *BucketStore {
 	u.storesMu.RLock()
 	defer u.storesMu.RUnlock()
 	return u.stores[userID]
@@ -479,7 +478,7 @@ func (u *BucketStores) closeEmptyBucketStore(userID string) error {
 	return bs.Close()
 }
 
-func isEmptyBucketStore(bs *store.BucketStore) bool {
+func isEmptyBucketStore(bs *BucketStore) bool {
 	min, max := bs.TimeRange()
 	return min == math.MaxInt64 && max == math.MinInt64
 }
@@ -488,7 +487,7 @@ func (u *BucketStores) syncDirForUser(userID string) string {
 	return filepath.Join(u.cfg.BucketStore.SyncDir, userID)
 }
 
-func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, error) {
+func (u *BucketStores) getOrCreateStore(userID string) (*BucketStore, error) {
 	// Check if the store already exists.
 	bs := u.getStore(userID)
 	if bs != nil {
@@ -566,35 +565,35 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	}
 
 	bucketStoreReg := prometheus.NewRegistry()
-	bucketStoreOpts := []store.BucketStoreOption{
-		store.WithLogger(userLogger),
-		store.WithRegistry(bucketStoreReg),
-		store.WithIndexCache(u.indexCache),
-		store.WithQueryGate(u.queryGate),
-		store.WithChunkPool(u.chunksPool),
-		store.WithSeriesBatchSize(u.cfg.BucketStore.SeriesBatchSize),
-		store.WithBlockEstimatedMaxChunkFunc(func(m thanos_metadata.Meta) uint64 {
+	bucketStoreOpts := []BucketStoreOption{
+		WithLogger(userLogger),
+		WithRegistry(bucketStoreReg),
+		WithIndexCache(u.indexCache),
+		WithQueryGate(u.queryGate),
+		WithChunkPool(u.chunksPool),
+		WithSeriesBatchSize(u.cfg.BucketStore.SeriesBatchSize),
+		WithBlockEstimatedMaxChunkFunc(func(m thanos_metadata.Meta) uint64 {
 			if m.Thanos.IndexStats.ChunkMaxSize > 0 &&
 				uint64(m.Thanos.IndexStats.ChunkMaxSize) < u.cfg.BucketStore.EstimatedMaxChunkSizeBytes {
 				return uint64(m.Thanos.IndexStats.ChunkMaxSize)
 			}
 			return u.cfg.BucketStore.EstimatedMaxChunkSizeBytes
 		}),
-		store.WithBlockEstimatedMaxSeriesFunc(func(m thanos_metadata.Meta) uint64 {
+		WithBlockEstimatedMaxSeriesFunc(func(m thanos_metadata.Meta) uint64 {
 			if m.Thanos.IndexStats.SeriesMaxSize > 0 &&
 				uint64(m.Thanos.IndexStats.SeriesMaxSize) < u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes {
 				return uint64(m.Thanos.IndexStats.SeriesMaxSize)
 			}
 			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
 		}),
-		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
-		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
+		WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
+		WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
 	}
 	if u.logLevel.String() == "debug" {
-		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
+		bucketStoreOpts = append(bucketStoreOpts, WithDebugLogging())
 	}
 
-	bs, err := store.NewBucketStore(
+	bs, err := NewBucketStore(
 		userBkt,
 		fetcher,
 		u.syncDirForUser(userID),
@@ -714,7 +713,7 @@ func (s spanSeriesServer) Context() context.Context {
 }
 
 type limiter struct {
-	limiter *store.Limiter
+	limiter *Limiter
 }
 
 func (c *limiter) Reserve(num uint64) error {
@@ -726,32 +725,32 @@ func (c *limiter) Reserve(num uint64) error {
 	return nil
 }
 
-func newChunksLimiterFactory(limits *validation.Overrides, userID string) store.ChunksLimiterFactory {
-	return func(failedCounter prometheus.Counter) store.ChunksLimiter {
+func newChunksLimiterFactory(limits *validation.Overrides, userID string) ChunksLimiterFactory {
+	return func(failedCounter prometheus.Counter) ChunksLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &limiter{
-			limiter: store.NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
+			limiter: NewLimiter(uint64(limits.MaxChunksPerQueryFromStore(userID)), failedCounter),
 		}
 	}
 }
 
-func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.SeriesLimiterFactory {
-	return func(failedCounter prometheus.Counter) store.SeriesLimiter {
+func newSeriesLimiterFactory(limits *validation.Overrides, userID string) SeriesLimiterFactory {
+	return func(failedCounter prometheus.Counter) SeriesLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &limiter{
-			limiter: store.NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
+			limiter: NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
 		}
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string) store.BytesLimiterFactory {
-	return func(failedCounter prometheus.Counter) store.BytesLimiter {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string) BytesLimiterFactory {
+	return func(failedCounter prometheus.Counter) BytesLimiter {
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
 		// each time a new limiter is instantiated.
 		return &limiter{
-			limiter: store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter),
+			limiter: NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter),
 		}
 	}
 }

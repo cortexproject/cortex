@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
@@ -33,7 +34,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"

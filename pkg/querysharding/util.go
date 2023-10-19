@@ -4,9 +4,9 @@ import (
 	"encoding/base64"
 	"sync"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
 const (

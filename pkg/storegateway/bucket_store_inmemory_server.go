@@ -3,11 +3,11 @@ package storegateway
 import (
 	"context"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/gogo/protobuf/types"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
 // bucketStoreSeriesServer is a fake in-memory gRPC server used to

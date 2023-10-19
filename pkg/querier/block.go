@@ -4,13 +4,13 @@ import (
 	"math"
 	"sort"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/series"
@@ -22,13 +22,13 @@ func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMa
 		var t storepb.LabelMatcher_Type
 		switch m.Type {
 		case labels.MatchEqual:
-			t = storepb.LabelMatcher_EQ
+			t = storepb.EQ
 		case labels.MatchNotEqual:
-			t = storepb.LabelMatcher_NEQ
+			t = storepb.NEQ
 		case labels.MatchRegexp:
-			t = storepb.LabelMatcher_RE
+			t = storepb.RE
 		case labels.MatchNotRegexp:
-			t = storepb.LabelMatcher_NRE
+			t = storepb.NRE
 		}
 
 		converted = append(converted, storepb.LabelMatcher{

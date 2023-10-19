@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
@@ -28,7 +29,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -1740,7 +1740,7 @@ func mockSeriesResponse(lbls labels.Labels, timeMillis int64, value float64) *st
 			Series: &storepb.Series{
 				Labels: labelpb.ZLabelsFromPromLabels(lbls),
 				Chunks: []storepb.AggrChunk{
-					{MinTime: timeMillis, MaxTime: timeMillis, Raw: &storepb.Chunk{Type: storepb.Chunk_XOR, Data: chunkData}},
+					{MinTime: timeMillis, MaxTime: timeMillis, Raw: &storepb.Chunk{Type: storepb.XOR, Data: chunkData}},
 				},
 			},
 		},
@@ -1849,7 +1849,7 @@ func TestCountSamplesAndChunks(t *testing.T) {
 					Chunks: []storepb.AggrChunk{
 						{
 							Raw: &storepb.Chunk{
-								Type: storepb.Chunk_XOR,
+								Type: storepb.XOR,
 								Data: c.Bytes(),
 							},
 						},
@@ -1865,13 +1865,13 @@ func TestCountSamplesAndChunks(t *testing.T) {
 					Chunks: []storepb.AggrChunk{
 						{
 							Raw: &storepb.Chunk{
-								Type: storepb.Chunk_XOR,
+								Type: storepb.XOR,
 								Data: c.Bytes(),
 							},
 						},
 						{
 							Raw: &storepb.Chunk{
-								Type: storepb.Chunk_XOR,
+								Type: storepb.XOR,
 								Data: c.Bytes(),
 							},
 						},

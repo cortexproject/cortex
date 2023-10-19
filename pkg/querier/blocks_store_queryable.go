@@ -12,6 +12,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/hintspb"
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/types"
@@ -25,8 +27,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/pool"
-	"github.com/thanos-io/thanos/pkg/store/hintspb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
@@ -1013,7 +1013,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shar
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
 			{
-				Type:  storepb.LabelMatcher_RE,
+				Type:  storepb.RE,
 				Name:  block.BlockIDLabel,
 				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
 			},
@@ -1030,7 +1030,7 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shar
 		MinTime:                 minT,
 		MaxTime:                 maxT,
 		Matchers:                matchers,
-		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		PartialResponseStrategy: storepb.ABORT,
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
 		ShardInfo:               shardingInfo,
@@ -1048,7 +1048,7 @@ func createLabelNamesRequest(minT, maxT int64, blockIDs []ulid.ULID, matchers []
 	hints := &hintspb.LabelNamesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
 			{
-				Type:  storepb.LabelMatcher_RE,
+				Type:  storepb.RE,
 				Name:  block.BlockIDLabel,
 				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
 			},
@@ -1077,7 +1077,7 @@ func createLabelValuesRequest(minT, maxT int64, label string, blockIDs []ulid.UL
 	hints := &hintspb.LabelValuesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
 			{
-				Type:  storepb.LabelMatcher_RE,
+				Type:  storepb.RE,
 				Name:  block.BlockIDLabel,
 				Value: strings.Join(convertULIDsToString(blockIDs), "|"),
 			},

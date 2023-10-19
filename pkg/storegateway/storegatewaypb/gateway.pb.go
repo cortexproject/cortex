@@ -7,7 +7,7 @@ import (
 	context "context"
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
-	storepb "github.com/thanos-io/thanos/pkg/store/storepb"
+	storepb "github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"

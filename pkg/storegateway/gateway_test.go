@@ -15,6 +15,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 
+	"github.com/cortexproject/cortex/pkg/storegateway/storepb"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
@@ -29,7 +30,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
-	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -961,7 +961,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 				MinTime: minT,
 				MaxTime: maxT,
 				Matchers: []storepb.LabelMatcher{
-					{Type: storepb.LabelMatcher_RE, Name: "__name__", Value: ".*"},
+					{Type: storepb.RE, Name: "__name__", Value: ".*"},
 				},
 			}
 
@@ -1032,7 +1032,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 		MinTime: minT,
 		MaxTime: maxT,
 		Matchers: []storepb.LabelMatcher{
-			{Type: storepb.LabelMatcher_RE, Name: "__name__", Value: ".*"},
+			{Type: storepb.RE, Name: "__name__", Value: ".*"},
 		},
 	}
 
@@ -1121,7 +1121,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 		MinTime: minT,
 		MaxTime: maxT,
 		Matchers: []storepb.LabelMatcher{
-			{Type: storepb.LabelMatcher_RE, Name: "__name__", Value: ".*"},
+			{Type: storepb.RE, Name: "__name__", Value: ".*"},
 		},
 	}
 

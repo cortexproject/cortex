@@ -80,7 +80,8 @@ const (
 	Configs                  string = "configs"
 	AlertManager             string = "alertmanager"
 	Compactor                string = "compactor"
-	StoreGateway             string = "store-gateway"
+	IndexGateway             string = "index-gateway"
+	ChunksGateway            string = "chunks-gateway"
 	MemberlistKV             string = "memberlist-kv"
 	TenantDeletion           string = "tenant-deletion"
 	Purger                   string = "purger"
@@ -758,7 +759,8 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Configs, t.initConfig)
 	mm.RegisterModule(AlertManager, t.initAlertManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
-	mm.RegisterModule(StoreGateway, t.initStoreGateway)
+	mm.RegisterModule(IndexGateway, t.initStoreGateway)
+	mm.RegisterModule(ChunksGateway, t.initStoreGateway)
 	mm.RegisterModule(TenantDeletion, t.initTenantDeletionAPI, modules.UserInvisibleModule)
 	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
@@ -789,11 +791,12 @@ func (t *Cortex) setupModuleManager() error {
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
-		StoreGateway:             {API, Overrides, MemberlistKV},
+		IndexGateway:             {API, Overrides, MemberlistKV},
+		ChunksGateway:            {API, Overrides, MemberlistKV},
 		TenantDeletion:           {API, Overrides, DeleteRequestsStore},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
-		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
+		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, ChunksGateway, IndexGateway, Ruler},
 	}
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		deps[Ruler] = []string{Overrides, DeleteRequestsStore, RulerStorage}

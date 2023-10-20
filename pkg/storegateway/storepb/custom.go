@@ -52,6 +52,30 @@ func NewHintsSeriesResponse(hints *types.Any) *SeriesResponse {
 	}
 }
 
+func NewWarnSelectResponse(err error) *SeriesResponse {
+	return &SeriesResponse{
+		Result: &SeriesResponse_Warning{
+			Warning: err.Error(),
+		},
+	}
+}
+
+func NewSelectResponse(series *SelectedSeries) *SelectResponse {
+	return &SelectResponse{
+		Result: &SelectResponse_Series{
+			Series: series,
+		},
+	}
+}
+
+func NewHintsSelectResponse(hints *types.Any) *SelectResponse {
+	return &SelectResponse{
+		Result: &SelectResponse_Hints{
+			Hints: hints,
+		},
+	}
+}
+
 func GRPCCodeFromWarn(warn string) codes.Code {
 	if strings.Contains(warn, "rpc error: code = ResourceExhausted") {
 		return codes.ResourceExhausted

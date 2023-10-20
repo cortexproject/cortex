@@ -74,3 +74,15 @@ enum PartialResponseStrategy {
   /// errors.
   ABORT = 1;
 }
+
+message SelectedSeries {
+  string blockId = 1;
+  repeated thanos.Label labels      = 2 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/thanos-io/thanos/pkg/store/labelpb.ZLabel"];
+  repeated ChunkMeta chunks = 3;
+}
+
+message ChunkMeta {
+  int64 mint = 1;
+  int64 maxt = 2;
+  int64 ref = 3;
+}

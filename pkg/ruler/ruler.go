@@ -254,8 +254,10 @@ type Ruler struct {
 	// Pool of clients used to connect to other ruler replicas.
 	clientsPool ClientsPool
 
-	ringCheckErrors prometheus.Counter
-	rulerSync       *prometheus.CounterVec
+	ringCheckErrors            prometheus.Counter
+	rulerSync                  *prometheus.CounterVec
+	ruleGroupStoreLoadDuration prometheus.Gauge
+	ruleGroupSyncDuration      prometheus.Gauge
 
 	allowedTenants *util.AllowedTenants
 
@@ -288,6 +290,16 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 			Name: "cortex_ruler_sync_rules_total",
 			Help: "Total number of times the ruler sync operation triggered.",
 		}, []string{"reason"}),
+
+		ruleGroupStoreLoadDuration: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ruler_rule_group_load_duration_seconds",
+			Help: "Time taken to load rule groups from storage",
+		}),
+
+		ruleGroupSyncDuration: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ruler_rule_group_sync_duration_seconds",
+			Help: "The duration in seconds required to sync and load rule groups from storage.",
+		}),
 	}
 
 	if len(cfg.EnabledTenants) > 0 {
@@ -512,20 +524,41 @@ func (r *Ruler) run(ctx context.Context) error {
 func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	level.Debug(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
+	timer := prometheus.NewTimer(nil)
+
+	defer func() {
+		ruleGroupSyncDuration := timer.ObserveDuration().Seconds()
+		r.ruleGroupSyncDuration.Set(ruleGroupSyncDuration)
+	}()
+
+	loadedConfigs, err := r.loadRuleGroups(ctx)
+	if err != nil {
+		return
+	}
+
+	// This will also delete local group files for users that are no longer in 'configs' map.
+	r.manager.SyncRuleGroups(ctx, loadedConfigs)
+}
+
+func (r *Ruler) loadRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	timer := prometheus.NewTimer(nil)
+
+	defer func() {
+		storeLoadSeconds := timer.ObserveDuration().Seconds()
+		r.ruleGroupStoreLoadDuration.Set(storeLoadSeconds)
+	}()
 
 	configs, err := r.listRules(ctx)
 	if err != nil {
 		level.Error(r.logger).Log("msg", "unable to list rules", "err", err)
-		return
+		return nil, err
 	}
 
 	loadedConfigs, err := r.store.LoadRuleGroups(ctx, configs)
 	if err != nil {
 		level.Warn(r.logger).Log("msg", "failed to load some rules owned by this ruler", "count", len(configs)-len(loadedConfigs), "err", err)
 	}
-
-	// This will also delete local group files for users that are no longer in 'configs' map.
-	r.manager.SyncRuleGroups(ctx, loadedConfigs)
+	return loadedConfigs, nil
 }
 
 func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGroupList, err error) {

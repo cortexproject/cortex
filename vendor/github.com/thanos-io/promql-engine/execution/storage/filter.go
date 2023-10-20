@@ -21,7 +21,7 @@ func (n nopFilter) Matches(storage.Series) bool { return true }
 
 type filter struct {
 	matchers   []*labels.Matcher
-	matcherSet map[string]*labels.Matcher
+	matcherSet map[string][]*labels.Matcher
 }
 
 func NewFilter(matchers []*labels.Matcher) Filter {
@@ -29,9 +29,9 @@ func NewFilter(matchers []*labels.Matcher) Filter {
 		return &nopFilter{}
 	}
 
-	matcherSet := make(map[string]*labels.Matcher)
+	matcherSet := make(map[string][]*labels.Matcher)
 	for _, m := range matchers {
-		matcherSet[m.Name] = m
+		matcherSet[m.Name] = append(matcherSet[m.Name], m)
 	}
 	return &filter{
 		matchers:   matchers,
@@ -46,10 +46,13 @@ func (f filter) Matches(series storage.Series) bool {
 		return true
 	}
 
-	for name, m := range f.matcherSet {
+	for name, matchers := range f.matcherSet {
 		label := series.Labels().Get(name)
-		if !m.Matches(label) {
-			return false
+
+		for _, m := range matchers {
+			if !m.Matches(label) {
+				return false
+			}
 		}
 	}
 

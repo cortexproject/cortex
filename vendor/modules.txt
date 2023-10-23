@@ -903,8 +903,8 @@ github.com/thanos-io/promql-engine/extlabels
 github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.32.5-0.20231020043209-42792d9d0e8c
-## explicit; go 1.18
+# github.com/thanos-io/thanos v0.32.5-0.20231023172853-513272e70874
+## explicit; go 1.21
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata

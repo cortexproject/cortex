@@ -210,7 +210,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 		}
 	}
 
-	return newMultiLevelCache(caches...), nil
+	return newMultiLevelCache(registerer, caches...), nil
 }
 
 func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {

@@ -419,7 +419,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 
 	// Randomise the seed but log it in case we need to reproduce the test on failure.
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	rand.New(rand.NewSource(seed))
 	t.Log("random generator seed:", seed)
 
 	ctx := context.Background()

@@ -929,11 +929,11 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 
 	// Inject different external labels for each block.
 	for idx, blockID := range blockIDs {
+		metaLabels := make(map[string]string)
+		metaLabels[cortex_tsdb.TenantIDExternalLabel] = userID
+		metaLabels[cortex_tsdb.IngesterIDExternalLabel] = fmt.Sprintf("ingester-%d", idx)
 		meta := metadata.Thanos{
-			Labels: map[string]string{
-				cortex_tsdb.TenantIDExternalLabel:   userID,
-				cortex_tsdb.IngesterIDExternalLabel: fmt.Sprintf("ingester-%d", idx),
-			},
+			Labels: metaLabels,
 			Source: metadata.TestSource,
 		}
 

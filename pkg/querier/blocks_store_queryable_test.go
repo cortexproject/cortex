@@ -97,8 +97,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"error while getting clients to query the store-gateway": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
@@ -109,8 +109,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -135,8 +135,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"a single store-gateway instance holds the required blocks (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -167,8 +167,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -196,8 +196,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -226,8 +226,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -295,8 +295,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -316,10 +316,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -342,10 +342,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances have some missing blocks but queried from a replica during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -421,8 +421,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit greater then the number of chunks fetched": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -447,8 +447,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks at first attempt": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -465,8 +465,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks at first attempt - global limit": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -483,10 +483,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -521,10 +521,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts - global": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -559,8 +559,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max series per query limit hit while fetching chunks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -577,8 +577,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunk bytes per query limit hit while fetching chunks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -595,8 +595,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max data bytes per query limit hit while fetching chunks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -613,7 +613,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -642,7 +642,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return due to clientconn closing": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -671,7 +671,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return due to chunk pool exhaustion": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -700,7 +700,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"all store-gateways return PermissionDenied": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			expectedErr: validation.AccessDeniedError("PermissionDenied"),
 			storeSetResponses: []interface{}{
@@ -738,7 +738,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return on stream": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -770,7 +770,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them had too many inflight requests": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -799,7 +799,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"store gateway returns resource exhausted error other than max inflight request": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -935,8 +935,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"error while getting clients to query the store-gateway": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
@@ -945,8 +945,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"a single store-gateway instance holds the required blocks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -970,8 +970,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -1008,8 +1008,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -1046,8 +1046,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			// Block1 has series1 and series2
 			// Block2 has only series1
@@ -1127,8 +1127,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -1154,10 +1154,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -1200,10 +1200,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			// Block3 has series1 and series2
 			// Block4 has no series (poor lonely block)
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -1300,7 +1300,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -1526,8 +1526,8 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 				Service: services.NewIdleService(nil, nil),
 			}
 			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
 			// Mock the store to simulate each block is queried from a different store-gateway.

@@ -32,7 +32,7 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 			cfg: IndexCacheConfig{
 				Backend: "inmemory",
 			},
-			expectedType: &storecache.InMemoryIndexCache{},
+			expectedType: &InMemoryIndexCache{},
 		},
 		"instantiate multiples backends - inmemory/redis": {
 			cfg: IndexCacheConfig{

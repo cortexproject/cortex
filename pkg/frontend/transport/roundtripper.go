@@ -41,6 +41,10 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 		return nil, err
 	}
 
+	if err = r.ParseForm(); err != nil {
+		return nil, err
+	}
+
 	resp, err := a.roundTripper.RoundTripGRPC(r.Context(), r.Form, time.Now(), req)
 	if err != nil {
 		return nil, err

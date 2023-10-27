@@ -271,13 +271,13 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	logMessage := append([]interface{}{
+	logMessage := []interface{}{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
-	})
+	}
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)

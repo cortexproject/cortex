@@ -277,11 +277,12 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"host", r.Host,
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
-	}, formatQueryString(queryString)...)
+	})
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
@@ -327,7 +328,6 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)
 
-	logMessage = append(logMessage, formatQueryString(queryString)...)
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
@@ -355,6 +355,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	} else {
 		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	var reason string
 	if statusCode == http.StatusTooManyRequests {
@@ -404,8 +405,17 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 }
 
 func formatQueryString(queryString url.Values) (fields []interface{}) {
+	var queryFields []string
 	for k, v := range queryString {
+		// If `query` or `match[]` field exists, we always put it as the last field.
+		if k == "query" || k == "match[]" {
+			queryFields = []string{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
+			continue
+		}
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
+	}
+	if len(queryFields) > 0 {
+		fields = append(fields, queryFields)
 	}
 	return fields
 }

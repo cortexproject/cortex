@@ -351,11 +351,13 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		} else {
 			logMessage = append(logMessage, "error", s.Message())
 		}
+	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
+	if error != nil {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	} else {
 		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	}
-	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	var reason string
 	if statusCode == http.StatusTooManyRequests {

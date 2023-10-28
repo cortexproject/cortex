@@ -1990,7 +1990,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
-		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
+		OutOfOrderTimeWindow:           oooTimeWindow,
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {
@@ -2044,7 +2044,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			func() bool {
-				return time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds() > 0
+				return i.limits.OutOfOrderTimeWindow(userID) > 0
 			}, // No need to upload compacted blocks unless out of order samples is enabled.
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,

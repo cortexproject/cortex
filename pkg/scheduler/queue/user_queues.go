@@ -20,7 +20,7 @@ type Limits interface {
 	// ReservedHighPriorityQueriers returns the minimum number of queriers dedicated for high priority
 	// queue per tenant. All queriers still handle priority queue first, but this provides extra protection on
 	// high priority queries from slow normal queries exhausting all queriers.
-	// If ReservedHighPriorityQueriers is capped by MaxQueriersPerUser.
+	// ReservedHighPriorityQueriers is capped by MaxQueriersPerUser.
 	// If less than 1, it will be applied as a percentage of MaxQueriersPerUser.
 	ReservedHighPriorityQueriers(user string) float64
 
@@ -118,7 +118,7 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int, isHighPriority bool) chan Request {
+func (q *queues) getOrAddQueue(userID string, maxQueriers int, highPriority bool) chan Request {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -166,7 +166,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, isHighPriority bo
 		uq.queriers, uq.reservedQueriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, q.limits.ReservedHighPriorityQueriers(userID), nil)
 	}
 
-	if isHighPriority {
+	if highPriority {
 		return uq.highPriorityQueue
 	}
 

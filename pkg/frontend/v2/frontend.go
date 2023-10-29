@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/scheduler"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -24,6 +22,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -86,11 +85,11 @@ type Frontend struct {
 }
 
 type frontendRequest struct {
-	queryID        uint64
-	request        *httpgrpc.HTTPRequest
-	userID         string
-	statsEnabled   bool
-	isHighPriority bool
+	queryID      uint64
+	request      *httpgrpc.HTTPRequest
+	userID       string
+	statsEnabled bool
+	highPriority bool
 
 	cancel context.CancelFunc
 
@@ -171,7 +170,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, timestamp time.Time, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest, reqParams url.Values, ts time.Time) (*httpgrpc.HTTPResponse, error) {
 	if s := f.State(); s != services.Running {
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
@@ -196,11 +195,10 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, 
 
 	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		freq := &frontendRequest{
-			queryID:        f.lastQueryID.Inc(),
-			request:        req,
-			userID:         userID,
-			statsEnabled:   stats.IsEnabled(ctx),
-			isHighPriority: util_query.IsHighPriority(requestParams, timestamp, f.limits.HighPriorityQueries(userID)),
+			queryID:      f.lastQueryID.Inc(),
+			request:      req,
+			userID:       userID,
+			statsEnabled: stats.IsEnabled(ctx),
 
 			cancel: cancel,
 
@@ -210,6 +208,10 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, 
 			response: make(chan *frontendv2pb.QueryResultRequest, 1),
 
 			retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
+		}
+
+		if reqParams != nil {
+			freq.highPriority = util_query.IsHighPriority(reqParams, ts, f.limits.HighPriorityQueries(userID))
 		}
 
 		f.requests.put(freq)

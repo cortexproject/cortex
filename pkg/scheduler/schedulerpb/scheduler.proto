@@ -78,7 +78,7 @@ message FrontendToScheduler {
   string userID = 4;
   httpgrpc.HTTPRequest httpRequest = 5;
   bool statsEnabled = 6;
-  bool isHighPriority = 7;
+  bool highPriority = 7;
 }
 
 enum SchedulerToFrontendStatus {

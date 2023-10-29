@@ -11,7 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
+func Test_IsHighPriorityShouldMatchRegex(t *testing.T) {
 	now := time.Now()
 	config := []validation.HighPriorityQuery{
 		{
@@ -110,7 +110,7 @@ func Test_IsHighPriority_ShouldMatchRegex(t *testing.T) {
 	}, now, config))
 }
 
-func Test_IsHighPriority_ShouldBeBetweenStartAndEndTime(t *testing.T) {
+func Test_IsHighPriorityShouldBeBetweenStartAndEndTime(t *testing.T) {
 	now := time.Now()
 	config := []validation.HighPriorityQuery{
 		{

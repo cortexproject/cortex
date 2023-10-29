@@ -174,7 +174,7 @@ func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 		isHighPriority: false,
 	}
 	normalRequest2 := MockRequest{
-		id:             "normal query 1",
+		id:             "normal query 2",
 		isHighPriority: false,
 	}
 	highPriorityRequest := MockRequest{

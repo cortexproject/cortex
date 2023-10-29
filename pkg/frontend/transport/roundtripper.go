@@ -3,9 +3,12 @@ package transport
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/weaveworks/common/httpgrpc"
@@ -14,7 +17,7 @@ import (
 
 // GrpcRoundTripper is similar to http.RoundTripper, but works with HTTP requests converted to protobuf messages.
 type GrpcRoundTripper interface {
-	RoundTripGRPC(context.Context, url.Values, time.Time, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
+	RoundTripGRPC(context.Context, *httpgrpc.HTTPRequest, url.Values, time.Time) (*httpgrpc.HTTPResponse, error)
 }
 
 func AdaptGrpcRoundTripperToHTTPRoundTripper(r GrpcRoundTripper) http.RoundTripper {
@@ -36,16 +39,27 @@ func (b *buffer) Bytes() []byte {
 }
 
 func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, error) {
+	regexp.MustCompile("str")
 	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println(r.URL.Path)
 
-	if err = r.ParseForm(); err != nil {
-		return nil, err
+	var (
+		resp      *httpgrpc.HTTPResponse
+		reqValues url.Values
+		ts        time.Time
+	)
+
+	if strings.HasSuffix(r.URL.Path, "/query") || strings.HasSuffix(r.URL.Path, "/query_range") {
+		if err = r.ParseForm(); err == nil {
+			reqValues = r.Form
+			ts = time.Now()
+		}
 	}
 
-	resp, err := a.roundTripper.RoundTripGRPC(r.Context(), r.Form, time.Now(), req)
+	resp, err = a.roundTripper.RoundTripGRPC(r.Context(), req, reqValues, ts)
 	if err != nil {
 		return nil, err
 	}

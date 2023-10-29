@@ -263,7 +263,7 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				HttpRequest:     req.request,
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,
-				IsHighPriority:  req.isHighPriority,
+				HighPriority:    req.highPriority,
 			})
 
 			if err != nil {

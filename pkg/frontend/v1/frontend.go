@@ -95,14 +95,14 @@ type request struct {
 	queueSpan   opentracing.Span
 	originalCtx context.Context
 
-	request        *httpgrpc.HTTPRequest
-	err            chan error
-	response       chan *httpgrpc.HTTPResponse
-	isHighPriority bool
+	request      *httpgrpc.HTTPRequest
+	err          chan error
+	response     chan *httpgrpc.HTTPResponse
+	highPriority bool
 }
 
 func (r request) IsHighPriority() bool {
-	return r.isHighPriority
+	return r.highPriority
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
@@ -177,7 +177,7 @@ func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, timestamp time.Time, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest, reqParams url.Values, ts time.Time) (*httpgrpc.HTTPResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
@@ -196,15 +196,18 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, requestParams url.Values, 
 
 	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		request := request{
-			request:        req,
-			originalCtx:    ctx,
-			isHighPriority: util_query.IsHighPriority(requestParams, timestamp, f.limits.HighPriorityQueries(userID)),
+			request:     req,
+			originalCtx: ctx,
 
 			// Buffer of 1 to ensure response can be written by the server side
 			// of the Process stream, even if this goroutine goes away due to
 			// client context cancellation.
 			err:      make(chan error, 1),
 			response: make(chan *httpgrpc.HTTPResponse, 1),
+		}
+
+		if reqParams != nil {
+			request.highPriority = util_query.IsHighPriority(reqParams, ts, f.limits.HighPriorityQueries(userID))
 		}
 
 		if err := f.queueRequest(ctx, &request); err != nil {

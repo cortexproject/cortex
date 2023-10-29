@@ -4247,3 +4247,55 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 
 	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
+
+func TestIngesterShipperUploadCompactedHotReload(t *testing.T) {
+	// Create ingester.
+	cfg := defaultIngesterTestConfig(t)
+	dir := t.TempDir()
+	blocksDir := filepath.Join(dir, "blocks")
+	limits := defaultLimitsTestConfig()
+	reg := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, blocksDir, reg)
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	uid := "user-1"
+	req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", 1)), 1)
+	ctx := user.InjectOrgID(context.Background(), uid)
+	_, err = i.Push(ctx, req)
+	require.NoError(t, err)
+	db := i.getTSDB(uid)
+	_, err = db.shipper.Sync(ctx)
+	require.NoError(t, err)
+
+	promReg := i.TSDBState.tsdbMetrics.regs.GetPromRegistryByUser(uid)
+	require.NotNil(t, promReg)
+	// Out of order samples disabled. Expected metric value to be 0.
+	expectedMetrics := `
+		# HELP thanos_shipper_upload_compacted_done If 1 it means shipper uploaded all compacted blocks from the filesystem.
+		# TYPE thanos_shipper_upload_compacted_done gauge
+		thanos_shipper_upload_compacted_done 0
+`
+	assert.NoError(t, testutil.GatherAndCompare(promReg, strings.NewReader(expectedMetrics), "thanos_shipper_upload_compacted_done"))
+
+	// set ooo time window in limits, and re-initialize the ingester
+	limits.OutOfOrderTimeWindow = model.Duration(time.Minute)
+	i.limits, _ = validation.NewOverrides(limits, nil)
+	require.NoError(t, err)
+	_, err = db.shipper.Sync(ctx)
+	require.NoError(t, err)
+	// Expected metric value to be 1 now as OOO time window has been set.
+	expectedMetrics = `
+		# HELP thanos_shipper_upload_compacted_done If 1 it means shipper uploaded all compacted blocks from the filesystem.
+		# TYPE thanos_shipper_upload_compacted_done gauge
+		thanos_shipper_upload_compacted_done 1
+`
+	assert.NoError(t, testutil.GatherAndCompare(promReg, strings.NewReader(expectedMetrics), "thanos_shipper_upload_compacted_done"))
+}

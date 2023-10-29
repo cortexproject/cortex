@@ -678,6 +678,20 @@ func (r *UserRegistries) Registries() []UserRegistry {
 	return out
 }
 
+// GetPromRegistryByUser returns the Prometheus metrics registry by userID.
+func (r *UserRegistries) GetPromRegistryByUser(user string) *prometheus.Registry {
+	r.regsMu.Lock()
+	defer r.regsMu.Unlock()
+
+	for _, reg := range r.regs {
+		if reg.user == user {
+			return reg.reg
+		}
+	}
+
+	return nil
+}
+
 func (r *UserRegistries) BuildMetricFamiliesPerUser() MetricFamiliesPerUser {
 	data := MetricFamiliesPerUser{}
 	for _, entry := range r.Registries() {

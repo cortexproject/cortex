@@ -1967,7 +1967,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
-	oooTimeWindow := time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds()
 	walCompressType := wlog.CompressionNone
 	// TODO(yeya24): expose zstd compression for WAL.
 	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
@@ -1990,7 +1989,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
-		OutOfOrderTimeWindow:           oooTimeWindow,
+		OutOfOrderTimeWindow:           time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {

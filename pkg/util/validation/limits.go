@@ -510,6 +510,13 @@ func (o *Overrides) ReservedHighPriorityQueriers(userID string) float64 {
 
 // HighPriorityQueries returns list of definitions for high priority query.
 func (o *Overrides) HighPriorityQueries(userID string) []HighPriorityQuery {
+	highPriorityQueries := o.GetOverridesForUser(userID).HighPriorityQueries
+	for index, query := range highPriorityQueries {
+		if query.CompiledRegex == nil {
+			// no need to handle error, as we will use the CompiledRegex only if it's not nil
+			o.GetOverridesForUser(userID).HighPriorityQueries[index].CompiledRegex, _ = regexp.Compile(query.Regex)
+		}
+	}
 	return o.GetOverridesForUser(userID).HighPriorityQueries
 }
 

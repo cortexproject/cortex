@@ -3,7 +3,6 @@ package query
 import (
 	"math"
 	"net/url"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -23,9 +22,9 @@ func IsHighPriority(requestParams url.Values, now time.Time, highPriorityQueries
 	}
 
 	for _, highPriorityQuery := range highPriorityQueries {
-		regex := highPriorityQuery.Regex
+		compiledRegex := highPriorityQuery.CompiledRegex
 
-		if match, err := regexp.MatchString(regex, queryParam); !match || err != nil {
+		if compiledRegex == nil || !compiledRegex.MatchString(queryParam) {
 			continue
 		}
 

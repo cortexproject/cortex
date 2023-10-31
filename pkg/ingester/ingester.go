@@ -2044,7 +2044,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			func() bool {
-				return oooTimeWindow > 0 // Upload compacted blocks when OOO is enabled.
+				// Allow uploading compacted blocks. It is fine since compacted
+				//  blocks should only happen when OOO is enabled in ingester.
+				return true
 			},
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,

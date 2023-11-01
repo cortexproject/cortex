@@ -242,6 +242,11 @@ type QueryableWithFilter interface {
 	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
 }
 
+type limiterHolder struct {
+	limiter            *limiter.QueryLimiter
+	limiterInitializer sync.Once
+}
+
 // NewQueryable creates a new Queryable for cortex.
 func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides, tombstonesLoader purger.TombstonesLoader) storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
@@ -256,6 +261,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			queryStoreForLabels: cfg.QueryStoreForLabels,
 			distributor:         distributor,
 			stores:              stores,
+			limiterHolder:       &limiterHolder{},
 		}
 
 		return q, nil
@@ -273,6 +279,7 @@ type querier struct {
 	queryStoreForLabels bool
 	distributor         QueryableWithFilter
 	stores              []QueryableWithFilter
+	limiterHolder       *limiterHolder
 }
 
 func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int64, int64, storage.Querier, []storage.Querier, error) {
@@ -281,7 +288,11 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int
 		return ctx, userID, 0, 0, nil, nil, err
 	}
 
-	ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(q.limits.MaxFetchedSeriesPerQuery(userID), q.limits.MaxFetchedChunkBytesPerQuery(userID), q.limits.MaxChunksPerQuery(userID), q.limits.MaxFetchedDataBytesPerQuery(userID)))
+	q.limiterHolder.limiterInitializer.Do(func() {
+		q.limiterHolder.limiter = limiter.NewQueryLimiter(q.limits.MaxFetchedSeriesPerQuery(userID), q.limits.MaxFetchedChunkBytesPerQuery(userID), q.limits.MaxChunksPerQuery(userID), q.limits.MaxFetchedDataBytesPerQuery(userID))
+	})
+
+	ctx = limiter.AddQueryLimiterToContext(ctx, q.limiterHolder.limiter)
 
 	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
 	if err != nil {

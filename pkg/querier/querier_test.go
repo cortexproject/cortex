@@ -311,6 +311,201 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}
 }
 
+type tenantLimit struct {
+	MaxFetchedSeriesPerQuery int
+}
+
+func (t tenantLimit) ByUserID(userID string) *validation.Limits {
+	return &validation.Limits{
+		MaxFetchedSeriesPerQuery: t.MaxFetchedSeriesPerQuery,
+	}
+}
+
+func (t tenantLimit) AllByUserID() map[string]*validation.Limits {
+	defaults := DefaultLimitsConfig()
+	return map[string]*validation.Limits{
+		"0": &defaults,
+	}
+}
+
+// By testing limits, we are ensuring queries with multiple selects share the query limiter
+func TestLimits(t *testing.T) {
+	t.Parallel()
+	start := time.Now().Add(-2 * time.Hour)
+	end := time.Now()
+	ctx := user.InjectOrgID(context.Background(), "0")
+	var cfg Config
+	flagext.DefaultValues(&cfg)
+
+	const chunks = 1
+
+	labelsSets := []labels.Labels{
+		{
+			{Name: model.MetricNameLabel, Value: "foo"},
+			{Name: "order", Value: "1"},
+		},
+		{
+			{Name: model.MetricNameLabel, Value: "foo"},
+			{Name: "order", Value: "2"},
+		},
+		{
+			{Name: model.MetricNameLabel, Value: "foo"},
+			{Name: "orders", Value: "3"},
+		},
+		{
+			{Name: model.MetricNameLabel, Value: "bar"},
+			{Name: "orders", Value: "4"},
+		},
+		{
+			{Name: model.MetricNameLabel, Value: "bar"},
+			{Name: "orders", Value: "5"},
+		},
+	}
+
+	_, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
+
+	streamResponse := client.QueryStreamResponse{
+		Timeseries: []cortexpb.TimeSeries{
+			{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: model.MetricNameLabel, Value: "foo"},
+					{Name: "order", Value: "2"},
+				},
+				Samples: samples,
+			},
+			{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: model.MetricNameLabel, Value: "foo"},
+					{Name: "order", Value: "1"},
+				},
+				Samples: samples,
+			},
+			{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: model.MetricNameLabel, Value: "foo"},
+					{Name: "orders", Value: "3"},
+				},
+				Samples: samples,
+			},
+			{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: model.MetricNameLabel, Value: "bar"},
+					{Name: "orders", Value: "2"},
+				},
+				Samples: samples,
+			},
+			{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: model.MetricNameLabel, Value: "bar"},
+					{Name: "orders", Value: "1"},
+				},
+				Samples: samples,
+			},
+		},
+	}
+
+	distributor := &MockLimitingDistributor{
+		response: &streamResponse,
+	}
+
+	distributorQueryableStreaming := newDistributorQueryable(distributor, true, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
+
+	tCases := []struct {
+		name                 string
+		description          string
+		distributorQueryable QueryableWithFilter
+		storeQueriables      []QueryableWithFilter
+		tenantLimit          validation.TenantLimits
+		query                string
+		assert               func(t *testing.T, r *promql.Result)
+	}{
+		{
+
+			name:                 "should result in limit failure for multi-select and an individual select hits the series limit",
+			description:          "query results in multi-select but duplicate finger prints get deduped but still results in # of series greater than limit",
+			query:                "foo + foo",
+			distributorQueryable: distributorQueryableStreaming,
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+			tenantLimit: &tenantLimit{
+				MaxFetchedSeriesPerQuery: 2,
+			},
+			assert: func(t *testing.T, r *promql.Result) {
+				require.Error(t, r.Err)
+			},
+		},
+		{
+
+			name:                 "should not result in limit failure for multi-select and the query does not hit the series limit",
+			description:          "query results in multi-select but duplicate series finger prints get deduped resulting in # of series within the limit",
+			query:                "foo + foo",
+			distributorQueryable: distributorQueryableStreaming,
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+			tenantLimit: &tenantLimit{
+				MaxFetchedSeriesPerQuery: 3,
+			},
+			assert: func(t *testing.T, r *promql.Result) {
+				require.NoError(t, r.Err)
+			},
+		},
+		{
+
+			name:                 "should result in limit failure for multi-select and query hits the series limit",
+			description:          "query results in multi-select but each individual select does not hit the limit but cumulatively the query hits the limit",
+			query:                "foo + bar",
+			distributorQueryable: distributorQueryableStreaming,
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+			tenantLimit: &tenantLimit{
+				MaxFetchedSeriesPerQuery: 3,
+			},
+			assert: func(t *testing.T, r *promql.Result) {
+				require.Error(t, r.Err)
+			},
+		},
+		{
+
+			name:                 "should not result in limit failure for multi-select and query does not hit the series limit",
+			description:          "query results in multi-select and the cumulative limit is >= series",
+			query:                "foo + bar",
+			distributorQueryable: distributorQueryableStreaming,
+			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(distributorQueryableStreaming)},
+			tenantLimit: &tenantLimit{
+				MaxFetchedSeriesPerQuery: 5,
+			},
+			assert: func(t *testing.T, r *promql.Result) {
+				require.NoError(t, r.Err)
+			},
+		},
+	}
+
+	for i, tc := range tCases {
+		t.Run(tc.name+fmt.Sprintf(", Test: %d", i), func(t *testing.T) {
+			wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
+			var wQueriables []QueryableWithFilter
+			for _, queriable := range tc.storeQueriables {
+				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
+			}
+			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
+			require.NoError(t, err)
+
+			queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides, purger.NewNoopTombstonesLoader())
+			opts := promql.EngineOpts{
+				Logger:     log.NewNopLogger(),
+				MaxSamples: 1e6,
+				Timeout:    1 * time.Minute,
+			}
+
+			queryEngine := promql.NewEngine(opts)
+
+			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, tc.query, start, end, 1*time.Minute)
+			require.NoError(t, err)
+
+			r := query.Exec(ctx)
+
+			tc.assert(t, r)
+		})
+	}
+}
+
 func TestQuerier(t *testing.T) {
 	t.Parallel()
 	var cfg Config

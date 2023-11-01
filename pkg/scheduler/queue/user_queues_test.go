@@ -22,11 +22,11 @@ func TestQueues(t *testing.T) {
 	assert.Equal(t, "", u)
 
 	// Add queues: [one]
-	qOne := getOrAdd(t, uq, "one", 0, false)
+	qOne := getOrAdd(t, uq, "one", 0, 0)
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qOne, qOne)
 
 	// [one two]
-	qTwo := getOrAdd(t, uq, "two", 0, false)
+	qTwo := getOrAdd(t, uq, "two", 0, 0)
 	assert.NotEqual(t, qOne, qTwo)
 
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qOne, qTwo, qOne)
@@ -34,7 +34,7 @@ func TestQueues(t *testing.T) {
 
 	// [one two three]
 	// confirm fifo by adding a third queue and iterating to it
-	qThree := getOrAdd(t, uq, "three", 0, false)
+	qThree := getOrAdd(t, uq, "three", 0, 0)
 
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qThree, qOne)
 
@@ -45,7 +45,7 @@ func TestQueues(t *testing.T) {
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qTwo, qThree, qTwo)
 
 	// "four" is added at the beginning of the list: [four two three]
-	qFour := getOrAdd(t, uq, "four", 0, false)
+	qFour := getOrAdd(t, uq, "four", 0, 0)
 
 	lastUserIndex = confirmOrderForQuerier(t, uq, "querier-1", lastUserIndex, qThree, qFour, qTwo, qThree)
 
@@ -92,7 +92,7 @@ func TestQueuesWithQueriers(t *testing.T) {
 	// Add user queues.
 	for u := 0; u < users; u++ {
 		uid := fmt.Sprintf("user-%d", u)
-		getOrAdd(t, uq, uid, maxQueriersPerUser, false)
+		getOrAdd(t, uq, uid, maxQueriersPerUser, 0)
 
 		// Verify it has maxQueriersPerUser queriers assigned now.
 		qs := uq.userQueues[uid].queriers
@@ -156,7 +156,7 @@ func TestQueuesConsistency(t *testing.T) {
 			conns := map[string]int{}
 
 			for i := 0; i < 10000; i++ {
-				queue := uq.getOrAddQueue(generateTenant(r), 3, false)
+				queue := uq.getOrAddQueue(generateTenant(r), 3, 0)
 				switch r.Int() % 6 {
 				case 0:
 					assert.NotNil(t, queue)
@@ -208,7 +208,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	// Add user queues.
 	for i := 0; i < numUsers; i++ {
 		userID := fmt.Sprintf("user-%d", i)
-		getOrAdd(t, uq, userID, maxQueriersPerUser, false)
+		getOrAdd(t, uq, userID, maxQueriersPerUser, 0)
 	}
 
 	// We expect querier-1 to have some users.
@@ -300,7 +300,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	// Add user queues.
 	for i := 0; i < numUsers; i++ {
 		userID := fmt.Sprintf("user-%d", i)
-		getOrAdd(t, uq, userID, maxQueriersPerUser, false)
+		getOrAdd(t, uq, userID, maxQueriersPerUser, 0)
 	}
 
 	// We expect querier-1 to have some users.
@@ -360,11 +360,11 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int, isHighPriority bool) chan Request {
-	q := uq.getOrAddQueue(tenant, maxQueriers, isHighPriority)
+func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int, priority int64) chan Request {
+	q := uq.getOrAddQueue(tenant, maxQueriers, priority)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
-	assert.Equal(t, q, uq.getOrAddQueue(tenant, maxQueriers, isHighPriority))
+	assert.Equal(t, q, uq.getOrAddQueue(tenant, maxQueriers, priority))
 	return q
 }
 
@@ -441,17 +441,17 @@ func getUsersByQuerier(queues *queues, querierID string) []string {
 func TestShuffleQueriers(t *testing.T) {
 	allQueriers := []string{"a", "b", "c", "d", "e"}
 
-	queriers, _ := shuffleQueriersForUser(12345, 10, allQueriers, 0, nil)
+	queriers := shuffleQueriersForUser(12345, 10, allQueriers, nil)
 	require.Nil(t, queriers)
 
-	queriers, _ = shuffleQueriersForUser(12345, len(allQueriers), allQueriers, 0, nil)
+	queriers = shuffleQueriersForUser(12345, len(allQueriers), allQueriers, nil)
 	require.Nil(t, queriers)
 
-	r1, _ := shuffleQueriersForUser(12345, 3, allQueriers, 0, nil)
+	r1 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, len(r1))
 
 	// Same input produces same output.
-	r2, _ := shuffleQueriersForUser(12345, 3, allQueriers, 0, nil)
+	r2 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, len(r2))
 	require.Equal(t, r1, r2)
 }
@@ -473,7 +473,7 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 			toSelect = 3
 		}
 
-		selected, _ := shuffleQueriersForUser(r.Int63(), toSelect, allSortedQueriers, 0, nil)
+		selected := shuffleQueriersForUser(r.Int63(), toSelect, allSortedQueriers, nil)
 
 		require.Equal(t, toSelect, len(selected))
 
@@ -490,66 +490,66 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 }
 
 func TestShuffleQueriers_WithReservedQueriers(t *testing.T) {
-	allQueriers := []string{"a", "b", "c", "d", "e"}
-
-	queriers, reservedQueriers := shuffleQueriersForUser(12345, 0, allQueriers, 0, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 0, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 0.5, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 3, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 1, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 1, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 100, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 5, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 0, nil)
-	require.Equal(t, 3, len(queriers))
-	require.Equal(t, 0, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 0.5, nil)
-	require.Equal(t, 3, len(queriers))
-	require.Equal(t, 2, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 1, nil)
-	require.Equal(t, 3, len(queriers))
-	require.Equal(t, 1, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 100, nil)
-	require.Equal(t, 3, len(queriers))
-	require.Equal(t, 3, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 0, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 0, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 0.5, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 3, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 1, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 1, len(reservedQueriers))
-
-	queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 100, nil)
-	require.Nil(t, queriers)
-	require.Equal(t, 5, len(reservedQueriers))
+	//allQueriers := []string{"a", "b", "c", "d", "e"}
+	//
+	//queriers, reservedQueriers := shuffleQueriersForUser(12345, 0, allQueriers, 0, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 0, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 0.5, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 3, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 1, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 1, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 100, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 5, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 0, nil)
+	//require.Equal(t, 3, len(queriers))
+	//require.Equal(t, 0, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 0.5, nil)
+	//require.Equal(t, 3, len(queriers))
+	//require.Equal(t, 2, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 1, nil)
+	//require.Equal(t, 3, len(queriers))
+	//require.Equal(t, 1, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 100, nil)
+	//require.Equal(t, 3, len(queriers))
+	//require.Equal(t, 3, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 0, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 0, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 0.5, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 3, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 1, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 1, len(reservedQueriers))
+	//
+	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 100, nil)
+	//require.Nil(t, queriers)
+	//require.Equal(t, 5, len(reservedQueriers))
 }
 
 func TestShuffleQueriers_WithReservedQueriers_Correctness(t *testing.T) {
-	allQueriers := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"}
-
-	prevQueriers, prevReservedQueriers := shuffleQueriersForUser(12345, 10, allQueriers, 5, nil)
-	for i := 0; i < 100; i++ {
-		queriers, reservedQueriers := shuffleQueriersForUser(12345, 10, allQueriers, 5, nil)
-		require.Equal(t, prevQueriers, queriers)
-		require.Equal(t, prevReservedQueriers, reservedQueriers)
-		prevQueriers = queriers
-		prevReservedQueriers = reservedQueriers
-	}
+	//allQueriers := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"}
+	//
+	//prevQueriers, prevReservedQueriers := shuffleQueriersForUser(12345, 10, allQueriers, 5, nil)
+	//for i := 0; i < 100; i++ {
+	//	queriers, reservedQueriers := shuffleQueriersForUser(12345, 10, allQueriers, 5, nil)
+	//	require.Equal(t, prevQueriers, queriers)
+	//	require.Equal(t, prevReservedQueriers, reservedQueriers)
+	//	prevQueriers = queriers
+	//	prevReservedQueriers = reservedQueriers
+	//}
 }

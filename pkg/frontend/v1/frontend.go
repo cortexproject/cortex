@@ -54,7 +54,7 @@ type Limits interface {
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
 	Queriers      float64
-	QueryPriority validation.QueryPriority
+	queryPriority validation.QueryPriority
 	queue.MockLimits
 }
 
@@ -62,8 +62,8 @@ func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
 	return l.Queriers
 }
 
-func (l MockLimits) HighPriorityQueries(_ string) validation.QueryPriority {
-	return l.QueryPriority
+func (l MockLimits) QueryPriority(_ string) validation.QueryPriority {
+	return l.queryPriority
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries

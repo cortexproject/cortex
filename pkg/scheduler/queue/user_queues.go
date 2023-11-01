@@ -1,7 +1,6 @@
 package queue
 
 import (
-	"math"
 	"math/rand"
 	"sort"
 	"time"
@@ -353,23 +352,23 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	return queriers
 }
 
-func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, reservedQueriers float64) int {
-	numOfReservedQueriers := int(reservedQueriers)
-
-	if reservedQueriers < 1 && reservedQueriers > 0 {
-		if queriersToSelect == 0 || queriersToSelect > totalNumOfQueriers {
-			queriersToSelect = totalNumOfQueriers
-		}
-
-		numOfReservedQueriers = int(math.Ceil(float64(queriersToSelect) * reservedQueriers))
-	}
-
-	if numOfReservedQueriers > totalNumOfQueriers {
-		return totalNumOfQueriers
-	}
-
-	return numOfReservedQueriers
-}
+//func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, reservedQueriers float64) int {
+//	numOfReservedQueriers := int(reservedQueriers)
+//
+//	if reservedQueriers < 1 && reservedQueriers > 0 {
+//		if queriersToSelect == 0 || queriersToSelect > totalNumOfQueriers {
+//			queriersToSelect = totalNumOfQueriers
+//		}
+//
+//		numOfReservedQueriers = int(math.Ceil(float64(queriersToSelect) * reservedQueriers))
+//	}
+//
+//	if numOfReservedQueriers > totalNumOfQueriers {
+//		return totalNumOfQueriers
+//	}
+//
+//	return numOfReservedQueriers
+//}
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {

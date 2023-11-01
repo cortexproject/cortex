@@ -3041,14 +3041,17 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
 
-# Number of reserved queriers to only handle high priority queue (either query
-# frontend or query scheduler). If the value is between 0 and 1, it will be used
-# as a percentage of per-tenant queriers.
-# CLI flag: -frontend.reserved-high-priority-queriers
-[reserved_high_priority_queriers: <float> | default = 0]
+# Configuration for query priority.
+query_priority:
+  # Whether queries are assigned with priorities.
+  [enabled: <boolean> | default = false]
 
-# List of query definitions to be treated as a high priority.
-[high_priority_queries: <list of HighPriorityQuery> | default = []]
+  # Priority assigned to all queries by default. Must be a unique value. Use
+  # this as a baseline to make certain queries higher/lower priority.
+  [default_priority: <int> | default = 1]
+
+  # List of priority definitions.
+  [priorities: <list of PriorityDef> | default = []]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
@@ -5041,12 +5044,26 @@ otel:
     [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
-### `HighPriorityQuery`
+### `PriorityDef`
+
+```yaml
+# Priority level. Must be a unique value.
+[priority: <int> | default = 2]
+
+# Number of reserved queriers to handle this priority only. Value between 0 and
+# 1 will be used as a percentage.
+[reserved_queriers: <float> | default = 0]
+
+# List of query attributes to assign the priority.
+[query_attributes: <list of QueryAttribute> | default = []]
+```
+
+### `QueryAttribute`
 
 ```yaml
 # Query string regex. If evaluated true (on top of meeting all other criteria),
 # query is treated as a high priority.
-[regex: <string> | default = ""]
+[regex: <string> | default = ".*"]
 
 # If query range falls between the start_time and end_time (on top of meeting
 # all other criteria), query is treated as a high priority.

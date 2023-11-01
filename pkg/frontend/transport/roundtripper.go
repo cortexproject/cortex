@@ -3,11 +3,9 @@ package transport
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 
@@ -39,12 +37,10 @@ func (b *buffer) Bytes() []byte {
 }
 
 func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, error) {
-	regexp.MustCompile("str")
 	req, err := server.HTTPRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(r.URL.Path)
 
 	var (
 		resp      *httpgrpc.HTTPResponse

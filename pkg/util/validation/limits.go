@@ -48,20 +48,20 @@ type DisabledRuleGroup struct {
 type DisabledRuleGroups []DisabledRuleGroup
 
 type QueryPriority struct {
-	Enabled         bool          `yaml:"enabled" doc:"nocli|description=Whether queries are assigned with priorities."`
-	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Use this as a baseline to make certain queries higher/lower priority.|default=1"`
+	Enabled         bool          `yaml:"enabled" doc:"nocli|description=Whether queries are assigned with priorities.|default=false"`
+	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.|default=1"`
 	Priorities      []PriorityDef `yaml:"priorities" doc:"nocli|description=List of priority definitions."`
 	RegexCompiled   bool          `yaml:"-" doc:"nocli"`
 }
 
 type PriorityDef struct {
-	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level."`
-	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle this priority only. Value between 0 and 1 will be used as a percentage."`
+	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=2"`
+	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle this priority only. Value between 0 and 1 will be used as a percentage.|default=0"`
 	QueryAttributes  []QueryAttribute `yaml:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
 }
 
 type QueryAttribute struct {
-	Regex         string         `yaml:"regex" doc:"nocli|description=Query string regex. If evaluated true (on top of meeting all other criteria), query is treated as a high priority."`
+	Regex         string         `yaml:"regex" doc:"nocli|description=Query string regex. If evaluated true (on top of meeting all other criteria), query is treated as a high priority.|default=.*"`
 	CompiledRegex *regexp.Regexp `yaml:"-" doc:"nocli"`
 	StartTime     time.Duration  `yaml:"start_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
 	EndTime       time.Duration  `yaml:"end_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
@@ -520,6 +520,9 @@ func (o *Overrides) QueryPriority(userID string) QueryPriority {
 		priorities := o.GetOverridesForUser(userID).QueryPriority.Priorities
 		for i, priority := range priorities {
 			for j, attributes := range priority.QueryAttributes {
+				if attributes.Regex == "" || attributes.Regex == ".*" || attributes.Regex == ".+" {
+					continue // don't use regex at all, if it is match all
+				}
 				o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex, _ = regexp.Compile(attributes.Regex)
 			}
 		}

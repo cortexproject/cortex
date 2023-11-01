@@ -16,7 +16,7 @@ type Limits interface {
 	// of outstanding requests per tenant per request queue.
 	MaxOutstandingPerTenant(user string) int
 
-	// QueryPriority returns query priority config for the tenant, including different priorities,
+	// QueryPriority returns query priority config for the tenant, including priority level,
 	// their attributes, and how many reserved queriers each priority has.
 	QueryPriority(user string) validation.QueryPriority
 }

@@ -25,7 +25,7 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority validati
 		for _, attribute := range priority.QueryAttributes {
 			compiledRegex := attribute.CompiledRegex
 
-			if compiledRegex == nil || !compiledRegex.MatchString(queryParam) {
+			if compiledRegex != nil && !compiledRegex.MatchString(queryParam) {
 				continue
 			}
 

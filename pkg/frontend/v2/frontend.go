@@ -89,7 +89,7 @@ type frontendRequest struct {
 	request      *httpgrpc.HTTPRequest
 	userID       string
 	statsEnabled bool
-	highPriority bool
+	priority     int64
 
 	cancel context.CancelFunc
 
@@ -211,7 +211,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 		}
 
 		if reqParams != nil {
-			freq.highPriority = util_query.IsHighPriority(reqParams, ts, f.limits.HighPriorityQueries(userID))
+			freq.priority = util_query.GetPriority(reqParams, ts, f.limits.QueryPriority(userID))
 		}
 
 		f.requests.put(freq)

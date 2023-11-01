@@ -53,8 +53,8 @@ type Limits interface {
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	Queriers float64
-	Queries  []validation.HighPriorityQuery
+	Queriers      float64
+	QueryPriority validation.QueryPriority
 	queue.MockLimits
 }
 
@@ -62,8 +62,8 @@ func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
 	return l.Queriers
 }
 
-func (l MockLimits) HighPriorityQueries(_ string) []validation.HighPriorityQuery {
-	return l.Queries
+func (l MockLimits) HighPriorityQueries(_ string) validation.QueryPriority {
+	return l.QueryPriority
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -95,14 +95,14 @@ type request struct {
 	queueSpan   opentracing.Span
 	originalCtx context.Context
 
-	request      *httpgrpc.HTTPRequest
-	err          chan error
-	response     chan *httpgrpc.HTTPResponse
-	highPriority bool
+	request  *httpgrpc.HTTPRequest
+	err      chan error
+	response chan *httpgrpc.HTTPResponse
+	priority int64
 }
 
-func (r request) IsHighPriority() bool {
-	return r.highPriority
+func (r request) GetPriority() int64 {
+	return r.priority
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
@@ -207,7 +207,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 		}
 
 		if reqParams != nil {
-			request.highPriority = util_query.IsHighPriority(reqParams, ts, f.limits.HighPriorityQueries(userID))
+			request.priority = util_query.GetPriority(reqParams, ts, f.limits.QueryPriority(userID))
 		}
 
 		if err := f.queueRequest(ctx, &request); err != nil {

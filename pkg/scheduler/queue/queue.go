@@ -45,7 +45,7 @@ func FirstUser() UserIndex {
 
 // Request stored into the queue.
 type Request interface {
-	IsHighPriority() bool
+	GetPriority() int64
 }
 
 // RequestQueue holds incoming requests in per-user queues. It also assigns each user specified number of queriers,
@@ -98,7 +98,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 	}
 
 	shardSize := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
-	queue := q.queues.getOrAddQueue(userID, shardSize, req.IsHighPriority())
+	queue := q.queues.getOrAddQueue(userID, shardSize, req.GetPriority())
 	maxOutstandingRequests := q.queues.limits.MaxOutstandingPerTenant(userID)
 
 	if queue == nil {

@@ -11,42 +11,44 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func IsHighPriority(requestParams url.Values, now time.Time, highPriorityQueries []validation.HighPriorityQuery) bool {
+func GetPriority(requestParams url.Values, now time.Time, queryPriority validation.QueryPriority) int64 {
 	queryParam := requestParams.Get("query")
 	timeParam := requestParams.Get("time")
 	startParam := requestParams.Get("start")
 	endParam := requestParams.Get("end")
 
-	if queryParam == "" {
-		return false
+	if queryParam == "" || !queryPriority.Enabled {
+		return -1
 	}
 
-	for _, highPriorityQuery := range highPriorityQueries {
-		compiledRegex := highPriorityQuery.CompiledRegex
+	for _, priority := range queryPriority.Priorities {
+		for _, attribute := range priority.QueryAttributes {
+			compiledRegex := attribute.CompiledRegex
 
-		if compiledRegex == nil || !compiledRegex.MatchString(queryParam) {
-			continue
-		}
-
-		startTimeThreshold := now.Add(-1 * highPriorityQuery.StartTime.Abs())
-		endTimeThreshold := now.Add(-1 * highPriorityQuery.EndTime.Abs())
-
-		if instantTime, err := parseTime(timeParam); err == nil {
-			if isBetweenThresholds(instantTime, instantTime, startTimeThreshold, endTimeThreshold) {
-				return true
+			if compiledRegex == nil || !compiledRegex.MatchString(queryParam) {
+				continue
 			}
-		}
 
-		if startTime, err := parseTime(startParam); err == nil {
-			if endTime, err := parseTime(endParam); err == nil {
-				if isBetweenThresholds(startTime, endTime, startTimeThreshold, endTimeThreshold) {
-					return true
+			startTimeThreshold := now.Add(-1 * attribute.StartTime.Abs())
+			endTimeThreshold := now.Add(-1 * attribute.EndTime.Abs())
+
+			if instantTime, err := parseTime(timeParam); err == nil {
+				if isBetweenThresholds(instantTime, instantTime, startTimeThreshold, endTimeThreshold) {
+					return priority.Priority
+				}
+			}
+
+			if startTime, err := parseTime(startParam); err == nil {
+				if endTime, err := parseTime(endParam); err == nil {
+					if isBetweenThresholds(startTime, endTime, startTimeThreshold, endTimeThreshold) {
+						return priority.Priority
+					}
 				}
 			}
 		}
 	}
 
-	return false
+	return queryPriority.DefaultPriority
 }
 
 func parseTime(s string) (time.Time, error) {

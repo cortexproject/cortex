@@ -17,15 +17,9 @@ type Limits interface {
 	// of outstanding requests per tenant per request queue.
 	MaxOutstandingPerTenant(user string) int
 
-	// ReservedHighPriorityQueriers returns the minimum number of queriers dedicated for high priority
-	// queue per tenant. All queriers still handle priority queue first, but this provides extra protection on
-	// high priority queries from slow normal queries exhausting all queriers.
-	// ReservedHighPriorityQueriers is capped by MaxQueriersPerUser.
-	// If less than 1, it will be applied as a percentage of MaxQueriersPerUser.
-	ReservedHighPriorityQueriers(user string) float64
-
-	// HighPriorityQueries returns list of definitions for high priority query.
-	HighPriorityQueries(user string) []validation.HighPriorityQuery
+	// QueryPriority returns query priority config for the tenant, including different priorities,
+	// their attributes, and how many reserved queriers each priority has.
+	QueryPriority(user string) validation.QueryPriority
 }
 
 // querier holds information about a querier registered in the queue.
@@ -118,7 +112,7 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int, highPriority bool) chan Request {
+func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) chan Request {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -163,12 +157,12 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, highPriority bool
 
 	if uq.maxQueriers != maxQueriers {
 		uq.maxQueriers = maxQueriers
-		uq.queriers, uq.reservedQueriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, q.limits.ReservedHighPriorityQueriers(userID), nil)
+		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
-	if highPriority {
-		return uq.highPriorityQueue
-	}
+	//if highPriority {
+	//	return uq.highPriorityQueue
+	//}
 
 	return uq.normalQueue
 }
@@ -319,24 +313,24 @@ func (q *queues) recomputeUserQueriers() {
 	scratchpad := make([]string, 0, len(q.sortedQueriers))
 
 	for _, uq := range q.userQueues {
-		userID := q.users[uq.index]
-		uq.queriers, uq.reservedQueriers = shuffleQueriersForUser(uq.seed, uq.maxQueriers, q.sortedQueriers, q.limits.ReservedHighPriorityQueriers(userID), scratchpad)
+		//userID := q.users[uq.index]
+		uq.queriers = shuffleQueriersForUser(uq.seed, uq.maxQueriers, q.sortedQueriers, scratchpad)
 	}
 }
 
 // shuffleQueriersForUser returns nil if queriersToSelect is 0 or there are not enough queriers to select from.
 // In that case *all* queriers should be used.
 // Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
-func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, numOfReservedQueriersFloat float64, scratchpad []string) (map[string]struct{}, map[string]struct{}) {
-	numOfReservedQueriers := getNumOfReservedQueriers(queriersToSelect, len(allSortedQueriers), numOfReservedQueriersFloat)
-	reservedQueriers := make(map[string]struct{}, numOfReservedQueriers)
+func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
+	//numOfReservedQueriers := getNumOfReservedQueriers(queriersToSelect, len(allSortedQueriers), numOfReservedQueriersFloat)
+	//reservedQueriers := make(map[string]struct{}, numOfReservedQueriers)
 
-	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
-		for i := 0; i < numOfReservedQueriers; i++ {
-			reservedQueriers[allSortedQueriers[i]] = struct{}{}
-		}
-		return nil, reservedQueriers
-	}
+	//if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
+	//	for i := 0; i < numOfReservedQueriers; i++ {
+	//		reservedQueriers[allSortedQueriers[i]] = struct{}{}
+	//	}
+	//	return nil, reservedQueriers
+	//}
 
 	queriers := make(map[string]struct{}, queriersToSelect)
 	rnd := rand.New(rand.NewSource(userSeed))
@@ -348,15 +342,15 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	for i := 0; i < queriersToSelect; i++ {
 		r := rnd.Intn(last + 1)
 		queriers[scratchpad[r]] = struct{}{}
-		if i < numOfReservedQueriers {
-			reservedQueriers[scratchpad[r]] = struct{}{}
-		}
+		//if i < numOfReservedQueriers {
+		//	reservedQueriers[scratchpad[r]] = struct{}{}
+		//}
 		// move selected item to the end, it won't be selected anymore.
 		scratchpad[r], scratchpad[last] = scratchpad[last], scratchpad[r]
 		last--
 	}
 
-	return queriers, reservedQueriers
+	return queriers
 }
 
 func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, reservedQueriers float64) int {
@@ -379,10 +373,9 @@ func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, rese
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	MaxOutstanding               int
-	maxQueriersPerUser           float64
-	reservedHighPriorityQueriers float64
-	highPriorityQueries          []validation.HighPriorityQuery
+	MaxOutstanding     int
+	maxQueriersPerUser float64
+	queryPriority      validation.QueryPriority
 }
 
 func (l MockLimits) MaxQueriersPerUser(user string) float64 {
@@ -393,10 +386,6 @@ func (l MockLimits) MaxOutstandingPerTenant(_ string) int {
 	return l.MaxOutstanding
 }
 
-func (l MockLimits) ReservedHighPriorityQueriers(_ string) float64 {
-	return l.reservedHighPriorityQueriers
-}
-
-func (l MockLimits) HighPriorityQueries(_ string) []validation.HighPriorityQuery {
-	return l.highPriorityQueries
+func (l MockLimits) QueryPriority(_ string) validation.QueryPriority {
+	return l.queryPriority
 }

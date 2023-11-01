@@ -154,7 +154,7 @@ type schedulerRequest struct {
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
-	highPriority    bool
+	priority        int64
 
 	enqueueTime time.Time
 
@@ -166,8 +166,8 @@ type schedulerRequest struct {
 	parentSpanContext opentracing.SpanContext
 }
 
-func (s schedulerRequest) IsHighPriority() bool {
-	return s.highPriority
+func (s schedulerRequest) GetPriority() int64 {
+	return s.priority
 }
 
 // FrontendLoop handles connection from frontend.
@@ -298,7 +298,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
-		highPriority:    msg.HighPriority,
+		priority:        msg.Priority,
 	}
 
 	now := time.Now()

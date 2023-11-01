@@ -47,7 +47,20 @@ type DisabledRuleGroup struct {
 
 type DisabledRuleGroups []DisabledRuleGroup
 
-type HighPriorityQuery struct {
+type QueryPriority struct {
+	Enabled         bool          `yaml:"enabled" doc:"nocli|description=Whether queries are assigned with priorities."`
+	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Use this as a baseline to make certain queries higher/lower priority.|default=1"`
+	Priorities      []PriorityDef `yaml:"priorities" doc:"nocli|description=List of priority definitions."`
+	RegexCompiled   bool          `yaml:"-" doc:"nocli"`
+}
+
+type PriorityDef struct {
+	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level."`
+	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle this priority only. Value between 0 and 1 will be used as a percentage."`
+	QueryAttributes  []QueryAttribute `yaml:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
+}
+
+type QueryAttribute struct {
 	Regex         string         `yaml:"regex" doc:"nocli|description=Query string regex. If evaluated true (on top of meeting all other criteria), query is treated as a high priority."`
 	CompiledRegex *regexp.Regexp `yaml:"-" doc:"nocli"`
 	StartTime     time.Duration  `yaml:"start_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
@@ -109,9 +122,8 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
-	MaxOutstandingPerTenant      int                 `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
-	ReservedHighPriorityQueriers float64             `yaml:"reserved_high_priority_queriers" json:"reserved_high_priority_queriers"`
-	HighPriorityQueries          []HighPriorityQuery `yaml:"high_priority_queries" json:"high_priority_queries" doc:"nocli|description=List of query definitions to be treated as a high priority."`
+	MaxOutstandingPerTenant int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	QueryPriority           QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -198,7 +210,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
-	f.Float64Var(&l.ReservedHighPriorityQueriers, "frontend.reserved-high-priority-queriers", 0, "Number of reserved queriers to only handle high priority queue (either query frontend or query scheduler). If the value is between 0 and 1, it will be used as a percentage of per-tenant queriers.")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
@@ -503,21 +514,19 @@ func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 	return o.GetOverridesForUser(userID).MaxOutstandingPerTenant
 }
 
-// ReservedHighPriorityQueriers returns the number of reserved queriers that only handle high priority queue for the tenant.
-func (o *Overrides) ReservedHighPriorityQueriers(userID string) float64 {
-	return o.GetOverridesForUser(userID).ReservedHighPriorityQueriers
-}
-
-// HighPriorityQueries returns list of definitions for high priority query.
-func (o *Overrides) HighPriorityQueries(userID string) []HighPriorityQuery {
-	highPriorityQueries := o.GetOverridesForUser(userID).HighPriorityQueries
-	for index, query := range highPriorityQueries {
-		if query.CompiledRegex == nil {
-			// no need to handle error, as we will use the CompiledRegex only if it's not nil
-			o.GetOverridesForUser(userID).HighPriorityQueries[index].CompiledRegex, _ = regexp.Compile(query.Regex)
+// QueryPriority returns the query priority config for the tenant, including different priorities and their attributes
+func (o *Overrides) QueryPriority(userID string) QueryPriority {
+	if !o.GetOverridesForUser(userID).QueryPriority.RegexCompiled {
+		priorities := o.GetOverridesForUser(userID).QueryPriority.Priorities
+		for i, priority := range priorities {
+			for j, attributes := range priority.QueryAttributes {
+				o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex, _ = regexp.Compile(attributes.Regex)
+			}
 		}
+		o.GetOverridesForUser(userID).QueryPriority.RegexCompiled = true
 	}
-	return o.GetOverridesForUser(userID).HighPriorityQueries
+
+	return o.GetOverridesForUser(userID).QueryPriority
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.

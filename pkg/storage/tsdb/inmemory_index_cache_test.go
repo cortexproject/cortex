@@ -4,10 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strconv"
-	"strings"
-	"testing"
-
 	"github.com/efficientgo/core/testutil"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
@@ -15,8 +11,14 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/stretchr/testify/require"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/tenancy"
+	"math/rand"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
 )
 
 func TestInMemoryIndexCache_UpdateItem(t *testing.T) {
@@ -138,4 +140,276 @@ func TestInMemoryIndexCacheSetOverflow(t *testing.T) {
 	// Trigger overflow with a large value.
 	cache.StoreSeries(id, 2, []byte(sb.String()), tenancy.DefaultTenant)
 	testutil.Equals(t, float64(1), prom_testutil.ToFloat64(counter))
+}
+
+func BenchmarkInMemoryIndexCacheStore(b *testing.B) {
+	logger := log.NewNopLogger()
+	cfg := InMemoryIndexCacheConfig{
+		MaxSizeBytes: uint64(storecache.DefaultInMemoryIndexCacheConfig.MaxSize),
+	}
+
+	blockID := ulid.MustNew(ulid.Now(), nil)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	// 1KB is a common size for series
+	seriesData := make([]byte, 1024)
+	r.Read(seriesData)
+	// 10MB might happen for large postings.
+	postingData := make([]byte, 10*1024*1024)
+	r.Read(postingData)
+
+	b.Run("FastCache", func(b *testing.B) {
+		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
+		require.NoError(b, err)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
+		}
+	})
+
+	b.Run("ThanosCache", func(b *testing.B) {
+		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
+		require.NoError(b, err)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
+		}
+	})
+
+	b.Run("FastCacheLargeItem", func(b *testing.B) {
+		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
+		require.NoError(b, err)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), postingData, tenancy.DefaultTenant)
+		}
+	})
+
+	b.Run("ThanosCacheLargeItem", func(b *testing.B) {
+		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
+		require.NoError(b, err)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), postingData, tenancy.DefaultTenant)
+		}
+	})
+}
+
+func BenchmarkInMemoryIndexCacheStoreConcurrent(b *testing.B) {
+	logger := log.NewNopLogger()
+	cfg := InMemoryIndexCacheConfig{
+		MaxSizeBytes: uint64(storecache.DefaultInMemoryIndexCacheConfig.MaxSize),
+	}
+
+	blockID := ulid.MustNew(ulid.Now(), nil)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	// 1KB is a common size for series
+	seriesData := make([]byte, 1024)
+	r.Read(seriesData)
+	// 10MB might happen for large postings.
+	postingData := make([]byte, 10*1024*1024)
+	r.Read(postingData)
+
+	b.Run("FastCache", func(b *testing.B) {
+		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
+		require.NoError(b, err)
+		ch := make(chan int)
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < 500; i++ {
+			go func() {
+				for j := range ch {
+					cache.StoreSeries(blockID, storage.SeriesRef(j), seriesData, tenancy.DefaultTenant)
+					testutil.Ok(b, err)
+				}
+			}()
+		}
+
+		for i := 0; i < b.N; i++ {
+			ch <- i
+		}
+		close(ch)
+	})
+
+	b.Run("ThanosCache", func(b *testing.B) {
+		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
+		require.NoError(b, err)
+		ch := make(chan int)
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < 500; i++ {
+			go func() {
+				for j := range ch {
+					cache.StoreSeries(blockID, storage.SeriesRef(j), seriesData, tenancy.DefaultTenant)
+					testutil.Ok(b, err)
+				}
+			}()
+		}
+
+		for i := 0; i < b.N; i++ {
+			ch <- i
+		}
+		close(ch)
+	})
+
+	b.Run("FastCacheLargeItem", func(b *testing.B) {
+		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
+		require.NoError(b, err)
+		ch := make(chan int)
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < 500; i++ {
+			go func() {
+				for j := range ch {
+					cache.StoreSeries(blockID, storage.SeriesRef(j), postingData, tenancy.DefaultTenant)
+					testutil.Ok(b, err)
+				}
+			}()
+		}
+
+		for i := 0; i < b.N; i++ {
+			ch <- i
+		}
+		close(ch)
+	})
+
+	b.Run("ThanosCacheLargeItem", func(b *testing.B) {
+		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
+		require.NoError(b, err)
+		ch := make(chan int)
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		for i := 0; i < 500; i++ {
+			go func() {
+				for j := range ch {
+					cache.StoreSeries(blockID, storage.SeriesRef(j), postingData, tenancy.DefaultTenant)
+					testutil.Ok(b, err)
+				}
+			}()
+		}
+
+		for i := 0; i < b.N; i++ {
+			ch <- i
+		}
+		close(ch)
+	})
+}
+
+func BenchmarkInMemoryIndexCacheFetch(b *testing.B) {
+	logger := log.NewNopLogger()
+	cfg := InMemoryIndexCacheConfig{
+		MaxSizeBytes: uint64(storecache.DefaultInMemoryIndexCacheConfig.MaxSize),
+	}
+
+	blockID := ulid.MustNew(ulid.Now(), nil)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	// 1KB is a common size for series
+	seriesData := make([]byte, 1024)
+	r.Read(seriesData)
+	ctx := context.Background()
+	items := 10000
+	ids := make([]storage.SeriesRef, items)
+	for i := 0; i < items; i++ {
+		ids[i] = storage.SeriesRef(i)
+	}
+
+	b.Run("FastCache", func(b *testing.B) {
+		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
+		require.NoError(b, err)
+		for i := 0; i < items; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cache.FetchMultiSeries(ctx, blockID, ids, tenancy.DefaultTenant)
+		}
+	})
+
+	b.Run("ThanosCache", func(b *testing.B) {
+		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
+		require.NoError(b, err)
+		for i := 0; i < items; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			cache.FetchMultiSeries(ctx, blockID, ids, tenancy.DefaultTenant)
+		}
+	})
+}
+
+func BenchmarkInMemoryIndexCacheFetchConcurrent(b *testing.B) {
+	logger := log.NewNopLogger()
+	cfg := InMemoryIndexCacheConfig{
+		MaxSizeBytes: uint64(storecache.DefaultInMemoryIndexCacheConfig.MaxSize),
+	}
+
+	blockID := ulid.MustNew(ulid.Now(), nil)
+	r := rand.New(rand.NewSource(time.Now().Unix()))
+	// 1KB is a common size for series
+	seriesData := make([]byte, 1024)
+	r.Read(seriesData)
+	ctx := context.Background()
+	items := 10000
+	ids := make([]storage.SeriesRef, items)
+	for i := 0; i < items; i++ {
+		ids[i] = storage.SeriesRef(i)
+	}
+
+	b.Run("FastCache", func(b *testing.B) {
+		cache, err := newInMemoryIndexCache(cfg, logger, prometheus.NewRegistry())
+		require.NoError(b, err)
+		for i := 0; i < items; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		ch := make(chan int)
+		for i := 0; i < 500; i++ {
+			go func() {
+				for range ch {
+					cache.FetchMultiSeries(ctx, blockID, ids, tenancy.DefaultTenant)
+				}
+			}()
+		}
+
+		for i := 0; i < b.N; i++ {
+			ch <- i
+		}
+		close(ch)
+	})
+
+	b.Run("ThanosCache", func(b *testing.B) {
+		cache, err := storecache.NewInMemoryIndexCacheWithConfig(logger, nil, prometheus.NewRegistry(), storecache.DefaultInMemoryIndexCacheConfig)
+		require.NoError(b, err)
+		for i := 0; i < items; i++ {
+			cache.StoreSeries(blockID, storage.SeriesRef(i), seriesData, tenancy.DefaultTenant)
+		}
+		b.ReportAllocs()
+		b.ResetTimer()
+
+		ch := make(chan int)
+		for i := 0; i < 500; i++ {
+			go func() {
+				for range ch {
+					cache.FetchMultiSeries(ctx, blockID, ids, tenancy.DefaultTenant)
+				}
+			}()
+		}
+
+		for i := 0; i < b.N; i++ {
+			ch <- i
+		}
+		close(ch)
+	})
 }

@@ -94,7 +94,7 @@ limits:
     enabled: true
     default_priority: 1
     priorities:
-      - priority: 1
+      - priority: 2
         reserved_queriers: 1
         query_attributes:
           - start_time: 2h

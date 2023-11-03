@@ -59,8 +59,7 @@ type queues struct {
 }
 
 type userQueue struct {
-	normalQueue       chan Request
-	highPriorityQueue chan Request
+	normalQueue chan Request
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
@@ -77,6 +76,7 @@ type userQueue struct {
 }
 
 func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *queues {
+	// Create schedule per user
 	return &queues{
 		userQueues:       map[string]*userQueue{},
 		users:            nil,
@@ -131,10 +131,9 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) c
 			queueSize = q.maxUserQueueSize
 		}
 		uq = &userQueue{
-			normalQueue:       make(chan Request, queueSize),
-			highPriorityQueue: make(chan Request, queueSize),
-			seed:              util.ShuffleShardSeed(userID, ""),
-			index:             -1,
+			normalQueue: make(chan Request, queueSize),
+			seed:        util.ShuffleShardSeed(userID, ""),
+			index:       -1,
 		}
 		q.userQueues[userID] = uq
 
@@ -167,7 +166,8 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) c
 }
 
 func (q *queues) getTotalQueueSize(userID string) int {
-	return len(q.userQueues[userID].normalQueue) + len(q.userQueues[userID].highPriorityQueue)
+	// TODO: Implement
+	return len(q.userQueues[userID].normalQueue)
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
@@ -199,10 +199,11 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (ch
 			}
 		}
 
-		_, isReserved := uq.reservedQueriers[querierID]
-		if isReserved || len(uq.highPriorityQueue) > 0 {
-			return uq.highPriorityQueue, u, uid
-		}
+		// TODO: Implement
+		//_, isReserved := uq.reservedQueriers[querierID]
+		//if isReserved || len(uq.highPriorityQueue) > 0 {
+		//	return uq.highPriorityQueue, u, uid
+		//}
 
 		return uq.normalQueue, u, uid
 	}

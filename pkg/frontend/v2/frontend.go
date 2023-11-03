@@ -210,8 +210,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
 		}
 
-		if reqParams != nil {
-			freq.priority = util_query.GetPriority(reqParams, ts, f.limits.QueryPriority(userID))
+		queryPriority := f.limits.QueryPriority(userID)
+		if reqParams != nil && queryPriority.Enabled {
+			freq.priority = util_query.GetPriority(reqParams, ts, queryPriority)
 		}
 
 		f.requests.put(freq)

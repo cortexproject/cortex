@@ -18,19 +18,17 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority validati
 	endParam := requestParams.Get("end")
 
 	if queryParam == "" || !queryPriority.Enabled {
-		return -1
+		return queryPriority.DefaultPriority
 	}
 
 	for _, priority := range queryPriority.Priorities {
 		for _, attribute := range priority.QueryAttributes {
-			compiledRegex := attribute.CompiledRegex
-
-			if compiledRegex != nil && !compiledRegex.MatchString(queryParam) {
+			if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(queryParam) {
 				continue
 			}
 
-			startTimeThreshold := now.Add(-1 * attribute.StartTime.Abs())
-			endTimeThreshold := now.Add(-1 * attribute.EndTime.Abs())
+			startTimeThreshold := now.Add(-1 * attribute.StartTime.Abs()).Truncate(time.Second).UTC()
+			endTimeThreshold := now.Add(-1 * attribute.EndTime.Abs()).Round(time.Second).UTC()
 
 			if instantTime, err := parseTime(timeParam); err == nil {
 				if isBetweenThresholds(instantTime, instantTime, startTimeThreshold, endTimeThreshold) {
@@ -67,5 +65,5 @@ func parseTime(s string) (time.Time, error) {
 }
 
 func isBetweenThresholds(start, end, startThreshold, endThreshold time.Time) bool {
-	return start.After(startThreshold) && end.Before(endThreshold)
+	return (start.Equal(startThreshold) || start.After(startThreshold)) && (end.Equal(endThreshold) || end.Before(endThreshold))
 }

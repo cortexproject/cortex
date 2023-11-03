@@ -18,6 +18,7 @@ import (
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
+var errDuplicateQueryPriorities = errors.New("There is a duplicate entry of priorities. Make sure they are all unique, including the default priority")
 
 // Supported values for enum limits
 const (
@@ -49,13 +50,13 @@ type DisabledRuleGroups []DisabledRuleGroup
 
 type QueryPriority struct {
 	Enabled         bool          `yaml:"enabled" doc:"nocli|description=Whether queries are assigned with priorities.|default=false"`
-	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.|default=1"`
+	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.|default=0"`
 	Priorities      []PriorityDef `yaml:"priorities" doc:"nocli|description=List of priority definitions."`
 	RegexCompiled   bool          `yaml:"-" doc:"nocli"`
 }
 
 type PriorityDef struct {
-	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=2"`
+	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
 	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle this priority only. Value between 0 and 1 will be used as a percentage.|default=0"`
 	QueryAttributes  []QueryAttribute `yaml:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
 }
@@ -248,6 +249,19 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
+	}
+
+	if l.QueryPriority.Enabled {
+		queryPriority := l.QueryPriority
+		prioritySet := map[int64]struct{}{}
+		prioritySet[queryPriority.DefaultPriority] = struct{}{}
+		for _, priority := range queryPriority.Priorities {
+			if _, exists := prioritySet[priority.Priority]; exists {
+				return errDuplicateQueryPriorities
+			}
+
+			prioritySet[priority.Priority] = struct{}{}
+		}
 	}
 
 	return nil
@@ -516,14 +530,18 @@ func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 
 // QueryPriority returns the query priority config for the tenant, including different priorities and their attributes
 func (o *Overrides) QueryPriority(userID string) QueryPriority {
-	if !o.GetOverridesForUser(userID).QueryPriority.RegexCompiled {
-		priorities := o.GetOverridesForUser(userID).QueryPriority.Priorities
+	queryPriority := o.GetOverridesForUser(userID).QueryPriority
+
+	if !queryPriority.RegexCompiled {
+		priorities := queryPriority.Priorities
 		for i, priority := range priorities {
 			for j, attributes := range priority.QueryAttributes {
 				if attributes.Regex == "" || attributes.Regex == ".*" || attributes.Regex == ".+" {
-					continue // don't use regex at all, if it is match all
+					// if it matches all, don't use regex
+					o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = nil
+				} else {
+					o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex, _ = regexp.Compile(attributes.Regex)
 				}
-				o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex, _ = regexp.Compile(attributes.Regex)
 			}
 		}
 		o.GetOverridesForUser(userID).QueryPriority.RegexCompiled = true

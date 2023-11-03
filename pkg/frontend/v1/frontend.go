@@ -206,8 +206,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			response: make(chan *httpgrpc.HTTPResponse, 1),
 		}
 
-		if reqParams != nil {
-			request.priority = util_query.GetPriority(reqParams, ts, f.limits.QueryPriority(userID))
+		queryPriority := f.limits.QueryPriority(userID)
+		if reqParams != nil && queryPriority.Enabled {
+			request.priority = util_query.GetPriority(reqParams, ts, queryPriority)
 		}
 
 		if err := f.queueRequest(ctx, &request); err != nil {

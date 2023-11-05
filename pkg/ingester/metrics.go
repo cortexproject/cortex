@@ -262,6 +262,11 @@ type tsdbMetrics struct {
 	tsdbChunksRemovedTotal             *prometheus.Desc
 	tsdbMmapChunkCorruptionTotal       *prometheus.Desc
 	tsdbChunkwriteQueueOperationsTotal *prometheus.Desc
+	tsdbSamplesAppended                *prometheus.Desc
+	tsdbOutOfOrderSamplesAppended      *prometheus.Desc
+	tsdbSnapshotReplayErrorTotal       *prometheus.Desc
+	tsdbOOOHistogram                   *prometheus.Desc
+	tsdbMmapChunksTotal                *prometheus.Desc
 
 	tsdbExemplarsTotal          *prometheus.Desc
 	tsdbExemplarsInStorage      *prometheus.Desc
@@ -429,6 +434,26 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_checkpoint_creations_total",
 			"Total number of TSDB checkpoint creations attempted.",
 			nil, nil),
+		tsdbSamplesAppended: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_samples_appended_total",
+			"Total number of appended samples.",
+			[]string{"type", "user"}, nil),
+		tsdbOutOfOrderSamplesAppended: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
+			"Total number of appended out of order samples.",
+			[]string{"user"}, nil),
+		tsdbSnapshotReplayErrorTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_snapshot_replay_error_total",
+			"Total number snapshot replays that failed.",
+			nil, nil),
+		tsdbOOOHistogram: prometheus.NewDesc(
+			"cortex_ingester_tsdb_sample_ooo_delta",
+			"Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).",
+			nil, nil),
+		tsdbMmapChunksTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_mmap_chunks_total",
+			"Total number of chunks that were memory-mapped.",
+			nil, nil),
 
 		// The most useful exemplar metrics are per-user. The rest
 		// are global to reduce metrics overhead.
@@ -497,6 +522,11 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbReloadsFailed
 	out <- sm.tsdbTimeRetentionCount
 	out <- sm.tsdbBlocksBytes
+	out <- sm.tsdbSamplesAppended
+	out <- sm.tsdbOutOfOrderSamplesAppended
+	out <- sm.tsdbSnapshotReplayErrorTotal
+	out <- sm.tsdbOOOHistogram
+	out <- sm.tsdbMmapChunksTotal
 	out <- sm.checkpointDeleteFail
 	out <- sm.checkpointDeleteTotal
 	out <- sm.checkpointCreationFail
@@ -547,6 +577,11 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbReloadsFailed, "prometheus_tsdb_reloads_failures_total")
 	data.SendSumOfCounters(out, sm.tsdbTimeRetentionCount, "prometheus_tsdb_time_retentions_total")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbBlocksBytes, "prometheus_tsdb_storage_blocks_bytes")
+	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbSamplesAppended, "prometheus_tsdb_head_samples_appended_total", "type")
+	data.SendSumOfCountersPerUser(out, sm.tsdbOutOfOrderSamplesAppended, "prometheus_tsdb_head_out_of_order_samples_appended_total")
+	data.SendSumOfCounters(out, sm.tsdbSnapshotReplayErrorTotal, "prometheus_tsdb_snapshot_replay_error_total")
+	data.SendSumOfHistograms(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")
+	data.SendSumOfGauges(out, sm.tsdbMmapChunksTotal, "prometheus_tsdb_mmap_chunks_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")

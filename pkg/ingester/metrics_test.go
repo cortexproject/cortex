@@ -104,7 +104,16 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_head_gc_duration_seconds summary
 			cortex_ingester_tsdb_head_gc_duration_seconds_sum 9
 			cortex_ingester_tsdb_head_gc_duration_seconds_count 3
-
+        	# HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
+        	# TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user1"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user2"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user3"} 102
+        	# HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	# TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	cortex_ingester_tsdb_head_samples_appended_total{type="user1",user="float"} 101
+        	cortex_ingester_tsdb_head_samples_appended_total{type="user2",user="float"} 101
+        	cortex_ingester_tsdb_head_samples_appended_total{type="user3",user="float"} 101
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
 			cortex_ingester_tsdb_checkpoint_deletions_failed_total 1586096
@@ -167,7 +176,9 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_mmap_chunk_corruptions_total Total number of memory-mapped TSDB chunk corruptions.
 			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
 			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
-
+        	# HELP cortex_ingester_tsdb_mmap_chunks_total Total number of chunks that were memory-mapped.
+        	# TYPE cortex_ingester_tsdb_mmap_chunks_total gauge
+        	cortex_ingester_tsdb_mmap_chunks_total 0
 			# HELP cortex_ingester_tsdb_blocks_loaded Number of currently loaded data blocks
 			# TYPE cortex_ingester_tsdb_blocks_loaded gauge
 			cortex_ingester_tsdb_blocks_loaded 15
@@ -175,7 +186,21 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_reloads_total Number of times the database reloaded block data from disk.
 			# TYPE cortex_ingester_tsdb_reloads_total counter
 			cortex_ingester_tsdb_reloads_total 30
-
+        	# HELP cortex_ingester_tsdb_sample_ooo_delta Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).
+        	# TYPE cortex_ingester_tsdb_sample_ooo_delta histogram
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="600"} 0
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="1800"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="3600"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="7200"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="10800"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="21600"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="43200"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="+Inf"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_sum 2700
+        	cortex_ingester_tsdb_sample_ooo_delta_count 3
+        	# HELP cortex_ingester_tsdb_snapshot_replay_error_total Total number snapshot replays that failed.
+        	# TYPE cortex_ingester_tsdb_snapshot_replay_error_total counter
+        	cortex_ingester_tsdb_snapshot_replay_error_total 309
 			# HELP cortex_ingester_tsdb_reloads_failures_total Number of times the database failed to reloadBlocks block data from disk.
 			# TYPE cortex_ingester_tsdb_reloads_failures_total counter
 			cortex_ingester_tsdb_reloads_failures_total 21
@@ -318,6 +343,14 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_head_gc_duration_seconds summary
 			cortex_ingester_tsdb_head_gc_duration_seconds_sum 9
 			cortex_ingester_tsdb_head_gc_duration_seconds_count 3
+        	# HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
+        	# TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user1"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user2"} 102
+        	# HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
+        	# TYPE cortex_ingester_tsdb_head_samples_appended_total counter
+        	cortex_ingester_tsdb_head_samples_appended_total{type="user1",user="float"} 101
+        	cortex_ingester_tsdb_head_samples_appended_total{type="user2",user="float"} 101
 
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
@@ -377,7 +410,9 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_mmap_chunk_corruptions_total Total number of memory-mapped TSDB chunk corruptions.
 			# TYPE cortex_ingester_tsdb_mmap_chunk_corruptions_total counter
 			cortex_ingester_tsdb_mmap_chunk_corruptions_total 2577406
-
+        	# HELP cortex_ingester_tsdb_mmap_chunks_total Total number of chunks that were memory-mapped.
+        	# TYPE cortex_ingester_tsdb_mmap_chunks_total gauge
+        	cortex_ingester_tsdb_mmap_chunks_total 0
 			# HELP cortex_ingester_tsdb_blocks_loaded Number of currently loaded data blocks
 			# TYPE cortex_ingester_tsdb_blocks_loaded gauge
 			cortex_ingester_tsdb_blocks_loaded 10
@@ -385,7 +420,21 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_reloads_total Number of times the database reloaded block data from disk.
 			# TYPE cortex_ingester_tsdb_reloads_total counter
 			cortex_ingester_tsdb_reloads_total 30
-
+        	# HELP cortex_ingester_tsdb_sample_ooo_delta Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).
+        	# TYPE cortex_ingester_tsdb_sample_ooo_delta histogram
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="600"} 0
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="1800"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="3600"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="7200"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="10800"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="21600"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="43200"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="+Inf"} 3
+        	cortex_ingester_tsdb_sample_ooo_delta_sum 2700
+        	cortex_ingester_tsdb_sample_ooo_delta_count 3
+        	# HELP cortex_ingester_tsdb_snapshot_replay_error_total Total number snapshot replays that failed.
+        	# TYPE cortex_ingester_tsdb_snapshot_replay_error_total counter
+        	cortex_ingester_tsdb_snapshot_replay_error_total 309
 			# HELP cortex_ingester_tsdb_reloads_failures_total Number of times the database failed to reloadBlocks block data from disk.
 			# TYPE cortex_ingester_tsdb_reloads_failures_total counter
 			cortex_ingester_tsdb_reloads_failures_total 21
@@ -607,6 +656,45 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Runtime of garbage collection in the head block.",
 	})
 	gcDuration.Observe(3)
+
+	samplesAppended := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_samples_appended_total",
+		Help: "Total number of appended samples.",
+	}, []string{"type"})
+	samplesAppended.WithLabelValues("float").Add(101)
+
+	outOfOrderSamplesAppended := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_head_out_of_order_samples_appended_total",
+		Help: "Total number of appended out of order samples.",
+	})
+	outOfOrderSamplesAppended.Add(102)
+
+	snapshotReplayErrorTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_snapshot_replay_error_total",
+		Help: "Total number snapshot replays that failed.",
+	})
+	snapshotReplayErrorTotal.Add(103)
+
+	oooHistogram := promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		Name: "prometheus_tsdb_sample_ooo_delta",
+		Help: "Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).",
+		Buckets: []float64{
+			60 * 10,      // 10 min
+			60 * 30,      // 30 min
+			60 * 60,      // 60 min
+			60 * 60 * 2,  // 2h
+			60 * 60 * 3,  // 3h
+			60 * 60 * 6,  // 6h
+			60 * 60 * 12, // 12h
+		},
+	})
+	oooHistogram.Observe(60 * 15)
+
+	mmapChunksTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_mmap_chunks_total",
+		Help: "Total number of chunks that were memory-mapped.",
+	})
+	mmapChunksTotal.Add(104)
 
 	loadedBlocks := promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "prometheus_tsdb_blocks_loaded",

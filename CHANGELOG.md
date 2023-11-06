@@ -1,6 +1,9 @@
 # Changelog
 
 ## master / unreleased
+
+## 1.16.0 in progress
+
 * [BUGFIX] Querier: Fix querier limiter bug under multiselect. #5627
 * [CHANGE] Ruler: Add `cortex_ruler_rule_group_load_duration_seconds` and `cortex_ruler_rule_group_sync_duration_seconds` metrics. #5609
 * [CHANGE] Ruler: Add contextual info and query statistics to log

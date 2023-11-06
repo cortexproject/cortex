@@ -1007,8 +1007,8 @@ github.com/yuin/gopher-lua/pm
 # github.com/zhangyunhao116/umap v0.0.0-20221211160557-cb7705fafa39
 ## explicit; go 1.13
 github.com/zhangyunhao116/umap
-# go.etcd.io/etcd/api/v3 v3.5.9
-## explicit; go 1.19
+# go.etcd.io/etcd/api/v3 v3.5.10
+## explicit; go 1.20
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb
 go.etcd.io/etcd/api/v3/membershippb
@@ -1320,7 +1320,7 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.58.2 => google.golang.org/grpc v1.56.2
+# google.golang.org/grpc v1.58.3 => google.golang.org/grpc v1.56.2
 ## explicit; go 1.17
 google.golang.org/grpc
 google.golang.org/grpc/attributes

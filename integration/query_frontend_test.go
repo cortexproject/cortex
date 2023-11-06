@@ -499,7 +499,7 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 		"-blocks-storage.bucket-store.sync-interval": "5s",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-blocks-storage.bucket-store.sync-interval": "5s",
+		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-querier.frontend-address":                  queryFrontend.NetworkGRPCEndpoint(),
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
@@ -508,6 +508,10 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+
+	// Sleep 3 * bucket sync interval to make sure consistency checker
+	// doesn't consider block is uploaded recently.
+	time.Sleep(3 * time.Second)
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")

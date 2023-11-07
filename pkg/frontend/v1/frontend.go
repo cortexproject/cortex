@@ -101,7 +101,7 @@ type request struct {
 	priority int64
 }
 
-func (r request) GetPriority() int64 {
+func (r request) Priority() int64 {
 	return r.priority
 }
 

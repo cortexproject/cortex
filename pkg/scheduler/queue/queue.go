@@ -45,7 +45,7 @@ func FirstUser() UserIndex {
 
 // Request stored into the queue.
 type Request interface {
-	GetPriority() int64
+	util.PriorityOp
 }
 
 // RequestQueue holds incoming requests in per-user queues. It also assigns each user specified number of queriers,
@@ -98,7 +98,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 	}
 
 	shardSize := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
-	queue := q.queues.getOrAddQueue(userID, shardSize, req.GetPriority())
+	queue := q.queues.getOrAddQueue(userID, shardSize)
 	maxOutstandingRequests := q.queues.limits.MaxOutstandingPerTenant(userID)
 
 	if queue == nil {
@@ -108,12 +108,12 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 
 	q.totalRequests.WithLabelValues(userID).Inc()
 
-	if q.queues.getTotalQueueSize(userID) >= maxOutstandingRequests {
+	if queue.length() >= maxOutstandingRequests {
 		q.discardedRequests.WithLabelValues(userID).Inc()
 		return ErrTooManyRequests
 	}
 
-	queue <- req
+	queue.enqueueRequest(req)
 	q.queueLength.WithLabelValues(userID).Inc()
 	q.cond.Broadcast()
 	// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
@@ -150,16 +150,13 @@ FindQueue:
 	for {
 		queue, userID, idx := q.queues.getNextQueueForQuerier(last.last, querierID)
 		last.last = idx
-		if queue == nil || len(queue) < 1 {
+		if queue == nil {
 			break
 		}
 
 		// Pick next request from the queue.
 		for {
-			request := <-queue
-			if q.queues.getTotalQueueSize(userID) == 0 {
-				q.queues.deleteQueue(userID)
-			}
+			request := queue.dequeueRequest()
 
 			q.queueLength.WithLabelValues(userID).Dec()
 

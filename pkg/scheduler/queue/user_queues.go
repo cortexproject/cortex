@@ -59,12 +59,12 @@ type queues struct {
 }
 
 type userQueue struct {
-	normalQueue chan Request
+	queue requestQueue
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
 	queriers         map[string]struct{}
-	reservedQueriers map[string]struct{}
+	reservedQueriers map[string]int64
 	maxQueriers      int
 
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
@@ -76,7 +76,6 @@ type userQueue struct {
 }
 
 func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *queues {
-	// Create schedule per user
 	return &queues{
 		userQueues:       map[string]*userQueue{},
 		users:            nil,
@@ -111,7 +110,7 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) chan Request {
+func (q *queues) getOrAddQueue(userID string, maxQueriers int) requestQueue {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -122,6 +121,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) c
 	}
 
 	uq := q.userQueues[userID]
+	queryPriority := q.limits.QueryPriority(userID)
 
 	if uq == nil {
 		queueSize := q.limits.MaxOutstandingPerTenant(userID)
@@ -131,10 +131,16 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) c
 			queueSize = q.maxUserQueueSize
 		}
 		uq = &userQueue{
-			normalQueue: make(chan Request, queueSize),
-			seed:        util.ShuffleShardSeed(userID, ""),
-			index:       -1,
+			seed:  util.ShuffleShardSeed(userID, ""),
+			index: -1,
 		}
+
+		if queryPriority.Enabled {
+			uq.queue = NewPriorityRequestQueue(util.NewPriorityQueue(nil))
+		} else {
+			uq.queue = NewFIFOQueue(make(chan Request, queueSize))
+		}
+
 		q.userQueues[userID] = uq
 
 		// Add user to the list of users... find first free spot, and put it there.
@@ -156,24 +162,16 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, priority int64) c
 	if uq.maxQueriers != maxQueriers {
 		uq.maxQueriers = maxQueriers
 		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
+		uq.reservedQueriers = getReservedQueriers(uq.queriers, q.limits.QueryPriority(userID).Priorities)
 	}
 
-	//if highPriority {
-	//	return uq.highPriorityQueue
-	//}
-
-	return uq.normalQueue
-}
-
-func (q *queues) getTotalQueueSize(userID string) int {
-	// TODO: Implement
-	return len(q.userQueues[userID].normalQueue)
+	return uq.queue
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (chan Request, string, int) {
+func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (requestQueue, string, int) {
 	uid := lastUserIndex
 
 	for iters := 0; iters < len(q.users); iters++ {
@@ -199,13 +197,12 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (ch
 			}
 		}
 
-		// TODO: Implement
-		//_, isReserved := uq.reservedQueriers[querierID]
-		//if isReserved || len(uq.highPriorityQueue) > 0 {
-		//	return uq.highPriorityQueue, u, uid
+		//TODO: jungjust, reserved queriers
+		//if priority, isReserved := uq.reservedQueriers[querierID]; isReserved {
+		//	return uq.queues[priority], u, uid
 		//}
 
-		return uq.normalQueue, u, uid
+		return uq.queue, u, uid
 	}
 	return nil, "", uid
 }
@@ -351,6 +348,20 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	}
 
 	return queriers
+}
+
+func getReservedQueriers(queriers map[string]struct{}, priorities []validation.PriorityDef) map[string]int64 {
+	// TODO jungjust:
+	//reservedQueriers := make(map[string]int64)
+	//
+	//cnt := 0
+	//for querierID, _ := range queriers {
+	//
+	//	//reservedQueriers
+	//	// TODO jungjust: get diff priorities
+	//	cnt++
+	//}
+	return map[string]int64{}
 }
 
 //func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, reservedQueriers float64) int {

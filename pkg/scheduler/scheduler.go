@@ -166,7 +166,7 @@ type schedulerRequest struct {
 	parentSpanContext opentracing.SpanContext
 }
 
-func (s schedulerRequest) GetPriority() int64 {
+func (s schedulerRequest) Priority() int64 {
 	return s.priority
 }
 

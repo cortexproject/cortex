@@ -144,7 +144,7 @@ type Config struct {
 }
 
 // SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
-// kmsencryptioncontext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
+// KMSEncryptionContext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
 type SSEConfig struct {
 	Type                 string            `yaml:"type"`
 	KMSKeyID             string            `yaml:"kms_key_id"`
@@ -415,7 +415,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
@@ -492,6 +492,13 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	if size < int64(partSize) {
 		partSize = 0
 	}
+
+	// Cloning map since minio may modify it
+	userMetadata := make(map[string]string, len(b.putUserMetadata))
+	for k, v := range b.putUserMetadata {
+		userMetadata[k] = v
+	}
+
 	if _, err := b.client.PutObject(
 		ctx,
 		b.name,
@@ -501,7 +508,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		minio.PutObjectOptions{
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
-			UserMetadata:         b.putUserMetadata,
+			UserMetadata:         userMetadata,
 			StorageClass:         b.storageClass,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.
@@ -536,6 +543,11 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return minio.ToErrorResponse(errors.Cause(err)).Code == "NoSuchKey"
+}
+
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *Bucket) IsAccessDeniedErr(err error) bool {
+	return minio.ToErrorResponse(errors.Cause(err)).Code == "AccessDenied"
 }
 
 func (b *Bucket) Close() error { return nil }

@@ -15,7 +15,7 @@ You are welcome to create draft PRs at any stage of readiness - this
 can be helpful to ask for assistance or to develop an idea. But before
 a piece of work is finished it should:
 
-* Be organised into one or more commits, each of which has a commit message that describes all changes made in that commit ('why' more than 'what' - we can read the diffs to see the code that changed).
+* Be organized into one or more commits, each of which has a commit message that describes all changes made in that commit ('why' more than 'what' - we can read the diffs to see the code that changed).
 * Each commit should build towards the whole - don't leave in back-tracks and mistakes that you later corrected.
 * Have unit and/or [integration](./how-integration-tests-work.md) tests for new functionality or tests that would have caught the bug being fixed.
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
@@ -60,7 +60,7 @@ To run the integration tests suite please see "[How integration tests work](./ho
 
 ### Dependency management
 
-We uses [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
+We use [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
 This requires a working Go environment with version 1.11 or greater, git and [bzr](http://wiki.bazaar.canonical.com/Download) installed.
 
 To add or update a new dependency, use the `go get` command:

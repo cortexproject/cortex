@@ -227,6 +227,8 @@ func NewQuerierHandler(
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
 		nil,
+		false,
+		false,
 	)
 
 	router := mux.NewRouter()
@@ -266,7 +268,6 @@ func NewQuerierHandler(
 	router.Path(path.Join(prefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Methods("GET").Handler(promRouter)
-	router.Path(path.Join(prefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(promRouter)
 
 	// TODO(gotjosh): This custom handler is temporary until we're able to vendor the changes in:
 	// https://github.com/prometheus/prometheus/pull/7125/files
@@ -280,7 +281,11 @@ func NewQuerierHandler(
 	router.Path(path.Join(legacyPrefix, "/api/v1/label/{name}/values")).Methods("GET").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/series")).Methods("GET", "POST", "DELETE").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Methods("GET").Handler(legacyPromRouter)
-	router.Path(path.Join(legacyPrefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(legacyPromRouter)
+
+	if cfg.buildInfoEnabled {
+		router.Path(path.Join(prefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(promRouter)
+		router.Path(path.Join(legacyPrefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(legacyPromRouter)
+	}
 
 	// Track execution time.
 	return stats.NewWallTimeMiddleware().Wrap(router)

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
@@ -43,18 +44,18 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 type Limits interface {
 	// Returns max queriers to use per tenant, or 0 if shuffle sharding is disabled.
-	MaxQueriersPerUser(user string) int
+	MaxQueriersPerUser(user string) float64
 
 	queue.Limits
 }
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	Queriers int
+	Queriers float64
 	queue.MockLimits
 }
 
-func (l MockLimits) MaxQueriersPerUser(_ string) int {
+func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
 	return l.Queriers
 }
 
@@ -66,6 +67,7 @@ type Frontend struct {
 	cfg    Config
 	log    log.Logger
 	limits Limits
+	retry  *transport.Retry
 
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
@@ -92,11 +94,12 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	f := &Frontend{
 		cfg:    cfg,
 		log:    log,
 		limits: limits,
+		retry:  retry,
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
@@ -173,31 +176,33 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		}
 	}
 
-	request := request{
-		request:     req,
-		originalCtx: ctx,
+	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
+		request := request{
+			request:     req,
+			originalCtx: ctx,
 
-		// Buffer of 1 to ensure response can be written by the server side
-		// of the Process stream, even if this goroutine goes away due to
-		// client context cancellation.
-		err:      make(chan error, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
-	}
+			// Buffer of 1 to ensure response can be written by the server side
+			// of the Process stream, even if this goroutine goes away due to
+			// client context cancellation.
+			err:      make(chan error, 1),
+			response: make(chan *httpgrpc.HTTPResponse, 1),
+		}
 
-	if err := f.queueRequest(ctx, &request); err != nil {
-		return nil, err
-	}
+		if err := f.queueRequest(ctx, &request); err != nil {
+			return nil, err
+		}
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 
-	case resp := <-request.response:
-		return resp, nil
+		case resp := <-request.response:
+			return resp, nil
 
-	case err := <-request.err:
-		return nil, err
-	}
+		case err := <-request.err:
+			return nil, err
+		}
+	})
 }
 
 // Process allows backends to pull requests from the frontend.
@@ -338,7 +343,7 @@ func (f *Frontend) queueRequest(ctx context.Context, req *request) error {
 	req.queueSpan, _ = opentracing.StartSpanFromContext(ctx, "queued")
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	maxQueriers := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
+	maxQueriers := validation.SmallestPositiveNonZeroFloat64PerTenant(tenantIDs, f.limits.MaxQueriersPerUser)
 
 	joinedTenantID := tenant.JoinTenantIDs(tenantIDs)
 	f.activeUsers.UpdateUserTimestamp(joinedTenantID, now)

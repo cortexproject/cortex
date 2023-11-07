@@ -13,22 +13,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/prometheus/config"
-	"github.com/prometheus/prometheus/tsdb/chunks"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/shipper"
@@ -45,6 +46,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -121,6 +123,9 @@ type Config struct {
 
 	// For testing, you can override the address and ID of this ingester.
 	ingesterClientFactory func(addr string, cfg client.Config) (client.HealthAndIngesterClient, error)
+
+	// For admin contact details
+	AdminLimitMessage string `yaml:"admin_limit_message"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -141,6 +146,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.DefaultLimits.MaxInflightPushRequests, "ingester.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this ingester can handle (across all tenants). Additional requests will be rejected. 0 = unlimited.")
 
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
+
+	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
+
 }
 
 func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
@@ -272,12 +280,12 @@ func (u *userTSDB) Appender(ctx context.Context) storage.Appender {
 	return u.db.Appender(ctx)
 }
 
-func (u *userTSDB) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-	return u.db.Querier(ctx, mint, maxt)
+func (u *userTSDB) Querier(mint, maxt int64) (storage.Querier, error) {
+	return u.db.Querier(mint, maxt)
 }
 
-func (u *userTSDB) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
-	return u.db.ChunkQuerier(ctx, mint, maxt)
+func (u *userTSDB) ChunkQuerier(mint, maxt int64) (storage.ChunkQuerier, error) {
+	return u.db.ChunkQuerier(mint, maxt)
 }
 
 func (u *userTSDB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
@@ -296,8 +304,8 @@ func (u *userTSDB) Close() error {
 	return u.db.Close()
 }
 
-func (u *userTSDB) Compact() error {
-	return u.db.Compact()
+func (u *userTSDB) Compact(ctx context.Context) error {
+	return u.db.Compact(ctx)
 }
 
 func (u *userTSDB) StartTime() (int64, error) {
@@ -391,7 +399,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 }
 
 // PostDeletion implements SeriesLifecycleCallback interface.
-func (u *userTSDB) PostDeletion(metrics ...labels.Labels) {
+func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) {
 	u.instanceSeriesCount.Sub(int64(len(metrics)))
 
 	for _, metric := range metrics {
@@ -650,7 +658,9 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.DistributorShardingStrategy,
 		cfg.DistributorShardByAllLabels,
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
-		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled)
+		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
+		cfg.AdminLimitMessage,
+	)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 
@@ -936,6 +946,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		return nil, err
 	}
 
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
+	defer span.Finish()
+
 	// We will report *this* request in the error too.
 	inflight := i.inflightPushRequests.Inc()
 	defer i.inflightPushRequests.Dec()
@@ -1001,6 +1014,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		newValueForTimestampCount = 0
 		perUserSeriesLimitCount   = 0
 		perMetricSeriesLimitCount = 0
+		nativeHistogramCount      = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1022,6 +1036,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
+
+		nativeHistogramCount += len(ts.Histograms)
 
 		for _, s := range ts.Samples {
 			var err error
@@ -1174,6 +1190,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
 
+	if nativeHistogramCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
+	}
+
 	// Distributor counts both samples and metadata, so for consistency ingester does the same.
 	i.ingestionRate.Add(int64(succeededSamplesCount + ingestedMetadata))
 
@@ -1253,14 +1273,14 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return &client.QueryResponse{}, nil
 	}
 
-	q, err := db.Querier(ctx, int64(from), int64(through))
+	q, err := db.Querier(int64(from), int64(through))
 	if err != nil {
 		return nil, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
+	ss := q.Select(ctx, false, nil, matchers...)
 	if ss.Err() != nil {
 		return nil, ss.Err()
 	}
@@ -1409,7 +1429,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(ctx, mint, maxt)
+	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1418,7 +1438,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		q.Close()
 	}
 
-	vals, _, err := q.LabelValues(labelName, matchers...)
+	vals, _, err := q.LabelValues(ctx, labelName, matchers...)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1485,7 +1505,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(ctx, mint, maxt)
+	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1494,7 +1514,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		q.Close()
 	}
 
-	names, _, err := q.LabelNames()
+	names, _, err := q.LabelNames(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1565,7 +1585,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return nil, cleanup, err
 	}
 
-	q, err := db.Querier(ctx, mint, maxt)
+	q, err := db.Querier(mint, maxt)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1575,22 +1595,29 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 	}
 
 	// Run a query for each matchers set and collect all the results.
-	var sets []storage.SeriesSet
+	var (
+		sets      []storage.SeriesSet
+		mergedSet storage.SeriesSet
+	)
 
-	for _, matchers := range matchersSet {
-		// Interrupt if the context has been canceled.
-		if ctx.Err() != nil {
-			return nil, cleanup, ctx.Err()
+	hints := &storage.SelectHints{
+		Start: mint,
+		End:   maxt,
+		Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
+	}
+	if len(matchersSet) > 1 {
+		for _, matchers := range matchersSet {
+			// Interrupt if the context has been canceled.
+			if ctx.Err() != nil {
+				return nil, cleanup, ctx.Err()
+			}
+
+			seriesSet := q.Select(ctx, true, hints, matchers...)
+			sets = append(sets, seriesSet)
 		}
-
-		hints := &storage.SelectHints{
-			Start: mint,
-			End:   maxt,
-			Func:  "series", // There is no series function, this token is used for lookups that don't need samples.
-		}
-
-		seriesSet := q.Select(true, hints, matchers...)
-		sets = append(sets, seriesSet)
+		mergedSet = storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+	} else {
+		mergedSet = q.Select(ctx, false, hints, matchersSet[0]...)
 	}
 
 	// Generate the response merging all series sets.
@@ -1598,7 +1625,6 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		Metric: make([]*cortexpb.Metric, 0),
 	}
 
-	mergedSet := storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
 	for mergedSet.Next() {
 		// Interrupt if the context has been canceled.
 		if ctx.Err() != nil {
@@ -1757,14 +1783,14 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
-	q, err := db.ChunkQuerier(ctx, from, through)
+	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
 		return 0, 0, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
-	ss := q.Select(false, nil, matchers...)
+	ss := q.Select(ctx, false, nil, matchers...)
 	if ss.Err() != nil {
 		return 0, 0, ss.Err()
 	}
@@ -1941,6 +1967,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	if maxExemplarsForUser > 0 {
 		enableExemplars = true
 	}
+	oooTimeWindow := i.limits.OutOfOrderTimeWindow(userID)
+	walCompressType := wlog.CompressionNone
+	// TODO(yeya24): expose zstd compression for WAL.
+	if i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled {
+		walCompressType = wlog.CompressionSnappy
+	}
 	// Create a new user database
 	db, err := tsdb.Open(udir, userLogger, tsdbPromReg, &tsdb.Options{
 		RetentionDuration:              i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -1949,7 +1981,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		NoLockfile:                     true,
 		StripeSize:                     i.cfg.BlocksStorageConfig.TSDB.StripeSize,
 		HeadChunksWriteBufferSize:      i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteBufferSize,
-		WALCompression:                 i.cfg.BlocksStorageConfig.TSDB.WALCompressionEnabled,
+		WALCompression:                 walCompressType,
 		WALSegmentSize:                 i.cfg.BlocksStorageConfig.TSDB.WALSegmentSizeBytes,
 		SeriesLifecycleCallback:        userDB,
 		BlocksToDelete:                 userDB.blocksToDelete,
@@ -1958,7 +1990,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		MaxExemplars:                   maxExemplarsForUser,
 		HeadChunksWriteQueueSize:       i.cfg.BlocksStorageConfig.TSDB.HeadChunksWriteQueueSize,
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
-		OutOfOrderTimeWindow:           time.Duration(i.limits.OutOfOrderTimeWindow(userID)).Milliseconds(),
+		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 	}, nil)
 	if err != nil {
@@ -1970,7 +2002,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// this will actually create the blocks. If there is no data (empty TSDB), this is a no-op, although
 	// local blocks compaction may still take place if configured.
 	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
-	err = db.Compact()
+	err = db.Compact(context.TODO())
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
@@ -2011,8 +2043,12 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
-			false, // No need to upload compacted blocks. Cortex compactor takes care of that.
-			true,  // Allow out of order uploads. It's fine in Cortex's context.
+			func() bool {
+				// Allow uploading compacted blocks. It is fine since compacted
+				//  blocks should only happen when OOO is enabled in ingester.
+				return true
+			},
+			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
 		)
 
@@ -2272,6 +2308,14 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 		}
 		defer userDB.casState(activeShipping, active)
 
+		if idxs, err := bucketindex.ReadSyncStatus(ctx, i.TSDBState.bucket, userID, logutil.WithContext(ctx, i.logger)); err == nil {
+			// Skip blocks shipping if the bucket index failed to sync due to CMK errors.
+			if idxs.Status == bucketindex.CustomerManagedKeyError {
+				level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "skipping shipping blocks due CustomerManagedKeyError", "user", userID)
+				return nil
+			}
+		}
+
 		uploaded, err := userDB.shipper.Sync(ctx)
 		if err != nil {
 			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "shipper failed to synchronize TSDB blocks with the storage", "user", userID, "uploaded", uploaded, "err", err)
@@ -2358,7 +2402,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.
 
 		default:
 			reason = "regular"
-			err = userDB.Compact()
+			err = userDB.Compact(ctx)
 		}
 
 		if err != nil {

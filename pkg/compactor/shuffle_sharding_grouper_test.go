@@ -751,7 +751,7 @@ func (r *RingMock) Collect(ch chan<- prometheus.Metric) {}
 
 func (r *RingMock) Describe(ch chan<- *prometheus.Desc) {}
 
-func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts, bufZones []string) (ring.ReplicationSet, error) {
+func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts []string, bufZones map[string]int) (ring.ReplicationSet, error) {
 	args := r.Called(key, op, bufDescs, bufHosts, bufZones)
 	return args.Get(0).(ring.ReplicationSet), args.Error(1)
 }
@@ -759,6 +759,11 @@ func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDe
 func (r *RingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
 	args := r.Called(op)
 	return args.Get(0).(ring.ReplicationSet), args.Error(1)
+}
+
+func (r *RingMock) GetInstanceDescsForOperation(op ring.Operation) (map[string]ring.InstanceDesc, error) {
+	args := r.Called(op)
+	return args.Get(0).(map[string]ring.InstanceDesc), args.Error(1)
 }
 
 func (r *RingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
@@ -775,6 +780,11 @@ func (r *RingMock) InstancesCount() int {
 }
 
 func (r *RingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
+	args := r.Called(identifier, size)
+	return args.Get(0).(ring.ReadRing)
+}
+
+func (r *RingMock) ShuffleShardWithZoneStability(identifier string, size int) ring.ReadRing {
 	args := r.Called(identifier, size)
 	return args.Get(0).(ring.ReadRing)
 }

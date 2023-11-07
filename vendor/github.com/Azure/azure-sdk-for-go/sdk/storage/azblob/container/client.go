@@ -8,8 +8,9 @@ package container
 
 import (
 	"context"
-	"errors"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -106,41 +107,38 @@ func (c *Client) URL() string {
 	return c.generated().Endpoint()
 }
 
-// NewBlobClient creates a new BlobClient object by concatenating blobName to the end of
-// Client's URL. The new BlobClient uses the same request policy pipeline as the Client.
-// To change the pipeline, create the BlobClient and then call its WithPipeline method passing in the
-// desired pipeline object. Or, call this package's NewBlobClient instead of calling this object's
-// NewBlobClient method.
+// NewBlobClient creates a new blob.Client object by concatenating blobName to the end of
+// Client's URL. The blob name will be URL-encoded.
+// The new blob.Client uses the same request policy pipeline as this Client.
 func (c *Client) NewBlobClient(blobName string) *blob.Client {
+	blobName = url.PathEscape(blobName)
 	blobURL := runtime.JoinPaths(c.URL(), blobName)
 	return (*blob.Client)(base.NewBlobClient(blobURL, c.generated().Pipeline(), c.sharedKey()))
 }
 
-// NewAppendBlobClient creates a new AppendBlobURL object by concatenating blobName to the end of
-// Client's URL. The new AppendBlobURL uses the same request policy pipeline as the Client.
-// To change the pipeline, create the AppendBlobURL and then call its WithPipeline method passing in the
-// desired pipeline object. Or, call this package's NewAppendBlobClient instead of calling this object's
-// NewAppendBlobClient method.
+// NewAppendBlobClient creates a new appendblob.Client object by concatenating blobName to the end of
+// this Client's URL. The blob name will be URL-encoded.
+// The new appendblob.Client uses the same request policy pipeline as this Client.
 func (c *Client) NewAppendBlobClient(blobName string) *appendblob.Client {
+	blobName = url.PathEscape(blobName)
 	blobURL := runtime.JoinPaths(c.URL(), blobName)
 	return (*appendblob.Client)(base.NewAppendBlobClient(blobURL, c.generated().Pipeline(), c.sharedKey()))
 }
 
-// NewBlockBlobClient creates a new BlockBlobClient object by concatenating blobName to the end of
-// Client's URL. The new BlockBlobClient uses the same request policy pipeline as the Client.
-// To change the pipeline, create the BlockBlobClient and then call its WithPipeline method passing in the
-// desired pipeline object. Or, call this package's NewBlockBlobClient instead of calling this object's
-// NewBlockBlobClient method.
+// NewBlockBlobClient creates a new blockblob.Client object by concatenating blobName to the end of
+// this Client's URL. The blob name will be URL-encoded.
+// The new blockblob.Client uses the same request policy pipeline as this Client.
 func (c *Client) NewBlockBlobClient(blobName string) *blockblob.Client {
+	blobName = url.PathEscape(blobName)
 	blobURL := runtime.JoinPaths(c.URL(), blobName)
 	return (*blockblob.Client)(base.NewBlockBlobClient(blobURL, c.generated().Pipeline(), c.sharedKey()))
 }
 
-// NewPageBlobClient creates a new PageBlobURL object by concatenating blobName to the end of Client's URL. The new PageBlobURL uses the same request policy pipeline as the Client.
-// To change the pipeline, create the PageBlobURL and then call its WithPipeline method passing in the
-// desired pipeline object. Or, call this package's NewPageBlobClient instead of calling this object's
-// NewPageBlobClient method.
+// NewPageBlobClient creates a new pageblob.Client object by concatenating blobName to the end of
+// this Client's URL. The blob name will be URL-encoded.
+// The new pageblob.Client uses the same request policy pipeline as this Client.
 func (c *Client) NewPageBlobClient(blobName string) *pageblob.Client {
+	blobName = url.PathEscape(blobName)
 	blobURL := runtime.JoinPaths(c.URL(), blobName)
 	return (*pageblob.Client)(base.NewPageBlobClient(blobURL, c.generated().Pipeline(), c.sharedKey()))
 }
@@ -149,13 +147,13 @@ func (c *Client) NewPageBlobClient(blobName string) *pageblob.Client {
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/create-container.
 func (c *Client) Create(ctx context.Context, options *CreateOptions) (CreateResponse, error) {
 	var opts *generated.ContainerClientCreateOptions
-	var cpkScopes *generated.ContainerCpkScopeInfo
+	var cpkScopes *generated.ContainerCPKScopeInfo
 	if options != nil {
 		opts = &generated.ContainerClientCreateOptions{
 			Access:   options.Access,
 			Metadata: options.Metadata,
 		}
-		cpkScopes = options.CpkScopeInfo
+		cpkScopes = options.CPKScopeInfo
 	}
 	resp, err := c.generated().Create(ctx, opts, cpkScopes)
 
@@ -219,9 +217,12 @@ func (c *Client) GetAccessPolicy(ctx context.Context, o *GetAccessPolicyOptions)
 
 // SetAccessPolicy sets the container's permissions. The access policy indicates whether blobs in a container may be accessed publicly.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/set-container-acl.
-func (c *Client) SetAccessPolicy(ctx context.Context, containerACL []*SignedIdentifier, o *SetAccessPolicyOptions) (SetAccessPolicyResponse, error) {
-	accessPolicy, mac, lac := o.format()
-	resp, err := c.generated().SetAccessPolicy(ctx, containerACL, accessPolicy, mac, lac)
+func (c *Client) SetAccessPolicy(ctx context.Context, o *SetAccessPolicyOptions) (SetAccessPolicyResponse, error) {
+	accessPolicy, mac, lac, acl, err := o.format()
+	if err != nil {
+		return SetAccessPolicyResponse{}, err
+	}
+	resp, err := c.generated().SetAccessPolicy(ctx, acl, accessPolicy, mac, lac)
 	return resp, err
 }
 
@@ -267,12 +268,9 @@ func (c *Client) NewListBlobsFlatPager(o *ListBlobsFlatOptions) *runtime.Pager[L
 
 // NewListBlobsHierarchyPager returns a channel of blobs starting from the specified Marker. Use an empty
 // Marker to start enumeration from the beginning. Blob names are returned in lexicographic order.
-// After getting a segment, process it, and then call ListBlobsHierarchicalSegment again (passing the the
+// After getting a segment, process it, and then call ListBlobsHierarchicalSegment again (passing the
 // previously-returned Marker) to get the next segment.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/list-blobs.
-// AutoPagerTimeout specifies the amount of time with no read operations before the channel times out and closes. Specify no time and it will be ignored.
-// AutoPagerBufferSize specifies the channel's buffer size.
-// Both the blob item channel and error channel should be watched. Only one error will be released via this channel (or a nil error, to register a clean exit.)
 func (c *Client) NewListBlobsHierarchyPager(delimiter string, o *ListBlobsHierarchyOptions) *runtime.Pager[ListBlobsHierarchyResponse] {
 	listOptions := o.format()
 	return runtime.NewPager(runtime.PagingHandler[ListBlobsHierarchyResponse]{
@@ -305,23 +303,22 @@ func (c *Client) NewListBlobsHierarchyPager(delimiter string, o *ListBlobsHierar
 
 // GetSASURL is a convenience method for generating a SAS token for the currently pointed at container.
 // It can only be used if the credential supplied during creation was a SharedKeyCredential.
-func (c *Client) GetSASURL(permissions sas.ContainerPermissions, start time.Time, expiry time.Time) (string, error) {
+func (c *Client) GetSASURL(permissions sas.ContainerPermissions, expiry time.Time, o *GetSASURLOptions) (string, error) {
 	if c.sharedKey() == nil {
-		return "", errors.New("SAS can only be signed with a SharedKeyCredential")
+		return "", bloberror.MissingSharedKeyCredential
 	}
-
+	st := o.format()
 	urlParts, err := blob.ParseURL(c.URL())
 	if err != nil {
 		return "", err
 	}
-
 	// Containers do not have snapshots, nor versions.
 	qps, err := sas.BlobSignatureValues{
 		Version:       sas.Version,
 		Protocol:      sas.ProtocolHTTPS,
 		ContainerName: urlParts.ContainerName,
 		Permissions:   permissions.String(),
-		StartTime:     start.UTC(),
+		StartTime:     st,
 		ExpiryTime:    expiry.UTC(),
 	}.SignWithSharedKey(c.sharedKey())
 	if err != nil {

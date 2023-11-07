@@ -223,12 +223,12 @@ func runLimiterMaxFunctionTest(
 			require.NoError(t, err)
 
 			// Assert on default sharding strategy.
-			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled)
+			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "")
 			actual := runMaxFn(limiter)
 			assert.Equal(t, testData.expectedDefaultSharding, actual)
 
 			// Assert on shuffle sharding strategy.
-			limiter = NewLimiter(overrides, ring, util.ShardingStrategyShuffle, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled)
+			limiter = NewLimiter(overrides, ring, util.ShardingStrategyShuffle, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "")
 			actual = runMaxFn(limiter)
 			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
@@ -290,7 +290,7 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false)
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -352,7 +352,7 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false)
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata)
 
 			assert.Equal(t, testData.expected, actual)
@@ -415,7 +415,7 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false)
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -478,7 +478,7 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			}, nil)
 			require.NoError(t, err)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false)
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxMetricsWithMetadataPerUser("test", testData.metadata)
 
 			assert.Equal(t, testData.expected, actual)
@@ -501,7 +501,7 @@ func TestLimiter_FormatError(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false)
+	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it")
 
 	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded)
 	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")

@@ -4,15 +4,16 @@ import (
 	"math"
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
-	"github.com/cortexproject/cortex/pkg/querier/series"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 )
 
 func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMatcher {
@@ -42,7 +43,7 @@ func convertMatchersToLabelMatcher(matchers []*labels.Matcher) []storepb.LabelMa
 // Implementation of storage.SeriesSet, based on individual responses from store client.
 type blockQuerierSeriesSet struct {
 	series   []*storepb.Series
-	warnings storage.Warnings
+	warnings annotations.Annotations
 
 	// next response to process
 	next int
@@ -82,7 +83,7 @@ func (bqss *blockQuerierSeriesSet) Err() error {
 	return nil
 }
 
-func (bqss *blockQuerierSeriesSet) Warnings() storage.Warnings {
+func (bqss *blockQuerierSeriesSet) Warnings() annotations.Annotations {
 	return bqss.warnings
 }
 

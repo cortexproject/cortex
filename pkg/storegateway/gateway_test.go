@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -48,6 +47,7 @@ import (
 )
 
 func TestConfig_Validate(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		setup    func(cfg *Config, limits *validation.Limits)
 		expected error
@@ -81,7 +81,9 @@ func TestConfig_Validate(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			cfg := &Config{}
 			limits := &validation.Limits{}
 			flagext.DefaultValues(cfg, limits)
@@ -93,6 +95,7 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		initialExists bool
 		initialState  ring.InstanceState
@@ -114,17 +117,19 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 		"instance already in the ring with ACTIVE state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.ACTIVE,
-			initialTokens: generateSortedTokens(RingNumTokens),
+			initialTokens: ring.GenerateTokens(RingNumTokens, nil),
 		},
 		"instance already in the ring with LEAVING state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.LEAVING,
-			initialTokens: generateSortedTokens(RingNumTokens),
+			initialTokens: ring.GenerateTokens(RingNumTokens, nil),
 		},
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
@@ -175,6 +180,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 }
 
 func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = false
@@ -196,6 +202,7 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 }
 
 func TestStoreGateway_InitialSyncFailure(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = true
@@ -224,6 +231,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 // their own blocks, regardless which store-gateway joined the ring first or last (even if starting
 // at the same time, they will join the ring at a slightly different time).
 func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
+	//parallel testing causes data race
 	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
@@ -241,7 +249,7 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 
 	tests := map[string]struct {
 		shardingStrategy     string
-		tenantShardSize      int // Used only when the sharding strategy is shuffle-sharding.
+		tenantShardSize      float64 // Used only when the sharding strategy is shuffle-sharding.
 		replicationFactor    int
 		numGateways          int
 		expectedBlocksLoaded int
@@ -291,14 +299,22 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 			numGateways:          20,
 			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
 		},
+		"shuffle sharding strategy, 20 gateways, RF = 3, SS = 0.5": {
+			shardingStrategy:     util.ShardingStrategyShuffle,
+			tenantShardSize:      0.5,
+			replicationFactor:    3,
+			numGateways:          20,
+			expectedBlocksLoaded: 3 * numBlocks, // blocks are replicated 3 times
+		},
 	}
 
 	for testName, testData := range tests {
 		for _, bucketIndexEnabled := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s (bucket index enabled = %v)", testName, bucketIndexEnabled), func(t *testing.T) {
+				//parallel testing causes data race
 				// Randomise the seed but log it in case we need to reproduce the test on failure.
 				seed := time.Now().UnixNano()
-				rand.Seed(seed)
+				rand.New(rand.NewSource(seed))
 				t.Log("random generator seed:", seed)
 
 				ctx := context.Background()
@@ -361,8 +377,9 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 				assert.Equal(t, float64(2*testData.numGateways), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_discovered"))
 
 				if testData.shardingStrategy == util.ShardingStrategyShuffle {
-					assert.Equal(t, float64(testData.tenantShardSize*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
-					assert.Equal(t, float64(testData.tenantShardSize*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
+					shards := util.DynamicShardSize(testData.tenantShardSize, testData.numGateways)
+					assert.Equal(t, float64(shards*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
+					assert.Equal(t, float64(shards*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
 				} else {
 					assert.Equal(t, float64(testData.numGateways*numBlocks), metrics.GetSumOfGauges("cortex_blocks_meta_synced"))
 					assert.Equal(t, float64(testData.numGateways*numUsers), metrics.GetSumOfGauges("cortex_bucket_stores_tenants_synced"))
@@ -376,13 +393,14 @@ func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 }
 
 func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScaleUp(t *testing.T) {
+	t.Parallel()
 	const (
 		numUsers             = 2
 		numBlocks            = numUsers * 12
 		shardingStrategy     = util.ShardingStrategyDefault
 		replicationFactor    = 3
 		numInitialGateways   = 4
-		numScaleUpGateways   = 6
+		numScaleUpGateways   = 2
 		expectedBlocksLoaded = 3 * numBlocks // blocks are replicated 3 times
 	)
 
@@ -401,7 +419,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 
 	// Randomise the seed but log it in case we need to reproduce the test on failure.
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	rand.New(rand.NewSource(seed))
 	t.Log("random generator seed:", seed)
 
 	ctx := context.Background()
@@ -535,26 +553,29 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 }
 
 func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		storedTokens      ring.Tokens
 		expectedNumTokens int
 	}{
 		"stored tokens are less than the configured ones": {
-			storedTokens:      generateSortedTokens(RingNumTokens - 10),
+			storedTokens:      ring.GenerateTokens(RingNumTokens-10, nil),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are equal to the configured ones": {
-			storedTokens:      generateSortedTokens(RingNumTokens),
+			storedTokens:      ring.GenerateTokens(RingNumTokens, nil),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are more then the configured ones": {
-			storedTokens:      generateSortedTokens(RingNumTokens + 10),
+			storedTokens:      ring.GenerateTokens(RingNumTokens+10, nil),
 			expectedNumTokens: RingNumTokens + 10,
 		},
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			tokensFile, err := os.CreateTemp(os.TempDir(), "tokens-*")
 			require.NoError(t, err)
 			defer os.Remove(tokensFile.Name()) //nolint:errcheck
@@ -589,6 +610,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 }
 
 func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
+	t.Parallel()
 	registeredAt := time.Now()
 
 	tests := map[string]struct {
@@ -615,7 +637,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			},
 			expectedSync: true,
 		},
-		"should sync when an instance changes state": {
+		"should NOT sync when an instance changes state": {
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
 				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING, registeredAt)
@@ -625,7 +647,19 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 				instance.State = ring.ACTIVE
 				desc.Ingesters["instance-2"] = instance
 			},
-			expectedSync: true,
+			expectedSync: false,
+		},
+		"should NOT sync when an instance address is replaced": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.JOINING, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				instance := desc.Ingesters["instance-1"]
+				instance.Addr = "127.0.0.3"
+				desc.Ingesters["instance-1"] = instance
+			},
+			expectedSync: false,
 		},
 		"should sync when an healthy instance becomes unhealthy": {
 			setupRing: func(desc *ring.Desc) {
@@ -682,10 +716,80 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 			},
 			expectedSync: false,
 		},
+		"should sync when token has changed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{7, 8, 9}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when token is added": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3, 7}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when token is removed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when token is swapped": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.RemoveIngester("instance-2")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should sync when zone has changed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "zone-1", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "zone-2", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "zone-3", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			expectedSync: true,
+		},
+		"should NOT sync when registered timestamp has changed": {
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt)
+				desc.AddIngester("instance-2", "127.0.0.2", "", ring.Tokens{4, 5, 6}, ring.ACTIVE, registeredAt)
+			},
+			updateRing: func(desc *ring.Desc) {
+				desc.RemoveIngester("instance-1")
+				desc.AddIngester("instance-1", "127.0.0.1", "", ring.Tokens{1, 2, 3}, ring.ACTIVE, registeredAt.Add(1*time.Hour))
+			},
+			expectedSync: false,
+		},
 	}
 
 	for testName, testData := range tests {
+		testData := testData
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
@@ -745,6 +849,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 }
 
 func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+	t.Parallel()
 	const unhealthyInstanceID = "unhealthy-id"
 	const heartbeatTimeout = time.Minute
 
@@ -771,7 +876,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(RingNumTokens), ring.ACTIVE, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", ring.GenerateTokens(RingNumTokens, nil), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 
@@ -791,6 +896,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 }
 
 func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	userID := "user-1"
@@ -823,11 +929,11 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 
 	// Inject different external labels for each block.
 	for idx, blockID := range blockIDs {
+		metaLabels := make(map[string]string)
+		metaLabels[cortex_tsdb.TenantIDExternalLabel] = userID
+		metaLabels[cortex_tsdb.IngesterIDExternalLabel] = fmt.Sprintf("ingester-%d", idx)
 		meta := metadata.Thanos{
-			Labels: map[string]string{
-				cortex_tsdb.TenantIDExternalLabel:   userID,
-				cortex_tsdb.IngesterIDExternalLabel: fmt.Sprintf("ingester-%d", idx),
-			},
+			Labels: metaLabels,
 			Source: metadata.TestSource,
 		}
 
@@ -836,7 +942,9 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 	}
 
 	for _, bucketIndexEnabled := range []bool{true, false} {
+		bucketIndexEnabled := bucketIndexEnabled
 		t.Run(fmt.Sprintf("bucket index enabled = %v", bucketIndexEnabled), func(t *testing.T) {
+			t.Parallel()
 			// Create a store-gateway used to query back the series from the blocks.
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = false
@@ -882,6 +990,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 }
 
 func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testing.T) {
+	t.Parallel()
 	const chunksQueried = 10
 
 	tests := map[string]struct {
@@ -929,6 +1038,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			//parallel testing causes data race
 			// Customise the limits.
 			limits := defaultLimitsConfig()
 			limits.MaxChunksPerQuery = testData.limit
@@ -1017,6 +1127,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			//parallel testing causes data race
 			// Customise the limits.
 			limits := defaultLimitsConfig()
 			limits.MaxFetchedSeriesPerQuery = testData.limit
@@ -1097,14 +1208,15 @@ func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int
 	db.DisableCompactions()
 
 	step := (maxT - minT) / int64(numSeries)
+	ctx := context.Background()
 	addSample := func(i int) {
 		lbls := labels.Labels{labels.Label{Name: "series_id", Value: strconv.Itoa(i)}}
 
-		app := db.Appender(context.Background())
+		app := db.Appender(ctx)
 		_, err := app.Append(0, lbls, minT+(step*int64(i)), float64(i))
 		require.NoError(t, err)
 		require.NoError(t, app.Commit())
-		require.NoError(t, db.Compact())
+		require.NoError(t, db.Compact(ctx))
 	}
 	if numBlocks > 0 {
 		i := 0
@@ -1122,17 +1234,6 @@ func mockTSDB(t *testing.T, dir string, numSeries, numBlocks int, minT, maxT int
 	require.NoError(t, db.Snapshot(dir, true))
 
 	require.NoError(t, db.Close())
-}
-
-func generateSortedTokens(numTokens int) ring.Tokens {
-	tokens := ring.GenerateTokens(numTokens, nil)
-
-	// Ensure generated tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
-
-	return ring.Tokens(tokens)
 }
 
 func readSamplesFromChunks(rawChunks []storepb.AggrChunk) ([]sample, error) {

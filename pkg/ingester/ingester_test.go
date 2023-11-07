@@ -40,6 +40,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -126,19 +128,19 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, nil, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func() {
 				// Append to two series, expect series-exceeded error.
-				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, cortexpb.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, nil, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 				assert.Equal(t, wrapWithUser(makeLimitError(perUserSeriesLimit, ing.limiter.FormatError(userID, errMaxSeriesPerUserLimitExceeded)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata, expect no error since metadata is a best effort approach.
-				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, cortexpb.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
 				require.NoError(t, err)
 
 				// Read samples back via ingester queries.
@@ -248,19 +250,19 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, cortexpb.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, []cortexpb.Sample{sample1}, []*cortexpb.MetricMetadata{metadata1}, nil, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func() {
 				// Append two series, expect series-exceeded error.
-				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, cortexpb.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, []cortexpb.Sample{sample2, sample3}, nil, nil, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 				assert.Equal(t, wrapWithUser(makeMetricLimitError(perMetricSeriesLimit, labels3, ing.limiter.FormatError(userID, errMaxSeriesPerMetricLimitExceeded)), userID).Error(), string(httpResp.Body))
 
 				// Append two metadata for the same metric. Drop the second one, and expect no error since metadata is a best effort approach.
-				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, cortexpb.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest(nil, nil, []*cortexpb.MetricMetadata{metadata1, metadata2}, nil, cortexpb.API))
 				require.NoError(t, err)
 
 				// Read samples back via ingester queries.
@@ -343,6 +345,56 @@ func TestIngester_Push(t *testing.T) {
 		maxExemplars              int
 		oooTimeWindow             time.Duration
 	}{
+		"should record native histogram": {
+			reqs: []*cortexpb.WriteRequest{
+				cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					[]*cortexpb.MetricMetadata{
+						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
+					},
+					[]cortexpb.Histogram{
+						{
+							TimestampMs: 10,
+						},
+					},
+					cortexpb.API),
+			},
+			expectedErr: nil,
+			expectedIngested: []cortexpb.TimeSeries{
+				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 10}}},
+			},
+			expectedMetadataIngested: []*cortexpb.MetricMetadata{
+				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
+			},
+			additionalMetrics: []string{},
+			expectedMetrics: `
+				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+				# TYPE cortex_ingester_ingested_samples_total counter
+				cortex_ingester_ingested_samples_total 1
+				# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+				# TYPE cortex_ingester_ingested_samples_failures_total counter
+				cortex_ingester_ingested_samples_failures_total 0
+				# HELP cortex_ingester_memory_users The current number of users in memory.
+				# TYPE cortex_ingester_memory_users gauge
+				cortex_ingester_memory_users 1
+				# HELP cortex_ingester_memory_series The current number of series in memory.
+				# TYPE cortex_ingester_memory_series gauge
+				cortex_ingester_memory_series 1
+				# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
+				# TYPE cortex_ingester_memory_series_created_total counter
+				cortex_ingester_memory_series_created_total{user="test"} 1
+				# HELP cortex_ingester_memory_series_removed_total The total number of series that were removed per user.
+				# TYPE cortex_ingester_memory_series_removed_total counter
+				cortex_ingester_memory_series_removed_total{user="test"} 0
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="native-histogram-sample",user="test"} 1
+				# HELP cortex_ingester_active_series Number of currently active series per user.
+				# TYPE cortex_ingester_active_series gauge
+				cortex_ingester_active_series{user="test"} 1
+			`,
+		},
 		"should succeed on valid series and metadata": {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
@@ -351,6 +403,7 @@ func TestIngester_Push(t *testing.T) {
 					[]*cortexpb.MetricMetadata{
 						{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: cortexpb.COUNTER},
 					},
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
@@ -358,6 +411,7 @@ func TestIngester_Push(t *testing.T) {
 					[]*cortexpb.MetricMetadata{
 						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 					},
+					nil,
 					cortexpb.API),
 			},
 			expectedErr: nil,
@@ -418,6 +472,7 @@ func TestIngester_Push(t *testing.T) {
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
 					nil,
 					cortexpb.API),
 				{
@@ -522,10 +577,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+					nil,
 					nil,
 					cortexpb.API),
 			},
@@ -560,10 +617,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
 					nil,
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
+					nil,
 					nil,
 					cortexpb.API),
 			},
@@ -604,10 +663,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
+					nil,
 					nil,
 					cortexpb.API),
 			},
@@ -648,10 +709,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (600 * 1000)}},
+					nil,
 					nil,
 					cortexpb.API),
 			},
@@ -693,10 +756,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (60 * 1000)}},
+					nil,
 					nil,
 					cortexpb.API),
 			},
@@ -734,10 +799,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}},
 					nil,
+					nil,
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969}},
+					nil,
 					nil,
 					cortexpb.API),
 			},
@@ -974,10 +1041,12 @@ func TestIngester_Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testi
 				[]labels.Labels{metricLabels},
 				[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 				nil,
+				nil,
 				cortexpb.API),
 			cortexpb.ToWriteRequest(
 				[]labels.Labels{metricLabels},
 				[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+				nil,
 				nil,
 				cortexpb.API),
 		}
@@ -1056,10 +1125,12 @@ func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
 				[]labels.Labels{metricLabels},
 				[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 				nil,
+				nil,
 				cortexpb.API),
 			cortexpb.ToWriteRequest(
 				[]labels.Labels{metricLabels},
 				[]cortexpb.Sample{{Value: 2, TimestampMs: 10}},
+				nil,
 				nil,
 				cortexpb.API),
 		}
@@ -1128,6 +1199,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 		[]labels.Labels{metricLabels},
 		[]cortexpb.Sample{{Value: 1, TimestampMs: startTime}},
 		nil,
+		nil,
 		cortexpb.API)
 	_, err = ingester.Push(ctx, currTimeReq)
 	require.NoError(b, err)
@@ -1146,7 +1218,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 			for i := range allSamples {
 				allSamples[i].TimestampMs = startTime + int64(iter*samples+j+1)
 			}
-			_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(allLabels, allSamples, nil, cortexpb.API))
+			_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(allLabels, allSamples, nil, nil, cortexpb.API))
 			if !errorsExpected {
 				require.NoError(b, err)
 			}
@@ -1205,6 +1277,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					[]labels.Labels{{{Name: labels.MetricName, Value: metricName}}},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: util.TimeToMillis(time.Now())}},
 					nil,
+					nil,
 					cortexpb.API)
 				_, err := ingester.Push(ctx, currTimeReq)
 				require.NoError(b, err)
@@ -1214,7 +1287,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 
 				// Push out of bound samples.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 
 					verifyErrorString(b, err, expectedErr)
 				}
@@ -1229,6 +1302,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 						[]labels.Labels{{{Name: labels.MetricName, Value: metricName}, {Name: "cardinality", Value: strconv.Itoa(i)}}},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 						nil,
+						nil,
 						cortexpb.API)
 
 					_, err := ingester.Push(ctx, currTimeReq)
@@ -1240,7 +1314,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 
 				// Push out of order samples.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 
 					verifyErrorString(b, err, expectedErr)
 				}
@@ -1257,6 +1331,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					[]labels.Labels{labels.FromStrings(labels.MetricName, "another")},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 					nil,
+					nil,
 					cortexpb.API)
 				_, err := ingester.Push(ctx, currTimeReq)
 				require.NoError(b, err)
@@ -1264,7 +1339,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with a different name than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 					verifyErrorString(b, err, "per-user series limit")
 				}
 			},
@@ -1280,6 +1355,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					[]labels.Labels{labels.FromStrings(labels.MetricName, metricName, "cardinality", "another")},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
 					nil,
+					nil,
 					cortexpb.API)
 				_, err := ingester.Push(ctx, currTimeReq)
 				require.NoError(b, err)
@@ -1287,7 +1363,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)) // nolint:errcheck
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 					verifyErrorString(b, err, "per-metric series limit")
 				}
 			},
@@ -1310,7 +1386,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "push rate reached")
 				}
 			},
@@ -1332,7 +1408,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "max tenants limit reached")
 				}
 			},
@@ -1351,7 +1427,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "max series limit reached")
 				}
 			},
@@ -1369,7 +1445,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				for n := 0; n < b.N; n++ {
-					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API))
+					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "too many inflight push requests")
 				}
 			},
@@ -2077,7 +2153,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 			}
 
 			// Send metrics to the ingester.
-			req := cortexpb.ToWriteRequest(metrics, samples, nil, cortexpb.API)
+			req := cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)
 			_, err := i.Push(ctx, req)
 			require.NoError(t, err)
 		}
@@ -2351,7 +2427,7 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 		},
 	}
 
-	req := cortexpb.ToWriteRequest([]labels.Labels{lbls}, samples, nil, cortexpb.API)
+	req := cortexpb.ToWriteRequest([]labels.Labels{lbls}, samples, nil, nil, cortexpb.API)
 
 	// Generate the expected response
 	expectedQueryRes := &client.QueryResponse{
@@ -2568,40 +2644,60 @@ func TestIngester_OpenExistingTSDBOnStartup(t *testing.T) {
 }
 
 func TestIngester_shipBlocks(t *testing.T) {
-	cfg := defaultIngesterTestConfig(t)
-	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
-
-	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Create the TSDB for 3 users and then replace the shipper with the mocked one
-	mocks := []*shipperMock{}
-	for _, userID := range []string{"user-1", "user-2", "user-3"} {
-		userDB, err := i.getOrCreateTSDB(userID, false)
-		require.NoError(t, err)
-		require.NotNil(t, userDB)
-
-		m := &shipperMock{}
-		m.On("Sync", mock.Anything).Return(0, nil)
-		mocks = append(mocks, m)
-
-		userDB.shipper = m
+	testCases := map[string]struct {
+		ss                   bucketindex.Status
+		expectetNumberOfCall int
+	}{
+		"should ship blocks if status ok": {
+			ss:                   bucketindex.Status{Version: bucketindex.IndexVersion1, Status: bucketindex.Ok},
+			expectetNumberOfCall: 1,
+		},
+		"should not ship on cmk errors": {
+			ss:                   bucketindex.Status{Version: bucketindex.IndexVersion1, Status: bucketindex.CustomerManagedKeyError},
+			expectetNumberOfCall: 0,
+		},
 	}
 
-	// Ship blocks and assert on the mocked shipper
-	i.shipBlocks(context.Background(), nil)
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
 
-	for _, m := range mocks {
-		m.AssertNumberOfCalls(t, "Sync", 1)
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+			cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 2
+
+			// Create ingester
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// Create the TSDB for 3 users and then replace the shipper with the mocked one
+			mocks := []*shipperMock{}
+			for _, userID := range []string{"user-1", "user-2", "user-3"} {
+				bucketindex.WriteSyncStatus(context.Background(), i.TSDBState.bucket, userID, tc.ss, log.NewNopLogger())
+				userDB, err := i.getOrCreateTSDB(userID, false)
+				require.NoError(t, err)
+				require.NotNil(t, userDB)
+
+				m := &shipperMock{}
+				m.On("Sync", mock.Anything).Return(0, nil)
+				mocks = append(mocks, m)
+
+				userDB.shipper = m
+			}
+
+			// Ship blocks and assert on the mocked shipper
+			i.shipBlocks(context.Background(), nil)
+
+			for _, m := range mocks {
+				m.AssertNumberOfCalls(t, "Sync", tc.expectetNumberOfCall)
+			}
+		})
 	}
 }
 
@@ -2635,7 +2731,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, nil, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db := i.getTSDB(userID)
@@ -2667,7 +2763,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	bucket := objstore.NewInMemBucket()
 
 	// Write tenant deletion mark.
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, nil, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 
 	i.TSDBState.bucket = bucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -3680,7 +3776,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	db := i.getTSDB(userID)
 	require.NotNil(t, db)
-	require.Nil(t, db.Compact())
+	require.Nil(t, db.Compact(ctx))
 
 	oldBlocks := db.Blocks()
 	require.Equal(t, 3, len(oldBlocks))
@@ -3704,7 +3800,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
-	require.Nil(t, db.Compact())
+	require.Nil(t, db.Compact(ctx))
 
 	// Only the second block should be gone along with a new block.
 	newBlocks := db.Blocks()
@@ -3732,7 +3828,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
 	}
-	require.Nil(t, db.Compact())
+	require.Nil(t, db.Compact(ctx))
 
 	// All blocks from the old blocks should be gone now.
 	newBlocks2 := db.Blocks()
@@ -3858,6 +3954,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 						[]*cortexpb.MetricMetadata{
 							{MetricFamilyName: "metric_name_1", Help: "a help for metric_name_1", Unit: "", Type: cortexpb.COUNTER},
 						},
+						nil,
 						cortexpb.API),
 				},
 			},
@@ -3873,11 +3970,13 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
+						nil,
 						cortexpb.API),
 
 					cortexpb.ToWriteRequest(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+						nil,
 						nil,
 						cortexpb.API),
 				},
@@ -3895,6 +3994,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
+						nil,
 						cortexpb.API),
 				},
 
@@ -3902,6 +4002,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 					cortexpb.ToWriteRequest(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test2"}})}, // another series
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+						nil,
 						nil,
 						cortexpb.API),
 				},
@@ -3918,11 +4019,13 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 						nil,
+						nil,
 						cortexpb.API),
 
 					cortexpb.ToWriteRequest(
 						[]labels.Labels{cortexpb.FromLabelAdaptersToLabels([]cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test1"}})},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+						nil,
 						nil,
 						cortexpb.API),
 				},
@@ -4142,5 +4245,5 @@ func generateSamplesForLabel(l labels.Labels, count int) *cortexpb.WriteRequest 
 		lbls = append(lbls, l)
 	}
 
-	return cortexpb.ToWriteRequest(lbls, samples, nil, cortexpb.API)
+	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }

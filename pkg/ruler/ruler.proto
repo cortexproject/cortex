@@ -19,7 +19,12 @@ service Ruler {
   rpc Rules(RulesRequest) returns (RulesResponse) {};
 }
 
-message RulesRequest {}
+message RulesRequest {
+  repeated string ruleNames = 1;
+  repeated string ruleGroupNames = 2;
+  repeated string files = 3;
+  string type = 4;
+}
 
 message RulesResponse {
   repeated GroupStateDesc groups = 1;

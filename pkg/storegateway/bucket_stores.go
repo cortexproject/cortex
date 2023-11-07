@@ -29,11 +29,14 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -66,12 +69,22 @@ type BucketStores struct {
 	storesMu sync.RWMutex
 	stores   map[string]*store.BucketStore
 
+	// Keeps the last sync error for the  bucket store for each tenant.
+	storesErrorsMu sync.RWMutex
+	storesErrors   map[string]error
+
+	// Keeps number of inflight requests
+	inflightRequestCnt int
+	inflightRequestMu  sync.RWMutex
+
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
 	tenantsDiscovered prometheus.Gauge
 	tenantsSynced     prometheus.Gauge
 }
+
+var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
@@ -95,6 +108,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 		bucket:             cachingBucket,
 		shardingStrategy:   shardingStrategy,
 		stores:             map[string]*store.BucketStore{},
+		storesErrors:       map[string]error{},
 		logLevel:           logLevel,
 		bucketStoreMetrics: NewBucketStoreMetrics(),
 		metaFetcherMetrics: NewMetadataFetcherMetrics(),
@@ -226,9 +240,19 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 
 			for job := range jobs {
 				if err := f(ctx, job.store); err != nil {
-					errsMx.Lock()
-					errs.Add(errors.Wrapf(err, "failed to synchronize TSDB blocks for user %s", job.userID))
-					errsMx.Unlock()
+					if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+						u.storesErrorsMu.Lock()
+						u.storesErrors[job.userID] = httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+						u.storesErrorsMu.Unlock()
+					} else {
+						errsMx.Lock()
+						errs.Add(errors.Wrapf(err, "failed to synchronize TSDB blocks for user %s", job.userID))
+						errsMx.Unlock()
+					}
+				} else {
+					u.storesErrorsMu.Lock()
+					delete(u.storesErrors, job.userID)
+					u.storesErrorsMu.Unlock()
 				}
 			}
 		}()
@@ -281,15 +305,55 @@ func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_Seri
 		return fmt.Errorf("no userID")
 	}
 
+	err := u.getStoreError(userID)
+	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return err
+	}
+
 	store := u.getStore(userID)
 	if store == nil {
 		return nil
 	}
 
-	return store.Series(req, spanSeriesServer{
+	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
+	if maxInflightRequests > 0 {
+		if u.getInflightRequestCnt() >= maxInflightRequests {
+			return ErrTooManyInflightRequests
+		}
+
+		u.incrementInflightRequestCnt()
+		defer u.decrementInflightRequestCnt()
+	}
+
+	err = store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	})
+
+	return err
+}
+
+func (u *BucketStores) getInflightRequestCnt() int {
+	u.inflightRequestMu.RLock()
+	defer u.inflightRequestMu.RUnlock()
+	return u.inflightRequestCnt
+}
+
+func (u *BucketStores) incrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt++
+	u.inflightRequestMu.Unlock()
+}
+
+func (u *BucketStores) decrementInflightRequestCnt() {
+	u.inflightRequestMu.Lock()
+	u.inflightRequestCnt--
+	u.inflightRequestMu.Unlock()
 }
 
 // LabelNames implements the Storegateway proto service.
@@ -302,12 +366,24 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 		return nil, fmt.Errorf("no userID")
 	}
 
+	err := u.getStoreError(userID)
+	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return nil, err
+	}
+
 	store := u.getStore(userID)
 	if store == nil {
 		return &storepb.LabelNamesResponse{}, nil
 	}
 
-	return store.LabelNames(ctx, req)
+	resp, err := store.LabelNames(ctx, req)
+
+	return resp, err
 }
 
 // LabelValues implements the Storegateway proto service.
@@ -318,6 +394,16 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
 		return nil, fmt.Errorf("no userID")
+	}
+
+	err := u.getStoreError(userID)
+	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+	if err != nil {
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+
+		return nil, err
 	}
 
 	store := u.getStore(userID)
@@ -348,6 +434,12 @@ func (u *BucketStores) getStore(userID string) *store.BucketStore {
 	u.storesMu.RLock()
 	defer u.storesMu.RUnlock()
 	return u.stores[userID]
+}
+
+func (u *BucketStores) getStoreError(userID string) error {
+	u.storesErrorsMu.RLock()
+	defer u.storesErrorsMu.RUnlock()
+	return u.storesErrors[userID]
 }
 
 var (
@@ -480,7 +572,23 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		store.WithIndexCache(u.indexCache),
 		store.WithQueryGate(u.queryGate),
 		store.WithChunkPool(u.chunksPool),
-		store.WithSeriesBatchSize(store.SeriesBatchSize),
+		store.WithSeriesBatchSize(u.cfg.BucketStore.SeriesBatchSize),
+		store.WithBlockEstimatedMaxChunkFunc(func(m thanos_metadata.Meta) uint64 {
+			if m.Thanos.IndexStats.ChunkMaxSize > 0 &&
+				uint64(m.Thanos.IndexStats.ChunkMaxSize) < u.cfg.BucketStore.EstimatedMaxChunkSizeBytes {
+				return uint64(m.Thanos.IndexStats.ChunkMaxSize)
+			}
+			return u.cfg.BucketStore.EstimatedMaxChunkSizeBytes
+		}),
+		store.WithBlockEstimatedMaxSeriesFunc(func(m thanos_metadata.Meta) uint64 {
+			if m.Thanos.IndexStats.SeriesMaxSize > 0 &&
+				uint64(m.Thanos.IndexStats.SeriesMaxSize) < u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes {
+				return uint64(m.Thanos.IndexStats.SeriesMaxSize)
+			}
+			return u.cfg.BucketStore.EstimatedMaxSeriesSizeBytes
+		}),
+		store.WithLazyExpandedPostings(u.cfg.BucketStore.LazyExpandedPostingsEnabled),
+		store.WithDontResort(true), // Cortex doesn't need to resort series in store gateway.
 	}
 	if u.logLevel.String() == "debug" {
 		bucketStoreOpts = append(bucketStoreOpts, store.WithDebugLogging())
@@ -492,7 +600,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		store.NewBytesLimiterFactory(0),
+		newBytesLimiterFactory(u.limits, userID),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
@@ -634,6 +742,16 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 		// each time a new limiter is instantiated.
 		return &limiter{
 			limiter: store.NewLimiter(uint64(limits.MaxFetchedSeriesPerQuery(userID)), failedCounter),
+		}
+	}
+}
+
+func newBytesLimiterFactory(limits *validation.Overrides, userID string) store.BytesLimiterFactory {
+	return func(failedCounter prometheus.Counter) store.BytesLimiter {
+		// Since limit overrides could be live reloaded, we have to get the current user's limit
+		// each time a new limiter is instantiated.
+		return &limiter{
+			limiter: store.NewLimiter(uint64(limits.MaxDownloadedBytesPerRequest(userID)), failedCounter),
 		}
 	}
 }

@@ -48,6 +48,10 @@ var (
 	errOpsGenieAPIKeyFileNotAllowed      = errors.New("setting OpsGenie api_key_file is not allowed")
 	errPagerDutyRoutingKeyFileNotAllowed = errors.New("setting PagerDuty routing_key_file is not allowed")
 	errPagerDutyServiceKeyFileNotAllowed = errors.New("setting PagerDuty service_key_file is not allowed")
+	errWebhookURLFileNotAllowed          = errors.New("setting Webhook url_file is not allowed")
+	errPushOverUserKeyFileNotAllowed     = errors.New("setting PushOver user_key_file is not allowed")
+	errPushOverTokenFileNotAllowed       = errors.New("setting PushOver token_file is not allowed")
+	errTelegramBotTokenFileNotAllowed    = errors.New("setting Telegram bot_token_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -68,9 +72,12 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
-		if err == alertspb.ErrNotFound {
+		switch {
+		case err == alertspb.ErrNotFound:
 			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
+		case err == alertspb.ErrAccessDenied:
+			http.Error(w, err.Error(), http.StatusForbidden)
+		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -249,7 +256,7 @@ func validateUserConfig(logger log.Logger, cfg alertspb.AlertConfigDesc, limits 
 		templateFiles[i] = filepath.Join(userTempDir, t)
 	}
 
-	_, err = template.FromGlobs(templateFiles...)
+	_, err = template.FromGlobs(templateFiles)
 	if err != nil {
 		return err
 	}
@@ -281,7 +288,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 
 	err = concurrency.ForEachUser(r.Context(), userIDs, fetchConcurrency, func(ctx context.Context, userID string) error {
 		cfg, err := am.store.GetAlertConfig(ctx, userID)
-		if errors.Is(err, alertspb.ErrNotFound) {
+		if errors.Is(err, alertspb.ErrNotFound) || errors.Is(err, alertspb.ErrAccessDenied) {
 			return nil
 		} else if err != nil {
 			return errors.Wrapf(err, "failed to fetch alertmanager config for user %s", userID)
@@ -361,6 +368,19 @@ func validateAlertmanagerConfig(cfg interface{}) error {
 
 	case reflect.TypeOf(config.PagerdutyConfig{}):
 		if err := validatePagerdutyConfig(v.Interface().(config.PagerdutyConfig)); err != nil {
+			return err
+		}
+
+	case reflect.TypeOf(config.WebhookConfig{}):
+		if err := validateWebhookConfig(v.Interface().(config.WebhookConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.PushoverConfig{}):
+		if err := validatePushOverConfig(v.Interface().(config.PushoverConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.TelegramConfig{}):
+		if err := validateTelegramConfig(v.Interface().(config.TelegramConfig)); err != nil {
 			return err
 		}
 	}
@@ -486,5 +506,37 @@ func validatePagerdutyConfig(cfg config.PagerdutyConfig) error {
 		return errPagerDutyServiceKeyFileNotAllowed
 	}
 
+	return nil
+}
+
+// validateWebhookConfig validates the Webhook config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateWebhookConfig(cfg config.WebhookConfig) error {
+	if cfg.URLFile != "" {
+		return errWebhookURLFileNotAllowed
+	}
+	return nil
+}
+
+// validatePushOverConfig validates the Pushover Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validatePushOverConfig(cfg config.PushoverConfig) error {
+	if cfg.UserKeyFile != "" {
+		return errPushOverUserKeyFileNotAllowed
+	}
+
+	if cfg.TokenFile != "" {
+		return errPushOverTokenFileNotAllowed
+	}
+
+	return nil
+}
+
+// validateTelegramConfig validates the Telegram Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateTelegramConfig(cfg config.TelegramConfig) error {
+	if cfg.BotTokenFile != "" {
+		return errTelegramBotTokenFileNotAllowed
+	}
 	return nil
 }

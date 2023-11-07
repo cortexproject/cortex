@@ -24,12 +24,27 @@ const (
 	GlobalIngestionRateStrategy = "global"
 )
 
+// AccessDeniedError are errors that do not comply with the limits specified.
+type AccessDeniedError string
+
+func (e AccessDeniedError) Error() string {
+	return string(e)
+}
+
 // LimitError are errors that do not comply with the limits specified.
 type LimitError string
 
 func (e LimitError) Error() string {
 	return string(e)
 }
+
+type DisabledRuleGroup struct {
+	Namespace string `yaml:"namespace" doc:"nocli|description=namespace in which the rule group belongs"`
+	Name      string `yaml:"name" doc:"nocli|description=name of the rule group"`
+	User      string `yaml:"-" doc:"nocli"`
+}
+
+type DisabledRuleGroups []DisabledRuleGroup
 
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
@@ -82,7 +97,7 @@ type Limits struct {
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
-	MaxQueriersPerTenant         int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
@@ -95,7 +110,8 @@ type Limits struct {
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 
 	// Store-gateway.
-	StoreGatewayTenantShardSize int `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
+	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
+	MaxDownloadedBytesPerRequest int     `yaml:"max_downloaded_bytes_per_request" json:"max_downloaded_bytes_per_request"`
 
 	// Compactor.
 	CompactorBlocksRetentionPeriod model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
@@ -114,12 +130,13 @@ type Limits struct {
 	NotificationRateLimit               float64                  `yaml:"alertmanager_notification_rate_limit" json:"alertmanager_notification_rate_limit"`
 	NotificationRateLimitPerIntegration NotificationRateLimitMap `yaml:"alertmanager_notification_rate_limit_per_integration" json:"alertmanager_notification_rate_limit_per_integration"`
 
-	AlertmanagerMaxConfigSizeBytes             int `yaml:"alertmanager_max_config_size_bytes" json:"alertmanager_max_config_size_bytes"`
-	AlertmanagerMaxTemplatesCount              int `yaml:"alertmanager_max_templates_count" json:"alertmanager_max_templates_count"`
-	AlertmanagerMaxTemplateSizeBytes           int `yaml:"alertmanager_max_template_size_bytes" json:"alertmanager_max_template_size_bytes"`
-	AlertmanagerMaxDispatcherAggregationGroups int `yaml:"alertmanager_max_dispatcher_aggregation_groups" json:"alertmanager_max_dispatcher_aggregation_groups"`
-	AlertmanagerMaxAlertsCount                 int `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
-	AlertmanagerMaxAlertsSizeBytes             int `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
+	AlertmanagerMaxConfigSizeBytes             int                `yaml:"alertmanager_max_config_size_bytes" json:"alertmanager_max_config_size_bytes"`
+	AlertmanagerMaxTemplatesCount              int                `yaml:"alertmanager_max_templates_count" json:"alertmanager_max_templates_count"`
+	AlertmanagerMaxTemplateSizeBytes           int                `yaml:"alertmanager_max_template_size_bytes" json:"alertmanager_max_template_size_bytes"`
+	AlertmanagerMaxDispatcherAggregationGroups int                `yaml:"alertmanager_max_dispatcher_aggregation_groups" json:"alertmanager_max_dispatcher_aggregation_groups"`
+	AlertmanagerMaxAlertsCount                 int                `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
+	AlertmanagerMaxAlertsSizeBytes             int                `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
+	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -167,7 +184,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
-	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
+	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
@@ -181,7 +198,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	// Store-gateway.
-	f.IntVar(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
+	f.IntVar(&l.MaxDownloadedBytesPerRequest, "store-gateway.max-downloaded-bytes-per-request", 0, "The maximum number of data bytes to download per gRPC request in Store Gateway, including Series/LabelNames/LabelValues requests. 0 to disable.")
 
 	// Alertmanager.
 	f.Var(&l.AlertmanagerReceiversBlockCIDRNetworks, "alertmanager.receivers-firewall-block-cidr-networks", "Comma-separated list of network CIDRs to block in Alertmanager receiver integrations.")
@@ -430,6 +448,12 @@ func (o *Overrides) MaxFetchedDataBytesPerQuery(userID string) int {
 	return o.GetOverridesForUser(userID).MaxFetchedDataBytesPerQuery
 }
 
+// MaxDownloadedBytesPerRequest returns the maximum number of bytes to download for each gRPC request in Store Gateway,
+// including any data fetched from cache or object storage.
+func (o *Overrides) MaxDownloadedBytesPerRequest(userID string) int {
+	return o.GetOverridesForUser(userID).MaxDownloadedBytesPerRequest
+}
+
 // MaxQueryLookback returns the max lookback period of queries.
 func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLookback)
@@ -447,7 +471,7 @@ func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
-func (o *Overrides) MaxQueriersPerUser(userID string) int {
+func (o *Overrides) MaxQueriersPerUser(userID string) float64 {
 	return o.GetOverridesForUser(userID).MaxQueriersPerTenant
 }
 
@@ -539,12 +563,12 @@ func (o *Overrides) RulerMaxRuleGroupsPerTenant(userID string) int {
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
-func (o *Overrides) StoreGatewayTenantShardSize(userID string) int {
+func (o *Overrides) StoreGatewayTenantShardSize(userID string) float64 {
 	return o.GetOverridesForUser(userID).StoreGatewayTenantShardSize
 }
 
-// MaxHAClusters returns maximum number of clusters that HA tracker will track for a user.
-func (o *Overrides) MaxHAClusters(user string) int {
+// MaxHAReplicaGroups returns maximum number of clusters that HA tracker will track for a user.
+func (o *Overrides) MaxHAReplicaGroups(user string) int {
 	return o.GetOverridesForUser(user).HAMaxClusters
 }
 
@@ -652,6 +676,26 @@ func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
 	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
 }
 
+func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
+	if o.tenantLimits != nil {
+		l := o.tenantLimits.ByUserID(userID)
+		if l != nil {
+			disabledRuleGroupsForUser := make(DisabledRuleGroups, len(l.DisabledRuleGroups))
+
+			for i, disabledRuleGroup := range l.DisabledRuleGroups {
+				disabledRuleGroupForUser := DisabledRuleGroup{
+					Namespace: disabledRuleGroup.Namespace,
+					Name:      disabledRuleGroup.Name,
+					User:      userID,
+				}
+				disabledRuleGroupsForUser[i] = disabledRuleGroupForUser
+			}
+			return disabledRuleGroupsForUser
+		}
+	}
+	return DisabledRuleGroups{}
+}
+
 // GetOverridesForUser returns the per-tenant limits with overrides.
 func (o *Overrides) GetOverridesForUser(userID string) *Limits {
 	if o.tenantLimits != nil {
@@ -679,12 +723,12 @@ func SmallestPositiveIntPerTenant(tenantIDs []string, f func(string) int) int {
 	return *result
 }
 
-// SmallestPositiveNonZeroIntPerTenant is returning the minimal positive and
+// SmallestPositiveNonZeroFloat64PerTenant is returning the minimal positive and
 // non-zero value of the supplied limit function for all given tenants. In many
 // limits a value of 0 means unlimted so the method will return 0 only if all
 // inputs have a limit of 0 or an empty tenant list is given.
-func SmallestPositiveNonZeroIntPerTenant(tenantIDs []string, f func(string) int) int {
-	var result *int
+func SmallestPositiveNonZeroFloat64PerTenant(tenantIDs []string, f func(string) float64) float64 {
+	var result *float64
 	for _, tenantID := range tenantIDs {
 		v := f(tenantID)
 		if v > 0 && (result == nil || v < *result) {

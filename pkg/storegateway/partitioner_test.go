@@ -12,6 +12,7 @@ import (
 )
 
 func TestGapBasedPartitioner_Partition(t *testing.T) {
+	t.Parallel()
 	reg := prometheus.NewPedanticRegistry()
 	p := newGapBasedPartitioner(10, reg)
 

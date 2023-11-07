@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	// StatusClientClosedRequest is the status code for when a client request cancellation of an http request
+	// StatusClientClosedRequest is the status code for when a client request cancellation of a http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
 )
@@ -39,6 +39,33 @@ var (
 	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
 	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
 	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
+)
+
+const (
+	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
+	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
+	reasonTooManyRequests          = "too_many_requests"
+	reasonTimeRangeExceeded        = "time_range_exceeded"
+	reasonTooManySamples           = "too_many_samples"
+	reasonSeriesFetched            = "series_fetched"
+	reasonChunksFetched            = "chunks_fetched"
+	reasonChunkBytesFetched        = "chunk_bytes_fetched"
+	reasonDataBytesFetched         = "data_bytes_fetched"
+	reasonSeriesLimitStoreGateway  = "store_gateway_series_limit"
+	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
+	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
+
+	limitTooManySamples    = `query processing would load too many samples into memory`
+	limitTimeRangeExceeded = `the query time range exceeds the limit`
+	limitSeriesFetched     = `the query hit the max number of series limit`
+	limitChunksFetched     = `the query hit the max number of chunks limit`
+	limitChunkBytesFetched = `the query hit the aggregated chunks size limit`
+	limitDataBytesFetched  = `the query hit the aggregated data size limit`
+
+	// Store gateway limits.
+	limitSeriesStoreGateway = `exceeded series limit`
+	limitChunksStoreGateway = `exceeded chunks limit`
+	limitBytesStoreGateway  = `exceeded bytes limit`
 )
 
 // Config for a Handler.
@@ -66,6 +93,7 @@ type Handler struct {
 	querySeries     *prometheus.CounterVec
 	queryChunkBytes *prometheus.CounterVec
 	queryDataBytes  *prometheus.CounterVec
+	rejectedQueries *prometheus.CounterVec
 	activeUsers     *util.ActiveUsersCleanupService
 }
 
@@ -98,11 +126,22 @@ func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logge
 			Help: "Size of all data fetched to execute a query in bytes.",
 		}, []string{"user"})
 
+		h.rejectedQueries = promauto.With(reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_rejected_queries_total",
+				Help: "The total number of queries that were rejected.",
+			},
+			[]string{"reason", "user"},
+		)
+
 		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 			h.querySeconds.DeleteLabelValues(user)
 			h.querySeries.DeleteLabelValues(user)
 			h.queryChunkBytes.DeleteLabelValues(user)
 			h.queryDataBytes.DeleteLabelValues(user)
+			if err := util.DeleteMatchingLabels(h.rejectedQueries, map[string]string{"user": user}); err != nil {
+				level.Warn(log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
+			}
 		})
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
@@ -116,6 +155,12 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stats       *querier_stats.QueryStats
 		queryString url.Values
 	)
+
+	tenantIDs, err := tenant.TenantIDs(r.Context())
+	if err != nil {
+		return
+	}
+	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
@@ -142,7 +187,14 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Exclude remote read here as we don't have to buffer its body.
 	if !strings.Contains(r.URL.Path, "api/v1/read") {
 		if err := r.ParseForm(); err != nil {
-			writeError(w, err)
+			statusCode := http.StatusBadRequest
+			if util.IsRequestBodyTooLarge(err) {
+				statusCode = http.StatusRequestEntityTooLarge
+			}
+			http.Error(w, err.Error(), statusCode)
+			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
+				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, userID).Inc()
+			}
 			return
 		}
 		r.Body = io.NopCloser(&buf)
@@ -161,7 +213,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
 	}
+
 	if f.cfg.QueryStatsEnabled {
+		// Try to parse error and get status code.
 		var statusCode int
 		if err != nil {
 			statusCode = getStatusCodeFromError(err)
@@ -177,7 +231,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		f.reportQueryStats(r, queryString, queryResponseTime, stats, err, statusCode)
+		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
 	if err != nil {
@@ -203,6 +257,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func formatGrafanaStatsFields(r *http.Request) []interface{} {
+	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
+
 	fields := make([]interface{}, 0, 4)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
 		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
@@ -215,29 +271,23 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
-
-	logMessage := append([]interface{}{
+	logMessage := []interface{}{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
 		"path", r.URL.Path,
 		"time_taken", queryResponseTime.String(),
-	}, formatQueryString(queryString)...)
+	}
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int) {
-	tenantIDs, err := tenant.TenantIDs(r.Context())
-	if err != nil {
-		return
-	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
+func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	wallTime := stats.LoadWallTime()
 	numSeries := stats.LoadFetchedSeries()
 	numChunks := stats.LoadFetchedChunks()
@@ -251,6 +301,15 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	f.queryChunkBytes.WithLabelValues(userID).Add(float64(numChunkBytes))
 	f.queryDataBytes.WithLabelValues(userID).Add(float64(numDataBytes))
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
+
+	var (
+		contentLength int64
+		encoding      string
+	)
+	if resp != nil {
+		contentLength = resp.ContentLength
+		encoding = resp.Header.Get("Content-Encoding")
+	}
 
 	// Log stats.
 	logMessage := append([]interface{}{
@@ -266,12 +325,23 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		"fetched_chunks_bytes", numChunkBytes,
 		"fetched_data_bytes", numDataBytes,
 		"status_code", statusCode,
+		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)
 
-	logMessage = append(logMessage, formatQueryString(queryString)...)
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
+	}
+
+	if len(encoding) > 0 {
+		logMessage = append(logMessage, "content_encoding", encoding)
+	}
+
+	if query := queryString.Get("query"); len(query) > 0 {
+		logMessage = append(logMessage, "query_length", len(query))
+	}
+	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
+		logMessage = append(logMessage, "user_agent", ua)
 	}
 
 	if error != nil {
@@ -281,9 +351,44 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 		} else {
 			logMessage = append(logMessage, "error", s.Message())
 		}
+	}
+	logMessage = append(logMessage, formatQueryString(queryString)...)
+	if error != nil {
 		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 	} else {
 		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	}
+
+	var reason string
+	if statusCode == http.StatusTooManyRequests {
+		reason = reasonTooManyRequests
+	} else if statusCode == http.StatusRequestEntityTooLarge {
+		reason = reasonResponseBodySizeExceeded
+	} else if statusCode == http.StatusUnprocessableEntity {
+		errMsg := error.Error()
+		if strings.Contains(errMsg, limitTooManySamples) {
+			reason = reasonTooManySamples
+		} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
+			reason = reasonTimeRangeExceeded
+		} else if strings.Contains(errMsg, limitSeriesFetched) {
+			reason = reasonSeriesFetched
+		} else if strings.Contains(errMsg, limitChunksFetched) {
+			reason = reasonChunksFetched
+		} else if strings.Contains(errMsg, limitChunkBytesFetched) {
+			reason = reasonChunkBytesFetched
+		} else if strings.Contains(errMsg, limitDataBytesFetched) {
+			reason = reasonDataBytesFetched
+		} else if strings.Contains(errMsg, limitSeriesStoreGateway) {
+			reason = reasonSeriesLimitStoreGateway
+		} else if strings.Contains(errMsg, limitChunksStoreGateway) {
+			reason = reasonChunksLimitStoreGateway
+		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
+			reason = reasonBytesLimitStoreGateway
+		}
+	}
+	if len(reason) > 0 {
+		f.rejectedQueries.WithLabelValues(reason, userID).Inc()
+		stats.LimitHit = reason
 	}
 }
 
@@ -302,8 +407,17 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 }
 
 func formatQueryString(queryString url.Values) (fields []interface{}) {
+	var queryFields []string
 	for k, v := range queryString {
+		// If `query` or `match[]` field exists, we always put it as the last field.
+		if k == "query" || k == "match[]" {
+			queryFields = []string{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
+			continue
+		}
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
+	}
+	if len(queryFields) > 0 {
+		fields = append(fields, queryFields)
 	}
 	return fields
 }

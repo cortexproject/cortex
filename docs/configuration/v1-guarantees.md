@@ -105,3 +105,10 @@ Currently experimental features are:
   - `-blocks-storage.tsdb.out-of-order-cap-max` (int) CLI flag
   - `-ingester.out-of-order-time-window` (duration) CLI flag
   - `out_of_order_time_window` (duration) field in runtime config file
+- Store Gateway Zone Stable Shuffle Sharding
+  - `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` CLI flag
+  - `zone_stable_shuffle_sharding` (boolean) field in config file
+- Basic Lifecycler (Storegateway, Alertmanager, Ruler) Final Sleep on shutdown, which tells the pod wait before shutdown, allowing a delay to propagate ring changes.
+  - `-ruler.ring.final-sleep` (duration) CLI flag
+  - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag
+  - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag

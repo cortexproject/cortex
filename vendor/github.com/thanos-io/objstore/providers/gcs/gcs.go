@@ -19,6 +19,8 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
 
 	"github.com/thanos-io/objstore"
@@ -106,10 +108,16 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		delimiter = ""
 	}
 
-	it := b.bkt.Objects(ctx, &storage.Query{
+	query := &storage.Query{
 		Prefix:    dir,
 		Delimiter: delimiter,
-	})
+	}
+	err := query.SetAttrSelection([]string{"Name"})
+	if err != nil {
+		return err
+	}
+
+	it := b.bkt.Objects(ctx, query)
 	for {
 		select {
 		case <-ctx.Done():
@@ -186,6 +194,14 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
+}
+
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *Bucket) IsAccessDeniedErr(err error) bool {
+	if s, ok := status.FromError(err); ok && s.Code() == codes.PermissionDenied {
+		return true
+	}
+	return false
 }
 
 func (b *Bucket) Close() error {

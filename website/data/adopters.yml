@@ -33,6 +33,9 @@ adopters:
   - name: Opstrace
     url: https://opstrace.com/
     logo: opstrace.png
+  - name: PITS Globale Datenrettungsdienste
+    url: https://www.pitsdatenrettung.de/
+    logo: pits-logo.svg
   - name: Platform9
     url: https://platform9.com/
     logo: platform9.svg

@@ -15,18 +15,26 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
+const (
+	maxCasRetries = 10 // max retries in CAS operation
+)
+
 // Config to create a ConsulClient
 type Config struct {
-	Region    string        `yaml:"region"`
-	TableName string        `yaml:"table_name"`
-	TTL       time.Duration `yaml:"ttl"`
+	Region         string        `yaml:"region"`
+	TableName      string        `yaml:"table_name"`
+	TTL            time.Duration `yaml:"ttl"`
+	PullerSyncTime time.Duration `yaml:"puller_sync_time"`
+	MaxCasRetries  int           `yaml:"max_cas_retries"`
 }
 
 type Client struct {
-	kv         dynamoDbClient
-	codec      codec.Codec
-	ddbMetrics *dynamodbMetrics
-	logger     log.Logger
+	kv             dynamoDbClient
+	codec          codec.Codec
+	ddbMetrics     *dynamodbMetrics
+	logger         log.Logger
+	pullerSyncTime time.Duration
+	backoffConfig  backoff.Config
 
 	staleDataLock sync.RWMutex
 	staleData     map[string]staleData
@@ -37,22 +45,14 @@ type staleData struct {
 	timestamp time.Time
 }
 
-var (
-	backoffConfig = backoff.Config{
-		MinBackoff: 1 * time.Second,
-		MaxBackoff: 1 * time.Minute,
-		MaxRetries: 0,
-	}
-
-	defaultLoopDelay = 1 * time.Minute
-)
-
 // RegisterFlags adds the flags required to config this to the given FlagSet
 // If prefix is not an empty string it should end with a period.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Region, prefix+"dynamodb.region", "", "Region to access dynamodb.")
 	f.StringVar(&cfg.TableName, prefix+"dynamodb.table-name", "", "Table name to use on dynamodb.")
 	f.DurationVar(&cfg.TTL, prefix+"dynamodb.ttl-time", 0, "Time to expire items on dynamodb.")
+	f.DurationVar(&cfg.PullerSyncTime, prefix+"dynamodb.puller-sync-time", 60*time.Second, "Time to refresh local ring with information on dynamodb.")
+	f.IntVar(&cfg.MaxCasRetries, prefix+"dynamodb.max-cas-retries", maxCasRetries, "Maximum number of retries for DDB KV CAS.")
 }
 
 func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer) (*Client, error) {
@@ -63,14 +63,22 @@ func NewClient(cfg Config, cc codec.Codec, logger log.Logger, registerer prometh
 
 	ddbMetrics := newDynamoDbMetrics(registerer)
 
-	c := &Client{
-		kv:         dynamodbInstrumentation{kv: dynamoDB, ddbMetrics: ddbMetrics},
-		codec:      cc,
-		logger:     ddbLog(logger),
-		ddbMetrics: ddbMetrics,
-		staleData:  make(map[string]staleData),
+	backoffConfig := backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: cfg.PullerSyncTime,
+		MaxRetries: cfg.MaxCasRetries,
 	}
-	level.Info(c.logger).Log("dynamodb kv initialized")
+
+	c := &Client{
+		kv:             dynamodbInstrumentation{kv: dynamoDB, ddbMetrics: ddbMetrics},
+		codec:          cc,
+		logger:         ddbLog(logger),
+		ddbMetrics:     ddbMetrics,
+		pullerSyncTime: cfg.PullerSyncTime,
+		staleData:      make(map[string]staleData),
+		backoffConfig:  backoffConfig,
+	}
+	level.Info(c.logger).Log("msg", "dynamodb kv initialized")
 	return c, nil
 }
 
@@ -121,8 +129,9 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 }
 
 func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
-	bo := backoff.New(ctx, backoffConfig)
+	bo := backoff.New(ctx, c.backoffConfig)
 	for bo.Ongoing() {
+		c.ddbMetrics.dynamodbCasAttempts.Inc()
 		resp, _, err := c.kv.Query(ctx, dynamodbKey{primaryKey: key}, false)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "error cas query", "key", key, "err", err)
@@ -183,6 +192,12 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 			return c.kv.Batch(ctx, putRequests, deleteRequests)
 		}
 
+		if len(putRequests) == 0 && len(deleteRequests) == 0 {
+			// no change detected, retry
+			bo.Wait()
+			continue
+		}
+
 		return nil
 	}
 
@@ -190,7 +205,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 }
 
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
-	bo := backoff.New(ctx, backoffConfig)
+	bo := backoff.New(ctx, c.backoffConfig)
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{
@@ -199,12 +214,11 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		if err != nil {
 			level.Error(c.logger).Log("msg", "error WatchKey", "key", key, "err", err)
 
-			if bo.NumRetries() > 10 {
+			if bo.NumRetries() >= 10 {
 				if staleData := c.getStaleData(key); staleData != nil {
 					if !f(staleData) {
 						return
 					}
-					bo.Reset()
 				}
 			}
 			bo.Wait()
@@ -226,13 +240,13 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(defaultLoopDelay):
+		case <-time.After(c.pullerSyncTime):
 		}
 	}
 }
 
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
-	bo := backoff.New(ctx, backoffConfig)
+	bo := backoff.New(ctx, c.backoffConfig)
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{
@@ -259,7 +273,7 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(defaultLoopDelay):
+		case <-time.After(c.pullerSyncTime):
 		}
 	}
 }

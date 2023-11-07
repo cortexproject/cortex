@@ -27,6 +27,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ha"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -82,7 +83,7 @@ type Distributor struct {
 	distributorsRing       *ring.Ring
 
 	// For handling HA replicas.
-	HATracker *haTracker
+	HATracker *ha.HATracker
 
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
@@ -126,9 +127,10 @@ type Config struct {
 	RemoteTimeout   time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy string `yaml:"sharding_strategy"`
-	ShardByAllLabels bool   `yaml:"shard_by_all_labels"`
-	ExtendWrites     bool   `yaml:"extend_writes"`
+	ShardingStrategy         string `yaml:"sharding_strategy"`
+	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
+	ExtendWrites             bool   `yaml:"extend_writes"`
+	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -162,6 +164,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RemoteTimeout, "distributor.remote-timeout", 2*time.Second, "Timeout for downstream ingesters.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
+	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 
@@ -179,7 +182,9 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidTenantShardSize
 	}
 
-	return cfg.HATrackerConfig.Validate()
+	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
+
+	return haHATrackerConfig.Validate()
 }
 
 const (
@@ -198,7 +203,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 	cfg.PoolConfig.RemoteTimeout = cfg.RemoteTimeout
 
-	haTracker, err := newHATracker(cfg.HATrackerConfig, limits, reg, log)
+	haTrackerStatusConfig := ha.HATrackerStatusConfig{
+		Title:             "Cortex HA Tracker Status",
+		ReplicaGroupLabel: "Cluster",
+	}
+	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +405,7 @@ func (d *Distributor) running(ctx context.Context) error {
 func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.ingestersRing.CleanupShuffleShardCache(userID)
 
-	d.HATracker.cleanupHATrackerMetricsForUser(userID)
+	d.HATracker.CleanupHATrackerMetricsForUser(userID)
 
 	d.receivedSamples.DeleteLabelValues(userID)
 	d.receivedExemplars.DeleteLabelValues(userID)
@@ -491,7 +500,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 
 	// At this point we know we have both HA labels, we should lookup
 	// the cluster/instance here to see if we want to accept this sample.
-	err := d.HATracker.checkReplica(ctx, userID, cluster, replica, time.Now())
+	err := d.HATracker.CheckReplica(ctx, userID, cluster, replica, time.Now())
 	// checkReplica should only have returned an error if there was a real error talking to Consul, or if the replica labels don't match.
 	if err != nil { // Don't accept the sample.
 		return false, err
@@ -555,6 +564,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		return nil, err
 	}
 
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.Push")
+	defer span.Finish()
+
 	// We will report *this* request in the error too.
 	inflight := d.inflightPushRequests.Inc()
 	defer d.inflightPushRequests.Dec()
@@ -572,9 +584,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	now := time.Now()
 	d.activeUsers.UpdateUserTimestamp(userID, now)
 
-	source := util.GetSourceIPsFromOutgoingCtx(ctx)
-
-	var firstPartialErr error
 	removeReplica := false
 
 	numSamples := 0
@@ -589,16 +598,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
-	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	// For each timeseries or samples, we compute a hash to distribute across ingesters;
-	// check each sample/metadata and discard if outside limits.
-	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
-	validatedMetadata := make([]*cortexpb.MetricMetadata, 0, len(req.Metadata))
-	metadataKeys := make([]uint32, 0, len(req.Metadata))
-	seriesKeys := make([]uint32, 0, len(req.Timeseries))
-	validatedSamples := 0
-	validatedExemplars := 0
-
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
@@ -609,13 +608,13 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			// Ensure the request slice is reused if the series get deduped.
 			cortexpb.ReuseSlice(req.Timeseries)
 
-			if errors.Is(err, replicasNotMatchError{}) {
+			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numSamples))
 				return nil, httpgrpc.Errorf(http.StatusAccepted, err.Error())
 			}
 
-			if errors.Is(err, tooManyClustersError{}) {
+			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
 				validation.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numSamples))
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
@@ -628,6 +627,135 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 	}
 
+	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
+	seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
+	if err != nil {
+		return nil, err
+	}
+	metadataKeys, validatedMetadata, firstPartialErr := d.prepareMetadataKeys(req, limits, userID, firstPartialErr)
+
+	d.receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
+	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
+	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
+
+	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
+		// Ensure the request slice is reused if there's no series or metadata passing the validation.
+		cortexpb.ReuseSlice(req.Timeseries)
+
+		return &cortexpb.WriteResponse{}, firstPartialErr
+	}
+
+	totalN := validatedSamples + validatedExemplars + len(validatedMetadata)
+	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
+		// Ensure the request slice is reused if the request is rate limited.
+		cortexpb.ReuseSlice(req.Timeseries)
+
+		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
+		validation.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
+		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+		// Return a 429 here to tell the client it is going too fast.
+		// Client may discard the data or slow down and re-send.
+		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
+	}
+
+	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
+	d.ingestionRate.Add(int64(totalN))
+
+	subRing := d.ingestersRing
+
+	// Obtain a subring if required.
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
+	}
+
+	keys := append(seriesKeys, metadataKeys...)
+	initialMetadataIndex := len(seriesKeys)
+
+	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &cortexpb.WriteResponse{}, firstPartialErr
+}
+
+func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string) error {
+	span, _ := opentracing.StartSpanFromContext(ctx, "doBatch")
+	defer span.Finish()
+
+	// Use a background context to make sure all ingesters get samples even if we return early
+	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	localCtx = user.InjectOrgID(localCtx, userID)
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		localCtx = opentracing.ContextWithSpan(localCtx, sp)
+	}
+	// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
+	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
+		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
+	}
+	// Get clientIP(s) from Context and add it to localCtx
+	source := util.GetSourceIPsFromOutgoingCtx(ctx)
+	localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
+
+	op := ring.WriteNoExtend
+	if d.cfg.ExtendWrites {
+		op = ring.Write
+	}
+
+	return ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
+		timeseries := make([]cortexpb.PreallocTimeseries, 0, len(indexes))
+		var metadata []*cortexpb.MetricMetadata
+
+		for _, i := range indexes {
+			if i >= initialMetadataIndex {
+				metadata = append(metadata, validatedMetadata[i-initialMetadataIndex])
+			} else {
+				timeseries = append(timeseries, validatedTimeseries[i])
+			}
+		}
+
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+	}, func() {
+		cortexpb.ReuseSlice(req.Timeseries)
+		cancel()
+	})
+}
+
+func (d *Distributor) prepareMetadataKeys(req *cortexpb.WriteRequest, limits *validation.Limits, userID string, firstPartialErr error) ([]uint32, []*cortexpb.MetricMetadata, error) {
+	validatedMetadata := make([]*cortexpb.MetricMetadata, 0, len(req.Metadata))
+	metadataKeys := make([]uint32, 0, len(req.Metadata))
+
+	for _, m := range req.Metadata {
+		err := validation.ValidateMetadata(limits, userID, m)
+
+		if err != nil {
+			if firstPartialErr == nil {
+				firstPartialErr = err
+			}
+
+			continue
+		}
+
+		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
+		validatedMetadata = append(validatedMetadata, m)
+	}
+	return metadataKeys, validatedMetadata, firstPartialErr
+}
+
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []cortexpb.PreallocTimeseries, int, int, error, error) {
+	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
+	defer pSpan.Finish()
+
+	// For each timeseries or samples, we compute a hash to distribute across ingesters;
+	// check each sample/metadata and discard if outside limits.
+	validatedTimeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
+	seriesKeys := make([]uint32, 0, len(req.Timeseries))
+	validatedSamples := 0
+	validatedExemplars := 0
+
+	var firstPartialErr error
+
 	latestSampleTimestampMs := int64(0)
 	defer func() {
 		// Update this metric even in case of errors.
@@ -638,7 +766,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
-
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
@@ -690,7 +817,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, err
+			return nil, nil, 0, 0, nil, err
 		}
 		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
 
@@ -712,100 +839,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		validatedSamples += len(ts.Samples)
 		validatedExemplars += len(ts.Exemplars)
 	}
-
-	for _, m := range req.Metadata {
-		err := validation.ValidateMetadata(limits, userID, m)
-
-		if err != nil {
-			if firstPartialErr == nil {
-				firstPartialErr = err
-			}
-
-			continue
-		}
-
-		metadataKeys = append(metadataKeys, d.tokenForMetadata(userID, m.MetricFamilyName))
-		validatedMetadata = append(validatedMetadata, m)
-	}
-
-	d.receivedSamples.WithLabelValues(userID).Add(float64(validatedSamples))
-	d.receivedExemplars.WithLabelValues(userID).Add((float64(validatedExemplars)))
-	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
-
-	if len(seriesKeys) == 0 && len(metadataKeys) == 0 {
-		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		cortexpb.ReuseSlice(req.Timeseries)
-
-		return &cortexpb.WriteResponse{}, firstPartialErr
-	}
-
-	totalN := validatedSamples + validatedExemplars + len(validatedMetadata)
-	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		// Ensure the request slice is reused if the request is rate limited.
-		cortexpb.ReuseSlice(req.Timeseries)
-
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		validation.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
-		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
-		// Return a 429 here to tell the client it is going too fast.
-		// Client may discard the data or slow down and re-send.
-		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), validatedSamples, len(validatedMetadata))
-	}
-
-	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
-	d.ingestionRate.Add(int64(totalN))
-
-	subRing := d.ingestersRing
-
-	// Obtain a subring if required.
-	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
-	}
-
-	// Use a background context to make sure all ingesters get samples even if we return early
-	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
-	localCtx = user.InjectOrgID(localCtx, userID)
-	if sp := opentracing.SpanFromContext(ctx); sp != nil {
-		localCtx = opentracing.ContextWithSpan(localCtx, sp)
-	}
-	// Get any HTTP headers that are supposed to be added to logs and add to localCtx for later use
-	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-		localCtx = util_log.ContextWithHeaderMap(localCtx, headerMap)
-	}
-	// Get clientIP(s) from Context and add it to localCtx
-	localCtx = util.AddSourceIPsToOutgoingContext(localCtx, source)
-
-	keys := append(seriesKeys, metadataKeys...)
-	initialMetadataIndex := len(seriesKeys)
-
-	op := ring.WriteNoExtend
-	if d.cfg.ExtendWrites {
-		op = ring.Write
-	}
-
-	err = ring.DoBatch(ctx, op, subRing, keys, func(ingester ring.InstanceDesc, indexes []int) error {
-		timeseries := make([]cortexpb.PreallocTimeseries, 0, len(indexes))
-		var metadata []*cortexpb.MetricMetadata
-
-		for _, i := range indexes {
-			if i >= initialMetadataIndex {
-				metadata = append(metadata, validatedMetadata[i-initialMetadataIndex])
-			} else {
-				timeseries = append(timeseries, validatedTimeseries[i])
-			}
-		}
-
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
-	}, func() {
-		cortexpb.ReuseSlice(req.Timeseries)
-		cancel()
-	})
-
-	if err != nil {
-		return nil, err
-	}
-	return &cortexpb.WriteResponse{}, firstPartialErr
+	return seriesKeys, validatedTimeseries, validatedSamples, validatedExemplars, firstPartialErr, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
@@ -889,6 +923,12 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 }
 
 func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelValues", opentracing.Tags{
+		"name":  labelName,
+		"start": from.Unix(),
+		"end":   to.Unix(),
+	})
+	defer span.Finish()
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
@@ -904,6 +944,8 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 		return nil, err
 	}
 
+	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
+	defer span.Finish()
 	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
 		for _, v := range resp.([]string) {
@@ -918,11 +960,12 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 	// We need the values returned to be sorted.
 	sort.Strings(values)
+	span.SetTag("result_length", len(values))
 
 	return values, nil
 }
 
-// LabelValuesForLabelName returns all of the label values that are associated with a given label name.
+// LabelValuesForLabelName returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
@@ -935,7 +978,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 	}, matchers...)
 }
 
-// LabelValuesForLabelName returns all of the label values that are associated with a given label name.
+// LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
@@ -962,6 +1005,11 @@ func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, t
 }
 
 func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error)) ([]string, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelNames", opentracing.Tags{
+		"start": from.Unix(),
+		"end":   to.Unix(),
+	})
+	defer span.Finish()
 	replicationSet, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
@@ -976,6 +1024,8 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 		return nil, err
 	}
 
+	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
+	defer span.Finish()
 	valueSet := map[string]struct{}{}
 	for _, resp := range resps {
 		for _, v := range resp.([]string) {
@@ -989,6 +1039,7 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	}
 
 	sort.Strings(values)
+	span.SetTag("result_length", len(values))
 
 	return values, nil
 }
@@ -1018,7 +1069,7 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time)
 	})
 }
 
-// LabelNames returns all of the label names.
+// LabelNames returns all the label names.
 func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
 	return d.LabelNamesCommon(ctx, from, to, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
 		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
@@ -1042,17 +1093,18 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
 				return nil, validation.LimitError(err.Error())
 			}
+			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 			for _, m := range resp.Metric {
-				if err := queryLimiter.AddSeries(m.Labels); err != nil {
-					return nil, validation.LimitError(err.Error())
-				}
+				s = append(s, m.Labels)
 				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
 				fingerprint := m.Fingerprint()
 				mutex.Lock()
 				(*metrics)[fingerprint] = m
 				mutex.Unlock()
 			}
-
+			if err := queryLimiter.AddSeries(s...); err != nil {
+				return nil, validation.LimitError(err.Error())
+			}
 			return nil, nil
 		})
 
@@ -1079,18 +1131,17 @@ func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, t
 				} else if err != nil {
 					return nil, err
 				}
-
+				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
 				for _, metric := range resp.Metric {
 					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
-
-					if err := queryLimiter.AddSeries(metric.Labels); err != nil {
-						return nil, validation.LimitError(err.Error())
-					}
-
+					s = append(s, metric.Labels)
 					fingerprint := m.Fingerprint()
 					mutex.Lock()
 					(*metrics)[fingerprint] = m
 					mutex.Unlock()
+				}
+				if err := queryLimiter.AddSeries(s...); err != nil {
+					return nil, validation.LimitError(err.Error())
 				}
 			}
 
@@ -1283,4 +1334,22 @@ func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			</html>`
 		util.WriteHTMLResponse(w, ringNotEnabledPage)
 	}
+}
+
+func findHALabels(replicaLabel, clusterLabel string, labels []cortexpb.LabelAdapter) (string, string) {
+	var cluster, replica string
+	var pair cortexpb.LabelAdapter
+
+	for _, pair = range labels {
+		if pair.Name == replicaLabel {
+			replica = pair.Value
+		}
+		if pair.Name == clusterLabel {
+			// cluster label is unmarshalled into yoloString, which retains original remote write request body in memory.
+			// Hence, we clone the yoloString to allow the request body to be garbage collected.
+			cluster = util.StringsClone(pair.Value)
+		}
+	}
+
+	return cluster, replica
 }

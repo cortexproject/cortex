@@ -4,10 +4,14 @@ import (
 	"context"
 	"io"
 
+	"github.com/gogo/status"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"
+	"google.golang.org/grpc/codes"
+
+	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 
 	cortex_s3 "github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 )
@@ -101,12 +105,24 @@ func (b *SSEBucketClient) Iter(ctx context.Context, dir string, f func(string) e
 
 // Get implements objstore.Bucket.
 func (b *SSEBucketClient) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return b.bucket.Get(ctx, name)
+	r, err := b.bucket.Get(ctx, name)
+
+	if err != nil && b.IsAccessDeniedErr(err) {
+		// Store gateway will return the status if the returned error is an `status.Error`
+		return nil, cortex_errors.WithCause(err, status.Error(codes.PermissionDenied, err.Error()))
+	}
+
+	return r, err
 }
 
 // GetRange implements objstore.Bucket.
 func (b *SSEBucketClient) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return b.bucket.GetRange(ctx, name, off, length)
+	r, err := b.bucket.GetRange(ctx, name, off, length)
+	if err != nil && b.IsAccessDeniedErr(err) {
+		return nil, cortex_errors.WithCause(err, status.Error(codes.PermissionDenied, err.Error()))
+	}
+
+	return r, err
 }
 
 // Exists implements objstore.Bucket.
@@ -117,6 +133,15 @@ func (b *SSEBucketClient) Exists(ctx context.Context, name string) (bool, error)
 // IsObjNotFoundErr implements objstore.Bucket.
 func (b *SSEBucketClient) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
+}
+
+// IsAccessDeniedErr implements objstore.Bucket.
+func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
+	// unwrap error
+	if se, ok := err.(interface{ Err() error }); ok {
+		return b.bucket.IsAccessDeniedErr(se.Err()) || b.bucket.IsAccessDeniedErr(err)
+	}
+	return b.bucket.IsAccessDeniedErr(err)
 }
 
 // Attributes implements objstore.Bucket.

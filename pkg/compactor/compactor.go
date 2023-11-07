@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"math/rand"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -56,8 +55,8 @@ var (
 		return compact.NewDefaultGrouper(
 			logger,
 			bkt,
-			false, // Do not accept malformed indexes
-			true,  // Enable vertical compaction
+			cfg.AcceptMalformedIndex,
+			true, // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
 			garbageCollectedBlocks,
@@ -72,8 +71,8 @@ var (
 			ctx,
 			logger,
 			bkt,
-			false, // Do not accept malformed indexes
-			true,  // Enable vertical compaction
+			cfg.AcceptMalformedIndex,
+			true, // Enable vertical compaction
 			reg,
 			blocksMarkedForDeletion,
 			blocksMarkedForNoCompaction,
@@ -208,6 +207,8 @@ type Config struct {
 	// Block visit marker file config
 	BlockVisitMarkerTimeout            time.Duration `yaml:"block_visit_marker_timeout"`
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
+
+	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -244,9 +245,16 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BlockVisitMarkerTimeout, "compactor.block-visit-marker-timeout", 5*time.Minute, "How long block visit marker file should be considered as expired and able to be picked up by compactor again.")
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
+
+	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
+	for _, blockRange := range cfg.BlockRanges {
+		if blockRange == 0 {
+			return errors.New("compactor block range period cannot be zero")
+		}
+	}
 	// Each block range period should be divisible by the previous one.
 	for i := 1; i < len(cfg.BlockRanges); i++ {
 		if cfg.BlockRanges[i]%cfg.BlockRanges[i-1] != 0 {
@@ -280,12 +288,11 @@ type Compactor struct {
 
 	compactorCfg   Config
 	storageCfg     cortex_tsdb.BlocksStorageConfig
-	cfgProvider    ConfigProvider
 	logger         log.Logger
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
 	allowedTenants *util.AllowedTenants
-	limits         Limits
+	limits         *validation.Overrides
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
@@ -336,7 +343,7 @@ type Compactor struct {
 }
 
 // NewCompactor makes a new Compactor.
-func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvider ConfigProvider, logger log.Logger, registerer prometheus.Registerer, limits Limits) (*Compactor, error) {
+func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Compactor, error) {
 	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
@@ -359,7 +366,7 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 		}
 	}
 
-	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, cfgProvider, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, limits)
+	cortexCompactor, err := newCompactor(compactorCfg, storageCfg, logger, registerer, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, limits)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Cortex blocks compactor")
 	}
@@ -370,13 +377,12 @@ func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfi
 func newCompactor(
 	compactorCfg Config,
 	storageCfg cortex_tsdb.BlocksStorageConfig,
-	cfgProvider ConfigProvider,
 	logger log.Logger,
 	registerer prometheus.Registerer,
 	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
-	limits Limits,
+	limits *validation.Overrides,
 ) (*Compactor, error) {
 	var remainingPlannedCompactions prometheus.Gauge
 	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -388,7 +394,6 @@ func newCompactor(
 	c := &Compactor{
 		compactorCfg:           compactorCfg,
 		storageCfg:             storageCfg,
-		cfgProvider:            cfgProvider,
 		parentLogger:           logger,
 		logger:                 log.With(logger, "component", "compactor"),
 		registerer:             registerer,
@@ -507,7 +512,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		CleanupConcurrency:                 c.compactorCfg.CleanupConcurrency,
 		BlockDeletionMarksMigrationEnabled: c.compactorCfg.BlockDeletionMarksMigrationEnabled,
 		TenantCleanupDelay:                 c.compactorCfg.TenantCleanupDelay,
-	}, c.bucketClient, c.usersScanner, c.cfgProvider, c.parentLogger, c.registerer)
+	}, c.bucketClient, c.usersScanner, c.limits, c.parentLogger, c.registerer)
 
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
@@ -671,6 +676,15 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 			continue
 		}
 
+		// Skipping compaction if the  bucket index failed to sync due to CMK errors.
+		if idxs, err := bucketindex.ReadSyncStatus(ctx, c.bucketClient, userID, util_log.WithUserID(userID, c.logger)); err == nil {
+			if idxs.Status == bucketindex.CustomerManagedKeyError {
+				c.compactionRunSkippedTenants.Inc()
+				level.Info(c.logger).Log("msg", "skipping compactUser due CustomerManagedKeyError", "user", userID)
+				continue
+			}
+		}
+
 		ownedUsers[userID] = struct{}{}
 
 		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
@@ -753,7 +767,7 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 }
 
 func (c *Compactor) compactUser(ctx context.Context, userID string) error {
-	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
+	bucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.limits)
 
 	reg := prometheus.NewRegistry()
 	defer c.syncerMetrics.gatherThanosSyncerMetrics(reg)
@@ -819,7 +833,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.blocksGrouperFactory(currentCtx, c.compactorCfg, bucket, ulogger, reg, c.blocksMarkedForDeletion, c.blocksMarkedForNoCompaction, c.garbageCollectedBlocks, c.remainingPlannedCompactions, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.ring, c.ringLifecycler, c.limits, userID, noCompactMarkerFilter),
 		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed),
 		c.blocksCompactor,
-		path.Join(c.compactorCfg.DataDir, "compact"),
+		c.compactDirForUser(userID),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
 		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
@@ -830,6 +844,13 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	if err := compactor.Compact(ctx); err != nil {
 		return errors.Wrap(err, "compaction")
+	}
+
+	// Remove all files on the compact root dir
+	// We do this only if there is no error because potentially on the next run we would not have to download
+	// everything again.
+	if err := os.RemoveAll(c.compactRootDir()); err != nil {
+		level.Error(c.logger).Log("msg", "failed to remove compaction work directory", "path", c.compactRootDir(), "err", err)
 	}
 
 	return nil
@@ -926,6 +947,16 @@ const compactorMetaPrefix = "compactor-meta-"
 // the directory used by the Thanos Syncer, whatever is the user ID.
 func (c *Compactor) metaSyncDirForUser(userID string) string {
 	return filepath.Join(c.compactorCfg.DataDir, compactorMetaPrefix+userID)
+}
+
+// compactDirForUser returns the directory to be used to download and compact the blocks for a user
+func (c *Compactor) compactDirForUser(userID string) string {
+	return filepath.Join(c.compactRootDir(), userID)
+}
+
+// compactRootDir returns the root directory to be used to download and compact blocks
+func (c *Compactor) compactRootDir() string {
+	return filepath.Join(c.compactorCfg.DataDir, "compact")
 }
 
 // This function returns tenants with meta sync directories found on local disk. On error, it returns nil map.

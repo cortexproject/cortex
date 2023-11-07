@@ -19,7 +19,8 @@ Cortex provides horizontally scalable, highly available, multi-tenant, long term
 Prometheus sources in a single cluster, allowing untrusted parties to share the same cluster.
 - **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data. This allows you to durably store data for longer than the lifetime of any single machine, and use this data for long term capacity planning.
 
-Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Weave Cloud](https://cloud.weave.works) and [Grafana Cloud](https://grafana.com/cloud).
+Cortex is a [CNCF](https://cncf.io) incubation project used in several production systems including [Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/).
+
 Cortex is primarily used as a [remote write](https://prometheus.io/docs/operating/configuration/#remote_write) destination for Prometheus, with a Prometheus-compatible query API.
 
 
@@ -38,6 +39,9 @@ should read:
 1. [Getting started with Cortex](https://cortexmetrics.io/docs/getting-started/)
 1. [Information regarding configuring Cortex](https://cortexmetrics.io/docs/configuration/)
 
+There are also individual [guides](https://cortexmetrics.io/docs/guides/) to many tasks.
+Please review the important [security advice](https://cortexmetrics.io/docs/guides/security/) before deploying.
+
 For a guide to contributing to Cortex, see the [contributor guidelines](https://cortexmetrics.io/docs/contributing/).
 
 ## Further reading
@@ -45,6 +49,7 @@ For a guide to contributing to Cortex, see the [contributor guidelines](https://
 To learn more about Cortex, consult the following talks and articles.
 
 ### Talks and articles
+- Apr 2023 KubeCon talk "How to Run a Rock Solid Multi-Tenant Prometheus" ([video](https://youtu.be/Pl5hEoRPLJU), [slides](https://static.sched.com/hosted_files/kccnceu2023/49/Kubecon2023.pptx.pdf))
 - Oct 2022 KubeCon talk "Current State and the Future of Cortex" ([video](https://youtu.be/u1SfBAGWHgQ), [slides](https://static.sched.com/hosted_files/kccncna2022/93/KubeCon%20%2B%20CloudNativeCon%20NA%202022%20PowerPoint%20-%20Cortex.pdf))
 - Oct 2021 KubeCon talk "Cortex: Intro and Production Tips" ([video](https://youtu.be/zNE_kGcUGuI), [slides](https://static.sched.com/hosted_files/kccncna2021/8e/KubeCon%202021%20NA%20Cortex%20Maintainer.pdf))
 - Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"
@@ -150,16 +155,6 @@ To see meeting calendar:
 
 There are several commercial services where you can use Cortex
 on-demand:
-
-### Weave Cloud
-
-[Weave Cloud](https://cloud.weave.works) from
-[Weaveworks](https://weave.works) lets you deploy, manage, and monitor
-container-based applications. Sign up at https://cloud.weave.works
-and follow the instructions there. Additional help can also be found
-in the [Weave Cloud documentation](https://www.weave.works/docs/cloud/latest/overview/).
-
-[Instrumenting Your App: Best Practices](https://www.weave.works/docs/cloud/latest/tasks/monitor/best-instrumenting/)
 
 ### Amazon Managed Service for Prometheus (AMP)
 

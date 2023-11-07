@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2018 MinIO, Inc.
+ * Copyright 2015-2023 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -69,6 +70,7 @@ type Client struct {
 
 	// Needs allocation.
 	httpClient     *http.Client
+	httpTrace      *httptrace.ClientTrace
 	bucketLocCache *bucketLocationCache
 
 	// Advanced functionality.
@@ -103,8 +105,15 @@ type Options struct {
 	Creds        *credentials.Credentials
 	Secure       bool
 	Transport    http.RoundTripper
+	Trace        *httptrace.ClientTrace
 	Region       string
 	BucketLookup BucketLookupType
+
+	// Allows setting a custom region lookup based on URL pattern
+	// not all URL patterns are covered by this library so if you
+	// have a custom endpoints with many regions you can use this
+	// function to perform region lookups appropriately.
+	CustomRegionViaURL func(u url.URL) string
 
 	// TrailingHeaders indicates server support of trailing headers.
 	// Only supported for v4 signatures.
@@ -118,7 +127,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.49"
+	libraryVersion = "v7.0.63"
 )
 
 // User Agent should always following the below style.
@@ -148,10 +157,6 @@ func New(endpoint string, opts *Options) (*Client, error) {
 	clnt, err := privateNew(endpoint, opts)
 	if err != nil {
 		return nil, err
-	}
-	// Google cloud storage should be set to signature V2, force it if not.
-	if s3utils.IsGoogleEndpoint(*clnt.endpointURL) {
-		clnt.overrideSignerType = credentials.SignatureV2
 	}
 	// If Amazon S3 set to signature v4.
 	if s3utils.IsAmazonEndpoint(*clnt.endpointURL) {
@@ -223,6 +228,8 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 		}
 	}
 
+	clnt.httpTrace = opts.Trace
+
 	// Instantiate http client and bucket location cache.
 	clnt.httpClient = &http.Client{
 		Jar:       jar,
@@ -234,7 +241,11 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 
 	// Sets custom region, if region is empty bucket location cache is used automatically.
 	if opts.Region == "" {
-		opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+		if opts.CustomRegionViaURL != nil {
+			opts.Region = opts.CustomRegionViaURL(*clnt.endpointURL)
+		} else {
+			opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+		}
 	}
 	clnt.region = opts.Region
 
@@ -268,7 +279,7 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 }
 
 // SetAppInfo - add application details to user agent.
-func (c *Client) SetAppInfo(appName string, appVersion string) {
+func (c *Client) SetAppInfo(appName, appVersion string) {
 	// if app name and version not set, we do not set a new user agent.
 	if appName != "" && appVersion != "" {
 		c.appInfo.appName = appName
@@ -353,7 +364,8 @@ const (
 	online  = 1
 )
 
-// IsOnline returns true if healthcheck enabled and client is online
+// IsOnline returns true if healthcheck enabled and client is online.
+// If HealthCheck function has not been called this will always return true.
 func (c *Client) IsOnline() bool {
 	return !c.IsOffline()
 }
@@ -364,22 +376,37 @@ func (c *Client) markOffline() {
 }
 
 // IsOffline returns true if healthcheck enabled and client is offline
+// If HealthCheck function has not been called this will always return false.
 func (c *Client) IsOffline() bool {
 	return atomic.LoadInt32(&c.healthStatus) == offline
 }
 
-// HealthCheck starts a healthcheck to see if endpoint is up. Returns a context cancellation function
-// and and error if health check is already started
+// HealthCheck starts a healthcheck to see if endpoint is up.
+// Returns a context cancellation function, to stop the health check,
+// and an error if health check is already started.
 func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, error) {
-	if atomic.LoadInt32(&c.healthStatus) == online {
+	if atomic.LoadInt32(&c.healthStatus) != unknown {
 		return nil, fmt.Errorf("health check is running")
 	}
 	if hcDuration < 1*time.Second {
-		return nil, fmt.Errorf("health check duration should be atleast 1 second")
+		return nil, fmt.Errorf("health check duration should be at least 1 second")
 	}
-	ctx, cancelFn := context.WithCancel(context.Background())
-	atomic.StoreInt32(&c.healthStatus, online)
 	probeBucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "probe-health-")
+	ctx, cancelFn := context.WithCancel(context.Background())
+	atomic.StoreInt32(&c.healthStatus, offline)
+	{
+		// Change to online, if we can connect.
+		gctx, gcancel := context.WithTimeout(ctx, 3*time.Second)
+		_, err := c.getBucketLocation(gctx, probeBucketName)
+		gcancel()
+		if !IsNetworkOrHostDown(err, false) {
+			switch ToErrorResponse(err).Code {
+			case "NoSuchBucket", "AccessDenied", "":
+				atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
+			}
+		}
+	}
+
 	go func(duration time.Duration) {
 		timer := time.NewTimer(duration)
 		defer timer.Stop()
@@ -745,6 +772,10 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		return nil, err
 	}
 
+	if c.httpTrace != nil {
+		ctx = httptrace.WithClientTrace(ctx, c.httpTrace)
+	}
+
 	// Initialize a new HTTP request for the method.
 	req, err = http.NewRequestWithContext(ctx, method, targetURL.String(), nil)
 	if err != nil {
@@ -909,7 +940,7 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 	if h, p, err := net.SplitHostPort(host); err == nil {
 		if scheme == "http" && p == "80" || scheme == "https" && p == "443" {
 			host = h
-			if ip := net.ParseIP(h); ip != nil && ip.To16() != nil {
+			if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
 				host = "[" + h + "]"
 			}
 		}

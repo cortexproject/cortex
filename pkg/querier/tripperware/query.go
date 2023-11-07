@@ -83,6 +83,31 @@ type Request interface {
 	WithStats(stats string) Request
 }
 
+func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	lbls := labels.Labels{}
+	samples := []cortexpb.Sample{}
+	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
+		switch field {
+		case "metric":
+			iter.ReadVal(&lbls)
+		case "values":
+			for {
+				if !iter.ReadArray() {
+					break
+				}
+				s := cortexpb.Sample{}
+				cortexpb.SampleJsoniterDecode(unsafe.Pointer(&s), iter)
+				samples = append(samples, s)
+			}
+		}
+	}
+
+	*(*SampleStream)(ptr) = SampleStream{
+		Samples: samples,
+		Labels:  cortexpb.FromLabelsToLabelAdapters(lbls),
+	}
+}
+
 func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	ss := (*SampleStream)(ptr)
 	stream.WriteObjectStart()
@@ -160,6 +185,7 @@ func init() {
 	jsoniter.RegisterTypeEncoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
 	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
 	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleStream", encodeSampleStream, func(unsafe.Pointer) bool { return false })
+	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleStream", decodeSampleStream)
 }
 
 func EncodeTime(t int64) string {
@@ -203,6 +229,25 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
+	// if the response is gziped, lets unzip it here
+	headers := http.Header{}
+	for _, h := range res.Headers {
+		headers[h.Key] = h.Values
+	}
+	if strings.EqualFold(headers.Get("Content-Encoding"), "gzip") {
+		gReader, err := gzip.NewReader(bytes.NewBuffer(res.Body))
+		if err != nil {
+			return nil, err
+		}
+		defer runutil.CloseWithLogOnErr(logger, gReader, "close gzip reader")
+
+		return io.ReadAll(gReader)
+	}
+
+	return res.Body, nil
 }
 
 func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep) *PrometheusResponseStats {

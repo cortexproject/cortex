@@ -17,10 +17,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -28,8 +27,6 @@ import (
 )
 
 func TestApiStatusCodes(t *testing.T) {
-	t.Parallel()
-
 	for ix, tc := range []struct {
 		err            error
 		expectedString string
@@ -44,6 +41,12 @@ func TestApiStatusCodes(t *testing.T) {
 		{
 			err:            validation.LimitError("limit exceeded"),
 			expectedString: "limit exceeded",
+			expectedCode:   422,
+		},
+
+		{
+			err:            validation.AccessDeniedError("access denied"),
+			expectedString: "access denied",
 			expectedCode:   422,
 		},
 
@@ -104,42 +107,31 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedCode:   422,
 		},
 	} {
-		for _, thanosEngine := range []bool{false, true} {
-			for k, q := range map[string]storage.SampleAndChunkQueryable{
-				"error from queryable": errorTestQueryable{err: tc.err},
-				"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
-				"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
-			} {
-				t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
-					//parallel testing causes data race
-					opts := promql.EngineOpts{
-						Logger:             log.NewNopLogger(),
-						Reg:                nil,
-						ActiveQueryTracker: nil,
-						MaxSamples:         100,
-						Timeout:            5 * time.Second,
-					}
-					var queryEngine v1.QueryEngine
-					if thanosEngine {
-						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
-						})
-					} else {
-						queryEngine = promql.NewEngine(opts)
-					}
-					r := createPrometheusAPI(NewErrorTranslateSampleAndChunkQueryable(q), queryEngine)
-					rec := httptest.NewRecorder()
+		for k, q := range map[string]storage.SampleAndChunkQueryable{
+			"error from queryable": errorTestQueryable{err: tc.err},
+			"error from querier":   errorTestQueryable{q: errorTestQuerier{err: tc.err}},
+			"error from seriesset": errorTestQueryable{q: errorTestQuerier{s: errorTestSeriesSet{err: tc.err}}},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
+				opts := promql.EngineOpts{
+					Logger:             log.NewNopLogger(),
+					Reg:                nil,
+					ActiveQueryTracker: nil,
+					MaxSamples:         100,
+					Timeout:            5 * time.Second,
+				}
+				queryEngine := promql.NewEngine(opts)
+				r := createPrometheusAPI(NewErrorTranslateSampleAndChunkQueryable(q), queryEngine)
+				rec := httptest.NewRecorder()
 
-					req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
-					req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
+				req := httptest.NewRequest("GET", "/api/v1/query?query=up", nil)
+				req = req.WithContext(user.InjectOrgID(context.Background(), "test org"))
 
-					r.ServeHTTP(rec, req)
+				r.ServeHTTP(rec, req)
 
-					require.Equal(t, tc.expectedCode, rec.Code)
-					require.Contains(t, rec.Body.String(), tc.expectedString)
-				})
-			}
+				require.Equal(t, tc.expectedCode, rec.Code)
+				require.Contains(t, rec.Body.String(), tc.expectedString)
+			})
 		}
 	}
 }
@@ -170,6 +162,8 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine v1.QueryEngin
 		prometheus.DefaultGatherer,
 		nil,
 		nil,
+		false,
+		false,
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")
@@ -183,11 +177,11 @@ type errorTestQueryable struct {
 	err error
 }
 
-func (t errorTestQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+func (t errorTestQueryable) ChunkQuerier(mint, maxt int64) (storage.ChunkQuerier, error) {
 	return nil, t.err
 }
 
-func (t errorTestQueryable) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (t errorTestQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
 	if t.q != nil {
 		return t.q, nil
 	}
@@ -199,11 +193,11 @@ type errorTestQuerier struct {
 	err error
 }
 
-func (t errorTestQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (t errorTestQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, t.err
 }
 
-func (t errorTestQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (t errorTestQuerier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, t.err
 }
 
@@ -211,7 +205,7 @@ func (t errorTestQuerier) Close() error {
 	return nil
 }
 
-func (t errorTestQuerier) Select(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (t errorTestQuerier) Select(ctx context.Context, sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	if t.s != nil {
 		return t.s
 	}
@@ -234,6 +228,6 @@ func (t errorTestSeriesSet) Err() error {
 	return t.err
 }
 
-func (t errorTestSeriesSet) Warnings() storage.Warnings {
+func (t errorTestSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }

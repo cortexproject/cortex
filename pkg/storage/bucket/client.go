@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/tracing/opentracing"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/azure"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
@@ -40,6 +41,8 @@ var (
 	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
 
 	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
+
+	ErrCustomerManagedKeyAccessDenied = errors.New("access denied: customer key")
 )
 
 // Config holds configuration for accessing long-term storage.
@@ -72,13 +75,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefixAndBackend(prefix, f, S3)
+}
+
+func (cfg *Config) RegisterFlagsWithPrefixAndBackend(prefix string, f *flag.FlagSet, defaultBackend string) {
 	cfg.S3.RegisterFlagsWithPrefix(prefix, f)
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
 
-	f.StringVar(&cfg.Backend, prefix+"backend", S3, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
+	f.StringVar(&cfg.Backend, prefix+"backend", defaultBackend, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
 }
 
 func (cfg *Config) Validate() error {
@@ -116,7 +123,7 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		return nil, err
 	}
 
-	client = objstore.NewTracingBucket(bucketWithMetrics(client, name, reg))
+	client = opentracing.WrapWithTraces(bucketWithMetrics(client, name, reg))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
@@ -134,8 +141,9 @@ func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus
 		return bucketClient
 	}
 
-	return objstore.BucketWithMetrics(
-		"", // bucket label value
+	return objstore.WrapWithMetrics(
 		bucketClient,
-		prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, reg))
+		prometheus.WrapRegistererWith(prometheus.Labels{"component": name}, prometheus.WrapRegistererWithPrefix("thanos_", reg)),
+		"", // bucket label value
+	)
 }

@@ -315,39 +315,6 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 
 }
 
-func TestDistributor_IsPathSupported(t *testing.T) {
-	supported := map[string]bool{
-		"/alertmanager/api/v1/alerts":           true,
-		"/alertmanager/api/v1/alerts/groups":    false,
-		"/alertmanager/api/v1/silences":         true,
-		"/alertmanager/api/v1/silence/id":       true,
-		"/alertmanager/api/v1/silence/anything": true,
-		"/alertmanager/api/v1/silence/really":   true,
-		"/alertmanager/api/v1/status":           true,
-		"/alertmanager/api/v1/receivers":        true,
-		"/alertmanager/api/v1/other":            false,
-		"/alertmanager/api/v2/alerts":           true,
-		"/alertmanager/api/v2/alerts/groups":    true,
-		"/alertmanager/api/v2/silences":         true,
-		"/alertmanager/api/v2/silence/id":       true,
-		"/alertmanager/api/v2/silence/anything": true,
-		"/alertmanager/api/v2/silence/really":   true,
-		"/alertmanager/api/v2/status":           true,
-		"/alertmanager/api/v2/receivers":        true,
-		"/alertmanager/api/v2/other":            false,
-		"/alertmanager/other":                   false,
-		"/other":                                false,
-	}
-
-	for path, isSupported := range supported {
-		t.Run(path, func(t *testing.T) {
-			d, _, cleanup := prepare(t, 1, 1, 1, []byte{})
-			t.Cleanup(cleanup)
-			require.Equal(t, isSupported, d.IsPathSupported(path))
-		})
-	}
-}
-
 func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBody []byte) (*Distributor, []*mockAlertmanager, func()) {
 	ams := []*mockAlertmanager{}
 	remainingFailure := atomic.NewInt32(int32(numAM - numHappyAM))

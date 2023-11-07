@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
 type testGroup struct {
@@ -101,6 +102,35 @@ func TestListRules(t *testing.T) {
 	})
 }
 
+func TestLoadPartialRules(t *testing.T) {
+	bucketClient := objstore.NewInMemBucket()
+	mockedBucketClient := &testutil.MockBucketFailure{Bucket: bucketClient, GetFailures: map[string]error{}}
+	bucketStore := NewBucketRuleStore(mockedBucketClient, nil, log.NewNopLogger())
+
+	groups := []testGroup{
+		{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup", Interval: model.Duration(2 * time.Minute)}},
+		{user: "user2", namespace: "+-!@#$%. ", ruleGroup: rulefmt.RuleGroup{Name: "different user", Interval: model.Duration(5 * time.Minute)}},
+		{user: "user3", namespace: "+-!@#$%. ", ruleGroup: rulefmt.RuleGroup{Name: "different user", Interval: model.Duration(5 * time.Minute)}},
+	}
+
+	for _, g := range groups {
+		desc := rulespb.ToProto(g.user, g.namespace, g.ruleGroup)
+		require.NoError(t, bucketStore.SetRuleGroup(context.Background(), g.user, g.namespace, desc))
+	}
+	allGroups, err := bucketStore.ListAllRuleGroups(context.Background())
+	require.NoError(t, err)
+
+	loadedGroups, err := bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.NoError(t, err)
+	require.Equal(t, 3, len(loadedGroups))
+
+	// Fail user1
+	mockedBucketClient.GetFailures["rules/user2"] = testutil.ErrKeyAccessDeniedError
+	loadedGroups, err = bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.ErrorContains(t, err, "access denied")
+	require.Equal(t, 2, len(loadedGroups))
+}
+
 func TestLoadRules(t *testing.T) {
 	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
 		groups := []testGroup{
@@ -134,7 +164,7 @@ func TestLoadRules(t *testing.T) {
 			}, allGroupsMap["user2"])
 		}
 
-		err = rs.LoadRuleGroups(context.Background(), allGroupsMap)
+		allGroupsMap, err = rs.LoadRuleGroups(context.Background(), allGroupsMap)
 		require.NoError(t, err)
 
 		// After load, rules are loaded.
@@ -160,11 +190,13 @@ func TestLoadRules(t *testing.T) {
 
 		// Loading group with mismatched info fails.
 		require.NoError(t, rs.SetRuleGroup(context.Background(), "user1", "hello", &rulespb.RuleGroupDesc{User: "user2", Namespace: "world", Name: "first testGroup"}))
-		require.EqualError(t, rs.LoadRuleGroups(context.Background(), allGroupsMap), "mismatch between requested rule group and loaded rule group, requested: user=\"user1\", namespace=\"hello\", group=\"first testGroup\", loaded: user=\"user2\", namespace=\"world\", group=\"first testGroup\"")
+		_, err = rs.LoadRuleGroups(context.Background(), allGroupsMap)
+		require.EqualError(t, err, "mismatch between requested rule group and loaded rule group, requested: user=\"user1\", namespace=\"hello\", group=\"first testGroup\", loaded: user=\"user2\", namespace=\"world\", group=\"first testGroup\"")
 
 		// Load with missing rule groups fails.
 		require.NoError(t, rs.DeleteRuleGroup(context.Background(), "user1", "hello", "first testGroup"))
-		require.EqualError(t, rs.LoadRuleGroups(context.Background(), allGroupsMap), "get rule group user=\"user2\", namespace=\"world\", name=\"first testGroup\": group does not exist")
+		_, err = rs.LoadRuleGroups(context.Background(), allGroupsMap)
+		require.EqualError(t, err, "get rule group user=\"user2\", namespace=\"world\", name=\"first testGroup\": group does not exist")
 	})
 }
 

@@ -60,16 +60,21 @@ var (
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore              kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances. This option needs be set both on the store-gateway and querier when running in microservices mode."`
-	HeartbeatPeriod      time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
-	ReplicationFactor    int           `yaml:"replication_factor"`
-	TokensFilePath       string        `yaml:"tokens_file_path"`
-	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
+	KVStore                         kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances. This option needs be set both on the store-gateway and querier when running in microservices mode."`
+	HeartbeatPeriod                 time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout                time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor               int           `yaml:"replication_factor"`
+	TokensFilePath                  string        `yaml:"tokens_file_path"`
+	ZoneAwarenessEnabled            bool          `yaml:"zone_awareness_enabled"`
+	KeepInstanceInTheRingOnShutdown bool          `yaml:"keep_instance_in_the_ring_on_shutdown"`
+	ZoneStableShuffleSharding       bool          `yaml:"zone_stable_shuffle_sharding" doc:"hidden"`
 
 	// Wait ring stability.
 	WaitStabilityMinDuration time.Duration `yaml:"wait_stability_min_duration"`
 	WaitStabilityMaxDuration time.Duration `yaml:"wait_stability_max_duration"`
+	WaitInstanceStateTimeout time.Duration `yaml:"wait_instance_state_timeout"`
+
+	FinalSleep time.Duration `yaml:"final_sleep"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -100,10 +105,14 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ReplicationFactor, ringFlagsPrefix+"replication-factor", 3, "The replication factor to use when sharding blocks."+sharedOptionWithQuerier)
 	f.StringVar(&cfg.TokensFilePath, ringFlagsPrefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, ringFlagsPrefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate blocks across different availability zones.")
+	f.BoolVar(&cfg.KeepInstanceInTheRingOnShutdown, ringFlagsPrefix+"keep-instance-in-the-ring-on-shutdown", false, "True to keep the store gateway instance in the ring when it shuts down. The instance will then be auto-forgotten from the ring after 10*heartbeat_timeout.")
+	f.BoolVar(&cfg.ZoneStableShuffleSharding, ringFlagsPrefix+"zone-stable-shuffle-sharding", false, "If true, use zone stable shuffle sharding algorithm. Otherwise, use the default shuffle sharding algorithm.")
 
 	// Wait stability flags.
 	f.DurationVar(&cfg.WaitStabilityMinDuration, ringFlagsPrefix+"wait-stability-min-duration", time.Minute, "Minimum time to wait for ring stability at startup. 0 to disable.")
 	f.DurationVar(&cfg.WaitStabilityMaxDuration, ringFlagsPrefix+"wait-stability-max-duration", 5*time.Minute, "Maximum time to wait for ring stability at startup. If the store-gateway ring keeps changing after this period of time, the store-gateway will start anyway.")
+
+	f.DurationVar(&cfg.FinalSleep, ringFlagsPrefix+"final-sleep", 0*time.Second, "The sleep seconds when store-gateway is shutting down. Need to be close to or larger than KV Store information propagation delay")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -115,6 +124,9 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Defaults for internal settings.
 	cfg.RingCheckPeriod = 5 * time.Second
+
+	// Timeout durations
+	f.DurationVar(&cfg.WaitInstanceStateTimeout, ringFlagsPrefix+"wait-instance-state-timeout", 10*time.Minute, "Timeout for waiting on store-gateway to become desired state in the ring.")
 }
 
 func (cfg *RingConfig) ToRingConfig() ring.Config {
@@ -139,11 +151,13 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
 	return ring.BasicLifecyclerConfig{
-		ID:                  cfg.InstanceID,
-		Addr:                fmt.Sprintf("%s:%d", instanceAddr, instancePort),
-		Zone:                cfg.InstanceZone,
-		HeartbeatPeriod:     cfg.HeartbeatPeriod,
-		TokensObservePeriod: 0,
-		NumTokens:           RingNumTokens,
+		ID:                              cfg.InstanceID,
+		Addr:                            fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		Zone:                            cfg.InstanceZone,
+		HeartbeatPeriod:                 cfg.HeartbeatPeriod,
+		TokensObservePeriod:             0,
+		NumTokens:                       RingNumTokens,
+		KeepInstanceInTheRingOnShutdown: cfg.KeepInstanceInTheRingOnShutdown,
+		FinalSleep:                      cfg.FinalSleep,
 	}, nil
 }

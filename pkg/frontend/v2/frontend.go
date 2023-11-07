@@ -18,21 +18,24 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 // Config for a Frontend.
 type Config struct {
-	SchedulerAddress  string            `yaml:"scheduler_address"`
-	DNSLookupPeriod   time.Duration     `yaml:"scheduler_dns_lookup_period"`
-	WorkerConcurrency int               `yaml:"scheduler_worker_concurrency"`
-	GRPCClientConfig  grpcclient.Config `yaml:"grpc_client_config"`
+	SchedulerAddress                  string            `yaml:"scheduler_address"`
+	DNSLookupPeriod                   time.Duration     `yaml:"scheduler_dns_lookup_period"`
+	WorkerConcurrency                 int               `yaml:"scheduler_worker_concurrency"`
+	GRPCClientConfig                  grpcclient.Config `yaml:"grpc_client_config"`
+	RetryOnTooManyOutstandingRequests bool              `yaml:"retry_on_too_many_outstanding_requests"`
 
 	// Used to find local IP address, that is sent to scheduler and querier-worker.
 	InfNames []string `yaml:"instance_interface_names"`
@@ -46,6 +49,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.SchedulerAddress, "frontend.scheduler-address", "", "DNS hostname used for finding query-schedulers.")
 	f.DurationVar(&cfg.DNSLookupPeriod, "frontend.scheduler-dns-lookup-period", 10*time.Second, "How often to resolve the scheduler-address, in order to look for new query-scheduler instances.")
 	f.IntVar(&cfg.WorkerConcurrency, "frontend.scheduler-worker-concurrency", 5, "Number of concurrent workers forwarding queries to single query-scheduler.")
+	f.BoolVar(&cfg.RetryOnTooManyOutstandingRequests, "frontend.retry-on-too-many-outstanding-requests", false, "When multiple query-schedulers are available, re-enqueue queries that were rejected due to too many outstanding requests.")
 
 	cfg.InfNames = []string{"eth0", "en0"}
 	f.Var((*flagext.StringSlice)(&cfg.InfNames), "frontend.instance-interface-names", "Name of network interface to read address from. This address is sent to query-scheduler and querier, which uses it to send the query response back to query-frontend.")
@@ -63,6 +67,8 @@ type Frontend struct {
 	cfg Config
 	log log.Logger
 
+	retry *transport.Retry
+
 	lastQueryID atomic.Uint64
 
 	// frontend workers will read from this channel, and send request to scheduler.
@@ -70,6 +76,9 @@ type Frontend struct {
 
 	schedulerWorkers *frontendSchedulerWorkers
 	requests         *requestsInProgress
+
+	// Metric for number of cancellation failed to send to query scheduler.
+	cancelFailedQueries prometheus.Counter
 }
 
 type frontendRequest struct {
@@ -82,6 +91,8 @@ type frontendRequest struct {
 
 	enqueue  chan enqueueResult
 	response chan *frontendv2pb.QueryResultRequest
+
+	retryOnTooManyOutstandingRequests bool
 }
 
 type enqueueStatus int
@@ -101,7 +112,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -114,6 +125,7 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Fronte
 		log:              log,
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
+		retry:            retry,
 		requests:         newRequestsInProgress(),
 	}
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
@@ -133,6 +145,11 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer) (*Fronte
 		Help: "Number of schedulers this frontend is connected to.",
 	}, func() float64 {
 		return float64(f.schedulerWorkers.getWorkersCount())
+	})
+
+	f.cancelFailedQueries = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_query_frontend_cancel_failed_queries_total",
+		Help: "Total number of queries that are failed to be canceled due to cancel channel full.",
 	})
 
 	f.Service = services.NewIdleService(f.starting, f.stopping)
@@ -171,74 +188,80 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	freq := &frontendRequest{
-		queryID:      f.lastQueryID.Inc(),
-		request:      req,
-		userID:       userID,
-		statsEnabled: stats.IsEnabled(ctx),
+	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
+		freq := &frontendRequest{
+			queryID:      f.lastQueryID.Inc(),
+			request:      req,
+			userID:       userID,
+			statsEnabled: stats.IsEnabled(ctx),
 
-		cancel: cancel,
+			cancel: cancel,
 
-		// Buffer of 1 to ensure response or error can be written to the channel
-		// even if this goroutine goes away due to client context cancellation.
-		enqueue:  make(chan enqueueResult, 1),
-		response: make(chan *frontendv2pb.QueryResultRequest, 1),
-	}
+			// Buffer of 1 to ensure response or error can be written to the channel
+			// even if this goroutine goes away due to client context cancellation.
+			enqueue:  make(chan enqueueResult, 1),
+			response: make(chan *frontendv2pb.QueryResultRequest, 1),
 
-	f.requests.put(freq)
-	defer f.requests.delete(freq.queryID)
+			retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
+		}
 
-	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
+		f.requests.put(freq)
+		defer f.requests.delete(freq.queryID)
 
-enqueueAgain:
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
 
-	case f.requestsCh <- freq:
-		// Enqueued, let's wait for response.
-	}
+	enqueueAgain:
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 
-	var cancelCh chan<- uint64
+		case f.requestsCh <- freq:
+			// Enqueued, let's wait for response.
+		}
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+		var cancelCh chan<- uint64
 
-	case enqRes := <-freq.enqueue:
-		if enqRes.status == waitForResponse {
-			cancelCh = enqRes.cancelCh
-			break // go wait for response.
-		} else if enqRes.status == failed {
-			retries--
-			if retries > 0 {
-				goto enqueueAgain
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+
+		case enqRes := <-freq.enqueue:
+			if enqRes.status == waitForResponse {
+				cancelCh = enqRes.cancelCh
+				break // go wait for response.
+			} else if enqRes.status == failed {
+				retries--
+				if retries > 0 {
+					goto enqueueAgain
+				}
 			}
+
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
 		}
 
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
-	}
-
-	select {
-	case <-ctx.Done():
-		if cancelCh != nil {
-			select {
-			case cancelCh <- freq.queryID:
-				// cancellation sent.
-			default:
-				// failed to cancel, ignore.
+		select {
+		case <-ctx.Done():
+			if cancelCh != nil {
+				select {
+				case cancelCh <- freq.queryID:
+					// cancellation sent.
+				default:
+					// failed to cancel, log it.
+					level.Warn(util_log.WithContext(ctx, f.log)).Log("msg", "failed to enqueue cancellation signal", "query_id", freq.queryID)
+					f.cancelFailedQueries.Inc()
+				}
 			}
-		}
-		return nil, ctx.Err()
+			return nil, ctx.Err()
 
-	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
-		}
+		case resp := <-freq.response:
+			if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+				stats := stats.FromContext(ctx)
+				stats.Merge(resp.Stats) // Safe if stats is nil.
+			}
 
-		return resp.HttpResponse, nil
-	}
+			return resp.HttpResponse, nil
+		}
+	})
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {

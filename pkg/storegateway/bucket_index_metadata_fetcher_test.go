@@ -3,6 +3,7 @@ package storegateway
 import (
 	"bytes"
 	"context"
+	"errors"
 	"path"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ import (
 )
 
 func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
@@ -98,7 +100,55 @@ func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
 	))
 }
 
+func TestBucketIndexMetadataFetcher_Fetch_KeyPermissionDenied(t *testing.T) {
+	const userID = "user-1"
+
+	bkt := &bucket.ClientMock{}
+	reg := prometheus.NewPedanticRegistry()
+	ctx := context.Background()
+
+	bkt.MockGet(userID+"/bucket-index.json.gz", "c", bucket.ErrCustomerManagedKeyAccessDenied)
+
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, log.NewNopLogger(), reg, nil)
+	metas, _, err := fetcher.Fetch(ctx)
+	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
+	assert.Empty(t, metas)
+
+	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP blocks_meta_modified Number of blocks whose metadata changed
+		# TYPE blocks_meta_modified gauge
+		blocks_meta_modified{modified="replica-label-removed"} 0
+		# HELP blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+		# TYPE blocks_meta_sync_failures_total counter
+		blocks_meta_sync_failures_total 0
+		# HELP blocks_meta_synced Number of block metadata synced
+		# TYPE blocks_meta_synced gauge
+		blocks_meta_synced{state="corrupted-bucket-index"} 0
+		blocks_meta_synced{state="corrupted-meta-json"} 0
+		blocks_meta_synced{state="duplicate"} 0
+		blocks_meta_synced{state="failed"} 0
+		blocks_meta_synced{state="key-access-denied"} 1
+		blocks_meta_synced{state="label-excluded"} 0
+		blocks_meta_synced{state="loaded"} 0
+		blocks_meta_synced{state="marked-for-deletion"} 0
+		blocks_meta_synced{state="marked-for-no-compact"} 0
+		blocks_meta_synced{state="no-bucket-index"} 0
+		blocks_meta_synced{state="no-meta-json"} 0
+		blocks_meta_synced{state="time-excluded"} 0
+		blocks_meta_synced{state="too-fresh"} 0
+		# HELP blocks_meta_syncs_total Total blocks metadata synchronization attempts
+		# TYPE blocks_meta_syncs_total counter
+		blocks_meta_syncs_total 1
+	`),
+		"blocks_meta_modified",
+		"blocks_meta_sync_failures_total",
+		"blocks_meta_synced",
+		"blocks_meta_syncs_total",
+	))
+}
+
 func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
@@ -150,6 +200,7 @@ func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
 }
 
 func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
@@ -204,6 +255,7 @@ func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
 }
 
 func TestBucketIndexMetadataFetcher_Fetch_ShouldResetGaugeMetrics(t *testing.T) {
+	t.Parallel()
 	const userID = "user-1"
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)

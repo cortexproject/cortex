@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestSum(t *testing.T) {
@@ -461,7 +461,7 @@ func TestFloat64PrecisionStability(t *testing.T) {
 
 	// Randomise the seed but log it in case we need to reproduce the test on failure.
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	rand.New(rand.NewSource(seed))
 	t.Log("random generator seed:", seed)
 
 	// Generate a large number of registries with different metrics each.

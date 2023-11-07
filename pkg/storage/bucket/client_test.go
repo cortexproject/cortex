@@ -1,10 +1,17 @@
 package bucket
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
+	"sync"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
 
@@ -91,4 +98,67 @@ func TestNewClient(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Thanos_Metrics(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	ctx := context.Background()
+
+	m := &ClientMock{}
+	m.On("Get", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error"))
+	bkt := bucketWithMetrics(m, "", reg)
+	_, err := bkt.Get(ctx, "something")
+	require.Error(t, err)
+
+	// Should report the metrics with `thanos_` prefix
+	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP thanos_objstore_bucket_operation_failures_total Total number of operations against a bucket that failed, but were not expected to fail in certain way from caller perspective. Those errors have to be investigated.
+		# TYPE thanos_objstore_bucket_operation_failures_total counter
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="attributes"} 0
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="delete"} 0
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="exists"} 0
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="get"} 1
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="get_range"} 0
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="iter"} 0
+		thanos_objstore_bucket_operation_failures_total{bucket="",component="",operation="upload"} 0
+		# HELP thanos_objstore_bucket_operations_total Total number of all attempted operations against a bucket.
+		# TYPE thanos_objstore_bucket_operations_total counter
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="attributes"} 0
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="delete"} 0
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="exists"} 0
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="get"} 1
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="get_range"} 0
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="iter"} 0
+		thanos_objstore_bucket_operations_total{bucket="",component="",operation="upload"} 0
+	`),
+		"thanos_objstore_bucket_operations_total",
+		"thanos_objstore_bucket_operation_failures_total",
+	))
+}
+
+func TestClientMock_MockGet(t *testing.T) {
+	expected := "body"
+
+	m := ClientMock{}
+	m.MockGet("test", expected, nil)
+
+	// Run many goroutines all requesting the same mocked object and
+	// ensure there's no race.
+	wg := sync.WaitGroup{}
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			reader, err := m.Get(context.Background(), "test")
+			require.NoError(t, err)
+			actual, err := io.ReadAll(reader)
+			require.NoError(t, err)
+			require.Equal(t, []byte(expected), actual)
+
+			require.NoError(t, reader.Close())
+		}()
+	}
+
+	wg.Wait()
 }

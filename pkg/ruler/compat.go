@@ -24,7 +24,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -79,7 +81,7 @@ func (a *PusherAppender) Commit() error {
 
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.
-	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, cortexpb.RULE))
+	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE))
 
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
@@ -142,6 +144,7 @@ type RulesLimits interface {
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
+	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 }
 
 // EngineQueryFunc returns a new engine query function by passing an altered timestamp.
@@ -150,7 +153,7 @@ type RulesLimits interface {
 func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		evaluationDelay := overrides.EvaluationDelay(userID)
-		q, err := engine.NewInstantQuery(q, nil, qs, t.Add(-evaluationDelay))
+		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t.Add(-evaluationDelay))
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +166,8 @@ func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides Rules
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point{T: v.T, V: v.V},
+				T:      v.T,
+				F:      v.V,
 				Metric: labels.Labels{},
 			}}, nil
 		default:
@@ -210,6 +214,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 	}
 
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		queryStats, ctx := stats.ContextWithEmptyStats(ctx)
 		// If we've been passed a counter we want to record the wall time spent executing this request.
 		timer := prometheus.NewTimer(nil)
 		defer func() {
@@ -220,9 +225,29 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 			logMessage := []interface{}{
 				"msg", "query stats",
 				"component", "ruler",
-				"cortex_ruler_query_seconds_total", querySeconds,
-				"query", qs,
 			}
+			if origin := ctx.Value(promql.QueryOrigin{}); origin != nil {
+				queryLabels := origin.(map[string]interface{})
+				rgMap := queryLabels["ruleGroup"].(map[string]string)
+				logMessage = append(logMessage,
+					"rule_group", rgMap["name"],
+					"namespace", rgMap["file"],
+				)
+			}
+			ruleDetail := rules.FromOriginContext(ctx)
+			logMessage = append(logMessage,
+				"rule", ruleDetail.Name,
+				"rule_kind", ruleDetail.Kind,
+				"query", qs,
+				"cortex_ruler_query_seconds_total", querySeconds,
+				"query_wall_time_seconds", queryStats.WallTime,
+				"fetched_series_count", queryStats.FetchedSeriesCount,
+				"fetched_chunks_count", queryStats.FetchedChunksCount,
+				"fetched_samples_count", queryStats.FetchedSamplesCount,
+				"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
+				"fetched_data_bytes", queryStats.FetchedDataBytes,
+			)
+			logMessage = append(logMessage, queryStats.LoadExtraFields()...)
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
 		}()
 
@@ -240,7 +265,7 @@ type RulesManager interface {
 	Stop()
 
 	// Updates rules manager state.
-	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error
+	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.GroupEvalIterationFunc) error
 
 	// Returns current rules groups.
 	RuleGroups() []*rules.Group
@@ -250,23 +275,23 @@ type RulesManager interface {
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
 func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
-	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	totalWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_total",
 		Help: "Number of write requests to ingesters.",
-	})
-	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	}, []string{"user"})
+	failedWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_write_requests_failed_total",
 		Help: "Number of failed write requests to ingesters.",
-	})
+	}, []string{"user"})
 
-	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	totalQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_queries_total",
 		Help: "Number of queries executed by ruler.",
-	})
-	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
+	}, []string{"user"})
+	failedQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_ruler_queries_failed_total",
 		Help: "Number of failed queries by ruler.",
-	})
+	}, []string{"user"})
 	var rulerQuerySeconds *prometheus.CounterVec
 	if cfg.EnableQueryStats {
 		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
@@ -286,10 +311,18 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			queryTime = rulerQuerySeconds.WithLabelValues(userID)
 		}
 
+		failedQueries := failedQueriesVec.WithLabelValues(userID)
+		totalQueries := totalQueriesVec.WithLabelValues(userID)
+		totalWrites := totalWritesVec.WithLabelValues(userID)
+		failedWrites := failedWritesVec.WithLabelValues(userID)
+
+		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID)
+		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
+			QueryFunc:       RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),

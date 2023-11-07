@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/units"
 	"github.com/go-kit/log"
@@ -14,6 +15,7 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 const (
@@ -30,20 +32,23 @@ const (
 	IndexCacheBackendDefault = IndexCacheBackendInMemory
 
 	defaultMaxItemSize = model.Bytes(128 * units.MiB)
+
+	defaultTTL = 24 * time.Hour
 )
 
 var (
 	supportedIndexCacheBackends = []string{IndexCacheBackendInMemory, IndexCacheBackendMemcached, IndexCacheBackendRedis}
 
 	errUnsupportedIndexCacheBackend = errors.New("unsupported index cache backend")
+	errDuplicatedIndexCacheBackend  = errors.New("duplicated index cache backend")
 	errNoIndexCacheAddresses        = errors.New("no index cache backend addresses")
 )
 
 type IndexCacheConfig struct {
-	Backend   string                   `yaml:"backend"`
-	InMemory  InMemoryIndexCacheConfig `yaml:"inmemory"`
-	Memcached MemcachedClientConfig    `yaml:"memcached"`
-	Redis     RedisClientConfig        `yaml:"redis"`
+	Backend   string                    `yaml:"backend"`
+	InMemory  InMemoryIndexCacheConfig  `yaml:"inmemory"`
+	Memcached MemcachedIndexCacheConfig `yaml:"memcached"`
+	Redis     RedisIndexCacheConfig     `yaml:"redis"`
 }
 
 func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
@@ -51,7 +56,10 @@ func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. Supported values: %s.", strings.Join(supportedIndexCacheBackends, ", ")))
+	f.StringVar(&cfg.Backend, prefix+"backend", IndexCacheBackendDefault, fmt.Sprintf("The index cache backend type. "+
+		"Multiple cache backend can be provided as a comma-separated ordered list to enable the implementation of a cache hierarchy. "+
+		"Supported values: %s.",
+		strings.Join(supportedIndexCacheBackends, ", ")))
 
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
@@ -60,43 +68,149 @@ func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix str
 
 // Validate the config.
 func (cfg *IndexCacheConfig) Validate() error {
-	if !util.StringsContain(supportedIndexCacheBackends, cfg.Backend) {
-		return errUnsupportedIndexCacheBackend
-	}
 
-	if cfg.Backend == IndexCacheBackendMemcached {
-		if err := cfg.Memcached.Validate(); err != nil {
-			return err
+	splitBackends := strings.Split(cfg.Backend, ",")
+	configuredBackends := map[string]struct{}{}
+
+	for _, backend := range splitBackends {
+		if !util.StringsContain(supportedIndexCacheBackends, backend) {
+			return errUnsupportedIndexCacheBackend
 		}
-	} else if cfg.Backend == IndexCacheBackendRedis {
-		if err := cfg.Redis.Validate(); err != nil {
-			return err
+
+		if _, ok := configuredBackends[backend]; ok {
+			return errors.WithMessagef(errDuplicatedIndexCacheBackend, "duplicated backend: %v", backend)
 		}
+
+		if backend == IndexCacheBackendMemcached {
+			if err := cfg.Memcached.Validate(); err != nil {
+				return err
+			}
+		} else if backend == IndexCacheBackendRedis {
+			if err := cfg.Redis.Validate(); err != nil {
+				return err
+			}
+		} else {
+			if err := cfg.InMemory.Validate(); err != nil {
+				return err
+			}
+		}
+
+		configuredBackends[backend] = struct{}{}
 	}
 
 	return nil
 }
 
 type InMemoryIndexCacheConfig struct {
-	MaxSizeBytes uint64 `yaml:"max_size_bytes"`
+	MaxSizeBytes uint64   `yaml:"max_size_bytes"`
+	EnabledItems []string `yaml:"enabled_items"`
+}
+
+func (cfg *InMemoryIndexCacheConfig) Validate() error {
+	if err := storecache.ValidateEnabledItems(cfg.EnabledItems); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (cfg *InMemoryIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.Uint64Var(&cfg.MaxSizeBytes, prefix+"max-size-bytes", uint64(1*units.Gibibyte), "Maximum size in bytes of in-memory index cache used to speed up blocks index lookups (shared between all tenants).")
+	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+}
+
+type MemcachedIndexCacheConfig struct {
+	ClientConfig MemcachedClientConfig `yaml:",inline"`
+	EnabledItems []string              `yaml:"enabled_items"`
+}
+
+func (cfg *MemcachedIndexCacheConfig) Validate() error {
+	if err := cfg.ClientConfig.Validate(); err != nil {
+		return err
+	}
+	return storecache.ValidateEnabledItems(cfg.EnabledItems)
+}
+
+func (cfg *MemcachedIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	cfg.ClientConfig.RegisterFlagsWithPrefix(f, prefix)
+	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+}
+
+type RedisIndexCacheConfig struct {
+	ClientConfig RedisClientConfig `yaml:",inline"`
+	EnabledItems []string          `yaml:"enabled_items"`
+}
+
+func (cfg *RedisIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	cfg.ClientConfig.RegisterFlagsWithPrefix(f, prefix)
+	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+}
+
+func (cfg *RedisIndexCacheConfig) Validate() error {
+	if err := cfg.ClientConfig.Validate(); err != nil {
+		return err
+	}
+	return storecache.ValidateEnabledItems(cfg.EnabledItems)
 }
 
 // NewIndexCache creates a new index cache based on the input configuration.
 func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
-	switch cfg.Backend {
-	case IndexCacheBackendInMemory:
-		return newInMemoryIndexCache(cfg.InMemory, logger, registerer)
-	case IndexCacheBackendMemcached:
-		return newMemcachedIndexCache(cfg.Memcached, logger, registerer)
-	case IndexCacheBackendRedis:
-		return newRedisIndexCache(cfg.Redis, logger, registerer)
-	default:
-		return nil, errUnsupportedIndexCacheBackend
+	splitBackends := strings.Split(cfg.Backend, ",")
+	var (
+		caches       []storecache.IndexCache
+		enabledItems []string
+	)
+
+	for i, backend := range splitBackends {
+		iReg := registerer
+
+		// Create the level label if we have more than one cache
+		if len(splitBackends) > 1 {
+			iReg = prometheus.WrapRegistererWith(prometheus.Labels{"level": fmt.Sprintf("L%v", i)}, registerer)
+		}
+
+		switch backend {
+		case IndexCacheBackendInMemory:
+			c, err := newInMemoryIndexCache(cfg.InMemory, logger, iReg)
+			if err != nil {
+				return c, err
+			}
+			caches = append(caches, c)
+			enabledItems = cfg.InMemory.EnabledItems
+		case IndexCacheBackendMemcached:
+			c, err := newMemcachedIndexCacheClient(cfg.Memcached.ClientConfig, logger, registerer)
+			if err != nil {
+				return nil, err
+			}
+			// TODO(yeya24): expose TTL
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			if err != nil {
+				return nil, err
+			}
+			caches = append(caches, cache)
+			enabledItems = cfg.Memcached.EnabledItems
+		case IndexCacheBackendRedis:
+			c, err := newRedisIndexCacheClient(cfg.Redis.ClientConfig, logger, iReg)
+			if err != nil {
+				return nil, err
+			}
+			// TODO(yeya24): expose TTL
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			if err != nil {
+				return nil, err
+			}
+			caches = append(caches, cache)
+			enabledItems = cfg.Redis.EnabledItems
+		default:
+			return nil, errUnsupportedIndexCacheBackend
+		}
+		if len(enabledItems) > 0 {
+			latestCache := caches[len(caches)-1]
+			cache := storecache.NewFilteredIndexCache(latestCache, enabledItems)
+			caches[len(caches)-1] = cache
+		}
 	}
+
+	return newMultiLevelCache(registerer, caches...), nil
 }
 
 func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
@@ -108,26 +222,26 @@ func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, regi
 		maxItemSize = maxCacheSize
 	}
 
-	return storecache.NewInMemoryIndexCacheWithConfig(logger, registerer, storecache.InMemoryIndexCacheConfig{
+	return storecache.NewInMemoryIndexCacheWithConfig(logger, nil, registerer, storecache.InMemoryIndexCacheConfig{
 		MaxSize:     maxCacheSize,
 		MaxItemSize: maxItemSize,
 	})
 }
 
-func newMemcachedIndexCache(cfg MemcachedClientConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
+func newMemcachedIndexCacheClient(cfg MemcachedClientConfig, logger log.Logger, registerer prometheus.Registerer) (cacheutil.RemoteCacheClient, error) {
 	client, err := cacheutil.NewMemcachedClientWithConfig(logger, "index-cache", cfg.ToMemcachedClientConfig(), registerer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create index cache memcached client")
 	}
 
-	return storecache.NewMemcachedIndexCache(logger, client, registerer)
+	return client, err
 }
 
-func newRedisIndexCache(cfg RedisClientConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {
+func newRedisIndexCacheClient(cfg RedisClientConfig, logger log.Logger, registerer prometheus.Registerer) (cacheutil.RemoteCacheClient, error) {
 	client, err := cacheutil.NewRedisClientWithConfig(logger, "index-cache", cfg.ToRedisClientConfig(), registerer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create index cache redis client")
 	}
 
-	return storecache.NewRemoteIndexCache(logger, client, registerer)
+	return client, err
 }

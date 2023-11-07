@@ -254,6 +254,9 @@ func resolveFilepaths(baseDir string, cfg *Config) {
 		for _, cfg := range receiver.WebexConfigs {
 			cfg.HTTPConfig.SetDirectory(baseDir)
 		}
+		for _, cfg := range receiver.MSTeamsConfigs {
+			cfg.HTTPConfig.SetDirectory(baseDir)
+		}
 	}
 }
 
@@ -295,11 +298,11 @@ func (ti *TimeInterval) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // Config is the top-level configuration for Alertmanager's config files.
 type Config struct {
-	Global       *GlobalConfig  `yaml:"global,omitempty" json:"global,omitempty"`
-	Route        *Route         `yaml:"route,omitempty" json:"route,omitempty"`
-	InhibitRules []*InhibitRule `yaml:"inhibit_rules,omitempty" json:"inhibit_rules,omitempty"`
-	Receivers    []*Receiver    `yaml:"receivers,omitempty" json:"receivers,omitempty"`
-	Templates    []string       `yaml:"templates" json:"templates"`
+	Global       *GlobalConfig `yaml:"global,omitempty" json:"global,omitempty"`
+	Route        *Route        `yaml:"route,omitempty" json:"route,omitempty"`
+	InhibitRules []InhibitRule `yaml:"inhibit_rules,omitempty" json:"inhibit_rules,omitempty"`
+	Receivers    []Receiver    `yaml:"receivers,omitempty" json:"receivers,omitempty"`
+	Templates    []string      `yaml:"templates" json:"templates"`
 	// Deprecated. Remove before v1.0 release.
 	MuteTimeIntervals []MuteTimeInterval `yaml:"mute_time_intervals,omitempty" json:"mute_time_intervals,omitempty"`
 	TimeIntervals     []TimeInterval     `yaml:"time_intervals,omitempty" json:"time_intervals,omitempty"`
@@ -526,6 +529,14 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 				}
 
 				webex.APIURL = c.Global.WebexAPIURL
+			}
+		}
+		for _, msteams := range rcv.MSTeamsConfigs {
+			if msteams.HTTPConfig == nil {
+				msteams.HTTPConfig = c.Global.HTTPConfig
+			}
+			if msteams.WebhookURL == nil {
+				return fmt.Errorf("no msteams webhook URL provided")
 			}
 		}
 
@@ -896,6 +907,7 @@ type Receiver struct {
 	SNSConfigs       []*SNSConfig       `yaml:"sns_configs,omitempty" json:"sns_configs,omitempty"`
 	TelegramConfigs  []*TelegramConfig  `yaml:"telegram_configs,omitempty" json:"telegram_configs,omitempty"`
 	WebexConfigs     []*WebexConfig     `yaml:"webex_configs,omitempty" json:"webex_configs,omitempty"`
+	MSTeamsConfigs   []*MSTeamsConfig   `yaml:"msteams_configs,omitempty" json:"teams_configs,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Receiver.

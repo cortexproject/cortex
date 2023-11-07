@@ -65,7 +65,7 @@ func (c *Config) Validate() error {
 			return errors.New("otlp-endpoint must be defined when using otel exporter")
 		}
 		if len(c.Otel.OltpEndpoint) > 0 {
-			level.Warn(util_log.Logger).Log("DEPRECATED: otel.oltp-endpoint is deprecated. User otel.otlp-endpoint instead.")
+			level.Warn(util_log.Logger).Log("msg", "DEPRECATED: otel.oltp-endpoint is deprecated. Use otel.otlp-endpoint instead.")
 		}
 	}
 

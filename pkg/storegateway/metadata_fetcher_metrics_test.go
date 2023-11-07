@@ -11,6 +11,7 @@ import (
 )
 
 func TestMetadataFetcherMetrics(t *testing.T) {
+	t.Parallel()
 	mainReg := prometheus.NewPedanticRegistry()
 
 	metrics := NewMetadataFetcherMetrics()

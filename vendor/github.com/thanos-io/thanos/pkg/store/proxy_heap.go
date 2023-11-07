@@ -163,15 +163,18 @@ func (d *dedupResponseHeap) At() *storepb.SeriesResponse {
 // This is O(n*logk) but can be Theta(n*logk). However,
 // tournament trees need n-1 auxiliary nodes so there
 // might not be much of a difference.
-type ProxyResponseHeap []ProxyResponseHeapNode
+type ProxyResponseHeap struct {
+	nodes []ProxyResponseHeapNode
+}
 
 func (h *ProxyResponseHeap) Less(i, j int) bool {
-	iResp := (*h)[i].rs.At()
-	jResp := (*h)[j].rs.At()
+	iResp := h.nodes[i].rs.At()
+	jResp := h.nodes[j].rs.At()
 
 	if iResp.GetSeries() != nil && jResp.GetSeries() != nil {
 		iLbls := labelpb.ZLabelsToPromLabels(iResp.GetSeries().Labels)
 		jLbls := labelpb.ZLabelsToPromLabels(jResp.GetSeries().Labels)
+
 		return labels.Compare(iLbls, jLbls) < 0
 	} else if iResp.GetSeries() == nil && jResp.GetSeries() != nil {
 		return true
@@ -185,19 +188,19 @@ func (h *ProxyResponseHeap) Less(i, j int) bool {
 }
 
 func (h *ProxyResponseHeap) Len() int {
-	return len(*h)
+	return len(h.nodes)
 }
 
 func (h *ProxyResponseHeap) Swap(i, j int) {
-	(*h)[i], (*h)[j] = (*h)[j], (*h)[i]
+	h.nodes[i], h.nodes[j] = h.nodes[j], h.nodes[i]
 }
 
 func (h *ProxyResponseHeap) Push(x interface{}) {
-	*h = append(*h, x.(ProxyResponseHeapNode))
+	h.nodes = append(h.nodes, x.(ProxyResponseHeapNode))
 }
 
 func (h *ProxyResponseHeap) Pop() (v interface{}) {
-	*h, v = (*h)[:h.Len()-1], (*h)[h.Len()-1]
+	h.nodes, v = h.nodes[:h.Len()-1], h.nodes[h.Len()-1]
 	return
 }
 
@@ -206,7 +209,7 @@ func (h *ProxyResponseHeap) Empty() bool {
 }
 
 func (h *ProxyResponseHeap) Min() *ProxyResponseHeapNode {
-	return &(*h)[0]
+	return &h.nodes[0]
 }
 
 type ProxyResponseHeapNode struct {
@@ -216,7 +219,9 @@ type ProxyResponseHeapNode struct {
 // NewProxyResponseHeap returns heap that k-way merge series together.
 // It's agnostic to duplicates and overlaps, it forwards all duplicated series in random order.
 func NewProxyResponseHeap(seriesSets ...respSet) *ProxyResponseHeap {
-	ret := make(ProxyResponseHeap, 0, len(seriesSets))
+	ret := ProxyResponseHeap{
+		nodes: make([]ProxyResponseHeapNode, 0, len(seriesSets)),
+	}
 
 	for _, ss := range seriesSets {
 		if ss.Empty() {
@@ -257,6 +262,10 @@ func (l *lazyRespSet) Labelset() string {
 	return labelpb.PromLabelSetsToString(l.storeLabelSets)
 }
 
+func (l *lazyRespSet) StoreLabels() map[string]struct{} {
+	return l.storeLabels
+}
+
 // lazyRespSet is a lazy storepb.SeriesSet that buffers
 // everything as fast as possible while at the same it permits
 // reading response-by-response. It blocks if there is no data
@@ -268,6 +277,7 @@ type lazyRespSet struct {
 	closeSeries    context.CancelFunc
 	storeName      string
 	storeLabelSets []labels.Labels
+	storeLabels    map[string]struct{}
 	frameTimeout   time.Duration
 	ctx            context.Context
 
@@ -373,6 +383,12 @@ func newLazyRespSet(
 		bufferedResponsesMtx: bufferedResponsesMtx,
 		bufferedResponses:    bufferedResponses,
 		shardMatcher:         shardMatcher,
+	}
+	respSet.storeLabels = make(map[string]struct{})
+	for _, ls := range storeLabelSets {
+		for _, l := range ls {
+			respSet.storeLabels[l.Name] = struct{}{}
+		}
 	}
 
 	go func(st string, l *lazyRespSet) {
@@ -571,7 +587,8 @@ func newAsyncRespSet(
 			seriesCtx,
 			span,
 			frameTimeout,
-			st,
+			st.String(),
+			st.LabelSets(),
 			closeSeries,
 			cl,
 			shardMatcher,
@@ -605,11 +622,14 @@ type eagerRespSet struct {
 	ctx  context.Context
 
 	closeSeries  context.CancelFunc
-	st           Client
 	frameTimeout time.Duration
 
 	shardMatcher *storepb.ShardMatcher
 	removeLabels map[string]struct{}
+
+	storeName      string
+	storeLabels    map[string]struct{}
+	storeLabelSets []labels.Labels
 
 	// Internal bookkeeping.
 	bufferedResponses []*storepb.SeriesResponse
@@ -621,7 +641,8 @@ func newEagerRespSet(
 	ctx context.Context,
 	span opentracing.Span,
 	frameTimeout time.Duration,
-	st Client,
+	storeName string,
+	storeLabelSets []labels.Labels,
 	closeSeries context.CancelFunc,
 	cl storepb.Store_SeriesClient,
 	shardMatcher *storepb.ShardMatcher,
@@ -631,7 +652,6 @@ func newEagerRespSet(
 ) respSet {
 	ret := &eagerRespSet{
 		span:              span,
-		st:                st,
 		closeSeries:       closeSeries,
 		cl:                cl,
 		frameTimeout:      frameTimeout,
@@ -640,12 +660,20 @@ func newEagerRespSet(
 		wg:                &sync.WaitGroup{},
 		shardMatcher:      shardMatcher,
 		removeLabels:      removeLabels,
+		storeName:         storeName,
+		storeLabelSets:    storeLabelSets,
+	}
+	ret.storeLabels = make(map[string]struct{})
+	for _, ls := range storeLabelSets {
+		for _, l := range ls {
+			ret.storeLabels[l.Name] = struct{}{}
+		}
 	}
 
 	ret.wg.Add(1)
 
 	// Start a goroutine and immediately buffer everything.
-	go func(st Client, l *eagerRespSet) {
+	go func(l *eagerRespSet) {
 		seriesStats := &storepb.SeriesStatsCounter{}
 		bytesProcessed := 0
 
@@ -674,7 +702,7 @@ func newEagerRespSet(
 
 			select {
 			case <-l.ctx.Done():
-				err := errors.Wrapf(l.ctx.Err(), "failed to receive any data from %s", st.String())
+				err := errors.Wrapf(l.ctx.Err(), "failed to receive any data from %s", storeName)
 				l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(err))
 				l.span.SetTag("err", err.Error())
 				return false
@@ -690,9 +718,9 @@ func newEagerRespSet(
 						// Most likely the per-Recv timeout has been reached.
 						// There's a small race between canceling and the Recv()
 						// but this is most likely true.
-						rerr = errors.Wrapf(err, "failed to receive any data in %s from %s", l.frameTimeout, st.String())
+						rerr = errors.Wrapf(err, "failed to receive any data in %s from %s", l.frameTimeout, storeName)
 					} else {
-						rerr = errors.Wrapf(err, "receive series from %s", st.String())
+						rerr = errors.Wrapf(err, "receive series from %s", storeName)
 					}
 					l.bufferedResponses = append(l.bufferedResponses, storepb.NewWarnSeriesResponse(rerr))
 					l.span.SetTag("err", rerr.Error())
@@ -728,11 +756,11 @@ func newEagerRespSet(
 
 		// This should be used only for stores that does not support doing this on server side.
 		// See docs/proposals-accepted/20221129-avoid-global-sort.md for details.
-		if len(l.removeLabels) > 0 {
-			sortWithoutLabels(l.bufferedResponses, l.removeLabels)
-		}
+		// NOTE. Client is not guaranteed to give a sorted response when extLset is added
+		// Generally we need to resort here.
+		sortWithoutLabels(l.bufferedResponses, l.removeLabels)
 
-	}(st, ret)
+	}(ret)
 
 	return ret
 }
@@ -757,7 +785,9 @@ func sortWithoutLabels(set []*storepb.SeriesResponse, labelsToRemove map[string]
 			continue
 		}
 
-		ser.Labels = labelpb.ZLabelsFromPromLabels(rmLabels(labelpb.ZLabelsToPromLabels(ser.Labels), labelsToRemove))
+		if len(labelsToRemove) > 0 {
+			ser.Labels = labelpb.ZLabelsFromPromLabels(rmLabels(labelpb.ZLabelsToPromLabels(ser.Labels), labelsToRemove))
+		}
 	}
 
 	// With the re-ordered label sets, re-sorting all series aligns the same series
@@ -776,6 +806,7 @@ func sortWithoutLabels(set []*storepb.SeriesResponse, labelsToRemove map[string]
 }
 
 func (l *eagerRespSet) Close() {
+	l.closeSeries()
 	l.shardMatcher.Close()
 }
 
@@ -804,11 +835,15 @@ func (l *eagerRespSet) Empty() bool {
 }
 
 func (l *eagerRespSet) StoreID() string {
-	return l.st.String()
+	return l.storeName
 }
 
 func (l *eagerRespSet) Labelset() string {
-	return labelpb.PromLabelSetsToString(l.st.LabelSets())
+	return labelpb.PromLabelSetsToString(l.storeLabelSets)
+}
+
+func (l *eagerRespSet) StoreLabels() map[string]struct{} {
+	return l.storeLabels
 }
 
 type respSet interface {
@@ -817,5 +852,6 @@ type respSet interface {
 	Next() bool
 	StoreID() string
 	Labelset() string
+	StoreLabels() map[string]struct{}
 	Empty() bool
 }

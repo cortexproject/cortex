@@ -16,8 +16,9 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
+	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/promql-engine/engine"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
@@ -46,6 +47,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/scheduler"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
@@ -157,7 +159,12 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 	// make sure to set default limits before we start loading configuration into memory
 	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
-	serv, err := runtimeconfig.New(t.Cfg.RuntimeConfig, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer), util_log.Logger)
+	registerer := prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer)
+	logger := util_log.Logger
+	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
+		return bucket.NewClient(ctx, t.Cfg.RuntimeConfig.StorageConfig, "runtime-config", logger, registerer)
+	}
+	serv, err := runtimeconfig.New(t.Cfg.RuntimeConfig, registerer, logger, bucketClientFactory)
 	if err == nil {
 		// TenantLimits just delegates to RuntimeConfig and doesn't have any state or need to do
 		// anything in the start/stopping phase. Thus we can create it as part of runtime config
@@ -196,6 +203,7 @@ func (t *Cortex) initOverridesExporter() (services.Service, error) {
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
+	t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsEnabled = t.Cfg.Distributor.SignWriteRequestsEnabled
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -346,6 +354,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 	}
 
 	t.Cfg.Worker.MaxConcurrentRequests = t.Cfg.Querier.MaxConcurrent
+	t.Cfg.Worker.TargetHeaders = t.Cfg.API.HTTPRequestHeadersToLog
 	return querier_worker.NewQuerierWorker(t.Cfg.Worker, httpgrpc_server.NewServer(internalQuerierRouter), util_log.Logger, prometheus.DefaultRegisterer)
 }
 
@@ -442,6 +451,11 @@ func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	queryAnalyzer := querysharding.NewQueryAnalyzer()
+	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
+	prometheusCodec := queryrange.NewPrometheusCodec(false)
+	// ShardedPrometheusCodec is same as PrometheusCodec but to be used on the sharded queries (it sum up the stats)
+	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true)
+
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
@@ -450,6 +464,8 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		prometheus.DefaultRegisterer,
 		t.TombstonesLoader,
 		queryAnalyzer,
+		prometheusCodec,
+		shardedPrometheusCodec,
 	)
 	if err != nil {
 		return nil, err
@@ -465,10 +481,11 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.QueryRange.ForwardHeaders,
 		queryRangeMiddlewares,
 		instantQueryMiddlewares,
-		queryrange.PrometheusCodec,
+		prometheusCodec,
 		instantquery.InstantQueryCodec,
 		t.Overrides,
 		queryAnalyzer,
+		t.Cfg.Querier.DefaultEvaluationInterval,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {
@@ -481,7 +498,8 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 }
 
 func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
-	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.Overrides, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
+	retry := transport.NewRetry(t.Cfg.QueryRange.MaxRetries, prometheus.DefaultRegisterer)
+	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.Overrides, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer, retry)
 	if err != nil {
 		return nil, err
 	}
@@ -639,7 +657,7 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
 	t.Cfg.Compactor.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
+	t.Compactor, err = compactor.NewCompactor(t.Cfg.Compactor, t.Cfg.BlocksStorage, util_log.Logger, prometheus.DefaultRegisterer, t.Overrides)
 	if err != nil {
 		return
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -86,7 +87,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, que
 // between calls.
 //
 // If request is successfully enqueued, successFn is called with the lock held, before any querier can receive the request.
-func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers int, successFn func()) error {
+func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers float64, successFn func()) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
@@ -94,7 +95,8 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers in
 		return ErrStopped
 	}
 
-	queue := q.queues.getOrAddQueue(userID, maxQueriers)
+	shardSize := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
+	queue := q.queues.getOrAddQueue(userID, shardSize)
 	if queue == nil {
 		// This can only happen if userID is "".
 		return errors.New("no queue found")

@@ -217,6 +217,14 @@ compactor:
         # CLI flag: -compactor.ring.dynamodb.ttl-time
         [ttl: <duration> | default = 0s]
 
+        # Time to refresh local ring with information on dynamodb.
+        # CLI flag: -compactor.ring.dynamodb.puller-sync-time
+        [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -compactor.ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is: compactor.ring
       [consul: <consul_config>]
@@ -264,6 +272,15 @@ compactor:
     # CLI flag: -compactor.ring.instance-interface-names
     [instance_interface_names: <list of string> | default = [eth0 en0]]
 
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -compactor.ring.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # Unregister the compactor during shutdown if true.
+    # CLI flag: -compactor.ring.unregister-on-shutdown
+    [unregister_on_shutdown: <boolean> | default = true]
+
     # Timeout for waiting on compactor to become ACTIVE in the ring.
     # CLI flag: -compactor.ring.wait-active-instance-timeout
     [wait_active_instance_timeout: <duration> | default = 10m]
@@ -277,4 +294,8 @@ compactor:
   # compaction.
   # CLI flag: -compactor.block-visit-marker-file-update-interval
   [block_visit_marker_file_update_interval: <duration> | default = 1m]
+
+  # When enabled, index verification will ignore out of order label names.
+  # CLI flag: -compactor.accept-malformed-index
+  [accept_malformed_index: <boolean> | default = false]
 ```

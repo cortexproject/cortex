@@ -109,8 +109,6 @@ type StoreGateway struct {
 	subservicesWatcher *services.FailureWatcher
 
 	bucketSync *prometheus.CounterVec
-
-	allowedTenants *util.AllowedTenants
 }
 
 func NewStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*StoreGateway, error) {
@@ -147,8 +145,8 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			Name: "cortex_storegateway_bucket_sync_total",
 			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
-		allowedTenants: util.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants),
 	}
+	allowedTenants := util.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
 
 	// Init metrics.
 	g.bucketSync.WithLabelValues(syncReasonInitial)
@@ -207,14 +205,14 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		// Instance the right strategy.
 		switch gatewayCfg.ShardingStrategy {
 		case util.ShardingStrategyDefault:
-			shardingStrategy = NewDefaultShardingStrategy(g.ring, lifecyclerCfg.Addr, logger)
+			shardingStrategy = NewDefaultShardingStrategy(g.ring, lifecyclerCfg.Addr, logger, allowedTenants)
 		case util.ShardingStrategyShuffle:
-			shardingStrategy = NewShuffleShardingStrategy(g.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, g.gatewayCfg.ShardingRing.ZoneStableShuffleSharding)
+			shardingStrategy = NewShuffleShardingStrategy(g.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, allowedTenants, g.gatewayCfg.ShardingRing.ZoneStableShuffleSharding)
 		default:
 			return nil, errInvalidShardingStrategy
 		}
 	} else {
-		shardingStrategy = NewNoShardingStrategy()
+		shardingStrategy = NewNoShardingStrategy(logger, allowedTenants)
 	}
 
 	g.stores, err = NewBucketStores(storageCfg, shardingStrategy, bucketClient, limits, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))

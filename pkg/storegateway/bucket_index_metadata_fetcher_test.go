@@ -55,7 +55,7 @@ func TestBucketIndexMetadataFetcher_Fetch(t *testing.T) {
 		NewIgnoreDeletionMarkFilter(logger, bucket.NewUserBucketClient(userID, bkt, nil), 2*time.Hour, 1),
 	}
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, logger, reg, filters)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(logger, nil), nil, logger, reg, filters)
 	metas, partials, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, map[ulid.ULID]*metadata.Meta{
@@ -109,7 +109,7 @@ func TestBucketIndexMetadataFetcher_Fetch_KeyPermissionDenied(t *testing.T) {
 
 	bkt.MockGet(userID+"/bucket-index.json.gz", "c", bucket.ErrCustomerManagedKeyAccessDenied)
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, log.NewNopLogger(), reg, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(log.NewNopLogger(), nil), nil, log.NewNopLogger(), reg, nil)
 	metas, _, err := fetcher.Fetch(ctx)
 	require.True(t, errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied))
 	assert.Empty(t, metas)
@@ -157,7 +157,7 @@ func TestBucketIndexMetadataFetcher_Fetch_NoBucketIndex(t *testing.T) {
 	logs := &concurrency.SyncBuffer{}
 	logger := log.NewLogfmtLogger(logs)
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, logger, reg, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(logger, nil), nil, logger, reg, nil)
 	metas, partials, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, metas)
@@ -212,7 +212,7 @@ func TestBucketIndexMetadataFetcher_Fetch_CorruptedBucketIndex(t *testing.T) {
 	// Upload a corrupted bucket index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, bucketindex.IndexCompressedFilename), strings.NewReader("invalid}!")))
 
-	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(), nil, logger, reg, nil)
+	fetcher := NewBucketIndexMetadataFetcher(userID, bkt, NewNoShardingStrategy(logger, nil), nil, logger, reg, nil)
 	metas, partials, err := fetcher.Fetch(ctx)
 	require.NoError(t, err)
 	assert.Empty(t, metas)

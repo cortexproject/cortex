@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -44,9 +45,6 @@ func TestDefaultShardingStrategy(t *testing.T) {
 		zoneAwarenessEnabled bool
 		setupRing            func(*ring.Desc)
 		expectedBlocks       map[string][]ulid.ULID
-		enableTenants        []string
-		disableTenants       []string
-		allowedTenants	func(*DefaultShardingStrategy)
 	}{
 		"one ACTIVE instance in the ring with replication factor = 1": {
 			replicationFactor: 1,
@@ -69,21 +67,6 @@ func TestDefaultShardingStrategy(t *testing.T) {
 				"127.0.0.2": {block2, block4},
 			},
 		},
-		"two ACTIVE instances in the ring with replication factor = 1 and one tenant disabled": {
-			replicationFactor: 1,
-			setupRing: func(r *ring.Desc) {
-				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{block1Hash + 1, block3Hash + 1}, ring.ACTIVE, registeredAt)
-				r.AddIngester("instance-2", "127.0.0.2", "", []uint32{block2Hash + 1, block4Hash + 1}, ring.ACTIVE, registeredAt)
-		},
-			allowedTenants: func(r *DefaultShardingStrategy) {
-						 userIds:=  []string{"u-1","u-2"}
-				r.FilterUsers(context.Background(), userIds)
-			},
-			expectedBlocks: map[string][]ulid.ULID{
-				"127.0.0.1": {block1, block3}, // Tenant 1 blocks expected
-				"127.0.0.2": {},               // Tenant 2 blocks disabled
-			},
-	},
 		"one ACTIVE instance in the ring with replication factor = 2": {
 			replicationFactor: 2,
 			setupRing: func(r *ring.Desc) {
@@ -288,7 +271,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
 
 			for instanceAddr, expectedBlocks := range testData.expectedBlocks {
-				filter := NewDefaultShardingStrategy(r, instanceAddr, log.NewNopLogger())
+				filter := NewDefaultShardingStrategy(r, instanceAddr, log.NewNopLogger(), nil)
 				synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"})
 				synced.WithLabelValues(shardExcludedMeta).Set(0)
 
@@ -353,6 +336,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 		setupRing         func(*ring.Desc)
 		expectedUsers     []usersExpectation
 		expectedBlocks    []blocksExpectation
+		isTenantDisabled  bool
 	}{
 		"one ACTIVE instance in the ring with RF = 1 and SS = 1": {
 			replicationFactor: 1,
@@ -368,6 +352,18 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				{instanceID: "instance-1", instanceAddr: "127.0.0.1", blocks: []ulid.ULID{block1, block2, block3, block4}},
 				{instanceID: "instance-2", instanceAddr: "127.0.0.2", blocks: []ulid.ULID{}},
 			},
+		},
+		"one ACTIVE instance in the ring with RF = 1 SS = 1 and user disabled": {
+			replicationFactor: 1,
+			limits:            &shardingLimitsMock{storeGatewayTenantShardSize: 1},
+			setupRing: func(r *ring.Desc) {
+				r.AddIngester("instance-1", "127.0.0.1", "", []uint32{0}, ring.ACTIVE, registeredAt)
+			},
+			expectedUsers: []usersExpectation{
+				{instanceID: "instance-1", instanceAddr: "127.0.0.1", users: nil},
+				{instanceID: "instance-2", instanceAddr: "127.0.0.2", users: nil},
+			},
+			isTenantDisabled: true,
 		},
 		"one ACTIVE instance in the ring with RF = 2 and SS = 1 (should still sync blocks on the only available instance)": {
 			replicationFactor: 1,
@@ -647,15 +643,20 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				// Wait until the ring client has synced.
 				require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
 
+				var allowedTenants *util.AllowedTenants
+				if testData.isTenantDisabled {
+					allowedTenants = util.NewAllowedTenants(nil, []string{userID})
+				}
+
 				// Assert on filter users.
 				for _, expected := range testData.expectedUsers {
-					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), zoneStableShuffleSharding) //nolint:govet
+					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), allowedTenants, zoneStableShuffleSharding) //nolint:govet
 					assert.Equal(t, expected.users, filter.FilterUsers(ctx, []string{userID}))
 				}
 
 				// Assert on filter blocks.
 				for _, expected := range testData.expectedBlocks {
-					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), zoneStableShuffleSharding) //nolint:govet
+					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), allowedTenants, zoneStableShuffleSharding) //nolint:govet
 					synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{}, []string{"state"})
 					synced.WithLabelValues(shardExcludedMeta).Set(0)
 

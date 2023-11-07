@@ -120,7 +120,7 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			require.NoError(t, err)
 
 			reg := prometheus.NewPedanticRegistry()
-			stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), mBucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+			stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), mBucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 			require.NoError(t, err)
 
 			if tc.mockInitialSync {
@@ -200,7 +200,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Query series before the initial sync.
@@ -276,7 +276,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 	bucket = &failFirstGetBucket{Bucket: bucket}
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Initial sync should succeed even if a transient error occurs.
@@ -336,7 +336,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Run an initial sync to discover 1 block.
@@ -397,10 +397,15 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	tests := map[string]struct {
 		shardingStrategy ShardingStrategy
 		expectedStores   int32
+		allowedTenants   *util.AllowedTenants
 	}{
 		"when sharding is disabled all users should be synced": {
-			shardingStrategy: NewNoShardingStrategy(),
+			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), nil),
 			expectedStores:   3,
+		},
+		"sharding disabled, user-1 disabled": {
+			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), util.NewAllowedTenants(nil, []string{"user-1"})),
+			expectedStores:   2,
 		},
 		"when sharding is enabled only stores for filtered users should be created": {
 			shardingStrategy: func() ShardingStrategy {
@@ -465,7 +470,7 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(ctx))
 
@@ -521,7 +526,7 @@ func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *t
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 
@@ -542,7 +547,7 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 

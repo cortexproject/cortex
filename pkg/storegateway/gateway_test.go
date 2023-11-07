@@ -133,6 +133,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			ctx := context.Background()
 			gatewayCfg := mockGatewayConfig()
 			gatewayCfg.ShardingEnabled = true
+			gatewayCfg.DisabledTenants = []string{"user-disabled"}
 			storageCfg := mockStorageConfig(t)
 			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
@@ -153,7 +154,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 			assert.False(t, g.ringLifecycler.IsRegistered())
 
-			bucketClient.MockIterWithCallback("", []string{"user-1", "user-2"}, nil, func() {
+			bucketClient.MockIterWithCallback("", []string{"user-1", "user-2", "user-disabled"}, nil, func() {
 				// During the initial sync, we expect the instance to always be in the JOINING
 				// state within the ring.
 				assert.True(t, g.ringLifecycler.IsRegistered())
@@ -163,6 +164,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			})
 			bucketClient.MockIter("user-1/", []string{}, nil)
 			bucketClient.MockIter("user-2/", []string{}, nil)
+			bucketClient.MockIter("user-disabled/", []string{}, nil)
 
 			// Once successfully started, the instance should be ACTIVE in the ring.
 			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
@@ -174,6 +176,7 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 
 			assert.NotNil(t, g.stores.getStore("user-1"))
 			assert.NotNil(t, g.stores.getStore("user-2"))
+			assert.Nil(t, g.stores.getStore("user-disabled"))
 			assert.Nil(t, g.stores.getStore("user-unknown"))
 		})
 	}
@@ -184,6 +187,7 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	ctx := context.Background()
 	gatewayCfg := mockGatewayConfig()
 	gatewayCfg.ShardingEnabled = false
+	gatewayCfg.DisabledTenants = []string{"user-disabled"}
 	storageCfg := mockStorageConfig(t)
 	bucketClient := &bucket.ClientMock{}
 
@@ -191,13 +195,15 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
-	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
+	bucketClient.MockIter("", []string{"user-1", "user-2", "user-disabled"}, nil)
 	bucketClient.MockIter("user-1/", []string{}, nil)
 	bucketClient.MockIter("user-2/", []string{}, nil)
+	bucketClient.MockIter("user-disabled/", []string{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 	assert.NotNil(t, g.stores.getStore("user-1"))
 	assert.NotNil(t, g.stores.getStore("user-2"))
+	assert.Nil(t, g.stores.getStore("user-disabled"))
 	assert.Nil(t, g.stores.getStore("user-unknown"))
 }
 

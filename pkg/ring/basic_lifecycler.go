@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"fmt"
+	mathrand "math/rand"
 	"sort"
 	"sync"
 	"time"
@@ -54,6 +55,8 @@ type BasicLifecyclerConfig struct {
 	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
 	// which means unregistering.
 	KeepInstanceInTheRingOnShutdown bool
+
+	FinalSleep time.Duration
 }
 
 // BasicLifecycler is a basic ring lifecycler which allows to hook custom
@@ -185,8 +188,18 @@ func (l *BasicLifecycler) starting(ctx context.Context) error {
 }
 
 func (l *BasicLifecycler) running(ctx context.Context) error {
-	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(l.cfg.HeartbeatPeriod)
-	defer heartbeatTickerStop()
+	var heartbeatTickerChan <-chan time.Time
+	if uint64(l.cfg.HeartbeatPeriod) > 0 {
+		heartbeatTicker := time.NewTicker(l.cfg.HeartbeatPeriod)
+		heartbeatTicker.Stop()
+		time.AfterFunc(time.Duration(uint64(mathrand.Int63())%uint64(l.cfg.HeartbeatPeriod)), func() {
+			l.heartbeat(ctx)
+			heartbeatTicker.Reset(l.cfg.HeartbeatPeriod)
+		})
+		defer heartbeatTicker.Stop()
+
+		heartbeatTickerChan = heartbeatTicker.C
+	}
 
 	for {
 		select {
@@ -240,6 +253,7 @@ heartbeatLoop:
 		level.Info(l.logger).Log("msg", "instance removed from the ring", "ring", l.ringName)
 	}
 
+	time.Sleep(l.cfg.FinalSleep)
 	return nil
 }
 
@@ -254,9 +268,9 @@ func (l *BasicLifecycler) registerInstance(ctx context.Context) error {
 		var exists bool
 		instanceDesc, exists = ringDesc.Ingesters[l.cfg.ID]
 		if exists {
-			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String())
+			level.Info(l.logger).Log("msg", "instance found in the ring", "instance", l.cfg.ID, "ip", l.cfg.Addr, "ring", l.ringName, "state", instanceDesc.GetState(), "tokens", len(instanceDesc.GetTokens()), "registered_at", instanceDesc.GetRegisteredAt().String())
 		} else {
-			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ring", l.ringName)
+			level.Info(l.logger).Log("msg", "instance not found in the ring", "instance", l.cfg.ID, "ip", l.cfg.Addr, "ring", l.ringName)
 		}
 
 		// We call the delegate to get the desired state right after the initialization.

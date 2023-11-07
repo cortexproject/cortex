@@ -78,7 +78,9 @@ type MultitenantAlertmanagerConfig struct {
 
 	Cluster ClusterConfig `yaml:"cluster"`
 
-	EnableAPI bool `yaml:"enable_api"`
+	EnableAPI      bool          `yaml:"enable_api"`
+	APIConcurrency int           `yaml:"api_concurrency"`
+	GCInterval     time.Duration `yaml:"gc_interval"`
 
 	// For distributor.
 	AlertmanagerClient ClientConfig `yaml:"alertmanager_client"`
@@ -117,7 +119,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
-
+	f.IntVar(&cfg.APIConcurrency, "alertmanager.api-concurrency", 0, "Maximum number of concurrent GET API requests before returning an error.")
+	f.DurationVar(&cfg.GCInterval, "alertmanager.alerts-gc-interval", 30*time.Minute, "Alertmanager alerts Garbage collection interval.")
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 	f.Var(&cfg.EnabledTenants, "alertmanager.enabled-tenants", "Comma separated list of tenants whose alerts this alertmanager can process. If specified, only these tenants will be handled by alertmanager, otherwise this alertmanager can process alerts from all tenants.")
 	f.Var(&cfg.DisabledTenants, "alertmanager.disabled-tenants", "Comma separated list of tenants whose alerts this alertmanager cannot process. If specified, a alertmanager that would normally pick the specified tenant(s) for processing will ignore them instead.")
@@ -324,6 +327,7 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 			cluster.DefaultProbeInterval,
 			nil,
 			false,
+			"",
 		)
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to initialize gossip mesh")
@@ -482,7 +486,10 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 
 		// We wait until the instance is in the JOINING state, once it does we know that tokens are assigned to this instance and we'll be ready to perform an initial sync of configs.
 		level.Info(am.logger).Log("msg", "waiting until alertmanager is JOINING in the ring")
-		if err = ring.WaitInstanceState(ctx, am.ring, am.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, am.cfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err = ring.WaitInstanceState(ctxWithTimeout, am.ring, am.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+			level.Error(am.logger).Log("msg", "alertmanager failed to become JOINING in the ring", "err", err)
 			return err
 		}
 		level.Info(am.logger).Log("msg", "alertmanager is JOINING in the ring")
@@ -515,7 +522,10 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 
 		// Wait until the ring client detected this instance in the ACTIVE state.
 		level.Info(am.logger).Log("msg", "waiting until alertmanager is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, am.ring, am.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, am.cfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, am.ring, am.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+			level.Error(am.logger).Log("msg", "alertmanager failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(am.logger).Log("msg", "alertmanager is ACTIVE in the ring")
@@ -911,7 +921,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 						return err
 					}
 
-					userAmConfig.Receivers[i].WebhookConfigs[j].URL = &amconfig.URL{URL: u}
+					userAmConfig.Receivers[i].WebhookConfigs[j].URL = &amconfig.SecretURL{URL: u}
 				}
 			}
 		}
@@ -965,6 +975,8 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		Store:             am.store,
 		PersisterConfig:   am.cfg.Persister,
 		Limits:            am.limits,
+		APIConcurrency:    am.cfg.APIConcurrency,
+		GCInterval:        am.cfg.GCInterval,
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)
@@ -1011,7 +1023,7 @@ func (am *MultitenantAlertmanager) ServeHTTP(w http.ResponseWriter, req *http.Re
 		return
 	}
 
-	if am.cfg.ShardingEnabled && am.distributor.IsPathSupported(req.URL.Path) {
+	if am.cfg.ShardingEnabled {
 		am.distributor.DistributeRequest(w, req, am.allowedTenants)
 		return
 	}

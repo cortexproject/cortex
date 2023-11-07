@@ -36,6 +36,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/tracing"
+	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -45,6 +46,11 @@ const (
 )
 
 var (
+	typesToIgnoreCLI = map[string]bool{
+		"labels.Label": true,
+		"flagext.CIDR": true,
+	}
+
 	// Ordered list of root blocks. The order is the same order that will
 	// follow the markdown generation.
 	rootBlocks = []rootBlock{
@@ -167,6 +173,11 @@ var (
 			name:       "ruler_storage_config",
 			structType: reflect.TypeOf(rulestore.Config{}),
 			desc:       "The ruler_storage_config configures the Cortex ruler storage backend.",
+		},
+		{
+			name:       "runtime_configuration_storage_config",
+			structType: reflect.TypeOf(runtimeconfig.Config{}),
+			desc:       "The runtime_configuration_storage_config configures the storage backend for the runtime configuration file.",
 		},
 		{
 			name:       "s3_sse_config",

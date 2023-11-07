@@ -2,7 +2,6 @@ package ruler
 
 import (
 	"context"
-	"sort"
 	"testing"
 	"time"
 
@@ -21,10 +20,10 @@ import (
 func TestRulerShutdown(t *testing.T) {
 	ctx := context.Background()
 
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	config := defaultRulerConfig(t)
 
-	r := buildRuler(t, config, nil, store, nil)
+	r, _ := buildRuler(t, config, nil, store, nil)
 
 	r.cfg.EnableSharding = true
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
@@ -56,9 +55,9 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	const heartbeatTimeout = time.Minute
 
 	ctx := context.Background()
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	config := defaultRulerConfig(t)
-	r := buildRuler(t, config, nil, store, nil)
+	r, _ := buildRuler(t, config, nil, store, nil)
 	r.cfg.EnableSharding = true
 	r.cfg.Ring.HeartbeatPeriod = 100 * time.Millisecond
 	r.cfg.Ring.HeartbeatTimeout = heartbeatTimeout
@@ -76,7 +75,7 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 	require.NoError(t, ringStore.CAS(ctx, ringKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", generateSortedTokens(config.Ring.NumTokens), ring.ACTIVE, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", ring.GenerateTokens(config.Ring.NumTokens, nil), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 
@@ -93,17 +92,6 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 		_, ok := ring.GetOrCreateRingDesc(d).Ingesters[unhealthyInstanceID]
 		return ok
 	})
-}
-
-func generateSortedTokens(numTokens int) ring.Tokens {
-	tokens := ring.GenerateTokens(numTokens, nil)
-
-	// Ensure generated tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
-
-	return ring.Tokens(tokens)
 }
 
 // numTokens determines the number of tokens owned by the specified

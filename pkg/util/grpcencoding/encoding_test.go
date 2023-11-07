@@ -3,7 +3,6 @@ package grpcencoding
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"strings"
 	"testing"
 
@@ -104,7 +103,7 @@ func BenchmarkCompress(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
-			c := encoding.GetCompressor("snappy")
+			c := encoding.GetCompressor(tc.name)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				w, _ := c.Compress(io.Discard)
@@ -173,6 +172,6 @@ func decompress(compressor encoding.Compressor, d []byte, maxReceiveMessageSize 
 	}
 	// Read from LimitReader with limit max+1. So if the underlying
 	// reader is over limit, the result will be bigger than max.
-	d, err = ioutil.ReadAll(io.LimitReader(dcReader, int64(maxReceiveMessageSize)+1))
+	d, err = io.ReadAll(io.LimitReader(dcReader, int64(maxReceiveMessageSize)+1))
 	return d, len(d), err
 }

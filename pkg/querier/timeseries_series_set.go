@@ -3,12 +3,13 @@ package querier
 import (
 	"sort"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
-
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
 // timeSeriesSeriesSet is a wrapper around a cortexpb.TimeSeries slice to implement to SeriesSet interface
@@ -43,7 +44,7 @@ func (t *timeSeriesSeriesSet) At() storage.Series {
 func (t *timeSeriesSeriesSet) Err() error { return nil }
 
 // Warnings implements storage.SeriesSet interface.
-func (t *timeSeriesSeriesSet) Warnings() storage.Warnings { return nil }
+func (t *timeSeriesSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // timeseries is a type wrapper that implements the storage.Series interface
 type timeseries struct {

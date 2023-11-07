@@ -42,7 +42,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 					return
 				}
 
-				querier, err := q.Querier(ctx, int64(from), int64(to))
+				querier, err := q.Querier(int64(from), int64(to))
 				if err != nil {
 					errors <- err
 					return
@@ -52,7 +52,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 					Start: int64(from),
 					End:   int64(to),
 				}
-				seriesSet := querier.Select(false, params, matchers...)
+				seriesSet := querier.Select(ctx, false, params, matchers...)
 				resp.Results[i], err = seriesSetToQueryResponse(seriesSet)
 				errors <- err
 			}(i, qr)

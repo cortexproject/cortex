@@ -591,6 +591,64 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errPagerDutyServiceKeyFileNotAllowed, "error validating Alertmanager config"),
 		},
+		{
+			name: "Should return error if Webhook url_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url_file: /urlFile
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errWebhookURLFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if PushOver user_key_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      pushover_configs:
+        - user_key_file: /secrets
+          token: 'token'
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errPushOverUserKeyFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if PushOver token_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      pushover_configs:
+        - token_file: /secrets
+          user_key: 'pushover user'
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errPushOverTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if Telegram bot_token_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      telegram_configs:
+        - chat_id: 5
+          bot_token_file: /secrets
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errTelegramBotTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
 	}
 
 	limits := &mockAlertManagerLimits{}
@@ -810,7 +868,7 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 		},
 		"struct containing *HTTPClientConfig as nested child within a slice": {
 			input: config.Config{
-				Receivers: []*config.Receiver{{
+				Receivers: []config.Receiver{{
 					Name: "test",
 					WebhookConfigs: []*config.WebhookConfig{{
 						HTTPConfig: &commoncfg.HTTPClientConfig{

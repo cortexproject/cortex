@@ -17,11 +17,12 @@ func TestIsTenantDir(t *testing.T) {
 }
 
 func TestIsBucketIndexFile(t *testing.T) {
-	assert.False(t, isBucketIndexFile(""))
-	assert.False(t, isBucketIndexFile("test"))
-	assert.False(t, isBucketIndexFile("test/block"))
-	assert.False(t, isBucketIndexFile("test/block/chunks"))
-	assert.True(t, isBucketIndexFile("test/bucket-index.json.gz"))
+	assert.False(t, isBucketIndexFiles(""))
+	assert.False(t, isBucketIndexFiles("test"))
+	assert.False(t, isBucketIndexFiles("test/block"))
+	assert.False(t, isBucketIndexFiles("test/block/chunks"))
+	assert.True(t, isBucketIndexFiles("test/bucket-index.json.gz"))
+	assert.True(t, isBucketIndexFiles("test/bucket-index-sync-status.json"))
 }
 
 func TestIsBlockIndexFile(t *testing.T) {

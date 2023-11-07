@@ -127,17 +127,26 @@ func (r ReplicationSet) GetAddressesWithout(exclude string) []string {
 	return addrs
 }
 
-// HasReplicationSetChanged returns true if two replications sets are the same (with possibly different timestamps),
-// false if they differ in any way (number of instances, instance states, tokens, zones, ...).
+// GetNumOfZones returns number of distinct zones.
+func (r ReplicationSet) GetNumOfZones() int {
+	set := make(map[string]struct{})
+	for _, instance := range r.Instances {
+		set[instance.GetZone()] = struct{}{}
+	}
+	return len(set)
+}
+
+// HasReplicationSetChanged returns false if two replications sets are the same (with possibly different timestamps),
+// true if they differ in any way (number of instances, instance states, tokens, zones, ...).
 func HasReplicationSetChanged(before, after ReplicationSet) bool {
 	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
 		i.Timestamp = 0
 	})
 }
 
-// HasReplicationSetChangedWithoutState returns true if two replications sets
+// HasReplicationSetChangedWithoutState returns false if two replications sets
 // are the same (with possibly different timestamps and instance states),
-// false if they differ in any other way (number of instances, tokens, zones, ...).
+// true if they differ in any other way (number of instances, tokens, zones, ...).
 func HasReplicationSetChangedWithoutState(before, after ReplicationSet) bool {
 	return hasReplicationSetChangedExcluding(before, after, func(i *InstanceDesc) {
 		i.Timestamp = 0

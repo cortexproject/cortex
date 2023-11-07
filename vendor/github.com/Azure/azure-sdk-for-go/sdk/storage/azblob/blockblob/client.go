@@ -14,11 +14,13 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/uuid"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/base"
@@ -104,6 +106,11 @@ func (bb *Client) generated() *generated.BlockBlobClient {
 	return blockBlob
 }
 
+func (bb *Client) innerBlobGenerated() *generated.BlobClient {
+	b := bb.BlobClient()
+	return base.InnerClient((*base.Client[generated.BlobClient])(b))
+}
+
 // URL returns the URL endpoint used by the Client object.
 func (bb *Client) URL() string {
 	return bb.generated().Endpoint()
@@ -169,6 +176,13 @@ func (bb *Client) StageBlock(ctx context.Context, base64BlockID string, body io.
 
 	opts, leaseAccessConditions, cpkInfo, cpkScopeInfo := options.format()
 
+	if options != nil && options.TransactionalValidation != nil {
+		body, err = options.TransactionalValidation.Apply(body, opts)
+		if err != nil {
+			return StageBlockResponse{}, nil
+		}
+	}
+
 	resp, err := bb.generated().StageBlock(ctx, base64BlockID, count, body, opts, leaseAccessConditions, cpkInfo, cpkScopeInfo)
 	return resp, err
 }
@@ -176,12 +190,11 @@ func (bb *Client) StageBlock(ctx context.Context, base64BlockID string, body io.
 // StageBlockFromURL copies the specified block from a source URL to the block blob's "staging area" to be later committed by a call to CommitBlockList.
 // If count is CountToEnd (0), then data is read from specified offset to the end.
 // For more information, see https://docs.microsoft.com/en-us/rest/api/storageservices/put-block-from-url.
-func (bb *Client) StageBlockFromURL(ctx context.Context, base64BlockID string, sourceURL string,
-	contentLength int64, options *StageBlockFromURLOptions) (StageBlockFromURLResponse, error) {
+func (bb *Client) StageBlockFromURL(ctx context.Context, base64BlockID string, sourceURL string, options *StageBlockFromURLOptions) (StageBlockFromURLResponse, error) {
 
 	stageBlockFromURLOptions, cpkInfo, cpkScopeInfo, leaseAccessConditions, sourceModifiedAccessConditions := options.format()
 
-	resp, err := bb.generated().StageBlockFromURL(ctx, base64BlockID, contentLength, sourceURL, stageBlockFromURLOptions,
+	resp, err := bb.generated().StageBlockFromURL(ctx, base64BlockID, 0, sourceURL, stageBlockFromURLOptions,
 		cpkInfo, cpkScopeInfo, leaseAccessConditions, sourceModifiedAccessConditions)
 
 	return resp, err
@@ -205,8 +218,8 @@ func (bb *Client) CommitBlockList(ctx context.Context, base64BlockIDs []string, 
 	var commitOptions *generated.BlockBlobClientCommitBlockListOptions
 	var headers *generated.BlobHTTPHeaders
 	var leaseAccess *blob.LeaseAccessConditions
-	var cpkInfo *generated.CpkInfo
-	var cpkScope *generated.CpkScopeInfo
+	var cpkInfo *generated.CPKInfo
+	var cpkScope *generated.CPKScopeInfo
 	var modifiedAccess *generated.ModifiedAccessConditions
 
 	if options != nil {
@@ -218,12 +231,15 @@ func (bb *Client) CommitBlockList(ctx context.Context, base64BlockIDs []string, 
 			Timeout:                   options.Timeout,
 			TransactionalContentCRC64: options.TransactionalContentCRC64,
 			TransactionalContentMD5:   options.TransactionalContentMD5,
+			LegalHold:                 options.LegalHold,
+			ImmutabilityPolicyMode:    options.ImmutabilityPolicyMode,
+			ImmutabilityPolicyExpiry:  options.ImmutabilityPolicyExpiryTime,
 		}
 
 		headers = options.HTTPHeaders
 		leaseAccess, modifiedAccess = exported.FormatBlobAccessConditions(options.AccessConditions)
-		cpkInfo = options.CpkInfo
-		cpkScope = options.CpkScopeInfo
+		cpkInfo = options.CPKInfo
+		cpkScope = options.CPKScopeInfo
 	}
 
 	resp, err := bb.generated().CommitBlockList(ctx, blockLookupList, commitOptions, headers, leaseAccess, cpkInfo, cpkScope, modifiedAccess)
@@ -255,14 +271,43 @@ func (bb *Client) Undelete(ctx context.Context, o *blob.UndeleteOptions) (blob.U
 	return bb.BlobClient().Undelete(ctx, o)
 }
 
+// SetImmutabilityPolicy operation enables users to set the immutability policy on a blob.
+// https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview
+func (bb *Client) SetImmutabilityPolicy(ctx context.Context, expiryTime time.Time, options *blob.SetImmutabilityPolicyOptions) (blob.SetImmutabilityPolicyResponse, error) {
+	return bb.BlobClient().SetImmutabilityPolicy(ctx, expiryTime, options)
+}
+
+// DeleteImmutabilityPolicy operation enables users to delete the immutability policy on a blob.
+// https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview
+func (bb *Client) DeleteImmutabilityPolicy(ctx context.Context, options *blob.DeleteImmutabilityPolicyOptions) (blob.DeleteImmutabilityPolicyResponse, error) {
+	return bb.BlobClient().DeleteImmutabilityPolicy(ctx, options)
+}
+
+// SetLegalHold operation enables users to set legal hold on a blob.
+// https://learn.microsoft.com/en-us/azure/storage/blobs/immutable-storage-overview
+func (bb *Client) SetLegalHold(ctx context.Context, legalHold bool, options *blob.SetLegalHoldOptions) (blob.SetLegalHoldResponse, error) {
+	return bb.BlobClient().SetLegalHold(ctx, legalHold, options)
+}
+
 // SetTier operation sets the tier on a blob. The operation is allowed on a page
 // blob in a premium storage account and on a block blob in a blob storage account (locally
-// redundant storage only). A premium page blob's tier determines the allowed size, IOPS, and
+// redundant storage only). A premium page blob's tier determines the allowed size, IOPs, and
 // bandwidth of the blob. A block blob's tier determines Hot/Cool/Archive storage type. This operation
 // does not update the blob's ETag.
 // For detailed information about block blob level tiering see https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blob-storage-tiers.
 func (bb *Client) SetTier(ctx context.Context, tier blob.AccessTier, o *blob.SetTierOptions) (blob.SetTierResponse, error) {
 	return bb.BlobClient().SetTier(ctx, tier, o)
+}
+
+// SetExpiry operation sets an expiry time on an existing blob. This operation is only allowed on Hierarchical Namespace enabled accounts.
+// For more information, see https://learn.microsoft.com/en-us/rest/api/storageservices/set-blob-expiry
+func (bb *Client) SetExpiry(ctx context.Context, expiryType ExpiryType, o *SetExpiryOptions) (SetExpiryResponse, error) {
+	if expiryType == nil {
+		expiryType = ExpiryTypeNever{}
+	}
+	et, opts := expiryType.Format(o)
+	resp, err := bb.innerBlobGenerated().SetExpiry(ctx, et, opts)
+	return resp, err
 }
 
 // GetProperties returns the blob's properties.
@@ -279,7 +324,7 @@ func (bb *Client) SetHTTPHeaders(ctx context.Context, HTTPHeaders blob.HTTPHeade
 
 // SetMetadata changes a blob's metadata.
 // https://docs.microsoft.com/rest/api/storageservices/set-blob-metadata.
-func (bb *Client) SetMetadata(ctx context.Context, metadata map[string]string, o *blob.SetMetadataOptions) (blob.SetMetadataResponse, error) {
+func (bb *Client) SetMetadata(ctx context.Context, metadata map[string]*string, o *blob.SetMetadataOptions) (blob.SetMetadataResponse, error) {
 	return bb.BlobClient().SetMetadata(ctx, metadata, o)
 }
 
@@ -324,7 +369,8 @@ func (bb *Client) CopyFromURL(ctx context.Context, copySource string, o *blob.Co
 // Concurrent Upload Functions -----------------------------------------------------------------------------------------
 
 // uploadFromReader uploads a buffer in blocks to a block blob.
-func (bb *Client) uploadFromReader(ctx context.Context, reader io.ReaderAt, readerSize int64, o *uploadFromReaderOptions) (uploadFromReaderResponse, error) {
+func (bb *Client) uploadFromReader(ctx context.Context, reader io.ReaderAt, actualSize int64, o *uploadFromReaderOptions) (uploadFromReaderResponse, error) {
+	readerSize := actualSize
 	if o.BlockSize == 0 {
 		// If bufferSize > (MaxStageBlockBytes * MaxBlocks), then error
 		if readerSize > MaxStageBlockBytes*MaxBlocks {
@@ -365,6 +411,14 @@ func (bb *Client) uploadFromReader(ctx context.Context, reader io.ReaderAt, read
 		return uploadFromReaderResponse{}, errors.New("block limit exceeded")
 	}
 
+	if log.Should(exported.EventUpload) {
+		urlparts, err := blob.ParseURL(bb.generated().Endpoint())
+		if err == nil {
+			log.Writef(exported.EventUpload, "blob name %s actual size %v block-size %v block-count %v",
+				urlparts.BlobName, actualSize, o.BlockSize, numBlocks)
+		}
+	}
+
 	blockIDList := make([]string, numBlocks) // Base-64 encoded block IDs
 	progress := int64(0)
 	progressLock := &sync.Mutex{}
@@ -374,11 +428,17 @@ func (bb *Client) uploadFromReader(ctx context.Context, reader io.ReaderAt, read
 		TransferSize:  readerSize,
 		ChunkSize:     o.BlockSize,
 		Concurrency:   o.Concurrency,
-		Operation: func(offset int64, count int64, ctx context.Context) error {
+		Operation: func(ctx context.Context, offset int64, chunkSize int64) error {
 			// This function is called once per block.
 			// It is passed this block's offset within the buffer and its count of bytes
 			// Prepare to read the proper block/section of the buffer
-			var body io.ReadSeeker = io.NewSectionReader(reader, offset, count)
+			if chunkSize < o.BlockSize {
+				// this is the last block.  its actual size might be less
+				// than the calculated size due to rounding up of the payload
+				// size to fit in a whole number of blocks.
+				chunkSize = (actualSize - offset)
+			}
+			var body io.ReadSeeker = io.NewSectionReader(reader, offset, chunkSize)
 			blockNum := offset / o.BlockSize
 			if o.Progress != nil {
 				blockProgress := int64(0)
@@ -440,20 +500,11 @@ func (bb *Client) UploadFile(ctx context.Context, file *os.File, o *UploadFileOp
 // UploadStream copies the file held in io.Reader to the Blob at blockBlobClient.
 // A Context deadline or cancellation will cause this to error.
 func (bb *Client) UploadStream(ctx context.Context, body io.Reader, o *UploadStreamOptions) (UploadStreamResponse, error) {
-	if err := o.format(); err != nil {
-		return CommitBlockListResponse{}, err
-	}
-
 	if o == nil {
 		o = &UploadStreamOptions{}
 	}
 
-	// If we used the default manager, we need to close it.
-	if o.transferMangerNotSet {
-		defer o.transferManager.Close()
-	}
-
-	result, err := copyFromReader(ctx, body, bb, *o)
+	result, err := copyFromReader(ctx, body, bb, *o, newMMBPool)
 	if err != nil {
 		return CommitBlockListResponse{}, err
 	}

@@ -262,7 +262,7 @@ func TestSmallestPositiveIntPerTenant(t *testing.T) {
 	}
 }
 
-func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
+func TestSmallestPositiveNonZeroFloat64PerTenant(t *testing.T) {
 	tenantLimits := map[string]*Limits{
 		"tenant-a": {
 			MaxQueriersPerTenant: 5,
@@ -280,7 +280,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 
 	for _, tc := range []struct {
 		tenantIDs []string
-		expLimit  int
+		expLimit  float64
 	}{
 		{tenantIDs: []string{}, expLimit: 0},
 		{tenantIDs: []string{"tenant-a"}, expLimit: 5},
@@ -290,7 +290,7 @@ func TestSmallestPositiveNonZeroIntPerTenant(t *testing.T) {
 		{tenantIDs: []string{"tenant-c", "tenant-d", "tenant-e"}, expLimit: 0},
 		{tenantIDs: []string{"tenant-a", "tenant-b", "tenant-c"}, expLimit: 5},
 	} {
-		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroIntPerTenant(tc.tenantIDs, ov.MaxQueriersPerUser))
+		assert.Equal(t, tc.expLimit, SmallestPositiveNonZeroFloat64PerTenant(tc.tenantIDs, ov.MaxQueriersPerUser))
 	}
 }
 
@@ -563,4 +563,36 @@ tenant2:
 	require.Equal(t, 1, ov.MaxExemplars("tenant1"))
 	require.Equal(t, 3, ov.MaxExemplars("tenant2"))
 	require.Equal(t, 5, ov.MaxExemplars("tenant3"))
+}
+
+func TestMaxDownloadedBytesPerRequestOverridesPerTenant(t *testing.T) {
+	SetDefaultLimitsForYAMLUnmarshalling(Limits{
+		MaxLabelNameLength: 100,
+	})
+
+	baseYAML := `
+max_downloaded_bytes_per_request: 5`
+	overridesYAML := `
+tenant1:
+  max_downloaded_bytes_per_request: 1
+tenant2:
+  max_downloaded_bytes_per_request: 3
+`
+
+	l := Limits{}
+	err := yaml.UnmarshalStrict([]byte(baseYAML), &l)
+	require.NoError(t, err)
+
+	overrides := map[string]*Limits{}
+	err = yaml.Unmarshal([]byte(overridesYAML), &overrides)
+	require.NoError(t, err, "parsing overrides")
+
+	tl := newMockTenantLimits(overrides)
+
+	ov, err := NewOverrides(l, tl)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, ov.MaxDownloadedBytesPerRequest("tenant1"))
+	require.Equal(t, 3, ov.MaxDownloadedBytesPerRequest("tenant2"))
+	require.Equal(t, 5, ov.MaxDownloadedBytesPerRequest("tenant3"))
 }

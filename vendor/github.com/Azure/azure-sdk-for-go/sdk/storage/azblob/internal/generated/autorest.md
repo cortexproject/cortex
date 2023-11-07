@@ -9,7 +9,7 @@ version: "^3.0.0"
 license-header: MICROSOFT_MIT_NO_VERSION
 input-file: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/e515b6251fdc21015282d2e84b85beec7c091763/specification/storage/data-plane/Microsoft.BlobStorage/preview/2020-10-02/blob.json"
 credential-scope: "https://storage.azure.com/.default"
-output-folder: .
+output-folder: ../generated
 file-prefix: "zz_"
 openapi-type: "data-plane"
 verbose: true
@@ -19,7 +19,7 @@ modelerfour:
   seal-single-value-enum-by-default: true
   lenient-model-deduplication: true
 export-clients: true
-use: "@autorest/go@4.0.0-preview.43"
+use: "@autorest/go@4.0.0-preview.45"
 ```
 
 ### Remove pager methods and export various generated methods in container client
@@ -299,6 +299,89 @@ directive:
   where: $
   transform: >-
     return $.
-      replace(/StorageErrorCodeIncrementalCopyOfEralierVersionSnapshotNotAllowed\t+\StorageErrorCode\s+=\s+\"IncrementalCopyOfEralierVersionSnapshotNotAllowed"\n, /StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed\t+\StorageErrorCode\s+=\s+\"IncrementalCopyOfEarlierVersionSnapshotNotAllowed"\
-      replace(/StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed/g, /StorageErrorCodeIncrementalCopyOfEarlierVersionSnapshotNotAllowed/g)
+      replace(/IncrementalCopyOfEralierVersionSnapshotNotAllowed/g, "IncrementalCopyOfEarlierVersionSnapshotNotAllowed");
+```
+
+### Fix up x-ms-content-crc64 header response name
+
+``` yaml
+directive:
+- from: swagger-document
+  where: $.x-ms-paths.*.*.responses.*.headers.x-ms-content-crc64
+  transform: >
+    $["x-ms-client-name"] = "ContentCRC64"
+```
+
+``` yaml
+directive:
+- rename-model:
+    from: BlobItemInternal
+    to: BlobItem
+- rename-model:
+    from: BlobPropertiesInternal
+    to: BlobProperties
+```
+
+### Updating encoding URL, Golang adds '+' which disrupts encoding with service
+
+``` yaml
+directive:
+  - from: zz_service_client.go
+    where: $
+    transform: >-
+      return $.
+        replace(/req.Raw\(\).URL.RawQuery \= reqQP.Encode\(\)/, `req.Raw().URL.RawQuery = strings.Replace(reqQP.Encode(), "+", "%20", -1)`)
+```
+
+### Change `where` parameter in blob filtering to be required
+
+``` yaml
+directive:
+- from: swagger-document
+  where: $.parameters.FilterBlobsWhere
+  transform: >
+    $.required = true;
+```
+
+### Change `Duration` parameter in leases to be required
+
+``` yaml
+directive:
+- from: swagger-document
+  where: $.parameters.LeaseDuration
+  transform: >
+    $.required = true;
+```
+
+### Change CPK acronym to be all caps
+
+``` yaml
+directive:
+  - from: source-file-go
+    where: $
+    transform: >-
+      return $.
+        replace(/Cpk/g, "CPK");
+```
+
+### Change CORS acronym to be all caps
+
+``` yaml
+directive:
+  - from: source-file-go
+    where: $
+    transform: >-
+      return $.
+        replace(/Cors/g, "CORS");
+```
+
+### Change cors xml to be correct
+
+``` yaml
+directive:
+  - from: source-file-go
+    where: $
+    transform: >-
+      return $.
+        replace(/xml:"CORS>CORSRule"/g, "xml:\"Cors>CorsRule\"");
 ```

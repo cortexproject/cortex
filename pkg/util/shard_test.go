@@ -81,3 +81,61 @@ func TestShuffleShardExpectedInstances(t *testing.T) {
 		assert.Equal(t, test.expected, ShuffleShardExpectedInstances(test.shardSize, test.numZones))
 	}
 }
+
+func TestDynamicShardSize(t *testing.T) {
+	tests := []struct {
+		value        float64
+		numInstances int
+		expected     int
+	}{
+		{
+			value:        0,
+			numInstances: 100,
+			expected:     0,
+		},
+		{
+			value:        0.1,
+			numInstances: 100,
+			expected:     10,
+		},
+		{
+			value:        0.01,
+			numInstances: 100,
+			expected:     1,
+		},
+		{
+			value:        3,
+			numInstances: 100,
+			expected:     3,
+		},
+		{
+			value:        0.4,
+			numInstances: 100,
+			expected:     40,
+		},
+		{
+			value:        1,
+			numInstances: 100,
+			expected:     1,
+		},
+		{
+			value:        0.99999,
+			numInstances: 100,
+			expected:     100,
+		},
+		{
+			value:        0.5,
+			numInstances: 3,
+			expected:     2,
+		},
+		{
+			value:        0.8,
+			numInstances: 3,
+			expected:     3,
+		},
+	}
+
+	for _, test := range tests {
+		assert.Equal(t, test.expected, DynamicShardSize(test.value, test.numInstances))
+	}
+}

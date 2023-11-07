@@ -13,15 +13,25 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 const key = "test"
+
+var (
+	defaultBackoff = backoff.Config{
+		MinBackoff: 1 * time.Millisecond,
+		MaxBackoff: 1 * time.Millisecond,
+		MaxRetries: 0,
+	}
+	defaultPullTime = 60 * time.Second
+)
 
 func Test_CAS_ErrorNoRetry(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	expectedErr := errors.Errorf("test")
 
 	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
@@ -36,19 +46,18 @@ func Test_CAS_ErrorNoRetry(t *testing.T) {
 }
 
 func Test_CAS_Backoff(t *testing.T) {
-	backoffConfig.MinBackoff = 1 * time.Millisecond
-	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	expectedErr := errors.Errorf("test")
 
 	ddbMock.On("Query").Return(map[string][]byte{}, expectedErr).Once()
 	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
+	ddbMock.On("Batch", context.TODO(), map[dynamodbKey][]byte{}, []dynamodbKey{{primaryKey: "test", sortKey: "childkey"}}).Once()
 	codecMock.On("DecodeMultiKey").Return(descMock, nil).Twice()
 	descMock.On("Clone").Return(descMock).Once()
-	descMock.On("FindDifference", descMock).Return(descMock, []string{}, nil).Once()
+	descMock.On("FindDifference", descMock).Return(descMock, []string{"childkey"}, nil).Once()
 	codecMock.On("EncodeMultiKey").Return(map[string][]byte{}, nil).Twice()
 
 	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
@@ -59,13 +68,15 @@ func Test_CAS_Backoff(t *testing.T) {
 }
 
 func Test_CAS_Failed(t *testing.T) {
-	backoffConfig.MinBackoff = 1 * time.Millisecond
-	backoffConfig.MaxBackoff = 1 * time.Millisecond
-	backoffConfig.MaxRetries = 10
+	config := backoff.Config{
+		MinBackoff: 1 * time.Millisecond,
+		MaxBackoff: 1 * time.Millisecond,
+		MaxRetries: 10,
+	}
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, config)
 
 	ddbMock.On("Query").Return(map[string][]byte{}, errors.Errorf("test"))
 
@@ -81,7 +92,7 @@ func Test_CAS_Update(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	expectedUpdatedKeys := []string{"t1", "t2"}
 	expectedUpdated := map[string][]byte{
 		expectedUpdatedKeys[0]: []byte(expectedUpdatedKeys[0]),
@@ -112,7 +123,7 @@ func Test_CAS_Delete(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	expectedToDelete := []string{"test", "test2"}
 	expectedBatch := []dynamodbKey{
 		{primaryKey: key, sortKey: expectedToDelete[0]},
@@ -139,7 +150,7 @@ func Test_CAS_Update_Delete(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	expectedUpdatedKeys := []string{"t1", "t2"}
 	expectedUpdated := map[string][]byte{
 		expectedUpdatedKeys[0]: []byte(expectedUpdatedKeys[0]),
@@ -172,13 +183,10 @@ func Test_CAS_Update_Delete(t *testing.T) {
 }
 
 func Test_WatchKey(t *testing.T) {
-	backoffConfig.MinBackoff = 1 * time.Millisecond
-	backoffConfig.MaxBackoff = 1 * time.Millisecond
-	defaultLoopDelay = 1 * time.Second
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), 1*time.Second, defaultBackoff)
 	timesCalled := 0
 
 	ddbMock.On("Query").Return(map[string][]byte{}, nil)
@@ -194,11 +202,9 @@ func Test_WatchKey(t *testing.T) {
 }
 
 func Test_WatchKey_UpdateStale(t *testing.T) {
-	backoffConfig.MinBackoff = 1 * time.Millisecond
-	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	staleData := &DescMock{}
 
 	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
@@ -223,11 +229,9 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 }
 
 func Test_WatchPrefix(t *testing.T) {
-	backoffConfig.MinBackoff = 1 * time.Millisecond
-	backoffConfig.MaxBackoff = 1 * time.Millisecond
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	data := map[string][]byte{}
 	dataKey := []string{"t1", "t2"}
 	data[dataKey[0]] = []byte(dataKey[0])
@@ -252,7 +256,7 @@ func Test_WatchPrefix(t *testing.T) {
 func Test_UpdateStaleData(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
-	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry())
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
 	staleData := &DescMock{}
 	timestamp := time.Date(2000, 10, 10, 10, 10, 10, 10, time.UTC)
 
@@ -265,30 +269,31 @@ func Test_UpdateStaleData(t *testing.T) {
 }
 
 // NewClientMock makes a new local dynamodb client.
-func NewClientMock(ddbClient dynamoDbClient, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer) *Client {
-	m := &Client{
-		kv:         ddbClient,
-		ddbMetrics: newDynamoDbMetrics(registerer),
-		codec:      cc,
-		logger:     logger,
-		staleData:  make(map[string]staleData),
+func NewClientMock(ddbClient dynamoDbClient, cc codec.Codec, logger log.Logger, registerer prometheus.Registerer, time time.Duration, config backoff.Config) *Client {
+	return &Client{
+		kv:             ddbClient,
+		ddbMetrics:     newDynamoDbMetrics(registerer),
+		codec:          cc,
+		logger:         logger,
+		staleData:      make(map[string]staleData),
+		pullerSyncTime: time,
+		backoffConfig:  config,
 	}
 
-	return m
 }
 
-type mockDynamodbClient struct {
+type MockDynamodbClient struct {
 	mock.Mock
 }
 
 //revive:disable:unexported-return
-func NewDynamodbClientMock() *mockDynamodbClient {
-	return &mockDynamodbClient{}
+func NewDynamodbClientMock() *MockDynamodbClient {
+	return &MockDynamodbClient{}
 }
 
 //revive:enable:unexported-return
 
-func (m *mockDynamodbClient) List(context.Context, dynamodbKey) ([]string, float64, error) {
+func (m *MockDynamodbClient) List(context.Context, dynamodbKey) ([]string, float64, error) {
 	args := m.Called()
 	var err error
 	if args.Get(1) != nil {
@@ -296,7 +301,7 @@ func (m *mockDynamodbClient) List(context.Context, dynamodbKey) ([]string, float
 	}
 	return args.Get(0).([]string), 0, err
 }
-func (m *mockDynamodbClient) Query(context.Context, dynamodbKey, bool) (map[string][]byte, float64, error) {
+func (m *MockDynamodbClient) Query(context.Context, dynamodbKey, bool) (map[string][]byte, float64, error) {
 	args := m.Called()
 	var err error
 	if args.Get(1) != nil {
@@ -304,15 +309,15 @@ func (m *mockDynamodbClient) Query(context.Context, dynamodbKey, bool) (map[stri
 	}
 	return args.Get(0).(map[string][]byte), 0, err
 }
-func (m *mockDynamodbClient) Delete(ctx context.Context, key dynamodbKey) error {
+func (m *MockDynamodbClient) Delete(ctx context.Context, key dynamodbKey) error {
 	m.Called(ctx, key)
 	return nil
 }
-func (m *mockDynamodbClient) Put(ctx context.Context, key dynamodbKey, data []byte) error {
+func (m *MockDynamodbClient) Put(ctx context.Context, key dynamodbKey, data []byte) error {
 	m.Called(ctx, key, data)
 	return nil
 }
-func (m *mockDynamodbClient) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
+func (m *MockDynamodbClient) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
 	m.Called(ctx, put, delete)
 	return nil
 }

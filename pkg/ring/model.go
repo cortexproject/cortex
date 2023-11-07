@@ -159,6 +159,39 @@ func (i *InstanceDesc) IsReady(storageLastUpdated time.Time, heartbeatTimeout ti
 	return nil
 }
 
+func HasInstanceDescsChanged(beforeByID, afterByID map[string]InstanceDesc, hasChanged func(b, a InstanceDesc) bool) bool {
+	if len(beforeByID) != len(afterByID) {
+		return true
+	}
+
+	for id, before := range beforeByID {
+		after := afterByID[id]
+		if hasChanged(before, after) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func HasTokensChanged(before, after InstanceDesc) bool {
+	if len(before.Tokens) != len(after.Tokens) {
+		return true
+	}
+
+	for i, token := range before.Tokens {
+		if token != after.Tokens[i] {
+			return true
+		}
+	}
+
+	return false
+}
+
+func HasZoneChanged(before, after InstanceDesc) bool {
+	return before.Zone != after.Zone
+}
+
 // Merge merges other ring into this one. Returns sub-ring that represents the change,
 // and can be sent out to other clients.
 //
@@ -715,10 +748,18 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 		if !ok {
 			toDelete = append(toDelete, name)
 		} else if !ing.Equal(oing) {
-			if !tokensEqual(ing.Tokens, oing.Tokens) {
-				tokensChanged = true
+			if oing.Timestamp > ing.Timestamp {
+				toUpdated.Ingesters[name] = oing
+				if !tokensEqual(ing.Tokens, oing.Tokens) {
+					tokensChanged = true
+				}
+			} else if oing.Timestamp == ing.Timestamp && ing.State != LEFT && oing.State == LEFT {
+				// we accept LEFT even if timestamp hasn't changed
+				toUpdated.Ingesters[name] = oing
+				if !tokensEqual(ing.Tokens, oing.Tokens) {
+					tokensChanged = true
+				}
 			}
-			toUpdated.Ingesters[name] = oing
 		}
 	}
 
@@ -727,11 +768,10 @@ func (d *Desc) FindDifference(o codec.MultiKey) (interface{}, []string, error) {
 		resolveConflicts(out.Ingesters)
 
 		//Recheck if any instance was updated by the resolveConflict
-		for name, oing := range out.Ingesters {
-			ing, ok := d.Ingesters[name]
-			if !ok || !ing.Equal(oing) {
-				toUpdated.Ingesters[name] = oing
-			}
+		//All ingesters in toUpdated have already passed the timestamp check, so we can skip checking again
+		for name := range toUpdated.Ingesters {
+			//name must appear in out Ingesters, so we can skip the contains key check
+			toUpdated.Ingesters[name] = out.Ingesters[name]
 		}
 	}
 

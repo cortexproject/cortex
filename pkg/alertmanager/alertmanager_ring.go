@@ -49,6 +49,9 @@ type RingConfig struct {
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
 
+	FinalSleep               time.Duration `yaml:"final_sleep"`
+	WaitInstanceStateTimeout time.Duration `yaml:"wait_instance_state_timeout"`
+
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
 	InstanceInterfaceNames []string `yaml:"instance_interface_names"`
@@ -79,6 +82,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix(rfprefix, "alertmanagers/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, rfprefix+"heartbeat-period", 15*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, rfprefix+"heartbeat-timeout", time.Minute, "The heartbeat timeout after which alertmanagers are considered unhealthy within the ring. 0 = never (timeout disabled).")
+	f.DurationVar(&cfg.FinalSleep, rfprefix+"final-sleep", 0*time.Second, "The sleep seconds when alertmanager is shutting down. Need to be close to or larger than KV Store information propagation delay")
 	f.IntVar(&cfg.ReplicationFactor, rfprefix+"replication-factor", 3, "The replication factor to use when sharding the alertmanager.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, rfprefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate alerts across different availability zones.")
 
@@ -91,6 +95,9 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceZone, rfprefix+"instance-availability-zone", "", "The availability zone where this instance is running. Required if zone-awareness is enabled.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
+
+	// Timeout durations
+	f.DurationVar(&cfg.WaitInstanceStateTimeout, rfprefix+"wait-instance-state-timeout", 10*time.Minute, "Timeout for waiting on alertmanager to become desired state in the ring.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the alertmanager
@@ -110,6 +117,7 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 		TokensObservePeriod: 0,
 		Zone:                cfg.InstanceZone,
 		NumTokens:           RingNumTokens,
+		FinalSleep:          cfg.FinalSleep,
 	}, nil
 }
 

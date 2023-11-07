@@ -59,6 +59,17 @@ func NewBucketReaderClient(cfg Config, name string, logger log.Logger) (objstore
 	}, nil
 }
 
+// NewBucketWithRetries wraps the original bucket into the BucketWithRetries
+func NewBucketWithRetries(bucket objstore.Bucket, operationRetries int, retryMinBackoff time.Duration, retryMaxBackoff time.Duration, logger log.Logger) (objstore.Bucket, error) {
+	return &BucketWithRetries{
+		logger:           logger,
+		bucket:           bucket,
+		operationRetries: operationRetries,
+		retryMinBackoff:  retryMinBackoff,
+		retryMaxBackoff:  retryMaxBackoff,
+	}, nil
+}
+
 func newS3Config(cfg Config) (s3.Config, error) {
 	sseCfg, err := cfg.SSE.BuildThanosConfig()
 	if err != nil {
@@ -115,7 +126,7 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error, operation
 		if lastErr == nil {
 			return nil
 		}
-		if b.bucket.IsObjNotFoundErr(lastErr) {
+		if b.bucket.IsObjNotFoundErr(lastErr) || b.bucket.IsAccessDeniedErr(lastErr) {
 			return lastErr
 		}
 		retries.Wait()
@@ -166,7 +177,11 @@ func (b *BucketWithRetries) Upload(ctx context.Context, name string, r io.Reader
 	if !ok {
 		// Skip retry if incoming Reader is not seekable to avoid
 		// loading entire content into memory
-		return b.bucket.Upload(ctx, name, r)
+		err := b.bucket.Upload(ctx, name, r)
+		if err != nil {
+			level.Warn(b.logger).Log("msg", "skip upload retry as reader is not seekable", "file", name, "err", err)
+		}
+		return err
 	}
 	return b.retry(ctx, func() error {
 		if _, err := rs.Seek(0, io.SeekStart); err != nil {
@@ -192,6 +207,10 @@ func (b *BucketWithRetries) Delete(ctx context.Context, name string) error {
 
 func (b *BucketWithRetries) IsObjNotFoundErr(err error) bool {
 	return b.bucket.IsObjNotFoundErr(err)
+}
+
+func (b *BucketWithRetries) IsAccessDeniedErr(err error) bool {
+	return b.bucket.IsAccessDeniedErr(err)
 }
 
 func (b *BucketWithRetries) Close() error {

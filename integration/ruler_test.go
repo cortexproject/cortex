@@ -4,11 +4,13 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
 	"math"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/ruler"
+
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -24,6 +30,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore/providers/s3"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/integration/ca"
@@ -377,7 +384,7 @@ func TestRulerSharding(t *testing.T) {
 	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
 
 	// Fetch the rules and ensure they match the configured ones.
-	actualGroups, err := c.GetPrometheusRules()
+	actualGroups, err := c.GetPrometheusRules(e2ecortex.DefaultFilter)
 	require.NoError(t, err)
 
 	var actualNames []string
@@ -385,6 +392,163 @@ func TestRulerSharding(t *testing.T) {
 		actualNames = append(actualNames, group.Name)
 	}
 	assert.ElementsMatch(t, expectedNames, actualNames)
+}
+
+func TestRulerAPISharding(t *testing.T) {
+	const numRulesGroups = 100
+
+	random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Generate multiple rule groups, with 1 rule each.
+	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
+	expectedNames := make([]string, numRulesGroups)
+	alertCount := 0
+	for i := 0; i < numRulesGroups; i++ {
+		num := random.Intn(100)
+		var ruleNode yaml.Node
+		var exprNode yaml.Node
+
+		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
+		exprNode.SetString(strconv.Itoa(i))
+		ruleName := fmt.Sprintf("test_%d", i)
+
+		expectedNames[i] = ruleName
+		if num%2 == 0 {
+			alertCount++
+			ruleGroups[i] = rulefmt.RuleGroup{
+				Name:     ruleName,
+				Interval: 60,
+				Rules: []rulefmt.RuleNode{{
+					Alert: ruleNode,
+					Expr:  exprNode,
+				}},
+			}
+		} else {
+			ruleGroups[i] = rulefmt.RuleGroup{
+				Name:     ruleName,
+				Interval: 60,
+				Rules: []rulefmt.RuleNode{{
+					Record: ruleNode,
+					Expr:   exprNode,
+				}},
+			}
+		}
+	}
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the ruler.
+	rulerFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
+		map[string]string{
+			// Since we're not going to run any rule, we don't need the
+			// store-gateway to be configured to a valid address.
+			"-querier.store-gateway-addresses": "localhost:12345",
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+		},
+	)
+
+	// Start rulers.
+	ruler1 := e2ecortex.NewRuler("ruler-1", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	ruler2 := e2ecortex.NewRuler("ruler-2", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2)
+	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2))
+
+	// Upload rule groups to one of the rulers.
+	c, err := e2ecortex.NewClient("", "", "", ruler1.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	namespaceNames := []string{"test1", "test2", "test3", "test4", "test5"}
+	namespaceNameCount := make([]int, 5)
+	nsRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	for _, ruleGroup := range ruleGroups {
+		index := nsRand.Intn(len(namespaceNames))
+		namespaceNameCount[index] = namespaceNameCount[index] + 1
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespaceNames[index]))
+	}
+
+	// Wait until rulers have loaded all rules.
+	require.NoError(t, rulers.WaitSumMetricsWithOptions(e2e.Equals(numRulesGroups), []string{"cortex_prometheus_rule_group_rules"}, e2e.WaitMissingMetrics))
+
+	// Since rulers have loaded all rules, we expect that rules have been sharded
+	// between the two rulers.
+	require.NoError(t, ruler1.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+	require.NoError(t, ruler2.WaitSumMetrics(e2e.Less(numRulesGroups), "cortex_prometheus_rule_group_rules"))
+
+	testCases := map[string]struct {
+		filter        e2ecortex.RuleFilter
+		resultCheckFn func(assert.TestingT, []*ruler.RuleGroup)
+	}{
+		"Filter for Alert Rules": {
+			filter: e2ecortex.RuleFilter{
+				RuleType: "alert",
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				assert.Len(t, ruleGroups, alertCount, "Expected %d rules but got %d", alertCount, len(ruleGroups))
+			},
+		},
+		"Filter for Recording Rules": {
+			filter: e2ecortex.RuleFilter{
+				RuleType: "record",
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				assert.Len(t, ruleGroups, numRulesGroups-alertCount, "Expected %d rules but got %d", numRulesGroups-alertCount, len(ruleGroups))
+			},
+		},
+		"Filter by Namespace Name": {
+			filter: e2ecortex.RuleFilter{
+				Namespaces: []string{namespaceNames[2]},
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				assert.Len(t, ruleGroups, namespaceNameCount[2], "Expected %d rules but got %d", namespaceNameCount[2], len(ruleGroups))
+			},
+		},
+		"Filter by Namespace Name and Alert Rules": {
+			filter: e2ecortex.RuleFilter{
+				RuleType:   "alert",
+				Namespaces: []string{namespaceNames[2]},
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				for _, ruleGroup := range ruleGroups {
+					rule := ruleGroup.Rules[0].(map[string]interface{})
+					ruleType := rule["type"]
+					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
+				}
+			},
+		},
+		"Filter by Rule Names": {
+			filter: e2ecortex.RuleFilter{
+				RuleNames: []string{"rule_3", "rule_64", "rule_99"},
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				ruleNames := []string{}
+				for _, ruleGroup := range ruleGroups {
+					rule := ruleGroup.Rules[0].(map[string]interface{})
+					ruleName := rule["name"]
+					ruleNames = append(ruleNames, ruleName.(string))
+
+				}
+				assert.Len(t, ruleNames, 3, "Expected %d rules but got %d", 3, len(ruleNames))
+			},
+		},
+	}
+	// For each test case, fetch the rules with configured filters, and ensure the results match.
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			actualGroups, err := c.GetPrometheusRules(tc.filter)
+			require.NoError(t, err)
+			tc.resultCheckFn(t, actualGroups)
+		})
+	}
 }
 
 func TestRulerAlertmanager(t *testing.T) {
@@ -576,8 +740,8 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 		require.Equal(t, 200, res.StatusCode)
 	}
 
-	totalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"})
-	require.NoError(t, err)
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "user", user)
+	var totalQueries = []float64{0}
 
 	// Verify that user-failures don't increase cortex_ruler_queries_failed_total
 	for groupName, expression := range map[string]string{
@@ -601,7 +765,7 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
 
 			// But these failures were not reported as "failed queries"
-			sum, err := ruler.SumMetrics([]string{"cortex_ruler_queries_failed_total"})
+			sum, err := ruler.SumMetrics([]string{"cortex_ruler_queries_failed_total"}, e2e.WithLabelMatchers(matcher))
 			require.NoError(t, err)
 			require.Equal(t, float64(0), sum[0])
 
@@ -612,7 +776,7 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_group_rules"}, e2e.SkipMissingMetrics))
 
 			// Check that cortex_ruler_queries_total went up since last test.
-			newTotalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"})
+			newTotalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"}, e2e.WithLabelMatchers(matcher))
 			require.NoError(t, err)
 			require.Greater(t, newTotalQueries[0], totalQueries[0])
 
@@ -637,7 +801,7 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
 
 		// Still no failures.
-		sum, err := ruler.SumMetrics([]string{"cortex_ruler_queries_failed_total"})
+		sum, err := ruler.SumMetrics([]string{"cortex_ruler_queries_failed_total"}, e2e.WithLabelMatchers(matcher))
 		require.NoError(t, err)
 		require.Equal(t, float64(0), sum[0])
 
@@ -645,7 +809,232 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 		require.NoError(t, s.Stop(ingester))
 
 		// We should start getting "real" failures now.
-		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_queries_failed_total"}))
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_queries_failed_total"}, e2e.WithLabelMatchers(matcher)))
+	})
+}
+
+func TestRulerMetricsWhenIngesterFails(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	const blockRangePeriod = 2 * time.Second
+	// Configure the ruler.
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+			// Evaluate rules often, so that we don't need to wait for metrics to show up.
+			"-ruler.evaluation-interval": "2s",
+			"-ruler.poll-interval":       "2s",
+			// No delay
+			"-ruler.evaluation-delay-duration": "0",
+
+			// We run single ingester only, no replication.
+			"-distributor.replication-factor": "1",
+
+			// Very low limit so that ruler hits it.
+			"-querier.max-fetched-chunks-per-query": "15",
+			"-querier.query-store-after":            (1 * time.Second).String(),
+			"-querier.query-ingesters-within":       (2 * time.Second).String(),
+		},
+	)
+
+	const namespace = "test"
+	const user = "user"
+
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": storeGateway.NetworkGRPCEndpoint(),
+	})
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, ruler, storeGateway))
+
+	// Wait until both the distributor and ruler have updated the ring. The querier will also watch
+	// the store-gateway ring if blocks sharding is enabled.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1024), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", ruler.HTTPEndpoint(), user)
+	require.NoError(t, err)
+
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "user", user)
+	expression := "absent(sum_over_time(metric{}[2s] offset 1h))"
+
+	// Now let's upload a non-failing rule, and make sure that it works.
+	t.Run("real_error", func(t *testing.T) {
+		const groupName = "good_rule"
+
+		var ruleEvalCount float64
+		ruleGroup := ruleGroupWithRule(groupName, "rule", expression)
+		ruleGroup.Interval = 2
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+		m := ruleGroupMatcher(user, namespace, groupName)
+
+		// Wait until ruler has loaded the group.
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+		// Wait until rule group has tried to evaluate the rule, and succeeded.
+		ruleEvalCount++
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(ruleEvalCount), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_write_requests_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ruler_write_requests_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ruler_queries_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+
+		// Wait until the TSDB head is compacted and shipped to the storage.
+		// The shipped block contains the 1st series, while the 2ns series in the head.
+		require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_shipper_uploads_total"))
+
+		// Now let's stop ingester, and recheck metrics. This should increase cortex_ruler_write_requests_failed_total failures.
+		require.NoError(t, s.Stop(ingester))
+		ruleEvalCount++
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(ruleEvalCount), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_ruler_queries_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(2), []string{"cortex_ruler_write_requests_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_write_requests_failed_total"}, e2e.WithLabelMatchers(matcher), e2e.WaitMissingMetrics))
+	})
+}
+
+func TestRulerDisablesRuleGroups(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	const blockRangePeriod = 2 * time.Second
+	// Configure the ruler.
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+			// Evaluate rules often, so that we don't need to wait for metrics to show up.
+			"-ruler.evaluation-interval": "2s",
+			"-ruler.poll-interval":       "2s",
+			// No delay
+			"-ruler.evaluation-delay-duration": "0",
+
+			// We run single ingester only, no replication.
+			"-distributor.replication-factor": "1",
+
+			// Very low limit so that ruler hits it.
+			"-querier.max-fetched-chunks-per-query": "15",
+			"-querier.query-store-after":            (1 * time.Second).String(),
+			"-querier.query-ingesters-within":       (2 * time.Second).String(),
+		},
+	)
+
+	const namespace = "test"
+	const user = "user"
+	configFileName := "runtime-config.yaml"
+	bucketName := "cortex"
+
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses":     storeGateway.NetworkGRPCEndpoint(),
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       bucketName,
+		"-runtime-config.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-runtime-config.s3.insecure":          "true",
+		"-runtime-config.file":                 configFileName,
+		"-runtime-config.reload-period":        "2s",
+	})
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    bucketName,
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "runtime-config-test")
+
+	require.NoError(t, err)
+
+	// update runtime config
+	newRuntimeConfig := []byte(`overrides:
+  user:
+    disabled_rule_groups:
+      - name: bad_rule
+        namespace: test`)
+	require.NoError(t, client.Upload(context.Background(), configFileName, bytes.NewReader(newRuntimeConfig)))
+	time.Sleep(2 * time.Second)
+
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, ruler, storeGateway))
+
+	// Wait until both the distributor and ruler have updated the ring. The querier will also watch
+	// the store-gateway ring if blocks sharding is enabled.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(1024), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", ruler.HTTPEndpoint(), user)
+	require.NoError(t, err)
+
+	expression := "absent(sum_over_time(metric{}[2s] offset 1h))"
+
+	t.Run("disable_rule_group", func(t *testing.T) {
+
+		ruleGroup := ruleGroupWithRule("bad_rule", "rule", expression)
+		ruleGroup.Interval = 2
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+
+		ruleGroup = ruleGroupWithRule("good_rule", "rule", expression)
+		ruleGroup.Interval = 2
+		require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+
+		m1 := ruleGroupMatcher(user, namespace, "good_rule")
+
+		// Wait until ruler has loaded the group.
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_ruler_sync_rules_total"}, e2e.WaitMissingMetrics))
+
+		require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m1), e2e.WaitMissingMetrics))
+
+		filter := e2ecortex.RuleFilter{}
+		actualGroups, err := c.GetPrometheusRules(filter)
+		require.NoError(t, err)
+		assert.Equal(t, 1, len(actualGroups))
+		assert.Equal(t, "good_rule", actualGroups[0].Name)
+		assert.Equal(t, "test", actualGroups[0].File)
 	})
 }
 

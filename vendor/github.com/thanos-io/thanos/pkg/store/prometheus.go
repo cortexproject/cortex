@@ -30,17 +30,19 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/thanos-io/thanos/pkg/component"
 	"github.com/thanos-io/thanos/pkg/dedup"
 	"github.com/thanos-io/thanos/pkg/httpconfig"
+	"github.com/thanos-io/thanos/pkg/info/infopb"
 	"github.com/thanos-io/thanos/pkg/promclient"
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/store/storepb/prompb"
 	"github.com/thanos-io/thanos/pkg/tracing"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // PrometheusStore implements the store node API on top of the Prometheus remote read API.
@@ -51,8 +53,9 @@ type PrometheusStore struct {
 	buffers          sync.Pool
 	component        component.StoreAPI
 	externalLabelsFn func() labels.Labels
-	promVersion      func() string
-	timestamps       func() (mint int64, maxt int64)
+
+	promVersion func() string
+	timestamps  func() (mint int64, maxt int64)
 
 	remoteReadAcceptableResponses []prompb.ReadRequest_ResponseType
 
@@ -113,12 +116,11 @@ func (p *PrometheusStore) Info(_ context.Context, _ *storepb.InfoRequest) (*stor
 	mint, maxt := p.timestamps()
 
 	res := &storepb.InfoResponse{
-		Labels:    make([]labelpb.ZLabel, 0, len(lset)),
+		Labels:    labelpb.ZLabelsFromPromLabels(lset),
 		StoreType: p.component.ToProto(),
 		MinTime:   mint,
 		MaxTime:   maxt,
 	}
-	res.Labels = append(res.Labels, labelpb.ZLabelsFromPromLabels(lset)...)
 
 	// Until we deprecate the single labels in the reply, we just duplicate
 	// them here for migration/compatibility purposes.
@@ -141,7 +143,9 @@ func (p *PrometheusStore) putBuffer(b *[]byte) {
 }
 
 // Series returns all series for a requested time range and label matcher.
-func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_SeriesServer) error {
+func (p *PrometheusStore) Series(r *storepb.SeriesRequest, seriesSrv storepb.Store_SeriesServer) error {
+	s := newFlushableServer(seriesSrv, sortingStrategyStore)
+
 	extLset := p.externalLabelsFn()
 
 	match, matchers, err := matchesExternalLabels(r.Matchers, extLset)
@@ -186,7 +190,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 			return err
 		}
 		for _, lbm := range labelMaps {
-			lset := make([]labelpb.ZLabel, 0, len(lbm)+len(finalExtLset))
+			lset := make([]labelpb.ZLabel, 0, len(lbm)+finalExtLset.Len())
 			for k, v := range lbm {
 				lset = append(lset, labelpb.ZLabel{Name: k, Value: v})
 			}
@@ -198,7 +202,7 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 				return err
 			}
 		}
-		return nil
+		return s.Flush()
 	}
 
 	shardMatcher := r.ShardInfo.Matcher(&p.buffers)
@@ -240,17 +244,17 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, s storepb.Store_Serie
 	// remote read.
 	contentType := httpResp.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "application/x-protobuf") {
-		return p.handleSampledPrometheusResponse(s, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
+		return p.handleSampledPrometheusResponse(s, httpResp, queryPrometheusSpan, extLset, enableChunkHashCalculation, extLsetToRemove)
 	}
 
 	if !strings.HasPrefix(contentType, "application/x-streamed-protobuf; proto=prometheus.ChunkedReadResponse") {
 		return errors.Errorf("not supported remote read content type: %s", contentType)
 	}
-	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, enableChunkHashCalculation, extLsetToRemove)
+	return p.handleStreamedPrometheusResponse(s, shardMatcher, httpResp, queryPrometheusSpan, extLset, enableChunkHashCalculation, extLsetToRemove)
 }
 
 func (p *PrometheusStore) queryPrometheus(
-	s storepb.Store_SeriesServer,
+	s flushableServer,
 	r *storepb.SeriesRequest,
 	extLsetToRemove map[string]struct{},
 ) error {
@@ -259,13 +263,13 @@ func (p *PrometheusStore) queryPrometheus(
 	opts := promclient.QueryOptions{}
 	step := r.QueryHints.StepMillis / 1000
 	if step != 0 {
-		result, _, err := p.client.QueryRange(s.Context(), p.base, r.ToPromQL(), r.MinTime, r.MaxTime, step, opts)
+		result, _, _, err := p.client.QueryRange(s.Context(), p.base, r.ToPromQL(), r.MinTime, r.MaxTime, step, opts)
 		if err != nil {
 			return err
 		}
 		matrix = result
 	} else {
-		vector, _, err := p.client.QueryInstant(s.Context(), p.base, r.ToPromQL(), timestamp.Time(r.MaxTime), opts)
+		vector, _, _, err := p.client.QueryInstant(s.Context(), p.base, r.ToPromQL(), timestamp.Time(r.MaxTime), opts)
 		if err != nil {
 			return err
 		}
@@ -285,19 +289,18 @@ func (p *PrometheusStore) queryPrometheus(
 	}
 
 	externalLbls := rmLabels(p.externalLabelsFn().Copy(), extLsetToRemove)
+	b := labels.NewScratchBuilder(16)
 	for _, vector := range matrix {
-		seriesLbls := labels.Labels(make([]labels.Label, 0, len(vector.Metric)))
+		b.Reset()
 
 		// Attach labels from samples.
 		for k, v := range vector.Metric {
-			seriesLbls = append(seriesLbls, labels.FromStrings(string(k), string(v))...)
+			b.Add(string(k), string(v))
 		}
-		sort.Slice(seriesLbls, func(i, j int) bool {
-			return seriesLbls.Less(i, j)
-		})
-		// Attach external labels for compatibility with remote read.
-		finalLbls := labelpb.ExtendSortedLabels(seriesLbls, externalLbls)
-		finalLbls = append(finalLbls, dedup.PushdownMarker)
+		b.Add(dedup.PushdownMarker.Name, dedup.PushdownMarker.Value)
+		b.Sort()
+
+		finalLbls := labelpb.ExtendSortedLabels(b.Labels(), externalLbls)
 
 		series := &prompb.TimeSeries{
 			Labels:  labelpb.ZLabelsFromPromLabels(finalLbls),
@@ -317,13 +320,14 @@ func (p *PrometheusStore) queryPrometheus(
 		}
 	}
 
-	return nil
+	return s.Flush()
 }
 
 func (p *PrometheusStore) handleSampledPrometheusResponse(
-	s storepb.Store_SeriesServer,
+	s flushableServer,
 	httpResp *http.Response,
 	querySpan tracing.Span,
+	extLset labels.Labels,
 	calculateChecksums bool,
 	extLsetToRemove map[string]struct{},
 ) error {
@@ -340,9 +344,10 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(
 	span.SetTag("series_count", len(resp.Results[0].Timeseries))
 
 	for _, e := range resp.Results[0].Timeseries {
-		// Sampled remote read handler already adds external labels for us:
-		// https://github.com/prometheus/prometheus/blob/3f6f5d3357e232abe53f1775f893fdf8f842712c/storage/remote/read_handler.go#L166.
-		lset := rmLabels(labelpb.ZLabelsToPromLabels(e.Labels), extLsetToRemove)
+		// https://github.com/prometheus/prometheus/blob/3f6f5d3357e232abe53f1775f893fdf8f842712c/storage/remote/read_handler.go#L166
+		// MergeLabels() prefers local labels over external labels but we prefer
+		// external labels hence we need to do this:
+		lset := rmLabels(labelpb.ExtendSortedLabels(labelpb.ZLabelsToPromLabels(e.Labels), extLset), extLsetToRemove)
 		if len(e.Samples) == 0 {
 			// As found in https://github.com/thanos-io/thanos/issues/381
 			// Prometheus can give us completely empty time series. Ignore these with log until we figure out that
@@ -369,14 +374,15 @@ func (p *PrometheusStore) handleSampledPrometheusResponse(
 		}
 	}
 	level.Debug(p.logger).Log("msg", "handled ReadRequest_SAMPLED request.", "series", len(resp.Results[0].Timeseries))
-	return nil
+	return s.Flush()
 }
 
 func (p *PrometheusStore) handleStreamedPrometheusResponse(
-	s storepb.Store_SeriesServer,
+	s flushableServer,
 	shardMatcher *storepb.ShardMatcher,
 	httpResp *http.Response,
 	querySpan tracing.Span,
+	extLset labels.Labels,
 	calculateChecksums bool,
 	extLsetToRemove map[string]struct{},
 ) error {
@@ -417,10 +423,10 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 
 		framesNum++
 		for _, series := range res.ChunkedSeries {
-			// Streamed remote read handler already adds
-			// external labels:
+			// MergeLabels() prefers local labels over external labels but we prefer
+			// external labels hence we need to do this:
 			// https://github.com/prometheus/prometheus/blob/3f6f5d3357e232abe53f1775f893fdf8f842712c/storage/remote/codec.go#L210.
-			completeLabelset := rmLabels(labelpb.ZLabelsToPromLabels(series.Labels), extLsetToRemove)
+			completeLabelset := rmLabels(labelpb.ExtendSortedLabels(labelpb.ZLabelsToPromLabels(series.Labels), extLset), extLsetToRemove)
 			if !shardMatcher.MatchesLabels(completeLabelset) {
 				continue
 			}
@@ -450,9 +456,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 			}
 
 			r := storepb.NewSeriesResponse(&storepb.Series{
-				Labels: labelpb.ZLabelsFromPromLabels(
-					completeLabelset,
-				),
+				Labels: labelpb.ZLabelsFromPromLabels(completeLabelset),
 				Chunks: thanosChks,
 			})
 			if err := s.Send(r); err != nil {
@@ -467,7 +471,7 @@ func (p *PrometheusStore) handleStreamedPrometheusResponse(
 	querySpan.SetTag("processed.bytes", bodySizer.BytesCount())
 	level.Debug(p.logger).Log("msg", "handled ReadRequest_STREAMED_XOR_CHUNKS request.", "frames", framesNum)
 
-	return nil
+	return s.Flush()
 }
 
 type BytesCounter struct {
@@ -598,7 +602,7 @@ func matchesExternalLabels(ms []storepb.LabelMatcher, externalLabels labels.Labe
 		return false, nil, err
 	}
 
-	if len(externalLabels) == 0 {
+	if externalLabels.IsEmpty() {
 		return true, tms, nil
 	}
 
@@ -676,9 +680,9 @@ func (p *PrometheusStore) LabelNames(ctx context.Context, r *storepb.LabelNamesR
 	}
 
 	if len(lbls) > 0 {
-		for _, extLbl := range extLset {
-			lbls = append(lbls, extLbl.Name)
-		}
+		extLset.Range(func(l labels.Label) {
+			lbls = append(lbls, l.Name)
+		})
 		sort.Strings(lbls)
 	}
 
@@ -693,17 +697,17 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 
 	extLset := p.externalLabelsFn()
 
-	// First check for matching external label which has priority.
-	if l := extLset.Get(r.Label); l != "" {
-		return &storepb.LabelValuesResponse{Values: []string{l}}, nil
-	}
-
 	match, matchers, err := matchesExternalLabels(r.Matchers, extLset)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if !match {
 		return &storepb.LabelValuesResponse{Values: nil}, nil
+	}
+
+	// First check for matching external label which has priority.
+	if l := extLset.Get(r.Label); l != "" {
+		return &storepb.LabelValuesResponse{Values: []string{l}}, nil
 	}
 
 	var (
@@ -740,10 +744,7 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 }
 
 func (p *PrometheusStore) LabelSet() []labelpb.ZLabelSet {
-	lset := p.externalLabelsFn()
-
-	labels := make([]labelpb.ZLabel, 0, len(lset))
-	labels = append(labels, labelpb.ZLabelsFromPromLabels(lset)...)
+	labels := labelpb.ZLabelsFromPromLabels(p.externalLabelsFn())
 
 	labelset := []labelpb.ZLabelSet{}
 	if len(labels) > 0 {
@@ -753,6 +754,24 @@ func (p *PrometheusStore) LabelSet() []labelpb.ZLabelSet {
 	}
 
 	return labelset
+}
+
+func (p *PrometheusStore) TSDBInfos() []infopb.TSDBInfo {
+	labels := p.LabelSet()
+	if len(labels) == 0 {
+		return []infopb.TSDBInfo{}
+	}
+
+	mint, maxt := p.Timestamps()
+	return []infopb.TSDBInfo{
+		{
+			Labels: labelpb.ZLabelSet{
+				Labels: labels[0].Labels,
+			},
+			MinTime: mint,
+			MaxTime: maxt,
+		},
+	}
 }
 
 func (p *PrometheusStore) Timestamps() (mint int64, maxt int64) {

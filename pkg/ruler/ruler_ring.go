@@ -42,6 +42,8 @@ type RingConfig struct {
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
 	NumTokens              int      `yaml:"num_tokens"`
 
+	FinalSleep time.Duration `yaml:"final_sleep"`
+
 	// Injected internally
 	ListenPort int `yaml:"-"`
 
@@ -60,6 +62,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.KVStore.RegisterFlagsWithPrefix("ruler.ring.", "rulers/", f)
 	f.DurationVar(&cfg.HeartbeatPeriod, "ruler.ring.heartbeat-period", 5*time.Second, "Period at which to heartbeat to the ring. 0 = disabled.")
 	f.DurationVar(&cfg.HeartbeatTimeout, "ruler.ring.heartbeat-timeout", time.Minute, "The heartbeat timeout after which rulers are considered unhealthy within the ring. 0 = never (timeout disabled).")
+	f.DurationVar(&cfg.FinalSleep, "ruler.ring.final-sleep", 0*time.Second, "The sleep seconds when ruler is shutting down. Need to be close to or larger than KV Store information propagation delay")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}
@@ -86,6 +89,7 @@ func (cfg *RingConfig) ToLifecyclerConfig(logger log.Logger) (ring.BasicLifecycl
 		HeartbeatPeriod:     cfg.HeartbeatPeriod,
 		TokensObservePeriod: 0,
 		NumTokens:           cfg.NumTokens,
+		FinalSleep:          cfg.FinalSleep,
 	}, nil
 }
 

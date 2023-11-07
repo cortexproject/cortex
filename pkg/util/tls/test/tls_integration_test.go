@@ -345,9 +345,11 @@ func TestTLSServerWithLocalhostCertWithClientCertificateEnforcementUsingClientCA
 	cfg.GRPCTLSConfig.ClientAuth = "RequireAndVerifyClientCert"
 
 	// TODO: Investigate why we don't really receive the error about the
-	// bad certificate from the server side and just see connection
+	// certificate required from the server side and just see connection
 	// closed/reset instead
-	badCertErr := errorContainsString("remote error: tls: bad certificate")
+	// In Go 1.21, TLS 1.3 would return certificate required error instead
+	// of bad certificate error
+	certRequiredErr := errorContainsString("remote error: tls: certificate required")
 	newIntegrationClientServer(
 		t,
 		cfg,
@@ -358,7 +360,7 @@ func TestTLSServerWithLocalhostCertWithClientCertificateEnforcementUsingClientCA
 				tlsConfig: tls.ClientConfig{
 					InsecureSkipVerify: true,
 				},
-				httpExpectError: badCertErr,
+				httpExpectError: certRequiredErr,
 				grpcExpectError: unavailableDescErr,
 			},
 			{
@@ -367,7 +369,7 @@ func TestTLSServerWithLocalhostCertWithClientCertificateEnforcementUsingClientCA
 				tlsConfig: tls.ClientConfig{
 					CAPath: certs.caCertFile,
 				},
-				httpExpectError: badCertErr,
+				httpExpectError: certRequiredErr,
 				grpcExpectError: unavailableDescErr,
 			},
 			{
@@ -396,7 +398,7 @@ func TestTLSServerWithLocalhostCertWithClientCertificateEnforcementUsingClientCA
 					CertPath: certs.client2CertFile,
 					KeyPath:  certs.client2KeyFile,
 				},
-				httpExpectError: badCertErr,
+				httpExpectError: certRequiredErr,
 				grpcExpectError: unavailableDescErr,
 			},
 		},

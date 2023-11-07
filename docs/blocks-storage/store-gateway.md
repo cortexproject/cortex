@@ -54,12 +54,19 @@ The store-gateway supports two sharding strategies:
 
 - `default`
 - `shuffle-sharding`
+- `zone-stable-shuffle-sharding`
 
 The **`default`** sharding strategy spreads the blocks of each tenant across all store-gateway instances. It's the easiest form of sharding supported, but doesn't provide any workload isolation between different tenants.
 
 The **`shuffle-sharding`** strategy spreads the blocks of a tenant across a subset of store-gateway instances. This way, the number of store-gateway instances loading blocks of a single tenant is limited and the blast radius of any issue that could be introduced by the tenant's workload is limited to its shard instances.
 
 The shuffle sharding strategy can be enabled via `-store-gateway.sharding-strategy=shuffle-sharding` and requires the `-store-gateway.tenant-shard-size` flag (or their respective YAML config options) to be set to the default shard size, which is the default number of store-gateway instances each tenant should be sharded to. The shard size can then be overridden on a per-tenant basis setting the `store_gateway_tenant_shard_size` in the limits overrides.
+
+The **`zone-stable-shuffle-sharding`** strategy achieves the same as the **`shuffle-sharding`** strategy, but using a different sharding algorithm. The new sharding algorithm ensures that when zone awareness is enabled, when shard size increases or decreases by one, the replicas for any block should only change at most by one instance. This is important for querying store gateway because a block can be retried at most 3 times.
+
+Zone stable shuffle sharding can be enabled via `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` CLI flag.
+
+It will become the default shuffle sharding strategy for store gateway in `v1.17.0` release and the previous shuffle sharding algorithm will be removed in `v1.18.0` release.
 
 _Please check out the [shuffle sharding documentation](../guides/shuffle-sharding.md) for more information about how it works._
 
@@ -225,6 +232,14 @@ store_gateway:
         # CLI flag: -store-gateway.sharding-ring.dynamodb.ttl-time
         [ttl: <duration> | default = 0s]
 
+        # Time to refresh local ring with information on dynamodb.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.puller-sync-time
+        [puller_sync_time: <duration> | default = 1m]
+
+        # Maximum number of retries for DDB KV CAS.
+        # CLI flag: -store-gateway.sharding-ring.dynamodb.max-cas-retries
+        [max_cas_retries: <int> | default = 10]
+
       # The consul_config configures the consul client.
       # The CLI flags prefix for this block config is:
       # store-gateway.sharding-ring
@@ -278,6 +293,12 @@ store_gateway:
     # CLI flag: -store-gateway.sharding-ring.zone-awareness-enabled
     [zone_awareness_enabled: <boolean> | default = false]
 
+    # True to keep the store gateway instance in the ring when it shuts down.
+    # The instance will then be auto-forgotten from the ring after
+    # 10*heartbeat_timeout.
+    # CLI flag: -store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown
+    [keep_instance_in_the_ring_on_shutdown: <boolean> | default = false]
+
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
     [wait_stability_min_duration: <duration> | default = 1m]
@@ -287,6 +308,15 @@ store_gateway:
     # start anyway.
     # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
     [wait_stability_max_duration: <duration> | default = 5m]
+
+    # Timeout for waiting on store-gateway to become desired state in the ring.
+    # CLI flag: -store-gateway.sharding-ring.wait-instance-state-timeout
+    [wait_instance_state_timeout: <duration> | default = 10m]
+
+    # The sleep seconds when store-gateway is shutting down. Need to be close to
+    # or larger than KV Store information propagation delay
+    # CLI flag: -store-gateway.sharding-ring.final-sleep
+    [final_sleep: <duration> | default = 0s]
 
     # Name of network interface to read address from.
     # CLI flag: -store-gateway.sharding-ring.instance-interface-names
@@ -576,6 +606,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.max-concurrent
     [max_concurrent: <int> | default = 100]
 
+    # Max number of inflight queries to execute against the long-term storage.
+    # The limit is shared across all tenants. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
+    [max_inflight_requests: <int> | default = 0]
+
     # Maximum number of concurrent tenants synching blocks.
     # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
     [tenant_sync_concurrency: <int> | default = 10]
@@ -596,8 +631,9 @@ blocks_storage:
     [consistency_delay: <duration> | default = 0s]
 
     index_cache:
-      # The index cache backend type. Supported values: inmemory, memcached,
-      # redis.
+      # The index cache backend type. Multiple cache backend can be provided as
+      # a comma-separated ordered list to enable the implementation of a cache
+      # hierarchy. Supported values: inmemory, memcached, redis.
       # CLI flag: -blocks-storage.bucket-store.index-cache.backend
       [backend: <string> | default = "inmemory"]
 
@@ -606,6 +642,11 @@ blocks_storage:
         # index lookups (shared between all tenants).
         # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.max-size-bytes
         [max_size_bytes: <int> | default = 1073741824]
+
+        # Selectively cache index item types. Supported values are Postings,
+        # ExpandedPostings and Series
+        # CLI flag: -blocks-storage.bucket-store.index-cache.inmemory.enabled-items
+        [enabled_items: <list of string> | default = []]
 
       memcached:
         # Comma separated list of memcached addresses. Supported prefixes are:
@@ -654,6 +695,11 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
 
+        # Selectively cache index item types. Supported values are Postings,
+        # ExpandedPostings and Series
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.enabled-items
+        [enabled_items: <list of string> | default = []]
+
       redis:
         # Comma separated list of redis addresses. Supported prefixes are: dns+
         # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
@@ -678,15 +724,6 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.master-name
         [master_name: <string> | default = ""]
 
-        # Maximum number of socket connections.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.pool-size
-        [pool_size: <int> | default = 100]
-
-        # Specifies the minimum number of idle connections, which is useful when
-        # it is slow to establish new connections.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.min-idle-conns
-        [min_idle_conns: <int> | default = 10]
-
         # The maximum number of concurrent GetMulti() operations. If set to 0,
         # concurrency is unlimited.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-get-multi-concurrency
@@ -705,6 +742,14 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-multi-batch-size
         [set_multi_batch_size: <int> | default = 100]
 
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
         # Client dial timeout.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.dial-timeout
         [dial_timeout: <duration> | default = 5s]
@@ -716,16 +761,6 @@ blocks_storage:
         # Client write timeout.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.write-timeout
         [write_timeout: <duration> | default = 3s]
-
-        # Amount of time after which client closes idle connections. Should be
-        # less than server's timeout. -1 disables idle timeout check.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.idle-timeout
-        [idle_timeout: <duration> | default = 5m]
-
-        # Connection age at which client retires (closes) the connection.
-        # Default 0 is to not close aged connections.
-        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.max-conn-age
-        [max_conn_age: <duration> | default = 0s]
 
         # Whether to enable tls for redis connection.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.tls-enabled
@@ -760,6 +795,11 @@ blocks_storage:
         # See https://redis.io/docs/manual/client-side-caching/ for more info.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
         [cache_size: <int> | default = 0]
+
+        # Selectively cache index item types. Supported values are Postings,
+        # ExpandedPostings and Series
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
+        [enabled_items: <list of string> | default = []]
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -837,15 +877,6 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.master-name
         [master_name: <string> | default = ""]
 
-        # Maximum number of socket connections.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.pool-size
-        [pool_size: <int> | default = 100]
-
-        # Specifies the minimum number of idle connections, which is useful when
-        # it is slow to establish new connections.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.min-idle-conns
-        [min_idle_conns: <int> | default = 10]
-
         # The maximum number of concurrent GetMulti() operations. If set to 0,
         # concurrency is unlimited.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-get-multi-concurrency
@@ -864,6 +895,14 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-multi-batch-size
         [set_multi_batch_size: <int> | default = 100]
 
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
         # Client dial timeout.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.dial-timeout
         [dial_timeout: <duration> | default = 5s]
@@ -875,16 +914,6 @@ blocks_storage:
         # Client write timeout.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.write-timeout
         [write_timeout: <duration> | default = 3s]
-
-        # Amount of time after which client closes idle connections. Should be
-        # less than server's timeout. -1 disables idle timeout check.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.idle-timeout
-        [idle_timeout: <duration> | default = 5m]
-
-        # Connection age at which client retires (closes) the connection.
-        # Default 0 is to not close aged connections.
-        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.max-conn-age
-        [max_conn_age: <duration> | default = 0s]
 
         # Whether to enable tls for redis connection.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.tls-enabled
@@ -1015,15 +1044,6 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.master-name
         [master_name: <string> | default = ""]
 
-        # Maximum number of socket connections.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.pool-size
-        [pool_size: <int> | default = 100]
-
-        # Specifies the minimum number of idle connections, which is useful when
-        # it is slow to establish new connections.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.min-idle-conns
-        [min_idle_conns: <int> | default = 10]
-
         # The maximum number of concurrent GetMulti() operations. If set to 0,
         # concurrency is unlimited.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-get-multi-concurrency
@@ -1042,6 +1062,14 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-multi-batch-size
         [set_multi_batch_size: <int> | default = 100]
 
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
         # Client dial timeout.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.dial-timeout
         [dial_timeout: <duration> | default = 5s]
@@ -1053,16 +1081,6 @@ blocks_storage:
         # Client write timeout.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.write-timeout
         [write_timeout: <duration> | default = 3s]
-
-        # Amount of time after which client closes idle connections. Should be
-        # less than server's timeout. -1 disables idle timeout check.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.idle-timeout
-        [idle_timeout: <duration> | default = 5m]
-
-        # Connection age at which client retires (closes) the connection.
-        # Default 0 is to not close aged connections.
-        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.max-conn-age
-        [max_conn_age: <duration> | default = 0s]
 
         # Whether to enable tls for redis connection.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.tls-enabled
@@ -1209,6 +1227,16 @@ blocks_storage:
     # timeout' inactivity.
     # CLI flag: -blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout
     [index_header_lazy_loading_idle_timeout: <duration> | default = 20m]
+
+    # If true, Store Gateway will estimate postings size and try to lazily
+    # expand postings if it downloads less data than expanding all postings.
+    # CLI flag: -blocks-storage.bucket-store.lazy-expanded-postings-enabled
+    [lazy_expanded_postings_enabled: <boolean> | default = false]
+
+    # Controls how many series to fetch per batch in Store Gateway. Default
+    # value is 10000.
+    # CLI flag: -blocks-storage.bucket-store.series-batch-size
+    [series_batch_size: <int> | default = 10000]
 
   tsdb:
     # Local directory to store TSDBs in the ingesters.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	mathrand "math/rand"
 	"os"
 	"sort"
 	"sync"
@@ -429,8 +430,20 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		autoJoinAfter = time.After(i.cfg.JoinAfter)
 	}
 
-	heartbeatTickerStop, heartbeatTickerChan := newDisableableTicker(i.cfg.HeartbeatPeriod)
-	defer heartbeatTickerStop()
+	var heartbeatTickerChan <-chan time.Time
+	if uint64(i.cfg.HeartbeatPeriod) > 0 {
+		heartbeatTicker := time.NewTicker(i.cfg.HeartbeatPeriod)
+		heartbeatTicker.Stop()
+		// We are jittering for at least half of the time and max the time of the heartbeat.
+		// If we jitter too soon, we can have problems of concurrency with autoJoin leaving the instance on ACTIVE without tokens
+		time.AfterFunc(time.Duration(uint64(i.cfg.HeartbeatPeriod/2)+uint64(mathrand.Int63())%uint64(i.cfg.HeartbeatPeriod/2)), func() {
+			i.heartbeat()
+			heartbeatTicker.Reset(i.cfg.HeartbeatPeriod)
+		})
+		defer heartbeatTicker.Stop()
+
+		heartbeatTickerChan = heartbeatTicker.C
+	}
 
 	for {
 		select {
@@ -486,11 +499,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			}
 
 		case <-heartbeatTickerChan:
-			i.lifecyclerMetrics.consulHeartbeats.Inc()
-			if err := i.updateConsul(context.Background()); err != nil {
-				level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
-			}
-
+			i.heartbeat()
 		case f := <-i.actorChan:
 			f()
 
@@ -498,6 +507,13 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			level.Info(i.logger).Log("msg", "lifecycler loop() exited gracefully", "ring", i.RingName)
 			return nil
 		}
+	}
+}
+
+func (i *Lifecycler) heartbeat() {
+	i.lifecyclerMetrics.consulHeartbeats.Inc()
+	if err := i.updateConsul(context.Background()); err != nil {
+		level.Error(i.logger).Log("msg", "failed to write to the KV store, sleeping", "ring", i.RingName, "err", err)
 	}
 }
 
@@ -735,11 +751,20 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 			ringDesc = in.(*Desc)
 		}
 
-		// At this point, we should not have any tokens, and we should be in PENDING state.
-		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
-
-		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
+
+		// At this point, we should not have any tokens, and we should be in PENDING state.
+		// Need to make sure we didnt change the num of tokens configured
+		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
+		needTokens := i.cfg.NumTokens - len(myTokens)
+
+		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
+			// Tokens have been verified. No need to change them.
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+			return ringDesc, true, nil
+		}
+
+		newTokens := GenerateTokens(needTokens, takenTokens)
 
 		myTokens = append(myTokens, newTokens...)
 		sort.Sort(myTokens)

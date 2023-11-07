@@ -9,9 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
@@ -26,15 +23,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/engine"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -96,8 +97,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"error while getting clients to query the store-gateway": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
@@ -108,8 +109,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"a single store-gateway instance holds the required blocks (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -134,8 +135,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"a single store-gateway instance holds the required blocks (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -166,8 +167,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -195,8 +196,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -225,8 +226,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -294,8 +295,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -315,10 +316,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -341,10 +342,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateway instances have some missing blocks but queried from a replica during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -420,8 +421,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit greater then the number of chunks fetched": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -446,8 +447,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks at first attempt": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -464,8 +465,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks at first attempt - global limit": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -482,10 +483,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -520,10 +521,10 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunks per query limit hit while fetching chunks during subsequent attempts - global": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -558,8 +559,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max series per query limit hit while fetching chunks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -576,8 +577,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max chunk bytes per query limit hit while fetching chunks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -594,8 +595,8 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"max data bytes per query limit hit while fetching chunks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -612,7 +613,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -639,9 +640,105 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"multiple store-gateways has the block, but one of them fails to return due to clientconn closing": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: status.Error(codes.Canceled, "grpc: the client connection is closing"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
+		"multiple store-gateways has the block, but one of them fails to return due to chunk pool exhaustion": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: status.Error(codes.Unknown, pool.ErrPoolExhausted.Error()),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
+		"all store-gateways return PermissionDenied": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			expectedErr: validation.AccessDeniedError("PermissionDenied"),
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "1.1.1.1",
+						mockedSeriesResponses: []*storepb.SeriesResponse{
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+							mockHintsResponse(block1),
+						},
+						mockedSeriesStreamErr: status.Error(codes.PermissionDenied, "PermissionDenied"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr: "2.2.2.2",
+						mockedSeriesResponses: []*storepb.SeriesResponse{
+							mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+							mockHintsResponse(block1),
+						},
+						mockedSeriesStreamErr: status.Error(codes.PermissionDenied, "PermissionDenied"),
+					}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
 		"multiple store-gateways has the block, but one of them fails to return on stream": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -671,6 +768,56 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"multiple store-gateways has the block, but one of them had too many inflight requests": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: storegateway.ErrTooManyInflightRequests,
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 2},
+					},
+				},
+			},
+		},
+		"store gateway returns resource exhausted error other than max inflight request": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			storeSetResponses: []interface{}{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{
+						remoteAddr:      "1.1.1.1",
+						mockedSeriesErr: status.Error(codes.ResourceExhausted, "some other resource"),
+					}: {block1},
+				},
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.Labels{metricNameLabel, series1Label}, minT, 2),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:      &blocksStoreLimitsMock{},
+			expectedErr: errors.Wrapf(status.Error(codes.ResourceExhausted, "some other resource"), "failed to fetch series from 1.1.1.1"),
+		},
 	}
 
 	for testName, testData := range tests {
@@ -678,17 +825,16 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			ctx := limiter.AddQueryLimiterToContext(context.Background(), testData.queryLimiter)
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			ctx = limiter.AddQueryLimiterToContext(ctx, testData.queryLimiter)
 			reg := prometheus.NewPedanticRegistry()
 			stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
 			finder := &blocksFinderMock{}
 			finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), testData.finderErr)
 
 			q := &blocksStoreQuerier{
-				ctx:         ctx,
 				minT:        minT,
 				maxT:        maxT,
-				userID:      "user-1",
 				finder:      finder,
 				stores:      stores,
 				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
@@ -701,7 +847,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
 			}
 
-			set := q.Select(true, nil, matchers...)
+			set := q.Select(ctx, true, nil, matchers...)
 			if testData.expectedErr != nil {
 				assert.EqualError(t, set.Err(), testData.expectedErr.Error())
 				assert.IsType(t, set.Err(), testData.expectedErr)
@@ -789,8 +935,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"error while getting clients to query the store-gateway": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				errors.New("no client found"),
@@ -799,8 +945,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"a single store-gateway instance holds the required blocks": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -824,8 +970,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks without overlapping series": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -862,8 +1008,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (single returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -900,8 +1046,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances holds the required blocks with overlapping series (multiple returned series)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			// Block1 has series1 and series2
 			// Block2 has only series1
@@ -981,8 +1127,8 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"a single store-gateway instance has some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -1008,10 +1154,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateway instances have some missing blocks (consistency check failed)": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -1054,10 +1200,10 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			// Block3 has series1 and series2
 			// Block4 has no series (poor lonely block)
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
-				{ID: block3},
-				{ID: block4},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
+				&bucketindex.Block{ID: block3},
+				&bucketindex.Block{ID: block4},
 			},
 			storeSetResponses: []interface{}{
 				// First attempt returns a client whose response does not include all expected blocks.
@@ -1154,7 +1300,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 		},
 		"multiple store-gateways has the block, but one of them fails to return": {
 			finderResult: bucketindex.Blocks{
-				{ID: block1},
+				&bucketindex.Block{ID: block1},
 			},
 			storeSetResponses: []interface{}{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -1197,17 +1343,15 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 			// Splitting it because we need a new registry for names and values.
 			// And also the initial expectedErr checking needs to be done for both.
 			for _, testFunc := range []string{"LabelNames", "LabelValues"} {
-				ctx := context.Background()
+				ctx := user.InjectOrgID(context.Background(), "user-1")
 				reg := prometheus.NewPedanticRegistry()
 				stores := &blocksStoreSetMock{mockedResponses: testData.storeSetResponses}
 				finder := &blocksFinderMock{}
 				finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(testData.finderResult, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), testData.finderErr)
 
 				q := &blocksStoreQuerier{
-					ctx:         ctx,
 					minT:        minT,
 					maxT:        maxT,
-					userID:      "user-1",
 					finder:      finder,
 					stores:      stores,
 					consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
@@ -1217,7 +1361,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				}
 
 				if testFunc == "LabelNames" {
-					names, warnings, err := q.LabelNames()
+					names, warnings, err := q.LabelNames(ctx)
 					if testData.expectedErr != "" {
 						require.Equal(t, testData.expectedErr, err.Error())
 						continue
@@ -1234,7 +1378,7 @@ func TestBlocksStoreQuerier_Labels(t *testing.T) {
 				}
 
 				if testFunc == "LabelValues" {
-					values, warnings, err := q.LabelValues(labels.MetricName)
+					values, warnings, err := q.LabelValues(ctx, labels.MetricName)
 					if testData.expectedErr != "" {
 						require.Equal(t, testData.expectedErr, err.Error())
 						continue
@@ -1300,14 +1444,13 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
+			ctx := user.InjectOrgID(context.Background(), "user-1")
 			finder := &blocksFinderMock{}
 			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
 			q := &blocksStoreQuerier{
-				ctx:             context.Background(),
 				minT:            testData.queryMinT,
 				maxT:            testData.queryMaxT,
-				userID:          "user-1",
 				finder:          finder,
 				stores:          &blocksStoreSetMock{},
 				consistency:     NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
@@ -1322,7 +1465,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 				End:   testData.queryMaxT,
 			}
 
-			set := q.selectSorted(sp)
+			set := q.selectSorted(ctx, sp)
 			require.NoError(t, set.Err())
 
 			if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
@@ -1350,43 +1493,41 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	series1 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_1"}}
 	series2 := []labelpb.ZLabel{{Name: "__name__", Value: "metric_2"}}
 
-	series1Samples := []promql.Point{
-		{T: 1589759955000, V: 1},
-		{T: 1589759970000, V: 1},
-		{T: 1589759985000, V: 1},
-		{T: 1589760000000, V: 1},
-		{T: 1589760015000, V: 1},
-		{T: 1589760030000, V: 1},
+	series1Samples := []promql.FPoint{
+		{T: 1589759955000, F: 1},
+		{T: 1589759970000, F: 1},
+		{T: 1589759985000, F: 1},
+		{T: 1589760000000, F: 1},
+		{T: 1589760015000, F: 1},
+		{T: 1589760030000, F: 1},
 	}
 
-	series2Samples := []promql.Point{
-		{T: 1589759955000, V: 2},
-		{T: 1589759970000, V: 2},
-		{T: 1589759985000, V: 2},
-		{T: 1589760000000, V: 2},
-		{T: 1589760015000, V: 2},
-		{T: 1589760030000, V: 2},
+	series2Samples := []promql.FPoint{
+		{T: 1589759955000, F: 2},
+		{T: 1589759970000, F: 2},
+		{T: 1589759985000, F: 2},
+		{T: 1589760000000, F: 2},
+		{T: 1589760015000, F: 2},
+		{T: 1589760030000, F: 2},
 	}
 	for _, thanosEngine := range []bool{false, true} {
-		var queryEngine v1.QueryEngine
-		if thanosEngine {
-			queryEngine = engine.New(engine.Opts{
-				EngineOpts:        opts,
-				LogicalOptimizers: logicalplan.AllOptimizers,
-			})
-		} else {
-			queryEngine = promql.NewEngine(opts)
-		}
-
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
-			t.Parallel()
+			var queryEngine v1.QueryEngine
+			if thanosEngine {
+				queryEngine = engine.New(engine.Opts{
+					EngineOpts:        opts,
+					LogicalOptimizers: logicalplan.AllOptimizers,
+				})
+			} else {
+				queryEngine = promql.NewEngine(opts)
+			}
 			// Mock the finder to simulate we need to query two blocks.
 			finder := &blocksFinderMock{
 				Service: services.NewIdleService(nil, nil),
 			}
 			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-				{ID: block1},
-				{ID: block2},
+				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block2},
 			}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
 			// Mock the store to simulate each block is queried from a different store-gateway.
@@ -1453,10 +1594,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), queryable) // nolint:errcheck
 
 			// Run a query.
-			q, err := queryEngine.NewRangeQuery(queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			q, err := queryEngine.NewRangeQuery(ctx, queryable, nil, `{__name__=~"metric.*"}`, time.Unix(1589759955, 0), time.Unix(1589760030, 0), 15*time.Second)
 			require.NoError(t, err)
 
-			ctx := user.InjectOrgID(context.Background(), "user-1")
 			res := q.Exec(ctx)
 			require.NoError(t, err)
 			require.NoError(t, res.Err)
@@ -1467,8 +1608,8 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 
 			assert.Equal(t, labelpb.ZLabelsToPromLabels(series1), matrix[0].Metric)
 			assert.Equal(t, labelpb.ZLabelsToPromLabels(series2), matrix[1].Metric)
-			assert.Equal(t, series1Samples, matrix[0].Points)
-			assert.Equal(t, series2Samples, matrix[1].Points)
+			assert.Equal(t, series1Samples, matrix[0].Floats)
+			assert.Equal(t, series2Samples, matrix[1].Floats)
 		})
 	}
 }
@@ -1480,7 +1621,7 @@ type blocksStoreSetMock struct {
 	nextResult      int
 }
 
-func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.ULID][]string) (map[BlocksStoreClient][]ulid.ULID, error) {
+func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.ULID][]string, _ map[ulid.ULID]map[string]int) (map[BlocksStoreClient][]ulid.ULID, error) {
 	if m.nextResult >= len(m.mockedResponses) {
 		panic("not enough mocked results")
 	}
@@ -1561,14 +1702,14 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 
 type blocksStoreLimitsMock struct {
 	maxChunksPerQuery           int
-	storeGatewayTenantShardSize int
+	storeGatewayTenantShardSize float64
 }
 
 func (m *blocksStoreLimitsMock) MaxChunksPerQueryFromStore(_ string) int {
 	return m.maxChunksPerQuery
 }
 
-func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) int {
+func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) float64 {
 	return m.storeGatewayTenantShardSize
 }
 

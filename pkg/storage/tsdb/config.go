@@ -241,6 +241,7 @@ type BucketStoreConfig struct {
 	SyncDir                  string              `yaml:"sync_dir"`
 	SyncInterval             time.Duration       `yaml:"sync_interval"`
 	MaxConcurrent            int                 `yaml:"max_concurrent"`
+	MaxInflightRequests      int                 `yaml:"max_inflight_requests"`
 	TenantSyncConcurrency    int                 `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency     int                 `yaml:"block_sync_concurrency"`
 	MetaSyncConcurrency      int                 `yaml:"meta_sync_concurrency"`
@@ -261,9 +262,17 @@ type BucketStoreConfig struct {
 	IndexHeaderLazyLoadingEnabled     bool          `yaml:"index_header_lazy_loading_enabled"`
 	IndexHeaderLazyLoadingIdleTimeout time.Duration `yaml:"index_header_lazy_loading_idle_timeout"`
 
+	// Controls whether lazy expanded posting optimization is enabled or not.
+	LazyExpandedPostingsEnabled bool `yaml:"lazy_expanded_postings_enabled"`
+
 	// Controls the partitioner, used to aggregate multiple GET object API requests.
 	// The config option is hidden until experimental.
 	PartitionerMaxGapBytes uint64 `yaml:"partitioner_max_gap_bytes" doc:"hidden"`
+
+	// Controls the estimated size to fetch for series and chunk in Store Gateway. Using
+	// a large value might cause data overfetch while a small value might need to refetch.
+	EstimatedMaxSeriesSizeBytes uint64 `yaml:"estimated_max_series_size_bytes" doc:"hidden"`
+	EstimatedMaxChunkSizeBytes  uint64 `yaml:"estimated_max_chunk_size_bytes" doc:"hidden"`
 
 	// Controls what is the ratio of postings offsets store will hold in memory.
 	// Larger value will keep less offsets, which will increase CPU cycles needed for query touching those postings.
@@ -271,6 +280,9 @@ type BucketStoreConfig struct {
 	// On the contrary, smaller value will increase baseline memory usage, but improve latency slightly.
 	// 1 will keep all in memory. Default value is the same as in Prometheus which gives a good balance.
 	PostingOffsetsInMemSampling int `yaml:"postings_offsets_in_mem_sampling" doc:"hidden"`
+
+	// Controls how many series to fetch per batch in Store Gateway. Default value is 10000.
+	SeriesBatchSize int `yaml:"series_batch_size"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -286,6 +298,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkPoolMinBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-min-bucket-size-bytes", ChunkPoolDefaultMinBucketSize, "Size - in bytes - of the smallest chunks pool bucket.")
 	f.IntVar(&cfg.ChunkPoolMaxBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-max-bucket-size-bytes", ChunkPoolDefaultMaxBucketSize, "Size - in bytes - of the largest chunks pool bucket.")
 	f.IntVar(&cfg.MaxConcurrent, "blocks-storage.bucket-store.max-concurrent", 100, "Max number of concurrent queries to execute against the long-term storage. The limit is shared across all tenants.")
+	f.IntVar(&cfg.MaxInflightRequests, "blocks-storage.bucket-store.max-inflight-requests", 0, "Max number of inflight queries to execute against the long-term storage. The limit is shared across all tenants. 0 to disable.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "blocks-storage.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants synching blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "blocks-storage.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks synching per tenant.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "blocks-storage.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
@@ -298,6 +311,10 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IndexHeaderLazyLoadingEnabled, "blocks-storage.bucket-store.index-header-lazy-loading-enabled", false, "If enabled, store-gateway will lazily memory-map an index-header only once required by a query.")
 	f.DurationVar(&cfg.IndexHeaderLazyLoadingIdleTimeout, "blocks-storage.bucket-store.index-header-lazy-loading-idle-timeout", 20*time.Minute, "If index-header lazy loading is enabled and this setting is > 0, the store-gateway will release memory-mapped index-headers after 'idle timeout' inactivity.")
 	f.Uint64Var(&cfg.PartitionerMaxGapBytes, "blocks-storage.bucket-store.partitioner-max-gap-bytes", store.PartitionerMaxGapSize, "Max size - in bytes - of a gap for which the partitioner aggregates together two bucket GET object requests.")
+	f.Uint64Var(&cfg.EstimatedMaxSeriesSizeBytes, "blocks-storage.bucket-store.estimated-max-series-size-bytes", store.EstimatedMaxSeriesSize, "Estimated max series size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 64KB.")
+	f.Uint64Var(&cfg.EstimatedMaxChunkSizeBytes, "blocks-storage.bucket-store.estimated-max-chunk-size-bytes", store.EstimatedMaxChunkSize, "Estimated max chunk size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 16KiB.")
+	f.BoolVar(&cfg.LazyExpandedPostingsEnabled, "blocks-storage.bucket-store.lazy-expanded-postings-enabled", false, "If true, Store Gateway will estimate postings size and try to lazily expand postings if it downloads less data than expanding all postings.")
+	f.IntVar(&cfg.SeriesBatchSize, "blocks-storage.bucket-store.series-batch-size", store.SeriesBatchSize, "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.")
 }
 
 // Validate the config.

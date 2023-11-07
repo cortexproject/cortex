@@ -18,7 +18,6 @@ const (
 )
 
 type ingesterMetrics struct {
-	flushQueueLength        prometheus.Gauge
 	ingestedSamples         prometheus.Counter
 	ingestedExemplars       prometheus.Counter
 	ingestedMetadata        prometheus.Counter
@@ -37,25 +36,6 @@ type ingesterMetrics struct {
 	memMetadataCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal   *prometheus.CounterVec
 	memMetadataRemovedTotal *prometheus.CounterVec
-	createdChunks           prometheus.Counter
-	walReplayDuration       prometheus.Gauge
-	walCorruptionsTotal     prometheus.Counter
-
-	// Chunks transfer.
-	sentChunks     prometheus.Counter
-	receivedChunks prometheus.Counter
-
-	// Chunks flushing.
-	flushSeriesInProgress         prometheus.Gauge
-	chunkUtilization              prometheus.Histogram
-	chunkLength                   prometheus.Histogram
-	chunkSize                     prometheus.Histogram
-	chunkAge                      prometheus.Histogram
-	memoryChunks                  prometheus.Gauge
-	seriesEnqueuedForFlush        *prometheus.CounterVec
-	seriesDequeuedOutcome         *prometheus.CounterVec
-	droppedChunks                 prometheus.Counter
-	oldestUnflushedChunkTimestamp prometheus.Gauge
 
 	activeSeriesPerUser *prometheus.GaugeVec
 
@@ -76,10 +56,6 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 	)
 
 	m := &ingesterMetrics{
-		flushQueueLength: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_flush_queue_length",
-			Help: "The total number of series pending in the flush queue.",
-		}),
 		ingestedSamples: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_samples_total",
 			Help: "The total number of samples ingested.",
@@ -144,18 +120,6 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_memory_users",
 			Help: "The current number of users in memory.",
 		}),
-		createdChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_chunks_created_total",
-			Help: "The total number of chunks the ingester has created.",
-		}),
-		walReplayDuration: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_wal_replay_duration_seconds",
-			Help: "Time taken to replay the checkpoint and the WAL.",
-		}),
-		walCorruptionsTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_wal_corruptions_total",
-			Help: "Total number of WAL corruptions encountered.",
-		}),
 		memMetadataCreatedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_memory_metadata_created_total",
 			Help: "The total number of metadata that were created per user",
@@ -164,64 +128,6 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_memory_metadata_removed_total",
 			Help: "The total number of metadata that were removed per user.",
 		}, []string{"user"}),
-
-		// Chunks / blocks transfer.
-		sentChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_sent_chunks",
-			Help: "The total number of chunks sent by this ingester whilst leaving.",
-		}),
-		receivedChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_received_chunks",
-			Help: "The total number of chunks received by this ingester whilst joining",
-		}),
-
-		// Chunks flushing.
-		flushSeriesInProgress: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_flush_series_in_progress",
-			Help: "Number of flush series operations in progress.",
-		}),
-		chunkUtilization: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_chunk_utilization",
-			Help:    "Distribution of stored chunk utilization (when stored).",
-			Buckets: prometheus.LinearBuckets(0, 0.2, 6),
-		}),
-		chunkLength: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_chunk_length",
-			Help:    "Distribution of stored chunk lengths (when stored).",
-			Buckets: prometheus.ExponentialBuckets(5, 2, 11), // biggest bucket is 5*2^(11-1) = 5120
-		}),
-		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_chunk_size_bytes",
-			Help:    "Distribution of stored chunk sizes (when stored).",
-			Buckets: prometheus.ExponentialBuckets(500, 2, 7), // biggest bucket is 500*2^(7-1) = 32000
-		}),
-		chunkAge: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name: "cortex_ingester_chunk_age_seconds",
-			Help: "Distribution of chunk ages (when stored).",
-			// with default settings chunks should flush between 5 min and 12 hours
-			// so buckets at 1min, 5min, 10min, 30min, 1hr, 2hr, 4hr, 10hr, 12hr, 16hr
-			Buckets: []float64{60, 300, 600, 1800, 3600, 7200, 14400, 36000, 43200, 57600},
-		}),
-		memoryChunks: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_ingester_memory_chunks",
-			Help: "The total number of chunks in memory.",
-		}),
-		seriesEnqueuedForFlush: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_flushing_enqueued_series_total",
-			Help: "Total number of series enqueued for flushing, with reasons.",
-		}, []string{"reason"}),
-		seriesDequeuedOutcome: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_flushing_dequeued_series_total",
-			Help: "Total number of series dequeued for flushing, with outcome (superset of enqueue reasons)",
-		}, []string{"outcome"}),
-		droppedChunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_ingester_dropped_chunks_total",
-			Help: "Total number of chunks dropped from flushing because they have too few samples.",
-		}),
-		oldestUnflushedChunkTimestamp: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_oldest_unflushed_chunk_timestamp_seconds",
-			Help: "Unix timestamp of the oldest unflushed chunk in the memory",
-		}),
 
 		maxUsersGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
 			Name:        instanceLimits,
@@ -356,6 +262,11 @@ type tsdbMetrics struct {
 	tsdbChunksRemovedTotal             *prometheus.Desc
 	tsdbMmapChunkCorruptionTotal       *prometheus.Desc
 	tsdbChunkwriteQueueOperationsTotal *prometheus.Desc
+	tsdbSamplesAppended                *prometheus.Desc
+	tsdbOutOfOrderSamplesAppended      *prometheus.Desc
+	tsdbSnapshotReplayErrorTotal       *prometheus.Desc
+	tsdbOOOHistogram                   *prometheus.Desc
+	tsdbMmapChunksTotal                *prometheus.Desc
 
 	tsdbExemplarsTotal          *prometheus.Desc
 	tsdbExemplarsInStorage      *prometheus.Desc
@@ -523,6 +434,26 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_checkpoint_creations_total",
 			"Total number of TSDB checkpoint creations attempted.",
 			nil, nil),
+		tsdbSamplesAppended: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_samples_appended_total",
+			"Total number of appended samples.",
+			[]string{"type", "user"}, nil),
+		tsdbOutOfOrderSamplesAppended: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
+			"Total number of appended out of order samples.",
+			[]string{"user"}, nil),
+		tsdbSnapshotReplayErrorTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_snapshot_replay_error_total",
+			"Total number snapshot replays that failed.",
+			nil, nil),
+		tsdbOOOHistogram: prometheus.NewDesc(
+			"cortex_ingester_tsdb_sample_ooo_delta",
+			"Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).",
+			nil, nil),
+		tsdbMmapChunksTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_mmap_chunks_total",
+			"Total number of chunks that were memory-mapped.",
+			nil, nil),
 
 		// The most useful exemplar metrics are per-user. The rest
 		// are global to reduce metrics overhead.
@@ -591,6 +522,11 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbReloadsFailed
 	out <- sm.tsdbTimeRetentionCount
 	out <- sm.tsdbBlocksBytes
+	out <- sm.tsdbSamplesAppended
+	out <- sm.tsdbOutOfOrderSamplesAppended
+	out <- sm.tsdbSnapshotReplayErrorTotal
+	out <- sm.tsdbOOOHistogram
+	out <- sm.tsdbMmapChunksTotal
 	out <- sm.checkpointDeleteFail
 	out <- sm.checkpointDeleteTotal
 	out <- sm.checkpointCreationFail
@@ -641,6 +577,11 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbReloadsFailed, "prometheus_tsdb_reloads_failures_total")
 	data.SendSumOfCounters(out, sm.tsdbTimeRetentionCount, "prometheus_tsdb_time_retentions_total")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbBlocksBytes, "prometheus_tsdb_storage_blocks_bytes")
+	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbSamplesAppended, "prometheus_tsdb_head_samples_appended_total", "type")
+	data.SendSumOfCountersPerUser(out, sm.tsdbOutOfOrderSamplesAppended, "prometheus_tsdb_head_out_of_order_samples_appended_total")
+	data.SendSumOfCounters(out, sm.tsdbSnapshotReplayErrorTotal, "prometheus_tsdb_snapshot_replay_error_total")
+	data.SendSumOfHistograms(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")
+	data.SendSumOfGauges(out, sm.tsdbMmapChunksTotal, "prometheus_tsdb_mmap_chunks_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")

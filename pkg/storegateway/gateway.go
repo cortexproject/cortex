@@ -39,6 +39,10 @@ const (
 	// ringAutoForgetUnhealthyPeriods is how many consecutive timeout periods an unhealthy instance
 	// in the ring will be automatically removed.
 	ringAutoForgetUnhealthyPeriods = 10
+
+	instanceLimitsMetric     = "cortex_storegateway_instance_limits"
+	instanceLimitsMetricHelp = "Instance limits used by this store gateway."
+	limitLabel               = "limit"
 )
 
 var (
@@ -142,6 +146,22 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 	g.bucketSync.WithLabelValues(syncReasonPeriodic)
 	g.bucketSync.WithLabelValues(syncReasonRingChange)
 
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_inflight_requests"},
+	}).Set(float64(storageCfg.BucketStore.MaxInflightRequests))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_concurrent"},
+	}).Set(float64(storageCfg.BucketStore.MaxConcurrent))
+	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name:        instanceLimitsMetric,
+		Help:        instanceLimitsMetricHelp,
+		ConstLabels: map[string]string{limitLabel: "max_chunk_pool_bytes"},
+	}).Set(float64(storageCfg.BucketStore.MaxChunkPoolBytes))
+
 	// Init sharding strategy.
 	var shardingStrategy ShardingStrategy
 
@@ -174,7 +194,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		case util.ShardingStrategyDefault:
 			shardingStrategy = NewDefaultShardingStrategy(g.ring, lifecyclerCfg.Addr, logger)
 		case util.ShardingStrategyShuffle:
-			shardingStrategy = NewShuffleShardingStrategy(g.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger)
+			shardingStrategy = NewShuffleShardingStrategy(g.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, g.gatewayCfg.ShardingRing.ZoneStableShuffleSharding)
 		default:
 			return nil, errInvalidShardingStrategy
 		}
@@ -224,7 +244,10 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// make sure that when we'll run the initial sync we already know  the tokens
 		// assigned to this instance.
 		level.Info(g.logger).Log("msg", "waiting until store-gateway is JOINING in the ring")
-		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, g.gatewayCfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, g.ring, g.ringLifecycler.GetInstanceID(), ring.JOINING); err != nil {
+			level.Error(g.logger).Log("msg", "store-gateway failed to become JOINING in the ring", "err", err)
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is JOINING in the ring")
@@ -265,7 +288,10 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 		// make sure that when we'll run the loop it won't be detected as a ring
 		// topology change.
 		level.Info(g.logger).Log("msg", "waiting until store-gateway is ACTIVE in the ring")
-		if err := ring.WaitInstanceState(ctx, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, g.gatewayCfg.ShardingRing.WaitInstanceStateTimeout)
+		defer cancel()
+		if err := ring.WaitInstanceState(ctxWithTimeout, g.ring, g.ringLifecycler.GetInstanceID(), ring.ACTIVE); err != nil {
+			level.Error(g.logger).Log("msg", "store-gateway failed to become ACTIVE in the ring", "err", err)
 			return err
 		}
 		level.Info(g.logger).Log("msg", "store-gateway is ACTIVE in the ring")
@@ -276,7 +302,7 @@ func (g *StoreGateway) starting(ctx context.Context) (err error) {
 
 func (g *StoreGateway) running(ctx context.Context) error {
 	var ringTickerChan <-chan time.Time
-	var ringLastState ring.ReplicationSet
+	var lastInstanceDescs map[string]ring.InstanceDesc
 
 	// Apply a jitter to the sync frequency in order to increase the probability
 	// of hitting the shared cache (if any).
@@ -284,7 +310,7 @@ func (g *StoreGateway) running(ctx context.Context) error {
 	defer syncTicker.Stop()
 
 	if g.gatewayCfg.ShardingEnabled {
-		ringLastState, _ = g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
+		lastInstanceDescs, _ = g.ring.GetInstanceDescsForOperation(BlocksOwnerSync) // nolint:errcheck
 		ringTicker := time.NewTicker(util.DurationWithJitter(g.gatewayCfg.ShardingRing.RingCheckPeriod, 0.2))
 		defer ringTicker.Stop()
 		ringTickerChan = ringTicker.C
@@ -297,10 +323,13 @@ func (g *StoreGateway) running(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := g.ring.GetAllHealthy(BlocksOwnerSync) // nolint:errcheck
+			currInstanceDescs, _ := g.ring.GetInstanceDescsForOperation(BlocksOwnerSync) // nolint:errcheck
 
-			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
-				ringLastState = currRingState
+			// Ignore address when comparing to avoid block re-sync if tokens are persisted with tokens_file_path
+			if ring.HasInstanceDescsChanged(lastInstanceDescs, currInstanceDescs, func(b, a ring.InstanceDesc) bool {
+				return ring.HasTokensChanged(b, a) || ring.HasZoneChanged(b, a)
+			}) {
+				lastInstanceDescs = currInstanceDescs
 				g.syncStores(ctx, syncReasonRingChange)
 			}
 		case <-ctx.Done():

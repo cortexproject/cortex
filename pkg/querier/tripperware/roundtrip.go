@@ -102,6 +102,7 @@ func NewQueryTripperware(
 	instantQueryCodec Codec,
 	limits Limits,
 	queryAnalyzer querysharding.Analyzer,
+	defaultSubQueryInterval time.Duration,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -126,10 +127,13 @@ func NewQueryTripperware(
 			return RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				isQuery := strings.HasSuffix(r.URL.Path, "/query")
 				isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
+				isSeries := strings.HasSuffix(r.URL.Path, "/series")
 
 				op := "query"
 				if isQueryRange {
 					op = "query_range"
+				} else if isSeries {
+					op = "series"
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())
@@ -141,16 +145,25 @@ func NewQueryTripperware(
 				activeUsers.UpdateUserTimestamp(userStr, time.Now())
 				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
+				if isQuery || isQueryRange {
+					query := r.FormValue("query")
+					// Check subquery step size.
+					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, MaxStep); err != nil {
+						return nil, err
+					}
+				}
+
 				if isQueryRange {
 					return queryrange.RoundTrip(r)
 				} else if isQuery {
+					// If the given query is not shardable, use downstream roundtripper.
+					query := r.FormValue("query")
+
 					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
 					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
 					if numShards <= 1 {
 						return next.RoundTrip(r)
 					}
-					// If the given query is not shardable, use downstream roundtripper.
-					query := r.FormValue("query")
 					analysis, err := queryAnalyzer.Analyze(query)
 					if err != nil || !analysis.IsShardable() {
 						return next.RoundTrip(r)

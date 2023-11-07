@@ -904,11 +904,18 @@ func (rr *RRSIG) parse(c *zlexer, o string) *ParseError {
 
 	c.Next() // zBlank
 	l, _ = c.Next()
-	i, e := strconv.ParseUint(l.token, 10, 8)
-	if e != nil || l.err {
+	if l.err {
 		return &ParseError{"", "bad RRSIG Algorithm", l}
 	}
-	rr.Algorithm = uint8(i)
+	i, e := strconv.ParseUint(l.token, 10, 8)
+	rr.Algorithm = uint8(i) // if 0 we'll check the mnemonic in the if
+	if e != nil {
+		v, ok := StringToAlgorithm[l.token]
+		if !ok {
+			return &ParseError{"", "bad RRSIG Algorithm", l}
+		}
+		rr.Algorithm = v
+	}
 
 	c.Next() // zBlank
 	l, _ = c.Next()
@@ -1249,7 +1256,7 @@ func (rr *IPSECKEY) parse(c *zlexer, o string) *ParseError {
 
 	rr.GatewayAddr, rr.GatewayHost, err = parseAddrHostUnion(l.token, o, rr.GatewayType)
 	if err != nil {
-		return &ParseError{"", "AMTRELAY " + err.Error(), l}
+		return &ParseError{"", "IPSECKEY " + err.Error(), l}
 	}
 
 	c.Next() // zBlank

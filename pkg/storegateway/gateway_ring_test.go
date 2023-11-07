@@ -10,7 +10,7 @@ import (
 )
 
 func TestIsHealthyForStoreGatewayOperations(t *testing.T) {
-	t.Parallel()
+	//parallel testing causes data race
 
 	tests := map[string]struct {
 		instance          *ring.InstanceDesc
@@ -60,6 +60,7 @@ func TestIsHealthyForStoreGatewayOperations(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 			actual := testData.instance.IsHealthy(BlocksOwnerSync, testData.timeout, time.Now())
 			assert.Equal(t, testData.ownerSyncExpected, actual)
 

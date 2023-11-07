@@ -289,6 +289,27 @@ var (
 			true,
 			true,
 		},
+		"less instances": {
+			ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1"},
+					{Addr: "127.0.0.2"},
+				},
+			},
+			true,
+			true,
+		},
+		"replaced instance": {
+			ReplicationSet{
+				Instances: []InstanceDesc{
+					{Addr: "127.0.0.1"},
+					{Addr: "127.0.0.2"},
+					{Addr: "127.0.0.5"},
+				},
+			},
+			true,
+			true,
+		},
 	}
 )
 

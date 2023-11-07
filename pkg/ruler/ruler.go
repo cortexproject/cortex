@@ -66,7 +66,18 @@ const (
 
 	// errors
 	errListAllUser = "unable to list the ruler users"
+
+	alertingRuleFilter  string = "alert"
+	recordingRuleFilter string = "record"
 )
+
+type DisabledRuleGroupErr struct {
+	Message string
+}
+
+func (e *DisabledRuleGroupErr) Error() string {
+	return e.Message
+}
 
 // Config is the configuration for the recording rules server.
 type Config struct {
@@ -243,8 +254,10 @@ type Ruler struct {
 	// Pool of clients used to connect to other ruler replicas.
 	clientsPool ClientsPool
 
-	ringCheckErrors prometheus.Counter
-	rulerSync       *prometheus.CounterVec
+	ringCheckErrors            prometheus.Counter
+	rulerSync                  *prometheus.CounterVec
+	ruleGroupStoreLoadDuration prometheus.Gauge
+	ruleGroupSyncDuration      prometheus.Gauge
 
 	allowedTenants *util.AllowedTenants
 
@@ -277,6 +290,16 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 			Name: "cortex_ruler_sync_rules_total",
 			Help: "Total number of times the ruler sync operation triggered.",
 		}, []string{"reason"}),
+
+		ruleGroupStoreLoadDuration: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ruler_rule_group_load_duration_seconds",
+			Help: "Time taken to load rule groups from storage",
+		}),
+
+		ruleGroupSyncDuration: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_ruler_rule_group_sync_duration_seconds",
+			Help: "The duration in seconds required to sync and load rule groups from storage.",
+		}),
 	}
 
 	if len(cfg.EnabledTenants) > 0 {
@@ -397,6 +420,17 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 	}
 }
 
+func ruleGroupDisabled(ruleGroup *rulespb.RuleGroupDesc, disabledRuleGroupsForUser validation.DisabledRuleGroups) bool {
+	for _, disabledRuleGroupForUser := range disabledRuleGroupsForUser {
+		if ruleGroup.Namespace == disabledRuleGroupForUser.Namespace &&
+			ruleGroup.Name == disabledRuleGroupForUser.Name &&
+			ruleGroup.User == disabledRuleGroupForUser.User {
+			return true
+		}
+	}
+	return false
+}
+
 var sep = []byte("/")
 
 func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
@@ -412,7 +446,8 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAddr string) (bool, error) {
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, instanceAddr string) (bool, error) {
+
 	hash := tokenForGroup(g)
 
 	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
@@ -420,7 +455,12 @@ func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, instanceAd
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	return rlrs.Instances[0].Addr == instanceAddr, nil
+	ownsRuleGroup := rlrs.Instances[0].Addr == instanceAddr
+	if ownsRuleGroup && ruleGroupDisabled(g, disabledRuleGroups) {
+		return false, &DisabledRuleGroupErr{Message: fmt.Sprintf("rule group %s, namespace %s, user %s is disabled", g.Name, g.Namespace, g.User)}
+	}
+
+	return ownsRuleGroup, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -484,21 +524,41 @@ func (r *Ruler) run(ctx context.Context) error {
 func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	level.Debug(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
+	timer := prometheus.NewTimer(nil)
 
-	configs, err := r.listRules(ctx)
-	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to list rules", "err", err)
-		return
-	}
+	defer func() {
+		ruleGroupSyncDuration := timer.ObserveDuration().Seconds()
+		r.ruleGroupSyncDuration.Set(ruleGroupSyncDuration)
+	}()
 
-	err = r.store.LoadRuleGroups(ctx, configs)
+	loadedConfigs, err := r.loadRuleGroups(ctx)
 	if err != nil {
-		level.Error(r.logger).Log("msg", "unable to load rules owned by this ruler", "err", err)
 		return
 	}
 
 	// This will also delete local group files for users that are no longer in 'configs' map.
-	r.manager.SyncRuleGroups(ctx, configs)
+	r.manager.SyncRuleGroups(ctx, loadedConfigs)
+}
+
+func (r *Ruler) loadRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
+	timer := prometheus.NewTimer(nil)
+
+	defer func() {
+		storeLoadSeconds := timer.ObserveDuration().Seconds()
+		r.ruleGroupStoreLoadDuration.Set(storeLoadSeconds)
+	}()
+
+	configs, err := r.listRules(ctx)
+	if err != nil {
+		level.Error(r.logger).Log("msg", "unable to list rules", "err", err)
+		return nil, err
+	}
+
+	loadedConfigs, err := r.store.LoadRuleGroups(ctx, configs)
+	if err != nil {
+		level.Warn(r.logger).Log("msg", "failed to load some rules owned by this ruler", "count", len(configs)-len(loadedConfigs), "err", err)
+	}
+	return loadedConfigs, nil
 }
 
 func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGroupList, err error) {
@@ -530,7 +590,26 @@ func (r *Ruler) listRules(ctx context.Context) (result map[string]rulespb.RuleGr
 }
 
 func (r *Ruler) listRulesNoSharding(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
-	return r.store.ListAllRuleGroups(ctx)
+	allRuleGroups, err := r.store.ListAllRuleGroups(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for userID, groups := range allRuleGroups {
+		disabledRuleGroupsForUser := r.limits.DisabledRuleGroups(userID)
+		if len(disabledRuleGroupsForUser) == 0 {
+			continue
+		}
+		filteredGroupsForUser := rulespb.RuleGroupList{}
+		for _, group := range groups {
+			if !ruleGroupDisabled(group, disabledRuleGroupsForUser) {
+				filteredGroupsForUser = append(filteredGroupsForUser, group)
+			} else {
+				level.Info(r.logger).Log("msg", "rule group disabled", "name", group.Name, "namespace", group.Namespace, "user", group.User)
+			}
+		}
+		allRuleGroups[userID] = filteredGroupsForUser
+	}
+	return allRuleGroups, nil
 }
 
 func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulespb.RuleGroupList, error) {
@@ -541,7 +620,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 
 	filteredConfigs := make(map[string]rulespb.RuleGroupList)
 	for userID, groups := range configs {
-		filtered := filterRuleGroups(userID, groups, r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+		filtered := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 		if len(filtered) > 0 {
 			filteredConfigs[userID] = filtered
 		}
@@ -599,7 +678,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 					return errors.Wrapf(err, "failed to fetch rule groups for user %s", userID)
 				}
 
-				filtered := filterRuleGroups(userID, groups, userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
+				filtered := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				if len(filtered) == 0 {
 					continue
 				}
@@ -621,15 +700,21 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 //
 // Reason why this function is not a method on Ruler is to make sure we don't accidentally use r.ring,
 // but only ring passed as parameter.
-func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
+func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
+		owned, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr)
 		if err != nil {
-			ringCheckErrors.Inc()
-			level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
-			continue
+			switch e := err.(type) {
+			case *DisabledRuleGroupErr:
+				level.Info(log).Log("msg", e.Message)
+				continue
+			default:
+				ringCheckErrors.Inc()
+				level.Error(log).Log("msg", "failed to check if the ruler replica owns the rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+				continue
+			}
 		}
 
 		if owned {
@@ -645,33 +730,59 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, ring r
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context) ([]*GroupStateDesc, error) {
+func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		return r.getShardedRules(ctx, userID)
+		return r.getShardedRules(ctx, userID, rulesRequest)
 	}
 
-	return r.getLocalRules(userID)
+	return r.getLocalRules(userID, rulesRequest)
 }
 
-func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
 	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
 
-	for _, group := range groups {
-		interval := group.Interval()
+	sliceToSet := func(values []string) map[string]struct{} {
+		set := make(map[string]struct{}, len(values))
+		for _, v := range values {
+			set[v] = struct{}{}
+		}
+		return set
+	}
 
+	ruleNameSet := sliceToSet(rulesRequest.RuleNames)
+	ruleGroupNameSet := sliceToSet(rulesRequest.RuleGroupNames)
+	fileSet := sliceToSet(rulesRequest.Files)
+	ruleType := rulesRequest.Type
+
+	returnAlerts := ruleType == "" || ruleType == alertingRuleFilter
+	returnRecording := ruleType == "" || ruleType == recordingRuleFilter
+
+	for _, group := range groups {
 		// The mapped filename is url path escaped encoded to make handling `/` characters easier
 		decodedNamespace, err := url.PathUnescape(strings.TrimPrefix(group.File(), prefix))
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to decode rule filename")
 		}
+		if len(fileSet) > 0 {
+			if _, OK := fileSet[decodedNamespace]; !OK {
+				continue
+			}
+		}
+
+		if len(ruleGroupNameSet) > 0 {
+			if _, OK := ruleGroupNameSet[group.Name()]; !OK {
+				continue
+			}
+		}
+		interval := group.Interval()
 
 		groupDesc := &GroupStateDesc{
 			Group: &rulespb.RuleGroupDesc{
@@ -679,12 +790,18 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				Namespace: string(decodedNamespace),
 				Interval:  interval,
 				User:      userID,
+				Limit:     int64(group.Limit()),
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),
 			EvaluationDuration:  group.GetEvaluationTime(),
 		}
 		for _, r := range group.Rules() {
+			if len(ruleNameSet) > 0 {
+				if _, OK := ruleNameSet[r.Name()]; !OK {
+					continue
+				}
+			}
 			lastError := ""
 			if r.LastError() != nil {
 				lastError = r.LastError().Error()
@@ -693,7 +810,9 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			var ruleDesc *RuleStateDesc
 			switch rule := r.(type) {
 			case *promRules.AlertingRule:
-				rule.ActiveAlerts()
+				if !returnAlerts {
+					continue
+				}
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
 					alerts = append(alerts, &AlertStateDesc{
@@ -725,6 +844,9 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 					EvaluationDuration:  rule.GetEvaluationDuration(),
 				}
 			case *promRules.RecordingRule:
+				if !returnRecording {
+					continue
+				}
 				ruleDesc = &RuleStateDesc{
 					Rule: &rulespb.RuleDesc{
 						Record: rule.Name(),
@@ -741,12 +863,15 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 			}
 			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}
-		groupDescs = append(groupDescs, groupDesc)
+		if len(groupDesc.ActiveRules) > 0 {
+			groupDescs = append(groupDescs, groupDesc)
+		}
 	}
+
 	return groupDescs, nil
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupStateDesc, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) ([]*GroupStateDesc, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -779,7 +904,12 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 			return errors.Wrapf(err, "unable to get client for ruler %s", addr)
 		}
 
-		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{})
+		newGrps, err := rulerClient.Rules(ctx, &RulesRequest{
+			RuleNames:      rulesRequest.GetRuleNames(),
+			RuleGroupNames: rulesRequest.GetRuleGroupNames(),
+			Files:          rulesRequest.GetFiles(),
+			Type:           rulesRequest.GetType(),
+		})
 		if err != nil {
 			return errors.Wrapf(err, "unable to retrieve rules from ruler %s", addr)
 		}
@@ -801,7 +931,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID)
+	groupDescs, err := r.getLocalRules(userID, *in)
 	if err != nil {
 		return nil, err
 	}
@@ -885,7 +1015,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 			return errors.Wrapf(err, "failed to fetch ruler config for user %s", userID)
 		}
 		userRules := map[string]rulespb.RuleGroupList{userID: rg}
-		if err := r.store.LoadRuleGroups(ctx, userRules); err != nil {
+		if userRules, err = r.store.LoadRuleGroups(ctx, userRules); err != nil {
 			return errors.Wrapf(err, "failed to load ruler config for user %s", userID)
 		}
 		data := map[string]map[string][]rulefmt.RuleGroup{userID: userRules[userID].Formatted()}

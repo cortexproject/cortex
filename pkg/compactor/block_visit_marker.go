@@ -30,6 +30,7 @@ const (
 var (
 	ErrorBlockVisitMarkerNotFound  = errors.New("block visit marker not found")
 	ErrorUnmarshalBlockVisitMarker = errors.New("unmarshal block visit marker JSON")
+	ErrorNotBlockVisitMarker       = errors.New("file is not block visit marker")
 )
 
 type BlockVisitMarker struct {
@@ -99,6 +100,13 @@ func markBlocksVisited(
 	}
 	reader := bytes.NewReader(visitMarkerFileContent)
 	for _, block := range blocks {
+		select {
+		// Exit early if possible.
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		blockID := block.ULID.String()
 		if err := UpdateBlockVisitMarker(ctx, bkt, blockID, reader, blockVisitMarkerWriteFailed); err != nil {
 			level.Error(logger).Log("msg", "unable to upsert visit marker file content for block", "blockID", blockID, "err", err)
@@ -134,4 +142,12 @@ heartBeat:
 		}
 	}
 	level.Info(logger).Log("msg", fmt.Sprintf("stop heart beat for blocks: %s", blocksInfo))
+}
+
+func IsBlockVisitMarker(path string) bool {
+	return strings.HasSuffix(path, BlockVisitMarkerFile)
+}
+
+func IsNotBlockVisitMarkerError(err error) bool {
+	return errors.Is(err, ErrorNotBlockVisitMarker)
 }

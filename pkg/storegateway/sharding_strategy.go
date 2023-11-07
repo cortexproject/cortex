@@ -12,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -32,7 +33,7 @@ type ShardingStrategy interface {
 // ShardingLimits is the interface that should be implemented by the limits provider,
 // limiting the scope of the limits to the ones required by sharding strategies.
 type ShardingLimits interface {
-	StoreGatewayTenantShardSize(userID string) int
+	StoreGatewayTenantShardSize(userID string) float64
 }
 
 // NoShardingStrategy is a no-op strategy. When this strategy is used, no tenant/block is filtered out.
@@ -86,16 +87,20 @@ type ShuffleShardingStrategy struct {
 	instanceAddr string
 	limits       ShardingLimits
 	logger       log.Logger
+
+	zoneStableShuffleSharding bool
 }
 
 // NewShuffleShardingStrategy makes a new ShuffleShardingStrategy.
-func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, limits ShardingLimits, logger log.Logger) *ShuffleShardingStrategy {
+func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, limits ShardingLimits, logger log.Logger, zoneStableShuffleSharding bool) *ShuffleShardingStrategy {
 	return &ShuffleShardingStrategy{
 		r:            r,
 		instanceID:   instanceID,
 		instanceAddr: instanceAddr,
 		limits:       limits,
 		logger:       logger,
+
+		zoneStableShuffleSharding: zoneStableShuffleSharding,
 	}
 }
 
@@ -104,7 +109,7 @@ func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 	var filteredIDs []string
 
 	for _, userID := range userIDs {
-		subRing := GetShuffleShardingSubring(s.r, userID, s.limits)
+		subRing := GetShuffleShardingSubring(s.r, userID, s.limits, s.zoneStableShuffleSharding)
 
 		// Include the user only if it belongs to this store-gateway shard.
 		if subRing.HasInstance(s.instanceID) {
@@ -117,7 +122,7 @@ func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []strin
 
 // FilterBlocks implements ShardingStrategy.
 func (s *ShuffleShardingStrategy) FilterBlocks(_ context.Context, userID string, metas map[ulid.ULID]*metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
-	subRing := GetShuffleShardingSubring(s.r, userID, s.limits)
+	subRing := GetShuffleShardingSubring(s.r, userID, s.limits, s.zoneStableShuffleSharding)
 	filterBlocksByRingSharding(subRing, s.instanceAddr, metas, loaded, synced, s.logger)
 	return nil
 }
@@ -172,8 +177,8 @@ func filterBlocksByRingSharding(r ring.ReadRing, instanceAddr string, metas map[
 
 // GetShuffleShardingSubring returns the subring to be used for a given user. This function
 // should be used both by store-gateway and querier in order to guarantee the same logic is used.
-func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLimits) ring.ReadRing {
-	shardSize := limits.StoreGatewayTenantShardSize(userID)
+func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLimits, zoneStableShuffleSharding bool) ring.ReadRing {
+	shardSize := util.DynamicShardSize(limits.StoreGatewayTenantShardSize(userID), ring.InstancesCount())
 
 	// A shard size of 0 means shuffle sharding is disabled for this specific user,
 	// so we just return the full ring so that blocks will be sharded across all store-gateways.
@@ -181,6 +186,11 @@ func GetShuffleShardingSubring(ring *ring.Ring, userID string, limits ShardingLi
 		return ring
 	}
 
+	if zoneStableShuffleSharding {
+		// Zone stability is required for store gateway when shuffle shard, see
+		// https://github.com/cortexproject/cortex/issues/5467 for more details.
+		return ring.ShuffleShardWithZoneStability(userID, shardSize)
+	}
 	return ring.ShuffleShard(userID, shardSize)
 }
 

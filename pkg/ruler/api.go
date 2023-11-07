@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"encoding/json"
+	"fmt"
 	io "io"
 	"net/http"
 	"net/url"
@@ -68,6 +69,7 @@ type RuleGroup struct {
 	Interval       float64   `json:"interval"`
 	LastEvaluation time.Time `json:"lastEvaluation"`
 	EvaluationTime float64   `json:"evaluationTime"`
+	Limit          int64     `json:"limit"`
 }
 
 type rule interface{}
@@ -119,6 +121,26 @@ func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
 	}
 }
 
+func respondBadRequest(logger log.Logger, w http.ResponseWriter, msg string) {
+	b, err := json.Marshal(&response{
+		Status:    "error",
+		ErrorType: v1.ErrBadData,
+		Error:     msg,
+		Data:      nil,
+	})
+
+	if err != nil {
+		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusBadRequest)
+	if n, err := w.Write(b); err != nil {
+		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
+	}
+}
+
 // API is used to handle HTTP requests for the ruler service
 type API struct {
 	ruler *Ruler
@@ -145,8 +167,27 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if err := req.ParseForm(); err != nil {
+		level.Error(logger).Log("msg", "error parsing form/query params", "err", err)
+		respondBadRequest(logger, w, "error parsing form/query params")
+		return
+	}
+
+	typ := strings.ToLower(req.URL.Query().Get("type"))
+	if typ != "" && typ != alertingRuleFilter && typ != recordingRuleFilter {
+		respondBadRequest(logger, w, fmt.Sprintf("unsupported rule type %q", typ))
+		return
+	}
+
+	rulesRequest := RulesRequest{
+		RuleNames:      req.Form["rule_name[]"],
+		RuleGroupNames: req.Form["rule_group[]"],
+		Files:          req.Form["file[]"],
+		Type:           typ,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context())
+	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -163,6 +204,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 			Interval:       g.Group.Interval.Seconds(),
 			LastEvaluation: g.GetEvaluationTimestamp(),
 			EvaluationTime: g.GetEvaluationDuration().Seconds(),
+			Limit:          g.Group.Limit,
 		}
 
 		for i, rl := range g.ActiveRules {
@@ -238,7 +280,10 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	rgs, err := a.ruler.GetRules(req.Context())
+	rulesRequest := RulesRequest{
+		Type: alertingRuleFilter,
+	}
+	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
 		respondError(logger, w, err.Error())
@@ -405,7 +450,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = a.store.LoadRuleGroups(req.Context(), map[string]rulespb.RuleGroupList{userID: rgs})
+	_, err = a.store.LoadRuleGroups(req.Context(), map[string]rulespb.RuleGroupList{userID: rgs})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -496,6 +541,16 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	}
 
 	rgProto := rulespb.ToProto(userID, namespace, rg)
+	loadedRg := rulespb.FromProto(rgProto)
+	rgYaml, err := yaml.Marshal(loadedRg)
+	if err == nil {
+		err = yaml.Unmarshal(rgYaml, &rulefmt.RuleGroup{})
+	}
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to load rule group from proto", "err", err.Error(), "user", userID)
+		http.Error(w, ErrBadRuleGroup.Error(), http.StatusBadRequest)
+		return
+	}
 
 	level.Debug(logger).Log("msg", "attempting to store rulegroup", "userID", userID, "group", rgProto.String())
 	err = a.store.SetRuleGroup(req.Context(), userID, namespace, rgProto)

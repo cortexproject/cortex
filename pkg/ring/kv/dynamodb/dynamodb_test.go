@@ -23,7 +23,7 @@ func Test_TTLDisabled(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock("TEST", ddbClientMock, 0)
-	err := ddb.Put(context.TODO(), dynamodbKey{primaryKey: "test", sortKey: "test1"}, []byte("TEST"))
+	_, err := ddb.Put(context.TODO(), dynamodbKey{primaryKey: "test", sortKey: "test1"}, []byte("TEST"))
 	require.NoError(t, err)
 
 }
@@ -41,7 +41,7 @@ func Test_TTL(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock("TEST", ddbClientMock, 5*time.Hour)
-	err := ddb.Put(context.TODO(), dynamodbKey{primaryKey: "test", sortKey: "test1"}, []byte("TEST"))
+	_, err := ddb.Put(context.TODO(), dynamodbKey{primaryKey: "test", sortKey: "test1"}, []byte("TEST"))
 	require.NoError(t, err)
 }
 
@@ -72,7 +72,7 @@ func Test_Batch(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	err := ddb.Batch(context.TODO(), update, delete)
+	_, err := ddb.Batch(context.TODO(), update, delete)
 	require.NoError(t, err)
 }
 
@@ -120,7 +120,7 @@ func Test_BatchSlices(t *testing.T) {
 				delete = append(delete, ddbKeyDelete)
 			}
 
-			err := ddb.Batch(context.TODO(), nil, delete)
+			_, err := ddb.Batch(context.TODO(), nil, delete)
 			require.NoError(t, err)
 			require.EqualValues(t, tc.expectedCalls, numOfCalls)
 
@@ -134,7 +134,7 @@ func Test_EmptyBatch(t *testing.T) {
 	ddbClientMock := &mockDynamodb{}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	err := ddb.Batch(context.TODO(), nil, nil)
+	_, err := ddb.Batch(context.TODO(), nil, nil)
 	require.NoError(t, err)
 }
 
@@ -159,7 +159,7 @@ func Test_Batch_UnprocessedItems(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	err := ddb.Batch(context.TODO(), nil, delete)
+	_, err := ddb.Batch(context.TODO(), nil, delete)
 	require.Errorf(t, err, "error processing batch dynamodb")
 }
 
@@ -178,7 +178,7 @@ func Test_Batch_Error(t *testing.T) {
 	}
 
 	ddb := newDynamodbClientMock(tableName, ddbClientMock, 5*time.Hour)
-	err := ddb.Batch(context.TODO(), nil, delete)
+	_, err := ddb.Batch(context.TODO(), nil, delete)
 	require.Errorf(t, err, "mocked error")
 }
 

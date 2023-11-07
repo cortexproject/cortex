@@ -247,7 +247,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	require.NoError(t, err)
 
 	limits := MockLimits{MockLimits: queue.MockLimits{MaxOutstanding: 100}}
-	v1, err := New(config, limits, logger, reg)
+	v1, err := New(config, limits, logger, reg, transport.NewRetry(0, nil))
 	require.NoError(t, err)
 	require.NotNil(t, v1)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), v1))

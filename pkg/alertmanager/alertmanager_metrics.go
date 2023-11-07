@@ -60,6 +60,8 @@ type alertmanagerMetrics struct {
 	persistFailed           *prometheus.Desc
 
 	notificationRateLimited                 *prometheus.Desc
+	dispatcherAggregationGroups             *prometheus.Desc
+	dispatcherProcessingDuration            *prometheus.Desc
 	dispatcherAggregationGroupsLimitReached *prometheus.Desc
 	insertAlertFailures                     *prometheus.Desc
 	alertsLimiterAlertsCount                *prometheus.Desc
@@ -84,7 +86,7 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		numFailedNotifications: prometheus.NewDesc(
 			"cortex_alertmanager_notifications_failed_total",
 			"The total number of failed notifications.",
-			[]string{"user", "integration"}, nil),
+			[]string{"user", "integration", "reason"}, nil),
 		numNotificationRequestsTotal: prometheus.NewDesc(
 			"cortex_alertmanager_notification_requests_total",
 			"The total number of attempted notification requests.",
@@ -168,19 +170,19 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		partialMerges: prometheus.NewDesc(
 			"cortex_alertmanager_partial_state_merges_total",
 			"Number of times we have received a partial state to merge for a key.",
-			[]string{"user"}, nil),
+			[]string{"user", "type"}, nil),
 		partialMergesFailed: prometheus.NewDesc(
 			"cortex_alertmanager_partial_state_merges_failed_total",
 			"Number of times we have failed to merge a partial state received for a key.",
-			[]string{"user"}, nil),
+			[]string{"user", "type"}, nil),
 		replicationTotal: prometheus.NewDesc(
 			"cortex_alertmanager_state_replication_total",
 			"Number of times we have tried to replicate a state to other alertmanagers",
-			[]string{"user"}, nil),
+			[]string{"user", "type"}, nil),
 		replicationFailed: prometheus.NewDesc(
 			"cortex_alertmanager_state_replication_failed_total",
 			"Number of times we have failed to replicate a state to other alertmanagers",
-			[]string{"user"}, nil),
+			[]string{"user", "type"}, nil),
 		fetchReplicaStateTotal: prometheus.NewDesc(
 			"cortex_alertmanager_state_fetch_replica_state_total",
 			"Number of times we have tried to read and merge the full state from another replica.",
@@ -216,6 +218,14 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 		dispatcherAggregationGroupsLimitReached: prometheus.NewDesc(
 			"cortex_alertmanager_dispatcher_aggregation_group_limit_reached_total",
 			"Number of times when dispatcher failed to create new aggregation group due to limit.",
+			[]string{"user"}, nil),
+		dispatcherAggregationGroups: prometheus.NewDesc(
+			"cortex_alertmanager_dispatcher_aggregation_groups",
+			"Number of active aggregation groups.",
+			[]string{"user"}, nil),
+		dispatcherProcessingDuration: prometheus.NewDesc(
+			"cortex_alertmanager_dispatcher_alert_processing_duration_seconds",
+			"Summary of latencies for the processing of alerts.",
 			[]string{"user"}, nil),
 		insertAlertFailures: prometheus.NewDesc(
 			"cortex_alertmanager_alerts_insert_limited_total",
@@ -279,6 +289,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.persistTotal
 	out <- m.persistFailed
 	out <- m.notificationRateLimited
+	out <- m.dispatcherAggregationGroups
+	out <- m.dispatcherProcessingDuration
 	out <- m.dispatcherAggregationGroupsLimitReached
 	out <- m.insertAlertFailures
 	out <- m.alertsLimiterAlertsCount
@@ -292,7 +304,7 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, m.alertsInvalid, "alertmanager_alerts_invalid_total")
 
 	data.SendSumOfCountersPerUserWithLabels(out, m.numNotifications, "alertmanager_notifications_total", "integration")
-	data.SendSumOfCountersPerUserWithLabels(out, m.numFailedNotifications, "alertmanager_notifications_failed_total", "integration")
+	data.SendSumOfCountersPerUserWithLabels(out, m.numFailedNotifications, "alertmanager_notifications_failed_total", "integration", "reason")
 	data.SendSumOfCountersPerUserWithLabels(out, m.numNotificationRequestsTotal, "alertmanager_notification_requests_total", "integration")
 	data.SendSumOfCountersPerUserWithLabels(out, m.numNotificationRequestsFailedTotal, "alertmanager_notification_requests_failed_total", "integration")
 	data.SendSumOfHistograms(out, m.notificationLatencySeconds, "alertmanager_notification_latency_seconds")
@@ -317,10 +329,10 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 
 	data.SendMaxOfGaugesPerUser(out, m.configHashValue, "alertmanager_config_hash")
 
-	data.SendSumOfCountersPerUser(out, m.partialMerges, "alertmanager_partial_state_merges_total")
-	data.SendSumOfCountersPerUser(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total")
-	data.SendSumOfCountersPerUser(out, m.replicationTotal, "alertmanager_state_replication_total")
-	data.SendSumOfCountersPerUser(out, m.replicationFailed, "alertmanager_state_replication_failed_total")
+	data.SendSumOfCountersPerUserWithLabels(out, m.partialMerges, "alertmanager_partial_state_merges_total", "type")
+	data.SendSumOfCountersPerUserWithLabels(out, m.partialMergesFailed, "alertmanager_partial_state_merges_failed_total", "type")
+	data.SendSumOfCountersPerUserWithLabels(out, m.replicationTotal, "alertmanager_state_replication_total", "type")
+	data.SendSumOfCountersPerUserWithLabels(out, m.replicationFailed, "alertmanager_state_replication_failed_total", "type")
 	data.SendSumOfCounters(out, m.fetchReplicaStateTotal, "alertmanager_state_fetch_replica_state_total")
 	data.SendSumOfCounters(out, m.fetchReplicaStateFailed, "alertmanager_state_fetch_replica_state_failed_total")
 	data.SendSumOfCounters(out, m.initialSyncTotal, "alertmanager_state_initial_sync_total")
@@ -330,6 +342,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.persistFailed, "alertmanager_state_persist_failed_total")
 
 	data.SendSumOfCountersPerUserWithLabels(out, m.notificationRateLimited, "alertmanager_notification_rate_limited_total", "integration")
+	data.SendSumOfGaugesPerUser(out, m.dispatcherAggregationGroups, "alertmanager_dispatcher_aggregation_groups")
+	data.SendSumOfSummariesPerUser(out, m.dispatcherProcessingDuration, "alertmanager_dispatcher_alert_processing_duration_seconds")
 	data.SendSumOfCountersPerUser(out, m.dispatcherAggregationGroupsLimitReached, "alertmanager_dispatcher_aggregation_group_limit_reached_total")
 	data.SendSumOfCountersPerUser(out, m.insertAlertFailures, "alertmanager_alerts_insert_limited_total")
 	data.SendSumOfGaugesPerUser(out, m.alertsLimiterAlertsCount, "alertmanager_alerts_limiter_current_alerts")

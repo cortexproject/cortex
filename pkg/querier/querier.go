@@ -12,13 +12,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
-	"github.com/thanos-community/promql-engine/engine"
-	"github.com/thanos-community/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/engine"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
@@ -77,7 +79,7 @@ type Config struct {
 
 	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
 
-	// Experimental. Use https://github.com/thanos-community/promql-engine rather than
+	// Experimental. Use https://github.com/thanos-io/promql-engine rather than
 	// the Prometheus query engine.
 	ThanosEngine bool `yaml:"thanos_engine"`
 }
@@ -111,7 +113,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
-	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-community/promql-engine rather than the Prometheus promql engine.")
+	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-io/promql-engine rather than the Prometheus promql engine.")
 }
 
 // Validate the config
@@ -165,13 +167,21 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits, tombstonesLoader)
 	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
-	lazyQueryable := storage.QueryableFunc(func(ctx context.Context, mint int64, maxt int64) (storage.Querier, error) {
-		querier, err := queryable.Querier(ctx, mint, maxt)
+	lazyQueryable := storage.QueryableFunc(func(mint int64, maxt int64) (storage.Querier, error) {
+		querier, err := queryable.Querier(mint, maxt)
 		if err != nil {
 			return nil, err
 		}
 		return lazyquery.NewLazyQuerier(querier), nil
 	})
+
+	// Emit max_concurrent config as a metric.
+	maxConcurrentMetric := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Namespace: "cortex",
+		Name:      "max_concurrent_queries",
+		Help:      "The maximum number of concurrent queries.",
+	})
+	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
 	var queryEngine v1.QueryEngine
 	opts := promql.EngineOpts{
@@ -209,7 +219,7 @@ type sampleAndChunkQueryable struct {
 	storage.Queryable
 }
 
-func (q *sampleAndChunkQueryable) ChunkQuerier(ctx context.Context, mint, maxt int64) (storage.ChunkQuerier, error) {
+func (q *sampleAndChunkQueryable) ChunkQuerier(mint, maxt int64) (storage.ChunkQuerier, error) {
 	return nil, errors.New("ChunkQuerier not implemented")
 }
 
@@ -232,27 +242,16 @@ type QueryableWithFilter interface {
 	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
 }
 
+type limiterHolder struct {
+	limiter            *limiter.QueryLimiter
+	limiterInitializer sync.Once
+}
+
 // NewQueryable creates a new Queryable for cortex.
 func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides, tombstonesLoader purger.TombstonesLoader) storage.Queryable {
-	return storage.QueryableFunc(func(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
-		now := time.Now()
-
-		userID, err := tenant.TenantID(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		ctx = limiter.AddQueryLimiterToContext(ctx, limiter.NewQueryLimiter(limits.MaxFetchedSeriesPerQuery(userID), limits.MaxFetchedChunkBytesPerQuery(userID), limits.MaxChunksPerQuery(userID), limits.MaxFetchedDataBytesPerQuery(userID)))
-
-		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, limits, cfg.MaxQueryIntoFuture)
-		if err == errEmptyTimeRange {
-			return storage.NoopQuerier(), nil
-		} else if err != nil {
-			return nil, err
-		}
-
+	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
-			ctx:                 ctx,
+			now:                 time.Now(),
 			mint:                mint,
 			maxt:                maxt,
 			chunkIterFn:         chunkIterFn,
@@ -260,30 +259,9 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			limits:              limits,
 			maxQueryIntoFuture:  cfg.MaxQueryIntoFuture,
 			queryStoreForLabels: cfg.QueryStoreForLabels,
-		}
-
-		dqr, err := distributor.Querier(ctx, mint, maxt)
-		if err != nil {
-			return nil, err
-		}
-
-		q.metadataQuerier = dqr
-
-		if distributor.UseQueryable(now, mint, maxt) {
-			q.queriers = append(q.queriers, dqr)
-		}
-
-		for _, s := range stores {
-			if !s.UseQueryable(now, mint, maxt) {
-				continue
-			}
-
-			cqr, err := s.Querier(ctx, mint, maxt)
-			if err != nil {
-				return nil, err
-			}
-
-			q.queriers = append(q.queriers, cqr)
+			distributor:         distributor,
+			stores:              stores,
+			limiterHolder:       &limiterHolder{},
 		}
 
 		return q, nil
@@ -291,26 +269,73 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	// used for labels and metadata queries
-	metadataQuerier storage.Querier
-
-	// used for selecting series
-	queriers []storage.Querier
-
 	chunkIterFn chunkIteratorFunc
-	ctx         context.Context
+	now         time.Time
 	mint, maxt  int64
 
 	tombstonesLoader    purger.TombstonesLoader
 	limits              *validation.Overrides
 	maxQueryIntoFuture  time.Duration
 	queryStoreForLabels bool
+	distributor         QueryableWithFilter
+	stores              []QueryableWithFilter
+	limiterHolder       *limiterHolder
+}
+
+func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int64, int64, storage.Querier, []storage.Querier, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return ctx, userID, 0, 0, nil, nil, err
+	}
+
+	q.limiterHolder.limiterInitializer.Do(func() {
+		q.limiterHolder.limiter = limiter.NewQueryLimiter(q.limits.MaxFetchedSeriesPerQuery(userID), q.limits.MaxFetchedChunkBytesPerQuery(userID), q.limits.MaxChunksPerQuery(userID), q.limits.MaxFetchedDataBytesPerQuery(userID))
+	})
+
+	ctx = limiter.AddQueryLimiterToContext(ctx, q.limiterHolder.limiter)
+
+	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
+	if err != nil {
+		return ctx, userID, 0, 0, nil, nil, err
+	}
+
+	dqr, err := q.distributor.Querier(mint, maxt)
+	if err != nil {
+		return ctx, userID, 0, 0, nil, nil, err
+	}
+	metadataQuerier := dqr
+
+	queriers := make([]storage.Querier, 0)
+	if q.distributor.UseQueryable(q.now, mint, maxt) {
+		queriers = append(queriers, dqr)
+	}
+
+	for _, s := range q.stores {
+		if !s.UseQueryable(q.now, mint, maxt) {
+			continue
+		}
+
+		cqr, err := s.Querier(mint, maxt)
+		if err != nil {
+			return ctx, userID, 0, 0, nil, nil, err
+		}
+
+		queriers = append(queriers, cqr)
+	}
+	return ctx, userID, mint, maxt, metadataQuerier, queriers, nil
 }
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
-func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	log, ctx := spanlogger.New(q.ctx, "querier.Select")
+func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	ctx, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	if err == errEmptyTimeRange {
+		return storage.EmptySeriesSet()
+	} else if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
+	log, ctx := spanlogger.New(ctx, "querier.Select")
 	defer log.Span.Finish()
 
 	if sp != nil {
@@ -318,8 +343,14 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 	}
 
 	if sp == nil {
+		mint, maxt, err = validateQueryTimeRange(ctx, userID, mint, maxt, q.limits, q.maxQueryIntoFuture)
+		if err == errEmptyTimeRange {
+			return storage.EmptySeriesSet()
+		} else if err != nil {
+			return storage.ErrSeriesSet(err)
+		}
 		// if SelectHints is null, rely on minT, maxT of querier to scope in range for Select stmt
-		sp = &storage.SelectHints{Start: q.mint, End: q.maxt}
+		sp = &storage.SelectHints{Start: mint, End: maxt}
 	} else if sp.Func == "series" && !q.queryStoreForLabels {
 		// Else if the querier receives a 'series' query, it means only metadata is needed.
 		// Here we expect that metadataQuerier querier will handle that.
@@ -328,12 +359,7 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 
 		// In this case, the query time range has already been validated when the querier has been
 		// created.
-		return q.metadataQuerier.Select(true, sp, matchers...)
-	}
-
-	userID, err := tenant.TenantID(ctx)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
+		return metadataQuerier.Select(ctx, true, sp, matchers...)
 	}
 
 	// Validate query time range. Even if the time range has already been validated when we created
@@ -354,7 +380,7 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 	// For series queries without specifying the start time, we prefer to
 	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
 	if sp.Func == "series" && startMs == 0 {
-		return q.metadataQuerier.Select(true, sp, matchers...)
+		return metadataQuerier.Select(ctx, true, sp, matchers...)
 	}
 
 	startTime := model.Time(startMs)
@@ -373,8 +399,8 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 		return storage.ErrSeriesSet(err)
 	}
 
-	if len(q.queriers) == 1 {
-		seriesSet := q.queriers[0].Select(sortSeries, sp, matchers...)
+	if len(queriers) == 1 {
+		seriesSet := queriers[0].Select(ctx, sortSeries, sp, matchers...)
 
 		if tombstones.Len() != 0 {
 			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
@@ -383,16 +409,16 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 		return seriesSet
 	}
 
-	sets := make(chan storage.SeriesSet, len(q.queriers))
-	for _, querier := range q.queriers {
+	sets := make(chan storage.SeriesSet, len(queriers))
+	for _, querier := range queriers {
 		go func(querier storage.Querier) {
 			// We should always select sorted here as we will need to merge the series
-			sets <- querier.Select(true, sp, matchers...)
+			sets <- querier.Select(ctx, true, sp, matchers...)
 		}(querier)
 	}
 
 	var result []storage.SeriesSet
-	for range q.queriers {
+	for range queriers {
 		select {
 		case set := <-sets:
 			result = append(result, set)
@@ -413,88 +439,99 @@ func (q querier) Select(sortSeries bool, sp *storage.SelectHints, matchers ...*l
 }
 
 // LabelValues implements storage.Querier.
-func (q querier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	if err == errEmptyTimeRange {
+		return nil, nil, nil
+	} else if err != nil {
+		return nil, nil, err
+	}
 	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelValues(name, matchers...)
+		return metadataQuerier.LabelValues(ctx, name, matchers...)
 	}
 
-	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelValues(name, matchers...)
+	if len(queriers) == 1 {
+		return queriers[0].LabelValues(ctx, name, matchers...)
 	}
 
 	var (
-		g, _     = errgroup.WithContext(q.ctx)
+		g, _     = errgroup.WithContext(ctx)
 		sets     = [][]string{}
-		warnings = storage.Warnings(nil)
+		warnings = annotations.Annotations(nil)
 
 		resMtx sync.Mutex
 	)
 
-	for _, querier := range q.queriers {
+	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
 		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
-			myValues, myWarnings, err := querier.LabelValues(name, matchers...)
+			myValues, myWarnings, err := querier.LabelValues(ctx, name, matchers...)
 			if err != nil {
 				return err
 			}
 
 			resMtx.Lock()
 			sets = append(sets, myValues)
-			warnings = append(warnings, myWarnings...)
+			warnings.Merge(myWarnings)
 			resMtx.Unlock()
 
 			return nil
 		})
 	}
 
-	err := g.Wait()
-	if err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, nil, err
 	}
 
 	return strutil.MergeSlices(sets...), warnings, nil
 }
 
-func (q querier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
-	if !q.queryStoreForLabels {
-		return q.metadataQuerier.LabelNames(matchers...)
+func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	if err == errEmptyTimeRange {
+		return nil, nil, nil
+	} else if err != nil {
+		return nil, nil, err
 	}
 
-	if len(q.queriers) == 1 {
-		return q.queriers[0].LabelNames(matchers...)
+	if !q.queryStoreForLabels {
+		return metadataQuerier.LabelNames(ctx, matchers...)
+	}
+
+	if len(queriers) == 1 {
+		return queriers[0].LabelNames(ctx, matchers...)
 	}
 
 	var (
-		g, _     = errgroup.WithContext(q.ctx)
+		g, _     = errgroup.WithContext(ctx)
 		sets     = [][]string{}
-		warnings = storage.Warnings(nil)
+		warnings = annotations.Annotations(nil)
 
 		resMtx sync.Mutex
 	)
 
-	for _, querier := range q.queriers {
+	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
 		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
-			myNames, myWarnings, err := querier.LabelNames(matchers...)
+			myNames, myWarnings, err := querier.LabelNames(ctx, matchers...)
 			if err != nil {
 				return err
 			}
 
 			resMtx.Lock()
 			sets = append(sets, myNames)
-			warnings = append(warnings, myWarnings...)
+			warnings.Merge(myWarnings)
 			resMtx.Unlock()
 
 			return nil
 		})
 	}
 
-	err := g.Wait()
-	if err != nil {
+	if err := g.Wait(); err != nil {
 		return nil, nil, err
 	}
 
@@ -569,7 +606,7 @@ func (s *sliceSeriesSet) Err() error {
 	return nil
 }
 
-func (s *sliceSeriesSet) Warnings() storage.Warnings {
+func (s *sliceSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 

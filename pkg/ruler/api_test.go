@@ -20,7 +20,7 @@ import (
 )
 
 func TestRuler_rules(t *testing.T) {
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -76,7 +76,7 @@ func TestRuler_rules(t *testing.T) {
 }
 
 func TestRuler_rules_special_characters(t *testing.T) {
-	store := newMockRuleStore(mockSpecialCharRules)
+	store := newMockRuleStore(mockSpecialCharRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -127,12 +127,65 @@ func TestRuler_rules_special_characters(t *testing.T) {
 			},
 		},
 	})
-
 	require.Equal(t, string(expectedResponse), string(body))
 }
 
+func TestRuler_rules_limit(t *testing.T) {
+	store := newMockRuleStore(mockRulesLimit, nil)
+	cfg := defaultRulerConfig(t)
+
+	r := newTestRuler(t, cfg, store, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
+	w := httptest.NewRecorder()
+	a.PrometheusRules(w, req)
+
+	resp := w.Result()
+	body, _ := io.ReadAll(resp.Body)
+	// Check status code and status response
+	responseJSON := response{}
+	err := json.Unmarshal(body, &responseJSON)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, responseJSON.Status, "success")
+
+	// Testing the running rules for user1 in the mock store
+	expectedResponse, _ := json.Marshal(response{
+		Status: "success",
+		Data: &RuleDiscovery{
+			RuleGroups: []*RuleGroup{
+				{
+					Name:  "group1",
+					File:  "namespace1",
+					Limit: 5,
+					Rules: []rule{
+						&recordingRule{
+							Name:   "UP_RULE",
+							Query:  "up",
+							Health: "unknown",
+							Type:   "recording",
+						},
+						&alertingRule{
+							Name:   "UP_ALERT",
+							Query:  "up < 1",
+							State:  "inactive",
+							Health: "unknown",
+							Type:   "alerting",
+							Alerts: []*Alert{},
+						},
+					},
+					Interval: 60,
+				},
+			},
+		},
+	})
+	require.Equal(t, string(expectedResponse), string(body))
+}
 func TestRuler_alerts(t *testing.T) {
-	store := newMockRuleStore(mockRules)
+	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -167,7 +220,7 @@ func TestRuler_alerts(t *testing.T) {
 }
 
 func TestRuler_Create(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -257,7 +310,7 @@ rules:
 }
 
 func TestRuler_DeleteNamespace(t *testing.T) {
-	store := newMockRuleStore(mockRulesNamespaces)
+	store := newMockRuleStore(mockRulesNamespaces, nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -295,7 +348,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 }
 
 func TestRuler_LimitsPerGroup(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -349,7 +402,7 @@ rules:
 }
 
 func TestRuler_RulerGroupLimits(t *testing.T) {
-	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList))
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
 	cfg := defaultRulerConfig(t)
 
 	r := newTestRuler(t, cfg, store, nil)
@@ -393,6 +446,67 @@ rules:
 	}
 
 	// define once so the requests build on each other so the number of rules can be tested
+	router := mux.NewRouter()
+	router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			// POST
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), "user1")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.status, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+		})
+	}
+}
+
+func TestRuler_ProtoToRuleGroupYamlConvertion(t *testing.T) {
+	store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
+	cfg := defaultRulerConfig(t)
+
+	r := newTestRuler(t, cfg, store, nil)
+	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	tc := []struct {
+		name   string
+		input  string
+		output string
+		err    error
+		status int
+	}{
+		{
+			name:   "when pushing group that can be safely converted from RuleGroupDesc to RuleGroup yaml",
+			status: 202,
+			input: `
+name: test_first_group_will_succeed
+interval: 15s
+rules:
+- record: up_rule
+  expr: |2+
+    up{}
+`,
+			output: "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}",
+		},
+		{
+			name:   "when pushing group that CANNOT be safely converted from RuleGroupDesc to RuleGroup yaml",
+			status: 400,
+			input: `
+name: test_first_group_will_succeed
+interval: 15s
+rules:
+- record: up_rule
+  expr: |2+
+
+    up{}
+`,
+			output: "unable to decoded rule group\n",
+		},
+	}
+
 	router := mux.NewRouter()
 	router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
 

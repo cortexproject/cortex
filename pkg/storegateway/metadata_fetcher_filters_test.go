@@ -27,14 +27,17 @@ import (
 )
 
 func TestIgnoreDeletionMarkFilter_Filter(t *testing.T) {
+	t.Parallel()
 	testIgnoreDeletionMarkFilter(t, false)
 }
 
 func TestIgnoreDeletionMarkFilter_FilterWithBucketIndex(t *testing.T) {
+	// parallel testing causes data race
 	testIgnoreDeletionMarkFilter(t, true)
 }
 
 func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
+	// parallel testing causes data race
 	const userID = "user-1"
 
 	now := time.Now()
@@ -110,6 +113,7 @@ func testIgnoreDeletionMarkFilter(t *testing.T, bucketIndexEnabled bool) {
 }
 
 func TestIgnoreNonQueryableBlocksFilter(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	ctx := context.Background()
 	logger := log.NewNopLogger()

@@ -51,7 +51,6 @@
 * [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
 * [ENHANCEMENT] Compactor: Exposing Thanos accept-malformed-index to Cortex compactor. #5334
-* [ENHANCEMENT] Update Go version to 1.20.4. #5299
 * [ENHANCEMENT] Log: Avoid expensive log.Valuer evaluation for disallowed levels. #5297
 * [ENHANCEMENT] Improving Performance on the API Gzip Handler. #5347
 * [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
@@ -87,7 +86,6 @@
 * [BUGFIX] Compactor: Partial block with only visit marker should be deleted even there is no deletion marker. #5342
 * [BUGFIX] KV: Etcd calls will no longer block indefinitely and will now time out after the DialTimeout period. #5392
 * [BUGFIX] Ring: Allow RF greater than number of zones to select more than one instance per zone #5411
-* [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
 * [BUGFIX] Store Gateway: Fix bug in store gateway ring comparison logic. #5426
 * [BUGFIX] Ring: Fix bug in consistency of Get func in a scaling zone-aware ring. #5429
 * [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
@@ -99,6 +97,14 @@
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
 * [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
 * [BUGFIX] Store-Gateway and AlertManager: Add a `wait_instance_time_out` to WaitInstanceState context to avoid waiting forever. #5581
+
+## 1.15.3 2023-06-22
+
+* [BUGFIX] Distributor: Fix potential data corruption in cases of timeout between distributors and ingesters. #5422
+
+## 1.15.2 2023-05-09
+
+* [ENHANCEMENT] Update Go version to 1.20.4. #5299
 
 ## 1.15.1 2023-04-26
 

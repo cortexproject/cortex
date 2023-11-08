@@ -2,7 +2,6 @@ package util
 
 import (
 	"runtime"
-	"strconv"
 	"testing"
 	"time"
 
@@ -13,10 +12,6 @@ type simpleItem int64
 
 func (i simpleItem) Priority() int64 {
 	return int64(i)
-}
-
-func (i simpleItem) Key() string {
-	return strconv.FormatInt(int64(i), 10)
 }
 
 func TestPriorityQueueBasic(t *testing.T) {
@@ -39,6 +34,7 @@ func TestPriorityQueuePriorities(t *testing.T) {
 	queue.Enqueue(simpleItem(1))
 	queue.Enqueue(simpleItem(2))
 
+	assert.Equal(t, simpleItem(2), queue.Peek().(simpleItem), "Expected to peek simpleItem(2)")
 	assert.Equal(t, simpleItem(2), queue.Dequeue().(simpleItem), "Expected to dequeue simpleItem(2)")
 	assert.Equal(t, simpleItem(1), queue.Dequeue().(simpleItem), "Expected to dequeue simpleItem(1)")
 
@@ -51,6 +47,7 @@ func TestPriorityQueuePriorities2(t *testing.T) {
 	queue.Enqueue(simpleItem(2))
 	queue.Enqueue(simpleItem(1))
 
+	assert.Equal(t, simpleItem(2), queue.Peek().(simpleItem), "Expected to peek simpleItem(2)")
 	assert.Equal(t, simpleItem(2), queue.Dequeue().(simpleItem), "Expected to dequeue simpleItem(2)")
 	assert.Equal(t, simpleItem(1), queue.Dequeue().(simpleItem), "Expected to dequeue simpleItem(1)")
 

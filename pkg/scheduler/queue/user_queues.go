@@ -59,13 +59,12 @@ type queues struct {
 }
 
 type userQueue struct {
-	queue requestQueue
+	queue userRequestQueue
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
-	queriers         map[string]struct{}
-	reservedQueriers map[string]int64
-	maxQueriers      int
+	queriers    map[string]struct{}
+	maxQueriers int
 
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
@@ -111,7 +110,7 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int) requestQueue {
+func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -139,7 +138,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) requestQueue {
 		if queryPriority.Enabled {
 			uq.queue = NewPriorityRequestQueue(util.NewPriorityQueue(nil))
 		} else {
-			uq.queue = NewFIFOQueue(make(chan Request, queueSize))
+			uq.queue = NewFIFORequestQueue(make(chan Request, queueSize))
 		}
 
 		q.userQueues[userID] = uq
@@ -163,7 +162,6 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) requestQueue {
 	if uq.maxQueriers != maxQueriers {
 		uq.maxQueriers = maxQueriers
 		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
-		uq.reservedQueriers = getReservedQueriers(uq.queriers, q.limits.QueryPriority(userID).Priorities)
 	}
 
 	return uq.queue
@@ -172,7 +170,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) requestQueue {
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
 // to pass last user index returned by this function as argument. Is there was no previous
 // last user index, use -1.
-func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (requestQueue, string, int) {
+func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (userRequestQueue, string, int) {
 	uid := lastUserIndex
 
 	for iters := 0; iters < len(q.users); iters++ {
@@ -198,7 +196,7 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (re
 			}
 		}
 
-		//TODO: justinjung04, reserved queriers
+		// TODO: justinjung04, reserved queriers
 		//if priority, isReserved := uq.reservedQueriers[querierID]; isReserved {
 		//	return uq.queues[priority], u, uid
 		//}
@@ -206,6 +204,13 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (re
 		return uq.queue, u, uid
 	}
 	return nil, "", uid
+}
+
+func (q *queues) getMinPriority(userID string, querierID string) int64 {
+	// TODO: justinjung04 reserved querier
+	// check list of queriers and QueryPriority config
+	// from QueryPriority config, establish map of
+	return 0
 }
 
 func (q *queues) addQuerierConnection(querierID string) {
@@ -320,16 +325,6 @@ func (q *queues) recomputeUserQueriers() {
 // In that case *all* queriers should be used.
 // Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
 func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
-	//numOfReservedQueriers := getNumOfReservedQueriers(queriersToSelect, len(allSortedQueriers), numOfReservedQueriersFloat)
-	//reservedQueriers := make(map[string]struct{}, numOfReservedQueriers)
-
-	//if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
-	//	for i := 0; i < numOfReservedQueriers; i++ {
-	//		reservedQueriers[allSortedQueriers[i]] = struct{}{}
-	//	}
-	//	return nil, reservedQueriers
-	//}
-
 	queriers := make(map[string]struct{}, queriersToSelect)
 	rnd := rand.New(rand.NewSource(userSeed))
 
@@ -340,40 +335,12 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	for i := 0; i < queriersToSelect; i++ {
 		r := rnd.Intn(last + 1)
 		queriers[scratchpad[r]] = struct{}{}
-		//if i < numOfReservedQueriers {
-		//	reservedQueriers[scratchpad[r]] = struct{}{}
-		//}
-		// move selected item to the end, it won't be selected anymore.
 		scratchpad[r], scratchpad[last] = scratchpad[last], scratchpad[r]
 		last--
 	}
 
 	return queriers
 }
-
-func getReservedQueriers(queriers map[string]struct{}, priorities []validation.PriorityDef) map[string]int64 {
-	// TODO: justinjung04
-	return map[string]int64{}
-}
-
-// TODO: justinjung04
-//func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, reservedQueriers float64) int {
-//	numOfReservedQueriers := int(reservedQueriers)
-//
-//	if reservedQueriers < 1 && reservedQueriers > 0 {
-//		if queriersToSelect == 0 || queriersToSelect > totalNumOfQueriers {
-//			queriersToSelect = totalNumOfQueriers
-//		}
-//
-//		numOfReservedQueriers = int(math.Ceil(float64(queriersToSelect) * reservedQueriers))
-//	}
-//
-//	if numOfReservedQueriers > totalNumOfQueriers {
-//		return totalNumOfQueriers
-//	}
-//
-//	return numOfReservedQueriers
-//}
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {

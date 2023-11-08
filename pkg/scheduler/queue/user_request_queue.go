@@ -2,9 +2,9 @@ package queue
 
 import "github.com/cortexproject/cortex/pkg/util"
 
-type requestQueue interface {
+type userRequestQueue interface {
 	enqueueRequest(Request)
-	dequeueRequest() Request
+	dequeueRequest(minPriority int64) Request
 	length() int
 	closeQueue()
 }
@@ -13,7 +13,7 @@ type FIFORequestQueue struct {
 	queue chan Request
 }
 
-func NewFIFOQueue(queue chan Request) *FIFORequestQueue {
+func NewFIFORequestQueue(queue chan Request) *FIFORequestQueue {
 	return &FIFORequestQueue{queue: queue}
 }
 
@@ -21,7 +21,7 @@ func (f *FIFORequestQueue) enqueueRequest(r Request) {
 	f.queue <- r
 }
 
-func (f *FIFORequestQueue) dequeueRequest() Request {
+func (f *FIFORequestQueue) dequeueRequest(_ int64) Request {
 	return <-f.queue
 }
 
@@ -45,7 +45,10 @@ func (f *PriorityRequestQueue) enqueueRequest(r Request) {
 	f.queue.Enqueue(r)
 }
 
-func (f *PriorityRequestQueue) dequeueRequest() Request {
+func (f *PriorityRequestQueue) dequeueRequest(minPriority int64) Request {
+	if f.queue.Peek().Priority() < minPriority {
+		return nil
+	}
 	return f.queue.Dequeue()
 }
 

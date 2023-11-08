@@ -93,7 +93,7 @@ func (pq *PriorityQueue) Enqueue(op PriorityOp) {
 	}
 }
 
-// Dequeue will return the op with the highest priority; block if queue is
+// Dequeue will remove and return the op with the highest priority; block if queue is
 // empty; returns nil if queue is closed.
 func (pq *PriorityQueue) Dequeue() PriorityOp {
 	pq.lock.Lock()
@@ -112,5 +112,11 @@ func (pq *PriorityQueue) Dequeue() PriorityOp {
 	if pq.lengthGauge != nil {
 		pq.lengthGauge.Dec()
 	}
+	return op
+}
+
+// Peek will return the op with the highest priority without removing it from the queue
+func (pq *PriorityQueue) Peek() PriorityOp {
+	op := pq.queue[0]
 	return op
 }

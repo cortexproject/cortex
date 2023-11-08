@@ -360,7 +360,7 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) requestQueue {
+func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) userRequestQueue {
 	q := uq.getOrAddQueue(tenant, maxQueriers)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
@@ -368,8 +368,8 @@ func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) requestQ
 	return q
 }
 
-func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...requestQueue) int {
-	var n requestQueue
+func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...userRequestQueue) int {
+	var n userRequestQueue
 	for _, q := range qs {
 		n, _, lastUserIndex = uq.getNextQueueForQuerier(lastUserIndex, querier)
 		assert.Equal(t, q, n)

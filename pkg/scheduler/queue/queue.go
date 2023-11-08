@@ -156,7 +156,12 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			request := queue.dequeueRequest()
+			request := queue.dequeueRequest(q.queues.getMinPriority(userID, querierID))
+			if request == nil {
+				// the queue does not contain request with the min priority, break to wait for more requests
+				break
+			}
+
 			if queue.length() == 0 {
 				q.queues.deleteQueue(userID)
 			}

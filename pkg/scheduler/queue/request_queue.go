@@ -6,6 +6,7 @@ type requestQueue interface {
 	enqueueRequest(Request)
 	dequeueRequest() Request
 	length() int
+	closeQueue()
 }
 
 type FIFORequestQueue struct {
@@ -28,6 +29,10 @@ func (f *FIFORequestQueue) length() int {
 	return len(f.queue)
 }
 
+func (f *FIFORequestQueue) closeQueue() {
+	close(f.queue)
+}
+
 type PriorityRequestQueue struct {
 	queue *util.PriorityQueue
 }
@@ -46,4 +51,8 @@ func (f *PriorityRequestQueue) dequeueRequest() Request {
 
 func (f *PriorityRequestQueue) length() int {
 	return f.queue.Length()
+}
+
+func (f *PriorityRequestQueue) closeQueue() {
+	f.queue.DiscardAndClose()
 }

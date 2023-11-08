@@ -97,6 +97,7 @@ func (q *queues) deleteQueue(userID string) {
 		return
 	}
 
+	uq.queue.closeQueue()
 	delete(q.userQueues, userID)
 	q.users[uq.index] = ""
 
@@ -197,7 +198,7 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (re
 			}
 		}
 
-		//TODO: jungjust, reserved queriers
+		//TODO: justinjung04, reserved queriers
 		//if priority, isReserved := uq.reservedQueriers[querierID]; isReserved {
 		//	return uq.queues[priority], u, uid
 		//}
@@ -351,19 +352,11 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 }
 
 func getReservedQueriers(queriers map[string]struct{}, priorities []validation.PriorityDef) map[string]int64 {
-	// TODO jungjust:
-	//reservedQueriers := make(map[string]int64)
-	//
-	//cnt := 0
-	//for querierID, _ := range queriers {
-	//
-	//	//reservedQueriers
-	//	// TODO jungjust: get diff priorities
-	//	cnt++
-	//}
+	// TODO: justinjung04
 	return map[string]int64{}
 }
 
+// TODO: justinjung04
 //func getNumOfReservedQueriers(queriersToSelect int, totalNumOfQueriers int, reservedQueriers float64) int {
 //	numOfReservedQueriers := int(reservedQueriers)
 //

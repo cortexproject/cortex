@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"strconv"
 	"sync"
 	"testing"
@@ -160,40 +161,37 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 }
 
 func TestRequestQueue_QueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
-	//queue := NewRequestQueue(0, 0,
-	//	prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
-	//	prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
-	//	MockLimits{MaxOutstanding: 3},
-	//	nil,
-	//)
-	//ctx := context.Background()
-	//queue.RegisterQuerierConnection("querier-1")
-	//
-	//normalRequest1 := MockRequest{
-	//	id:             "normal query 1",
-	//}
-	//normalRequest2 := MockRequest{
-	//	id:             "normal query 2",
-	//}
-	//highPriorityRequest := MockRequest{
-	//	id:             "high priority query",
-	//}
-	//
-	//assert.NoError(t, queue.EnqueueRequest("userID", normalRequest1, 1, func() {}))
-	//assert.NoError(t, queue.EnqueueRequest("userID", normalRequest2, 1, func() {}))
-	//assert.NoError(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {}))
-	//
-	//assert.Error(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})) // should fail due to maxOutstandingPerTenant = 3
-	//assert.Equal(t, 3, queue.queues.getTotalQueueSize("userID"))
-	//nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
-	//assert.Equal(t, highPriorityRequest, nextRequest) // high priority request returned, although it was enqueued the last
-	//nextRequest, _, _ = queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
-	//assert.Equal(t, normalRequest1, nextRequest)
-	//nextRequest, _, _ = queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
-	//assert.Equal(t, normalRequest2, nextRequest)
+	queue := NewRequestQueue(0, 0,
+		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
+		prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
+		MockLimits{MaxOutstanding: 3, queryPriority: validation.QueryPriority{Enabled: true}},
+		nil,
+	)
+	ctx := context.Background()
+	queue.RegisterQuerierConnection("querier-1")
+
+	normalRequest1 := MockRequest{
+		id: "normal query 1",
+	}
+	normalRequest2 := MockRequest{
+		id: "normal query 2",
+	}
+	highPriorityRequest := MockRequest{
+		id:       "high priority query",
+		priority: 1,
+	}
+
+	assert.NoError(t, queue.EnqueueRequest("userID", normalRequest1, 1, func() {}))
+	assert.NoError(t, queue.EnqueueRequest("userID", normalRequest2, 1, func() {}))
+	assert.NoError(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {}))
+
+	assert.Error(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})) // should fail due to maxOutstandingPerTenant = 3
+	nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
+	assert.Equal(t, highPriorityRequest, nextRequest) // high priority request returned, although it was enqueued the last
 }
 
 func TestRequestQueue_ReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
+	// TODO: justinjung04
 	//queue := NewRequestQueue(0, 0,
 	//	prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user"}),
 	//	prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"}),
@@ -235,6 +233,6 @@ type MockRequest struct {
 	priority int64
 }
 
-func (r MockRequest) GetPriority() int64 {
+func (r MockRequest) Priority() int64 {
 	return r.priority
 }

@@ -157,6 +157,9 @@ FindQueue:
 		// Pick next request from the queue.
 		for {
 			request := queue.dequeueRequest()
+			if queue.length() == 0 {
+				q.queues.deleteQueue(userID)
+			}
 
 			q.queueLength.WithLabelValues(userID).Dec()
 

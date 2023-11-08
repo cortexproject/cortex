@@ -39,7 +39,8 @@ type RingConfig struct {
 
 	WaitActiveInstanceTimeout time.Duration `yaml:"wait_active_instance_timeout"`
 
-	ObservePeriod time.Duration `yaml:"-"`
+	ObservePeriod             time.Duration `yaml:"-"`
+	ZoneStableShuffleSharding bool          `yaml:"zone_stable_shuffle_sharding" doc:"hidden"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -70,6 +71,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 
 	// Timeout durations
 	f.DurationVar(&cfg.WaitActiveInstanceTimeout, "compactor.ring.wait-active-instance-timeout", 10*time.Minute, "Timeout for waiting on compactor to become ACTIVE in the ring.")
+	f.BoolVar(&cfg.ZoneStableShuffleSharding, "compactor.ring.zone-stable-shuffle-sharding", false, "If true, use zone stable shuffle sharding algorithm. Otherwise, use the default shuffle sharding algorithm.")
 }
 
 // ToLifecyclerConfig returns a LifecyclerConfig based on the compactor

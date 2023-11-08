@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 	"hash/fnv"
 	"math/rand"
 	"os"
@@ -209,6 +210,8 @@ type Config struct {
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
 
 	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
+
+	BucketIndexMetadataFetcherEnabled bool `yaml:"bucket_index_metadata_fetcher_enabled"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -319,6 +322,9 @@ type Compactor struct {
 	ring                   *ring.Ring
 	ringSubservices        *services.Manager
 	ringSubservicesWatcher *services.FailureWatcher
+
+	//sharding strategy
+	shardingStrategy storegateway.ShardingStrategy
 
 	// Metrics.
 	compactionRunsStarted          prometheus.Counter
@@ -474,6 +480,30 @@ func newCompactor(
 	if len(compactorCfg.DisabledTenants) > 0 {
 		level.Info(c.logger).Log("msg", "compactor using disabled users", "disabled", strings.Join(compactorCfg.DisabledTenants, ", "))
 	}
+	var err error
+	if c.compactorCfg.ShardingEnabled {
+		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
+		c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to initialize compactor ring lifecycler")
+		}
+
+		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ringKey, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to initialize compactor ring")
+		}
+		// Instance the right strategy.
+		switch c.compactorCfg.ShardingStrategy {
+		case util.ShardingStrategyDefault:
+			c.shardingStrategy = storegateway.NewDefaultShardingStrategy(c.ring, c.ringLifecycler.Addr, logger)
+		case util.ShardingStrategyShuffle:
+			c.shardingStrategy = storegateway.NewShuffleShardingStrategy(c.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, c.compactorCfg.ShardingRing.ZoneStableShuffleSharding)
+		default:
+			return nil, errInvalidShardingStrategy
+		}
+	} else {
+		c.shardingStrategy = storegateway.NewNoShardingStrategy()
+	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
 
@@ -516,17 +546,6 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// Initialize the compactors ring if sharding is enabled.
 	if c.compactorCfg.ShardingEnabled {
-		lifecyclerCfg := c.compactorCfg.ShardingRing.ToLifecyclerConfig()
-		c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "compactor", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
-		if err != nil {
-			return errors.Wrap(err, "unable to initialize compactor ring lifecycler")
-		}
-
-		c.ring, err = ring.New(lifecyclerCfg.RingConfig, "compactor", ringKey, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.registerer))
-		if err != nil {
-			return errors.Wrap(err, "unable to initialize compactor ring")
-		}
-
 		c.ringSubservices, err = services.NewManager(c.ringLifecycler, c.ring)
 		if err == nil {
 			c.ringSubservicesWatcher = services.NewFailureWatcher()
@@ -570,7 +589,6 @@ func (c *Compactor) starting(ctx context.Context) error {
 			}
 		}
 	}
-
 	// Ensure an initial cleanup occurred before starting the compactor.
 	if err := services.StartAndAwaitRunning(ctx, c.blocksCleaner); err != nil {
 		c.ringSubservices.StopAsync()
@@ -789,28 +807,41 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	// Filters out blocks with no compaction maker; blocks can be marked as no compaction for reasons like
 	// out of order chunks or index file too big.
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
-
-	fetcher, err := block.NewMetaFetcher(
-		ulogger,
-		c.compactorCfg.MetaSyncConcurrency,
-		bucket,
-		c.metaSyncDirForUser(userID),
-		reg,
-		// List of filters to apply (order matters).
-		[]block.MetadataFilter{
-			// Remove the ingester ID because we don't shard blocks anymore, while still
-			// honoring the shard ID if sharding was done in the past.
-			NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
-			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
-			ignoreDeletionMarkFilter,
-			deduplicateBlocksFilter,
-			noCompactMarkerFilter,
-		},
-	)
-	if err != nil {
-		return err
+	var fetcher block.MetadataFetcher
+	var err error
+	filters := []block.MetadataFilter{
+		// Remove the ingester ID because we don't shard blocks anymore, while still
+		// honoring the shard ID if sharding was done in the past.
+		NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
+		block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
+		ignoreDeletionMarkFilter,
+		deduplicateBlocksFilter,
+		noCompactMarkerFilter,
 	}
-
+	if c.compactorCfg.BucketIndexMetadataFetcherEnabled {
+		fetcher = storegateway.NewBucketIndexMetadataFetcher(
+			userID,
+			bucket,
+			c.shardingStrategy,
+			c.limits,
+			ulogger,
+			reg,
+			filters,
+		)
+	} else {
+		fetcher, err = block.NewMetaFetcher(
+			ulogger,
+			c.compactorCfg.MetaSyncConcurrency,
+			bucket,
+			c.metaSyncDirForUser(userID),
+			reg,
+			// List of filters to apply (order matters).
+			filters,
+		)
+		if err != nil {
+			return err
+		}
+	}
 	syncer, err := compact.NewMetaSyncer(
 		ulogger,
 		reg,

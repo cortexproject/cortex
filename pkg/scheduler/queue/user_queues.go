@@ -65,10 +65,11 @@ type userQueue struct {
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
 	queriers         map[string]struct{}
+	maxQueriers      int
+	maxOutstanding   int
 	reservedQueriers map[string]int64
 	priorityList     []int64
 	priorityEnabled  bool
-	maxQueriers      int
 
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.
@@ -113,7 +114,8 @@ func (q *queues) deleteQueue(userID string) {
 // MaxQueriers is used to compute which queriers should handle requests for this user.
 // If maxQueriers is <= 0, all queriers can handle this user's requests.
 // If maxQueriers has changed since the last call, queriers for this are recomputed.
-func (q *queues) getOrAddQueue(userID string, maxQueriers int, priorityList []int64, priorityEnabled bool) userRequestQueue {
+// It's also responsible to store user configs and update the attributes if related configs have changed.
+func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue {
 	// Empty user is not allowed, as that would break our users list ("" is used for free spot).
 	if userID == "" {
 		return nil
@@ -124,14 +126,85 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int, priorityList []in
 	}
 
 	uq := q.userQueues[userID]
+	priorityEnabled := q.limits.QueryPriority(userID).Enabled
+	maxOutstanding := q.limits.MaxOutstandingPerTenant(userID)
+	priorityList := getPriorityList(q.limits.QueryPriority(userID), len(q.queriers))
 
 	if uq == nil {
-		uq = q.createUserQueue(userID)
+		uq = &userQueue{
+			seed:  util.ShuffleShardSeed(userID, ""),
+			index: -1,
+		}
+
+		uq.queue = q.createUserRequestQueue(userID)
+		uq.maxOutstanding = q.limits.MaxOutstandingPerTenant(userID)
+		q.userQueues[userID] = uq
+
+		// Add user to the list of users... find first free spot, and put it there.
+		for ix, u := range q.users {
+			if u == "" {
+				uq.index = ix
+				q.users[ix] = userID
+				break
+			}
+		}
+
+		// ... or add to the end.
+		if uq.index < 0 {
+			uq.index = len(q.users)
+			q.users = append(q.users, userID)
+		}
+	} else if (uq.priorityEnabled != priorityEnabled) || (uq.maxOutstanding != maxOutstanding && priorityEnabled) {
+		tmpQueue := q.createUserRequestQueue(userID)
+
+		// flush to new queue
+		for uq.queue.length() > 0 {
+			tmpQueue.enqueueRequest(uq.queue.dequeueRequest(0, false))
+		}
+
+		uq.queue = tmpQueue
+		uq.maxOutstanding = q.limits.MaxOutstandingPerTenant(userID)
 	}
 
-	q.updateUserQueuesAttributes(uq, userID, maxQueriers, priorityList, priorityEnabled)
+	if uq.maxQueriers != maxQueriers {
+		uq.maxQueriers = maxQueriers
+		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
+	}
+
+	if priorityEnabled && !reflect.DeepEqual(uq.priorityList, priorityList) {
+		reservedQueriers := make(map[string]int64)
+
+		i := 0
+		for querierID := range uq.queriers {
+			if i == len(priorityList) {
+				break
+			}
+			reservedQueriers[querierID] = priorityList[i]
+			i++
+		}
+
+		uq.reservedQueriers = reservedQueriers
+		uq.priorityList = priorityList
+		uq.priorityEnabled = priorityEnabled
+	}
 
 	return uq.queue
+}
+
+func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
+	if q.limits.QueryPriority(userID).Enabled {
+		return NewPriorityRequestQueue(util.NewPriorityQueue(nil))
+	}
+
+	queueSize := q.limits.MaxOutstandingPerTenant(userID)
+
+	// 0 is the default value of the flag. If the old flag is set
+	// then we use its value for compatibility reason.
+	if q.maxUserQueueSize != 0 {
+		queueSize = q.maxUserQueueSize
+	}
+
+	return NewFIFORequestQueue(make(chan Request, queueSize))
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected
@@ -166,94 +239,6 @@ func (q *queues) getNextQueueForQuerier(lastUserIndex int, querierID string) (us
 		return uq.queue, u, uid
 	}
 	return nil, "", uid
-}
-
-func (q *queues) createUserQueue(userID string) *userQueue {
-	uq := &userQueue{
-		seed:  util.ShuffleShardSeed(userID, ""),
-		index: -1,
-	}
-
-	uq.queue = q.createUserRequestQueue(userID)
-	q.userQueues[userID] = uq
-
-	// Add user to the list of users... find first free spot, and put it there.
-	for ix, u := range q.users {
-		if u == "" {
-			uq.index = ix
-			q.users[ix] = userID
-			break
-		}
-	}
-
-	// ... or add to the end.
-	if uq.index < 0 {
-		uq.index = len(q.users)
-		q.users = append(q.users, userID)
-	}
-
-	return uq
-}
-
-func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
-	if q.limits.QueryPriority(userID).Enabled {
-		return NewPriorityRequestQueue(util.NewPriorityQueue(nil))
-	}
-
-	return NewFIFORequestQueue(make(chan Request, q.getQueueSize(userID)))
-}
-
-func (q *queues) getQueueSize(userID string) int {
-	queueSize := q.limits.MaxOutstandingPerTenant(userID)
-
-	// 0 is the default value of the flag. If the old flag is set
-	// then we use its value for compatibility reason.
-	if q.maxUserQueueSize != 0 {
-		queueSize = q.maxUserQueueSize
-	}
-
-	return queueSize
-}
-
-func (q *queues) updateUserQueuesAttributes(uq *userQueue, userID string, maxQueriers int, priorityList []int64, priorityEnabled bool) {
-	if uq.maxQueriers != maxQueriers {
-		uq.maxQueriers = maxQueriers
-		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
-	}
-
-	// if query priority is newly enabled/disabled, transfer the requests to the new queue
-	if uq.priorityEnabled != priorityEnabled {
-		tmpQueue := q.createUserRequestQueue(userID)
-
-		for uq.queue.length() > 0 {
-			tmpQueue.enqueueRequest(uq.queue.dequeueRequest(0, false))
-		}
-		uq.queue = tmpQueue
-	}
-
-	if priorityEnabled && !reflect.DeepEqual(uq.priorityList, priorityList) {
-		reservedQueriers := make(map[string]int64)
-
-		i := 0
-		for querierID := range uq.queriers {
-			if i == len(priorityList) {
-				break
-			}
-			reservedQueriers[querierID] = priorityList[i]
-			i++
-		}
-
-		uq.reservedQueriers = reservedQueriers
-		uq.priorityList = priorityList
-		uq.priorityEnabled = priorityEnabled
-	}
-}
-
-func (q *queues) getMinPriority(userID string, querierID string) (int64, bool) {
-	if priority, ok := q.userQueues[userID].reservedQueriers[querierID]; ok {
-		return priority, true
-	}
-	return 0, false
 }
 
 func (q *queues) addQuerierConnection(querierID string) {
@@ -386,6 +371,24 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	}
 
 	return queriers
+}
+
+// getPriorityList returns a list of priorities, each priority repeated as much as number of reserved queriers.
+// This is used when creating map of reserved queriers.
+func getPriorityList(queryPriority validation.QueryPriority, totalQuerierCount int) []int64 {
+	var priorityList []int64
+
+	if queryPriority.Enabled {
+		for _, priority := range queryPriority.Priorities {
+			reservedQuerierShardSize := util.DynamicShardSize(priority.ReservedQueriers, totalQuerierCount)
+
+			for i := 0; i < reservedQuerierShardSize; i++ {
+				priorityList = append(priorityList, priority.Priority)
+			}
+		}
+	}
+
+	return priorityList
 }
 
 // MockLimits implements the Limits interface. Used in tests only.

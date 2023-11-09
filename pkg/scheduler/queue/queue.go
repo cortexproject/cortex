@@ -62,9 +62,9 @@ type RequestQueue struct {
 	queues  *queues
 	stopped bool
 
-	queueLength       *prometheus.GaugeVec   // Per user and reason.
-	totalRequests     *prometheus.CounterVec // Per user.
-	discardedRequests *prometheus.CounterVec // Per user.
+	queueLength       *prometheus.GaugeVec   // Per user and priority.
+	totalRequests     *prometheus.CounterVec // Per user and priority.
+	discardedRequests *prometheus.CounterVec // Per user and priority.
 }
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec, limits Limits, registerer prometheus.Registerer) *RequestQueue {
@@ -98,9 +98,8 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		return ErrStopped
 	}
 
-	shardSize := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
-	priorityList, priorityEnabled := q.getPriorityList(userID)
-	queue := q.queues.getOrAddQueue(userID, shardSize, priorityList, priorityEnabled)
+	maxQuerierCount := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
+	queue := q.queues.getOrAddQueue(userID, maxQuerierCount)
 	maxOutstandingRequests := q.queues.limits.MaxOutstandingPerTenant(userID)
 	priority := strconv.FormatInt(req.Priority(), 10)
 
@@ -109,39 +108,25 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		return errors.New("no queue found")
 	}
 
-	q.totalRequests.WithLabelValues(userID, priority).Inc()
+	metricLabels := prometheus.Labels{
+		"user":     userID,
+		"priority": priority,
+	}
+	q.totalRequests.With(metricLabels).Inc()
 
 	if queue.length() >= maxOutstandingRequests {
-		q.discardedRequests.WithLabelValues(userID, priority).Inc()
+		q.discardedRequests.With(metricLabels).Inc()
 		return ErrTooManyRequests
 	}
 
 	queue.enqueueRequest(req)
-	q.queueLength.WithLabelValues(userID, priority).Inc()
+	q.queueLength.With(metricLabels).Inc()
 	q.cond.Broadcast()
 	// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 	if successFn != nil {
 		successFn()
 	}
 	return nil
-}
-
-func (q *RequestQueue) getPriorityList(userID string) ([]int64, bool) {
-	var priorityList []int64
-
-	queryPriority := q.queues.limits.QueryPriority(userID)
-
-	if queryPriority.Enabled {
-		for _, priority := range queryPriority.Priorities {
-			reservedQuerierShardSize := util.DynamicShardSize(priority.ReservedQueriers, len(q.queues.queriers))
-
-			for i := 0; i < reservedQuerierShardSize; i++ {
-				priorityList = append(priorityList, priority.Priority)
-			}
-		}
-	}
-
-	return priorityList, queryPriority.Enabled
 }
 
 // GetNextRequestForQuerier find next user queue and takes the next request off of it. Will block if there are no requests.
@@ -177,7 +162,7 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			minPriority, checkMinPriority := q.queues.getMinPriority(userID, querierID)
+			minPriority, checkMinPriority := q.getMinPriorityForQuerier(userID, querierID)
 			request := queue.dequeueRequest(minPriority, checkMinPriority)
 			if request == nil {
 				// the queue does not contain request with the min priority, break to wait for more requests
@@ -188,7 +173,11 @@ FindQueue:
 				q.queues.deleteQueue(userID)
 			}
 
-			q.queueLength.WithLabelValues(userID, strconv.FormatInt(request.Priority(), 10)).Dec()
+			metricLabels := prometheus.Labels{
+				"user":     userID,
+				"priority": strconv.FormatInt(request.Priority(), 10),
+			}
+			q.queueLength.With(metricLabels).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
@@ -201,6 +190,13 @@ FindQueue:
 	// and wait for more requests.
 	querierWait = true
 	goto FindQueue
+}
+
+func (q *RequestQueue) getMinPriorityForQuerier(userID string, querierID string) (int64, bool) {
+	if priority, ok := q.queues.userQueues[userID].reservedQueriers[querierID]; ok {
+		return priority, true
+	}
+	return 0, false
 }
 
 func (q *RequestQueue) forgetDisconnectedQueriers(_ context.Context) error {

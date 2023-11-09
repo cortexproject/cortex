@@ -156,10 +156,9 @@ func TestQueuesConsistency(t *testing.T) {
 			conns := map[string]int{}
 
 			for i := 0; i < 10000; i++ {
-				queue := uq.getOrAddQueue(generateTenant(r), 3, []int64{}, true)
 				switch r.Int() % 6 {
 				case 0:
-					assert.NotNil(t, queue)
+					assert.NotNil(t, uq.getOrAddQueue(generateTenant(r), 3, []int64{}, false))
 				case 1:
 					qid := generateQuerier(r)
 					_, _, luid := uq.getNextQueueForQuerier(lastUserIndexes[qid], qid)

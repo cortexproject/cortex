@@ -154,64 +154,6 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	require.Equal(t, 0, ov.MaxLabelsSizeBytes("user2"))
 }
 
-func TestQueryPriority(t *testing.T) {
-	type testCase struct {
-		regex            string
-		compiledRegexNil bool
-	}
-	testCases := []testCase{
-		{
-			regex:            "",
-			compiledRegexNil: true,
-		},
-		{
-			regex:            ".*",
-			compiledRegexNil: true,
-		},
-		{
-			regex:            ".+",
-			compiledRegexNil: true,
-		},
-		{
-			regex:            "some_metric",
-			compiledRegexNil: false,
-		},
-	}
-
-	for _, tc := range testCases {
-		overrides, err := NewOverrides(Limits{
-			QueryPriority: QueryPriority{
-				Enabled:    true,
-				Priorities: getPriorities(tc.regex, 1*time.Hour, 0*time.Hour),
-			},
-		}, nil)
-		queryPriority := overrides.QueryPriority("")
-
-		assert.NoError(t, err)
-		assert.Equal(t, 1, len(queryPriority.Priorities[0].QueryAttributes))
-		if tc.compiledRegexNil {
-			assert.Nil(t, queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
-		} else {
-			assert.NotNil(t, queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
-		}
-	}
-}
-
-func getPriorities(regex string, startTime, endTime time.Duration) []PriorityDef {
-	return []PriorityDef{
-		{
-			Priority: 1,
-			QueryAttributes: []QueryAttribute{
-				{
-					Regex:     regex,
-					StartTime: startTime,
-					EndTime:   endTime,
-				},
-			},
-		},
-	}
-}
-
 func TestLimitsLoadingFromYaml(t *testing.T) {
 	SetDefaultLimitsForYAMLUnmarshalling(Limits{
 		MaxLabelNameLength: 100,

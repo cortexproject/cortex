@@ -30,7 +30,8 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 					continue
 				}
 
-				queryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = compiledRegex
+				attribute.CompiledRegex = compiledRegex
+				queryPriority.Priorities[i].QueryAttributes[j] = attribute
 			}
 
 			if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(queryParam) {

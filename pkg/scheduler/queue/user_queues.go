@@ -238,11 +238,11 @@ func (q *queues) updateUserQueuesAttributes(uq *userQueue, userID string, maxQue
 
 		i := 0
 		for querierID := range uq.queriers {
-			reservedQueriers[querierID] = priorityList[i]
-			i++
 			if i == len(priorityList) {
 				break
 			}
+			reservedQueriers[querierID] = priorityList[i]
+			i++
 		}
 
 		uq.reservedQueriers = reservedQueriers
@@ -370,6 +370,10 @@ func (q *queues) recomputeUserQueriers() {
 // In that case *all* queriers should be used.
 // Scratchpad is used for shuffling, to avoid new allocations. If nil, new slice is allocated.
 func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueriers []string, scratchpad []string) map[string]struct{} {
+	if queriersToSelect == 0 || len(allSortedQueriers) <= queriersToSelect {
+		return nil
+	}
+
 	queriers := make(map[string]struct{}, queriersToSelect)
 	rnd := rand.New(rand.NewSource(userSeed))
 

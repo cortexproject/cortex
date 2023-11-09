@@ -26,6 +26,7 @@ func TestFIFORequestQueue(t *testing.T) {
 	assert.Equal(t, 1, queue.length())
 	assert.Equal(t, request2, queue.dequeueRequest(0, false))
 	assert.Equal(t, 0, queue.length())
+
 	queue.closeQueue()
 	assert.Panics(t, func() { queue.enqueueRequest(request1) })
 }
@@ -53,7 +54,9 @@ func TestPriorityRequestQueue(t *testing.T) {
 	queue.enqueueRequest(request2)
 	assert.Equal(t, 2, queue.length())
 	assert.Equal(t, request2, queue.dequeueRequest(2, true))
+	assert.Equal(t, 1, queue.length())
 	assert.Equal(t, request1, queue.dequeueRequest(2, false))
+	assert.Equal(t, 0, queue.length())
 
 	queue.closeQueue()
 	assert.Panics(t, func() { queue.enqueueRequest(request1) })

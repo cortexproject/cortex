@@ -60,10 +60,12 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 		Priorities: priorities,
 	}
 
+	assert.Nil(t, queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
 	}, now, &queryPriority, true))
+	assert.NotNil(t, queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
@@ -81,6 +83,17 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 	}, now, &queryPriority, false))
 
 	queryPriority.Priorities[0].QueryAttributes[0].Regex = ".*"
+
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"sum(up)"},
+		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
+	}, now, &queryPriority, true))
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"count(up)"},
+		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
+	}, now, &queryPriority, false))
+
+	queryPriority.Priorities[0].QueryAttributes[0].Regex = ".+"
 
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},

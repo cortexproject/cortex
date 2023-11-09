@@ -107,7 +107,7 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		return errors.New("no queue found")
 	}
 
-	q.totalRequests.WithLabelValues(userID).Inc()
+	q.totalRequests.WithLabelValues(userID).Inc() // TODO: justinjung04
 
 	if queue.length() >= maxOutstandingRequests {
 		q.discardedRequests.WithLabelValues(userID).Inc()

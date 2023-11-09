@@ -141,12 +141,8 @@ func (s *Syncer) SyncMetas(ctx context.Context) error {
 	if err != nil {
 		return retry(err)
 	}
-	if metas != nil {
-		s.blocks = metas
-	}
-	if partial != nil {
-		s.partial = partial
-	}
+	s.blocks = metas
+	s.partial = partial
 	return nil
 }
 

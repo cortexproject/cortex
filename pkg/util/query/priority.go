@@ -3,6 +3,7 @@ package query
 import (
 	"math"
 	"net/url"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func GetPriority(requestParams url.Values, now time.Time, queryPriority validation.QueryPriority) int64 {
+func GetPriority(requestParams url.Values, now time.Time, queryPriority *validation.QueryPriority, queryPriorityChanged bool) int64 {
 	queryParam := requestParams.Get("query")
 	timeParam := requestParams.Get("time")
 	startParam := requestParams.Get("start")
@@ -21,8 +22,17 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority validati
 		return queryPriority.DefaultPriority
 	}
 
-	for _, priority := range queryPriority.Priorities {
-		for _, attribute := range priority.QueryAttributes {
+	for i, priority := range queryPriority.Priorities {
+		for j, attribute := range priority.QueryAttributes {
+			if queryPriorityChanged {
+				compiledRegex, err := regexp.Compile(attribute.Regex)
+				if err != nil {
+					continue
+				}
+
+				queryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = compiledRegex
+			}
+
 			if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(queryParam) {
 				continue
 			}

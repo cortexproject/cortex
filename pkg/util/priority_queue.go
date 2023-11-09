@@ -64,7 +64,11 @@ func (pq *PriorityQueue) Length() int {
 func (pq *PriorityQueue) Close() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
-	pq.closing = true
+	if len(pq.queue) > 0 {
+		pq.closing = true
+	} else {
+		pq.closed = true
+	}
 	pq.cond.Broadcast()
 }
 

@@ -194,7 +194,6 @@ func TestQueryPriority(t *testing.T) {
 		} else {
 			assert.NotNil(t, queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 		}
-		assert.True(t, queryPriority.RegexCompiled)
 	}
 }
 

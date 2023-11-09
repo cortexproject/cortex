@@ -1,12 +1,14 @@
 package query
 
 import (
-	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/stretchr/testify/assert"
 	"net/url"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t *testing.T) {
@@ -23,21 +25,20 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t
 			},
 		},
 	}
+	queryPriority := validation.QueryPriority{
+		Priorities: priorities,
+	}
 
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, validation.QueryPriority{
-		Priorities: priorities,
-	}))
+	}, now, &queryPriority, true))
 
+	queryPriority.Enabled = true
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{""},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, validation.QueryPriority{
-		Enabled:    true,
-		Priorities: priorities,
-	}))
+	}, now, &queryPriority, true))
 }
 
 func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
@@ -54,72 +55,52 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 			},
 		},
 	}
-	limits, _ := validation.NewOverrides(validation.Limits{
-		QueryPriority: validation.QueryPriority{
-			Enabled:    true,
-			Priorities: priorities,
-		},
-	}, nil)
+	queryPriority := validation.QueryPriority{
+		Enabled:    true,
+		Priorities: priorities,
+	}
 
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, true))
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 
-	priorities[0].QueryAttributes[0].Regex = "(^sum$|c(.+)t)"
-	limits, _ = validation.NewOverrides(validation.Limits{
-		QueryPriority: validation.QueryPriority{
-			Enabled:    true,
-			Priorities: priorities,
-		},
-	}, nil)
+	queryPriority.Priorities[0].QueryAttributes[0].Regex = "(^sum$|c(.+)t)"
 
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, true))
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 
-	priorities[0].QueryAttributes[0].Regex = ".*"
-	limits, _ = validation.NewOverrides(validation.Limits{
-		QueryPriority: validation.QueryPriority{
-			Enabled:    true,
-			Priorities: priorities,
-		},
-	}, nil)
+	queryPriority.Priorities[0].QueryAttributes[0].Regex = ".*"
 
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, true))
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 
-	priorities[0].QueryAttributes[0].Regex = ""
-	limits, _ = validation.NewOverrides(validation.Limits{
-		QueryPriority: validation.QueryPriority{
-			Enabled:    true,
-			Priorities: priorities,
-		},
-	}, nil)
+	queryPriority.Priorities[0].QueryAttributes[0].Regex = ""
 
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, true))
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"count(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 }
 
 func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
@@ -135,57 +116,55 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 			},
 		},
 	}
-	limits, _ := validation.NewOverrides(validation.Limits{
-		QueryPriority: validation.QueryPriority{
-			Enabled:    true,
-			Priorities: priorities,
-		},
-	}, nil)
+	queryPriority := validation.QueryPriority{
+		Enabled:    true,
+		Priorities: priorities,
+	}
 
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, true))
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-30*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-60*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-45*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"time":  []string{strconv.FormatInt(now.Add(-15*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 
 	assert.Equal(t, int64(1), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-45*time.Minute).Unix(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-15*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-50*time.Minute).Unix(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-15*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-45*time.Minute).Unix(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-10*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-60*time.Minute).Unix(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-45*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 	assert.Equal(t, int64(0), GetPriority(url.Values{
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-15*time.Minute).Unix(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-1*time.Minute).Unix(), 10)},
-	}, now, limits.QueryPriority("")))
+	}, now, &queryPriority, false))
 }

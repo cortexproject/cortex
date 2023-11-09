@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_query "github.com/cortexproject/cortex/pkg/util/query"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Config for a Frontend.
@@ -73,6 +75,9 @@ type Frontend struct {
 	retry  *transport.Retry
 
 	lastQueryID atomic.Uint64
+
+	queryPriority         validation.QueryPriority
+	compiledQueryPriority validation.QueryPriority
 
 	// frontend workers will read from this channel, and send request to scheduler.
 	requestsCh chan *frontendRequest
@@ -211,8 +216,15 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 		}
 
 		queryPriority := f.limits.QueryPriority(userID)
+
 		if reqParams != nil && queryPriority.Enabled {
-			freq.priority = util_query.GetPriority(reqParams, ts, queryPriority)
+			queryPriorityChanged := !reflect.DeepEqual(f.queryPriority, queryPriority)
+			if queryPriorityChanged {
+				f.queryPriority = queryPriority
+				f.compiledQueryPriority = queryPriority
+			}
+
+			freq.priority = util_query.GetPriority(reqParams, ts, &f.compiledQueryPriority, queryPriorityChanged)
 		}
 
 		f.requests.put(freq)

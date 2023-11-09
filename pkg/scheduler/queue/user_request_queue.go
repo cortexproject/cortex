@@ -4,7 +4,7 @@ import "github.com/cortexproject/cortex/pkg/util"
 
 type userRequestQueue interface {
 	enqueueRequest(Request)
-	dequeueRequest(minPriority int64) Request
+	dequeueRequest(minPriority int64, checkMinPriority bool) Request
 	length() int
 	closeQueue()
 }
@@ -21,7 +21,7 @@ func (f *FIFORequestQueue) enqueueRequest(r Request) {
 	f.queue <- r
 }
 
-func (f *FIFORequestQueue) dequeueRequest(_ int64) Request {
+func (f *FIFORequestQueue) dequeueRequest(_ int64, _ bool) Request {
 	return <-f.queue
 }
 
@@ -45,8 +45,8 @@ func (f *PriorityRequestQueue) enqueueRequest(r Request) {
 	f.queue.Enqueue(r)
 }
 
-func (f *PriorityRequestQueue) dequeueRequest(minPriority int64) Request {
-	if f.queue.Peek().Priority() < minPriority {
+func (f *PriorityRequestQueue) dequeueRequest(minPriority int64, checkMinPriority bool) Request {
+	if checkMinPriority && f.queue.Peek().Priority() < minPriority {
 		return nil
 	}
 	return f.queue.Dequeue()
@@ -57,5 +57,5 @@ func (f *PriorityRequestQueue) length() int {
 }
 
 func (f *PriorityRequestQueue) closeQueue() {
-	f.queue.DiscardAndClose()
+	f.queue.Close()
 }

@@ -3,7 +3,6 @@ package queue
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"strconv"
 	"sync"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func BenchmarkGetNextRequest(b *testing.B) {

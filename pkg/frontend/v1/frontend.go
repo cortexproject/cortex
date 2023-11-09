@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"reflect"
 	"time"
 
 	"github.com/go-kit/log"
@@ -78,6 +79,9 @@ type Frontend struct {
 
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
+
+	queryPriority         validation.QueryPriority
+	compiledQueryPriority validation.QueryPriority
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -207,8 +211,15 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 		}
 
 		queryPriority := f.limits.QueryPriority(userID)
+
 		if reqParams != nil && queryPriority.Enabled {
-			request.priority = util_query.GetPriority(reqParams, ts, queryPriority)
+			queryPriorityChanged := !reflect.DeepEqual(f.queryPriority, queryPriority)
+			if queryPriorityChanged {
+				f.queryPriority = queryPriority
+				f.compiledQueryPriority = queryPriority
+			}
+
+			request.priority = util_query.GetPriority(reqParams, ts, &f.compiledQueryPriority, queryPriorityChanged)
 		}
 
 		if err := f.queueRequest(ctx, &request); err != nil {

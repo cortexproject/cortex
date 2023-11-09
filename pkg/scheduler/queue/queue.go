@@ -98,7 +98,8 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 	}
 
 	shardSize := util.DynamicShardSize(maxQueriers, len(q.queues.queriers))
-	queue := q.queues.getOrAddQueue(userID, shardSize)
+	priorityList, priorityEnabled := q.getPriorityList(userID)
+	queue := q.queues.getOrAddQueue(userID, shardSize, priorityList, priorityEnabled)
 	maxOutstandingRequests := q.queues.limits.MaxOutstandingPerTenant(userID)
 
 	if queue == nil {
@@ -121,6 +122,24 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		successFn()
 	}
 	return nil
+}
+
+func (q *RequestQueue) getPriorityList(userID string) ([]int64, bool) {
+	var priorityList []int64
+
+	queryPriority := q.queues.limits.QueryPriority(userID)
+
+	if queryPriority.Enabled {
+		for _, priority := range queryPriority.Priorities {
+			reservedQuerierShardSize := util.DynamicShardSize(priority.ReservedQueriers, len(q.queues.queriers))
+
+			for i := 0; i < reservedQuerierShardSize; i++ {
+				priorityList = append(priorityList, priority.Priority)
+			}
+		}
+	}
+
+	return priorityList, queryPriority.Enabled
 }
 
 // GetNextRequestForQuerier find next user queue and takes the next request off of it. Will block if there are no requests.
@@ -156,7 +175,8 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			request := queue.dequeueRequest(q.queues.getMinPriority(userID, querierID))
+			minPriority, checkMinPriority := q.queues.getMinPriority(userID, querierID)
+			request := queue.dequeueRequest(minPriority, checkMinPriority)
 			if request == nil {
 				// the queue does not contain request with the min priority, break to wait for more requests
 				break

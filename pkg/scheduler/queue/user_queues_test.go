@@ -156,7 +156,7 @@ func TestQueuesConsistency(t *testing.T) {
 			conns := map[string]int{}
 
 			for i := 0; i < 10000; i++ {
-				queue := uq.getOrAddQueue(generateTenant(r), 3)
+				queue := uq.getOrAddQueue(generateTenant(r), 3, []int64{}, true)
 				switch r.Int() % 6 {
 				case 0:
 					assert.NotNil(t, queue)
@@ -352,6 +352,10 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	}
 }
 
+func TestQueuesUpdatedConfig(t *testing.T) {
+	// TODO: justinjung04
+}
+
 func generateTenant(r *rand.Rand) string {
 	return fmt.Sprint("tenant-", r.Int()%5)
 }
@@ -361,10 +365,10 @@ func generateQuerier(r *rand.Rand) string {
 }
 
 func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) userRequestQueue {
-	q := uq.getOrAddQueue(tenant, maxQueriers)
+	q := uq.getOrAddQueue(tenant, maxQueriers, []int64{}, true)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
-	assert.Equal(t, q, uq.getOrAddQueue(tenant, maxQueriers))
+	assert.Equal(t, q, uq.getOrAddQueue(tenant, maxQueriers, []int64{}, true))
 	return q
 }
 

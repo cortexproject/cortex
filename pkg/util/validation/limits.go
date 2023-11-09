@@ -52,7 +52,6 @@ type QueryPriority struct {
 	Enabled         bool          `yaml:"enabled" doc:"nocli|description=Whether queries are assigned with priorities.|default=false"`
 	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.|default=0"`
 	Priorities      []PriorityDef `yaml:"priorities" doc:"nocli|description=List of priority definitions."`
-	RegexCompiled   bool          `yaml:"-" doc:"nocli"`
 }
 
 type PriorityDef struct {
@@ -530,23 +529,6 @@ func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 
 // QueryPriority returns the query priority config for the tenant, including different priorities and their attributes
 func (o *Overrides) QueryPriority(userID string) QueryPriority {
-	queryPriority := o.GetOverridesForUser(userID).QueryPriority
-
-	if !queryPriority.RegexCompiled {
-		priorities := queryPriority.Priorities
-		for i, priority := range priorities {
-			for j, attributes := range priority.QueryAttributes {
-				if attributes.Regex == "" || attributes.Regex == ".*" || attributes.Regex == ".+" {
-					// if it matches all, don't use regex
-					o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = nil
-				} else {
-					o.GetOverridesForUser(userID).QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex, _ = regexp.Compile(attributes.Regex)
-				}
-			}
-		}
-		o.GetOverridesForUser(userID).QueryPriority.RegexCompiled = true
-	}
-
 	return o.GetOverridesForUser(userID).QueryPriority
 }
 

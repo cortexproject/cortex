@@ -1990,6 +1990,11 @@ sharding_ring:
 # When enabled, index verification will ignore out of order label names.
 # CLI flag: -compactor.accept-malformed-index
 [accept_malformed_index: <boolean> | default = false]
+
+# When enabled and bucket index is also enabled in bucket store, bucket index
+# metadata fetcher will be used in syncer
+# CLI flag: -compactor.bucket-index-metadata-fetcher-enabled
+[bucket_index_metadata_fetcher_enabled: <boolean> | default = false]
 ```
 
 ### `configs_config`

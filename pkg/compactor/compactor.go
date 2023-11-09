@@ -250,6 +250,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
+	f.BoolVar(&cfg.BucketIndexMetadataFetcherEnabled, "compactor.bucket-index-metadata-fetcher-enabled", false, "When enabled and bucket index is also enabled in bucket store, bucket index metadata fetcher will be used in syncer")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
@@ -818,7 +819,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		deduplicateBlocksFilter,
 		noCompactMarkerFilter,
 	}
-	if c.compactorCfg.BucketIndexMetadataFetcherEnabled {
+	if c.storageCfg.BucketStore.BucketIndex.Enabled && c.compactorCfg.BucketIndexMetadataFetcherEnabled {
 		fetcher = storegateway.NewBucketIndexMetadataFetcher(
 			userID,
 			bucket,

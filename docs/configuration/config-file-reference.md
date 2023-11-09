@@ -4912,6 +4912,19 @@ sharding_ring:
 # The sharding strategy to use. Supported values are: default, shuffle-sharding.
 # CLI flag: -store-gateway.sharding-strategy
 [sharding_strategy: <string> | default = "default"]
+
+# Comma separated list of tenants whose store metrics this storegateway can
+# process. If specified, only these tenants will be handled by storegateway,
+# otherwise this storegateway will be enabled for all the tenants in the
+# store-gateway cluster.
+# CLI flag: -store-gateway.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants whose store metrics this storegateway cannot
+# process. If specified, a storegateway that would normally pick the specified
+# tenant(s) for processing will ignore them instead.
+# CLI flag: -store-gateway.disabled-tenants
+[disabled_tenants: <string> | default = ""]
 ```
 
 ### `tracing_config`

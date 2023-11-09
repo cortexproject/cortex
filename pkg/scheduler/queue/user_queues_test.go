@@ -351,10 +351,6 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	}
 }
 
-func TestQueuesUpdatedConfig(t *testing.T) {
-	// TODO: justinjung04
-}
-
 func generateTenant(r *rand.Rand) string {
 	return fmt.Sprint("tenant-", r.Int()%5)
 }

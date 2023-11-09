@@ -228,6 +228,11 @@ func TestRequestQueue_ReservedQueriersShouldOnlyGetHighPriorityQueries(t *testin
 	//assert.Equal(t, 1, queue.queues.getTotalQueueSize("userID"))
 }
 
+func TestRequestQueue_EnqueueRequest(t *testing.T) {
+	// TODO: justinjung04
+	// check updated limit as well
+}
+
 type MockRequest struct {
 	id       string
 	priority int64

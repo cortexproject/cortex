@@ -119,11 +119,11 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
-		}, []string{"user"}),
+		}, []string{"user", "priority"}),
 		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_frontend_discarded_requests_total",
 			Help: "Total number of query requests discarded.",
-		}, []string{"user"}),
+		}, []string{"user", "priority"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",

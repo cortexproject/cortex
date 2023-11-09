@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -74,7 +75,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, que
 		totalRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_request_queue_requests_total",
 			Help: "Total number of query requests going to the request queue.",
-		}, []string{"user"}),
+		}, []string{"user", "priority"}),
 		discardedRequests: discardedRequests,
 	}
 
@@ -101,21 +102,22 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 	priorityList, priorityEnabled := q.getPriorityList(userID)
 	queue := q.queues.getOrAddQueue(userID, shardSize, priorityList, priorityEnabled)
 	maxOutstandingRequests := q.queues.limits.MaxOutstandingPerTenant(userID)
+	priority := strconv.FormatInt(req.Priority(), 10)
 
 	if queue == nil {
 		// This can only happen if userID is "".
 		return errors.New("no queue found")
 	}
 
-	q.totalRequests.WithLabelValues(userID).Inc() // TODO: justinjung04
+	q.totalRequests.WithLabelValues(userID, priority).Inc()
 
 	if queue.length() >= maxOutstandingRequests {
-		q.discardedRequests.WithLabelValues(userID).Inc()
+		q.discardedRequests.WithLabelValues(userID, priority).Inc()
 		return ErrTooManyRequests
 	}
 
 	queue.enqueueRequest(req)
-	q.queueLength.WithLabelValues(userID).Inc()
+	q.queueLength.WithLabelValues(userID, priority).Inc()
 	q.cond.Broadcast()
 	// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 	if successFn != nil {
@@ -186,7 +188,7 @@ FindQueue:
 				q.queues.deleteQueue(userID)
 			}
 
-			q.queueLength.WithLabelValues(userID).Dec()
+			q.queueLength.WithLabelValues(userID, strconv.FormatInt(request.Priority(), 10)).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()

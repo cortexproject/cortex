@@ -100,7 +100,6 @@ func (q *queues) deleteQueue(userID string) {
 		return
 	}
 
-	uq.queue.closeQueue()
 	delete(q.userQueues, userID)
 	q.users[uq.index] = ""
 
@@ -225,7 +224,6 @@ func (q *queues) updateUserQueuesAttributes(uq *userQueue, userID string, maxQue
 	// if query priority is newly enabled/disabled, transfer the requests to the new queue
 	if uq.priorityEnabled != priorityEnabled {
 		tmpQueue := q.createUserRequestQueue(userID)
-		uq.queue.closeQueue()
 
 		for uq.queue.length() > 0 {
 			tmpQueue.enqueueRequest(uq.queue.dequeueRequest(0, false))
@@ -361,7 +359,6 @@ func (q *queues) recomputeUserQueriers() {
 	scratchpad := make([]string, 0, len(q.sortedQueriers))
 
 	for _, uq := range q.userQueues {
-		//userID := q.users[uq.index]
 		uq.queriers = shuffleQueriersForUser(uq.seed, uq.maxQueriers, q.sortedQueriers, scratchpad)
 	}
 }

@@ -88,14 +88,3 @@ ruler_storage:
   backend: local
   local:
     directory: /tmp/cortex/rules
-
-limits:
-  query_priority:
-    enabled: true
-    default_priority: 1
-    priorities:
-      - priority: 2
-        reserved_queriers: 1
-        query_attributes:
-          - start_time: 2h
-            end_time: 0s

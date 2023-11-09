@@ -6,7 +6,6 @@ type userRequestQueue interface {
 	enqueueRequest(Request)
 	dequeueRequest(minPriority int64, checkMinPriority bool) Request
 	length() int
-	closeQueue()
 }
 
 type FIFORequestQueue struct {
@@ -27,10 +26,6 @@ func (f *FIFORequestQueue) dequeueRequest(_ int64, _ bool) Request {
 
 func (f *FIFORequestQueue) length() int {
 	return len(f.queue)
-}
-
-func (f *FIFORequestQueue) closeQueue() {
-	close(f.queue)
 }
 
 type PriorityRequestQueue struct {
@@ -54,8 +49,4 @@ func (f *PriorityRequestQueue) dequeueRequest(minPriority int64, checkMinPriorit
 
 func (f *PriorityRequestQueue) length() int {
 	return f.queue.Length()
-}
-
-func (f *PriorityRequestQueue) closeQueue() {
-	f.queue.Close()
 }

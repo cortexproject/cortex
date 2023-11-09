@@ -105,12 +105,12 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_queue_length",
 		Help: "Number of queries in the queue.",
-	}, []string{"user"})
+	}, []string{"user", "priority"})
 
 	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_scheduler_discarded_requests_total",
 		Help: "Total number of query requests discarded.",
-	}, []string{"user"})
+	}, []string{"user", "priority"})
 
 	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests, s.limits, registerer)
 

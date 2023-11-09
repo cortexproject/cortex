@@ -520,8 +520,12 @@ func (s *Scheduler) stopping(_ error) error {
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
-	s.queueLength.DeleteLabelValues(user)
-	s.discardedRequests.DeleteLabelValues(user)
+	s.queueLength.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
+	s.discardedRequests.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

@@ -176,8 +176,12 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
-	f.queueLength.DeleteLabelValues(user)
-	f.discardedRequests.DeleteLabelValues(user)
+	f.queueLength.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
+	f.discardedRequests.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).

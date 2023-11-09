@@ -1995,6 +1995,10 @@ sharding_ring:
 # metadata fetcher will be used in syncer
 # CLI flag: -compactor.bucket-index-metadata-fetcher-enabled
 [bucket_index_metadata_fetcher_enabled: <boolean> | default = false]
+
+# When enabled, caching bucket will be used
+# CLI flag: -compactor.caching-bucket-enabled
+[caching_bucket_enabled: <boolean> | default = false]
 ```
 
 ### `configs_config`

@@ -212,6 +212,7 @@ type Config struct {
 	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
 
 	BucketIndexMetadataFetcherEnabled bool `yaml:"bucket_index_metadata_fetcher_enabled"`
+	CachingBucketEnabled              bool `yaml:"caching_bucket_enabled"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -251,6 +252,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
 	f.BoolVar(&cfg.BucketIndexMetadataFetcherEnabled, "compactor.bucket-index-metadata-fetcher-enabled", false, "When enabled and bucket index is also enabled in bucket store, bucket index metadata fetcher will be used in syncer")
+	f.BoolVar(&cfg.CachingBucketEnabled, "compactor.caching-bucket-enabled", false, "When enabled, caching bucket will be used")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
@@ -532,6 +534,14 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// Wrap the bucket client to write block deletion marks in the global location too.
 	c.bucketClient = bucketindex.BucketWithGlobalMarkers(c.bucketClient)
+
+	// Wrap the bucket client with caching layer if caching bucket is enabled.
+	if c.compactorCfg.CachingBucketEnabled {
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(c.storageCfg.BucketStore.ChunksCache, c.storageCfg.BucketStore.MetadataCache, c.bucketClient, c.logger, c.registerer)
+		if err != nil {
+			return errors.Wrapf(err, "create caching bucket")
+		}
+	}
 
 	// Create the users scanner.
 	c.usersScanner = cortex_tsdb.NewUsersScanner(c.bucketClient, c.ownUserForCleanUp, c.parentLogger)

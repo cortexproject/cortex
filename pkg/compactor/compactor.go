@@ -498,14 +498,14 @@ func newCompactor(
 		// Instance the right strategy.
 		switch c.compactorCfg.ShardingStrategy {
 		case util.ShardingStrategyDefault:
-			c.shardingStrategy = storegateway.NewDefaultShardingStrategy(c.ring, c.ringLifecycler.Addr, logger)
+			c.shardingStrategy = storegateway.NewDefaultShardingStrategy(c.ring, c.ringLifecycler.Addr, logger, c.allowedTenants)
 		case util.ShardingStrategyShuffle:
-			c.shardingStrategy = storegateway.NewShuffleShardingStrategy(c.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, c.compactorCfg.ShardingRing.ZoneStableShuffleSharding)
+			c.shardingStrategy = storegateway.NewShuffleShardingStrategy(c.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, c.allowedTenants, c.compactorCfg.ShardingRing.ZoneStableShuffleSharding)
 		default:
 			return nil, errInvalidShardingStrategy
 		}
 	} else {
-		c.shardingStrategy = storegateway.NewNoShardingStrategy()
+		c.shardingStrategy = storegateway.NewNoShardingStrategy(logger, c.allowedTenants)
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)

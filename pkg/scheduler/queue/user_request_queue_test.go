@@ -52,6 +52,7 @@ func TestPriorityRequestQueue(t *testing.T) {
 	assert.Equal(t, 2, queue.length())
 	assert.Equal(t, request2, queue.dequeueRequest(2, true))
 	assert.Equal(t, 1, queue.length())
+	assert.Nil(t, queue.dequeueRequest(2, true))
 	assert.Equal(t, request1, queue.dequeueRequest(2, false))
 	assert.Equal(t, 0, queue.length())
 }

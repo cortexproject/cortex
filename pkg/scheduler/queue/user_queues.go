@@ -154,7 +154,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 			uq.index = len(q.users)
 			q.users = append(q.users, userID)
 		}
-	} else if (uq.priorityEnabled != priorityEnabled) || (uq.maxOutstanding != maxOutstanding && priorityEnabled) {
+	} else if (uq.priorityEnabled != priorityEnabled) || (!priorityEnabled && uq.maxOutstanding != maxOutstanding) {
 		tmpQueue := q.createUserRequestQueue(userID)
 
 		// flush to new queue
@@ -175,12 +175,14 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 		reservedQueriers := make(map[string]int64)
 
 		i := 0
-		for querierID := range uq.queriers {
+		for _, querierID := range q.sortedQueriers {
 			if i == len(priorityList) {
 				break
 			}
-			reservedQueriers[querierID] = priorityList[i]
-			i++
+			if _, ok := uq.queriers[querierID]; ok || uq.queriers == nil {
+				reservedQueriers[querierID] = priorityList[i]
+				i++
+			}
 		}
 
 		uq.reservedQueriers = reservedQueriers
@@ -388,18 +390,22 @@ func getPriorityList(queryPriority validation.QueryPriority, totalQuerierCount i
 		}
 	}
 
+	if len(priorityList) > totalQuerierCount {
+		return []int64{}
+	}
+
 	return priorityList
 }
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	MaxOutstanding     int
-	maxQueriersPerUser float64
-	queryPriority      validation.QueryPriority
+	MaxOutstanding        int
+	MaxQueriersPerUserVal float64
+	QueryPriorityVal      validation.QueryPriority
 }
 
 func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
-	return l.maxQueriersPerUser
+	return l.MaxQueriersPerUserVal
 }
 
 func (l MockLimits) MaxOutstandingPerTenant(_ string) int {
@@ -407,5 +413,5 @@ func (l MockLimits) MaxOutstandingPerTenant(_ string) int {
 }
 
 func (l MockLimits) QueryPriority(_ string) validation.QueryPriority {
-	return l.queryPriority
+	return l.QueryPriorityVal
 }

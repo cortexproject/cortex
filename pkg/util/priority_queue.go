@@ -86,7 +86,7 @@ func (pq *PriorityQueue) Enqueue(op PriorityOp) {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
-	if pq.closed {
+	if pq.closing || pq.closed {
 		panic("enqueue on closed queue")
 	}
 

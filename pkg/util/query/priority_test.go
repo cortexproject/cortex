@@ -116,6 +116,42 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 	}, now, &queryPriority, false))
 }
 
+func Test_GetPriorityShouldNotRecompileRegexIfQueryPriorityChangedIsTrue(t *testing.T) {
+	now := time.Now()
+	priorities := []validation.PriorityDef{
+		{
+			Priority: 1,
+			QueryAttributes: []validation.QueryAttribute{
+				{
+					Regex:     "sum",
+					StartTime: 2 * time.Hour,
+					EndTime:   0 * time.Hour,
+				},
+			},
+		},
+	}
+	queryPriority := validation.QueryPriority{
+		Enabled:    true,
+		Priorities: priorities,
+	}
+
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"sum(up)"},
+		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
+	}, now, &queryPriority, true))
+
+	queryPriority.Priorities[0].QueryAttributes[0].Regex = "count"
+
+	assert.Equal(t, int64(0), GetPriority(url.Values{
+		"query": []string{"count(up)"},
+		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
+	}, now, &queryPriority, false))
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"count(up)"},
+		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
+	}, now, &queryPriority, true))
+}
+
 func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 	now := time.Now()
 	priorities := []validation.PriorityDef{

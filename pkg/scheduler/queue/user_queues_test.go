@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"math"
 	"math/rand"
 	"sort"
@@ -351,6 +352,69 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	}
 }
 
+func TestGetQueue(t *testing.T) {
+	limits := MockLimits{
+		MaxOutstanding: 3,
+	}
+	q := newUserQueues(0, 0, limits)
+	q.addQuerierConnection("q-1")
+	q.addQuerierConnection("q-2")
+	q.addQuerierConnection("q-3")
+	q.addQuerierConnection("q-4")
+	q.addQuerierConnection("q-5")
+
+	queue := q.getOrAddQueue("userID", 2)
+	queue.enqueueRequest(MockRequest{})
+
+	assert.NotNil(t, q.userQueues["userID"])
+	assert.Equal(t, 3, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 2, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 2, len(q.userQueues["userID"].queriers))
+	assert.Subset(t, getKeys(q.queriers), getKeys(q.userQueues["userID"].queriers))
+	assert.IsType(t, &FIFORequestQueue{}, queue)
+	assert.Equal(t, 1, queue.length())
+
+	limits.MaxOutstanding = 10
+	q.limits = limits
+	queue = q.getOrAddQueue("userID", 0)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 0, q.userQueues["userID"].maxQueriers)
+	assert.Nil(t, q.userQueues["userID"].queriers)
+	assert.IsType(t, &FIFORequestQueue{}, queue)
+	assert.Equal(t, 1, queue.length())
+
+	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
+		{
+			Priority:         1,
+			ReservedQueriers: 2,
+		},
+	}}
+	q.limits = limits
+	queue = q.getOrAddQueue("userID", 3)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.IsType(t, &PriorityRequestQueue{}, queue)
+	assert.Equal(t, 1, queue.length())
+	assert.ElementsMatch(t, []int64{1, 1}, q.userQueues["userID"].priorityList)
+	assert.True(t, q.userQueues["userID"].priorityEnabled)
+	assert.Subset(t, getKeys(q.queriers), getKeys(q.userQueues["userID"].queriers))
+	assert.Subset(t, getKeys(q.userQueues["userID"].queriers), getKeys(q.userQueues["userID"].reservedQueriers))
+
+	// check the queriers and reservedQueriers map are consistent
+	for i := 0; i < 10; i++ {
+		queriers := q.userQueues["userID"].queriers
+		reservedQueriers := q.userQueues["userID"].reservedQueriers
+		queue = q.getOrAddQueue("userID", 3)
+		assert.Equal(t, queriers, q.userQueues["userID"].queriers)
+		assert.Equal(t, reservedQueriers, q.userQueues["userID"].reservedQueriers)
+	}
+}
+
 func generateTenant(r *rand.Rand) string {
 	return fmt.Sprint("tenant-", r.Int()%5)
 }
@@ -435,6 +499,27 @@ func getUsersByQuerier(queues *queues, querierID string) []string {
 		}
 	}
 	return userIDs
+}
+
+func getKeys(x interface{}) []string {
+	var keys []string
+
+	switch i := x.(type) {
+	case map[string]struct{}:
+		for k := range i {
+			keys = append(keys, k)
+		}
+	case map[string]*querier:
+		for k := range i {
+			keys = append(keys, k)
+		}
+	case map[string]int64:
+		for k := range i {
+			keys = append(keys, k)
+		}
+	}
+
+	return keys
 }
 
 func TestShuffleQueriers(t *testing.T) {
@@ -551,4 +636,30 @@ func TestShuffleQueriers_WithReservedQueriers_Correctness(t *testing.T) {
 	//	prevQueriers = queriers
 	//	prevReservedQueriers = reservedQueriers
 	//}
+}
+
+func TestGetPriorityList(t *testing.T) {
+	queryPriority := validation.QueryPriority{
+		Enabled: true,
+		Priorities: []validation.PriorityDef{
+			{
+				Priority:         1,
+				ReservedQueriers: 2,
+			},
+			{
+				Priority:         2,
+				ReservedQueriers: 3,
+			},
+		},
+	}
+
+	assert.EqualValues(t, []int64{1, 1, 2, 2, 2}, getPriorityList(queryPriority, 10))
+	assert.EqualValues(t, []int64{}, getPriorityList(queryPriority, 1))
+
+	queryPriority.Priorities[0].ReservedQueriers = 0.4
+	queryPriority.Priorities[1].ReservedQueriers = 0.6
+	assert.EqualValues(t, []int64{1, 1, 1, 1, 2, 2, 2, 2, 2, 2}, getPriorityList(queryPriority, 10))
+
+	queryPriority.Enabled = false
+	assert.Nil(t, getPriorityList(queryPriority, 10))
 }

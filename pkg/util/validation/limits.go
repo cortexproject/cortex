@@ -61,10 +61,10 @@ type PriorityDef struct {
 }
 
 type QueryAttribute struct {
-	Regex         string         `yaml:"regex" doc:"nocli|description=Query string regex. If evaluated true (on top of meeting all other criteria), query is treated as a high priority.|default=.*"`
+	Regex         string         `yaml:"regex" doc:"nocli|description=Query string regex.|default=.*"`
 	CompiledRegex *regexp.Regexp `yaml:"-" doc:"nocli"`
-	StartTime     time.Duration  `yaml:"start_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
-	EndTime       time.Duration  `yaml:"end_time" doc:"nocli|description=If query range falls between the start_time and end_time (on top of meeting all other criteria), query is treated as a high priority.|default=0s"`
+	StartTime     time.Duration  `yaml:"start_time" doc:"nocli|description=Query start time.|default=0s"`
+	EndTime       time.Duration  `yaml:"end_time" doc:"nocli|description=Query end time.|default=0s"`
 }
 
 // Limits describe all the limits for users; can be used to describe global default

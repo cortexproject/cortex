@@ -5061,16 +5061,13 @@ otel:
 ### `QueryAttribute`
 
 ```yaml
-# Query string regex. If evaluated true (on top of meeting all other criteria),
-# query is treated as a high priority.
+# Query string regex.
 [regex: <string> | default = ".*"]
 
-# If query range falls between the start_time and end_time (on top of meeting
-# all other criteria), query is treated as a high priority.
+# Query start time.
 [start_time: <duration> | default = 0s]
 
-# If query range falls between the start_time and end_time (on top of meeting
-# all other criteria), query is treated as a high priority.
+# Query end time.
 [end_time: <duration> | default = 0s]
 ```
 

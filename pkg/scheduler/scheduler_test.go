@@ -430,8 +430,8 @@ func TestSchedulerMetrics(t *testing.T) {
 	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
 		# TYPE cortex_query_scheduler_queue_length gauge
-		cortex_query_scheduler_queue_length{priority="0",user="another"} 1
-		cortex_query_scheduler_queue_length{priority="0",user="test"} 1
+		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="another"} 1
+		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="test"} 1
 	`), "cortex_query_scheduler_queue_length"))
 
 	scheduler.cleanupMetricsForInactiveUser("test")
@@ -439,7 +439,7 @@ func TestSchedulerMetrics(t *testing.T) {
 	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
 		# TYPE cortex_query_scheduler_queue_length gauge
-		cortex_query_scheduler_queue_length{priority="0",user="another"} 1
+		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="another"} 1
 	`), "cortex_query_scheduler_queue_length"))
 }
 

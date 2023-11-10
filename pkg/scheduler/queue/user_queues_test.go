@@ -2,7 +2,6 @@ package queue
 
 import (
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"math"
 	"math/rand"
 	"sort"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestQueues(t *testing.T) {
@@ -352,7 +353,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	}
 }
 
-func TestGetQueue(t *testing.T) {
+func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 	limits := MockLimits{
 		MaxOutstanding: 3,
 	}
@@ -406,10 +407,13 @@ func TestGetQueue(t *testing.T) {
 	assert.Subset(t, getKeys(q.userQueues["userID"].queriers), getKeys(q.userQueues["userID"].reservedQueriers))
 
 	// check the queriers and reservedQueriers map are consistent
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		queriers := q.userQueues["userID"].queriers
 		reservedQueriers := q.userQueues["userID"].reservedQueriers
-		queue = q.getOrAddQueue("userID", 3)
+		q.userQueues["userID"].maxQueriers = 0          // reset to trigger querier assignment
+		q.userQueues["userID"].priorityList = []int64{} // reset to trigger reserved querier assignment
+		_ = q.getOrAddQueue("userID", 3)
+
 		assert.Equal(t, queriers, q.userQueues["userID"].queriers)
 		assert.Equal(t, reservedQueriers, q.userQueues["userID"].reservedQueriers)
 	}

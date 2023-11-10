@@ -14,7 +14,6 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
-	"github.com/cortexproject/cortex/pkg/querier/stats"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -101,7 +100,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 			// and cancel the query.  We don't actually handle queries in parallel
 			// here, as we're running in lock step with the server - each Recv is
 			// paired with a Send.
-			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.HTTPResponse, stats *stats.QueryStats) error {
+			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.HTTPResponse, stats *querier_stats.QueryStats) error {
 				return c.Send(&frontendv1pb.ClientToFrontend{
 					HttpResponse: response,
 					Stats:        stats,
@@ -120,7 +119,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	}
 }
 
-func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *stats.QueryStats) error) {
+func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.QueryStats) error) {
 	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)

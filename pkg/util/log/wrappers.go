@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
-	kitlog "github.com/go-kit/log"
 	"github.com/weaveworks/common/tracing"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -12,16 +11,16 @@ import (
 
 // WithUserID returns a Logger that has information about the current user in
 // its details.
-func WithUserID(userID string, l kitlog.Logger) kitlog.Logger {
+func WithUserID(userID string, l log.Logger) log.Logger {
 	// See note in WithContext.
-	return kitlog.With(l, "org_id", userID)
+	return log.With(l, "org_id", userID)
 }
 
 // WithTraceID returns a Logger that has information about the traceID in
 // its details.
-func WithTraceID(traceID string, l kitlog.Logger) kitlog.Logger {
+func WithTraceID(traceID string, l log.Logger) log.Logger {
 	// See note in WithContext.
-	return kitlog.With(l, "traceID", traceID)
+	return log.With(l, "traceID", traceID)
 }
 
 // WithContext returns a Logger that has information about the current user in
@@ -31,7 +30,7 @@ func WithTraceID(traceID string, l kitlog.Logger) kitlog.Logger {
 //
 //	log := util.WithContext(ctx)
 //	log.Errorf("Could not chunk chunks: %v", err)
-func WithContext(ctx context.Context, l kitlog.Logger) kitlog.Logger {
+func WithContext(ctx context.Context, l log.Logger) log.Logger {
 	l = headersFromContext(ctx, l)
 
 	// Weaveworks uses "orgs" and "orgID" to represent Cortex users,
@@ -59,7 +58,7 @@ func WithSourceIPs(sourceIPs string, l log.Logger) log.Logger {
 func headersFromContext(ctx context.Context, l log.Logger) log.Logger {
 	headerContentsMap := HeaderMapFromContext(ctx)
 	for header, contents := range headerContentsMap {
-		l = kitlog.With(l, header, contents)
+		l = log.With(l, header, contents)
 	}
 	return l
 }

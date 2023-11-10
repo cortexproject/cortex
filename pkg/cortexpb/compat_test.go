@@ -2,7 +2,6 @@ package cortexpb
 
 import (
 	"encoding/json"
-	stdlibjson "encoding/json"
 	"math"
 	"testing"
 	"unsafe"
@@ -21,7 +20,7 @@ func TestJsoniterMarshalForSample(t *testing.T) {
 }
 
 func TestStdlibJsonMarshalForSample(t *testing.T) {
-	testMarshalling(t, stdlibjson.Marshal, "json: error calling MarshalJSON for type cortexpb.Sample: test sample")
+	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type cortexpb.Sample: test sample")
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {

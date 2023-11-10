@@ -35,6 +35,7 @@
 * [CHANGE] Query Frontend/Querier: Make build info API disabled by default and add feature flag `api.build-info-enabled` to enable it. #5533
 * [CHANGE] Purger: Do no use S3 tenant kms key when uploading deletion marker. #5575
 * [CHANGE] Ingester: Shipper always upload compacted blocks. #5625
+* [CHANGE] Store Gateway: Add a new fastcache based inmemory index cache. #5619
 * [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
 * [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356

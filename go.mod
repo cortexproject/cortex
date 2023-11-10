@@ -77,6 +77,7 @@ require (
 )
 
 require (
+	github.com/VictoriaMetrics/fastcache v1.12.1
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/google/go-cmp v0.5.9
 	google.golang.org/protobuf v1.31.0

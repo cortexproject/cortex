@@ -93,6 +93,9 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
 # github.com/Masterminds/squirrel v1.5.4
 ## explicit; go 1.14
 github.com/Masterminds/squirrel
+# github.com/VictoriaMetrics/fastcache v1.12.1
+## explicit; go 1.13
+github.com/VictoriaMetrics/fastcache
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 ## explicit
 github.com/alecthomas/template

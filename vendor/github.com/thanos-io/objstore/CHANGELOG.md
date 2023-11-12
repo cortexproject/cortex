@@ -16,6 +16,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#62](https://github.com/thanos-io/objstore/pull/62) S3: Fix ignored context cancellation in `Iter` method.
 - [#77](https://github.com/thanos-io/objstore/pull/77) Fix buckets wrapped with metrics from being unable to determine object sizes in `Upload`.
 - [#78](https://github.com/thanos-io/objstore/pull/78) S3: Fix possible concurrent modification of the PutUserMetadata map.
+- [#79](https://github.com/thanos-io/objstore/pull/79) Metrics: Fix `objstore_bucket_operation_duration_seconds` for `iter` operations.
 
 ### Added
 - [#15](https://github.com/thanos-io/objstore/pull/15) Add Oracle Cloud Infrastructure Object Storage Bucket support.
@@ -34,6 +35,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#73](https://github.com/thanos-io/objstore/pull/73) Аdded file path to erros from DownloadFile
 - [#51](https://github.com/thanos-io/objstore/pull/51) Azure: Support using connection string authentication.
 - [#76](https://github.com/thanos-io/objstore/pull/76) GCS: Query for object names only in `Iter` to possibly improve performance when listing objects.
+- [#85](https://github.com/thanos-io/objstore/pull/85) S3: Allow checksum algorithm to be configured
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.

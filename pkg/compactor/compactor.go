@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"hash/fnv"
 	"math/rand"
 	"os"
@@ -537,7 +538,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// Wrap the bucket client with caching layer if caching bucket is enabled.
 	if c.compactorCfg.CachingBucketEnabled {
-		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(c.storageCfg.BucketStore.ChunksCache, c.storageCfg.BucketStore.MetadataCache, c.bucketClient, c.logger, c.registerer)
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(c.storageCfg.BucketStore.ChunksCache, c.storageCfg.BucketStore.MetadataCache, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 		if err != nil {
 			return errors.Wrapf(err, "create caching bucket")
 		}

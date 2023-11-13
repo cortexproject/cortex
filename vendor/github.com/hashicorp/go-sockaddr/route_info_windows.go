@@ -13,10 +13,6 @@ var cmds map[string][]string = map[string][]string{
 	"ipconfig": {"ipconfig"},
 }
 
-type routeInfo struct {
-	cmds map[string][]string
-}
-
 // NewRouteInfo returns a BSD-specific implementation of the RouteInfo
 // interface.
 func NewRouteInfo() (routeInfo, error) {

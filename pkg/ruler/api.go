@@ -527,17 +527,19 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, "")
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to fetch current rule groups for validation", "err", err.Error(), "user", userID)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+	if a.ruler.HasMaxRuleGroupsLimit(userID) {
+		rgs, err := a.store.ListRuleGroupsForUserAndNamespace(req.Context(), userID, "")
+		if err != nil {
+			level.Error(logger).Log("msg", "unable to fetch current rule groups for validation", "err", err.Error(), "user", userID)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 
-	if err := a.ruler.AssertMaxRuleGroups(userID, len(rgs)+1); err != nil {
-		level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		if err := a.ruler.AssertMaxRuleGroups(userID, len(rgs)+1); err != nil {
+			level.Error(logger).Log("msg", "limit validation failure", "err", err.Error(), "user", userID)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	rgProto := rulespb.ToProto(userID, namespace, rg)

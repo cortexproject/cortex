@@ -499,9 +499,9 @@ func newCompactor(
 		// Instance the right strategy.
 		switch c.compactorCfg.ShardingStrategy {
 		case util.ShardingStrategyDefault:
-			c.shardingStrategy = storegateway.NewDefaultShardingStrategy(c.ring, c.ringLifecycler.Addr, logger, c.allowedTenants)
+			c.shardingStrategy = NewDefaultShardingStrategy(c.ring, c.ringLifecycler.Addr, logger, c.allowedTenants)
 		case util.ShardingStrategyShuffle:
-			c.shardingStrategy = storegateway.NewShuffleShardingStrategy(c.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, c.allowedTenants, c.compactorCfg.ShardingRing.ZoneStableShuffleSharding)
+			c.shardingStrategy = NewShuffleShardingStrategy(c.ring, lifecyclerCfg.ID, lifecyclerCfg.Addr, limits, logger, c.allowedTenants, c.compactorCfg.ShardingRing.ZoneStableShuffleSharding)
 		default:
 			return nil, errInvalidShardingStrategy
 		}
@@ -833,7 +833,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	if c.storageCfg.BucketStore.BucketIndex.Enabled && c.compactorCfg.BucketIndexMetadataFetcherEnabled {
 		fetcher = storegateway.NewBucketIndexMetadataFetcher(
 			userID,
-			bucket,
+			c.bucketClient,
 			c.shardingStrategy,
 			c.limits,
 			ulogger,

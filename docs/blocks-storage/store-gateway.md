@@ -459,6 +459,13 @@ blocks_storage:
     # CLI flag: -blocks-storage.azure.account-key
     [account_key: <string> | default = ""]
 
+    # The values of `account-name` and `endpoint-suffix` values will not be
+    # ignored if `connection-string` is set. Use this method over `account-key`
+    # if you need to authenticate via a SAS token or if you use the Azurite
+    # emulator.
+    # CLI flag: -blocks-storage.azure.connection-string
+    [connection_string: <string> | default = ""]
+
     # Azure storage container name
     # CLI flag: -blocks-storage.azure.container-name
     [container_name: <string> | default = ""]
@@ -472,12 +479,14 @@ blocks_storage:
     # CLI flag: -blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
 
-    # Azure storage MSI resource. Either this or account key must be set.
+    # Deprecated: Azure storage MSI resource. It will be set automatically by
+    # Azure SDK.
     # CLI flag: -blocks-storage.azure.msi-resource
     [msi_resource: <string> | default = ""]
 
     # Azure storage MSI resource managed identity client Id. If not supplied
-    # system assigned identity is used
+    # default Azure credential will be used. Set it to empty if you need to
+    # authenticate via Azure Workload Identity.
     # CLI flag: -blocks-storage.azure.user-assigned-id
     [user_assigned_id: <string> | default = ""]
 

@@ -98,7 +98,7 @@ type Handler struct {
 }
 
 // NewHandler creates a new frontend handler.
-func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) http.Handler {
+func NewHandler(cfg HandlerConfig, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) *Handler {
 	h := &Handler{
 		cfg:          cfg,
 		log:          log,
@@ -407,17 +407,17 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 }
 
 func formatQueryString(queryString url.Values) (fields []interface{}) {
-	var queryFields []string
+	var queryFields []interface{}
 	for k, v := range queryString {
 		// If `query` or `match[]` field exists, we always put it as the last field.
 		if k == "query" || k == "match[]" {
-			queryFields = []string{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
+			queryFields = []interface{}{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
 			continue
 		}
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
 	}
 	if len(queryFields) > 0 {
-		fields = append(fields, queryFields)
+		fields = append(fields, queryFields...)
 	}
 	return fields
 }

@@ -76,7 +76,10 @@ type Frontend struct {
 
 	lastQueryID atomic.Uint64
 
-	queryPriority         validation.QueryPriority
+	// Used to check whether query priority config has changed
+	queryPriority validation.QueryPriority
+
+	// Populate and reuse compiled regex until query priority config changes
 	compiledQueryPriority validation.QueryPriority
 
 	// frontend workers will read from this channel, and send request to scheduler.

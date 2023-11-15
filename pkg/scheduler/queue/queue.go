@@ -162,7 +162,7 @@ FindQueue:
 			priority, matchPriority := q.getPriorityForQuerier(userID, querierID)
 			request := queue.dequeueRequest(priority, matchPriority)
 			if request == nil {
-				// the queue does not contain request with the min priority, wait for more requests
+				// The queue does not contain request with the priority, wait for more requests
 				querierWait = true
 				goto FindQueue
 			}

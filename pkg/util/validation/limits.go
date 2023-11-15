@@ -250,6 +250,7 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 		return errMaxGlobalSeriesPerUserValidation
 	}
 
+	// If query priority is enabled, do not allow duplicate priority values
 	if l.QueryPriority.Enabled {
 		queryPriority := l.QueryPriority
 		prioritySet := map[int64]struct{}{}

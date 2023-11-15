@@ -67,12 +67,16 @@ type userQueue struct {
 
 	// If not nil, only these queriers can handle user requests. If nil, all queriers can.
 	// We set this to nil if number of available queriers <= maxQueriers.
-	queriers         map[string]struct{}
-	maxQueriers      int
-	maxOutstanding   int
+	queriers map[string]struct{}
+
+	// Contains assigned priority for querier ID
 	reservedQueriers map[string]int64
-	priorityList     []int64
-	priorityEnabled  bool
+
+	// Stores last limit config for the user. When changed, re-populate queriers and reservedQueriers
+	maxQueriers     int
+	maxOutstanding  int
+	priorityList    []int64
+	priorityEnabled bool
 
 	// Seed for shuffle sharding of queriers. This seed is based on userID only and is therefore consistent
 	// between different frontends.

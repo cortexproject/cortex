@@ -80,7 +80,10 @@ type Frontend struct {
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
 
-	queryPriority         validation.QueryPriority
+	// Used to check whether query priority config has changed
+	queryPriority validation.QueryPriority
+
+	// Populate and reuse compiled regex until query priority config changes
 	compiledQueryPriority validation.QueryPriority
 
 	// Subservices manager.

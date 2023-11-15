@@ -24,6 +24,7 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 
 	for i, priority := range queryPriority.Priorities {
 		for j, attribute := range priority.QueryAttributes {
+			// If query priority config changed, re-populate the compiled regex
 			if queryPriorityChanged {
 				compiledRegex, err := regexp.Compile(attribute.Regex)
 				if err != nil {

@@ -6,9 +6,10 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Limits needed for the Query Scheduler - interface used for decoupling.
@@ -57,6 +58,8 @@ type queues struct {
 	sortedQueriers []string
 
 	limits Limits
+
+	queueLength *prometheus.GaugeVec // Per user, type and priority.
 }
 
 type userQueue struct {
@@ -79,7 +82,7 @@ type userQueue struct {
 	index int
 }
 
-func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits) *queues {
+func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limits, queueLength *prometheus.GaugeVec) *queues {
 	return &queues{
 		userQueues:       map[string]*userQueue{},
 		users:            nil,
@@ -88,6 +91,7 @@ func newUserQueues(maxUserQueueSize int, forgetDelay time.Duration, limits Limit
 		queriers:         map[string]*querier{},
 		sortedQueriers:   nil,
 		limits:           limits,
+		queueLength:      queueLength,
 	}
 }
 
@@ -195,7 +199,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 
 func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
 	if q.limits.QueryPriority(userID).Enabled {
-		return NewPriorityRequestQueue(util.NewPriorityQueue(nil))
+		return NewPriorityRequestQueue(util.NewPriorityQueue(nil), userID, q.queueLength)
 	}
 
 	queueSize := q.limits.MaxOutstandingPerTenant(userID)
@@ -206,7 +210,7 @@ func (q *queues) createUserRequestQueue(userID string) userRequestQueue {
 		queueSize = q.maxUserQueueSize
 	}
 
-	return NewFIFORequestQueue(make(chan Request, queueSize))
+	return NewFIFORequestQueue(make(chan Request, queueSize), userID, q.queueLength)
 }
 
 // Finds next queue for the querier. To support fair scheduling between users, client is expected

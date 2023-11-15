@@ -226,10 +226,10 @@ func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
 
 	assert.NoError(t, queue.EnqueueRequest("userID", normalRequest, 1, func() {}))
 	assert.NoError(t, queue.EnqueueRequest("userID", priority1Request, 1, func() {}))
-	assert.NoError(t, queue.EnqueueRequest("userID", priority2Request, 1, func() {}))
+	assert.NoError(t, queue.EnqueueRequest("userID", priority1Request, 1, func() {}))
 
 	nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
-	assert.Equal(t, priority2Request, nextRequest)
+	assert.Equal(t, priority1Request, nextRequest)
 
 	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
 	assert.Equal(t, priority1Request, nextRequest)
@@ -243,6 +243,18 @@ func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
 	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctxTimeout, FirstUser(), "querier-1")
 	assert.Nil(t, nextRequest)
 	assert.Equal(t, 1, queue.queues.userQueues["userID"].queue.length())
+
+	assert.NoError(t, queue.EnqueueRequest("userID", priority2Request, 1, func() {}))
+
+	ctxTimeout, cancel = context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	time.AfterFunc(2*time.Second, func() {
+		queue.cond.Broadcast()
+	})
+	nextRequest, _, _ = queue.GetNextRequestForQuerier(ctxTimeout, FirstUser(), "querier-1")
+	assert.Nil(t, nextRequest)
+	assert.Equal(t, 2, queue.queues.userQueues["userID"].queue.length())
 }
 
 func TestExitingRequestsShouldPersistEvenIfTheConfigHasChanged(t *testing.T) {

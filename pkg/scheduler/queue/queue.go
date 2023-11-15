@@ -62,16 +62,14 @@ type RequestQueue struct {
 	queues  *queues
 	stopped bool
 
-	queueLength       *prometheus.GaugeVec   // Per user, priority and type of the queue (fifo or priority).
 	totalRequests     *prometheus.CounterVec // Per user and priority.
 	discardedRequests *prometheus.CounterVec // Per user and priority.
 }
 
 func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, queueLength *prometheus.GaugeVec, discardedRequests *prometheus.CounterVec, limits Limits, registerer prometheus.Registerer) *RequestQueue {
 	q := &RequestQueue{
-		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay, limits),
+		queues:                  newUserQueues(maxOutstandingPerTenant, forgetDelay, limits, queueLength),
 		connectedQuerierWorkers: atomic.NewInt32(0),
-		queueLength:             queueLength,
 		totalRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_request_queue_requests_total",
 			Help: "Total number of query requests going to the request queue.",
@@ -108,10 +106,6 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		return errors.New("no queue found")
 	}
 
-	queueType := "fifo"
-	if q.queues.limits.QueryPriority(userID).Enabled {
-		queueType = "priority"
-	}
 	metricLabels := prometheus.Labels{
 		"user":     userID,
 		"priority": priority,
@@ -124,11 +118,6 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 	}
 
 	queue.enqueueRequest(req)
-	q.queueLength.With(prometheus.Labels{
-		"user":     userID,
-		"priority": priority,
-		"type":     queueType,
-	}).Inc()
 	q.cond.Broadcast()
 	// Call this function while holding a lock. This guarantees that no querier can fetch the request before function returns.
 	if successFn != nil {
@@ -170,10 +159,10 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			minPriority, checkMinPriority := q.getMinPriorityForQuerier(userID, querierID)
-			request := queue.dequeueRequest(minPriority, checkMinPriority)
+			priority, matchPriority := q.getPriorityForQuerier(userID, querierID)
+			request := queue.dequeueRequest(priority, matchPriority)
 			if request == nil {
-				// the queue does not contain request with the min priority, break to wait for more requests
+				// the queue does not contain request with the min priority, wait for more requests
 				querierWait = true
 				goto FindQueue
 			}
@@ -181,17 +170,6 @@ FindQueue:
 			if queue.length() == 0 {
 				q.queues.deleteQueue(userID)
 			}
-
-			queueType := "fifo"
-			if q.queues.limits.QueryPriority(userID).Enabled {
-				queueType = "priority"
-			}
-			metricLabels := prometheus.Labels{
-				"user":     userID,
-				"priority": strconv.FormatInt(request.Priority(), 10),
-				"type":     queueType,
-			}
-			q.queueLength.With(metricLabels).Dec()
 
 			// Tell close() we've processed a request.
 			q.cond.Broadcast()
@@ -206,7 +184,7 @@ FindQueue:
 	goto FindQueue
 }
 
-func (q *RequestQueue) getMinPriorityForQuerier(userID string, querierID string) (int64, bool) {
+func (q *RequestQueue) getPriorityForQuerier(userID string, querierID string) (int64, bool) {
 	if priority, ok := q.queues.userQueues[userID].reservedQueriers[querierID]; ok {
 		return priority, true
 	}

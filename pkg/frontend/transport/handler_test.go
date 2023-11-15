@@ -294,10 +294,10 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	queryString := url.Values(map[string][]string{"query": {"up"}})
 	req, err := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
 	require.NoError(t, err)
+	req.Header = http.Header{
+		"User-Agent": []string{"Grafana"},
+	}
 	resp := &http.Response{
-		Header: http.Header{
-			"User-Agent": []string{"Grafana"},
-		},
 		ContentLength: 1000,
 	}
 	stats := &querier_stats.QueryStats{
@@ -316,7 +316,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	data, err := io.ReadAll(outputBuf)
 	require.NoError(t, err)
 
-	expectedLog := `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 status_code=200 response_size=1000 query_length=2 error=foo_err param_query=up
+	expectedLog := `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 status_code=200 response_size=1000 query_length=2 user_agent=Grafana error=foo_err param_query=up
 `
 	require.Equal(t, expectedLog, string(data))
 }

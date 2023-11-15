@@ -39,7 +39,15 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 			}
 
 			startTimeThreshold := now.Add(-1 * attribute.StartTime.Abs()).Truncate(time.Second).UTC()
-			endTimeThreshold := now.Add(-1 * attribute.EndTime.Abs()).Round(time.Second).UTC()
+			endTimeThreshold := now.Add(-1 * attribute.EndTime.Abs()).Add(1 * time.Second).Truncate(time.Second).UTC()
+
+			if startTime, err := parseTime(startParam); err == nil {
+				if endTime, err := parseTime(endParam); err == nil {
+					if isBetweenThresholds(startTime, endTime, startTimeThreshold, endTimeThreshold) {
+						return priority.Priority
+					}
+				}
+			}
 
 			if instantTime, err := parseTime(timeParam); err == nil {
 				if isBetweenThresholds(instantTime, instantTime, startTimeThreshold, endTimeThreshold) {
@@ -47,11 +55,9 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 				}
 			}
 
-			if startTime, err := parseTime(startParam); err == nil {
-				if endTime, err := parseTime(endParam); err == nil {
-					if isBetweenThresholds(startTime, endTime, startTimeThreshold, endTimeThreshold) {
-						return priority.Priority
-					}
+			if timeParam == "" {
+				if isBetweenThresholds(now, now, startTimeThreshold, endTimeThreshold) {
+					return priority.Priority
 				}
 			}
 		}

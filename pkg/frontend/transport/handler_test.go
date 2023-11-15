@@ -1,12 +1,15 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -16,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -274,8 +279,44 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			assert.Equal(t, tt.expectedMetrics, count)
 
 			if tt.additionalMetricsCheckFunc != nil {
-				tt.additionalMetricsCheckFunc(handler.(*Handler))
+				tt.additionalMetricsCheckFunc(handler)
 			}
 		})
 	}
+}
+
+func TestReportQueryStatsFormat(t *testing.T) {
+	outputBuf := bytes.NewBuffer(nil)
+	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, http.DefaultTransport, logger, nil)
+
+	userID := "fake"
+	queryString := url.Values(map[string][]string{"query": {"up"}})
+	req, err := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
+	require.NoError(t, err)
+	req.Header = http.Header{
+		"User-Agent": []string{"Grafana"},
+	}
+	resp := &http.Response{
+		ContentLength: 1000,
+	}
+	stats := &querier_stats.QueryStats{
+		Stats: querier_stats.Stats{
+			WallTime:            3 * time.Second,
+			FetchedSeriesCount:  100,
+			FetchedChunksCount:  200,
+			FetchedSamplesCount: 300,
+			FetchedChunkBytes:   1024,
+			FetchedDataBytes:    2048,
+		},
+	}
+	responseErr := errors.New("foo_err")
+	handler.reportQueryStats(req, userID, queryString, time.Second, stats, responseErr, http.StatusOK, resp)
+
+	data, err := io.ReadAll(outputBuf)
+	require.NoError(t, err)
+
+	expectedLog := `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 status_code=200 response_size=1000 query_length=2 user_agent=Grafana error=foo_err param_query=up
+`
+	require.Equal(t, expectedLog, string(data))
 }

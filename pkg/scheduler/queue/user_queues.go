@@ -168,6 +168,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 
 		uq.queue = tmpQueue
 		uq.maxOutstanding = q.limits.MaxOutstandingPerTenant(userID)
+		uq.priorityEnabled = priorityEnabled
 	}
 
 	if uq.maxQueriers != maxQueriers {

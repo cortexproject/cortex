@@ -406,6 +406,11 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 	assert.Subset(t, getKeys(q.queriers), getKeys(q.userQueues["userID"].queriers))
 	assert.Subset(t, getKeys(q.userQueues["userID"].queriers), getKeys(q.userQueues["userID"].reservedQueriers))
 
+	limits.QueryPriorityVal.Enabled = false
+	q.limits = limits
+	queue = q.getOrAddQueue("userID", 3)
+	assert.IsType(t, &FIFORequestQueue{}, queue)
+
 	// check the queriers and reservedQueriers map are consistent
 	for i := 0; i < 100; i++ {
 		queriers := q.userQueues["userID"].queriers

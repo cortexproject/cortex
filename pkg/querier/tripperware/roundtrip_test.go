@@ -109,46 +109,69 @@ func TestRoundTrip(t *testing.T) {
 		path, expectedBody string
 		expectedErr        error
 		limits             Limits
+		maxSubQuerySteps   int64
 	}{
 		{
-			path:         "/foo",
-			expectedBody: "bar",
-			limits:       defaultOverrides,
+			path:             "/foo",
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
 		},
 		{
-			path:         queryExemplar,
-			expectedBody: "bar",
-			limits:       defaultOverrides,
+			path:             queryExemplar,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
 		},
 		{
-			path:         queryRange,
-			expectedBody: responseBody,
-			limits:       defaultOverrides,
+			path:             queryRange,
+			expectedBody:     responseBody,
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
 		},
 		{
-			path:         query,
-			expectedBody: "bar",
-			limits:       defaultOverrides,
+			path:             query,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
 		},
 		{
-			path:         queryNonShardable,
-			expectedBody: "bar",
-			limits:       defaultOverrides,
+			path:             queryNonShardable,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
 		},
 		{
-			path:         queryNonShardable,
-			expectedBody: "bar",
-			limits:       shardingOverrides,
+			path:             queryNonShardable,
+			expectedBody:     "bar",
+			limits:           shardingOverrides,
+			maxSubQuerySteps: 11000,
 		},
 		{
-			path:         query,
-			expectedBody: responseBody,
-			limits:       shardingOverrides,
+			path:             query,
+			expectedBody:     responseBody,
+			limits:           shardingOverrides,
+			maxSubQuerySteps: 11000,
+		},
+		// Shouldn't hit subquery step limit because max steps is set to 0 so this check is disabled.
+		{
+			path:             querySubqueryStepSizeTooSmall,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 0,
+		},
+		// Shouldn't hit subquery step limit because max steps is higher, which is 100K.
+		{
+			path:             querySubqueryStepSizeTooSmall,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 100000,
 		},
 		{
-			path:        querySubqueryStepSizeTooSmall,
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, ErrSubQueryStepTooSmall, 11000),
-			limits:      defaultOverrides,
+			path:             querySubqueryStepSizeTooSmall,
+			expectedErr:      httpgrpc.Errorf(http.StatusBadRequest, ErrSubQueryStepTooSmall, 11000),
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
 		},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
@@ -177,6 +200,7 @@ func TestRoundTrip(t *testing.T) {
 				tc.limits,
 				querysharding.NewQueryAnalyzer(),
 				time.Minute,
+				tc.maxSubQuerySteps,
 			)
 			resp, err := tw(downstream).RoundTrip(req)
 			if tc.expectedErr == nil {

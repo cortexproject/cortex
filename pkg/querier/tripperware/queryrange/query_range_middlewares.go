@@ -40,7 +40,8 @@ type Config struct {
 	CacheResults           bool `yaml:"cache_results"`
 	MaxRetries             int  `yaml:"max_retries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
-	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+	ForwardHeaders       flagext.StringSlice `yaml:"forward_headers_list"`
+	MaxSubQueryExprSteps int64               `yaml:"max_subquery_expr_steps"`
 
 	// Populated based on the query configuration
 	VerticalShardSize int `yaml:"-"`

@@ -113,6 +113,7 @@ var DefaultConfig = Config{
 	},
 	PartSize:         1024 * 1024 * 64, // 64MB.
 	BucketLookupType: AutoLookup,
+	SendContentMd5:   true, // Default to using MD5.
 }
 
 // HTTPConfig exists here only because Cortex depends on it, and we depend on Cortex.
@@ -136,6 +137,7 @@ type Config struct {
 	TraceConfig        TraceConfig        `yaml:"trace"`
 	ListObjectsVersion string             `yaml:"list_objects_version"`
 	BucketLookupType   BucketLookupType   `yaml:"bucket_lookup_type"`
+	SendContentMd5     bool               `yaml:"send_content_md5"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
 	// NOTE we need to make sure this number does not produce more parts than 10 000.
 	PartSize    uint64    `yaml:"part_size"`
@@ -166,6 +168,7 @@ type Bucket struct {
 	storageClass    string
 	partSize        uint64
 	listObjectsV1   bool
+	sendContentMd5  bool
 }
 
 // parseConfig unmarshals a buffer into a Config with default values.
@@ -334,6 +337,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		storageClass:    storageClass,
 		partSize:        config.PartSize,
 		listObjectsV1:   config.ListObjectsVersion == "v1",
+		sendContentMd5:  config.SendContentMd5,
 	}
 	return bkt, nil
 }
@@ -510,6 +514,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 			ServerSideEncryption: sse,
 			UserMetadata:         userMetadata,
 			StorageClass:         b.storageClass,
+			SendContentMd5:       b.sendContentMd5,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.
 			// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.

@@ -3,7 +3,6 @@ package transport
 import (
 	"bytes"
 	"context"
-	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

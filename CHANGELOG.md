@@ -20,6 +20,7 @@
 * [CHANGE] DDBKV: Change metric name from `dynamodb_kv_read_capacity_total` to `dynamodb_kv_consumed_capacity_total` and include Delete, Put, Batch dimension. #5487
 * [CHANGE] Compactor: Adding the userId on the compact dir path. #5524
 * [CHANGE] Ingester: Remove deprecated ingester metrics. #5472
+* [CHANGE] Query Frontend: Expose `-querier.max-subquery-steps` to configure subquery max steps check. By default, the limit is set to 0, which is disabled. #5656
 * [FEATURE] Store Gateway: Implementing multi level index cache. #5451
 * [FEATURE] Ruler: Add support for disabling rule groups. #5521
 * [FEATURE] Support object storage backends for runtime configuration file. #5292
@@ -102,6 +103,7 @@
 * [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
 * [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
+* [BUGFIX] Query Frontend: Fix query string being omitted in query stats log. #5655
 
 ## 1.15.3 2023-06-22
 

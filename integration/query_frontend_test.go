@@ -220,6 +220,11 @@ func TestQueryFrontendSubQueryStepSize(t *testing.T) {
 
 			minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
 			require.NoError(t, s.StartAndWaitReady(minio))
+
+			// Enable subquery step size check.
+			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
+				"-querier.max-subquery-steps": "11000",
+			})
 			return cortexConfigFile, flags
 		},
 	})

@@ -486,6 +486,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Overrides,
 		queryAnalyzer,
 		t.Cfg.Querier.DefaultEvaluationInterval,
+		t.Cfg.Querier.MaxSubQuerySteps,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

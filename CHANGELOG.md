@@ -20,6 +20,7 @@
 * [CHANGE] DDBKV: Change metric name from `dynamodb_kv_read_capacity_total` to `dynamodb_kv_consumed_capacity_total` and include Delete, Put, Batch dimension. #5487
 * [CHANGE] Compactor: Adding the userId on the compact dir path. #5524
 * [CHANGE] Ingester: Remove deprecated ingester metrics. #5472
+* [CHANGE] Query Frontend: Expose `-querier.max-subquery-steps` to configure subquery max steps check. By default, the limit is set to 0, which is disabled. #5656
 * [FEATURE] Store Gateway: Implementing multi level index cache. #5451
 * [FEATURE] Ruler: Add support for disabling rule groups. #5521
 * [FEATURE] Support object storage backends for runtime configuration file. #5292

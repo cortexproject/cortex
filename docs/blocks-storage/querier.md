@@ -157,6 +157,11 @@ querier:
   # CLI flag: -querier.default-evaluation-interval
   [default_evaluation_interval: <duration> | default = 1m]
 
+  # Max number of steps allowed for every subquery expression in query. Number
+  # of steps is calculated using subquery range / step. A value > 0 enables it.
+  # CLI flag: -querier.max-subquery-steps
+  [max_subquery_steps: <int> | default = 0]
+
   # Active query tracker monitors active queries, and writes them to the file in
   # given directory. If Cortex discovers any queries in this log during startup,
   # it will log them to the log file. Setting to empty value disables active

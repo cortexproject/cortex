@@ -27,22 +27,14 @@ func NewFIFORequestQueue(queue chan Request, userID string, queueLength *prometh
 func (f *FIFORequestQueue) enqueueRequest(r Request) {
 	f.queue <- r
 	if f.queueLength != nil {
-		f.queueLength.With(prometheus.Labels{
-			"user":     f.userID,
-			"priority": strconv.FormatInt(r.Priority(), 10),
-			"type":     "fifo",
-		}).Inc()
+		f.queueLength.WithLabelValues(f.userID, strconv.FormatInt(r.Priority(), 10), "fifo").Inc()
 	}
 }
 
 func (f *FIFORequestQueue) dequeueRequest(_ int64, _ bool) Request {
 	r := <-f.queue
 	if f.queueLength != nil {
-		f.queueLength.With(prometheus.Labels{
-			"user":     f.userID,
-			"priority": strconv.FormatInt(r.Priority(), 10),
-			"type":     "fifo",
-		}).Dec()
+		f.queueLength.WithLabelValues(f.userID, strconv.FormatInt(r.Priority(), 10), "fifo").Dec()
 	}
 	return r
 }
@@ -64,11 +56,7 @@ func NewPriorityRequestQueue(queue *util.PriorityQueue, userID string, queueLeng
 func (f *PriorityRequestQueue) enqueueRequest(r Request) {
 	f.queue.Enqueue(r)
 	if f.queueLength != nil {
-		f.queueLength.With(prometheus.Labels{
-			"user":     f.userID,
-			"priority": strconv.FormatInt(r.Priority(), 10),
-			"type":     "priority",
-		}).Inc()
+		f.queueLength.WithLabelValues(f.userID, strconv.FormatInt(r.Priority(), 10), "priority").Inc()
 	}
 }
 
@@ -78,11 +66,7 @@ func (f *PriorityRequestQueue) dequeueRequest(priority int64, matchPriority bool
 	}
 	r := f.queue.Dequeue()
 	if f.queueLength != nil {
-		f.queueLength.With(prometheus.Labels{
-			"user":     f.userID,
-			"priority": strconv.FormatInt(r.Priority(), 10),
-			"type":     "priority",
-		}).Dec()
+		f.queueLength.WithLabelValues(f.userID, strconv.FormatInt(r.Priority(), 10), "priority").Dec()
 	}
 	return r
 }

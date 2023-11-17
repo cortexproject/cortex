@@ -1,18 +1,32 @@
 package query
 
 import (
-	"math"
 	"net/url"
 	"regexp"
-	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
-
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func GetPriority(requestParams url.Values, now time.Time, queryPriority *validation.QueryPriority, queryPriorityChanged bool) int64 {
+func GetCompileQueryPriority(queryPriority validation.QueryPriority) validation.QueryPriority {
+	compiledQueryPriority := queryPriority
+	for i, priority := range compiledQueryPriority.Priorities {
+		for j, attribute := range priority.QueryAttributes {
+			compiledRegex, err := regexp.Compile(attribute.Regex)
+			if err != nil {
+				continue
+			}
+
+			attribute.CompiledRegex = compiledRegex
+			compiledQueryPriority.Priorities[i].QueryAttributes[j] = attribute
+		}
+	}
+
+	return compiledQueryPriority
+}
+
+func GetPriority(requestParams url.Values, now time.Time, queryPriority validation.QueryPriority) int64 {
 	queryParam := requestParams.Get("query")
 	timeParam := requestParams.Get("time")
 	startParam := requestParams.Get("start")
@@ -22,19 +36,8 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 		return queryPriority.DefaultPriority
 	}
 
-	for i, priority := range queryPriority.Priorities {
-		for j, attribute := range priority.QueryAttributes {
-			// If query priority config changed, re-populate the compiled regex
-			if queryPriorityChanged {
-				compiledRegex, err := regexp.Compile(attribute.Regex)
-				if err != nil {
-					continue
-				}
-
-				attribute.CompiledRegex = compiledRegex
-				queryPriority.Priorities[i].QueryAttributes[j] = attribute
-			}
-
+	for _, priority := range queryPriority.Priorities {
+		for _, attribute := range priority.QueryAttributes {
 			if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(queryParam) {
 				continue
 			}
@@ -42,16 +45,16 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 			startTimeThreshold := now.Add(-1 * attribute.StartTime.Abs()).Truncate(time.Second).UTC()
 			endTimeThreshold := now.Add(-1 * attribute.EndTime.Abs()).Add(1 * time.Second).Truncate(time.Second).UTC()
 
-			if startTime, err := parseTime(startParam); err == nil {
-				if endTime, err := parseTime(endParam); err == nil {
-					if isBetweenThresholds(startTime, endTime, startTimeThreshold, endTimeThreshold) {
+			if startTime, err := util.ParseTime(startParam); err == nil {
+				if endTime, err := util.ParseTime(endParam); err == nil {
+					if isBetweenThresholds(util.TimeFromMillis(startTime), util.TimeFromMillis(endTime), startTimeThreshold, endTimeThreshold) {
 						return priority.Priority
 					}
 				}
 			}
 
-			if instantTime, err := parseTime(timeParam); err == nil {
-				if isBetweenThresholds(instantTime, instantTime, startTimeThreshold, endTimeThreshold) {
+			if instantTime, err := util.ParseTime(timeParam); err == nil {
+				if isBetweenThresholds(util.TimeFromMillis(instantTime), util.TimeFromMillis(instantTime), startTimeThreshold, endTimeThreshold) {
 					return priority.Priority
 				}
 			}
@@ -65,21 +68,6 @@ func GetPriority(requestParams url.Values, now time.Time, queryPriority *validat
 	}
 
 	return queryPriority.DefaultPriority
-}
-
-func parseTime(s string) (time.Time, error) {
-	if s != "" {
-		if t, err := strconv.ParseFloat(s, 64); err == nil {
-			s, ns := math.Modf(t)
-			ns = math.Round(ns*1000) / 1000
-			return time.Unix(int64(s), int64(ns*float64(time.Second))).UTC(), nil
-		}
-		if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-			return t, nil
-		}
-	}
-
-	return time.Time{}, errors.Errorf("cannot parse %q to a valid timestamp", s)
 }
 
 func isBetweenThresholds(start, end, startThreshold, endThreshold time.Time) bool {

@@ -77,10 +77,11 @@ type Frontend struct {
 	lastQueryID atomic.Uint64
 
 	// Used to check whether query priority config has changed
-	queryPriority validation.QueryPriority
+	queryPriority    map[string]validation.QueryPriority
+	queryPriorityMtx map[string]*sync.RWMutex
 
 	// Populate and reuse compiled regex until query priority config changes
-	compiledQueryPriority validation.QueryPriority
+	compiledQueryPriority map[string]validation.QueryPriority
 
 	// frontend workers will read from this channel, and send request to scheduler.
 	requestsCh chan *frontendRequest
@@ -218,16 +219,29 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
 		}
 
-		queryPriority := f.limits.QueryPriority(userID)
+		if reqParams != nil {
+			queryPriority := f.limits.QueryPriority(userID)
 
-		if reqParams != nil && queryPriority.Enabled {
-			queryPriorityChanged := !reflect.DeepEqual(f.queryPriority, queryPriority)
-			if queryPriorityChanged {
-				f.queryPriority = queryPriority
-				f.compiledQueryPriority = queryPriority
+			if queryPriority.Enabled {
+				if _, exists := f.queryPriorityMtx[userID]; !exists {
+					f.queryPriorityMtx[userID] = &sync.RWMutex{}
+				}
+
+				f.queryPriorityMtx[userID].RLock()
+				queryPriorityChanged := !reflect.DeepEqual(f.queryPriority[userID], queryPriority)
+				f.queryPriorityMtx[userID].RUnlock()
+
+				if queryPriorityChanged {
+					f.queryPriorityMtx[userID].Lock()
+					f.queryPriority[userID] = queryPriority
+					f.compiledQueryPriority[userID] = util_query.GetCompileQueryPriority(queryPriority)
+					f.queryPriorityMtx[userID].Unlock()
+				}
+
+				f.queryPriorityMtx[userID].RLock()
+				freq.priority = util_query.GetPriority(reqParams, ts, f.compiledQueryPriority[userID])
+				f.queryPriorityMtx[userID].Unlock()
 			}
-
-			freq.priority = util_query.GetPriority(reqParams, ts, &f.compiledQueryPriority, queryPriorityChanged)
 		}
 
 		f.requests.put(freq)

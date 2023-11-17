@@ -177,14 +177,15 @@ func TestCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 	bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucketClient.MockIter(userID+"/"+PartitionedGroupDirectory, nil, nil)
 
 	cfg := prepareConfig()
-	c, _, _, logs, _ := prepare(t, cfg, bucketClient, nil)
+	c, _, _, logs, _ := prepare(t, cfg, bucketClient, nil, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -198,17 +199,17 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
 	cfg := prepareConfig()
-	c, _, _, logs, registry := prepare(t, cfg, bucketClient, nil)
+	c, _, _, logs, registry := prepare(t, cfg, bucketClient, nil, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 
-	assert.Equal(t, prom_testutil.ToFloat64(c.compactionRunInterval), cfg.CompactionInterval.Seconds())
+	assert.Equal(t, prom_testutil.ToFloat64(c.CompactionRunInterval), cfg.CompactionInterval.Seconds())
 
 	assert.Equal(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
@@ -348,12 +349,12 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
-	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
+	c, _, _, logs, registry := prepare(t, prepareConfig(), bucketClient, nil, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsFailed)
+		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -496,6 +497,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	t.Parallel()
 
 	userID := "test-user"
+	partitionedGroupID := getPartitionedGroupID(userID)
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{userID}, nil)
 	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D/meta.json", userID + "/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
@@ -504,25 +506,28 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
-	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
+	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload(userID+"/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet(userID+"/bucket-index-sync-status.json", "", nil)
-	bucketClient.MockUpload(userID+"/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
-	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", "", nil)
-	bucketClient.MockUpload(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", nil)
+	bucketClient.MockGet(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload(userID+"/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 	bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
+	bucketClient.MockGet(userID+"/partitioned-groups/"+partitionedGroupID+".json", "", nil)
+	bucketClient.MockUpload(userID+"/partitioned-groups/"+partitionedGroupID+".json", nil)
+	bucketClient.MockIter(userID+"/"+PartitionedGroupDirectory, nil, nil)
 
-	c, _, tsdbPlannerMock, _, registry := prepare(t, prepareConfig(), bucketClient, nil)
+	c, _, tsdbPlannerMock, _, registry := prepare(t, prepareConfig(), bucketClient, nil, nil)
 	tsdbPlannerMock.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, errors.New("Failed to plan"))
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsFailed)
+		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -547,6 +552,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 }
 
 func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
+	partitionedGroupID1 := getPartitionedGroupID("user-1")
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
@@ -555,19 +561,22 @@ func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
+	bucketClient.MockGet("user-1/partitioned-groups/"+partitionedGroupID1+".json", "", nil)
+	bucketClient.MockUpload("user-1/partitioned-groups/"+partitionedGroupID1+".json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
 
-	c, _, tsdbPlanner, _, _ := prepare(t, prepareConfig(), bucketClient, nil)
+	c, _, tsdbPlanner, _, _ := prepare(t, prepareConfig(), bucketClient, nil, nil)
 
 	// Make sure the user folder is created and is being used
 	// This will be called during compaction
@@ -580,7 +589,7 @@ func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	_, err := os.Stat(c.compactDirForUser("user-1"))
@@ -589,6 +598,9 @@ func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 
 func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	t.Parallel()
+
+	partitionedGroupID1 := getPartitionedGroupID("user-1")
+	partitionedGroupID2 := getPartitionedGroupID("user-2")
 
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
@@ -602,20 +614,20 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/partition-0-visit-mark.json", "", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
@@ -626,8 +638,14 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
 	bucketClient.MockUpload("user-2/bucket-index-sync-status.json", nil)
+	bucketClient.MockGet("user-1/partitioned-groups/"+partitionedGroupID1+".json", "", nil)
+	bucketClient.MockUpload("user-1/partitioned-groups/"+partitionedGroupID1+".json", nil)
+	bucketClient.MockGet("user-2/partitioned-groups/"+partitionedGroupID2+".json", "", nil)
+	bucketClient.MockUpload("user-2/partitioned-groups/"+partitionedGroupID2+".json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
+	bucketClient.MockIter("user-2/"+PartitionedGroupDirectory, nil, nil)
 
-	c, _, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
+	c, _, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient, nil, nil)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -639,7 +657,7 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -652,24 +670,48 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-2 msg="started blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-1 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-2 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-2 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-2 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-1 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish cleaning partitioned group info files"`,
+		`level=info component=cleaner org_id=user-2 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish cleaning partitioned group info files"`,
 		`level=info component=cleaner org_id=user-2 msg="completed blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
-		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
-		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
 		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
 		`level=info component=compactor org_id=user-2 msg="start of GC"`,
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -765,14 +807,15 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
 
-	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient, nil)
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient, nil, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -783,9 +826,21 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating markers" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting new deletion markers" discovered_blocks_count=2 deletion_markers_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating block entries" discovered_blocks_count=2 new_blocks_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting blocks to be deleted"`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json bucket=mock`,
 		`level=debug component=cleaner org_id=user-1 msg="deleted file" file=01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json bucket=mock`,
 		`level=info component=cleaner org_id=user-1 msg="deleted block marked for deletion" block=01DTW0ZCPDDNV4BV83Q2SV4QAZ`,
+		`level=info component=cleaner org_id=user-1 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-1 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish cleaning partitioned group info files"`,
 		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
@@ -853,6 +908,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	t.Parallel()
 
+	partitionedGroupID1 := getPartitionedGroupID("user-1")
+	partitionedGroupID2 := getPartitionedGroupID("user-2")
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
@@ -865,25 +922,25 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", mockNoCompactBlockJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
-	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
-	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", mockNoCompactBlockJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
-	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", nil)
 
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/visit-mark.json", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/visit-mark.json", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/partition-0-visit-mark.json", nil)
 
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
@@ -895,15 +952,21 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
 	bucketClient.MockUpload("user-2/bucket-index-sync-status.json", nil)
+	bucketClient.MockGet("user-1/partitioned-groups/"+partitionedGroupID1+".json", "", nil)
+	bucketClient.MockUpload("user-1/partitioned-groups/"+partitionedGroupID1+".json", nil)
+	bucketClient.MockGet("user-2/partitioned-groups/"+partitionedGroupID2+".json", "", nil)
+	bucketClient.MockUpload("user-2/partitioned-groups/"+partitionedGroupID2+".json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
+	bucketClient.MockIter("user-2/"+PartitionedGroupDirectory, nil, nil)
 
-	c, _, tsdbPlanner, _, registry := prepare(t, prepareConfig(), bucketClient, nil)
+	c, _, tsdbPlanner, _, registry := prepare(t, prepareConfig(), bucketClient, nil, nil)
 
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -929,6 +992,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	cfg.DeletionDelay = 10 * time.Minute      // Delete block after 10 minutes
 	cfg.TenantCleanupDelay = 10 * time.Minute // To make sure it's not 0.
 
+	partitionedGroupID1 := getPartitionedGroupID("user-1")
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1"}, nil)
@@ -940,16 +1004,19 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/index", "some index content", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
-	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", nil)
 	bucketClient.MockExists("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", false, nil)
 
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", nil)
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/index", nil)
 	bucketClient.MockDelete("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockDelete("user-1/bucket-index-sync-status.json", nil)
+	bucketClient.MockGet("user-1/partitioned-groups/"+partitionedGroupID1+".json", "", nil)
+	bucketClient.MockUpload("user-1/partitioned-groups/"+partitionedGroupID1+".json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
 
-	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient, nil)
+	c, _, tsdbPlanner, logs, registry := prepare(t, cfg, bucketClient, nil, nil)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -961,7 +1028,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -1048,7 +1115,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	cfg := prepareConfig()
 	cfg.SkipBlocksWithOutOfOrderChunksEnabled = true
-	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil)
+	c, tsdbCompac, tsdbPlanner, _, registry := prepare(t, cfg, bucketClient, nil, nil)
 
 	tsdbCompac.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(b1, nil)
 
@@ -1091,6 +1158,8 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunning(t *testing.T) {
 	t.Parallel()
 
+	partitionedGroupID1 := getPartitionedGroupID("user-1")
+	partitionedGroupID2 := getPartitionedGroupID("user-2")
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
@@ -1103,24 +1172,24 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
-	bucketClient.MockUpload("user-1/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json", mockBlockMetaJSON("01FN6CDF3PNEWWRY5MPGJPE3EX"), nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/visit-mark.json", nil)
+	bucketClient.MockGet("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/visit-mark.json", nil)
+	bucketClient.MockGet("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json", mockBlockMetaJSON("01FN3V83ABR9992RF8WRJZ76ZQ"), nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/no-compact-mark.json", "", nil)
-	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/visit-mark.json", "", nil)
-	bucketClient.MockUpload("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/visit-mark.json", nil)
+	bucketClient.MockGet("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/partition-0-visit-mark.json", "", nil)
+	bucketClient.MockUpload("user-2/01FN3V83ABR9992RF8WRJZ76ZQ/partition-0-visit-mark.json", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-2/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
@@ -1129,6 +1198,12 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	bucketClient.MockUpload("user-2/bucket-index.json.gz", nil)
 	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
 	bucketClient.MockUpload("user-2/bucket-index-sync-status.json", nil)
+	bucketClient.MockGet("user-1/partitioned-groups/"+partitionedGroupID1+".json", "", nil)
+	bucketClient.MockUpload("user-1/partitioned-groups/"+partitionedGroupID1+".json", nil)
+	bucketClient.MockGet("user-2/partitioned-groups/"+partitionedGroupID2+".json", "", nil)
+	bucketClient.MockUpload("user-2/partitioned-groups/"+partitionedGroupID2+".json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
+	bucketClient.MockIter("user-2/"+PartitionedGroupDirectory, nil, nil)
 
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
@@ -1139,7 +1214,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = ringStore
 
-	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient, nil)
+	c, _, tsdbPlanner, logs, _ := prepare(t, cfg, bucketClient, nil, nil)
 
 	// Mock the planner as if there's no compaction to do,
 	// in order to simplify tests (all in all, we just want to
@@ -1151,7 +1226,7 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
@@ -1164,24 +1239,48 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info component=compactor msg="compactor is ACTIVE in the ring"`,
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-1 msg="started blocks cleanup and maintenance"`,
-		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner org_id=user-2 msg="started blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish reading index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-2 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-2 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-2 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating markers" iteration_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting deleted blocks" old_blocks_count=0 deleted_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting new deletion markers" discovered_blocks_count=0 deletion_markers_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish iterating blocks" iteration_count=2`,
+		`level=info component=cleaner org_id=user-1 msg="finish adding blocks" old_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating block entries" discovered_blocks_count=0 new_blocks_count=0`,
+		`level=info component=cleaner org_id=user-1 msg="finish updating index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish getting blocks to be deleted"`,
+		`level=info component=cleaner org_id=user-1 msg="finish deleting blocks"`,
+		`level=info component=cleaner org_id=user-2 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-2 msg="finish cleaning partitioned group info files"`,
 		`level=info component=cleaner org_id=user-2 msg="completed blocks cleanup and maintenance"`,
+		`level=info component=cleaner org_id=user-1 msg="finish writing new index"`,
+		`level=info component=cleaner org_id=user-1 msg="finish cleaning partitioned group info files"`,
+		`level=info component=cleaner org_id=user-1 msg="completed blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
-		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
-		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
-		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
-		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
 		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
 		`level=info component=compactor org_id=user-2 msg="start of GC"`,
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
+		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
+		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
+		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
+		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
 
@@ -1200,18 +1299,20 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", userIDs, nil)
 	for _, userID := range userIDs {
+		partitionedGroupID := getPartitionedGroupID(userID)
 		bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D"}, nil)
 		bucketClient.MockIter(userID+"/markers/", nil, nil)
 		bucketClient.MockExists(path.Join(userID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
-		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/bucket-index-sync-status.json", "", nil)
-		bucketClient.MockUpload(userID+"/01DTVP434PA9VFXSW2JKB3392D/visit-mark.json", nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 		bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
+		bucketClient.MockGet(userID+"/partitioned-groups/"+partitionedGroupID+".json", "", nil)
+		bucketClient.MockUpload(userID+"/partitioned-groups/"+partitionedGroupID+".json", nil)
+		bucketClient.MockIter(userID+"/"+PartitionedGroupDirectory, nil, nil)
 	}
 
 	// Create a shared KV Store
@@ -1231,7 +1332,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		cfg.ShardingRing.WaitStabilityMaxDuration = 10 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
-		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, nil)
+		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, nil, nil)
 		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 		compactors = append(compactors, c)
@@ -1252,7 +1353,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-			return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
 
@@ -1311,25 +1412,30 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		blockFiles := []string{}
 
 		for blockID, blockTimes := range blocks {
-			blockVisitMarker := BlockVisitMarker{
-				CompactorID: "test-compactor",
-				VisitTime:   time.Now().Unix(),
-				Version:     VisitMarkerVersion1,
+			groupHash := HashGroup(userID, blockTimes["startTime"], blockTimes["endTime"])
+			partitionVisitMarker := PartitionVisitMarker{
+				CompactorID:        "test-compactor",
+				VisitTime:          time.Now().Unix(),
+				PartitionedGroupID: groupHash,
+				PartitionID:        0,
+				Status:             Pending,
+				Version:            PartitionVisitMarkerVersion1,
 			}
-			visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
+			visitMarkerFileContent, _ := json.Marshal(partitionVisitMarker)
 			bucketClient.MockGet(userID+"/bucket-index-sync-status.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/meta.json", mockBlockMetaJSONWithTime(blockID, userID, blockTimes["startTime"], blockTimes["endTime"]), nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/deletion-mark.json", "", nil)
 			bucketClient.MockGet(userID+"/"+blockID+"/no-compact-mark.json", "", nil)
-			bucketClient.MockGet(userID+"/"+blockID+"/visit-mark.json", string(visitMarkerFileContent), nil)
-			bucketClient.MockGetRequireUpload(userID+"/"+blockID+"/visit-mark.json", string(visitMarkerFileContent), nil)
-			bucketClient.MockUpload(userID+"/"+blockID+"/visit-mark.json", nil)
+			bucketClient.MockGet(userID+"/partitioned-groups/visit-marks/"+fmt.Sprint(groupHash)+"/partition-0-visit-mark.json", string(visitMarkerFileContent), nil)
+			bucketClient.MockGetRequireUpload(userID+"/partitioned-groups/visit-marks/"+fmt.Sprint(groupHash)+"/partition-0-visit-mark.json", string(visitMarkerFileContent), nil)
+			bucketClient.MockUpload(userID+"/partitioned-groups/visit-marks/"+fmt.Sprint(groupHash)+"/partition-0-visit-mark.json", nil)
 			// Iter with recursive so expected to get objects rather than directories.
 			blockFiles = append(blockFiles, path.Join(userID, blockID, block.MetaFilename))
 
 			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted
-			groupHash := hashGroup(userID, blockTimes["startTime"], blockTimes["endTime"])
 			groupHashes[groupHash]++
+			bucketClient.MockGet(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", "", nil)
+			bucketClient.MockUpload(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", nil)
 		}
 
 		bucketClient.MockIter(userID+"/", blockFiles, nil)
@@ -1338,6 +1444,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 		bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
+		bucketClient.MockIter(userID+"/"+PartitionedGroupDirectory, nil, nil)
 	}
 
 	// Create a shared KV Store
@@ -1363,7 +1470,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		flagext.DefaultValues(limits)
 		limits.CompactorTenantShardSize = 3
 
-		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, limits)
+		c, _, tsdbPlanner, l, _ := prepare(t, cfg, bucketClient, limits, nil)
 		defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 		compactors = append(compactors, c)
@@ -1390,7 +1497,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
 		cortex_testutil.Poll(t, 60*time.Second, 2.0, func() interface{} {
-			return prom_testutil.ToFloat64(c.compactionRunsCompleted)
+			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
 
@@ -1531,14 +1638,6 @@ func createNoCompactionMark(t *testing.T, bkt objstore.Bucket, userID string, bl
 	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
 }
 
-func createBlockVisitMarker(t *testing.T, bkt objstore.Bucket, userID string, blockID ulid.ULID) {
-	content := mockBlockVisitMarker()
-	blockPath := path.Join(userID, blockID.String())
-	markPath := path.Join(blockPath, BlockVisitMarkerFile)
-
-	require.NoError(t, bkt.Upload(context.Background(), markPath, strings.NewReader(content)))
-}
-
 func findCompactorByUserID(compactors []*Compactor, logs []*concurrency.SyncBuffer, userID string) (*Compactor, *concurrency.SyncBuffer, error) {
 	var compactor *Compactor
 	var log *concurrency.SyncBuffer
@@ -1586,10 +1685,15 @@ func removeIgnoredLogs(input []string) []string {
 	}
 
 	out := make([]string, 0, len(input))
-	durationRe := regexp.MustCompile(`\s?duration=\S+`)
+	executionIDRe := regexp.MustCompile(`\s?execution_id=\S+`)
+	durationRe := regexp.MustCompile(`\s?duration(_ms)?=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]
+
+		// Remove any execution_id from logs.
+		log = executionIDRe.ReplaceAllString(log, "")
+
 		if strings.Contains(log, "block.MetaFetcher") || strings.Contains(log, "block.BaseFetcher") {
 			continue
 		}
@@ -1627,7 +1731,7 @@ func prepareConfig() Config {
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, limits *validation.Limits) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, limits *validation.Limits, tsdbGrouper *tsdbGrouperMock) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -1664,13 +1768,26 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 	}
 
 	var blocksGrouperFactory BlocksGrouperFactory
-	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		blocksGrouperFactory = ShuffleShardingGrouperFactory
+	if tsdbGrouper != nil {
+		blocksGrouperFactory = func(_ context.Context, _ Config, _ objstore.InstrumentedBucket, _ log.Logger, _ prometheus.Registerer, _, _, _ prometheus.Counter, _ prometheus.Gauge, _ prometheus.Counter, _ prometheus.Counter, _ prometheus.Counter, _ prometheus.Counter, _ *ring.Ring, _ *ring.Lifecycler, _ Limits, _ string, _ *compact.GatherNoCompactionMarkFilter) compact.Grouper {
+			return tsdbGrouper
+		}
 	} else {
-		blocksGrouperFactory = DefaultBlocksGrouperFactory
+		if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
+			blocksGrouperFactory = ShuffleShardingGrouperFactory
+		} else {
+			blocksGrouperFactory = DefaultBlocksGrouperFactory
+		}
 	}
 
-	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, overrides)
+	var blockDeletableCheckerFactory BlockDeletableCheckerFactory
+	if compactorCfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		blockDeletableCheckerFactory = PartitionCompactionBlockDeletableCheckerFactory
+	} else {
+		blockDeletableCheckerFactory = DefaultBlockDeletableCheckerFactory
+	}
+
+	c, err := newCompactor(compactorCfg, storageCfg, logger, registry, bucketClientFactory, blocksGrouperFactory, blocksCompactorFactory, blockDeletableCheckerFactory, overrides)
 	require.NoError(t, err)
 
 	return c, tsdbCompactor, tsdbPlanner, logs, registry
@@ -1723,17 +1840,73 @@ func (m *tsdbPlannerMock) getNoCompactBlocks() []string {
 	return result
 }
 
-func mockBlockMetaJSON(id string) string {
-	meta := tsdb.BlockMeta{
+type tsdbGrouperMock struct {
+	mock.Mock
+}
+
+func (m *tsdbGrouperMock) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*compact.Group, err error) {
+	args := m.Called(blocks)
+	return args.Get(0).([]*compact.Group), args.Error(1)
+}
+
+var (
+	BlockMinTime = int64(1574776800000)
+	BlockMaxTime = int64(1574784000000)
+)
+
+func getPartitionedGroupID(userID string) string {
+	return fmt.Sprint(HashGroup(userID, BlockMinTime, BlockMaxTime))
+}
+
+func mockBlockGroup(userID string, ids []string, bkt *bucket.ClientMock) *compact.Group {
+	dummyCounter := prometheus.NewCounter(prometheus.CounterOpts{})
+	group, _ := compact.NewGroup(
+		log.NewNopLogger(),
+		bkt,
+		getPartitionedGroupID(userID),
+		nil,
+		0,
+		true,
+		true,
+		dummyCounter,
+		dummyCounter,
+		dummyCounter,
+		dummyCounter,
+		dummyCounter,
+		dummyCounter,
+		dummyCounter,
+		dummyCounter,
+		metadata.NoneFunc,
+		1,
+		1,
+	)
+	for _, id := range ids {
+		meta := mockBlockMeta(id)
+		err := group.AppendMeta(&metadata.Meta{
+			BlockMeta: meta,
+		})
+		if err != nil {
+			continue
+		}
+	}
+	return group
+}
+
+func mockBlockMeta(id string) tsdb.BlockMeta {
+	return tsdb.BlockMeta{
 		Version: 1,
 		ULID:    ulid.MustParse(id),
-		MinTime: 1574776800000,
-		MaxTime: 1574784000000,
+		MinTime: BlockMinTime,
+		MaxTime: BlockMaxTime,
 		Compaction: tsdb.BlockMetaCompaction{
 			Level:   1,
 			Sources: []ulid.ULID{ulid.MustParse(id)},
 		},
 	}
+}
+
+func mockBlockMetaJSON(id string) string {
+	meta := mockBlockMeta(id)
 
 	content, err := json.Marshal(meta)
 	if err != nil {
@@ -1801,21 +1974,6 @@ func mockBlockMetaJSONWithTime(id string, orgID string, minTime int64, maxTime i
 	return string(content)
 }
 
-func mockBlockVisitMarker() string {
-	blockVisitMarker := BlockVisitMarker{
-		CompactorID: "dummy",
-		VisitTime:   time.Now().Unix(),
-		Version:     1,
-	}
-
-	content, err := json.Marshal(blockVisitMarker)
-	if err != nil {
-		panic("failed to marshal mocked block visit marker")
-	}
-
-	return string(content)
-}
-
 func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	numUsers := 10
 
@@ -1851,7 +2009,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		// Each compactor will get its own temp dir for storing local files.
-		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil)
+		c, _, tsdbPlanner, _, _ := prepare(t, cfg, inmem, nil, nil)
 		t.Cleanup(func() {
 			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 		})
@@ -1874,7 +2032,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
 	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c1.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c1.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
@@ -1885,7 +2043,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
 	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c2.compactionRunsCompleted)
+		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted)
 	})
 
 	// Let's check how many users second compactor has.
@@ -1920,7 +2078,7 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	// Set ObservePeriod to longer than the timeout period to mock a timeout while waiting on ring to become ACTIVE
 	cfg.ShardingRing.ObservePeriod = time.Second * 10
 
-	c, _, _, logs, _ := prepare(t, cfg, bucketClient, nil)
+	c, _, _, logs, _ := prepare(t, cfg, bucketClient, nil, nil)
 
 	// Try to start the compactor with a bad consul kv-store. The
 	err := services.StartAndAwaitRunning(context.Background(), c)
@@ -1934,63 +2092,54 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
 
-func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
-	bucketClient := objstore.NewInMemBucket()
-	id := ulid.MustNew(ulid.Now(), rand.Reader)
-	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
+func TestCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
+	t.Parallel()
 
-	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
-	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
+	ss := bucketindex.Status{Status: bucketindex.CustomerManagedKeyError, Version: bucketindex.SyncStatusFileVersion}
+	content, err := json.Marshal(ss)
+	require.NoError(t, err)
 
-	c, tsdbCompactor, tsdbPlanner, logs, registry := prepare(t, prepareConfig(), bucketClient, nil)
+	partitionedGroupID := getPartitionedGroupID("user-1")
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{"user-1"}, nil)
+	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
+	bucketClient.MockIter("user-1/markers/", nil, nil)
+	bucketClient.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", mockBlockMetaJSON("01DTW0ZCPDDNV4BV83Q2SV4QAZ"), nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", "", nil)
+	bucketClient.MockGet("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/no-compact-mark.json", "", nil)
+	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
+	bucketClient.MockGet("user-1/bucket-index-sync-status.json", string(content), nil)
+	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
+	bucketClient.MockUpload("user-1/bucket-index-sync-status.json", nil)
+	bucketClient.MockIter("user-1/"+PartitionedGroupDirectory, nil, nil)
+	bucketClient.MockGet("user-1/partitioned-groups/visit-marks/"+string(partitionedGroupID)+"/partition-0-visit-mark.json", "", nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	tsdbCompactor.On("CompactWithBlockPopulator", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ulid.ULID{}, context.Canceled).Run(func(args mock.Arguments) {
-		cancel()
-	})
-	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
-		{
-			BlockMeta: tsdb.BlockMeta{
-				ULID:    b1,
-				MinTime: 10,
-				MaxTime: 20,
-			},
-		},
-		{
-			BlockMeta: tsdb.BlockMeta{
-				ULID:    b2,
-				MinTime: 20,
-				MaxTime: 30,
-			},
-		},
-	}, nil)
-	require.NoError(t, services.StartAndAwaitRunning(ctx, c))
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-	cortex_testutil.Poll(t, 1*time.Second, 1.0, func() interface{} {
-		return prom_testutil.ToFloat64(c.compactionRunsInterrupted)
+	cfg := prepareConfig()
+	cfg.ShardingEnabled = true
+	cfg.ShardingRing.InstanceID = "compactor-1"
+	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
+	cfg.ShardingRing.KVStore.Mock = ringStore
+
+	tsdbGrouper := tsdbGrouperMock{}
+	mockGroups := []*compact.Group{mockBlockGroup("user-1", []string{"01DTVP434PA9VFXSW2JKB3392D", "01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, bucketClient)}
+	tsdbGrouper.On("Groups", mock.Anything).Return(mockGroups, nil)
+
+	c, _, tsdbPlanner, _, _ := prepare(t, cfg, bucketClient, nil, &tsdbGrouper)
+	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{}, nil)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
+
+	// Wait until a run has completed.
+	cortex_testutil.Poll(t, 5*time.Second, 1.0, func() interface{} {
+		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
-
-	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
-		# TYPE cortex_compactor_runs_completed_total counter
-		# HELP cortex_compactor_runs_completed_total Total number of compaction runs successfully completed.
-		cortex_compactor_runs_completed_total 0
-
-		# TYPE cortex_compactor_runs_interrupted_total counter
-		# HELP cortex_compactor_runs_interrupted_total Total number of compaction runs interrupted.
-		cortex_compactor_runs_interrupted_total 1
-
-		# TYPE cortex_compactor_runs_failed_total counter
-		# HELP cortex_compactor_runs_failed_total Total number of compaction runs failed.
-		cortex_compactor_runs_failed_total 0
-	`),
-		"cortex_compactor_runs_completed_total",
-		"cortex_compactor_runs_interrupted_total",
-		"cortex_compactor_runs_failed_total",
-	))
-
-	lines := strings.Split(logs.String(), "\n")
-	require.Contains(t, lines, `level=info component=compactor msg="interrupting compaction of user blocks" user=user-1`)
-	require.NotContains(t, logs.String(), `level=error`)
 }

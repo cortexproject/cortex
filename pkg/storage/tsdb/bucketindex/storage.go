@@ -69,7 +69,11 @@ func (s *Status) GetNonQueryableUntil() time.Time {
 // ReadIndex reads, parses and returns a bucket index from the bucket.
 func ReadIndex(ctx context.Context, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider, logger log.Logger) (*Index, error) {
 	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+	return ReadUserIndex(ctx, userBkt, logger)
+}
 
+// ReadUserIndex reads, parses and returns user bucket index from the bucket.
+func ReadUserIndex(ctx context.Context, userBkt objstore.InstrumentedBucket, logger log.Logger) (*Index, error) {
 	// Get the bucket index.
 	reader, err := userBkt.WithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(userBkt.IsAccessDeniedErr, userBkt.IsObjNotFoundErr)).Get(ctx, IndexCompressedFilename)
 	if err != nil {

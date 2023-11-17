@@ -3073,6 +3073,14 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -compactor.tenant-shard-size
 [compactor_tenant_shard_size: <int> | default = 0]
 
+# Index size limit in bytes for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-index-size-limit-in-bytes
+[compactor_partition_index_size_limit_in_bytes: <int> | default = 0]
+
+# Time series count limit for each compaction partition. 0 means no limit
+# CLI flag: -compactor.partition-series-count-limit
+[compactor_partition_series_count_limit: <int> | default = 0]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.

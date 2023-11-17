@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path"
 	"testing"
 	"time"
 
@@ -24,8 +23,7 @@ import (
 )
 
 func TestShuffleShardingPlanner_Plan(t *testing.T) {
-	type VisitedBlock struct {
-		id          ulid.ULID
+	type VisitedPartition struct {
 		isExpired   bool
 		compactorID string
 	}
@@ -38,12 +36,12 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 	block3ulid := ulid.MustNew(3, nil)
 
 	tests := map[string]struct {
-		ranges          []int64
-		noCompactBlocks map[ulid.ULID]*metadata.NoCompactMark
-		blocks          []*metadata.Meta
-		expected        []*metadata.Meta
-		expectedErr     error
-		visitedBlocks   []VisitedBlock
+		ranges           []int64
+		noCompactBlocks  map[ulid.ULID]*metadata.NoCompactMark
+		blocks           []*metadata.Meta
+		expected         []*metadata.Meta
+		expectedErr      error
+		visitedPartition VisitedPartition
 	}{
 		"test basic plan": {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
@@ -63,17 +61,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block2ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: currentCompactor,
 			},
 			expected: []*metadata.Meta{
 				{
@@ -110,17 +100,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block2ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: currentCompactor,
 			},
 			expectedErr: fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block2ulid.String(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds()),
 		},
@@ -142,17 +124,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block2ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: currentCompactor,
 			},
 			expectedErr: fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block1ulid.String(), 0*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()),
 		},
@@ -174,17 +148,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block2ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: currentCompactor,
 			},
 			expectedErr: fmt.Errorf("block %s with time range %d:%d is outside the largest expected range %d:%d", block2ulid.String(), 0*time.Hour.Milliseconds(), 4*time.Hour.Milliseconds(), 0*time.Hour.Milliseconds(), 2*time.Hour.Milliseconds()),
 		},
@@ -214,22 +180,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block2ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block3ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: currentCompactor,
 			},
 			expected: []*metadata.Meta{
 				{
@@ -267,17 +220,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
-				{
-					id:          block2ulid,
-					isExpired:   false,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: currentCompactor,
 			},
 			expected: []*metadata.Meta{},
 		},
@@ -299,12 +244,9 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   false,
-					compactorID: otherCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   false,
+				compactorID: otherCompactor,
 			},
 			expected: []*metadata.Meta{},
 		},
@@ -326,35 +268,34 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 					},
 				},
 			},
-			visitedBlocks: []VisitedBlock{
-				{
-					id:          block1ulid,
-					isExpired:   true,
-					compactorID: currentCompactor,
-				},
+			visitedPartition: VisitedPartition{
+				isExpired:   true,
+				compactorID: currentCompactor,
 			},
 			expected: []*metadata.Meta{},
 		},
 	}
 
 	blockVisitMarkerTimeout := 5 * time.Minute
+	partitionedGroupID := uint32(1)
+	partitionID := 0
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			bkt := &bucket.ClientMock{}
-			for _, visitedBlock := range testData.visitedBlocks {
-				visitMarkerFile := path.Join(visitedBlock.id.String(), BlockVisitMarkerFile)
-				expireTime := time.Now()
-				if visitedBlock.isExpired {
-					expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
-				}
-				blockVisitMarker := BlockVisitMarker{
-					CompactorID: visitedBlock.compactorID,
-					VisitTime:   expireTime.Unix(),
-					Version:     VisitMarkerVersion1,
-				}
-				visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
-				bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
+			visitMarkerFile := GetPartitionVisitMarkerFile(partitionedGroupID, partitionID)
+			expireTime := time.Now()
+			if testData.visitedPartition.isExpired {
+				expireTime = expireTime.Add(-1 * blockVisitMarkerTimeout)
 			}
+			blockVisitMarker := PartitionVisitMarker{
+				CompactorID:        testData.visitedPartition.compactorID,
+				PartitionedGroupID: partitionedGroupID,
+				PartitionID:        partitionID,
+				VisitTime:          expireTime.Unix(),
+				Version:            PartitionVisitMarkerVersion1,
+			}
+			visitMarkerFileContent, _ := json.Marshal(blockVisitMarker)
+			bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
 			bkt.MockUpload(mock.Anything, nil)
 
 			registerer := prometheus.NewPedanticRegistry()
@@ -383,7 +324,13 @@ func TestShuffleShardingPlanner_Plan(t *testing.T) {
 				blockVisitMarkerReadFailed,
 				blockVisitMarkerWriteFailed,
 			)
-			actual, err := p.Plan(context.Background(), testData.blocks, nil, nil)
+			actual, err := p.Plan(context.Background(), testData.blocks, nil, &CortexMetaExtensions{
+				PartitionInfo: &PartitionInfo{
+					PartitionCount:     1,
+					PartitionID:        partitionID,
+					PartitionedGroupID: partitionedGroupID,
+				},
+			})
 
 			if testData.expectedErr != nil {
 				assert.Equal(t, err, testData.expectedErr)

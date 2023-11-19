@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.16.0 in progress
+## 1.16.0 2023-11-20
 
 * [CHANGE] AlertManager: include reason label in `cortex_alertmanager_notifications_failed_total`. #5409
 * [CHANGE] Ruler: Added user label to `cortex_ruler_write_requests_total`, `cortex_ruler_write_requests_failed_total`, `cortex_ruler_queries_total`, and `cortex_ruler_queries_failed_total` metrics. #5312

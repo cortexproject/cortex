@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -149,7 +150,8 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 			go manager.Run()
 			r.userManagers[user] = manager
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
+
+		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), ruleGroupIterationFunc)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
@@ -159,6 +161,22 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		r.lastReloadSuccessful.WithLabelValues(user).Set(1)
 		r.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 	}
+}
+
+func ruleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+	logMessage := []interface{}{
+		"msg", "evaluating rule group",
+		"component", "ruler",
+		"rule_group", g.Name(),
+		"namespace", g.File(),
+		"num_rules", len(g.Rules()),
+		"num_alert_rules", len(g.AlertingRules()),
+		"eval_interval", g.Interval(),
+		"eval_time", evalTimestamp,
+	}
+
+	level.Info(g.Logger()).Log(logMessage...)
+	promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
 }
 
 // newManager creates a prometheus rule manager wrapped with a user id

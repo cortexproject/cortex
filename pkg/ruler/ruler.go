@@ -939,6 +939,12 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 	return &RulesResponse{Groups: groupDescs}, nil
 }
 
+// HasMaxRuleGroupsLimit check if RulerMaxRuleGroupsPerTenant limit is set for the userID.
+func (r *Ruler) HasMaxRuleGroupsLimit(userID string) bool {
+	limit := r.limits.RulerMaxRuleGroupsPerTenant(userID)
+	return limit > 0
+}
+
 // AssertMaxRuleGroups limit has not been reached compared to the current
 // number of total rule groups in input and returns an error if so.
 func (r *Ruler) AssertMaxRuleGroups(userID string, rg int) error {

@@ -13,7 +13,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	perrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
@@ -419,7 +418,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	// First, see if we exist in the cluster, update our state to match if we do,
 	// and add ourselves (without tokens) if we don't.
 	if err := i.initRing(context.Background()); err != nil {
-		return perrors.Wrapf(err, "failed to join the ring %s", i.RingName)
+		return errors.Wrapf(err, "failed to join the ring %s", i.RingName)
 	}
 
 	// We do various period tasks
@@ -464,14 +463,14 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 					// let's observe the ring. By using JOINING state, this ingester will be ignored by LEAVING
 					// ingesters, but we also signal that it is not fully functional yet.
 					if err := i.autoJoin(context.Background(), JOINING); err != nil {
-						return perrors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
+						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
 					observeChan = time.After(i.cfg.ObservePeriod)
 				} else {
 					if err := i.autoJoin(context.Background(), ACTIVE); err != nil {
-						return perrors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
+						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s", i.RingName)
 					}
 				}
 			}
@@ -561,7 +560,7 @@ heartbeatLoop:
 
 	if i.ShouldUnregisterOnShutdown() {
 		if err := i.unregister(context.Background()); err != nil {
-			return perrors.Wrapf(err, "failed to unregister from the KV store, ring: %s", i.RingName)
+			return errors.Wrapf(err, "failed to unregister from the KV store, ring: %s", i.RingName)
 		}
 		level.Info(i.logger).Log("msg", "instance removed from the KV store", "ring", i.RingName)
 	}

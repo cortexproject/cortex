@@ -227,10 +227,16 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="user2"} 1234
 			cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="user3"} 1234
 
+            # HELP cortex_ingester_tsdb_data_replay_duration_seconds Time taken to replay the tsdb data on disk.
+			# TYPE cortex_ingester_tsdb_data_replay_duration_seconds gauge
+			cortex_ingester_tsdb_data_replay_duration_seconds{user="user1"} 12345
+			cortex_ingester_tsdb_data_replay_duration_seconds{user="user2"} 12345
+			cortex_ingester_tsdb_data_replay_duration_seconds{user="user3"} 12345
+
 			# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
 			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
 			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 9
-			
+
 			# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
 			cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="user1"} 1
@@ -458,10 +464,15 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="user1"} 1234
 			cortex_ingester_tsdb_exemplar_last_exemplars_timestamp_seconds{user="user2"} 1234
 
+            # HELP cortex_ingester_tsdb_data_replay_duration_seconds Time taken to replay the tsdb data on disk.
+			# TYPE cortex_ingester_tsdb_data_replay_duration_seconds gauge
+			cortex_ingester_tsdb_data_replay_duration_seconds{user="user1"} 12345
+			cortex_ingester_tsdb_data_replay_duration_seconds{user="user2"} 12345
+
 			# HELP cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total Total number of out of order exemplar ingestion failed attempts.
 			# TYPE cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total counter
 			cortex_ingester_tsdb_exemplar_out_of_order_exemplars_total 9
-			
+
 			# HELP cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage Number of TSDB series with exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage gauge
 			cortex_ingester_tsdb_exemplar_series_with_exemplars_in_storage{user="user1"} 1
@@ -695,6 +706,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of chunks that were memory-mapped.",
 	})
 	mmapChunksTotal.Add(104)
+
+	dataTotalReplayDuration := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_data_replay_duration_seconds",
+		Help: "Time taken to replay the data on disk.",
+	})
+	dataTotalReplayDuration.Set(12345)
 
 	loadedBlocks := promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "prometheus_tsdb_blocks_loaded",

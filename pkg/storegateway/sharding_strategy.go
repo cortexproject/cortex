@@ -36,15 +36,35 @@ type ShardingLimits interface {
 	StoreGatewayTenantShardSize(userID string) float64
 }
 
-// NoShardingStrategy is a no-op strategy. When this strategy is used, no tenant/block is filtered out.
-type NoShardingStrategy struct{}
+func filterDisallowedTenants(userIDs []string, logger log.Logger, allowedTenants *util.AllowedTenants) []string {
+	filteredUserIDs := []string{}
+	for _, userID := range userIDs {
+		if !allowedTenants.IsAllowed(userID) {
+			level.Debug(logger).Log("msg", "ignoring storage gateway for user, not allowed", "user", userID)
+			continue
+		}
 
-func NewNoShardingStrategy() *NoShardingStrategy {
-	return &NoShardingStrategy{}
+		filteredUserIDs = append(filteredUserIDs, userID)
+	}
+
+	return filteredUserIDs
+}
+
+// NoShardingStrategy is a no-op strategy. When this strategy is used, no tenant/block is filtered out.
+type NoShardingStrategy struct {
+	logger         log.Logger
+	allowedTenants *util.AllowedTenants
+}
+
+func NewNoShardingStrategy(logger log.Logger, allowedTenants *util.AllowedTenants) *NoShardingStrategy {
+	return &NoShardingStrategy{
+		logger:         logger,
+		allowedTenants: allowedTenants,
+	}
 }
 
 func (s *NoShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
-	return userIDs
+	return filterDisallowedTenants(userIDs, s.logger, s.allowedTenants)
 }
 
 func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[ulid.ULID]*metadata.Meta, _ map[ulid.ULID]struct{}, _ block.GaugeVec) error {
@@ -54,23 +74,26 @@ func (s *NoShardingStrategy) FilterBlocks(_ context.Context, _ string, _ map[uli
 // DefaultShardingStrategy is a sharding strategy based on the hash ring formed by store-gateways.
 // Not go-routine safe.
 type DefaultShardingStrategy struct {
-	r            *ring.Ring
-	instanceAddr string
-	logger       log.Logger
+	r              *ring.Ring
+	instanceAddr   string
+	logger         log.Logger
+	allowedTenants *util.AllowedTenants
 }
 
 // NewDefaultShardingStrategy creates DefaultShardingStrategy.
-func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Logger) *DefaultShardingStrategy {
+func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Logger, allowedTenants *util.AllowedTenants) *DefaultShardingStrategy {
 	return &DefaultShardingStrategy{
 		r:            r,
 		instanceAddr: instanceAddr,
 		logger:       logger,
+
+		allowedTenants: allowedTenants,
 	}
 }
 
 // FilterUsers implements ShardingStrategy.
 func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
-	return userIDs
+	return filterDisallowedTenants(userIDs, s.logger, s.allowedTenants)
 }
 
 // FilterBlocks implements ShardingStrategy.
@@ -89,10 +112,11 @@ type ShuffleShardingStrategy struct {
 	logger       log.Logger
 
 	zoneStableShuffleSharding bool
+	allowedTenants            *util.AllowedTenants
 }
 
 // NewShuffleShardingStrategy makes a new ShuffleShardingStrategy.
-func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, limits ShardingLimits, logger log.Logger, zoneStableShuffleSharding bool) *ShuffleShardingStrategy {
+func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, limits ShardingLimits, logger log.Logger, allowedTenants *util.AllowedTenants, zoneStableShuffleSharding bool) *ShuffleShardingStrategy {
 	return &ShuffleShardingStrategy{
 		r:            r,
 		instanceID:   instanceID,
@@ -101,14 +125,14 @@ func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, l
 		logger:       logger,
 
 		zoneStableShuffleSharding: zoneStableShuffleSharding,
+		allowedTenants:            allowedTenants,
 	}
 }
 
 // FilterUsers implements ShardingStrategy.
 func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
 	var filteredIDs []string
-
-	for _, userID := range userIDs {
+	for _, userID := range filterDisallowedTenants(userIDs, s.logger, s.allowedTenants) {
 		subRing := GetShuffleShardingSubring(s.r, userID, s.limits, s.zoneStableShuffleSharding)
 
 		// Include the user only if it belongs to this store-gateway shard.

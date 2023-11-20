@@ -823,6 +823,15 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
         [enabled_items: <list of string> | default = []]
 
+      multilevel:
+        # The maximum number of concurrent asynchronous operations can occur.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend

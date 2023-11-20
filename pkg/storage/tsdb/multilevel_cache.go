@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/cacheutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
@@ -24,7 +25,7 @@ type multiLevelCache struct {
 
 	fetchLatency         *prometheus.HistogramVec
 	backFillLatency      *prometheus.HistogramVec
-	backfillProcessor    *AsyncOperationProcessor
+	backfillProcessor    *cacheutil.AsyncOperationProcessor
 	backfillDroppedItems *prometheus.CounterVec
 }
 
@@ -79,7 +80,7 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 				for lbl, b := range values {
 					if err := m.backfillProcessor.EnqueueAsync(func() {
 						m.caches[i].StorePostings(blockID, lbl, b, tenant)
-					}); errors.Is(err, ErrAsyncBufferFull) {
+					}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
 						m.backfillDroppedItems.WithLabelValues(cacheTypePostings).Inc()
 					}
 				}
@@ -116,7 +117,7 @@ func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID uli
 				backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypeExpandedPostings))
 				if err := m.backfillProcessor.EnqueueAsync(func() {
 					m.caches[i-1].StoreExpandedPostings(blockID, matchers, d, tenant)
-				}); errors.Is(err, ErrAsyncBufferFull) {
+				}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
 					m.backfillDroppedItems.WithLabelValues(cacheTypeExpandedPostings).Inc()
 				}
 				backFillTimer.ObserveDuration()
@@ -180,7 +181,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 				for ref, b := range values {
 					if err := m.backfillProcessor.EnqueueAsync(func() {
 						m.caches[i].StoreSeries(blockID, ref, b, tenant)
-					}); errors.Is(err, ErrAsyncBufferFull) {
+					}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
 						m.backfillDroppedItems.WithLabelValues(cacheTypeSeries).Inc()
 					}
 				}
@@ -198,7 +199,7 @@ func newMultiLevelCache(reg prometheus.Registerer, cfg MultiLevelIndexCacheConfi
 
 	return &multiLevelCache{
 		caches:            c,
-		backfillProcessor: NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
+		backfillProcessor: cacheutil.NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
 		fetchLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_store_multilevel_index_cache_fetch_duration_seconds",
 			Help:    "Histogram to track latency to fetch items from multi level index cache",

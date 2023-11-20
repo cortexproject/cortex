@@ -906,7 +906,7 @@ github.com/thanos-io/promql-engine/extlabels
 github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/worker
-# github.com/thanos-io/thanos v0.32.5-0.20231103115946-463a6ce8b53c
+# github.com/thanos-io/thanos v0.32.5-0.20231120163350-0a4f5ae3310e
 ## explicit; go 1.21
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

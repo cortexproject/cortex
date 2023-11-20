@@ -158,6 +158,9 @@ jobs:
             docker pull quay.io/cortexproject/cortex:v1.14.1
             docker pull quay.io/cortexproject/cortex:v1.15.0
             docker pull quay.io/cortexproject/cortex:v1.15.1
+            docker pull quay.io/cortexproject/cortex:v1.15.2
+            docker pull quay.io/cortexproject/cortex:v1.15.3
+            docker pull quay.io/cortexproject/cortex:v1.16.0
           fi
           docker pull memcached:1.6.1
           docker pull redis:7.0.4-alpine

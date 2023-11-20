@@ -2050,6 +2050,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			},
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
+			"",
 		)
 
 		// Initialise the shipper blocks cache.

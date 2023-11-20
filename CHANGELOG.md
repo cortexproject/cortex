@@ -2,31 +2,13 @@
 
 ## master / unreleased
 * [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645
-* [CHANGE] Query Frontend: Expose `-querier.max-subquery-steps` to configure subquery max steps check. By default, the limit is set to 0, which is disabled. #5656
+* [CHANGE] Store Gateway: Add a new fastcache based inmemory index cache. #5619
 * [FEATURE] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
 * [ENHANCEMENT] Store Gateway: Added `-store-gateway.enabled-tenants` and `-store-gateway.disabled-tenants` to explicitly enable or disable store-gateway for specific tenants. #5638
-* [BUGFIX] Query Frontend: Fix query string being omitted in query stats log. #5655
 
-## 1.16.0 in progress
+## 1.16.0 2023-11-20
 
-* [BUGFIX] Querier: Fix querier limiter bug under multiselect. #5627
-* [CHANGE] Ruler: Add `cortex_ruler_rule_group_load_duration_seconds` and `cortex_ruler_rule_group_sync_duration_seconds` metrics. #5609
-* [CHANGE] Ruler: Add contextual info and query statistics to log
-* [FEATURE] Ruler: Add support for disabling rule groups. #5521
-* [FEATURE] Added the flag `-alertmanager.alerts-gc-interval` to configure alert manager alerts Garbage collection interval. #5550
-* [FEATURE] Ruler: Add support for Limit field on RuleGroup. #5528
-* [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
-* [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
-* [FEATURE] AlertManager: Update version to v0.26.0 and bring in Microsoft Teams receiver. #5543
-* [FEATURE] Store Gateway: Support lazy expanded posting optimization. Added new flag `blocks-storage.bucket-store.lazy-expanded-postings-enabled` and new metrics `cortex_bucket_store_lazy_expanded_postings_total`, `cortex_bucket_store_lazy_expanded_posting_size_bytes_total` and `cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total`. #5556.
-* [FEATURE] Store Gateway: Added new flag `blocks-storage.bucket-store.series-batch-size` to control how many series to fetch per batch in Store Gateway. #5582.
-* [CHANGE] AlertManager: include reason label in cortex_alertmanager_notifications_failed_total.#5409
-* [CHANGE] Query: Set CORS Origin headers for Query API #5388
-* [CHANGE] Updating prometheus/alertmanager from v0.25.0 to v0.25.1-0.20230505130626-263ca5c9438e. This includes the below changes. #5276
-  - Validating new fields on the Webhook AM config, PushOver AM Config and Telegram AM Config.
-  - filtering 5xx Errors in numTotalFailedNotifications metric.
-  - Delete silence respond with 404 when silence is not found.
-  - mark webhook URL as a secret.
+* [CHANGE] AlertManager: include reason label in `cortex_alertmanager_notifications_failed_total`. #5409
 * [CHANGE] Ruler: Added user label to `cortex_ruler_write_requests_total`, `cortex_ruler_write_requests_failed_total`, `cortex_ruler_queries_total`, and `cortex_ruler_queries_failed_total` metrics. #5312
 * [CHANGE] Alertmanager: Validating new fields on the PagerDuty AM config. #5290
 * [CHANGE] Ingester: Creating label `native-histogram-sample` on the `cortex_discarded_samples_total` to keep track of discarded native histogram samples. #5289
@@ -38,26 +20,48 @@
 * [CHANGE] StoreGateway: Rename `cortex_bucket_store_chunk_pool_returned_bytes_total` and `cortex_bucket_store_chunk_pool_requested_bytes_total` to `cortex_bucket_store_chunk_pool_operation_bytes_total`. #5552
 * [CHANGE] Query Frontend/Querier: Make build info API disabled by default and add feature flag `api.build-info-enabled` to enable it. #5533
 * [CHANGE] Purger: Do no use S3 tenant kms key when uploading deletion marker. #5575
-* [CHANGE] Ingester: Shipper always upload compacted blocks. #5625
-* [CHANGE] Store Gateway: Add a new fastcache based inmemory index cache. #5619
-* [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request.
+* [CHANGE] Ingester: Shipper always allows uploading compacted blocks to ship OOO compacted blocks. #5625
+* [CHANGE] DDBKV: Change metric name from `dynamodb_kv_read_capacity_total` to `dynamodb_kv_consumed_capacity_total` and include Delete, Put, Batch dimension. #5487
+* [CHANGE] Compactor: Adding the userId on the compact dir path. #5524
+* [CHANGE] Ingester: Remove deprecated ingester metrics. #5472
+* [CHANGE] Query Frontend: Expose `-querier.max-subquery-steps` to configure subquery max steps check. By default, the limit is set to 0, which is disabled. #5656
+* [FEATURE] Store Gateway: Implementing multi level index cache. #5451
+* [FEATURE] Ruler: Add support for disabling rule groups. #5521
+* [FEATURE] Support object storage backends for runtime configuration file. #5292
+* [FEATURE] Ruler: Add support for `Limit` field on RuleGroup. #5528
+* [FEATURE] AlertManager: Add support for Webex, Discord and Telegram Receiver. #5493
+* [FEATURE] Ingester: added `-admin-limit-message` to customize the message contained in limit errors.#5460
+* [FEATURE] AlertManager: Update version to v0.26.0 and bring in Microsoft Teams receiver. #5543
+* [FEATURE] Store Gateway: Support lazy expanded posting optimization. Added new flag `blocks-storage.bucket-store.lazy-expanded-postings-enabled` and new metrics `cortex_bucket_store_lazy_expanded_postings_total`, `cortex_bucket_store_lazy_expanded_posting_size_bytes_total` and `cortex_bucket_store_lazy_expanded_posting_series_overfetched_size_bytes_total`. #5556.
+* [FEATURE] Store Gateway: Add `max_downloaded_bytes_per_request` to limit max bytes to download per store gateway request. #5179
 * [FEATURE] Added 2 flags `-alertmanager.alertmanager-client.grpc-max-send-msg-size` and ` -alertmanager.alertmanager-client.grpc-max-recv-msg-size` to configure alert manager grpc client message size limits. #5338
-* [FEATURE] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
-* [FEATURE] Querier: Log query stats when querying store gateway. #5376
 * [FEATURE] Querier/StoreGateway: Allow the tenant shard sizes to be a percent of total instances. #5393
 * [FEATURE] Added the flag `-alertmanager.api-concurrency` to configure alert manager api concurrency limit. #5412
 * [FEATURE] Store Gateway: Add `-store-gateway.sharding-ring.keep-instance-in-the-ring-on-shutdown` to skip unregistering instance from the ring in shutdown. #5421
 * [FEATURE] Ruler: Support for filtering rules in the API. #5417
 * [FEATURE] Compactor: Add `-compactor.ring.tokens-file-path` to store generated tokens locally. #5432
 * [FEATURE] Query Frontend: Add `-frontend.retry-on-too-many-outstanding-requests` to re-enqueue 429 requests if there are multiple query-schedulers available. #5496
-* [FEATURE] Store Gateway: Add `-blocks-storage.bucket-store.max-inflight-requests` for store gateways to reject further requests upon reaching the limit. #5553
-* [FEATURE] Store Gateway: Add `cortex_bucket_store_block_load_duration_seconds` histogram to track time to load blocks. #5580
-* [FEATURE] AlertManager: Add `cortex_alertmanager_dispatcher_aggregation_groups` and `cortex_alertmanager_dispatcher_alert_processing_duration_seconds` metrics for dispatcher. #5592
+* [FEATURE] Store Gateway: Add `-blocks-storage.bucket-store.max-inflight-requests` for store gateways to reject further series requests upon reaching the limit. #5553
+* [FEATURE] Store Gateway: Support filtered index cache. #5587
+* [ENHANCEMENT] Update go version to 1.21.3. #5630
+* [ENHANCEMENT] Store Gateway: Add `cortex_bucket_store_block_load_duration_seconds` histogram to track time to load blocks. #5580
+* [ENHANCEMENT] Querier: retry chunk pool exhaustion error in querier rather than query frontend. #5569
+* [ENHANCEMENT] Alertmanager: Added flag `-alertmanager.alerts-gc-interval` to configure alerts Garbage collection interval. #5550
+* [ENHANCEMENT] Query Frontend: enable vertical sharding on binary expr . #5507
+* [ENHANCEMENT] Query Frontend: Include user agent as part of query frontend log. #5450
+* [ENHANCEMENT] Query: Set CORS Origin headers for Query API #5388
+* [ENHANCEMENT] Query Frontend: Add `cortex_rejected_queries_total` metric for throttled queries. #5356
+* [ENHANCEMENT] Query Frontend: Optimize the decoding of `SampleStream`. #5349
+* [ENHANCEMENT] Compactor: Check ctx done when uploading visit marker. #5333
+* [ENHANCEMENT] AlertManager: Add `cortex_alertmanager_dispatcher_aggregation_groups` and `cortex_alertmanager_dispatcher_alert_processing_duration_seconds` metrics for dispatcher. #5592
+* [ENHANCEMENT] Store Gateway: Added new flag `blocks-storage.bucket-store.series-batch-size` to control how many series to fetch per batch in Store Gateway. #5582.
+* [ENHANCEMENT] Querier: Log query stats when querying store gateway. #5376
+* [ENHANCEMENT] Ruler: Add `cortex_ruler_rule_group_load_duration_seconds` and `cortex_ruler_rule_group_sync_duration_seconds` metrics. #5609
+* [ENHANCEMENT] Ruler: Add contextual info and query statistics to log #5604
 * [ENHANCEMENT] Distributor/Ingester: Add span on push path #5319
-* [ENHANCEMENT] Support object storage backends for runtime configuration file. #5292
 * [ENHANCEMENT] Query Frontend: Reject subquery with too small step size. #5323
-* [ENHANCEMENT] Compactor: Exposing Thanos accept-malformed-index to Cortex compactor. #5334
-* [ENHANCEMENT] Log: Avoid expensive log.Valuer evaluation for disallowed levels. #5297
+* [ENHANCEMENT] Compactor: Exposing Thanos `accept-malformed-index` to Cortex compactor. #5334
+* [ENHANCEMENT] Log: Avoid expensive `log.Valuer` evaluation for disallowed levels. #5297
 * [ENHANCEMENT] Improving Performance on the API Gzip Handler. #5347
 * [ENHANCEMENT] Dynamodb: Add `puller-sync-time` to allow different pull time for ring. #5357
 * [ENHANCEMENT] Emit querier `max_concurrent` as a metric. #5362
@@ -68,11 +72,9 @@
 * [ENHANCEMENT] Store Gateway: Add config `estimated_max_series_size_bytes` and `estimated_max_chunk_size_bytes` to address data overfetch. #5401
 * [ENHANCEMENT] Distributor/Ingester: Add experimental `-distributor.sign_write_requests` flag to sign the write requests. #5430
 * [ENHANCEMENT] Store Gateway/Querier/Compactor: Handling CMK Access Denied errors. #5420 #5442 #5446
-* [ENHANCEMENT] Store Gateway: Implementing multi level index cache. #5451
 * [ENHANCEMENT] Alertmanager: Add the alert name in error log when it get throttled. #5456
 * [ENHANCEMENT] Querier: Retry store gateway on different zones when zone awareness is enabled. #5476
-* [ENHANCEMENT] DDBKV: Change metric name from dynamodb_kv_read_capacity_total to dynamodb_kv_consumed_capacity_total and include Delete, Put, Batch dimension. #5481
-* [ENHANCEMENT] Compactor: allow unregisteronshutdown to be configurable. #5503
+* [ENHANCEMENT] Compactor: allow `unregister_on_shutdown` to be configurable. #5503
 * [ENHANCEMENT] Querier: Batch adding series to query limiter to optimize locking. #5505
 * [ENHANCEMENT] Store Gateway: add metric `cortex_bucket_store_chunk_refetches_total` for number of chunk refetches. #5532
 * [ENHANCEMENT] BasicLifeCycler: allow final-sleep during shutdown #5517
@@ -84,25 +86,28 @@
 * [ENHANCEMENT] Store Gateway: Add histogram metrics for total time spent fetching series and chunks per request. #5573
 * [ENHANCEMENT] Store Gateway: Check context in multi level cache. Add `cortex_store_multilevel_index_cache_fetch_duration_seconds` and `cortex_store_multilevel_index_cache_backfill_duration_seconds` to measure fetch and backfill latency. #5596
 * [ENHANCEMENT] Ingester: Added new ingester TSDB metrics `cortex_ingester_tsdb_head_samples_appended_total`, `cortex_ingester_tsdb_head_out_of_order_samples_appended_total`, `cortex_ingester_tsdb_snapshot_replay_error_total`, `cortex_ingester_tsdb_sample_ooo_delta` and `cortex_ingester_tsdb_mmap_chunks_total`. #5624
+* [ENHANCEMENT] Query Frontend: Handle context error before decoding and merging responses. #5499
+* [ENHANCEMENT] Store-Gateway and AlertManager: Add a `wait_instance_time_out` to context to avoid waiting forever. #5581
+* [BUGFIX] Compactor: Fix possible division by zero during compactor config validation. #5535
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
 * [BUGFIX] Alertmanager: Route web-ui requests to the alertmanager distributor when sharding is enabled. #5293
 * [BUGFIX] Storage: Bucket index updater should ignore meta not found for partial blocks. #5343
-* [BUGFIX] Ring: Add JOINING state to read operation. #5346
+* [BUGFIX] Ring: Add `JOINING` state to read operation. #5346
 * [BUGFIX] Compactor: Partial block with only visit marker should be deleted even there is no deletion marker. #5342
-* [BUGFIX] KV: Etcd calls will no longer block indefinitely and will now time out after the DialTimeout period. #5392
+* [BUGFIX] KV: Etcd calls will no longer block indefinitely and will now time out after the `DialTimeout` period. #5392
 * [BUGFIX] Ring: Allow RF greater than number of zones to select more than one instance per zone #5411
 * [BUGFIX] Store Gateway: Fix bug in store gateway ring comparison logic. #5426
 * [BUGFIX] Ring: Fix bug in consistency of Get func in a scaling zone-aware ring. #5429
+* [BUGFIX] Compactor: Fix retry on markers. #5441
 * [BUGFIX] Query Frontend: Fix bug of failing to cancel downstream request context in query frontend v2 mode (query scheduler enabled). #5447
 * [BUGFIX] Alertmanager: Remove the user id from state replication key metric label value. #5453
 * [BUGFIX] Compactor: Avoid cleaner concurrency issues checking global markers before all blocks. #5457
 * [BUGFIX] DDBKV: Disallow instance with older timestamp to update instance with newer timestamp. #5480
-* [BUGFIX] Query Frontend: Handle context error before decoding and merging responses. #5499
 * [BUGFIX] DDBKV: When no change detected in ring, retry the CAS until there is change. #5502
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
 * [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
-* [BUGFIX] Store-Gateway and AlertManager: Add a `wait_instance_time_out` to WaitInstanceState context to avoid waiting forever. #5581
+* [BUGFIX] Query Frontend: Fix query string being omitted in query stats log. #5655
 
 ## 1.15.3 2023-06-22
 

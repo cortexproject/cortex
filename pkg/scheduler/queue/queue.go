@@ -106,14 +106,10 @@ func (q *RequestQueue) EnqueueRequest(userID string, req Request, maxQueriers fl
 		return errors.New("no queue found")
 	}
 
-	metricLabels := prometheus.Labels{
-		"user":     userID,
-		"priority": priority,
-	}
-	q.totalRequests.With(metricLabels).Inc()
+	q.totalRequests.WithLabelValues(userID, priority).Inc()
 
 	if queue.length() >= maxOutstandingRequests {
-		q.discardedRequests.With(metricLabels).Inc()
+		q.discardedRequests.WithLabelValues(userID, priority).Inc()
 		return ErrTooManyRequests
 	}
 

@@ -56,7 +56,7 @@ type QueryPriority struct {
 
 type PriorityDef struct {
 	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
-	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle this priority only. Value between 0 and 1 will be used as a percentage.|default=0"`
+	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to this value only. Value between 0 and 1 will be used as a percentage.|default=0"`
 	QueryAttributes  []QueryAttribute `yaml:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
 }
 

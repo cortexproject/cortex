@@ -159,8 +159,8 @@ FindQueue:
 
 		// Pick next request from the queue.
 		for {
-			priority, matchPriority := q.getPriorityForQuerier(userID, querierID)
-			request := queue.dequeueRequest(priority, matchPriority)
+			minPriority, matchMinPriority := q.getPriorityForQuerier(userID, querierID)
+			request := queue.dequeueRequest(minPriority, matchMinPriority)
 			if request == nil {
 				// The queue does not contain request with the priority, wait for more requests
 				querierWait = true

@@ -60,8 +60,8 @@ func (f *PriorityRequestQueue) enqueueRequest(r Request) {
 	}
 }
 
-func (f *PriorityRequestQueue) dequeueRequest(priority int64, matchPriority bool) Request {
-	if matchPriority && f.queue.Peek().Priority() != priority {
+func (f *PriorityRequestQueue) dequeueRequest(minPriority int64, checkMinPriority bool) Request {
+	if checkMinPriority && f.queue.Peek().Priority() < minPriority {
 		return nil
 	}
 	r := f.queue.Dequeue()

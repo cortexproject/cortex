@@ -219,10 +219,6 @@ func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
 		id:       "priority 1",
 		priority: 1,
 	}
-	priority2Request := MockRequest{
-		id:       "priority 2",
-		priority: 2,
-	}
 
 	assert.NoError(t, queue.EnqueueRequest("userID", normalRequest, 1, func() {}))
 	assert.NoError(t, queue.EnqueueRequest("userID", priority1Request, 1, func() {}))
@@ -244,7 +240,7 @@ func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
 	assert.Nil(t, nextRequest)
 	assert.Equal(t, 1, queue.queues.userQueues["userID"].queue.length())
 
-	assert.NoError(t, queue.EnqueueRequest("userID", priority2Request, 1, func() {}))
+	assert.NoError(t, queue.EnqueueRequest("userID", normalRequest, 1, func() {}))
 
 	ctxTimeout, cancel = context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()

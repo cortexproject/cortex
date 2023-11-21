@@ -73,6 +73,10 @@ func TestPriorityRequestQueue(t *testing.T) {
 		id:       "request 2",
 		priority: 2,
 	}
+	request3 := MockRequest{
+		id:       "request 3",
+		priority: 3,
+	}
 
 	queue.enqueueRequest(request1)
 	queue.enqueueRequest(request2)
@@ -102,11 +106,22 @@ func TestPriorityRequestQueue(t *testing.T) {
 
 	queue.enqueueRequest(request1)
 	queue.enqueueRequest(request2)
+	queue.enqueueRequest(request3)
 	assert.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
 		# TYPE cortex_query_scheduler_queue_length gauge
 		cortex_query_scheduler_queue_length{priority="1",type="priority",user="userID"} 1
 		cortex_query_scheduler_queue_length{priority="2",type="priority",user="userID"} 1
+		cortex_query_scheduler_queue_length{priority="3",type="priority",user="userID"} 1
+	`), "cortex_query_scheduler_queue_length"))
+	assert.Equal(t, 3, queue.length())
+	assert.Equal(t, request3, queue.dequeueRequest(2, true))
+	assert.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
+		# TYPE cortex_query_scheduler_queue_length gauge
+		cortex_query_scheduler_queue_length{priority="1",type="priority",user="userID"} 1
+		cortex_query_scheduler_queue_length{priority="2",type="priority",user="userID"} 1
+		cortex_query_scheduler_queue_length{priority="3",type="priority",user="userID"} 0
 	`), "cortex_query_scheduler_queue_length"))
 	assert.Equal(t, 2, queue.length())
 	assert.Equal(t, request2, queue.dequeueRequest(2, true))
@@ -117,6 +132,7 @@ func TestPriorityRequestQueue(t *testing.T) {
 		# TYPE cortex_query_scheduler_queue_length gauge
 		cortex_query_scheduler_queue_length{priority="1",type="priority",user="userID"} 1
 		cortex_query_scheduler_queue_length{priority="2",type="priority",user="userID"} 0
+		cortex_query_scheduler_queue_length{priority="3",type="priority",user="userID"} 0
 	`), "cortex_query_scheduler_queue_length"))
 	assert.Equal(t, request1, queue.dequeueRequest(2, false))
 	assert.Equal(t, 0, queue.length())
@@ -125,5 +141,6 @@ func TestPriorityRequestQueue(t *testing.T) {
 		# TYPE cortex_query_scheduler_queue_length gauge
 		cortex_query_scheduler_queue_length{priority="1",type="priority",user="userID"} 0
 		cortex_query_scheduler_queue_length{priority="2",type="priority",user="userID"} 0
+		cortex_query_scheduler_queue_length{priority="3",type="priority",user="userID"} 0
 	`), "cortex_query_scheduler_queue_length"))
 }

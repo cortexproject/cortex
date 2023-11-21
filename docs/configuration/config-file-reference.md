@@ -5050,8 +5050,8 @@ otel:
 # Priority level. Must be a unique value.
 [priority: <int> | default = 0]
 
-# Number of reserved queriers to handle this priority only. Value between 0 and
-# 1 will be used as a percentage.
+# Number of reserved queriers to handle priorities higher or equal to this value
+# only. Value between 0 and 1 will be used as a percentage.
 [reserved_queriers: <float> | default = 0]
 
 # List of query attributes to assign the priority.

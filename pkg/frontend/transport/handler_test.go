@@ -42,7 +42,7 @@ func TestWriteError(t *testing.T) {
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeError(w, test.err)
+			writeError(w, test.err, nil)
 			require.Equal(t, test.status, w.Result().StatusCode)
 		})
 	}

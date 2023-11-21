@@ -256,7 +256,8 @@ type userTSDB struct {
 	lastUpdate atomic.Int64
 
 	// Thanos shipper used to ship blocks to the storage.
-	shipper Shipper
+	shipper                 Shipper
+	shipperMetadataFilePath string
 
 	// When deletion marker is found for the tenant (checked before shipping),
 	// shipping stops and TSDB is closed before reaching idle timeout time (if enabled).
@@ -435,7 +436,7 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 
 // updateCachedShipperBlocks reads the shipper meta file and updates the cached shipped blocks.
 func (u *userTSDB) updateCachedShippedBlocks() error {
-	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
+	shipperMeta, err := shipper.ReadMetaFile(u.shipperMetadataFilePath)
 	if os.IsNotExist(err) || os.IsNotExist(errors.Cause(err)) {
 		// If the meta file doesn't exist it means the shipper hasn't run yet.
 		shipperMeta = &shipper.Meta{}
@@ -606,7 +607,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 	}
 }
 
-// NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
+// New returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	defaultInstanceLimits = &cfg.DefaultLimits
 	if cfg.ingesterClientFactory == nil {
@@ -2050,7 +2051,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			},
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
+			"",
 		)
+		userDB.shipperMetadataFilePath = filepath.Join(userDB.db.Dir(), filepath.Clean(shipper.DefaultMetaFilename))
 
 		// Initialise the shipper blocks cache.
 		if err := userDB.updateCachedShippedBlocks(); err != nil {

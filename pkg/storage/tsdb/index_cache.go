@@ -42,13 +42,16 @@ var (
 	errUnsupportedIndexCacheBackend = errors.New("unsupported index cache backend")
 	errDuplicatedIndexCacheBackend  = errors.New("duplicated index cache backend")
 	errNoIndexCacheAddresses        = errors.New("no index cache backend addresses")
+	errInvalidMaxAsyncConcurrency   = errors.New("invalid max_async_concurrency, must greater than 0")
+	errInvalidMaxAsyncBufferSize    = errors.New("invalid max_async_buffer_size, must greater than 0")
 )
 
 type IndexCacheConfig struct {
-	Backend   string                    `yaml:"backend"`
-	InMemory  InMemoryIndexCacheConfig  `yaml:"inmemory"`
-	Memcached MemcachedIndexCacheConfig `yaml:"memcached"`
-	Redis     RedisIndexCacheConfig     `yaml:"redis"`
+	Backend    string                     `yaml:"backend"`
+	InMemory   InMemoryIndexCacheConfig   `yaml:"inmemory"`
+	Memcached  MemcachedIndexCacheConfig  `yaml:"memcached"`
+	Redis      RedisIndexCacheConfig      `yaml:"redis"`
+	MultiLevel MultiLevelIndexCacheConfig `yaml:"multilevel"`
 }
 
 func (cfg *IndexCacheConfig) RegisterFlags(f *flag.FlagSet) {
@@ -64,6 +67,7 @@ func (cfg *IndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix str
 	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.")
 	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
 	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")
+	cfg.MultiLevel.RegisterFlagsWithPrefix(f, prefix+"multilevel.")
 }
 
 // Validate the config.
@@ -71,6 +75,12 @@ func (cfg *IndexCacheConfig) Validate() error {
 
 	splitBackends := strings.Split(cfg.Backend, ",")
 	configuredBackends := map[string]struct{}{}
+
+	if len(splitBackends) > 1 {
+		if err := cfg.MultiLevel.Validate(); err != nil {
+			return err
+		}
+	}
 
 	for _, backend := range splitBackends {
 		if !util.StringsContain(supportedIndexCacheBackends, backend) {
@@ -99,6 +109,26 @@ func (cfg *IndexCacheConfig) Validate() error {
 	}
 
 	return nil
+}
+
+type MultiLevelIndexCacheConfig struct {
+	MaxAsyncConcurrency int `yaml:"max_async_concurrency"`
+	MaxAsyncBufferSize  int `yaml:"max_async_buffer_size"`
+}
+
+func (cfg *MultiLevelIndexCacheConfig) Validate() error {
+	if cfg.MaxAsyncBufferSize <= 0 {
+		return errInvalidMaxAsyncBufferSize
+	}
+	if cfg.MaxAsyncConcurrency <= 0 {
+		return errInvalidMaxAsyncConcurrency
+	}
+	return nil
+}
+
+func (cfg *MultiLevelIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	f.IntVar(&cfg.MaxAsyncConcurrency, prefix+"max-async-concurrency", 50, "The maximum number of concurrent asynchronous operations can occur when backfilling cache items.")
+	f.IntVar(&cfg.MaxAsyncBufferSize, prefix+"max-async-buffer-size", 10000, "The maximum number of enqueued asynchronous operations allowed when backfilling cache items.")
 }
 
 type InMemoryIndexCacheConfig struct {
@@ -210,7 +240,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 		}
 	}
 
-	return newMultiLevelCache(registerer, caches...), nil
+	return newMultiLevelCache(registerer, cfg.MultiLevel, caches...), nil
 }
 
 func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {

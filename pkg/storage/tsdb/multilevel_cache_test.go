@@ -17,6 +17,10 @@ import (
 )
 
 func Test_MultiIndexCacheInstantiation(t *testing.T) {
+	multiLevelCfg := MultiLevelIndexCacheConfig{
+		MaxAsyncBufferSize:  1,
+		MaxAsyncConcurrency: 1,
+	}
 	s, err := miniredis.Run()
 	if err != nil {
 		testutil.Ok(t, err)
@@ -42,6 +46,7 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 						Addresses: s.Addr(),
 					},
 				},
+				MultiLevel: multiLevelCfg,
 			},
 			expectedType: &multiLevelCache{},
 		},
@@ -54,12 +59,14 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 						MaxAsyncConcurrency: 1000,
 					},
 				},
+				MultiLevel: multiLevelCfg,
 			},
 			expectedType: &multiLevelCache{},
 		},
 		"should not allow duplicate backends": {
 			cfg: IndexCacheConfig{
-				Backend: "inmemory,inmemory",
+				Backend:    "inmemory,inmemory",
+				MultiLevel: multiLevelCfg,
 			},
 			expectedType:            &storecache.InMemoryIndexCache{},
 			expectedValidationError: errDuplicatedIndexCacheBackend,
@@ -84,6 +91,10 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 }
 
 func Test_MultiLevelCache(t *testing.T) {
+	cfg := MultiLevelIndexCacheConfig{
+		MaxAsyncConcurrency: 10,
+		MaxAsyncBufferSize:  100000,
+	}
 	bID, _ := ulid.Parse("01D78XZ44G0000000000000000")
 	ctx := context.Background()
 	l1 := labels.Label{
@@ -257,8 +268,11 @@ func Test_MultiLevelCache(t *testing.T) {
 			m1 := newMockIndexCache(tc.m1MockedCalls)
 			m2 := newMockIndexCache(tc.m2MockedCalls)
 			reg := prometheus.NewRegistry()
-			c := newMultiLevelCache(reg, m1, m2)
+			c := newMultiLevelCache(reg, cfg, m1, m2)
 			tc.call(c)
+			mlc := c.(*multiLevelCache)
+			// Wait until async operation finishes.
+			mlc.backfillProcessor.Stop()
 			require.Equal(t, tc.m1ExpectedCalls, m1.calls)
 			require.Equal(t, tc.m2ExpectedCalls, m2.calls)
 		})

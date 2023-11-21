@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/oklog/ulid"
@@ -9,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/thanos-io/thanos/pkg/cacheutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 )
 
@@ -21,8 +23,10 @@ const (
 type multiLevelCache struct {
 	caches []storecache.IndexCache
 
-	fetchLatency    *prometheus.HistogramVec
-	backFillLatency *prometheus.HistogramVec
+	fetchLatency         *prometheus.HistogramVec
+	backFillLatency      *prometheus.HistogramVec
+	backfillProcessor    *cacheutil.AsyncOperationProcessor
+	backfillDroppedItems *prometheus.CounterVec
 }
 
 func (m *multiLevelCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte, tenant string) {
@@ -44,9 +48,11 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 
 	misses = keys
 	hits = map[labels.Label][]byte{}
-	backfillMap := map[storecache.IndexCache][]map[labels.Label][]byte{}
+	backfillItems := make([][]map[labels.Label][]byte, len(m.caches)-1)
 	for i, c := range m.caches {
-		backfillMap[c] = []map[labels.Label][]byte{}
+		if i < len(m.caches)-1 {
+			backfillItems[i] = []map[labels.Label][]byte{}
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -58,7 +64,7 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 		}
 
 		if i > 0 {
-			backfillMap[m.caches[i-1]] = append(backfillMap[m.caches[i-1]], h)
+			backfillItems[i-1] = append(backfillItems[i-1], h)
 		}
 
 		if len(misses) == 0 {
@@ -69,13 +75,14 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 	defer func() {
 		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypePostings))
 		defer backFillTimer.ObserveDuration()
-		for cache, hit := range backfillMap {
+		for i, hit := range backfillItems {
 			for _, values := range hit {
-				for l, b := range values {
-					if ctx.Err() != nil {
-						return
+				for lbl, b := range values {
+					if err := m.backfillProcessor.EnqueueAsync(func() {
+						m.caches[i].StorePostings(blockID, lbl, b, tenant)
+					}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+						m.backfillDroppedItems.WithLabelValues(cacheTypePostings).Inc()
 					}
-					cache.StorePostings(blockID, l, b, tenant)
 				}
 			}
 		}
@@ -108,7 +115,11 @@ func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID uli
 		if d, h := c.FetchExpandedPostings(ctx, blockID, matchers, tenant); h {
 			if i > 0 {
 				backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypeExpandedPostings))
-				m.caches[i-1].StoreExpandedPostings(blockID, matchers, d, tenant)
+				if err := m.backfillProcessor.EnqueueAsync(func() {
+					m.caches[i-1].StoreExpandedPostings(blockID, matchers, d, tenant)
+				}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+					m.backfillDroppedItems.WithLabelValues(cacheTypeExpandedPostings).Inc()
+				}
 				backFillTimer.ObserveDuration()
 			}
 			return d, h
@@ -137,10 +148,12 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 
 	misses = ids
 	hits = map[storage.SeriesRef][]byte{}
-	backfillMap := map[storecache.IndexCache][]map[storage.SeriesRef][]byte{}
+	backfillItems := make([][]map[storage.SeriesRef][]byte, len(m.caches)-1)
 
 	for i, c := range m.caches {
-		backfillMap[c] = []map[storage.SeriesRef][]byte{}
+		if i < len(m.caches)-1 {
+			backfillItems[i] = []map[storage.SeriesRef][]byte{}
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -152,7 +165,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 		}
 
 		if i > 0 && len(h) > 0 {
-			backfillMap[m.caches[i-1]] = append(backfillMap[m.caches[i-1]], h)
+			backfillItems[i-1] = append(backfillItems[i-1], h)
 		}
 
 		if len(misses) == 0 {
@@ -163,13 +176,14 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 	defer func() {
 		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypeSeries))
 		defer backFillTimer.ObserveDuration()
-		for cache, hit := range backfillMap {
+		for i, hit := range backfillItems {
 			for _, values := range hit {
-				for m, b := range values {
-					if ctx.Err() != nil {
-						return
+				for ref, b := range values {
+					if err := m.backfillProcessor.EnqueueAsync(func() {
+						m.caches[i].StoreSeries(blockID, ref, b, tenant)
+					}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+						m.backfillDroppedItems.WithLabelValues(cacheTypeSeries).Inc()
 					}
-					cache.StoreSeries(blockID, m, b, tenant)
 				}
 			}
 		}
@@ -178,12 +192,14 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 	return hits, misses
 }
 
-func newMultiLevelCache(reg prometheus.Registerer, c ...storecache.IndexCache) storecache.IndexCache {
+func newMultiLevelCache(reg prometheus.Registerer, cfg MultiLevelIndexCacheConfig, c ...storecache.IndexCache) storecache.IndexCache {
 	if len(c) == 1 {
 		return c[0]
 	}
+
 	return &multiLevelCache{
-		caches: c,
+		caches:            c,
+		backfillProcessor: cacheutil.NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
 		fetchLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_store_multilevel_index_cache_fetch_duration_seconds",
 			Help:    "Histogram to track latency to fetch items from multi level index cache",
@@ -193,6 +209,10 @@ func newMultiLevelCache(reg prometheus.Registerer, c ...storecache.IndexCache) s
 			Name:    "cortex_store_multilevel_index_cache_backfill_duration_seconds",
 			Help:    "Histogram to track latency to backfill items from multi level index cache",
 			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+		}, []string{"item_type"}),
+		backfillDroppedItems: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_store_multilevel_index_cache_backfill_dropped_items_total",
+			Help: "Total number of items dropped due to async buffer full when backfilling multilevel cache ",
 		}, []string{"item_type"}),
 	}
 }

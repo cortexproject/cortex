@@ -439,7 +439,7 @@ func writeError(w http.ResponseWriter, err error, additionalHeaders http.Header)
 		for k, values := range additionalHeaders {
 			resp.Headers = append(resp.Headers, &httpgrpc.Header{Key: k, Values: values})
 		}
-		server.WriteResponse(w, resp)
+		_ = server.WriteResponse(w, resp)
 	} else {
 		headers := w.Header()
 		for k, values := range additionalHeaders {

@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"sort"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -107,10 +108,16 @@ func Test_MultiLevelCache(t *testing.T) {
 		Value: "test2",
 	}
 
+	l3 := labels.Label{
+		Name:  "test3",
+		Value: "test3",
+	}
+
 	matcher, err := labels.NewMatcher(labels.MatchEqual, "name", "value")
 	require.NoError(t, err)
 
 	v := make([]byte, 100)
+	v2 := make([]byte, 200)
 
 	testCases := map[string]struct {
 		m1ExpectedCalls map[string][][]interface{}
@@ -181,6 +188,24 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2}, "")
 			},
 		},
+		"[FetchMultiPostings] should fallback and backfill only the missing keys on l1, multiple items": {
+			m1ExpectedCalls: map[string][][]interface{}{
+				"FetchMultiPostings": {{bID, []labels.Label{l1, l2, l3}}},
+				"StorePostings":      {{bID, l2, v}, {bID, l3, v2}},
+			},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"FetchMultiPostings": {{bID, []labels.Label{l2, l3}}},
+			},
+			m1MockedCalls: map[string][]interface{}{
+				"FetchMultiPostings": {map[labels.Label][]byte{l1: make([]byte, 1)}, []labels.Label{l2, l3}},
+			},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchMultiPostings": {map[labels.Label][]byte{l2: v, l3: v2}, []labels.Label{}},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2, l3}, "")
+			},
+		},
 		"[FetchMultiPostings] should not fallback when all hit on l1": {
 			m1ExpectedCalls: map[string][][]interface{}{
 				"FetchMultiPostings": {{bID, []labels.Label{l1, l2}}},
@@ -216,10 +241,31 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: v}, []storage.SeriesRef{2}},
 			},
 			m2MockedCalls: map[string][]interface{}{
-				"FetchMultiSeries": {map[storage.SeriesRef][]byte{2: v}, []storage.SeriesRef{2}},
+				"FetchMultiSeries": {map[storage.SeriesRef][]byte{2: v}, []storage.SeriesRef{}},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2}, "")
+			},
+		},
+		"[FetchMultiSeries] should fallback and backfill only the missing keys on l1, multiple items": {
+			m1ExpectedCalls: map[string][][]interface{}{
+				"FetchMultiSeries": {{bID, []storage.SeriesRef{1, 2, 3}}},
+				"StoreSeries": {
+					{bID, storage.SeriesRef(2), v},
+					{bID, storage.SeriesRef(3), v2},
+				},
+			},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"FetchMultiSeries": {{bID, []storage.SeriesRef{2, 3}}},
+			},
+			m1MockedCalls: map[string][]interface{}{
+				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: v}, []storage.SeriesRef{2, 3}},
+			},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchMultiSeries": {map[storage.SeriesRef][]byte{2: v, 3: v2}, []storage.SeriesRef{}},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2, 3}, "")
 			},
 		},
 		"[FetchMultiSeries] should not fallback when all hit on l1": {
@@ -273,6 +319,23 @@ func Test_MultiLevelCache(t *testing.T) {
 			mlc := c.(*multiLevelCache)
 			// Wait until async operation finishes.
 			mlc.backfillProcessor.Stop()
+			// Sort call parameters to make test deterministic.
+			for k := range m1.calls {
+				switch k {
+				case "StorePostings":
+					sort.Slice(m1.calls[k], func(i, j int) bool {
+						lbl1 := m1.calls[k][i][1].(labels.Label)
+						lbl2 := m1.calls[k][j][1].(labels.Label)
+						return lbl1.Name < lbl2.Name
+					})
+				case "StoreSeries":
+					sort.Slice(m1.calls[k], func(i, j int) bool {
+						seriesRef1 := m1.calls[k][i][1].(storage.SeriesRef)
+						seriesRef2 := m1.calls[k][j][1].(storage.SeriesRef)
+						return seriesRef1 < seriesRef2
+					})
+				}
+			}
 			require.Equal(t, tc.m1ExpectedCalls, m1.calls)
 			require.Equal(t, tc.m2ExpectedCalls, m2.calls)
 		})

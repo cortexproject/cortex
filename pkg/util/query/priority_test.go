@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -21,8 +22,6 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t
 				{
 					Regex:         ".*",
 					CompiledRegex: regexp.MustCompile(".*"),
-					StartTime:     2 * time.Hour,
-					EndTime:       0 * time.Hour,
 				},
 			},
 		},
@@ -52,8 +51,6 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 				{
 					Regex:         "sum",
 					CompiledRegex: regexp.MustCompile("sum"),
-					StartTime:     2 * time.Hour,
-					EndTime:       0 * time.Hour,
 				},
 			},
 		},
@@ -128,8 +125,8 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 			Priority: 1,
 			QueryAttributes: []validation.QueryAttribute{
 				{
-					StartTime: 45 * time.Minute,
-					EndTime:   15 * time.Minute,
+					StartTime: model.Duration(45 * time.Minute),
+					EndTime:   model.Duration(15 * time.Minute),
 				},
 			},
 		},
@@ -184,5 +181,44 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 		"query": []string{"sum(up)"},
 		"start": []string{strconv.FormatInt(now.Add(-15*time.Minute).Unix(), 10)},
 		"end":   []string{strconv.FormatInt(now.Add(-1*time.Minute).Unix(), 10)},
+	}, now, queryPriority))
+}
+
+func Test_GetPriorityShouldSKipStartAndEndTimeIfEmpty(t *testing.T) {
+	now := time.Now()
+	priorities := []validation.PriorityDef{
+		{
+			Priority: 1,
+			QueryAttributes: []validation.QueryAttribute{
+				{
+					Regex: "^test$",
+				},
+			},
+		},
+	}
+	queryPriority := validation.QueryPriority{
+		Enabled:    true,
+		Priorities: priorities,
+	}
+
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"test"},
+	}, now, queryPriority))
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"test"},
+		"time":  []string{strconv.FormatInt(now.Add(8760*time.Hour).Unix(), 10)},
+	}, now, queryPriority))
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"test"},
+		"time":  []string{strconv.FormatInt(now.Unix(), 10)},
+	}, now, queryPriority))
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"test"},
+		"time":  []string{strconv.FormatInt(now.Add(-8760*time.Hour).Unix(), 10)},
+	}, now, queryPriority))
+	assert.Equal(t, int64(1), GetPriority(url.Values{
+		"query": []string{"test"},
+		"start": []string{strconv.FormatInt(now.Add(-100000*time.Minute).Unix(), 10)},
+		"end":   []string{strconv.FormatInt(now.Add(100000*time.Minute).Unix(), 10)},
 	}, now, queryPriority))
 }

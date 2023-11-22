@@ -62,9 +62,9 @@ type PriorityDef struct {
 }
 
 type QueryAttribute struct {
-	Regex         string        `yaml:"regex" json:"regex" doc:"nocli|description=Query string regex.|default=.*"`
-	StartTime     time.Duration `yaml:"start_time" json:"start_time" doc:"nocli|description=Query start time.|default=0s"`
-	EndTime       time.Duration `yaml:"end_time" json:"end_time" doc:"nocli|description=Query end time.|default=0s"`
+	Regex         string         `yaml:"regex" json:"regex" doc:"nocli|description=Query string regex. If set to empty string, it will not match anything.|default=\"\""`
+	StartTime     model.Duration `yaml:"start_time" json:"start_time" doc:"nocli|description=Query start time. If set to 0, the start time won't be checked.'.|default=0"`
+	EndTime       model.Duration `yaml:"end_time" json:"end_time" doc:"nocli|description=Query end time. If set to 0, the end time won't be checked.|default=0"`
 	CompiledRegex *regexp.Regexp
 }
 

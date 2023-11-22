@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"sort"
+	"sync"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -350,15 +351,20 @@ func newMockIndexCache(mockedCalls map[string][]interface{}) *mockIndexCache {
 }
 
 type mockIndexCache struct {
+	mtx         sync.Mutex
 	calls       map[string][][]interface{}
 	mockedCalls map[string][]interface{}
 }
 
 func (m *mockIndexCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte, tenant string) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.calls["StorePostings"] = append(m.calls["StorePostings"], []interface{}{blockID, l, v})
 }
 
 func (m *mockIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.ULID, keys []labels.Label, tenant string) (hits map[labels.Label][]byte, misses []labels.Label) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.calls["FetchMultiPostings"] = append(m.calls["FetchMultiPostings"], []interface{}{blockID, keys})
 	if m, ok := m.mockedCalls["FetchMultiPostings"]; ok {
 		return m[0].(map[labels.Label][]byte), m[1].([]labels.Label)
@@ -368,10 +374,14 @@ func (m *mockIndexCache) FetchMultiPostings(_ context.Context, blockID ulid.ULID
 }
 
 func (m *mockIndexCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*labels.Matcher, v []byte, tenant string) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.calls["StoreExpandedPostings"] = append(m.calls["StoreExpandedPostings"], []interface{}{blockID, matchers, v})
 }
 
 func (m *mockIndexCache) FetchExpandedPostings(_ context.Context, blockID ulid.ULID, matchers []*labels.Matcher, tenant string) ([]byte, bool) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.calls["FetchExpandedPostings"] = append(m.calls["FetchExpandedPostings"], []interface{}{blockID, matchers})
 	if m, ok := m.mockedCalls["FetchExpandedPostings"]; ok {
 		return m[0].([]byte), m[1].(bool)
@@ -381,10 +391,14 @@ func (m *mockIndexCache) FetchExpandedPostings(_ context.Context, blockID ulid.U
 }
 
 func (m *mockIndexCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte, tenant string) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.calls["StoreSeries"] = append(m.calls["StoreSeries"], []interface{}{blockID, id, v})
 }
 
 func (m *mockIndexCache) FetchMultiSeries(_ context.Context, blockID ulid.ULID, ids []storage.SeriesRef, tenant string) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
 	m.calls["FetchMultiSeries"] = append(m.calls["FetchMultiSeries"], []interface{}{blockID, ids})
 	if m, ok := m.mockedCalls["FetchMultiSeries"]; ok {
 		return m[0].(map[storage.SeriesRef][]byte), m[1].([]storage.SeriesRef)

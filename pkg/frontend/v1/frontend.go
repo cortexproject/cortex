@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"reflect"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -80,13 +78,6 @@ type Frontend struct {
 
 	requestQueue *queue.RequestQueue
 	activeUsers  *util.ActiveUsersCleanupService
-
-	// Used to check whether query priority config has changed
-	queryPriority    map[string]validation.QueryPriority
-	queryPriorityMtx map[string]*sync.RWMutex
-
-	// Populate and reuse compiled regex until query priority config changes
-	compiledQueryPriority map[string]validation.QueryPriority
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -223,24 +214,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			queryPriority := f.limits.QueryPriority(userID)
 
 			if queryPriority.Enabled {
-				if _, exists := f.queryPriorityMtx[userID]; !exists {
-					f.queryPriorityMtx[userID] = &sync.RWMutex{}
-				}
-
-				f.queryPriorityMtx[userID].RLock()
-				queryPriorityChanged := !reflect.DeepEqual(f.queryPriority[userID], queryPriority)
-				f.queryPriorityMtx[userID].RUnlock()
-
-				if queryPriorityChanged {
-					f.queryPriorityMtx[userID].Lock()
-					f.queryPriority[userID] = queryPriority
-					f.compiledQueryPriority[userID] = util_query.GetCompileQueryPriority(queryPriority)
-					f.queryPriorityMtx[userID].Unlock()
-				}
-
-				f.queryPriorityMtx[userID].RLock()
-				request.priority = util_query.GetPriority(reqParams, ts, f.compiledQueryPriority[userID])
-				f.queryPriorityMtx[userID].Unlock()
+				request.priority = util_query.GetPriority(reqParams, ts, queryPriority)
 			}
 		}
 

@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	"reflect"
 	"sync"
 	"time"
 
@@ -31,7 +30,6 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	util_query "github.com/cortexproject/cortex/pkg/util/query"
 	"github.com/cortexproject/cortex/pkg/util/services"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // Config for a Frontend.
@@ -75,13 +73,6 @@ type Frontend struct {
 	retry  *transport.Retry
 
 	lastQueryID atomic.Uint64
-
-	// Used to check whether query priority config has changed
-	queryPriority    map[string]validation.QueryPriority
-	queryPriorityMtx map[string]*sync.RWMutex
-
-	// Populate and reuse compiled regex until query priority config changes
-	compiledQueryPriority map[string]validation.QueryPriority
 
 	// frontend workers will read from this channel, and send request to scheduler.
 	requestsCh chan *frontendRequest
@@ -223,24 +214,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			queryPriority := f.limits.QueryPriority(userID)
 
 			if queryPriority.Enabled {
-				if _, exists := f.queryPriorityMtx[userID]; !exists {
-					f.queryPriorityMtx[userID] = &sync.RWMutex{}
-				}
-
-				f.queryPriorityMtx[userID].RLock()
-				queryPriorityChanged := !reflect.DeepEqual(f.queryPriority[userID], queryPriority)
-				f.queryPriorityMtx[userID].RUnlock()
-
-				if queryPriorityChanged {
-					f.queryPriorityMtx[userID].Lock()
-					f.queryPriority[userID] = queryPriority
-					f.compiledQueryPriority[userID] = util_query.GetCompileQueryPriority(queryPriority)
-					f.queryPriorityMtx[userID].Unlock()
-				}
-
-				f.queryPriorityMtx[userID].RLock()
-				freq.priority = util_query.GetPriority(reqParams, ts, f.compiledQueryPriority[userID])
-				f.queryPriorityMtx[userID].Unlock()
+				freq.priority = util_query.GetPriority(reqParams, ts, queryPriority)
 			}
 		}
 

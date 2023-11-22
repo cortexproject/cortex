@@ -201,6 +201,11 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	startTime := time.Now()
+	// get config
+	// assign priority
+	// embed it to the http request, header?
+	// extract Decode to here, to make sure all requests pass here
+	// log the priority as well
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 

@@ -3,6 +3,7 @@ package validation
 import (
 	"encoding/json"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -60,47 +61,6 @@ func TestLimits_Validate(t *testing.T) {
 			limits:           Limits{MaxGlobalSeriesPerUser: 1000},
 			shardByAllLabels: true,
 			expected:         nil,
-		},
-		"duplicate priority entries": {
-			limits: Limits{QueryPriority: QueryPriority{
-				Enabled: true,
-				Priorities: []PriorityDef{
-					{
-						Priority: 1,
-					},
-					{
-						Priority: 1,
-					},
-				},
-			}},
-			expected: errDuplicateQueryPriorities,
-		},
-		"priority matches default priority": {
-			limits: Limits{QueryPriority: QueryPriority{
-				Enabled:         true,
-				DefaultPriority: 1,
-				Priorities: []PriorityDef{
-					{
-						Priority: 1,
-					},
-				},
-			}},
-			expected: errDuplicateQueryPriorities,
-		},
-		"all priorities are unique": {
-			limits: Limits{QueryPriority: QueryPriority{
-				Enabled:         true,
-				DefaultPriority: 1,
-				Priorities: []PriorityDef{
-					{
-						Priority: 2,
-					},
-					{
-						Priority: 3,
-					},
-				},
-			}},
-			expected: nil,
 		},
 	}
 
@@ -636,4 +596,82 @@ tenant2:
 	require.Equal(t, 1, ov.MaxDownloadedBytesPerRequest("tenant1"))
 	require.Equal(t, 3, ov.MaxDownloadedBytesPerRequest("tenant2"))
 	require.Equal(t, 5, ov.MaxDownloadedBytesPerRequest("tenant3"))
+}
+
+func TestHasQueryPriorityRegexChanged(t *testing.T) {
+	l := Limits{
+		QueryPriority: QueryPriority{
+			Priorities: []PriorityDef{
+				{
+					Priority: 1,
+					QueryAttributes: []QueryAttribute{
+						{
+							Regex: "test",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	require.True(t, l.hasQueryPriorityRegexChanged())
+
+	l.QueryPriority.Priorities[0].QueryAttributes[0].Regex = "new"
+
+	require.True(t, l.hasQueryPriorityRegexChanged())
+
+	l.QueryPriority.Priorities[0].QueryAttributes[0].StartTime = 2 * time.Hour
+
+	require.False(t, l.hasQueryPriorityRegexChanged())
+
+	l.QueryPriority.Priorities[0].QueryAttributes = append(l.QueryPriority.Priorities[0].QueryAttributes, QueryAttribute{Regex: "hi"})
+
+	require.True(t, l.hasQueryPriorityRegexChanged())
+
+	l.QueryPriority.Priorities[0].QueryAttributes = l.QueryPriority.Priorities[0].QueryAttributes[:1]
+
+	require.True(t, l.hasQueryPriorityRegexChanged())
+}
+
+func TestCompileQueryPriorityRegex(t *testing.T) {
+	l := Limits{
+		QueryPriority: QueryPriority{
+			Enabled: true,
+			Priorities: []PriorityDef{
+				{
+					Priority: 1,
+					QueryAttributes: []QueryAttribute{
+						{
+							Regex: "test",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
+
+	err := l.compileQueryPriorityRegex()
+	require.NoError(t, err)
+	require.Equal(t, regexp.MustCompile("test"), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
+
+	l.QueryPriority.Priorities[0].QueryAttributes[0].Regex = "new"
+
+	err = l.compileQueryPriorityRegex()
+	require.NoError(t, err)
+	require.Equal(t, regexp.MustCompile("new"), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
+
+	l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = nil
+
+	err = l.compileQueryPriorityRegex()
+	require.NoError(t, err)
+	require.Equal(t, regexp.MustCompile("new"), l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
+
+	l.QueryPriority.Enabled = false
+	l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = nil
+
+	err = l.compileQueryPriorityRegex()
+	require.NoError(t, err)
+	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 }

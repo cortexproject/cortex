@@ -2,29 +2,11 @@ package query
 
 import (
 	"net/url"
-	"regexp"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
-
-func GetCompileQueryPriority(queryPriority validation.QueryPriority) validation.QueryPriority {
-	compiledQueryPriority := queryPriority
-	for i, priority := range compiledQueryPriority.Priorities {
-		for j, attribute := range priority.QueryAttributes {
-			compiledRegex, err := regexp.Compile(attribute.Regex)
-			if err != nil {
-				continue
-			}
-
-			attribute.CompiledRegex = compiledRegex
-			compiledQueryPriority.Priorities[i].QueryAttributes[j] = attribute
-		}
-	}
-
-	return compiledQueryPriority
-}
 
 func GetPriority(requestParams url.Values, now time.Time, queryPriority validation.QueryPriority) int64 {
 	queryParam := requestParams.Get("query")

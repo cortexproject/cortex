@@ -18,7 +18,8 @@ import (
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
-var errDuplicateQueryPriorities = errors.New("There is a duplicate entry of priorities. Make sure they are all unique, including the default priority")
+var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
+var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 
 // Supported values for enum limits
 const (
@@ -49,22 +50,22 @@ type DisabledRuleGroup struct {
 type DisabledRuleGroups []DisabledRuleGroup
 
 type QueryPriority struct {
-	Enabled         bool          `yaml:"enabled" doc:"nocli|description=Whether queries are assigned with priorities.|default=false"`
-	DefaultPriority int64         `yaml:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.|default=0"`
-	Priorities      []PriorityDef `yaml:"priorities" doc:"nocli|description=List of priority definitions."`
+	Enabled         bool          `yaml:"enabled" json:"enabled" doc:"nocli|description=Whether queries are assigned with priorities.|default=false"`
+	DefaultPriority int64         `yaml:"default_priority" json:"default_priority" doc:"nocli|description=Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.|default=0"`
+	Priorities      []PriorityDef `yaml:"priorities" json:"priorities" doc:"nocli|description=List of priority definitions."`
 }
 
 type PriorityDef struct {
-	Priority         int64            `yaml:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
-	ReservedQueriers float64          `yaml:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to this value only. Value between 0 and 1 will be used as a percentage.|default=0"`
-	QueryAttributes  []QueryAttribute `yaml:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
+	Priority         int64            `yaml:"priority" json:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
+	ReservedQueriers float64          `yaml:"reserved_queriers" json:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to this value only. Value between 0 and 1 will be used as a percentage.|default=0"`
+	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
 }
 
 type QueryAttribute struct {
-	Regex         string         `yaml:"regex" doc:"nocli|description=Query string regex.|default=.*"`
-	CompiledRegex *regexp.Regexp `yaml:"-" doc:"nocli"`
-	StartTime     time.Duration  `yaml:"start_time" doc:"nocli|description=Query start time.|default=0s"`
-	EndTime       time.Duration  `yaml:"end_time" doc:"nocli|description=Query end time.|default=0s"`
+	Regex         string        `yaml:"regex" json:"regex" doc:"nocli|description=Query string regex.|default=.*"`
+	StartTime     time.Duration `yaml:"start_time" json:"start_time" doc:"nocli|description=Query start time.|default=0s"`
+	EndTime       time.Duration `yaml:"end_time" json:"end_time" doc:"nocli|description=Query end time.|default=0s"`
+	CompiledRegex *regexp.Regexp
 }
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -122,8 +123,10 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
-	MaxOutstandingPerTenant int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
-	QueryPriority           QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
+	MaxOutstandingPerTenant    int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	QueryPriority              QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
+	queryPriorityRegexHash     string
+	queryPriorityCompiledRegex map[string]*regexp.Regexp
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -250,20 +253,6 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 		return errMaxGlobalSeriesPerUserValidation
 	}
 
-	// If query priority is enabled, do not allow duplicate priority values
-	if l.QueryPriority.Enabled {
-		queryPriority := l.QueryPriority
-		prioritySet := map[int64]struct{}{}
-		prioritySet[queryPriority.DefaultPriority] = struct{}{}
-		for _, priority := range queryPriority.Priorities {
-			if _, exists := prioritySet[priority.Priority]; exists {
-				return errDuplicateQueryPriorities
-			}
-
-			prioritySet[priority.Priority] = struct{}{}
-		}
-	}
-
 	return nil
 }
 
@@ -280,7 +269,15 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		l.copyNotificationIntegrationLimits(defaultLimits.NotificationRateLimitPerIntegration)
 	}
 	type plain Limits
-	return unmarshal((*plain)(l))
+	if err := unmarshal((*plain)(l)); err != nil {
+		return err
+	}
+
+	if err := l.compileQueryPriorityRegex(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -298,7 +295,15 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
-	return dec.Decode((*plain)(l))
+	if err := dec.Decode((*plain)(l)); err != nil {
+		return err
+	}
+
+	if err := l.compileQueryPriorityRegex(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
@@ -306,6 +311,55 @@ func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimi
 	for k, v := range defaults {
 		l.NotificationRateLimitPerIntegration[k] = v
 	}
+}
+
+func (l *Limits) hasQueryPriorityRegexChanged() bool {
+	var newHash string
+	for _, priority := range l.QueryPriority.Priorities {
+		for _, attribute := range priority.QueryAttributes {
+			newHash += attribute.Regex
+		}
+	}
+	if newHash != l.queryPriorityRegexHash {
+		l.queryPriorityRegexHash = newHash
+		return true
+	}
+	return false
+}
+
+func (l *Limits) compileQueryPriorityRegex() error {
+	if l.QueryPriority.Enabled {
+		hasQueryPriorityRegexChanged := l.hasQueryPriorityRegexChanged()
+		prioritySet := map[int64]struct{}{}
+		newQueryPriorityCompiledRegex := map[string]*regexp.Regexp{}
+
+		for i, priority := range l.QueryPriority.Priorities {
+			// Check for duplicate priority entry
+			if _, exists := prioritySet[priority.Priority]; exists {
+				return errDuplicateQueryPriorities
+			}
+			prioritySet[priority.Priority] = struct{}{}
+
+			for j, attribute := range priority.QueryAttributes {
+				if hasQueryPriorityRegexChanged {
+					compiledRegex, err := regexp.Compile(attribute.Regex)
+					if err != nil {
+						return errors.Join(errCompilingQueryPriorityRegex, err)
+					}
+					newQueryPriorityCompiledRegex[attribute.Regex] = compiledRegex
+					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = compiledRegex
+				} else {
+					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = l.queryPriorityCompiledRegex[attribute.Regex]
+				}
+			}
+		}
+
+		if hasQueryPriorityRegexChanged {
+			l.queryPriorityCompiledRegex = newQueryPriorityCompiledRegex
+		}
+	}
+
+	return nil
 }
 
 // When we load YAML from disk, we want the various per-customer limits

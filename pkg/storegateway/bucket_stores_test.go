@@ -410,7 +410,7 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 		"when sharding is enabled only stores for filtered users should be created": {
 			shardingStrategy: func() ShardingStrategy {
 				s := &mockShardingStrategy{}
-				s.On("FilterUsers", mock.Anything, allUsers, true).Return([]string{"user-1", "user-2"})
+				s.On("FilterUsers", mock.Anything, allUsers).Return([]string{"user-1", "user-2"})
 				return s
 			}(),
 			expectedStores: 2,

@@ -196,6 +196,8 @@ func TestBucketStores_InitialSync(t *testing.T) {
 		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
 	}
 
+	generateDeletedUser(t, storageDir, "user-3")
+
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
@@ -595,6 +597,16 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 
 	// Snapshot TSDB to the storage directory.
 	require.NoError(t, db.Snapshot(userDir, true))
+}
+
+func generateDeletedUser(t *testing.T, storageDir, userID string) {
+	// Create a directory for the user (if doesn't already exist).
+	userDir := filepath.Join(storageDir, userID)
+	if _, err := os.Stat(userDir); err != nil {
+		require.NoError(t, os.Mkdir(userDir, os.ModePerm))
+	}
+
+	require.NoError(t, os.Mkdir(filepath.Join(userDir, "markers"), os.ModePerm))
 }
 
 func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int64) ([]*storepb.Series, annotations.Annotations, error) {

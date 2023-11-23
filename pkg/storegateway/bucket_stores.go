@@ -640,26 +640,40 @@ func (u *BucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs map[str
 			continue
 		}
 
-		err := u.closeEmptyBucketStore(userID)
-		switch {
-		case errors.Is(err, errBucketStoreNotEmpty):
+		if isEmpty := u.checkAndCloseEmptyStores(userID); !isEmpty {
 			continue
-		case errors.Is(err, errBucketStoreNotFound):
-			// This is OK, nothing was closed.
-		case err == nil:
-			level.Info(u.logger).Log("msg", "closed bucket store for user", "user", userID)
-		default:
-			level.Warn(u.logger).Log("msg", "failed to close bucket store for user", "user", userID, "err", err)
 		}
 
 		userSyncDir := u.syncDirForUser(userID)
-		err = os.RemoveAll(userSyncDir)
+		err := os.RemoveAll(userSyncDir)
 		if err == nil {
 			level.Info(u.logger).Log("msg", "deleted user sync directory", "dir", userSyncDir)
 		} else {
 			level.Warn(u.logger).Log("msg", "failed to delete user sync directory", "dir", userSyncDir, "err", err)
 		}
 	}
+
+	// If there are no blocks loaded for a user, we can close the store for the user immediately.
+	// One situation where this can happen is if a user was deleted.
+	for userID := range includeUserIDs {
+		_ = u.checkAndCloseEmptyStores(userID)
+	}
+}
+
+func (u *BucketStores) checkAndCloseEmptyStores(userID string) bool {
+	err := u.closeEmptyBucketStore(userID)
+	switch {
+	case errors.Is(err, errBucketStoreNotEmpty):
+		return false
+	case errors.Is(err, errBucketStoreNotFound):
+		// This is OK, nothing was closed.
+	case err == nil:
+		level.Info(u.logger).Log("msg", "closed bucket store for user", "user", userID)
+	default:
+		level.Warn(u.logger).Log("msg", "failed to close bucket store for user", "user", userID, "err", err)
+	}
+
+	return true
 }
 
 func getUserIDFromGRPCContext(ctx context.Context) string {

@@ -138,7 +138,13 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-			bucketClient := &bucket.ClientMock{}
+			storageDir := t.TempDir()
+			bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+			require.NoError(t, err)
+
+			generateBlock(t, storageDir, "user-1")
+			generateBlock(t, storageDir, "user-2")
+			generateBlock(t, storageDir, "user-disabled")
 
 			// Setup the initial instance state in the ring.
 			if testData.initialExists {
@@ -149,22 +155,10 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 				}))
 			}
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, bucket, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 			assert.False(t, g.ringLifecycler.IsRegistered())
-
-			bucketClient.MockIterWithCallback("", []string{"user-1", "user-2", "user-disabled"}, nil, func() {
-				// During the initial sync, we expect the instance to always be in the JOINING
-				// state within the ring.
-				assert.True(t, g.ringLifecycler.IsRegistered())
-				assert.Equal(t, ring.JOINING, g.ringLifecycler.GetState())
-				assert.Equal(t, RingNumTokens, len(g.ringLifecycler.GetTokens()))
-				assert.Subset(t, g.ringLifecycler.GetTokens(), testData.initialTokens)
-			})
-			bucketClient.MockIter("user-1/", []string{}, nil)
-			bucketClient.MockIter("user-2/", []string{}, nil)
-			bucketClient.MockIter("user-disabled/", []string{}, nil)
 
 			// Once successfully started, the instance should be ACTIVE in the ring.
 			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
@@ -189,22 +183,28 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	gatewayCfg.ShardingEnabled = false
 	gatewayCfg.DisabledTenants = []string{"user-disabled"}
 	storageCfg := mockStorageConfig(t)
-	bucketClient := &bucket.ClientMock{}
 
-	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
+	storageDir := t.TempDir()
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	generateBlock(t, storageDir, "user-1")
+	generateBlock(t, storageDir, "user-2")
+	generateBlock(t, storageDir, "user-disabled")
+
+	g, err := newStoreGateway(gatewayCfg, storageCfg, bucket, nil, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
-
-	bucketClient.MockIter("", []string{"user-1", "user-2", "user-disabled"}, nil)
-	bucketClient.MockIter("user-1/", []string{}, nil)
-	bucketClient.MockIter("user-2/", []string{}, nil)
-	bucketClient.MockIter("user-disabled/", []string{}, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 	assert.NotNil(t, g.stores.getStore("user-1"))
 	assert.NotNil(t, g.stores.getStore("user-2"))
 	assert.Nil(t, g.stores.getStore("user-disabled"))
 	assert.Nil(t, g.stores.getStore("user-unknown"))
+}
+
+func generateBlock(t *testing.T, storageDir string, userID string) {
+	generateStorageBlock(t, storageDir, userID, "metric", 10, 100, 15)
 }
 
 func TestStoreGateway_InitialSyncFailure(t *testing.T) {

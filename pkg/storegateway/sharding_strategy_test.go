@@ -651,7 +651,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				// Assert on filter users.
 				for _, expected := range testData.expectedUsers {
 					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), allowedTenants, zoneStableShuffleSharding) //nolint:govet
-					assert.Equal(t, expected.users, filter.FilterUsers(ctx, []string{userID}))
+					assert.Equal(t, expected.users, filter.FilterUsers(ctx, []string{userID}, true))
 				}
 
 				// Assert on filter blocks.

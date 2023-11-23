@@ -59,7 +59,7 @@ func (f *BucketIndexMetadataFetcher) Fetch(ctx context.Context) (metas map[ulid.
 	f.metrics.ResetTx()
 
 	// Check whether the user belongs to the shard.
-	if len(f.strategy.FilterUsers(ctx, []string{f.userID})) != 1 {
+	if len(f.strategy.FilterUsers(ctx, []string{f.userID}, false)) != 1 {
 		f.metrics.Submit()
 		return nil, nil, nil
 	}

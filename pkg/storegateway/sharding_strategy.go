@@ -2,6 +2,11 @@ package storegateway
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"runtime"
+	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -22,7 +27,7 @@ const (
 type ShardingStrategy interface {
 	// FilterUsers whose blocks should be loaded by the store-gateway. Returns the list of user IDs
 	// that should be synced by the store-gateway.
-	FilterUsers(ctx context.Context, userIDs []string) []string
+	FilterUsers(ctx context.Context, userIDs []string, parallel bool) []string
 
 	// FilterBlocks filters metas in-place keeping only blocks that should be loaded by the store-gateway.
 	// The provided loaded map contains blocks which have been previously returned by this function and
@@ -63,7 +68,7 @@ func NewNoShardingStrategy(logger log.Logger, allowedTenants *util.AllowedTenant
 	}
 }
 
-func (s *NoShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
+func (s *NoShardingStrategy) FilterUsers(_ context.Context, userIDs []string, parallel bool) []string {
 	return filterDisallowedTenants(userIDs, s.logger, s.allowedTenants)
 }
 
@@ -92,7 +97,7 @@ func NewDefaultShardingStrategy(r *ring.Ring, instanceAddr string, logger log.Lo
 }
 
 // FilterUsers implements ShardingStrategy.
-func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
+func (s *DefaultShardingStrategy) FilterUsers(_ context.Context, userIDs []string, parallel bool) []string {
 	return filterDisallowedTenants(userIDs, s.logger, s.allowedTenants)
 }
 
@@ -130,18 +135,60 @@ func NewShuffleShardingStrategy(r *ring.Ring, instanceID, instanceAddr string, l
 }
 
 // FilterUsers implements ShardingStrategy.
-func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []string) []string {
-	var filteredIDs []string
-	for _, userID := range filterDisallowedTenants(userIDs, s.logger, s.allowedTenants) {
-		subRing := GetShuffleShardingSubring(s.r, userID, s.limits, s.zoneStableShuffleSharding)
+func (s *ShuffleShardingStrategy) FilterUsers(_ context.Context, userIDs []string, parallel bool) []string {
+	start := time.Now()
+	allowedUserIDs := filterDisallowedTenants(userIDs, s.logger, s.allowedTenants)
 
-		// Include the user only if it belongs to this store-gateway shard.
-		if subRing.HasInstance(s.instanceID) {
-			filteredIDs = append(filteredIDs, userID)
+	concurrency := 1
+	if parallel {
+		// Since hashing can be computationally expensive, let's make use of multiple cores.
+		concurrency = runtime.NumCPU()
+	}
+	level.Info(s.logger).Log("msg", "Filtering users", "concurrency", concurrency)
+
+	total := len(allowedUserIDs)
+	batchSize := int(math.Ceil(float64(total) / float64(concurrency)))
+	inputBatches := make([][]string, 0, concurrency)
+	outputBatches := make([][]string, concurrency)
+
+	// Split user IDs into batches
+	for i := 0; i < total; i += batchSize {
+		j := i + batchSize
+		if j > total {
+			j = total
 		}
+		inputBatches = append(inputBatches, allowedUserIDs[i:j])
 	}
 
-	return filteredIDs
+	wg := sync.WaitGroup{}
+	for i, batch := range inputBatches {
+		batch := batch
+		batchId := i
+		wg.Add(1)
+		go func(wg *sync.WaitGroup) {
+			var filteredIDs []string
+
+			for _, userID := range batch {
+				subRing := GetShuffleShardingSubring(s.r, userID, s.limits, s.zoneStableShuffleSharding)
+				// Include the user only if it belongs to this store-gateway shard.
+				if subRing.HasInstance(s.instanceID) {
+					filteredIDs = append(filteredIDs, userID)
+				}
+			}
+			outputBatches[batchId] = filteredIDs
+			wg.Done()
+		}(&wg)
+	}
+	wg.Wait()
+
+	var filtered []string
+
+	for _, b := range outputBatches {
+		filtered = append(filtered, b...)
+	}
+
+	level.Info(s.logger).Log("msg", "Finished filtering users", "users", len(filtered), "elapsed", fmt.Sprintf("%v", time.Since(start)))
+	return filtered
 }
 
 // FilterBlocks implements ShardingStrategy.
@@ -269,7 +316,7 @@ func NewShardingBucketReaderAdapter(userID string, strategy ShardingStrategy, wr
 func (a *shardingBucketReaderAdapter) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	// Skip iterating the bucket if the tenant doesn't belong to the shard. From the caller
 	// perspective, this will look like the tenant has no blocks in the storage.
-	if len(a.strategy.FilterUsers(ctx, []string{a.userID})) == 0 {
+	if len(a.strategy.FilterUsers(ctx, []string{a.userID}, false)) == 0 {
 		return nil
 	}
 

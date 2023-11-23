@@ -1294,7 +1294,7 @@ type mockShardingStrategy struct {
 	mock.Mock
 }
 
-func (m *mockShardingStrategy) FilterUsers(ctx context.Context, userIDs []string) []string {
+func (m *mockShardingStrategy) FilterUsers(ctx context.Context, userIDs []string, parallel bool) []string {
 	args := m.Called(ctx, userIDs)
 	return args.Get(0).([]string)
 }

@@ -154,7 +154,7 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 func (u *BucketStores) InitialSync(ctx context.Context) error {
 	level.Info(u.logger).Log("msg", "synchronizing TSDB blocks for all users")
 
-	if err := u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+	if err := u.syncUsersBlocksWithRetries(ctx, syncReasonInitial, func(ctx context.Context, s *store.BucketStore) error {
 		return s.InitialSync(ctx)
 	}); err != nil {
 		level.Warn(u.logger).Log("msg", "failed to synchronize TSDB blocks", "err", err)
@@ -166,13 +166,13 @@ func (u *BucketStores) InitialSync(ctx context.Context) error {
 }
 
 // SyncBlocks synchronizes the stores state with the Bucket store for every user.
-func (u *BucketStores) SyncBlocks(ctx context.Context) error {
-	return u.syncUsersBlocksWithRetries(ctx, func(ctx context.Context, s *store.BucketStore) error {
+func (u *BucketStores) SyncBlocks(ctx context.Context, reason string) error {
+	return u.syncUsersBlocksWithRetries(ctx, reason, func(ctx context.Context, s *store.BucketStore) error {
 		return s.SyncBlocks(ctx)
 	})
 }
 
-func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
+func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, reason string, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 10 * time.Second,
@@ -181,7 +181,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 
 	var lastErr error
 	for retries.Ongoing() {
-		lastErr = u.syncUsersBlocks(ctx, f)
+		lastErr = u.syncUsersBlocks(ctx, reason, f)
 		if lastErr == nil {
 			return nil
 		}
@@ -196,7 +196,7 @@ func (u *BucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(co
 	return lastErr
 }
 
-func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Context, *store.BucketStore) error) (returnErr error) {
+func (u *BucketStores) syncUsersBlocks(ctx context.Context, reason string, f func(context.Context, *store.BucketStore) error) (returnErr error) {
 	defer func(start time.Time) {
 		u.syncTimes.Observe(time.Since(start).Seconds())
 		if returnErr == nil {
@@ -214,6 +214,12 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	errs := tsdb_errors.NewMulti()
 	errsMx := sync.Mutex{}
 
+	// Filter can be done in parallel to make use of a multiple cores.
+	parallelFilter := false
+	if reason == syncReasonInitial {
+		parallelFilter = true
+	}
+
 	// Scan users in the bucket. In case of error, it may return a subset of users. If we sync a subset of users
 	// during a periodic sync, we may end up unloading blocks for users that still belong to this store-gateway
 	// so we do prefer to not run the sync at all.
@@ -223,7 +229,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	}
 
 	includeUserIDs := make(map[string]struct{})
-	for _, userID := range u.shardingStrategy.FilterUsers(ctx, userIDs) {
+	for _, userID := range u.shardingStrategy.FilterUsers(ctx, userIDs, parallelFilter) {
 		includeUserIDs[userID] = struct{}{}
 	}
 

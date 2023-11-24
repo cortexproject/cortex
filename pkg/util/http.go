@@ -21,6 +21,7 @@ import (
 	yamlv3 "gopkg.in/yaml.v3"
 )
 
+const QueryPriorityHeaderKey = "X-Cortex-Query-Priority"
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
 
 // IsRequestBodyTooLarge returns true if the error is "http: request body too large".

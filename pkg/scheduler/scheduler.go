@@ -5,6 +5,7 @@ import (
 	"flag"
 	"io"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -154,7 +155,6 @@ type schedulerRequest struct {
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
 	statsEnabled    bool
-	priority        int64
 
 	enqueueTime time.Time
 
@@ -167,7 +167,12 @@ type schedulerRequest struct {
 }
 
 func (s schedulerRequest) Priority() int64 {
-	return s.priority
+	priority, err := strconv.ParseInt(httpgrpcutil.GetHeader(*s.request, util.QueryPriorityHeaderKey), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return priority
 }
 
 // FrontendLoop handles connection from frontend.
@@ -298,7 +303,6 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
 		statsEnabled:    msg.StatsEnabled,
-		priority:        msg.Priority,
 	}
 
 	now := time.Now()

@@ -409,6 +409,10 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 			return nil, err
 		}
 
+		if fieldFlag == nil {
+			return nil, nil
+		}
+
 		return &configEntry{
 			kind:         "field",
 			name:         getFieldName(field),

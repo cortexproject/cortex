@@ -200,12 +200,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
+	r.Header.Get("test")
 	startTime := time.Now()
-	// get config
-	// assign priority
-	// embed it to the http request, header?
-	// extract Decode to here, to make sure all requests pass here
-	// log the priority as well
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)
 
@@ -347,6 +343,9 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	}
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
+	}
+	if queryPriority := r.Header.Get(util.QueryPriorityHeaderKey); len(queryPriority) > 0 {
+		logMessage = append(logMessage, "priority", queryPriority)
 	}
 
 	if error != nil {

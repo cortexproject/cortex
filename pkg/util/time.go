@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 )
@@ -46,6 +47,19 @@ func ParseTime(s string) (int64, error) {
 		return TimeToMillis(t), nil
 	}
 	return 0, httpgrpc.Errorf(http.StatusBadRequest, "cannot parse %q to a valid timestamp", s)
+}
+
+// ParseTimeParam parses the time request parameter into an int64, milliseconds since epoch.
+func ParseTimeParam(r *http.Request, paramName string, defaultValue int64) (int64, error) {
+	val := r.FormValue(paramName)
+	if val == "" {
+		val = strconv.FormatInt(defaultValue, 10)
+	}
+	result, err := ParseTime(val)
+	if err != nil {
+		return 0, errors.Wrapf(err, "Invalid time value for '%s'", paramName)
+	}
+	return result, nil
 }
 
 // DurationWithJitter returns random duration from "input - input*variance" to "input + input*variance" interval.

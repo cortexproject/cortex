@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 	"testing"
 	"time"
 
@@ -217,6 +218,10 @@ func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 
 func (m mockLimits) QueryVerticalShardSize(userID string) int {
 	return 0
+}
+
+func (m mockLimits) QueryPriority(userID string) validation.QueryPriority {
+	return validation.QueryPriority{}
 }
 
 type mockHandler struct {

@@ -5050,8 +5050,8 @@ otel:
 # Priority level. Must be a unique value.
 [priority: <int> | default = 0]
 
-# Number of reserved queriers to handle priorities higher or equal to this value
-# only. Value between 0 and 1 will be used as a percentage.
+# Number of reserved queriers to handle priorities higher or equal to the
+# priority level. Value between 0 and 1 will be used as a percentage.
 [reserved_queriers: <float> | default = 0]
 
 # List of query attributes to assign the priority.
@@ -5061,14 +5061,14 @@ otel:
 ### `QueryAttribute`
 
 ```yaml
-# Query string regex.
-[regex: <string> | default = ".*"]
+# Query string regex. If set to empty string, it will not match anything.
+[regex: <string> | default = ""]
 
-# Query start time.
-[start_time: <duration> | default = 0s]
+# Query start time. If set to 0, the start time won't be checked.
+[start_time: <int> | default = 0]
 
-# Query end time.
-[end_time: <duration> | default = 0s]
+# Query end time. If set to 0, the end time won't be checked.
+[end_time: <int> | default = 0]
 ```
 
 ### `DisabledRuleGroup`

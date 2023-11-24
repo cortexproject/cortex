@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"sync"
 	"time"
 
@@ -28,7 +27,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	util_query "github.com/cortexproject/cortex/pkg/util/query"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -89,7 +87,6 @@ type frontendRequest struct {
 	request      *httpgrpc.HTTPRequest
 	userID       string
 	statsEnabled bool
-	priority     int64
 
 	cancel context.CancelFunc
 
@@ -170,7 +167,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest, reqParams url.Values, ts time.Time) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	if s := f.State(); s != services.Running {
 		return nil, fmt.Errorf("frontend not running: %v", s)
 	}
@@ -208,14 +205,6 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			response: make(chan *frontendv2pb.QueryResultRequest, 1),
 
 			retryOnTooManyOutstandingRequests: f.cfg.RetryOnTooManyOutstandingRequests && f.schedulerWorkers.getWorkersCount() > 1,
-		}
-
-		if reqParams != nil {
-			queryPriority := f.limits.QueryPriority(userID)
-
-			if queryPriority.Enabled {
-				freq.priority = util_query.GetPriority(reqParams, ts, queryPriority)
-			}
 		}
 
 		f.requests.put(freq)

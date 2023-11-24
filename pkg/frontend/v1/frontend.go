@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -23,7 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
-	util_query "github.com/cortexproject/cortex/pkg/util/query"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -98,11 +97,15 @@ type request struct {
 	request  *httpgrpc.HTTPRequest
 	err      chan error
 	response chan *httpgrpc.HTTPResponse
-	priority int64
 }
 
 func (r request) Priority() int64 {
-	return r.priority
+	priority, err := strconv.ParseInt(httpgrpcutil.GetHeader(*r.request, util.QueryPriorityHeaderKey), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return priority
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
@@ -181,7 +184,7 @@ func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest, reqParams url.Values, ts time.Time) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
@@ -191,12 +194,6 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			return nil, err
 		}
 	}
-
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	return f.retry.Do(ctx, func() (*httpgrpc.HTTPResponse, error) {
 		request := request{
@@ -208,14 +205,6 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest,
 			// client context cancellation.
 			err:      make(chan error, 1),
 			response: make(chan *httpgrpc.HTTPResponse, 1),
-		}
-
-		if reqParams != nil {
-			queryPriority := f.limits.QueryPriority(userID)
-
-			if queryPriority.Enabled {
-				request.priority = util_query.GetPriority(reqParams, ts, queryPriority)
-			}
 		}
 
 		if err := f.queueRequest(ctx, &request); err != nil {

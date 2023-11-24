@@ -3,7 +3,6 @@ package v2
 import (
 	"context"
 	"net"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -112,7 +111,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	}, 0)
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{}, url.Values{}, time.Now())
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), resp.Code)
 	require.Equal(t, []byte(body), resp.Body)
@@ -142,7 +141,7 @@ func TestFrontendRetryRequest(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	}, 3)
 
-	res, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{}, url.Values{}, time.Now())
+	res, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), res.Code)
 }
@@ -169,7 +168,7 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	}, 0)
 
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{}, url.Values{}, time.Now())
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
 	require.NoError(t, err)
 }
 
@@ -178,7 +177,7 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 	}, 0)
 
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{}, url.Values{}, time.Now())
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "failed to enqueue request"))
 }
@@ -189,7 +188,7 @@ func TestFrontendCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{}, url.Values{}, time.Now())
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
 	require.EqualError(t, err, context.DeadlineExceeded.Error())
 	require.Nil(t, resp)
 
@@ -238,7 +237,7 @@ func TestFrontendFailedCancellation(t *testing.T) {
 	}()
 
 	// send request
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{}, url.Values{}, time.Now())
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
 	require.EqualError(t, err, context.Canceled.Error())
 	require.Nil(t, resp)
 

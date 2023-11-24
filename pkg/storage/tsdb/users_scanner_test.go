@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"path"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -16,8 +15,10 @@ import (
 func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3", "user-4"}, nil)
-	bucketClient.MockExists(path.Join("user-1", TenantDeletionMarkPath), false, nil)
-	bucketClient.MockExists(path.Join("user-3", TenantDeletionMarkPath), true, nil)
+	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-3"), true, nil)
+	bucketClient.MockExists(GetLocalDeletionMarkPath("user-3"), true, nil)
 
 	isOwned := func(userID string) (bool, error) {
 		return userID == "user-1" || userID == "user-3", nil
@@ -36,8 +37,10 @@ func TestUsersScanner_ScanUsers_ShouldReturnUsersForWhichOwnerCheckOrTenantDelet
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", expected, nil)
-	bucketClient.MockExists(path.Join("user-1", TenantDeletionMarkPath), false, nil)
-	bucketClient.MockExists(path.Join("user-2", TenantDeletionMarkPath), false, errors.New("fail"))
+	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
+
+	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-2"), false, errors.New("fail"))
 
 	isOwned := func(userID string) (bool, error) {
 		return false, errors.New("failed to check if user is owned")

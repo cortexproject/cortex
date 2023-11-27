@@ -341,7 +341,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 		cortex_distributor_latest_seen_sample_timestamp_seconds{user="userA"} 1111
 
-		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
+		# HELP cortex_distributor_metadata_in_total The total number of metadata that have come in to the distributor, including rejected.
 		# TYPE cortex_distributor_metadata_in_total counter
 		cortex_distributor_metadata_in_total{user="userA"} 5
 

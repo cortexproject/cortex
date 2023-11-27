@@ -48,10 +48,10 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 
 	misses = keys
 	hits = map[labels.Label][]byte{}
-	backfillItems := make([][]map[labels.Label][]byte, len(m.caches)-1)
+	backfillItems := make([]map[labels.Label][]byte, len(m.caches)-1)
 	for i, c := range m.caches {
 		if i < len(m.caches)-1 {
-			backfillItems[i] = []map[labels.Label][]byte{}
+			backfillItems[i] = map[labels.Label][]byte{}
 		}
 		if ctx.Err() != nil {
 			return
@@ -64,7 +64,7 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 		}
 
 		if i > 0 {
-			backfillItems[i-1] = append(backfillItems[i-1], h)
+			backfillItems[i-1] = h
 		}
 
 		if len(misses) == 0 {
@@ -75,14 +75,14 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 	defer func() {
 		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypePostings))
 		defer backFillTimer.ObserveDuration()
-		for i, hit := range backfillItems {
-			for _, values := range hit {
-				for lbl, b := range values {
-					if err := m.backfillProcessor.EnqueueAsync(func() {
-						m.caches[i].StorePostings(blockID, lbl, b, tenant)
-					}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-						m.backfillDroppedItems.WithLabelValues(cacheTypePostings).Inc()
-					}
+		for i, values := range backfillItems {
+			for lbl, b := range values {
+				lbl := lbl
+				b := b
+				if err := m.backfillProcessor.EnqueueAsync(func() {
+					m.caches[i].StorePostings(blockID, lbl, b, tenant)
+				}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+					m.backfillDroppedItems.WithLabelValues(cacheTypePostings).Inc()
 				}
 			}
 		}
@@ -148,11 +148,11 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 
 	misses = ids
 	hits = map[storage.SeriesRef][]byte{}
-	backfillItems := make([][]map[storage.SeriesRef][]byte, len(m.caches)-1)
+	backfillItems := make([]map[storage.SeriesRef][]byte, len(m.caches)-1)
 
 	for i, c := range m.caches {
 		if i < len(m.caches)-1 {
-			backfillItems[i] = []map[storage.SeriesRef][]byte{}
+			backfillItems[i] = map[storage.SeriesRef][]byte{}
 		}
 		if ctx.Err() != nil {
 			return
@@ -165,7 +165,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 		}
 
 		if i > 0 && len(h) > 0 {
-			backfillItems[i-1] = append(backfillItems[i-1], h)
+			backfillItems[i-1] = h
 		}
 
 		if len(misses) == 0 {
@@ -176,14 +176,14 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 	defer func() {
 		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypeSeries))
 		defer backFillTimer.ObserveDuration()
-		for i, hit := range backfillItems {
-			for _, values := range hit {
-				for ref, b := range values {
-					if err := m.backfillProcessor.EnqueueAsync(func() {
-						m.caches[i].StoreSeries(blockID, ref, b, tenant)
-					}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-						m.backfillDroppedItems.WithLabelValues(cacheTypeSeries).Inc()
-					}
+		for i, values := range backfillItems {
+			for ref, b := range values {
+				ref := ref
+				b := b
+				if err := m.backfillProcessor.EnqueueAsync(func() {
+					m.caches[i].StoreSeries(blockID, ref, b, tenant)
+				}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+					m.backfillDroppedItems.WithLabelValues(cacheTypeSeries).Inc()
 				}
 			}
 		}

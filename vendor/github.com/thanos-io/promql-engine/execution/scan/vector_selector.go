@@ -30,6 +30,8 @@ type vectorScanner struct {
 }
 
 type vectorSelector struct {
+	model.OperatorTelemetry
+
 	storage  engstore.SeriesSelector
 	scanners []vectorScanner
 	series   []labels.Labels
@@ -37,17 +39,19 @@ type vectorSelector struct {
 	once       sync.Once
 	vectorPool *model.VectorPool
 
-	numSteps      int
-	mint          int64
-	maxt          int64
-	lookbackDelta int64
-	step          int64
+	numSteps        int
+	mint            int64
+	maxt            int64
+	lookbackDelta   int64
+	step            int64
+	offset          int64
+	seriesBatchSize int64
+
+	currentSeries int64
 	currentStep   int64
-	offset        int64
 
 	shard     int
 	numShards int
-	model.OperatorTelemetry
 }
 
 // NewVectorSelector creates operator which selects vector of series.
@@ -56,27 +60,35 @@ func NewVectorSelector(
 	selector engstore.SeriesSelector,
 	queryOpts *query.Options,
 	offset time.Duration,
+	batchSize int64,
 	shard, numShards int,
 ) model.VectorOperator {
 	o := &vectorSelector{
-		storage:    selector,
-		vectorPool: pool,
+		OperatorTelemetry: &model.NoopTelemetry{},
+		storage:           selector,
+		vectorPool:        pool,
 
-		mint:          queryOpts.Start.UnixMilli(),
-		maxt:          queryOpts.End.UnixMilli(),
-		step:          queryOpts.Step.Milliseconds(),
-		currentStep:   queryOpts.Start.UnixMilli(),
-		lookbackDelta: queryOpts.LookbackDelta.Milliseconds(),
-		offset:        offset.Milliseconds(),
-		numSteps:      queryOpts.NumSteps(),
+		mint:            queryOpts.Start.UnixMilli(),
+		maxt:            queryOpts.End.UnixMilli(),
+		step:            queryOpts.Step.Milliseconds(),
+		currentStep:     queryOpts.Start.UnixMilli(),
+		lookbackDelta:   queryOpts.LookbackDelta.Milliseconds(),
+		offset:          offset.Milliseconds(),
+		numSteps:        queryOpts.NumSteps(),
+		seriesBatchSize: batchSize,
 
 		shard:     shard,
 		numShards: numShards,
 	}
-	o.OperatorTelemetry = &model.NoopTelemetry{}
 	if queryOpts.EnableAnalysis {
 		o.OperatorTelemetry = &model.TrackedTelemetry{}
 	}
+	// For instant queries, set the step to a positive value
+	// so that the operator can terminate.
+	if o.step == 0 {
+		o.step = 1
+	}
+
 	return o
 }
 
@@ -106,11 +118,12 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, ctx.Err()
 	default:
 	}
-	start := time.Now()
 	if o.currentStep > o.maxt {
 		return nil, nil
 	}
 
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -124,12 +137,12 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 
 	// Reset the current timestamp.
 	ts = o.currentStep
-	for i := 0; i < len(o.scanners); i++ {
+	fromSeries := o.currentSeries
+	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < int64(len(o.scanners)); o.currentSeries++ {
 		var (
-			series   = o.scanners[i]
+			series   = o.scanners[o.currentSeries]
 			seriesTs = ts
 		)
-
 		for currStep := 0; currStep < o.numSteps && seriesTs <= o.maxt; currStep++ {
 			_, v, h, ok, err := selectPoint(series.samples, seriesTs, o.lookbackDelta, o.offset)
 			if err != nil {
@@ -145,13 +158,10 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			seriesTs += o.step
 		}
 	}
-	// For instant queries, set the step to a positive value
-	// so that the operator can terminate.
-	if o.step == 0 {
-		o.step = 1
+	if o.currentSeries == int64(len(o.scanners)) {
+		o.currentStep += o.step * int64(o.numSteps)
+		o.currentSeries = 0
 	}
-	o.currentStep += o.step * int64(o.numSteps)
-	o.AddExecutionTimeTaken(time.Since(start))
 
 	return vectors, nil
 }
@@ -175,7 +185,12 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			}
 			o.series[i] = s.Labels()
 		}
-		o.vectorPool.SetStepSize(len(series))
+
+		numSeries := int64(len(o.series))
+		if o.seriesBatchSize == 0 || numSeries < o.seriesBatchSize {
+			o.seriesBatchSize = numSeries
+		}
+		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
 	})
 	return err
 }

@@ -129,6 +129,7 @@ var distributiveAggregations = map[parser.ItemType]struct{}{
 	parser.SUM:     {},
 	parser.MIN:     {},
 	parser.MAX:     {},
+	parser.AVG:     {},
 	parser.GROUP:   {},
 	parser.COUNT:   {},
 	parser.BOTTOMK: {},
@@ -367,14 +368,13 @@ func calculateStartOffset(expr *parser.Expr, lookbackDelta time.Duration) time.D
 
 	var selectRange time.Duration
 	var offset time.Duration
-	parser.Inspect(*expr, func(node parser.Node, nodes []parser.Node) error {
-		if matrixSelector, ok := node.(*parser.MatrixSelector); ok {
+	traverse(expr, func(node *parser.Expr) {
+		if matrixSelector, ok := (*node).(*parser.MatrixSelector); ok {
 			selectRange = matrixSelector.Range
 		}
-		if vectorSelector, ok := node.(*parser.VectorSelector); ok {
+		if vectorSelector, ok := (*node).(*parser.VectorSelector); ok {
 			offset = vectorSelector.Offset
 		}
-		return nil
 	})
 	return maxDuration(offset+selectRange, lookbackDelta)
 }
@@ -414,7 +414,14 @@ func matchesExternalLabelSet(expr parser.Expr, externalLabelSet []labels.Labels)
 	if len(externalLabelSet) == 0 {
 		return true
 	}
-	selectorSet := parser.ExtractSelectors(expr)
+	var selectorSet [][]*labels.Matcher
+	traverse(&expr, func(current *parser.Expr) {
+		vs, ok := (*current).(*parser.VectorSelector)
+		if ok {
+			selectorSet = append(selectorSet, vs.LabelMatchers)
+		}
+	})
+
 	for _, selectors := range selectorSet {
 		hasMatch := false
 		for _, externalLabels := range externalLabelSet {

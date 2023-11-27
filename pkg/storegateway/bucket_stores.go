@@ -552,10 +552,12 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
 
 		var err error
+		blockIdsFetcher := block.NewBaseBlockIDsFetcher(userLogger, fetcherBkt)
 		fetcher, err = block.NewMetaFetcher(
 			userLogger,
 			u.cfg.BucketStore.MetaSyncConcurrency,
 			fetcherBkt,
+			blockIdsFetcher,
 			u.syncDirForUser(userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 			fetcherReg,
 			filters,

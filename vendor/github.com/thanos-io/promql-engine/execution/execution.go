@@ -67,14 +67,14 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 		hints.Start = start
 		hints.End = end
 		filter := storage.GetSelector(start, end, opts.Step.Milliseconds(), e.LabelMatchers, hints)
-		return newShardedVectorSelector(filter, opts, e.Offset)
+		return newShardedVectorSelector(filter, opts, e.Offset, 0)
 
-	case *logicalplan.FilteredSelector:
+	case *logicalplan.VectorSelector:
 		start, end := getTimeRangesForVectorSelector(e.VectorSelector, opts, 0)
 		hints.Start = start
 		hints.End = end
 		selector := storage.GetFilteredSelector(start, end, opts.Step.Milliseconds(), e.LabelMatchers, e.Filters, hints)
-		return newShardedVectorSelector(selector, opts, e.Offset)
+		return newShardedVectorSelector(selector, opts, e.Offset, e.BatchSize)
 
 	case *parser.Call:
 		hints.Func = e.Func.Name
@@ -180,7 +180,7 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 			}
 			operators[i] = operator
 		}
-		coalesce := exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, operators...)
+		coalesce := exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, 0, operators...)
 		dedup := exchange.NewDedupOperator(model.NewVectorPool(opts.StepsBatch), coalesce)
 		return exchange.NewConcurrent(dedup, 2), nil
 
@@ -207,21 +207,21 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 	}
 }
 
-func unpackVectorSelector(t *parser.MatrixSelector) (*parser.VectorSelector, []*labels.Matcher, error) {
+func unpackVectorSelector(t *parser.MatrixSelector) (int64, *parser.VectorSelector, []*labels.Matcher, error) {
 	switch t := t.VectorSelector.(type) {
 	case *parser.VectorSelector:
-		return t, nil, nil
-	case *logicalplan.FilteredSelector:
-		return t.VectorSelector, t.Filters, nil
+		return 0, t, nil, nil
+	case *logicalplan.VectorSelector:
+		return t.BatchSize, t.VectorSelector, t.Filters, nil
 	default:
-		return nil, nil, parse.ErrNotSupportedExpr
+		return 0, nil, nil, parse.ErrNotSupportedExpr
 	}
 }
 
 func newRangeVectorFunction(e *parser.Call, t *parser.MatrixSelector, storage *engstore.SelectorPool, opts *query.Options, hints storage.SelectHints) (model.VectorOperator, error) {
 	// TODO(saswatamcode): Range vector result might need new operator
 	// before it can be non-nested. https://github.com/thanos-io/promql-engine/issues/39
-	vs, filters, err := unpackVectorSelector(t)
+	batchSize, vs, filters, err := unpackVectorSelector(t)
 	if err != nil {
 		return nil, err
 	}
@@ -244,14 +244,14 @@ func newRangeVectorFunction(e *parser.Call, t *parser.MatrixSelector, storage *e
 
 	operators := make([]model.VectorOperator, 0, numShards)
 	for i := 0; i < numShards; i++ {
-		operator, err := scan.NewMatrixSelector(model.NewVectorPool(opts.StepsBatch), filter, e, opts, t.Range, vs.Offset, i, numShards)
+		operator, err := scan.NewMatrixSelector(model.NewVectorPool(opts.StepsBatch), filter, e, opts, t.Range, vs.Offset, batchSize, i, numShards)
 		if err != nil {
 			return nil, err
 		}
 		operators = append(operators, exchange.NewConcurrent(operator, 2))
 	}
 
-	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, operators...), nil
+	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, batchSize*int64(numShards), operators...), nil
 }
 
 func newSubqueryFunction(e *parser.Call, t *parser.SubqueryExpr, storage *engstore.SelectorPool, opts *query.Options, hints storage.SelectHints) (model.VectorOperator, error) {
@@ -293,7 +293,7 @@ func newInstantVectorFunction(e *parser.Call, storage *engstore.SelectorPool, op
 	return function.NewFunctionOperator(e, nextOperators, opts.StepsBatch, opts)
 }
 
-func newShardedVectorSelector(selector engstore.SeriesSelector, opts *query.Options, offset time.Duration) (model.VectorOperator, error) {
+func newShardedVectorSelector(selector engstore.SeriesSelector, opts *query.Options, offset time.Duration, batchSize int64) (model.VectorOperator, error) {
 	numShards := runtime.GOMAXPROCS(0) / 2
 	if numShards < 1 {
 		numShards = 1
@@ -302,11 +302,11 @@ func newShardedVectorSelector(selector engstore.SeriesSelector, opts *query.Opti
 	for i := 0; i < numShards; i++ {
 		operator := exchange.NewConcurrent(
 			scan.NewVectorSelector(
-				model.NewVectorPool(opts.StepsBatch), selector, opts, offset, i, numShards), 2)
+				model.NewVectorPool(opts.StepsBatch), selector, opts, offset, batchSize, i, numShards), 2)
 		operators = append(operators, operator)
 	}
 
-	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, operators...), nil
+	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, batchSize*int64(numShards), operators...), nil
 }
 
 func newVectorBinaryOperator(e *parser.BinaryExpr, selectorPool *engstore.SelectorPool, opts *query.Options, hints storage.SelectHints) (model.VectorOperator, error) {

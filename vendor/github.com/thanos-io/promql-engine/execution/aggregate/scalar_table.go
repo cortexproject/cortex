@@ -18,42 +18,64 @@ import (
 	"github.com/thanos-io/promql-engine/execution/parse"
 )
 
+// aggregateTable is a table that aggregates input samples into
+// output samples for a single step.
 type aggregateTable interface {
-	aggregate(arg float64, vector model.StepVector)
+	// timestamp returns the timestamp of the table.
+	// If the table is empty, it returns math.MinInt64.
+	timestamp() int64
+	// aggregate aggregates the given vector into the table.
+	aggregate(vector model.StepVector)
+	// toVector writes out the accumulated result to the given vector and
+	// resets the table.
 	toVector(pool *model.VectorPool) model.StepVector
-	size() int
+	// reset resets the table with a new aggregation argument.
+	// The argument is currently used for quantile aggregation.
+	reset(arg float64)
 }
 
 type scalarTable struct {
-	timestamp    int64
+	ts           int64
 	inputs       []uint64
 	outputs      []*model.Series
-	accumulators []*accumulator
+	accumulators []accumulator
 }
 
-func newScalarTables(stepsBatch int, inputCache []uint64, outputCache []*model.Series, newAccumulator newAccumulatorFunc) []aggregateTable {
+func newScalarTables(stepsBatch int, inputCache []uint64, outputCache []*model.Series, aggregation parser.ItemType) ([]aggregateTable, error) {
 	tables := make([]aggregateTable, stepsBatch)
 	for i := 0; i < len(tables); i++ {
-		tables[i] = newScalarTable(inputCache, outputCache, newAccumulator)
+		table, err := newScalarTable(inputCache, outputCache, aggregation)
+		if err != nil {
+			return nil, err
+		}
+		tables[i] = table
 	}
-	return tables
+	return tables, nil
 }
 
-func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, newAccumulator newAccumulatorFunc) *scalarTable {
-	accumulators := make([]*accumulator, len(outputs))
+func (t *scalarTable) timestamp() int64 {
+	return t.ts
+}
+
+func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregation parser.ItemType) (*scalarTable, error) {
+	accumulators := make([]accumulator, len(outputs))
 	for i := 0; i < len(accumulators); i++ {
-		accumulators[i] = newAccumulator()
+		acc, err := newScalarAccumulator(aggregation)
+		if err != nil {
+			return nil, err
+		}
+		accumulators[i] = acc
 	}
 	return &scalarTable{
+		ts:           math.MinInt64,
 		inputs:       inputSampleIDs,
 		outputs:      outputs,
 		accumulators: accumulators,
-	}
+	}, nil
 }
 
-func (t *scalarTable) aggregate(arg float64, vector model.StepVector) {
-	t.reset(arg)
-	t.timestamp = vector.T
+func (t *scalarTable) aggregate(vector model.StepVector) {
+	t.ts = vector.T
 
 	for i := range vector.Samples {
 		t.addSample(vector.SampleIDs[i], vector.Samples[i])
@@ -67,27 +89,28 @@ func (t *scalarTable) addSample(sampleID uint64, sample float64) {
 	outputSampleID := t.inputs[sampleID]
 	output := t.outputs[outputSampleID]
 
-	t.accumulators[output.ID].AddFunc(sample, nil)
+	t.accumulators[output.ID].Add(sample, nil)
 }
 
 func (t *scalarTable) addHistogram(sampleID uint64, h *histogram.FloatHistogram) {
 	outputSampleID := t.inputs[sampleID]
 	output := t.outputs[outputSampleID]
 
-	t.accumulators[output.ID].AddFunc(0, h)
+	t.accumulators[output.ID].Add(0, h)
 }
 
 func (t *scalarTable) reset(arg float64) {
 	for i := range t.outputs {
 		t.accumulators[i].Reset(arg)
 	}
+	t.ts = math.MinInt64
 }
 
 func (t *scalarTable) toVector(pool *model.VectorPool) model.StepVector {
-	result := pool.GetStepVector(t.timestamp)
+	result := pool.GetStepVector(t.ts)
 	for i, v := range t.outputs {
 		if t.accumulators[i].HasValue() {
-			f, h := t.accumulators[i].ValueFunc()
+			f, h := t.accumulators[i].Value()
 			if h == nil {
 				result.AppendSample(pool, v.ID, f)
 			} else {
@@ -96,10 +119,6 @@ func (t *scalarTable) toVector(pool *model.VectorPool) model.StepVector {
 		}
 	}
 	return result
-}
-
-func (t *scalarTable) size() int {
-	return len(t.outputs)
 }
 
 func hashMetric(
@@ -141,239 +160,27 @@ func hashMetric(
 	return key, string(bytes), builder.Labels()
 }
 
-type newAccumulatorFunc func() *accumulator
-
-type accumulator struct {
-	AddFunc   func(v float64, h *histogram.FloatHistogram)
-	ValueFunc func() (float64, *histogram.FloatHistogram)
-	HasValue  func() bool
-	Reset     func(arg float64)
-}
-
-func makeAccumulatorFunc(expr parser.ItemType) (newAccumulatorFunc, error) {
+func newScalarAccumulator(expr parser.ItemType) (accumulator, error) {
 	t := parser.ItemTypeStr[expr]
 	switch t {
 	case "sum":
-		return func() *accumulator {
-			var value float64
-			var histSum *histogram.FloatHistogram
-			var hasFloatVal bool
-
-			return &accumulator{
-				AddFunc: func(v float64, h *histogram.FloatHistogram) {
-					if h == nil {
-						hasFloatVal = true
-						value += v
-						return
-					}
-					if histSum == nil {
-						histSum = h.Copy()
-						return
-					}
-					// The histogram being added must have an equal or larger schema.
-					// https://github.com/prometheus/prometheus/blob/57bcbf18880f7554ae34c5b341d52fc53f059a97/promql/engine.go#L2448-L2456
-					if h.Schema >= histSum.Schema {
-						histSum = histSum.Add(h)
-					} else {
-						t := h.Copy()
-						t.Add(histSum)
-						histSum = t
-					}
-
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return value, histSum
-				},
-				// Sum returns an empty result when floats are histograms are aggregated.
-				HasValue: func() bool { return hasFloatVal != (histSum != nil) },
-				Reset: func(_ float64) {
-					histSum = nil
-					hasFloatVal = false
-					value = 0
-				},
-			}
-		}, nil
+		return newSumAcc(), nil
 	case "max":
-		return func() *accumulator {
-			var value float64
-			var hasValue bool
-
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					if !hasValue || math.IsNaN(value) || value < v {
-						value = v
-					}
-					hasValue = true
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return value, nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					value = 0
-				},
-			}
-		}, nil
+		return newMaxAcc(), nil
 	case "min":
-		return func() *accumulator {
-			var value float64
-			var hasValue bool
-
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					if !hasValue || math.IsNaN(value) || value > v {
-						value = v
-					}
-					hasValue = true
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return value, nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					value = 0
-				},
-			}
-		}, nil
+		return newMinAcc(), nil
 	case "count":
-		return func() *accumulator {
-			var value float64
-			var hasValue bool
-
-			return &accumulator{
-				AddFunc: func(_ float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-					value += 1
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return value, nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					value = 0
-				},
-			}
-		}, nil
+		return newCountAcc(), nil
 	case "avg":
-		return func() *accumulator {
-			var count, sum float64
-			var hasValue bool
-
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-					count += 1
-					sum += v
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return sum / count, nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					sum = 0
-					count = 0
-				},
-			}
-		}, nil
+		return newAvgAcc(), nil
 	case "group":
-		return func() *accumulator {
-			var hasValue bool
-			return &accumulator{
-				AddFunc: func(_ float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return 1, nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-				},
-			}
-		}, nil
+		return newGroupAcc(), nil
 	case "stddev":
-		return func() *accumulator {
-			var count float64
-			var mean float64
-			var value float64
-			var hasValue bool
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-					count++
-					delta := v - mean
-					mean += delta / count
-					value += delta * (v - mean)
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					if count == 1 {
-						return 0, nil
-					}
-					return math.Sqrt(value / count), nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					count = 0
-					mean = 0
-					value = 0
-				},
-			}
-		}, nil
+		return newStdDevAcc(), nil
 	case "stdvar":
-		return func() *accumulator {
-			var count float64
-			var mean float64
-			var value float64
-			var hasValue bool
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-					count++
-					delta := v - mean
-					mean += delta / count
-					value += delta * (v - mean)
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					if count == 1 {
-						return 0, nil
-					}
-					return value / count, nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(_ float64) {
-					hasValue = false
-					count = 0
-					mean = 0
-					value = 0
-				},
-			}
-		}, nil
+		return newStdVarAcc(), nil
 	case "quantile":
-		return func() *accumulator {
-			var hasValue bool
-			var arg float64
-			points := make([]float64, 0)
-			return &accumulator{
-				AddFunc: func(v float64, _ *histogram.FloatHistogram) {
-					hasValue = true
-					points = append(points, v)
-				},
-				ValueFunc: func() (float64, *histogram.FloatHistogram) {
-					return quantile(arg, points), nil
-				},
-				HasValue: func() bool { return hasValue },
-				Reset: func(a float64) {
-					hasValue = false
-					arg = a
-					points = points[:0]
-				},
-			}
-		}, nil
+		return newQuantileAcc(), nil
 	}
 	msg := fmt.Sprintf("unknown aggregation function %s", t)
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)

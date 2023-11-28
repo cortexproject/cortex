@@ -384,10 +384,12 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 		filters = append(filters, storegateway.NewIgnoreNonQueryableBlocksFilter(d.logger, d.cfg.IgnoreBlocksWithin))
 	}
 
+	blockIdsFetcher := block.NewBaseBlockIDsFetcher(userLogger, userBucket)
 	f, err := block.NewMetaFetcher(
 		userLogger,
 		d.cfg.MetasConcurrency,
 		userBucket,
+		blockIdsFetcher,
 		// The fetcher stores cached metas in the "meta-syncer/" sub directory.
 		filepath.Join(d.cfg.CacheDir, userID),
 		userReg,

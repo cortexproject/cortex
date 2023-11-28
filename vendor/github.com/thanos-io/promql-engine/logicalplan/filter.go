@@ -12,19 +12,29 @@ import (
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 )
 
-type FilteredSelector struct {
+// VectorSelector is vector selector with additional configuration set by optimizers.
+// TODO(fpetkovski): Consider replacing all VectorSelector nodes with this one as the first step in the plan.
+// This should help us avoid dealing with both types in the entire codebase.
+type VectorSelector struct {
 	*parser.VectorSelector
-	Filters []*labels.Matcher
+	Filters   []*labels.Matcher
+	BatchSize int64
 }
 
-func (f FilteredSelector) String() string {
+func (f VectorSelector) String() string {
+	if f.BatchSize != 0 && len(f.Filters) != 0 {
+		return fmt.Sprintf("filter(%s, %s[batch=%d])", f.Filters, f.VectorSelector.String(), f.BatchSize)
+	}
+	if f.BatchSize != 0 {
+		return fmt.Sprintf("%s[batch=%d]", f.VectorSelector.String(), f.BatchSize)
+	}
 	return fmt.Sprintf("filter(%s, %s)", f.Filters, f.VectorSelector.String())
 }
 
-func (f FilteredSelector) Pretty(level int) string { return f.String() }
+func (f VectorSelector) Pretty(level int) string { return f.String() }
 
-func (f FilteredSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
+func (f VectorSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
 
-func (f FilteredSelector) Type() parser.ValueType { return parser.ValueTypeVector }
+func (f VectorSelector) Type() parser.ValueType { return parser.ValueTypeVector }
 
-func (f FilteredSelector) PromQLExpr() {}
+func (f VectorSelector) PromQLExpr() {}

@@ -31,40 +31,44 @@ func (m MergeSelectsOptimizer) Optimize(expr parser.Expr, _ *query.Options) pars
 }
 
 func extractSelectors(selectors matcherHeap, expr parser.Expr) {
-	parser.Inspect(expr, func(node parser.Node, nodes []parser.Node) error {
-		e, ok := node.(*parser.VectorSelector)
+	traverse(&expr, func(node *parser.Expr) {
+		e, ok := (*node).(*parser.VectorSelector)
 		if !ok {
-			return nil
+			return
 		}
 		for _, l := range e.LabelMatchers {
 			if l.Name == labels.MetricName {
 				selectors.add(l.Value, e.LabelMatchers)
 			}
 		}
-		return nil
 	})
 }
 
 func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
 	traverse(expr, func(node *parser.Expr) {
-		e, ok := (*node).(*parser.VectorSelector)
-		if !ok {
+		var matchers []*labels.Matcher
+		switch e := (*node).(type) {
+		case *parser.VectorSelector:
+			matchers = e.LabelMatchers
+		case *VectorSelector:
+			matchers = e.LabelMatchers
+		default:
 			return
 		}
 
-		for _, l := range e.LabelMatchers {
+		for _, l := range matchers {
 			if l.Name != labels.MetricName {
 				continue
 			}
-			replacement, found := selectors.findReplacement(l.Value, e.LabelMatchers)
+			replacement, found := selectors.findReplacement(l.Value, matchers)
 			if !found {
 				continue
 			}
 
 			// Make a copy of the original selectors to avoid modifying them while
 			// trimming filters.
-			filters := make([]*labels.Matcher, len(e.LabelMatchers))
-			copy(filters, e.LabelMatchers)
+			filters := make([]*labels.Matcher, len(matchers))
+			copy(filters, matchers)
 
 			// All replacements are done on metrics name only,
 			// so we can drop the explicit metric name selector.
@@ -78,11 +82,19 @@ func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
 					}
 				}
 			}
-			e.LabelMatchers = replacement
-			*node = &FilteredSelector{
-				Filters:        filters,
-				VectorSelector: e,
+
+			switch e := (*node).(type) {
+			case *parser.VectorSelector:
+				e.LabelMatchers = replacement
+				*node = &VectorSelector{
+					VectorSelector: e,
+					Filters:        filters,
+				}
+			case *VectorSelector:
+				e.LabelMatchers = replacement
+				e.Filters = filters
 			}
+
 			return
 		}
 	})

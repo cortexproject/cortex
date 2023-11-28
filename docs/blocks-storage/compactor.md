@@ -298,4 +298,8 @@ compactor:
   # When enabled, index verification will ignore out of order label names.
   # CLI flag: -compactor.accept-malformed-index
   [accept_malformed_index: <boolean> | default = false]
+
+  # When enabled, will fetch the list of block ids using bucket index.
+  # CLI flag: -compactor.bucket-index-block-ids-fetcher-enabled
+  [bucket_index_block_ids_fetcher_enabled: <boolean> | default = false]
 ```

@@ -4,18 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"path"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 )
 
 func TestBlockIDsFetcher_Fetch(t *testing.T) {

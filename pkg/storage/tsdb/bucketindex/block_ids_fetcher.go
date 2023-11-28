@@ -14,37 +14,39 @@ import (
 )
 
 type BlockIDsFetcher struct {
-	logger      log.Logger
-	bkt         objstore.Bucket
-	userID      string
-	cfgProvider bucket.TenantConfigProvider
+	logger              log.Logger
+	bkt                 objstore.Bucket
+	userID              string
+	cfgProvider         bucket.TenantConfigProvider
+	baseBlockIDsFetcher block.BlockIDsFetcher
 }
 
 func NewBlockIDsFetcher(logger log.Logger, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider) *BlockIDsFetcher {
+	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
+	baseBlockIDsFetcher := block.NewBaseBlockIDsFetcher(logger, userBkt)
 	return &BlockIDsFetcher{
-		logger:      logger,
-		bkt:         bkt,
-		userID:      userID,
-		cfgProvider: cfgProvider,
+		logger:              logger,
+		bkt:                 bkt,
+		userID:              userID,
+		cfgProvider:         cfgProvider,
+		baseBlockIDsFetcher: baseBlockIDsFetcher,
 	}
 }
 
 func (f *BlockIDsFetcher) GetActiveAndPartialBlockIDs(ctx context.Context, ch chan<- ulid.ULID) (partialBlocks map[ulid.ULID]bool, err error) {
 	// Fetch the bucket index.
 	idx, err := ReadIndex(ctx, f.bkt, f.userID, f.cfgProvider, f.logger)
-	userBkt := bucket.NewUserBucketClient(f.userID, f.bkt, f.cfgProvider)
-	baseBlockIDsFetcher := block.NewBaseBlockIDsFetcher(f.logger, userBkt)
 	if errors.Is(err, ErrIndexNotFound) {
 		// This is a legit case happening when the first blocks of a tenant have recently been uploaded by ingesters
 		// and their bucket index has not been created yet.
 		// Fallback to BaseBlockIDsFetcher.
-		return baseBlockIDsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+		return f.baseBlockIDsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
 	}
 	if errors.Is(err, ErrIndexCorrupted) {
 		// In case a single tenant bucket index is corrupted, we want to return empty active blocks and parital blocks, so skipping this compaction cycle
 		level.Error(f.logger).Log("msg", "corrupted bucket index found", "user", f.userID, "err", err)
 		// Fallback to BaseBlockIDsFetcher.
-		return baseBlockIDsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+		return f.baseBlockIDsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
 	}
 
 	if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {

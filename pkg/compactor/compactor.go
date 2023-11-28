@@ -208,8 +208,7 @@ type Config struct {
 	BlockVisitMarkerTimeout            time.Duration `yaml:"block_visit_marker_timeout"`
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
 
-	AcceptMalformedIndex              bool `yaml:"accept_malformed_index"`
-	BucketIndexBlockIDsFetcherEnalbed bool `yaml:"bucket_index_block_ids_fetcher_enabled"`
+	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -248,7 +247,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
-	f.BoolVar(&cfg.BucketIndexBlockIDsFetcherEnalbed, "compactor.bucket-index-block-ids-fetcher-enabled", false, "When enabled, will fetch the list of block ids using bucket index.")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
@@ -794,7 +792,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	var blockIDsFetcher block.BlockIDsFetcher
 	// TODO: remove the BucketIndexBlockIDsFetcherEnabled flag once it is proved stable
-	if c.storageCfg.BucketStore.BucketIndex.Enabled && c.compactorCfg.BucketIndexBlockIDsFetcherEnalbed {
+	if c.storageCfg.BucketStore.BucketIndex.Enabled {
 		blockIDsFetcher = bucketindex.NewBlockIDsFetcher(ulogger, c.bucketClient, userID, c.limits)
 	} else {
 		blockIDsFetcher = block.NewBaseBlockIDsFetcher(ulogger, bucket)

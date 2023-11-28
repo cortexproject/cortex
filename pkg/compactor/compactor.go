@@ -793,8 +793,9 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
 	var blockIDsFetcher block.BlockIDsFetcher
+	// TODO: remove the BucketIndexBlockIDsFetcherEnabled flag once it is proved stable
 	if c.storageCfg.BucketStore.BucketIndex.Enabled && c.compactorCfg.BucketIndexBlockIDsFetcherEnalbed {
-		blockIDsFetcher = NewBucketIndexBlockIDsFetcher(ulogger, c.bucketClient, userID, c.limits)
+		blockIDsFetcher = bucketindex.NewBlockIDsFetcher(ulogger, c.bucketClient, userID, c.limits)
 	} else {
 		blockIDsFetcher = block.NewBaseBlockIDsFetcher(ulogger, bucket)
 	}

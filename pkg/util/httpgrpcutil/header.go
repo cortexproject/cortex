@@ -7,7 +7,12 @@ import (
 // GetHeader is similar to http.Header.Get, which gets the first value associated with the given key.
 // If there are no values associated with the key, it returns "".
 func GetHeader(r httpgrpc.HTTPRequest, key string) string {
-	return GetHeaderValues(r, key)[0]
+	values := GetHeaderValues(r, key)
+	if len(values) == 0 {
+		return ""
+	}
+
+	return values[0]
 }
 
 // GetHeaderValues is similar to http.Header.Values, which returns all values associated with the given key.

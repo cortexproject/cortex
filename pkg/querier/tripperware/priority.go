@@ -88,7 +88,7 @@ func isWithinTimeAttributes(attribute validation.QueryAttribute, now time.Time, 
 }
 
 func FindMinMaxTime(s *parser.EvalStmt) (int64, int64) {
-	// Placeholder until Prometheus is updated to >=0.48.0
-	// which includes https://github.com/prometheus/prometheus/commit/9e3df532d8294d4fe3284bde7bc96db336a33552
+	// Placeholder until Prometheus is updated to include
+	// https://github.com/prometheus/prometheus/commit/9e3df532d8294d4fe3284bde7bc96db336a33552
 	return s.Start.Unix(), s.End.Unix()
 }

@@ -200,7 +200,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(&buf)
 	}
 
-	r.Header.Get("test")
 	startTime := time.Now()
 	resp, err := f.roundTripper.RoundTrip(r)
 	queryResponseTime := time.Since(startTime)

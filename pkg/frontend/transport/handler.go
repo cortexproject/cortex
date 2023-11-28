@@ -234,18 +234,18 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
+	hs := w.Header()
+	if f.cfg.QueryStatsEnabled {
+		writeServiceTimingHeader(queryResponseTime, hs, stats)
+	}
+
 	if err != nil {
-		writeError(w, err)
+		writeError(w, err, hs)
 		return
 	}
 
-	hs := w.Header()
 	for h, vs := range resp.Header {
 		hs[h] = vs
-	}
-
-	if f.cfg.QueryStatsEnabled {
-		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
 	w.WriteHeader(resp.StatusCode)
@@ -422,7 +422,7 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 	return fields
 }
 
-func writeError(w http.ResponseWriter, err error) {
+func writeError(w http.ResponseWriter, err error, additionalHeaders http.Header) {
 	switch err {
 	case context.Canceled:
 		err = errCanceled
@@ -433,7 +433,22 @@ func writeError(w http.ResponseWriter, err error) {
 			err = errRequestEntityTooLarge
 		}
 	}
-	server.WriteError(w, err)
+
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	if ok {
+		for k, values := range additionalHeaders {
+			resp.Headers = append(resp.Headers, &httpgrpc.Header{Key: k, Values: values})
+		}
+		_ = server.WriteResponse(w, resp)
+	} else {
+		headers := w.Header()
+		for k, values := range additionalHeaders {
+			for _, value := range values {
+				headers.Set(k, value)
+			}
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.QueryStats) {

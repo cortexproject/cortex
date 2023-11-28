@@ -31,19 +31,31 @@ func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestWriteError(t *testing.T) {
 	for _, test := range []struct {
-		status int
-		err    error
+		status            int
+		err               error
+		additionalHeaders http.Header
 	}{
-		{http.StatusInternalServerError, errors.New("unknown")},
-		{http.StatusGatewayTimeout, context.DeadlineExceeded},
-		{StatusClientClosedRequest, context.Canceled},
-		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, "")},
-		{http.StatusRequestEntityTooLarge, errors.New("http: request body too large")},
+		{http.StatusInternalServerError, errors.New("unknown"), http.Header{"User-Agent": []string{"Golang"}}},
+		{http.StatusInternalServerError, errors.New("unknown"), nil},
+		{http.StatusGatewayTimeout, context.DeadlineExceeded, nil},
+		{StatusClientClosedRequest, context.Canceled, nil},
+		{StatusClientClosedRequest, context.Canceled, http.Header{"User-Agent": []string{"Golang"}}},
+		{StatusClientClosedRequest, context.Canceled, http.Header{"User-Agent": []string{"Golang"}, "Content-Type": []string{"application/json"}}},
+		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, ""), http.Header{}},
+		{http.StatusRequestEntityTooLarge, errors.New("http: request body too large"), http.Header{}},
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeError(w, test.err)
+			writeError(w, test.err, test.additionalHeaders)
 			require.Equal(t, test.status, w.Result().StatusCode)
+			expectedAdditionalHeaders := test.additionalHeaders
+			if expectedAdditionalHeaders != nil {
+				for key, value := range w.Header() {
+					if values, ok := expectedAdditionalHeaders[key]; ok {
+						require.Equal(t, values, value)
+					}
+				}
+			}
 		})
 	}
 }

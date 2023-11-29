@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"golang.org/x/time/rate"
@@ -125,7 +126,7 @@ type Limits struct {
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant    int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
 	QueryPriority              QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
-	queryPriorityRegexHash     string
+	queryPriorityRegexHash     uint64
 	queryPriorityCompiledRegex map[string]*regexp.Regexp
 
 	// Ruler defaults and limits.
@@ -314,12 +315,18 @@ func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimi
 }
 
 func (l *Limits) hasQueryPriorityRegexChanged() bool {
-	var newHash string
+	var newHash uint64
+
+	var seps = []byte{'\xff'}
+	h := xxhash.New()
 	for _, priority := range l.QueryPriority.Priorities {
 		for _, attribute := range priority.QueryAttributes {
-			newHash += attribute.Regex
+			_, _ = h.WriteString(attribute.Regex)
+			_, _ = h.Write(seps)
 		}
 	}
+	newHash = h.Sum64()
+
 	if newHash != l.queryPriorityRegexHash {
 		l.queryPriorityRegexHash = newHash
 		return true

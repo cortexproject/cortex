@@ -322,7 +322,6 @@ type Compactor struct {
 
 	// Metrics.
 	CompactorStartDurationSeconds  prometheus.Gauge
-	CompactorStopDurationSeconds   prometheus.Gauge
 	compactionRunsStarted          prometheus.Counter
 	compactionRunsInterrupted      prometheus.Counter
 	compactionRunsCompleted        prometheus.Counter
@@ -409,10 +408,6 @@ func newCompactor(
 			Name: "cortex_compactor_start_duration_seconds",
 			Help: "Time in seconds spent by compactor running start function",
 		}),
-		CompactorStopDurationSeconds: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_compactor_stop_duration_seconds",
-			Help: "Time in seconds spent by compactor running stop function",
-		}),
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
 			Help: "Total number of compaction runs started.",
@@ -498,6 +493,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 	begin := time.Now()
 	defer func() {
 		c.CompactorStartDurationSeconds.Set(time.Since(begin).Seconds())
+		level.Info(c.logger).Log("msg", "compactor started", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}()
 
 	var err error
@@ -598,7 +594,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 func (c *Compactor) stopping(_ error) error {
 	begin := time.Now()
 	defer func() {
-		c.CompactorStopDurationSeconds.Set(time.Since(begin).Seconds())
+		level.Info(c.logger).Log("msg", "compactor stopped", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}()
 
 	ctx := context.Background()

@@ -15,8 +15,7 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
-// Relative to user-specific prefix.
-const TenantDeletionMarkPath = "tenant-deletion-mark.json"
+const TenantDeletionMarkFile = "tenant-deletion-mark.json"
 
 type TenantDeletionMark struct {
 	// Unix timestamp when deletion marker was created.
@@ -63,11 +62,11 @@ func ReadTenantDeletionMark(ctx context.Context, bkt objstore.BucketReader, user
 }
 
 func GetLocalDeletionMarkPath(userID string) string {
-	return path.Join(userID, "markers", TenantDeletionMarkPath)
+	return path.Join(userID, "markers", TenantDeletionMarkFile)
 }
 
 func GetGlobalDeletionMarkPath(userID string) string {
-	return path.Join(util.GlobalMarkersDir, userID, TenantDeletionMarkPath)
+	return path.Join(util.GlobalMarkersDir, userID, TenantDeletionMarkFile)
 }
 
 func exists(ctx context.Context, bkt objstore.BucketReader, markerFile string) (bool, error) {

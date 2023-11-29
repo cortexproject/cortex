@@ -293,16 +293,14 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userID 
 		level.Info(userLogger).Log("msg", "deleted files under "+block.DebugMetas+" for tenant marked for deletion", "count", deleted)
 	}
 
-	// Tenant deletion mark file is inside Markers as well.
 	if deleted, err := bucket.DeletePrefix(ctx, userBucket, bucketindex.MarkersPathname, userLogger); err != nil {
 		return errors.Wrap(err, "failed to delete marker files")
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted)
 	}
 
-	// Deleting global markers for the user
-	if err := c.bucketClient.Delete(ctx, cortex_tsdb.GetGlobalDeletionMarkPath(userID)); err != nil {
-		return errors.Wrap(err, "failed to delete global marker file")
+	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
+		return errors.Wrap(err, "failed to delete tenant deletion mark")
 	}
 
 	return nil

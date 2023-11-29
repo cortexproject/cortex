@@ -61,6 +61,17 @@ func ReadTenantDeletionMark(ctx context.Context, bkt objstore.BucketReader, user
 	return read(ctx, bkt, markerFile)
 }
 
+// Deletes the tenant deletion mark for given user if it exists.
+func DeleteTenantDeletionMark(ctx context.Context, bkt objstore.Bucket, userID string) error {
+	if err := bkt.Delete(ctx, GetGlobalDeletionMarkPath(userID)); err != nil {
+		return err
+	}
+	if err := bkt.Delete(ctx, GetLocalDeletionMarkPath(userID)); err != nil {
+		return err
+	}
+	return nil
+}
+
 func GetLocalDeletionMarkPath(userID string) string {
 	return path.Join(userID, "markers", TenantDeletionMarkFile)
 }

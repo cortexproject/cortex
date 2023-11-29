@@ -183,7 +183,7 @@ var chunksMatcher = regexp.MustCompile(`^.*/chunks/\d+$`)
 func isTSDBChunkFile(name string) bool { return chunksMatcher.MatchString(name) }
 
 func isMetaFile(name string) bool {
-	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkPath)
+	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkFile)
 }
 
 func isBlockIndexFile(name string) bool {

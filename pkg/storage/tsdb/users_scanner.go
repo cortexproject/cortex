@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
@@ -11,7 +12,10 @@ import (
 
 // AllUsers returns true to each call and should be used whenever the UsersScanner should not filter out
 // any user due to sharding.
-func AllUsers(_ string) (bool, error) {
+func AllUsers(user string) (bool, error) {
+	if user == util.GlobalMarkersDir {
+		return false, nil
+	}
 	return true, nil
 }
 

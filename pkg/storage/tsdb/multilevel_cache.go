@@ -83,13 +83,16 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 		for i, values := range backfillItems {
 			i := i
 			values := values
+			if len(values) == 0 {
+				continue
+			}
 			if err := m.backfillProcessor.EnqueueAsync(func() {
 				cnt := 0
 				for lbl, b := range values {
 					m.postingsCaches[i].StorePostings(blockID, lbl, b, tenant)
 					cnt++
 					if cnt == m.maxBackfillItems {
-						m.backfillDroppedSeries.Add(float64(len(values) - cnt))
+						m.backfillDroppedPostings.Add(float64(len(values) - cnt))
 						return
 					}
 				}
@@ -190,6 +193,9 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 		for i, values := range backfillItems {
 			i := i
 			values := values
+			if len(values) == 0 {
+				continue
+			}
 			if err := m.backfillProcessor.EnqueueAsync(func() {
 				cnt := 0
 				for ref, b := range values {

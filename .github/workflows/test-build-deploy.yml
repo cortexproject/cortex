@@ -146,12 +146,6 @@ jobs:
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.6.0
-            docker pull quay.io/cortexproject/cortex:v1.7.0
-            docker pull quay.io/cortexproject/cortex:v1.8.0
-            docker pull quay.io/cortexproject/cortex:v1.9.0
-            docker pull quay.io/cortexproject/cortex:v1.10.0
-            docker pull quay.io/cortexproject/cortex:v1.11.1
             docker pull quay.io/cortexproject/cortex:v1.13.1
             docker pull quay.io/cortexproject/cortex:v1.13.2
             docker pull quay.io/cortexproject/cortex:v1.14.0

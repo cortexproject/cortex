@@ -26,6 +26,10 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 		return 0, err
 	}
 
+	if len(queryPriority.Priorities) == 0 {
+		return queryPriority.DefaultPriority, nil
+	}
+
 	var startTime, endTime int64
 	if isQuery {
 		if t, err := util.ParseTimeParam(r, "time", now.Unix()); err == nil {
@@ -52,8 +56,10 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 
 	for _, priority := range queryPriority.Priorities {
 		for _, attribute := range priority.QueryAttributes {
-			if attribute.Regex == "" || (attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(query)) {
-				continue
+			if attribute.Regex != "" && attribute.Regex != ".*" && attribute.Regex != ".+" {
+				if attribute.CompiledRegex != nil && !attribute.CompiledRegex.MatchString(query) {
+					continue
+				}
 			}
 
 			if isWithinTimeAttributes(attribute, now, minTime, maxTime) {

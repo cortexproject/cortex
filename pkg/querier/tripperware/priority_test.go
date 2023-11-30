@@ -105,10 +105,10 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 			query:            "count(sum(up))",
 			expectedPriority: 1,
 		},
-		"should miss if regex is an empty string": {
+		"should hit if regex is an empty string": {
 			regex:            "",
 			query:            "sum(up)",
-			expectedPriority: 0,
+			expectedPriority: 1,
 		},
 	}
 

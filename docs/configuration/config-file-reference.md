@@ -5061,10 +5061,10 @@ otel:
 ### `QueryAttribute`
 
 ```yaml
-# Regex that the query string should match. If not set, it won't be checked.'
+# Regex that the query string should match. If not set, it won't be checked.
 [regex: <string> | default = ""]
 
-# Time window that the query should be within. If not set, it won't be checked.'
+# Time window that the query should be within. If not set, it won't be checked.
 time_window:
   # Start of the time window that the query should be within. If set to 0, it
   # won't be checked.

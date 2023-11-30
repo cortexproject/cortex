@@ -63,8 +63,8 @@ type PriorityDef struct {
 }
 
 type QueryAttribute struct {
-	Regex         string     `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked.'"`
-	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Time window that the query should be within. If not set, it won't be checked.'"`
+	Regex         string     `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked."`
+	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Time window that the query should be within. If not set, it won't be checked."`
 	CompiledRegex *regexp.Regexp
 }
 

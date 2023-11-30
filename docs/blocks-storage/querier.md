@@ -719,6 +719,10 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-buffer-size
         [max_async_buffer_size: <int> | default = 10000]
 
+        # The maximum number of items to backfill per asynchronous operation.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-backfill-items
+        [max_backfill_items: <int> | default = 10000]
+
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.backend

@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
-	"github.com/weaveworks/common/tracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/uber/jaeger-client-go"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 )
@@ -40,7 +42,7 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 		l = WithUserID(userID, l)
 	}
 
-	traceID, ok := tracing.ExtractSampledTraceID(ctx)
+	traceID, ok := ExtractSampledTraceID(ctx)
 	if !ok {
 		return l
 	}
@@ -61,4 +63,23 @@ func headersFromContext(ctx context.Context, l log.Logger) log.Logger {
 		l = log.With(l, header, contents)
 	}
 	return l
+}
+
+// ExtractSampledTraceID gets traceID and whether the trace is samples or not.
+func ExtractSampledTraceID(ctx context.Context) (string, bool) {
+	sp := opentracing.SpanFromContext(ctx)
+	if sp == nil {
+		return "", false
+	}
+	sctx, ok := sp.Context().(jaeger.SpanContext)
+	if !ok {
+		// If OpenTracing span not found, try OTEL.
+		span := trace.SpanFromContext(ctx)
+		if span != nil {
+			return span.SpanContext().TraceID().String(), span.SpanContext().IsSampled()
+		}
+		return "", false
+	}
+
+	return sctx.TraceID().String(), sctx.IsSampled()
 }

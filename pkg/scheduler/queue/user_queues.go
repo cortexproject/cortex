@@ -2,7 +2,6 @@ package queue
 
 import (
 	"math/rand"
-	"reflect"
 	"sort"
 	"time"
 
@@ -136,7 +135,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 	uq := q.userQueues[userID]
 	priorityEnabled := q.limits.QueryPriority(userID).Enabled
 	maxOutstanding := q.limits.MaxOutstandingPerTenant(userID)
-	priorityList := getPriorityList(q.limits.QueryPriority(userID), len(q.queriers))
+	priorityList := getPriorityList(q.limits.QueryPriority(userID), maxQueriers)
 
 	if uq == nil {
 		uq = &userQueue{
@@ -180,7 +179,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 		uq.queriers = shuffleQueriersForUser(uq.seed, maxQueriers, q.sortedQueriers, nil)
 	}
 
-	if priorityEnabled && !reflect.DeepEqual(uq.priorityList, priorityList) {
+	if priorityEnabled && hasPriorityListChanged(uq.priorityList, priorityList) {
 		reservedQueriers := make(map[string]int64)
 
 		i := 0
@@ -404,6 +403,18 @@ func getPriorityList(queryPriority validation.QueryPriority, totalQuerierCount i
 	}
 
 	return priorityList
+}
+
+func hasPriorityListChanged(old, new []int64) bool {
+	if len(old) != len(new) {
+		return true
+	}
+	for i := range old {
+		if old[i] != new[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // MockLimits implements the Limits interface. Used in tests only.

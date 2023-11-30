@@ -399,12 +399,45 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
 	assert.Equal(t, 5, len(q.queriers))
 	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.Equal(t, 2, len(q.userQueues["userID"].reservedQueriers))
 	assert.IsType(t, &PriorityRequestQueue{}, queue)
 	assert.Equal(t, 1, queue.length())
 	assert.ElementsMatch(t, []int64{1, 1}, q.userQueues["userID"].priorityList)
 	assert.True(t, q.userQueues["userID"].priorityEnabled)
 	assert.Subset(t, getKeys(q.queriers), getKeys(q.userQueues["userID"].queriers))
 	assert.Subset(t, getKeys(q.userQueues["userID"].queriers), getKeys(q.userQueues["userID"].reservedQueriers))
+
+	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
+		{
+			Priority:         1,
+			ReservedQueriers: 0.5,
+		},
+	}}
+	q.limits = limits
+	_ = q.getOrAddQueue("userID", 3)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.Equal(t, 2, len(q.userQueues["userID"].reservedQueriers))
+	assert.ElementsMatch(t, []int64{1, 1}, q.userQueues["userID"].priorityList)
+
+	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
+		{
+			Priority:         1,
+			ReservedQueriers: 10,
+		},
+	}}
+	q.limits = limits
+	_ = q.getOrAddQueue("userID", 3)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.Equal(t, 0, len(q.userQueues["userID"].reservedQueriers))
+	assert.ElementsMatch(t, []int64{}, q.userQueues["userID"].priorityList)
 
 	limits.QueryPriorityVal.Enabled = false
 	q.limits = limits
@@ -582,69 +615,11 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 	}
 }
 
-func TestShuffleQueriers_WithReservedQueriers(t *testing.T) {
-	//allQueriers := []string{"a", "b", "c", "d", "e"}
-	//
-	//queriers, reservedQueriers := shuffleQueriersForUser(12345, 0, allQueriers, 0, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 0, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 0.5, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 3, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 1, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 1, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 0, allQueriers, 100, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 5, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 0, nil)
-	//require.Equal(t, 3, len(queriers))
-	//require.Equal(t, 0, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 0.5, nil)
-	//require.Equal(t, 3, len(queriers))
-	//require.Equal(t, 2, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 1, nil)
-	//require.Equal(t, 3, len(queriers))
-	//require.Equal(t, 1, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 3, allQueriers, 100, nil)
-	//require.Equal(t, 3, len(queriers))
-	//require.Equal(t, 3, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 0, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 0, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 0.5, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 3, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 1, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 1, len(reservedQueriers))
-	//
-	//queriers, reservedQueriers = shuffleQueriersForUser(12345, 100, allQueriers, 100, nil)
-	//require.Nil(t, queriers)
-	//require.Equal(t, 5, len(reservedQueriers))
-}
-
-func TestShuffleQueriers_WithReservedQueriers_Correctness(t *testing.T) {
-	//allQueriers := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n"}
-	//
-	//prevQueriers, prevReservedQueriers := shuffleQueriersForUser(12345, 10, allQueriers, 5, nil)
-	//for i := 0; i < 100; i++ {
-	//	queriers, reservedQueriers := shuffleQueriersForUser(12345, 10, allQueriers, 5, nil)
-	//	require.Equal(t, prevQueriers, queriers)
-	//	require.Equal(t, prevReservedQueriers, reservedQueriers)
-	//	prevQueriers = queriers
-	//	prevReservedQueriers = reservedQueriers
-	//}
+func TestHasPriorityListChanged(t *testing.T) {
+	require.True(t, hasPriorityListChanged([]int64{1, 2}, []int64{1, 3}))
+	require.False(t, hasPriorityListChanged([]int64{1, 2}, []int64{1, 2}))
+	require.True(t, hasPriorityListChanged([]int64{1, 2}, []int64{1}))
+	require.False(t, hasPriorityListChanged([]int64{}, []int64{}))
 }
 
 func TestGetPriorityList(t *testing.T) {

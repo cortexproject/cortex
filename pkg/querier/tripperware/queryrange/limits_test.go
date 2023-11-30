@@ -2,7 +2,6 @@ package queryrange
 
 import (
 	"context"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"testing"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {

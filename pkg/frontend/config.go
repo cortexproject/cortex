@@ -59,7 +59,7 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 			cfg.FrontendV2.Port = grpcListenPort
 		}
 
-		fr, err := v2.NewFrontend(cfg.FrontendV2, log, reg, retry)
+		fr, err := v2.NewFrontend(cfg.FrontendV2, limits, log, reg, retry)
 		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), nil, fr, err
 
 	default:

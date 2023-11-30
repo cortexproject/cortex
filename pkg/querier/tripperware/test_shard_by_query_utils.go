@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querysharding"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheusCodec Codec) {
@@ -466,6 +467,7 @@ type mockLimits struct {
 	maxQueryLength    time.Duration
 	maxCacheFreshness time.Duration
 	shardSize         int
+	queryPriority     validation.QueryPriority
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {
@@ -486,6 +488,10 @@ func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 
 func (m mockLimits) QueryVerticalShardSize(userID string) int {
 	return m.shardSize
+}
+
+func (m mockLimits) QueryPriority(userID string) validation.QueryPriority {
+	return m.queryPriority
 }
 
 type singleHostRoundTripper struct {

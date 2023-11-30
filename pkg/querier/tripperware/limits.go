@@ -1,6 +1,10 @@
 package tripperware
 
-import "time"
+import (
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
 
 // Limits allows us to specify per-tenant runtime limits on the behavior of
 // the query handling code.
@@ -21,4 +25,7 @@ type Limits interface {
 
 	// QueryVerticalShardSize returns the maximum number of queriers that can handle requests for this user.
 	QueryVerticalShardSize(userID string) int
+
+	// QueryPriority returns the query priority config for the tenant, including different priorities and their attributes.
+	QueryPriority(userID string) validation.QueryPriority
 }

@@ -3041,6 +3041,18 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
 
+# Configuration for query priority.
+query_priority:
+  # Whether queries are assigned with priorities.
+  [enabled: <boolean> | default = false]
+
+  # Priority assigned to all queries by default. Must be a unique value. Use
+  # this as a baseline to make certain queries higher/lower priority.
+  [default_priority: <int> | default = 0]
+
+  # List of priority definitions.
+  [priorities: <list of PriorityDef> | default = []]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -5030,6 +5042,37 @@ otel:
     # Skip validating server certificate.
     # CLI flag: -tracing.otel.tls.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `PriorityDef`
+
+```yaml
+# Priority level. Must be a unique value.
+[priority: <int> | default = 0]
+
+# Number of reserved queriers to handle priorities higher or equal to the
+# priority level. Value between 0 and 1 will be used as a percentage.
+[reserved_queriers: <float> | default = 0]
+
+# List of query attributes to assign the priority.
+[query_attributes: <list of QueryAttribute> | default = []]
+```
+
+### `QueryAttribute`
+
+```yaml
+# Regex that the query string should match. If not set, it won't be checked.
+[regex: <string> | default = ""]
+
+# Time window that the query should be within. If not set, it won't be checked.
+time_window:
+  # Start of the time window that the query should be within. If set to 0, it
+  # won't be checked.
+  [start: <int> | default = 0]
+
+  # End of the time window that the query should be within. If set to 0, it
+  # won't be checked.
+  [end: <int> | default = 0]
 ```
 
 ### `DisabledRuleGroup`

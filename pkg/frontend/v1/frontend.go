@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -51,12 +52,17 @@ type Limits interface {
 
 // MockLimits implements the Limits interface. Used in tests only.
 type MockLimits struct {
-	Queriers float64
+	Queriers      float64
+	queryPriority validation.QueryPriority
 	queue.MockLimits
 }
 
 func (l MockLimits) MaxQueriersPerUser(_ string) float64 {
 	return l.Queriers
+}
+
+func (l MockLimits) QueryPriority(_ string) validation.QueryPriority {
+	return l.queryPriority
 }
 
 // Frontend queues HTTP requests, dispatches them to backends, and handles retries
@@ -93,6 +99,15 @@ type request struct {
 	response chan *httpgrpc.HTTPResponse
 }
 
+func (r request) Priority() int64 {
+	priority, err := strconv.ParseInt(httpgrpcutil.GetHeader(*r.request, util.QueryPriorityHeaderKey), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return priority
+}
+
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
 func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	f := &Frontend{
@@ -103,11 +118,11 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		queueLength: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_query_frontend_queue_length",
 			Help: "Number of queries in the queue.",
-		}, []string{"user"}),
+		}, []string{"user", "priority", "type"}),
 		discardedRequests: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_query_frontend_discarded_requests_total",
 			Help: "Total number of query requests discarded.",
-		}, []string{"user"}),
+		}, []string{"user", "priority"}),
 		queueDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_query_frontend_queue_duration_seconds",
 			Help:    "Time spend by requests queued.",
@@ -160,8 +175,12 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 func (f *Frontend) cleanupInactiveUserMetrics(user string) {
-	f.queueLength.DeleteLabelValues(user)
-	f.discardedRequests.DeleteLabelValues(user)
+	f.queueLength.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
+	f.discardedRequests.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).

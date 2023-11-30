@@ -19,6 +19,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,6 +105,7 @@ func NewQueryTripperware(
 	queryAnalyzer querysharding.Analyzer,
 	defaultSubQueryInterval time.Duration,
 	maxSubQuerySteps int64,
+	lookbackDelta time.Duration,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -142,15 +144,27 @@ func NewQueryTripperware(
 				if err != nil {
 					return nil, err
 				}
+				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
-				activeUsers.UpdateUserTimestamp(userStr, time.Now())
+				activeUsers.UpdateUserTimestamp(userStr, now)
 				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
-				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
+				if isQuery || isQueryRange {
 					query := r.FormValue("query")
-					// Check subquery step size.
-					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
-						return nil, err
+
+					if maxSubQuerySteps > 0 {
+						// Check subquery step size.
+						if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
+							return nil, err
+						}
+					}
+
+					if limits != nil && limits.QueryPriority(userStr).Enabled {
+						priority, err := GetPriority(r, userStr, limits, now, lookbackDelta)
+						if err != nil {
+							return nil, err
+						}
+						r.Header.Set(util.QueryPriorityHeaderKey, strconv.FormatInt(priority, 10))
 					}
 				}
 

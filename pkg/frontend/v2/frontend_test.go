@@ -19,6 +19,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -48,7 +49,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 
 	//logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, logger, nil, transport.NewRetry(maxRetries, nil))
+	f, err := NewFrontend(cfg, queue.MockLimits{}, logger, nil, transport.NewRetry(maxRetries, nil))
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)

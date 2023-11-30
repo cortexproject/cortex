@@ -12,6 +12,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
@@ -217,6 +218,10 @@ func (m mockLimits) MaxCacheFreshness(string) time.Duration {
 
 func (m mockLimits) QueryVerticalShardSize(userID string) int {
 	return 0
+}
+
+func (m mockLimits) QueryPriority(userID string) validation.QueryPriority {
+	return validation.QueryPriority{}
 }
 
 type mockHandler struct {

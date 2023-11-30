@@ -343,6 +343,9 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
 	}
+	if queryPriority := r.Header.Get(util.QueryPriorityHeaderKey); len(queryPriority) > 0 {
+		logMessage = append(logMessage, "priority", queryPriority)
+	}
 
 	if error != nil {
 		s, ok := status.FromError(error)

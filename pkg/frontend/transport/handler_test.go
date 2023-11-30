@@ -21,6 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -301,34 +302,63 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	outputBuf := bytes.NewBuffer(nil)
 	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
 	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, http.DefaultTransport, logger, nil)
-
 	userID := "fake"
-	queryString := url.Values(map[string][]string{"query": {"up"}})
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
-	require.NoError(t, err)
-	req.Header = http.Header{
-		"User-Agent": []string{"Grafana"},
+	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
+	resp := &http.Response{ContentLength: 1000}
+	responseTime := time.Second
+	statusCode := http.StatusOK
+
+	type testCase struct {
+		queryString url.Values
+		queryStats  *querier_stats.QueryStats
+		header      http.Header
+		responseErr error
+		expectedLog string
 	}
-	resp := &http.Response{
-		ContentLength: 1000,
-	}
-	stats := &querier_stats.QueryStats{
-		Stats: querier_stats.Stats{
-			WallTime:            3 * time.Second,
-			FetchedSeriesCount:  100,
-			FetchedChunksCount:  200,
-			FetchedSamplesCount: 300,
-			FetchedChunkBytes:   1024,
-			FetchedDataBytes:    2048,
+
+	tests := map[string]testCase{
+		"should not include query and header details if empty": {
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 status_code=200 response_size=1000`,
+		},
+		"should include query length and string at the end": {
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 status_code=200 response_size=1000 query_length=2 param_query=up`,
+		},
+		"should include query stats": {
+			queryStats: &querier_stats.QueryStats{
+				Stats: querier_stats.Stats{
+					WallTime:            3 * time.Second,
+					FetchedSeriesCount:  100,
+					FetchedChunksCount:  200,
+					FetchedSamplesCount: 300,
+					FetchedChunkBytes:   1024,
+					FetchedDataBytes:    2048,
+				},
+			},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 status_code=200 response_size=1000`,
+		},
+		"should include user agent": {
+			header:      http.Header{"User-Agent": []string{"Grafana"}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 status_code=200 response_size=1000 user_agent=Grafana`,
+		},
+		"should include response error": {
+			responseErr: errors.New("foo_err"),
+			expectedLog: `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 status_code=200 response_size=1000 error=foo_err`,
+		},
+		"should include query priority": {
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			header:      http.Header{util.QueryPriorityHeaderKey: []string{"99"}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 status_code=200 response_size=1000 query_length=2 priority=99 param_query=up`,
 		},
 	}
-	responseErr := errors.New("foo_err")
-	handler.reportQueryStats(req, userID, queryString, time.Second, stats, responseErr, http.StatusOK, resp)
 
-	data, err := io.ReadAll(outputBuf)
-	require.NoError(t, err)
-
-	expectedLog := `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 status_code=200 response_size=1000 query_length=2 user_agent=Grafana error=foo_err param_query=up
-`
-	require.Equal(t, expectedLog, string(data))
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req.Header = testData.header
+			handler.reportQueryStats(req, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
+			data, err := io.ReadAll(outputBuf)
+			require.NoError(t, err)
+			require.Equal(t, testData.expectedLog+"\n", string(data))
+		})
+	}
 }

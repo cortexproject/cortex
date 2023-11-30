@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync"
 
 	"github.com/oklog/ulid"
@@ -13,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"golang.org/x/exp/slices"
 )
 
 const (

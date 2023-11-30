@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path"
 	"strings"
 	"testing"
 	"time"
@@ -96,7 +95,8 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	// Mock the storage to simulate a failure when reading objects.
 	bucket.MockIter("", []string{"user-1"}, nil)
 	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json"}, nil)
-	bucket.MockExists(path.Join("user-1", cortex_tsdb.TenantDeletionMarkPath), false, nil)
+	bucket.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucket.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucket.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "invalid", errors.New("mocked error"))
 
 	require.NoError(t, s.StartAsync(ctx))
@@ -143,7 +143,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
 			time.Sleep(time.Second)
 		})
-		bucket.MockExists(path.Join(tenantID, cortex_tsdb.TenantDeletionMarkPath), false, nil)
+		bucket.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenantID), false, nil)
+		bucket.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenantID), false, nil)
 	}
 
 	cfg := prepareBucketScanBlocksFinderConfig()

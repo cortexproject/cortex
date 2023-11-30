@@ -209,15 +209,24 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-3", block9.String(), "index"), expectedExists: false},
 		{path: path.Join("user-3", block10.String(), metadata.MetaFilename), expectedExists: false},
 		{path: path.Join("user-3", block10.String(), "index"), expectedExists: false},
-		// Tenant deletion mark is not removed.
-		{path: path.Join("user-3", tsdb.TenantDeletionMarkPath), expectedExists: true},
-		// User-4 is removed fully.
-		{path: path.Join("user-4", tsdb.TenantDeletionMarkPath), expectedExists: options.user4FilesExist},
 		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
+	}
+
+	// Check if tenant deletion mark exists
+	for _, tc := range []struct {
+		user           string
+		expectedExists bool
+	}{
+		{"user-3", true},
+		{"user-4", options.user4FilesExist},
+	} {
+		exists, err := tsdb.TenantDeletionMarkExists(ctx, bucketClient, tc.user)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
 
 	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted))

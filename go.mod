@@ -265,4 +265,4 @@ replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
 
 // v1.58.2 caused compile error on github.com/sercand/kuberesolver (even on v5.1.1)
-replace google.golang.org/grpc => google.golang.org/grpc v1.56.2
+replace google.golang.org/grpc => google.golang.org/grpc v1.56.3

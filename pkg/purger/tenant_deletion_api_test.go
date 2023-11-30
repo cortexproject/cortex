@@ -5,7 +5,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -35,8 +34,9 @@ func TestDeleteTenant(t *testing.T) {
 		api.DeleteTenant(resp, req.WithContext(ctx))
 
 		require.Equal(t, http.StatusOK, resp.Code)
-		objs := bkt.Objects()
-		require.NotNil(t, objs[path.Join("fake", tsdb.TenantDeletionMarkPath)])
+		exists, err := tsdb.TenantDeletionMarkExists(ctx, bkt, "fake")
+		require.NoError(t, err)
+		require.True(t, exists)
 	}
 }
 

@@ -7,6 +7,7 @@
 * [FEATURE] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
 * [ENHANCEMENT] Store Gateway: Added `-store-gateway.enabled-tenants` and `-store-gateway.disabled-tenants` to explicitly enable or disable store-gateway for specific tenants. #5638
 * [ENHANCEMENT] Compactor: Add new compactor metric `cortex_compactor_start_duration_seconds`. #5683
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.18`. #5684
 
 ## 1.16.0 2023-11-20
 
@@ -90,6 +91,7 @@
 * [ENHANCEMENT] Ingester: Added new ingester TSDB metrics `cortex_ingester_tsdb_head_samples_appended_total`, `cortex_ingester_tsdb_head_out_of_order_samples_appended_total`, `cortex_ingester_tsdb_snapshot_replay_error_total`, `cortex_ingester_tsdb_sample_ooo_delta` and `cortex_ingester_tsdb_mmap_chunks_total`. #5624
 * [ENHANCEMENT] Query Frontend: Handle context error before decoding and merging responses. #5499
 * [ENHANCEMENT] Store-Gateway and AlertManager: Add a `wait_instance_time_out` to context to avoid waiting forever. #5581
+* [ENHANCEMENT] Blocks storage: Move the tenant deletion mark from `<tenantID>/markers/tenant-deletion-mark.json` to  `__markers__/<tenantID>/tenant-deletion-mark.json`. #5676
 * [BUGFIX] Compactor: Fix possible division by zero during compactor config validation. #5535
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286

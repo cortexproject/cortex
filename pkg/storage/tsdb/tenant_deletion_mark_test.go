@@ -29,10 +29,17 @@ func TestTenantDeletionMarkExists(t *testing.T) {
 			exists: false,
 		},
 
-		"mark exists": {
+		"local mark exists": {
 			objects: map[string][]byte{
 				"user/01EQK4QKFHVSZYVJ908Y7HH9E0/meta.json": []byte("data"),
-				"user/" + TenantDeletionMarkPath:            []byte("data"),
+				GetLocalDeletionMarkPath("user"):            []byte("data"),
+			},
+			exists: true,
+		},
+		"global mark exists": {
+			objects: map[string][]byte{
+				"user/01EQK4QKFHVSZYVJ908Y7HH9E0/meta.json": []byte("data"),
+				GetGlobalDeletionMarkPath("user"):           []byte("data"),
 			},
 			exists: true,
 		},

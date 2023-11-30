@@ -620,7 +620,7 @@ func TestHasQueryPriorityRegexChanged(t *testing.T) {
 
 	require.True(t, l.hasQueryPriorityRegexChanged())
 
-	l.QueryPriority.Priorities[0].QueryAttributes[0].StartTime = model.Duration(2 * time.Hour)
+	l.QueryPriority.Priorities[0].QueryAttributes[0].TimeWindow.Start = model.Duration(2 * time.Hour)
 
 	require.False(t, l.hasQueryPriorityRegexChanged())
 

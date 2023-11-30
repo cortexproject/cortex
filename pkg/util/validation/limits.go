@@ -63,10 +63,14 @@ type PriorityDef struct {
 }
 
 type QueryAttribute struct {
-	Regex         string         `yaml:"regex" json:"regex" doc:"nocli|description=Query string regex. If set to empty string, it will not match anything."`
-	StartTime     model.Duration `yaml:"start_time" json:"start_time" doc:"nocli|description=Query start time. If set to 0, the start time won't be checked.|default=0"`
-	EndTime       model.Duration `yaml:"end_time" json:"end_time" doc:"nocli|description=Query end time. If set to 0, the end time won't be checked.|default=0"`
+	Regex         string     `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked.'"`
+	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Time window that the query should be within. If not set, it won't be checked.'"`
 	CompiledRegex *regexp.Regexp
+}
+
+type TimeWindow struct {
+	Start model.Duration `yaml:"start" json:"start" doc:"nocli|description=Start of the time window that the query should be within. If set to 0, it won't be checked.|default=0"`
+	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the time window that the query should be within. If set to 0, it won't be checked.|default=0"`
 }
 
 // Limits describe all the limits for users; can be used to describe global default

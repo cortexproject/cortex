@@ -135,8 +135,10 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 					{
 						Regex:         ".*",
 						CompiledRegex: regexp.MustCompile(".*"),
-						StartTime:     model.Duration(45 * time.Minute),
-						EndTime:       model.Duration(15 * time.Minute),
+						TimeWindow: validation.TimeWindow{
+							Start: model.Duration(45 * time.Minute),
+							End:   model.Duration(15 * time.Minute),
+						},
 					},
 				},
 			},

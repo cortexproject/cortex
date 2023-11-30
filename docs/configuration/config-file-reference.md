@@ -5061,14 +5061,18 @@ otel:
 ### `QueryAttribute`
 
 ```yaml
-# Query string regex. If set to empty string, it will not match anything.
+# Regex that the query string should match. If not set, it won't be checked.'
 [regex: <string> | default = ""]
 
-# Query start time. If set to 0, the start time won't be checked.
-[start_time: <int> | default = 0]
+# Time window that the query should be within. If not set, it won't be checked.'
+time_window:
+  # Start of the time window that the query should be within. If set to 0, it
+  # won't be checked.
+  [start: <int> | default = 0]
 
-# Query end time. If set to 0, the end time won't be checked.
-[end_time: <int> | default = 0]
+  # End of the time window that the query should be within. If set to 0, it
+  # won't be checked.
+  [end: <int> | default = 0]
 ```
 
 ### `DisabledRuleGroup`

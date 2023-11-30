@@ -62,7 +62,7 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 				}
 			}
 
-			if isWithinTimeAttributes(attribute, now, minTime, maxTime) {
+			if isWithinTimeAttributes(attribute.TimeWindow, now, minTime, maxTime) {
 				return priority.Priority, nil
 			}
 		}
@@ -71,20 +71,20 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 	return queryPriority.DefaultPriority, nil
 }
 
-func isWithinTimeAttributes(attribute validation.QueryAttribute, now time.Time, startTime, endTime int64) bool {
-	if attribute.StartTime == 0 && attribute.EndTime == 0 {
+func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, startTime, endTime int64) bool {
+	if timeWindow.Start == 0 && timeWindow.End == 0 {
 		return true
 	}
 
-	if attribute.StartTime != 0 {
-		startTimeThreshold := now.Add(-1 * time.Duration(attribute.StartTime).Abs()).Truncate(time.Second).Unix()
+	if timeWindow.Start != 0 {
+		startTimeThreshold := now.Add(-1 * time.Duration(timeWindow.Start).Abs()).Truncate(time.Second).Unix()
 		if startTime < startTimeThreshold {
 			return false
 		}
 	}
 
-	if attribute.EndTime != 0 {
-		endTimeThreshold := now.Add(-1 * time.Duration(attribute.EndTime).Abs()).Add(1 * time.Second).Truncate(time.Second).Unix()
+	if timeWindow.End != 0 {
+		endTimeThreshold := now.Add(-1 * time.Duration(timeWindow.End).Abs()).Add(1 * time.Second).Truncate(time.Second).Unix()
 		if endTime > endTimeThreshold {
 			return false
 		}

@@ -22,6 +22,7 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 	multiLevelCfg := MultiLevelIndexCacheConfig{
 		MaxAsyncBufferSize:  1,
 		MaxAsyncConcurrency: 1,
+		MaxBackfillItems:    1,
 	}
 	s, err := miniredis.Run()
 	if err != nil {
@@ -73,6 +74,42 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 			expectedType:            &storecache.InMemoryIndexCache{},
 			expectedValidationError: errDuplicatedIndexCacheBackend,
 		},
+		"validate multilevel cache max MaxAsyncBufferSize": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,memcached",
+				MultiLevel: MultiLevelIndexCacheConfig{
+					MaxAsyncBufferSize:  0,
+					MaxAsyncConcurrency: 1,
+					MaxBackfillItems:    1,
+				},
+			},
+			expectedType:            &storecache.InMemoryIndexCache{},
+			expectedValidationError: errInvalidMaxAsyncBufferSize,
+		},
+		"validate multilevel cache max MaxAsyncConcurrency": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,memcached",
+				MultiLevel: MultiLevelIndexCacheConfig{
+					MaxAsyncBufferSize:  1,
+					MaxAsyncConcurrency: 0,
+					MaxBackfillItems:    1,
+				},
+			},
+			expectedType:            &storecache.InMemoryIndexCache{},
+			expectedValidationError: errInvalidMaxAsyncConcurrency,
+		},
+		"validate multilevel cache max MaxBackfillItems": {
+			cfg: IndexCacheConfig{
+				Backend: "inmemory,memcached",
+				MultiLevel: MultiLevelIndexCacheConfig{
+					MaxAsyncBufferSize:  1,
+					MaxAsyncConcurrency: 1,
+					MaxBackfillItems:    0,
+				},
+			},
+			expectedType:            &storecache.InMemoryIndexCache{},
+			expectedValidationError: errInvalidMaxBackfillItems,
+		},
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
@@ -86,7 +123,7 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 				_, err = cacheutil.NewMemcachedClientWithConfig(log.NewNopLogger(), "test", cacheutil.MemcachedClientConfig{MaxAsyncConcurrency: 2, Addresses: []string{s.Addr()}, DNSProviderUpdateInterval: 1}, reg)
 				require.NoError(t, err)
 			} else {
-				require.ErrorIs(t, tc.cfg.Validate(), errDuplicatedIndexCacheBackend)
+				require.ErrorIs(t, tc.cfg.Validate(), tc.expectedValidationError)
 			}
 		})
 	}
@@ -96,6 +133,7 @@ func Test_MultiLevelCache(t *testing.T) {
 	cfg := MultiLevelIndexCacheConfig{
 		MaxAsyncConcurrency: 10,
 		MaxAsyncBufferSize:  100000,
+		MaxBackfillItems:    10000,
 	}
 	bID, _ := ulid.Parse("01D78XZ44G0000000000000000")
 	ctx := context.Background()
@@ -125,6 +163,7 @@ func Test_MultiLevelCache(t *testing.T) {
 		m2ExpectedCalls map[string][][]interface{}
 		m1MockedCalls   map[string][]interface{}
 		m2MockedCalls   map[string][]interface{}
+		enabledItems    [][]string
 		call            func(storecache.IndexCache)
 	}{
 		"[StorePostings] Should store on all caches": {
@@ -133,6 +172,19 @@ func Test_MultiLevelCache(t *testing.T) {
 			},
 			m2ExpectedCalls: map[string][][]interface{}{
 				"StorePostings": {{bID, l1, v}},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.StorePostings(bID, l1, v, "")
+			},
+		},
+		"[StorePostings] Should store on m2 only": {
+			m1ExpectedCalls: map[string][][]interface{}{},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"StorePostings": {{bID, l1, v}},
+			},
+			enabledItems: [][]string{
+				{cacheTypeSeries},
+				{},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.StorePostings(bID, l1, v, "")
@@ -149,12 +201,38 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.StoreSeries(bID, 1, v, "")
 			},
 		},
+		"[StoreSeries] Should store on m2 only": {
+			m1ExpectedCalls: map[string][][]interface{}{},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"StoreSeries": {{bID, storage.SeriesRef(1), v}},
+			},
+			enabledItems: [][]string{
+				{cacheTypePostings},
+				{},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.StoreSeries(bID, 1, v, "")
+			},
+		},
 		"[StoreExpandedPostings] Should store on all caches": {
 			m1ExpectedCalls: map[string][][]interface{}{
 				"StoreExpandedPostings": {{bID, []*labels.Matcher{matcher}, v}},
 			},
 			m2ExpectedCalls: map[string][][]interface{}{
 				"StoreExpandedPostings": {{bID, []*labels.Matcher{matcher}, v}},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.StoreExpandedPostings(bID, []*labels.Matcher{matcher}, v, "")
+			},
+		},
+		"[StoreExpandedPostings] Should store on m2 only": {
+			m1ExpectedCalls: map[string][][]interface{}{},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"StoreExpandedPostings": {{bID, []*labels.Matcher{matcher}, v}},
+			},
+			enabledItems: [][]string{
+				{cacheTypePostings},
+				{},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.StoreExpandedPostings(bID, []*labels.Matcher{matcher}, v, "")
@@ -202,6 +280,23 @@ func Test_MultiLevelCache(t *testing.T) {
 			},
 			m2MockedCalls: map[string][]interface{}{
 				"FetchMultiPostings": {map[labels.Label][]byte{l2: v, l3: v2}, []labels.Label{}},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2, l3}, "")
+			},
+		},
+		"[FetchMultiPostings] m1 doesn't enable postings": {
+			m1ExpectedCalls: map[string][][]interface{}{},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"FetchMultiPostings": {{bID, []labels.Label{l1, l2, l3}}},
+			},
+			m1MockedCalls: map[string][]interface{}{},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchMultiPostings": {map[labels.Label][]byte{l1: v, l2: v, l3: v2}, []labels.Label{}},
+			},
+			enabledItems: [][]string{
+				{cacheTypeSeries},
+				{},
 			},
 			call: func(cache storecache.IndexCache) {
 				cache.FetchMultiPostings(ctx, bID, []labels.Label{l1, l2, l3}, "")
@@ -269,6 +364,23 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2, 3}, "")
 			},
 		},
+		"[FetchMultiPostings] m1 doesn't enable series": {
+			m1ExpectedCalls: map[string][][]interface{}{},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"FetchMultiSeries": {{bID, []storage.SeriesRef{1, 2, 3}}},
+			},
+			m1MockedCalls: map[string][]interface{}{},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: v, 2: v, 3: v2}, []storage.SeriesRef{}},
+			},
+			enabledItems: [][]string{
+				{cacheTypePostings},
+				{},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.FetchMultiSeries(ctx, bID, []storage.SeriesRef{1, 2, 3}, "")
+			},
+		},
 		"[FetchMultiSeries] should not fallback when all hit on l1": {
 			m1ExpectedCalls: map[string][][]interface{}{
 				"FetchMultiSeries": {{bID, []storage.SeriesRef{1, 2}}},
@@ -308,14 +420,34 @@ func Test_MultiLevelCache(t *testing.T) {
 				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher}, "")
 			},
 		},
+		"[FetchExpandedPostings] m1 doesn't enable expanded postings": {
+			m1ExpectedCalls: map[string][][]interface{}{},
+			m2ExpectedCalls: map[string][][]interface{}{
+				"FetchExpandedPostings": {{bID, []*labels.Matcher{matcher}}},
+			},
+			m1MockedCalls: map[string][]interface{}{},
+			m2MockedCalls: map[string][]interface{}{
+				"FetchExpandedPostings": {[]byte{}, true},
+			},
+			enabledItems: [][]string{
+				{cacheTypePostings},
+				{},
+			},
+			call: func(cache storecache.IndexCache) {
+				cache.FetchExpandedPostings(ctx, bID, []*labels.Matcher{matcher}, "")
+			},
+		},
 	}
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			if tc.enabledItems == nil {
+				tc.enabledItems = [][]string{{}, {}}
+			}
 			m1 := newMockIndexCache(tc.m1MockedCalls)
 			m2 := newMockIndexCache(tc.m2MockedCalls)
 			reg := prometheus.NewRegistry()
-			c := newMultiLevelCache(reg, cfg, m1, m2)
+			c := newMultiLevelCache(reg, cfg, tc.enabledItems, m1, m2)
 			tc.call(c)
 			mlc := c.(*multiLevelCache)
 			// Wait until async operation finishes.

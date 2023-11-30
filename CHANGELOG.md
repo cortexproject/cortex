@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.16.1 2024-04-23
+
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.18`. #5684
+
 ## 1.16.0 2023-11-20
 
 * [CHANGE] AlertManager: include reason label in `cortex_alertmanager_notifications_failed_total`. #5409

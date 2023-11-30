@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/prometheus/alertmanager/alertobserver"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,8 +37,26 @@ func (l limits) AlertmanagerAlertLifeCycleObserverLevel(tenant string) int {
 }
 
 func TestLogAlertLifeCycleObserver(t *testing.T) {
+	alert1 = model.Alert{
+		Labels:       model.LabelSet{"alert": "first", "alertname": "alert1"},
+		Annotations:  model.LabelSet{"job": "test"},
+		StartsAt:     time.Now(),
+		EndsAt:       time.Now(),
+		GeneratorURL: "some URL",
+	}
+
+	alert2 = model.Alert{
+		Labels:       model.LabelSet{"alert": "second", "alertname": "alert2"},
+		Annotations:  model.LabelSet{"job": "test", "cluster": "prod"},
+		StartsAt:     time.Now(),
+		EndsAt:       time.Now(),
+		GeneratorURL: "some URL",
+	}
 	logger := &FakeLogger{}
-	alerts := []*types.Alert{{}, {}}
+	alerts := []*types.Alert{
+		{alert1, time.Now(), false},
+		{alert2, time.Now(), false},
+	}
 	ctx := context.Background()
 	ctx = notify.WithReceiverName(ctx, "rcv")
 	ctx = notify.WithGroupKey(ctx, "key")
@@ -50,6 +70,7 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 		expectedLogCount    int
 		expectedLoggedKeys  []string
 		expectedMissingKeys []string
+		expectedKeyValues   []map[string]string
 	}{
 		{
 			event:            alertobserver.EventAlertAddedToAggrGroup,
@@ -73,6 +94,16 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedLogCount:   2,
 			expectedMsg:        "Received",
 			expectedLoggedKeys: []string{"labels", "fingerprint"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprint": alert1.Fingerprint().String(),
+					"labels":      alert1.Labels.String(),
+				},
+				{
+					"fingerprint": alert2.Fingerprint().String(),
+					"labels":      alert2.Labels.String(),
+				},
+			},
 		},
 		{
 			event:              alertobserver.EventAlertRejected,
@@ -82,6 +113,18 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedLogCount:   2,
 			expectedMsg:        "Rejected",
 			expectedLoggedKeys: []string{"reason", "labels", "fingerprint"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprint": alert1.Fingerprint().String(),
+					"labels":      alert1.Labels.String(),
+					"reason":      "test",
+				},
+				{
+					"fingerprint": alert2.Fingerprint().String(),
+					"labels":      alert2.Labels.String(),
+					"reason":      "test",
+				},
+			},
 		},
 		{
 			event:              alertobserver.EventAlertAddedToAggrGroup,
@@ -91,15 +134,39 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedLogCount:   2,
 			expectedMsg:        "Added to aggregation group",
 			expectedLoggedKeys: []string{"groupKey", "labels", "fingerprint"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprint": alert1.Fingerprint().String(),
+					"labels":      alert1.Labels.String(),
+					"groupKey":    "test",
+				},
+				{
+					"fingerprint": alert2.Fingerprint().String(),
+					"labels":      alert2.Labels.String(),
+					"groupKey":    "test",
+				},
+			},
 		},
 		{
 			event:              alertobserver.EventAlertFailedAddToAggrGroup,
 			alerts:             alerts,
-			meta:               alertobserver.AlertEventMeta{"groupKey": "test"},
+			meta:               alertobserver.AlertEventMeta{"msg": "test"},
 			logLvl:             []int{1, 2, 3, 4, 5},
 			expectedLogCount:   2,
 			expectedMsg:        "Failed to add aggregation group",
 			expectedLoggedKeys: []string{"reason", "labels", "fingerprint"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprint": alert1.Fingerprint().String(),
+					"labels":      alert1.Labels.String(),
+					"reason":      "test",
+				},
+				{
+					"fingerprint": alert2.Fingerprint().String(),
+					"labels":      alert2.Labels.String(),
+					"reason":      "test",
+				},
+			},
 		},
 		{
 			event:            alertobserver.EventAlertPipelineStart,
@@ -116,17 +183,30 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedLogCount:    1,
 			expectedMsg:         "Entered the pipeline",
 			expectedLoggedKeys:  []string{"groupKey", "receiver"},
-			expectedMissingKeys: []string{"fingerprint"},
+			expectedMissingKeys: []string{"fingerprint", "fingerprints"},
+			expectedKeyValues: []map[string]string{
+				{
+					"groupKey": "key",
+					"receiver": "rcv",
+				},
+			},
 		},
 		{
 			event:               alertobserver.EventAlertPipelineStart,
 			alerts:              alerts,
 			meta:                alertobserver.AlertEventMeta{"ctx": ctx},
 			logLvl:              []int{5},
-			expectedLogCount:    2,
+			expectedLogCount:    1,
 			expectedMsg:         "Entered the pipeline",
-			expectedLoggedKeys:  []string{"groupKey", "receiver", "fingerprint"},
+			expectedLoggedKeys:  []string{"groupKey", "receiver", "fingerprints"},
 			expectedMissingKeys: []string{"labels"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprints": fmt.Sprintf("%v,%v", alert1.Fingerprint().String(), alert2.Fingerprint().String()),
+					"groupKey":     "key",
+					"receiver":     "rcv",
+				},
+			},
 		},
 		{
 			event:            alertobserver.EventAlertPipelinePassStage,
@@ -151,6 +231,13 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedMsg:         "Passed stage",
 			expectedLoggedKeys:  []string{"groupKey", "receiver", "stage"},
 			expectedMissingKeys: []string{"fingerprint"},
+			expectedKeyValues: []map[string]string{
+				{
+					"stage":    "Notify",
+					"groupKey": "key",
+					"receiver": "rcv",
+				},
+			},
 		},
 		{
 			event:               alertobserver.EventAlertSent,
@@ -160,17 +247,32 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedLogCount:    1,
 			expectedMsg:         "Sent",
 			expectedLoggedKeys:  []string{"groupKey", "receiver"},
-			expectedMissingKeys: []string{"fingerprint"},
+			expectedMissingKeys: []string{"fingerprint", "fingerprints"},
+			expectedKeyValues: []map[string]string{
+				{
+					"groupKey":    "key",
+					"receiver":    "rcv",
+					"integration": "sns",
+				},
+			},
 		},
 		{
 			event:               alertobserver.EventAlertSent,
 			alerts:              alerts,
 			meta:                alertobserver.AlertEventMeta{"ctx": ctx, "integration": "sns"},
 			logLvl:              []int{4, 5},
-			expectedLogCount:    2,
+			expectedLogCount:    1,
 			expectedMsg:         "Sent",
-			expectedLoggedKeys:  []string{"groupKey", "receiver", "fingerprint"},
+			expectedLoggedKeys:  []string{"groupKey", "receiver", "fingerprints"},
 			expectedMissingKeys: []string{"labels"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprints": fmt.Sprintf("%v,%v", alert1.Fingerprint().String(), alert2.Fingerprint().String()),
+					"groupKey":     "key",
+					"receiver":     "rcv",
+					"integration":  "sns",
+				},
+			},
 		},
 		{
 			event:               alertobserver.EventAlertSendFailed,
@@ -180,27 +282,47 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 			expectedLogCount:    1,
 			expectedMsg:         "Send failed",
 			expectedLoggedKeys:  []string{"groupKey", "receiver"},
-			expectedMissingKeys: []string{"fingerprint"},
+			expectedMissingKeys: []string{"fingerprints", "fingerprint"},
+			expectedKeyValues: []map[string]string{
+				{
+					"integration": "sns",
+					"groupKey":    "key",
+					"receiver":    "rcv",
+				},
+			},
 		},
 		{
 			event:               alertobserver.EventAlertSendFailed,
 			alerts:              alerts,
 			meta:                alertobserver.AlertEventMeta{"ctx": ctx, "integration": "sns"},
 			logLvl:              []int{4, 5},
-			expectedLogCount:    2,
+			expectedLogCount:    1,
 			expectedMsg:         "Send failed",
-			expectedLoggedKeys:  []string{"groupKey", "receiver", "fingerprint"},
+			expectedLoggedKeys:  []string{"groupKey", "receiver", "fingerprints"},
 			expectedMissingKeys: []string{"labels"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprints": fmt.Sprintf("%v,%v", alert1.Fingerprint().String(), alert2.Fingerprint().String()),
+					"groupKey":     "key",
+					"receiver":     "rcv",
+				},
+			},
 		},
 		{
 			event:               alertobserver.EventAlertMuted,
 			alerts:              alerts,
 			meta:                alertobserver.AlertEventMeta{"ctx": ctx},
 			logLvl:              []int{1, 2, 3, 4, 5},
-			expectedLogCount:    2,
+			expectedLogCount:    1,
 			expectedMsg:         "Muted",
-			expectedLoggedKeys:  []string{"groupKey", "fingerprint"},
+			expectedLoggedKeys:  []string{"groupKey", "fingerprints"},
 			expectedMissingKeys: []string{"labels"},
+			expectedKeyValues: []map[string]string{
+				{
+					"fingerprints": fmt.Sprintf("%v,%v", alert1.Fingerprint().String(), alert2.Fingerprint().String()),
+					"groupKey":     "key",
+				},
+			},
 		},
 	} {
 		tc := tc
@@ -220,6 +342,13 @@ func TestLogAlertLifeCycleObserver(t *testing.T) {
 				for _, v := range tc.expectedMissingKeys {
 					_, ok := loggedValues[v]
 					assert.False(t, ok, fmt.Sprintf("'%v' should be excluded from the log", v))
+				}
+				if tc.expectedKeyValues != nil {
+					for k, v := range tc.expectedKeyValues[i] {
+						loggedVal, ok := loggedValues[k]
+						assert.True(t, ok, fmt.Sprintf("'%v' is missing from the log", k))
+						assert.Equal(t, v, loggedVal)
+					}
 				}
 			}
 		}

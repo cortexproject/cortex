@@ -2,6 +2,7 @@ package alertmanager
 
 import (
 	"context"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -46,9 +47,33 @@ func NewLogAlertLifeCycleObserver(logger log.Logger, user string, limiter *Alert
 
 // Observe implements LifeCycleObserver
 func (o *LogAlertLifeCycleObserver) Observe(event string, alerts []*types.Alert, meta alertobserver.AlertEventMeta) {
-	if alerts == nil || o.limiter == nil || o.limiter.Level() <= 0 {
+	if alerts == nil || o.limiter == nil || o.limiter.Level() <= 0 || !o.shouldLog(event) {
 		return
 	}
+
+	switch event {
+	case alertobserver.EventAlertReceived:
+		o.Received(alerts)
+	case alertobserver.EventAlertRejected:
+		o.Rejected(alerts, meta)
+	case alertobserver.EventAlertAddedToAggrGroup:
+		o.AddedAggrGroup(alerts, meta)
+	case alertobserver.EventAlertFailedAddToAggrGroup:
+		o.FailedAddToAggrGroup(alerts, meta)
+	case alertobserver.EventAlertPipelineStart:
+		o.PipelineStart(alerts, meta)
+	case alertobserver.EventAlertPipelinePassStage:
+		o.PipelinePassStage(alerts, meta)
+	case alertobserver.EventAlertSent:
+		o.Sent(alerts, meta)
+	case alertobserver.EventAlertSendFailed:
+		o.SendFailed(alerts, meta)
+	case alertobserver.EventAlertMuted:
+		o.Muted(alerts, meta)
+	}
+}
+
+func (o *LogAlertLifeCycleObserver) shouldLog(event string) bool {
 	// The general idea of having levels in the limiter is to control the volume of logs AM is producing. The observer
 	// logs many types of events and some events are more important than others. By configuring the level we can
 	// continue to have observability on the alerts at lower granularity if we see that the volume of logs is getting
@@ -87,35 +112,30 @@ func (o *LogAlertLifeCycleObserver) Observe(event string, alerts []*types.Alert,
 	//	* Alert in aggregation group pipeline start
 	//	* Aggregation Group passed a stage in the pipeline
 	//	* Alert in aggregation group is Sent / Failed
-
+	if o.limiter == nil || o.limiter.Level() <= 0 {
+		return false
+	}
+	logLvl := o.limiter.Level()
 	switch event {
 	case alertobserver.EventAlertReceived:
-		o.Received(alerts)
-	case alertobserver.EventAlertRejected:
-		o.Rejected(alerts, meta)
-	case alertobserver.EventAlertAddedToAggrGroup:
-		o.AddedAggrGroup(alerts, meta)
-	case alertobserver.EventAlertFailedAddToAggrGroup:
-		o.FailedAddToAggrGroup(alerts, meta)
+		if logLvl < 5 {
+			return false
+		}
 	case alertobserver.EventAlertPipelineStart:
-		o.PipelineStart(alerts, meta)
+		if logLvl < 2 {
+			return false
+		}
 	case alertobserver.EventAlertPipelinePassStage:
-		o.PipelinePassStage(alerts, meta)
-	case alertobserver.EventAlertSent:
-		o.Sent(alerts, meta)
-	case alertobserver.EventAlertSendFailed:
-		o.SendFailed(alerts, meta)
-	case alertobserver.EventAlertMuted:
-		o.Muted(alerts, meta)
+		if logLvl < 3 {
+			return false
+		}
 	}
+	return true
 }
 
 func (o *LogAlertLifeCycleObserver) Received(alerts []*types.Alert) {
-	if o.limiter.Level() < 5 {
-		return
-	}
 	for _, a := range alerts {
-		o.logWithAlert(a, true, "msg", "Received")
+		o.logWithAlertWithLabels(a, "msg", "Received")
 	}
 }
 
@@ -125,7 +145,7 @@ func (o *LogAlertLifeCycleObserver) Rejected(alerts []*types.Alert, meta alertob
 		reason = "Unknown"
 	}
 	for _, a := range alerts {
-		o.logWithAlert(a, true, "msg", "Rejected", "reason", reason)
+		o.logWithAlertWithLabels(a, "msg", "Rejected", "reason", reason)
 	}
 }
 
@@ -135,7 +155,7 @@ func (o *LogAlertLifeCycleObserver) AddedAggrGroup(alerts []*types.Alert, meta a
 		return
 	}
 	for _, a := range alerts {
-		o.logWithAlert(a, true, "msg", "Added to aggregation group", "groupKey", groupKey)
+		o.logWithAlertWithLabels(a, "msg", "Added to aggregation group", "groupKey", groupKey)
 	}
 }
 
@@ -145,15 +165,11 @@ func (o *LogAlertLifeCycleObserver) FailedAddToAggrGroup(alerts []*types.Alert, 
 		reason = "Unknown"
 	}
 	for _, a := range alerts {
-		o.logWithAlert(a, true, "msg", "Failed to add aggregation group", "reason", reason)
+		o.logWithAlertWithLabels(a, "msg", "Failed to add aggregation group", "reason", reason)
 	}
 }
 
 func (o *LogAlertLifeCycleObserver) PipelineStart(alerts []*types.Alert, meta alertobserver.AlertEventMeta) {
-	logLvl := o.limiter.Level()
-	if logLvl < 2 {
-		return
-	}
 	ctx, ok := meta["ctx"]
 	if !ok {
 		return
@@ -166,19 +182,14 @@ func (o *LogAlertLifeCycleObserver) PipelineStart(alerts []*types.Alert, meta al
 	if !ok {
 		return
 	}
-	if logLvl < 5 {
+	if o.limiter.Level() < 5 {
 		level.Info(o.logger).Log("msg", "Entered the pipeline", "groupKey", groupKey, "receiver", receiver, "alertsCount", len(alerts))
 	} else {
-		for _, a := range alerts {
-			o.logWithAlert(a, false, "msg", "Entered the pipeline", "groupKey", groupKey, "receiver", receiver)
-		}
+		o.logWithAlertFingerprints(alerts, "msg", "Entered the pipeline", "groupKey", groupKey, "receiver", receiver)
 	}
 }
 
 func (o *LogAlertLifeCycleObserver) PipelinePassStage(alerts []*types.Alert, meta alertobserver.AlertEventMeta) {
-	if o.limiter.Level() < 3 {
-		return
-	}
 	stageName, ok := meta["stageName"]
 	if !ok {
 		return
@@ -223,9 +234,7 @@ func (o *LogAlertLifeCycleObserver) Sent(alerts []*types.Alert, meta alertobserv
 	if o.limiter.Level() < 4 {
 		level.Info(o.logger).Log("msg", "Sent", "groupKey", groupKey, "receiver", receiver, "integration", integration, "alertsCount", len(alerts))
 	} else {
-		for _, a := range alerts {
-			o.logWithAlert(a, false, "msg", "Sent", "groupKey", groupKey, "receiver", receiver, "integration", integration)
-		}
+		o.logWithAlertFingerprints(alerts, "msg", "Sent", "groupKey", groupKey, "receiver", receiver, "integration", integration)
 	}
 }
 
@@ -249,9 +258,7 @@ func (o *LogAlertLifeCycleObserver) SendFailed(alerts []*types.Alert, meta alert
 	if o.limiter.Level() < 4 {
 		level.Info(o.logger).Log("msg", "Send failed", "groupKey", groupKey, "receiver", receiver, "integration", integration, "alertsCount", len(alerts))
 	} else {
-		for _, a := range alerts {
-			o.logWithAlert(a, false, "msg", "Send failed", "groupKey", groupKey, "receiver", receiver, "integration", integration)
-		}
+		o.logWithAlertFingerprints(alerts, "msg", "Send failed", "groupKey", groupKey, "receiver", receiver, "integration", integration)
 	}
 }
 
@@ -264,12 +271,10 @@ func (o *LogAlertLifeCycleObserver) Muted(alerts []*types.Alert, meta alertobser
 	if !ok {
 		return
 	}
-	for _, a := range alerts {
-		o.logWithAlert(a, false, "msg", "Muted", "groupKey", groupKey)
-	}
+	o.logWithAlertFingerprints(alerts, "msg", "Muted", "groupKey", groupKey)
 }
 
-func (o *LogAlertLifeCycleObserver) logWithAlert(alert *types.Alert, addLabels bool, keyvals ...interface{}) {
+func (o *LogAlertLifeCycleObserver) logWithAlertWithLabels(alert *types.Alert, keyvals ...interface{}) {
 	keyvals = append(
 		keyvals,
 		"fingerprint",
@@ -278,9 +283,21 @@ func (o *LogAlertLifeCycleObserver) logWithAlert(alert *types.Alert, addLabels b
 		alert.StartsAt.Unix(),
 		"end",
 		alert.EndsAt.Unix(),
+		"labels",
+		alert.Labels.String(),
 	)
-	if addLabels {
-		keyvals = append(keyvals, "labels", alert.Labels.String())
+	level.Info(o.logger).Log(keyvals...)
+}
+
+func (o *LogAlertLifeCycleObserver) logWithAlertFingerprints(alerts []*types.Alert, keyvals ...interface{}) {
+	fps := make([]string, len(alerts))
+	for i, a := range alerts {
+		fps[i] = a.Fingerprint().String()
 	}
+	keyvals = append(
+		keyvals,
+		"fingerprints",
+		strings.Join(fps, ","),
+	)
 	level.Info(o.logger).Log(keyvals...)
 }

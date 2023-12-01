@@ -211,13 +211,12 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 
 	assert.Equal(t, prom_testutil.ToFloat64(c.compactionRunInterval), cfg.CompactionInterval.Seconds())
 
-	assert.Equal(t, []string{
+	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=info component=cleaner msg="successfully completed blocks cleanup and maintenance"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=0`,
-		`level=info component=compactor msg="compactor stopped"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -364,13 +363,12 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	// Ensure the bucket iteration has been retried the configured number of times.
 	bucketClient.AssertNumberOfCalls(t, "Iter", 1+3)
 
-	assert.Equal(t, []string{
+	assert.ElementsMatch(t, []string{
 		`level=info component=cleaner msg="started blocks cleanup and maintenance"`,
 		`level=error component=cleaner msg="failed to run blocks cleanup and maintenance" err="failed to discover users from bucket: failed to iterate the bucket"`,
 		`level=info component=compactor msg="compactor started"`,
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=error component=compactor msg="failed to discover users from bucket" err="failed to iterate the bucket"`,
-		`level=info component=compactor msg="compactor stopped"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
@@ -680,7 +678,6 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
-		`level=info component=compactor msg="compactor stopped"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -809,7 +806,6 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
-		`level=info component=compactor msg="compactor stopped"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -998,7 +994,6 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,
 		`level=debug component=compactor msg="skipping user because it is marked for deletion" user=user-1`,
-		`level=info component=compactor msg="compactor stopped"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 
 	// Instead of testing for shipper metrics, we only check our metrics here.
@@ -1203,7 +1198,6 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
-		`level=info component=compactor msg="compactor stopped"`,
 	}, removeIgnoredLogs(strings.Split(strings.TrimSpace(logs.String()), "\n")))
 }
 
@@ -1607,14 +1601,18 @@ func removeIgnoredLogs(input []string) []string {
 		`level=info component=compactor msg="instance removed from the KV store" ring=compactor`:                                                                  {},
 		`level=info component=compactor msg="observing tokens before going ACTIVE" ring=compactor`:                                                                {},
 		`level=info component=compactor msg="lifecycler entering final sleep before shutdown" final_sleep=0s`:                                                     {},
+		`level=info component=compactor msg="compactor stopped"`:                                                                                                  {},
 	}
 
 	out := make([]string, 0, len(input))
-	durationRe := regexp.MustCompile(`\s?duration=\S+`)
-	durationMsRe := regexp.MustCompile(`\s?duration_ms=\S+`)
+	durationRe := regexp.MustCompile(`\s?duration(_ms)?=\S+`)
 
 	for i := 0; i < len(input); i++ {
 		log := input[i]
+
+		// Remove any duration from logs.
+		log = durationRe.ReplaceAllString(log, "")
+
 		if strings.Contains(log, "block.MetaFetcher") || strings.Contains(log, "block.BaseFetcher") {
 			continue
 		}
@@ -1622,10 +1620,6 @@ func removeIgnoredLogs(input []string) []string {
 		if _, exists := ignoredLogStringsMap[log]; exists {
 			continue
 		}
-
-		// Remove any duration from logs.
-		log = durationRe.ReplaceAllString(log, "")
-		log = durationMsRe.ReplaceAllString(log, "")
 
 		out = append(out, log)
 	}

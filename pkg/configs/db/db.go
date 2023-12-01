@@ -59,6 +59,21 @@ type DB interface {
 	Close() error
 }
 
+func SetUserPassword(u *url.URL, passwordFilePath string) (*url.URL, error) {
+	if u.User == nil {
+		return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
+	}
+
+	passwordBytes, err := os.ReadFile(passwordFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("Could not read database password file: %v", err)
+	}
+
+	password := strings.TrimSpace(string(passwordBytes))
+	u.User = url.UserPassword(u.User.Username(), password)
+	return u, nil
+}
+
 // New creates a new database.
 func New(cfg Config) (DB, error) {
 	if cfg.Mock != nil {
@@ -71,15 +86,11 @@ func New(cfg Config) (DB, error) {
 	}
 
 	if len(cfg.PasswordFile) != 0 {
-		if u.User == nil {
-			return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
-		}
-		passwordBytes, err := os.ReadFile(cfg.PasswordFile)
+		updatedUrl, err := SetUserPassword(u, cfg.PasswordFile)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read database password file: %v", err)
+			return nil, err
 		}
-		password := strings.TrimSpace(string(passwordBytes))
-		u.User = url.UserPassword(u.User.Username(), password)
+		u = updatedUrl
 	}
 
 	var d DB

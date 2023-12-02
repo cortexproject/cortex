@@ -39,6 +39,7 @@ func TestUsersScanner_ScanUsers_ShouldReturnUsersForWhichOwnerCheckOrTenantDelet
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", expected, nil)
+	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
 

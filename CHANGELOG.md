@@ -114,7 +114,7 @@
 * [BUGFIX] Fix bug on objstore when configured to use S3 fips endpoints. #5540
 * [BUGFIX] Ruler: Fix bug on ruler where a failure to load a single RuleGroup would prevent rulers to sync all RuleGroup. #5563
 * [BUGFIX] Query Frontend: Fix query string being omitted in query stats log. #5655
-* [BUGFIX] Compactor: Fix cleaner not discovering deleted users from global dir.
+* [BUGFIX] Compactor: Fix cleaner not discovering deleted users from global dir. #5691
 
 ## 1.15.3 2023-06-22
 

@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/slices"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
@@ -15,21 +16,22 @@ import (
 func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3", "user-4"}, nil)
+	bucketClient.MockIter("__markers__", []string{"user-5", "user-6", "user-7"}, nil)
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-3"), true, nil)
 	bucketClient.MockExists(GetLocalDeletionMarkPath("user-3"), true, nil)
 
 	isOwned := func(userID string) (bool, error) {
-		return userID == "user-1" || userID == "user-3", nil
+		return userID == "user-1" || userID == "user-3" || userID == "user-7", nil
 	}
 
 	s := NewUsersScanner(bucketClient, isOwned, log.NewNopLogger())
 	actual, deleted, err := s.ScanUsers(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"user-1"}, actual)
-	assert.Equal(t, []string{"user-3"}, deleted)
-
+	slices.Sort(deleted)
+	assert.Equal(t, []string{"user-3", "user-7"}, deleted)
 }
 
 func TestUsersScanner_ScanUsers_ShouldReturnUsersForWhichOwnerCheckOrTenantDeletionCheckFailed(t *testing.T) {

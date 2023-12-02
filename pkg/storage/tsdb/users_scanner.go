@@ -42,7 +42,9 @@ func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion 
 
 	// Discovering the deleted users from the global markers directory.
 	err = s.bucketClient.Iter(ctx, util.GlobalMarkersDir, func(entry string) error {
-		user := strings.TrimSuffix(entry, "")
+		// entry will be of the form __markers__/<user>/
+		parts := strings.Split(entry, objstore.DirDelim)
+		user := parts[1]
 		deletedUsers[user] = struct{}{}
 		return nil
 	})

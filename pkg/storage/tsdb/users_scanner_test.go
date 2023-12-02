@@ -15,8 +15,8 @@ import (
 
 func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
-	bucketClient.MockIter("", []string{"user-1", "user-2", "user-3", "user-4"}, nil)
-	bucketClient.MockIter("__markers__", []string{"user-5", "user-6", "user-7"}, nil)
+	bucketClient.MockIter("", []string{"user-1/", "user-2/", "user-3/", "user-4/"}, nil)
+	bucketClient.MockIter("__markers__", []string{"__markers__/user-5/", "__markers__/user-6/", "__markers__/user-7/"}, nil)
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-3"), true, nil)

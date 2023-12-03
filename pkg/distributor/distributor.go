@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	io "io"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -25,6 +25,7 @@ import (
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"golang.org/x/exp/slices"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
@@ -873,8 +874,8 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 		return
 	}
 
-	sort.Slice(labels, func(i, j int) bool {
-		return strings.Compare(labels[i].Name, labels[j].Name) < 0
+	slices.SortFunc(labels, func(a, b cortexpb.LabelAdapter) int {
+		return strings.Compare(a.Name, b.Name)
 	})
 }
 

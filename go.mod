@@ -44,16 +44,16 @@ require (
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/prometheus/client_model v0.5.0
-	github.com/prometheus/common v0.44.0
+	github.com/prometheus/common v0.45.0
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.48.0
+	github.com/prometheus/prometheus v0.48.1-0.20231201222638-e4ec263bcc11
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.4
 	github.com/thanos-io/objstore v0.0.0-20231123170144-bffedaa58acb
 	github.com/thanos-io/promql-engine v0.0.0-20231127105941-257543af55e8
-	github.com/thanos-io/thanos v0.32.5-0.20231127170340-8ffb9da1383e
+	github.com/thanos-io/thanos v0.32.5-0.20231204192512-28407d61e72d
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20221201103051-7c2720a9024d
 	go.etcd.io/etcd/api/v3 v3.5.10
@@ -80,7 +80,7 @@ require (
 	github.com/VictoriaMetrics/fastcache v1.12.1
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/google/go-cmp v0.6.0
-	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
+	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
 	google.golang.org/protobuf v1.31.0
 )
 
@@ -171,6 +171,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
+	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 	github.com/miekg/dns v1.1.56 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
@@ -203,8 +204,9 @@ require (
 	github.com/zhangyunhao116/umap v0.0.0-20221211160557-cb7705fafa39 // indirect
 	go.mongodb.org/mongo-driver v1.12.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.opentelemetry.io/collector/pdata v1.0.0-rcv0016 // indirect
-	go.opentelemetry.io/collector/semconv v0.87.0 // indirect
+	go.opentelemetry.io/collector/featuregate v0.77.0 // indirect
+	go.opentelemetry.io/collector/pdata v1.0.0-rcv0017 // indirect
+	go.opentelemetry.io/collector/semconv v0.88.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.45.0 // indirect
 	go.opentelemetry.io/contrib/propagators/autoprop v0.38.0 // indirect
 	go.opentelemetry.io/contrib/propagators/b3 v1.13.0 // indirect
@@ -218,11 +220,11 @@ require (
 	go4.org/intern v0.0.0-20230525184215-6c62f75575cb // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20230525183740-e7c30c78aeb2 // indirect
 	golang.org/x/crypto v0.15.0 // indirect
-	golang.org/x/mod v0.13.0 // indirect
+	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/oauth2 v0.14.0 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.14.0 // indirect
+	golang.org/x/tools v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gonum.org/v1/gonum v0.12.0 // indirect
 	google.golang.org/api v0.150.0 // indirect

@@ -14,8 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/purger"
 )
 
 func TestIndexHandlerPrefix(t *testing.T) {
@@ -234,7 +232,7 @@ func TestBuildInfoAPI(t *testing.T) {
 			version.Version = tc.version
 			version.Branch = tc.branch
 			version.Revision = tc.revision
-			handler := NewQuerierHandler(cfg, nil, nil, nil, nil, purger.NewNoopTombstonesLoader(), nil, &FakeLogger{})
+			handler := NewQuerierHandler(cfg, nil, nil, nil, nil, nil, &FakeLogger{})
 			writer := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/api/v1/status/buildinfo", nil)
 			req = req.WithContext(user.InjectOrgID(req.Context(), "test"))

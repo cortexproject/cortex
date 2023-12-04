@@ -76,7 +76,6 @@ func Middlewares(
 	limits tripperware.Limits,
 	cacheExtractor Extractor,
 	registerer prometheus.Registerer,
-	cacheGenNumberLoader CacheGenNumberLoader,
 	queryAnalyzer querysharding.Analyzer,
 	prometheusCodec tripperware.Codec,
 	shardedPrometheusCodec tripperware.Codec,
@@ -101,7 +100,7 @@ func Middlewares(
 			}
 			return false
 		}
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}

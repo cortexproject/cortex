@@ -230,7 +230,7 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, querierRegisterer, util_log.Logger)
+	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger)
 
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
@@ -308,7 +308,6 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.ExemplarQueryable,
 		t.QuerierEngine,
 		t.Distributor,
-		t.TombstonesLoader,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 	)
@@ -441,12 +440,6 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 	return t.Flusher, nil
 }
 
-func (t *Cortex) initDeleteRequestsStore() (serv services.Service, err error) {
-	// no-op while blocks store does not support series deletion
-	t.TombstonesLoader = purger.NewNoopTombstonesLoader()
-	return
-}
-
 // initQueryFrontendTripperware instantiates the tripperware used by the query frontend
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
@@ -462,7 +455,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Overrides,
 		queryrange.PrometheusResponseExtractor{},
 		prometheus.DefaultRegisterer,
-		t.TombstonesLoader,
 		queryAnalyzer,
 		prometheusCodec,
 		shardedPrometheusCodec,
@@ -591,7 +583,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	} else {
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, t.TombstonesLoader, rulerRegisterer, util_log.Logger)
+		queryable, _, engine := querier.New(t.Cfg.Querier, t.Overrides, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger)
 
 		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.Overrides, prometheus.DefaultRegisterer)
 		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, managerFactory, prometheus.DefaultRegisterer, util_log.Logger)
@@ -746,7 +738,6 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
-	mm.RegisterModule(DeleteRequestsStore, t.initDeleteRequestsStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Ingester, t.initIngester)
 	mm.RegisterModule(IngesterService, t.initIngesterService, modules.UserInvisibleModule)
 	mm.RegisterModule(Flusher, t.initFlusher)

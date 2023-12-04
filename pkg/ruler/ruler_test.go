@@ -41,7 +41,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -141,7 +140,7 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
 
 		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, purger.NewNoopTombstonesLoader(), reg, logger)
+		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger)
 		return func(mint, maxt int64) (storage.Querier, error) {
 			return q.Querier(mint, maxt)
 		}

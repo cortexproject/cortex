@@ -57,7 +57,6 @@ func TestRoundTrip(t *testing.T) {
 		mockLimits{},
 		nil,
 		nil,
-		nil,
 		qa,
 		PrometheusCodec,
 		ShardedPrometheusCodec,

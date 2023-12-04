@@ -808,11 +808,11 @@ type GatherNoDownsampleMarkFilter struct {
 }
 
 // NewGatherNoDownsampleMarkFilter creates GatherNoDownsampleMarkFilter.
-func NewGatherNoDownsampleMarkFilter(logger log.Logger, bkt objstore.InstrumentedBucketReader, concurrency int) *GatherNoDownsampleMarkFilter {
+func NewGatherNoDownsampleMarkFilter(logger log.Logger, bkt objstore.InstrumentedBucketReader) *GatherNoDownsampleMarkFilter {
 	return &GatherNoDownsampleMarkFilter{
 		logger:      logger,
 		bkt:         bkt,
-		concurrency: concurrency,
+		concurrency: 1,
 	}
 }
 

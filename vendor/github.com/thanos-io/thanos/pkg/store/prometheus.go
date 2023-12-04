@@ -116,11 +116,12 @@ func (p *PrometheusStore) Info(_ context.Context, _ *storepb.InfoRequest) (*stor
 	mint, maxt := p.timestamps()
 
 	res := &storepb.InfoResponse{
-		Labels:    labelpb.ZLabelsFromPromLabels(lset),
+		Labels:    make([]labelpb.ZLabel, 0, len(lset)),
 		StoreType: p.component.ToProto(),
 		MinTime:   mint,
 		MaxTime:   maxt,
 	}
+	res.Labels = append(res.Labels, labelpb.ZLabelsFromPromLabels(lset)...)
 
 	// Until we deprecate the single labels in the reply, we just duplicate
 	// them here for migration/compatibility purposes.
@@ -189,17 +190,15 @@ func (p *PrometheusStore) Series(r *storepb.SeriesRequest, seriesSrv storepb.Sto
 		if err != nil {
 			return err
 		}
-		var b labels.Builder
 		for _, lbm := range labelMaps {
-			b.Reset(labels.EmptyLabels())
+			lset := make([]labelpb.ZLabel, 0, len(lbm)+len(finalExtLset))
 			for k, v := range lbm {
-				b.Set(k, v)
+				lset = append(lset, labelpb.ZLabel{Name: k, Value: v})
 			}
-			// external labels should take precedence
-			finalExtLset.Range(func(l labels.Label) {
-				b.Set(l.Name, l.Value)
+			lset = append(lset, labelpb.ZLabelsFromPromLabels(finalExtLset)...)
+			sort.Slice(lset, func(i, j int) bool {
+				return lset[i].Name < lset[j].Name
 			})
-			lset := labelpb.ZLabelsFromPromLabels(b.Labels())
 			if err = s.Send(storepb.NewSeriesResponse(&storepb.Series{Labels: lset})); err != nil {
 				return err
 			}
@@ -291,18 +290,19 @@ func (p *PrometheusStore) queryPrometheus(
 	}
 
 	externalLbls := rmLabels(p.externalLabelsFn().Copy(), extLsetToRemove)
-	b := labels.NewScratchBuilder(16)
 	for _, vector := range matrix {
-		b.Reset()
+		seriesLbls := labels.Labels(make([]labels.Label, 0, len(vector.Metric)))
 
 		// Attach labels from samples.
 		for k, v := range vector.Metric {
-			b.Add(string(k), string(v))
+			seriesLbls = append(seriesLbls, labels.FromStrings(string(k), string(v))...)
 		}
-		b.Add(dedup.PushdownMarker.Name, dedup.PushdownMarker.Value)
-		b.Sort()
-
-		finalLbls := labelpb.ExtendSortedLabels(b.Labels(), externalLbls)
+		sort.Slice(seriesLbls, func(i, j int) bool {
+			return seriesLbls.Less(i, j)
+		})
+		// Attach external labels for compatibility with remote read.
+		finalLbls := labelpb.ExtendSortedLabels(seriesLbls, externalLbls)
+		finalLbls = append(finalLbls, dedup.PushdownMarker)
 
 		series := &prompb.TimeSeries{
 			Labels:  labelpb.ZLabelsFromPromLabels(finalLbls),
@@ -604,7 +604,7 @@ func matchesExternalLabels(ms []storepb.LabelMatcher, externalLabels labels.Labe
 		return false, nil, err
 	}
 
-	if externalLabels.IsEmpty() {
+	if len(externalLabels) == 0 {
 		return true, tms, nil
 	}
 
@@ -682,9 +682,9 @@ func (p *PrometheusStore) LabelNames(ctx context.Context, r *storepb.LabelNamesR
 	}
 
 	if len(lbls) > 0 {
-		extLset.Range(func(l labels.Label) {
-			lbls = append(lbls, l.Name)
-		})
+		for _, extLbl := range extLset {
+			lbls = append(lbls, extLbl.Name)
+		}
 		sort.Strings(lbls)
 	}
 
@@ -746,7 +746,10 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 }
 
 func (p *PrometheusStore) LabelSet() []labelpb.ZLabelSet {
-	labels := labelpb.ZLabelsFromPromLabels(p.externalLabelsFn())
+	lset := p.externalLabelsFn()
+
+	labels := make([]labelpb.ZLabel, 0, len(lset))
+	labels = append(labels, labelpb.ZLabelsFromPromLabels(lset)...)
 
 	labelset := []labelpb.ZLabelSet{}
 	if len(labels) > 0 {

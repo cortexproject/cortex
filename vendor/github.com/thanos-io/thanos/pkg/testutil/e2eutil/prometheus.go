@@ -57,37 +57,18 @@ const (
 	PromAddrPlaceHolder = "PROMETHEUS_ADDRESS"
 )
 
-var (
-	histogramSample = histogram.Histogram{
-		Schema:        0,
-		Count:         20,
-		Sum:           -3.1415,
-		ZeroCount:     12,
-		ZeroThreshold: 0.001,
-		NegativeSpans: []histogram.Span{
-			{Offset: 0, Length: 4},
-			{Offset: 1, Length: 1},
-		},
-		NegativeBuckets: []int64{1, 2, -2, 1, -1},
-	}
-
-	floatHistogramSample = histogram.FloatHistogram{
-		ZeroThreshold: 0.01,
-		ZeroCount:     5.5,
-		Count:         15,
-		Sum:           11.5,
-		PositiveSpans: []histogram.Span{
-			{Offset: -2, Length: 2},
-			{Offset: 1, Length: 3},
-		},
-		PositiveBuckets: []float64{0.5, 0, 1.5, 2, 3.5},
-		NegativeSpans: []histogram.Span{
-			{Offset: 3, Length: 2},
-			{Offset: 3, Length: 2},
-		},
-		NegativeBuckets: []float64{1.5, 0.5, 2.5, 3},
-	}
-)
+var histogramSample = histogram.Histogram{
+	Schema:        0,
+	Count:         20,
+	Sum:           -3.1415,
+	ZeroCount:     12,
+	ZeroThreshold: 0.001,
+	NegativeSpans: []histogram.Span{
+		{Offset: 0, Length: 4},
+		{Offset: 1, Length: 1},
+	},
+	NegativeBuckets: []int64{1, 2, -2, 1, -1},
+}
 
 func PrometheusBinary() string {
 	return "prometheus-" + defaultPrometheusVersion
@@ -123,8 +104,6 @@ type Prometheus struct {
 	addr               string
 
 	config string
-
-	stdout, stderr bytes.Buffer
 }
 
 func NewTSDB() (*tsdb.DB, error) {
@@ -199,7 +178,7 @@ func newPrometheus(binPath, prefix string) (*Prometheus, error) {
 }
 
 // Start running the Prometheus instance and return.
-func (p *Prometheus) Start(ctx context.Context, l log.Logger) error {
+func (p *Prometheus) Start() error {
 	if p.running {
 		return errors.New("Already started")
 	}
@@ -207,16 +186,12 @@ func (p *Prometheus) Start(ctx context.Context, l log.Logger) error {
 	if err := p.db.Close(); err != nil {
 		return err
 	}
-	if err := p.start(); err != nil {
-		return err
-	}
-	if err := p.waitPrometheusUp(ctx, l, p.prefix); err != nil {
-		return err
-	}
-	return nil
+	return p.start()
 }
 
 func (p *Prometheus) start() error {
+	p.running = true
+
 	port, err := FreePort()
 	if err != nil {
 		return err
@@ -247,26 +222,23 @@ func (p *Prometheus) start() error {
 	p.cmd = exec.Command(p.binPath, args...)
 	p.cmd.SysProcAttr = SysProcAttr()
 
-	p.stderr.Reset()
-	p.stdout.Reset()
+	go func() {
+		if b, err := p.cmd.CombinedOutput(); err != nil {
+			fmt.Fprintln(os.Stderr, "running Prometheus failed", err)
+			fmt.Fprintln(os.Stderr, string(b))
+		}
+	}()
+	time.Sleep(2 * time.Second)
 
-	p.cmd.Stdout = &p.stdout
-	p.cmd.Stderr = &p.stderr
-
-	if err := p.cmd.Start(); err != nil {
-		return fmt.Errorf("starting Prometheus failed: %w", err)
-	}
-
-	p.running = true
 	return nil
 }
 
-func (p *Prometheus) waitPrometheusUp(ctx context.Context, logger log.Logger, prefix string) error {
+func (p *Prometheus) WaitPrometheusUp(ctx context.Context, logger log.Logger) error {
 	if !p.running {
 		return errors.New("method Start was not invoked.")
 	}
-	return runutil.RetryWithLog(logger, time.Second, ctx.Done(), func() error {
-		r, err := http.Get(fmt.Sprintf("http://%s%s/-/ready", p.addr, prefix))
+	return runutil.Retry(time.Second, ctx.Done(), func() error {
+		r, err := http.Get(fmt.Sprintf("http://%s/-/ready", p.addr))
 		if err != nil {
 			return err
 		}
@@ -279,15 +251,12 @@ func (p *Prometheus) waitPrometheusUp(ctx context.Context, logger log.Logger, pr
 	})
 }
 
-func (p *Prometheus) Restart(ctx context.Context, l log.Logger) error {
+func (p *Prometheus) Restart() error {
 	if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		return errors.Wrap(err, "failed to kill Prometheus. Kill it manually")
 	}
 	_ = p.cmd.Wait()
-	if err := p.start(); err != nil {
-		return err
-	}
-	return p.waitPrometheusUp(ctx, l, p.prefix)
+	return p.start()
 }
 
 // Dir returns TSDB dir.
@@ -321,7 +290,7 @@ func (p *Prometheus) writeConfig(config string) (err error) {
 }
 
 // Stop terminates Prometheus and clean up its data directory.
-func (p *Prometheus) Stop() (rerr error) {
+func (p *Prometheus) Stop() error {
 	if !p.running {
 		return nil
 	}
@@ -330,25 +299,8 @@ func (p *Prometheus) Stop() (rerr error) {
 		if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 			return errors.Wrapf(err, "failed to Prometheus. Kill it manually and clean %s dir", p.db.Dir())
 		}
-
-		err := p.cmd.Wait()
-		if err != nil {
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
-				if exitErr.ExitCode() != -1 {
-					fmt.Fprintln(os.Stderr, "Prometheus exited with", exitErr.ExitCode())
-					fmt.Fprintln(os.Stderr, "stdout:\n", p.stdout.String(), "\nstderr:\n", p.stderr.String())
-				} else {
-					err = nil
-				}
-			}
-		}
-
-		if err != nil {
-			return fmt.Errorf("waiting for Prometheus to exit: %w", err)
-		}
 	}
-
+	time.Sleep(time.Second / 2)
 	return p.cleanup()
 }
 
@@ -482,22 +434,6 @@ func CreateHistogramBlockWithDelay(
 	return createBlockWithDelay(ctx, dir, series, numSamples, mint, maxt, blockDelay, extLset, resolution, hashFunc, chunkenc.ValHistogram)
 }
 
-// CreateFloatHistogramBlockWithDelay writes a block with the given float native histogram series and numSamples samples each.
-// Samples will be in the time range [mint, maxt).
-func CreateFloatHistogramBlockWithDelay(
-	ctx context.Context,
-	dir string,
-	series []labels.Labels,
-	numSamples int,
-	mint, maxt int64,
-	blockDelay time.Duration,
-	extLset labels.Labels,
-	resolution int64,
-	hashFunc metadata.HashFunc,
-) (id ulid.ULID, err error) {
-	return createBlockWithDelay(ctx, dir, series, numSamples, mint, maxt, blockDelay, extLset, resolution, hashFunc, chunkenc.ValFloatHistogram)
-}
-
 func createBlockWithDelay(ctx context.Context, dir string, series []labels.Labels, numSamples int, mint int64, maxt int64, blockDelay time.Duration, extLset labels.Labels, resolution int64, hashFunc metadata.HashFunc, samplesType chunkenc.ValueType) (ulid.ULID, error) {
 	blockID, err := createBlock(ctx, dir, series, numSamples, mint, maxt, extLset, resolution, false, hashFunc, samplesType)
 	if err != nil {
@@ -573,6 +509,10 @@ func createBlock(
 				app := h.Appender(ctx)
 
 				for _, lset := range batch {
+					sort.Slice(lset, func(i, j int) bool {
+						return lset[i].Name < lset[j].Name
+					})
+
 					var err error
 					if sampleType == chunkenc.ValFloat {
 						randMutex.Lock()
@@ -580,8 +520,6 @@ func createBlock(
 						randMutex.Unlock()
 					} else if sampleType == chunkenc.ValHistogram {
 						_, err = app.AppendHistogram(0, lset, t, &histogramSample, nil)
-					} else if sampleType == chunkenc.ValFloatHistogram {
-						_, err = app.AppendHistogram(0, lset, t, nil, &floatHistogramSample)
 					}
 					if err != nil {
 						if rerr := app.Rollback(); rerr != nil {
@@ -729,7 +667,9 @@ func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
 	}
 
 	lbls := []labels.Labels{
-		labels.FromStrings("lbl1", "1"),
+		[]labels.Label{
+			{Name: "lbl1", Value: "1"},
+		},
 	}
 
 	// Sort labels as the index writer expects series in sorted order.
@@ -737,10 +677,10 @@ func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		lset.Range(func(l labels.Label) {
+		for _, l := range lset {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		})
+		}
 	}
 
 	var input indexWriterSeriesSlice
@@ -798,14 +738,14 @@ func PutOutOfOrderIndex(blockDir string, minTime int64, maxTime int64) error {
 			return err
 		}
 
-		s.labels.Range(func(l labels.Label) {
+		for _, l := range s.labels {
 			valset, ok := values[l.Name]
 			if !ok {
 				valset = map[string]struct{}{}
 				values[l.Name] = valset
 			}
 			valset[l.Value] = struct{}{}
-		})
+		}
 		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 

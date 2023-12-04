@@ -79,14 +79,14 @@ func (r *Rule) GetLabels() labels.Labels {
 	case r.GetAlert() != nil:
 		return r.GetAlert().Labels.PromLabels()
 	default:
-		return labels.EmptyLabels()
+		return nil
 	}
 }
 
 func (r *Rule) SetLabels(ls labels.Labels) {
 	var result labelpb.ZLabelSet
 
-	if !ls.IsEmpty() {
+	if len(ls) > 0 {
 		result = labelpb.ZLabelSet{Labels: labelpb.ZLabelsFromPromLabels(ls)}
 	}
 

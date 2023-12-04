@@ -69,12 +69,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 // Shipper watches a directory for matching files and directories and uploads
 // them to a remote data store.
 type Shipper struct {
-	logger           log.Logger
-	dir              string
-	metrics          *metrics
-	bucket           objstore.Bucket
-	source           metadata.SourceType
-	metadataFilePath string
+	logger  log.Logger
+	dir     string
+	metrics *metrics
+	bucket  objstore.Bucket
+	source  metadata.SourceType
 
 	uploadCompactedFunc    func() bool
 	allowOutOfOrderUploads bool
@@ -97,17 +96,12 @@ func New(
 	uploadCompactedFunc func() bool,
 	allowOutOfOrderUploads bool,
 	hashFunc metadata.HashFunc,
-	metaFileName string,
 ) *Shipper {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	if lbls == nil {
-		lbls = func() labels.Labels { return labels.EmptyLabels() }
-	}
-
-	if metaFileName == "" {
-		metaFileName = DefaultMetaFilename
+		lbls = func() labels.Labels { return nil }
 	}
 
 	if uploadCompactedFunc == nil {
@@ -125,7 +119,6 @@ func New(
 		allowOutOfOrderUploads: allowOutOfOrderUploads,
 		uploadCompactedFunc:    uploadCompactedFunc,
 		hashFunc:               hashFunc,
-		metadataFilePath:       filepath.Join(dir, filepath.Clean(metaFileName)),
 	}
 }
 
@@ -146,7 +139,7 @@ func (s *Shipper) getLabels() labels.Labels {
 // Timestamps returns the minimum timestamp for which data is available and the highest timestamp
 // of blocks that were successfully uploaded.
 func (s *Shipper) Timestamps() (minTime, maxSyncTime int64, err error) {
-	meta, err := ReadMetaFile(s.metadataFilePath)
+	meta, err := ReadMetaFile(s.dir)
 	if err != nil {
 		return 0, 0, errors.Wrap(err, "read shipper meta file")
 	}
@@ -254,7 +247,7 @@ func (c *lazyOverlapChecker) IsOverlapping(ctx context.Context, newMeta tsdb.Blo
 //
 // It is not concurrency-safe, however it is compactor-safe (running concurrently with compactor is ok).
 func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
-	meta, err := ReadMetaFile(s.metadataFilePath)
+	meta, err := ReadMetaFile(s.dir)
 	if err != nil {
 		// If we encounter any error, proceed with an empty meta file and overwrite it later.
 		// The meta file is only used to avoid unnecessary bucket.Exists call,
@@ -337,7 +330,7 @@ func (s *Shipper) Sync(ctx context.Context) (uploaded int, err error) {
 		uploaded++
 		s.metrics.uploads.Inc()
 	}
-	if err := WriteMetaFile(s.logger, s.metadataFilePath, meta); err != nil {
+	if err := WriteMetaFile(s.logger, s.dir, meta); err != nil {
 		level.Warn(s.logger).Log("msg", "updating meta file failed", "err", err)
 	}
 
@@ -382,7 +375,7 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 		return errors.Wrap(err, "hard link block")
 	}
 	// Attach current labels and write a new meta file with Thanos extensions.
-	if lset := s.getLabels(); !lset.IsEmpty() {
+	if lset := s.getLabels(); lset != nil {
 		meta.Thanos.Labels = lset.Map()
 	}
 	meta.Thanos.Source = s.source
@@ -464,16 +457,17 @@ type Meta struct {
 }
 
 const (
-	// DefaultMetaFilename is the default JSON filename for meta information.
-	DefaultMetaFilename = "thanos.shipper.json"
+	// MetaFilename is the known JSON filename for meta information.
+	MetaFilename = "thanos.shipper.json"
 
 	// MetaVersion1 represents 1 version of meta.
 	MetaVersion1 = 1
 )
 
 // WriteMetaFile writes the given meta into <dir>/thanos.shipper.json.
-func WriteMetaFile(logger log.Logger, path string, meta *Meta) error {
+func WriteMetaFile(logger log.Logger, dir string, meta *Meta) error {
 	// Make any changes to the file appear atomic.
+	path := filepath.Join(dir, MetaFilename)
 	tmp := path + ".tmp"
 
 	f, err := os.Create(tmp)
@@ -495,15 +489,16 @@ func WriteMetaFile(logger log.Logger, path string, meta *Meta) error {
 }
 
 // ReadMetaFile reads the given meta from <dir>/thanos.shipper.json.
-func ReadMetaFile(path string) (*Meta, error) {
-	b, err := os.ReadFile(path)
+func ReadMetaFile(dir string) (*Meta, error) {
+	fpath := filepath.Join(dir, filepath.Clean(MetaFilename))
+	b, err := os.ReadFile(fpath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to read %s", path)
+		return nil, errors.Wrapf(err, "failed to read %s", fpath)
 	}
 
 	var m Meta
 	if err := json.Unmarshal(b, &m); err != nil {
-		return nil, errors.Wrapf(err, "failed to parse %s as JSON: %q", path, string(b))
+		return nil, errors.Wrapf(err, "failed to parse %s as JSON: %q", fpath, string(b))
 	}
 	if m.Version != MetaVersion1 {
 		return nil, errors.Errorf("unexpected meta file version %d", m.Version)

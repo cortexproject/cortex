@@ -23,8 +23,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/index"
@@ -64,28 +62,6 @@ func init() {
 // polynomial may be easily changed in one location at a later time, if necessary.
 func newCRC32() hash.Hash32 {
 	return crc32.New(castagnoliTable)
-}
-
-// LazyBinaryReaderMetrics holds metrics tracked by LazyBinaryReader.
-type BinaryReaderMetrics struct {
-	downloadDuration prometheus.Histogram
-	loadDuration     prometheus.Histogram
-}
-
-// NewBinaryReaderMetrics makes new BinaryReaderMetrics.
-func NewBinaryReaderMetrics(reg prometheus.Registerer) *BinaryReaderMetrics {
-	return &BinaryReaderMetrics{
-		downloadDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "indexheader_download_duration_seconds",
-			Help:    "Duration of the index-header download from objstore in seconds.",
-			Buckets: []float64{0.1, 0.2, 0.5, 1, 2, 5, 15, 30, 60, 90, 120, 300},
-		}),
-		loadDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "indexheader_load_duration_seconds",
-			Help:    "Duration of the index-header loading in seconds.",
-			Buckets: []float64{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 15, 30, 60, 90, 120, 300},
-		}),
-	}
 }
 
 // BinaryTOC is a table of content for index-header file.
@@ -553,15 +529,13 @@ type BinaryReader struct {
 	indexLastPostingEnd int64
 
 	postingOffsetsInMemSampling int
-
-	metrics *BinaryReaderMetrics
 }
 
 // NewBinaryReader loads or builds new index-header if not present on disk.
-func NewBinaryReader(ctx context.Context, logger log.Logger, bkt objstore.BucketReader, dir string, id ulid.ULID, postingOffsetsInMemSampling int, metrics *BinaryReaderMetrics) (*BinaryReader, error) {
+func NewBinaryReader(ctx context.Context, logger log.Logger, bkt objstore.BucketReader, dir string, id ulid.ULID, postingOffsetsInMemSampling int) (*BinaryReader, error) {
 	if dir != "" {
 		binfn := filepath.Join(dir, id.String(), block.IndexHeaderFilename)
-		br, err := newFileBinaryReader(binfn, postingOffsetsInMemSampling, metrics)
+		br, err := newFileBinaryReader(binfn, postingOffsetsInMemSampling)
 		if err == nil {
 			return br, nil
 		}
@@ -572,27 +546,25 @@ func NewBinaryReader(ctx context.Context, logger log.Logger, bkt objstore.Bucket
 		if _, err := WriteBinary(ctx, bkt, id, binfn); err != nil {
 			return nil, errors.Wrap(err, "write index header")
 		}
-		metrics.loadDuration.Observe(time.Since(start).Seconds())
 
 		level.Debug(logger).Log("msg", "built index-header file", "path", binfn, "elapsed", time.Since(start))
-		return newFileBinaryReader(binfn, postingOffsetsInMemSampling, metrics)
+		return newFileBinaryReader(binfn, postingOffsetsInMemSampling)
 	} else {
 		buf, err := WriteBinary(ctx, bkt, id, "")
 		if err != nil {
 			return nil, errors.Wrap(err, "generate index header")
 		}
 
-		return newMemoryBinaryReader(buf, postingOffsetsInMemSampling, metrics)
+		return newMemoryBinaryReader(buf, postingOffsetsInMemSampling)
 	}
 }
 
-func newMemoryBinaryReader(buf []byte, postingOffsetsInMemSampling int, metrics *BinaryReaderMetrics) (bw *BinaryReader, err error) {
+func newMemoryBinaryReader(buf []byte, postingOffsetsInMemSampling int) (bw *BinaryReader, err error) {
 	r := &BinaryReader{
 		b:                           realByteSlice(buf),
 		c:                           nil,
 		postings:                    map[string]*postingValueOffsets{},
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
-		metrics:                     metrics,
 	}
 
 	if err := r.init(); err != nil {
@@ -602,7 +574,7 @@ func newMemoryBinaryReader(buf []byte, postingOffsetsInMemSampling int, metrics 
 	return r, nil
 }
 
-func newFileBinaryReader(path string, postingOffsetsInMemSampling int, metrics *BinaryReaderMetrics) (bw *BinaryReader, err error) {
+func newFileBinaryReader(path string, postingOffsetsInMemSampling int) (bw *BinaryReader, err error) {
 	f, err := fileutil.OpenMmapFile(path)
 	if err != nil {
 		return nil, err
@@ -618,7 +590,6 @@ func newFileBinaryReader(path string, postingOffsetsInMemSampling int, metrics *
 		c:                           f,
 		postings:                    map[string]*postingValueOffsets{},
 		postingOffsetsInMemSampling: postingOffsetsInMemSampling,
-		metrics:                     metrics,
 	}
 
 	if err := r.init(); err != nil {
@@ -653,11 +624,6 @@ func newBinaryTOCFromByteSlice(bs index.ByteSlice) (*BinaryTOC, error) {
 }
 
 func (r *BinaryReader) init() (err error) {
-	start := time.Now()
-
-	defer func() {
-		r.metrics.loadDuration.Observe(time.Since(start).Seconds())
-	}()
 	// Verify header.
 	if r.b.Len() < headerLen {
 		return errors.Wrap(encoding.ErrInvalidSize, "index header's header")

@@ -40,6 +40,7 @@ const (
 )
 
 var (
+	errMemcachedAsyncBufferFull                = errors.New("the async buffer is full")
 	errMemcachedConfigNoAddrs                  = errors.New("no memcached addresses provided")
 	errMemcachedDNSUpdateIntervalNotPositive   = errors.New("DNS provider update interval must be positive")
 	errMemcachedMaxAsyncConcurrencyNotPositive = errors.New("max async concurrency must be positive")
@@ -194,7 +195,7 @@ type memcachedClient struct {
 	duration   *prometheus.HistogramVec
 	dataSize   *prometheus.HistogramVec
 
-	p *AsyncOperationProcessor
+	p *asyncOperationProcessor
 }
 
 // AddressProvider performs node address resolution given a list of clusters.
@@ -277,7 +278,7 @@ func newMemcachedClient(
 			config.MaxGetMultiConcurrency,
 			gate.Gets,
 		),
-		p: NewAsyncOperationProcessor(config.MaxAsyncBufferSize, config.MaxAsyncConcurrency),
+		p: newAsyncOperationProcessor(config.MaxAsyncBufferSize, config.MaxAsyncConcurrency),
 	}
 
 	c.clientInfo = promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
@@ -371,7 +372,7 @@ func (c *memcachedClient) SetAsync(key string, value []byte, ttl time.Duration) 
 		return nil
 	}
 
-	err := c.p.EnqueueAsync(func() {
+	err := c.p.enqueueAsync(func() {
 		start := time.Now()
 		c.operations.WithLabelValues(opSet).Inc()
 
@@ -399,7 +400,7 @@ func (c *memcachedClient) SetAsync(key string, value []byte, ttl time.Duration) 
 		c.duration.WithLabelValues(opSet).Observe(time.Since(start).Seconds())
 	})
 
-	if errors.Is(err, ErrAsyncBufferFull) {
+	if errors.Is(err, errMemcachedAsyncBufferFull) {
 		c.skipped.WithLabelValues(opSet, reasonAsyncBufferFull).Inc()
 		level.Debug(c.logger).Log("msg", "failed to store item to memcached because the async buffer is full", "err", err, "size", len(c.p.asyncQueue))
 		return nil

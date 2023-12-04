@@ -74,7 +74,6 @@ const (
 	StoreQueryable           string = "store-queryable"
 	QueryFrontend            string = "query-frontend"
 	QueryFrontendTripperware string = "query-frontend-tripperware"
-	DeleteRequestsStore      string = "delete-requests-store"
 	RulerStorage             string = "ruler-storage"
 	Ruler                    string = "ruler"
 	Configs                  string = "configs"
@@ -768,28 +767,28 @@ func (t *Cortex) setupModuleManager() error {
 		OverridesExporter:        {RuntimeConfig},
 		Distributor:              {DistributorService, API},
 		DistributorService:       {Ring, Overrides},
-		Ingester:                 {IngesterService, Overrides, DeleteRequestsStore, API},
+		Ingester:                 {IngesterService, Overrides, API},
 		IngesterService:          {Overrides, RuntimeConfig, MemberlistKV},
-		Flusher:                  {Overrides, DeleteRequestsStore, API},
-		Queryable:                {Overrides, DistributorService, Overrides, DeleteRequestsStore, Ring, API, StoreQueryable, MemberlistKV},
+		Flusher:                  {Overrides, API},
+		Queryable:                {Overrides, DistributorService, Overrides, Ring, API, StoreQueryable, MemberlistKV},
 		Querier:                  {TenantFederation},
-		StoreQueryable:           {Overrides, Overrides, DeleteRequestsStore, MemberlistKV},
-		QueryFrontendTripperware: {API, Overrides, DeleteRequestsStore},
+		StoreQueryable:           {Overrides, Overrides, MemberlistKV},
+		QueryFrontendTripperware: {API, Overrides},
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, Overrides},
-		Ruler:                    {DistributorService, Overrides, DeleteRequestsStore, StoreQueryable, RulerStorage},
+		Ruler:                    {DistributorService, Overrides, StoreQueryable, RulerStorage},
 		RulerStorage:             {Overrides},
 		Configs:                  {API},
 		AlertManager:             {API, MemberlistKV, Overrides},
 		Compactor:                {API, MemberlistKV, Overrides},
 		StoreGateway:             {API, Overrides, MemberlistKV},
-		TenantDeletion:           {API, Overrides, DeleteRequestsStore},
+		TenantDeletion:           {API, Overrides},
 		Purger:                   {TenantDeletion},
 		TenantFederation:         {Queryable},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler},
 	}
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
-		deps[Ruler] = []string{Overrides, DeleteRequestsStore, RulerStorage}
+		deps[Ruler] = []string{Overrides, RulerStorage}
 	}
 	for mod, targets := range deps {
 		if err := mm.AddDependency(mod, targets...); err != nil {

@@ -20,7 +20,9 @@ func TestUsersScanner_ScanUsers_ShouldReturnedOwnedUsersOnly(t *testing.T) {
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-3"), true, nil)
-	bucketClient.MockExists(GetLocalDeletionMarkPath("user-3"), true, nil)
+	bucketClient.MockExists(GetLocalDeletionMarkPath("user-3"), false, nil)
+	bucketClient.MockExists(GetGlobalDeletionMarkPath("user-7"), false, nil)
+	bucketClient.MockExists(GetLocalDeletionMarkPath("user-7"), true, nil)
 
 	isOwned := func(userID string) (bool, error) {
 		return userID == "user-1" || userID == "user-3" || userID == "user-7", nil

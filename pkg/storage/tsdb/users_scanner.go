@@ -38,63 +38,48 @@ func NewUsersScanner(bucketClient objstore.Bucket, isOwned func(userID string) (
 //
 // If sharding is enabled, returned lists contains only the users owned by this instance.
 func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion []string, err error) {
-	deletedUsers := make(map[string]struct{})
+	discoveredUsers := make(map[string]struct{})
 
-	// Discovering the deleted users from the global markers directory.
+	// Discovering the users from the global markers directory including potentially active users.
 	err = s.bucketClient.Iter(ctx, util.GlobalMarkersDir, func(entry string) error {
 		// entry will be of the form __markers__/<user>/
 		parts := strings.Split(entry, objstore.DirDelim)
-		user := parts[1]
-		deletedUsers[user] = struct{}{}
+		userID := parts[1]
+		discoveredUsers[userID] = struct{}{}
 		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// Discovering other users in the bucket including potentially active users.
 	err = s.bucketClient.Iter(ctx, "", func(entry string) error {
-		users = append(users, strings.TrimSuffix(entry, "/"))
+		userID := strings.TrimSuffix(entry, "/")
+		discoveredUsers[userID] = struct{}{}
 		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Check users for being owned by instance, and split users into non-deleted and deleted.
-	// We do these checks after listing all users, to improve cacheability of Iter (result is only cached at the end of Iter call).
-	for ix := 0; ix < len(users); {
-		userID := users[ix]
-
-		// Check if it's owned by this instance.
-		owned, err := s.isOwned(userID)
-		if err != nil {
+	for userID := range discoveredUsers {
+		// Filter out users not owned by this instance.
+		if owned, err := s.isOwned(userID); err != nil {
 			level.Warn(s.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 		} else if !owned {
-			users = append(users[:ix], users[ix+1:]...)
 			continue
 		}
 
-		deletionMarkExists, err := TenantDeletionMarkExists(ctx, s.bucketClient, userID)
-		if err != nil {
+		// Filter users marked for deletion
+		if deletionMarkExists, err := TenantDeletionMarkExists(ctx, s.bucketClient, userID); err != nil {
 			level.Warn(s.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 		} else if deletionMarkExists {
-			users = append(users[:ix], users[ix+1:]...)
-			deletedUsers[userID] = struct{}{}
+			markedForDeletion = append(markedForDeletion, userID)
 			continue
 		}
 
-		ix++
-	}
-
-	for userID := range deletedUsers {
-		// Check if it's owned by this instance.
-		owned, err := s.isOwned(userID)
-		if err != nil {
-			level.Warn(s.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
-		}
-		if owned {
-			markedForDeletion = append(markedForDeletion, userID)
-		}
+		// The remaining are the active users owned by this instance.
+		users = append(users, userID)
 	}
 
 	return users, markedForDeletion, nil

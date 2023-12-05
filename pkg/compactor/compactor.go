@@ -592,7 +592,14 @@ func (c *Compactor) starting(ctx context.Context) error {
 	}
 
 	if c.compactorCfg.CachingBucketEnabled {
-		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(c.storageCfg.BucketStore.ChunksCache, c.storageCfg.BucketStore.MetadataCache, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+		// Turn off chunksCache since compactor is using get to download chunks, while store-gateway and querier is using getrange.
+		c.storageCfg.BucketStore.ChunksCache.Backend = ""
+		matchers := cortex_tsdb.NewMatchers()
+		// Do not cache tenant deletion marker and block deletion marker for compactor
+		matchers.SetMetaFileMatcher(func(name string) bool {
+			return strings.HasSuffix(name, "/"+metadata.MetaFilename)
+		})
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(c.storageCfg.BucketStore.ChunksCache, c.storageCfg.BucketStore.MetadataCache, matchers, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 		if err != nil {
 			return errors.Wrap(err, "create caching bucket")
 		}

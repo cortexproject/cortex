@@ -38,31 +38,31 @@ func NewUsersScanner(bucketClient objstore.Bucket, isOwned func(userID string) (
 //
 // If sharding is enabled, returned lists contains only the users owned by this instance.
 func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion []string, err error) {
-	discoveredUsers := make(map[string]struct{})
+	scannedUsers := make(map[string]struct{})
 
-	// Discovering the users from the global markers directory including potentially active users.
+	// Scan users in the bucket.
+	err = s.bucketClient.Iter(ctx, "", func(entry string) error {
+		userID := strings.TrimSuffix(entry, "/")
+		scannedUsers[userID] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Scan users from the __markers__ directory.
 	err = s.bucketClient.Iter(ctx, util.GlobalMarkersDir, func(entry string) error {
 		// entry will be of the form __markers__/<user>/
 		parts := strings.Split(entry, objstore.DirDelim)
 		userID := parts[1]
-		discoveredUsers[userID] = struct{}{}
+		scannedUsers[userID] = struct{}{}
 		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Discovering other users in the bucket including potentially active users.
-	err = s.bucketClient.Iter(ctx, "", func(entry string) error {
-		userID := strings.TrimSuffix(entry, "/")
-		discoveredUsers[userID] = struct{}{}
-		return nil
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	for userID := range discoveredUsers {
+	for userID := range scannedUsers {
 		// Filter out users not owned by this instance.
 		if owned, err := s.isOwned(userID); err != nil {
 			level.Warn(s.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)

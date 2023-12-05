@@ -110,7 +110,7 @@ func (cfg *MetadataCacheConfig) Validate() error {
 	return cfg.CacheBackend.Validate()
 }
 
-func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, bkt objstore.Bucket, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
+func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false
 

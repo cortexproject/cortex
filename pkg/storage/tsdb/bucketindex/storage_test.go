@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
@@ -91,8 +92,8 @@ func TestReadIndex_ShouldRetryUpload(t *testing.T) {
 		Bucket:         bkt,
 		UploadFailures: map[string]error{userID: errors.New("test")},
 	}
-	bkt, _ = s3.NewBucketWithRetries(mBucket, 5, 0, 0, log.NewNopLogger())
-	bkt = BucketWithGlobalMarkers(bkt)
+	s3Bkt, _ := s3.NewBucketWithRetries(mBucket, 5, 0, 0, log.NewNopLogger())
+	bkt = BucketWithGlobalMarkers(objstore.WithNoopInstr(s3Bkt))
 
 	u := NewUpdater(bkt, userID, nil, logger)
 	expectedIdx, _, _, err := u.UpdateIndex(ctx, nil)

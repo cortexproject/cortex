@@ -43,22 +43,22 @@ func TenantDeletionMarkExists(ctx context.Context, bkt objstore.BucketReader, us
 }
 
 // Uploads deletion mark to the tenant location in the bucket.
-func WriteTenantDeletionMark(ctx context.Context, bkt objstore.Bucket, userID string, mark *TenantDeletionMark) error {
+func WriteTenantDeletionMark(ctx context.Context, bkt objstore.InstrumentedBucket, userID string, mark *TenantDeletionMark) error {
 	markerFile := GetGlobalDeletionMarkPath(userID)
 	return write(ctx, bkt, markerFile, mark)
 }
 
 // Returns tenant deletion mark for given user, if it exists. If it doesn't exist, returns nil mark, and no error.
-func ReadTenantDeletionMark(ctx context.Context, bkt objstore.BucketReader, userID string) (*TenantDeletionMark, error) {
+func ReadTenantDeletionMark(ctx context.Context, bkt objstore.InstrumentedBucket, userID string) (*TenantDeletionMark, error) {
 	markerFile := GetGlobalDeletionMarkPath(userID)
-	if mark, err := read(ctx, bkt, markerFile); err != nil {
+	if mark, err := read(ctx, bkt.WithExpectedErrs(bkt.IsObjNotFoundErr), markerFile); err != nil {
 		return nil, err
 	} else if mark != nil {
 		return mark, nil
 	}
 
 	markerFile = GetLocalDeletionMarkPath(userID)
-	return read(ctx, bkt, markerFile)
+	return read(ctx, bkt.WithExpectedErrs(bkt.IsObjNotFoundErr), markerFile)
 }
 
 // Deletes the tenant deletion mark for given user if it exists.

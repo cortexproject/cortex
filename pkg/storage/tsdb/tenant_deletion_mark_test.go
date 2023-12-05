@@ -59,7 +59,7 @@ func TestTenantDeletionMarkExists(t *testing.T) {
 			}
 
 			for _, user := range tc.deletedUsers {
-				require.NoError(t, WriteTenantDeletionMark(context.Background(), bkt, user, &TenantDeletionMark{}))
+				require.NoError(t, WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bkt), user, &TenantDeletionMark{}))
 			}
 
 			res, err := TenantDeletionMarkExists(context.Background(), bkt, username)

@@ -296,7 +296,7 @@ type Compactor struct {
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
-	bucketClientFactory    func(ctx context.Context) (objstore.Bucket, error)
+	bucketClientFactory    func(ctx context.Context) (objstore.InstrumentedBucket, error)
 	blocksGrouperFactory   BlocksGrouperFactory
 	blocksCompactorFactory BlocksCompactorFactory
 
@@ -312,7 +312,7 @@ type Compactor struct {
 	blocksPlannerFactory PlannerFactory
 
 	// Client used to run operations on the bucket storing blocks.
-	bucketClient objstore.Bucket
+	bucketClient objstore.InstrumentedBucket
 
 	// Ring used for sharding compactions.
 	ringLifecycler         *ring.Lifecycler
@@ -345,7 +345,7 @@ type Compactor struct {
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Compactor, error) {
-	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
 
@@ -380,7 +380,7 @@ func newCompactor(
 	storageCfg cortex_tsdb.BlocksStorageConfig,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
+	bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error),
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
 	limits *validation.Overrides,

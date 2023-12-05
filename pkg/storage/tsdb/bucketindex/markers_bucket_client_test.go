@@ -195,8 +195,8 @@ func TestBucketWithGlobalMarkers_ShouldRetryUpload(t *testing.T) {
 					Bucket:         bkt,
 					UploadFailures: map[string]error{p: errors.New("test")},
 				}
-				bkt, _ = s3.NewBucketWithRetries(mBucket, 5, 0, 0, log.NewNopLogger())
-				bkt = BucketWithGlobalMarkers(bkt)
+				s3Bkt, _ := s3.NewBucketWithRetries(mBucket, 5, 0, 0, log.NewNopLogger())
+				bkt = BucketWithGlobalMarkers(objstore.WithNoopInstr(s3Bkt))
 				originalPath := block1.String() + "/" + tc.mark
 				err := bkt.Upload(ctx, originalPath, strings.NewReader("{}"))
 				require.Equal(t, errors.New("test"), err)

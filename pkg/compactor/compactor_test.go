@@ -1647,7 +1647,7 @@ func prepareConfig() Config {
 	return compactorCfg
 }
 
-func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, limits *validation.Limits) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
+func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 
@@ -1670,7 +1670,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Bucket, li
 	overrides, err := validation.NewOverrides(*limits, nil)
 	require.NoError(t, err)
 
-	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucketClient, nil
 	}
 
@@ -1845,7 +1845,7 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		userIDs = append(userIDs, fmt.Sprintf("user-%d", i))
 	}
 
-	inmem := objstore.NewInMemBucket()
+	inmem := objstore.WithNoopInstr(objstore.NewInMemBucket())
 	for _, userID := range userIDs {
 		id, err := ulid.New(ulid.Now(), rand.Reader)
 		require.NoError(t, err)
@@ -1956,7 +1956,7 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 }
 
 func TestCompactor_ShouldNotTreatInterruptionsAsErrors(t *testing.T) {
-	bucketClient := objstore.NewInMemBucket()
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
 	id := ulid.MustNew(ulid.Now(), rand.Reader)
 	require.NoError(t, bucketClient.Upload(context.Background(), "user-1/"+id.String()+"/meta.json", strings.NewReader(mockBlockMetaJSON(id.String()))))
 

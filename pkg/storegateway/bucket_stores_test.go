@@ -200,7 +200,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Query series before the initial sync.
@@ -276,7 +276,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 	bucket = &failFirstGetBucket{Bucket: bucket}
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Initial sync should succeed even if a transient error occurs.
@@ -336,7 +336,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Run an initial sync to discover 1 block.
@@ -470,7 +470,7 @@ func testBucketStoresSeriesShouldCorrectlyQuerySeriesSpanningMultipleChunks(t *t
 	require.NoError(t, err)
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(ctx))
 
@@ -526,7 +526,7 @@ func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *t
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 
@@ -547,7 +547,7 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 
@@ -691,7 +691,7 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	sharding := userShardingStrategy{}
 
 	reg := prometheus.NewPedanticRegistry()
-	stores, err := NewBucketStores(cfg, &sharding, bucket, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
 	// Perform sync.

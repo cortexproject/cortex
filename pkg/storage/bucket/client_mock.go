@@ -23,6 +23,14 @@ type ClientMock struct {
 	uploaded sync.Map
 }
 
+func (m *ClientMock) WithExpectedErrs(objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	return m
+}
+
+func (m *ClientMock) ReaderWithExpectedErrs(objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	return m
+}
+
 // Upload mocks objstore.Bucket.Upload()
 func (m *ClientMock) Upload(ctx context.Context, name string, r io.Reader) error {
 	if _, ok := m.uploaded.Load(name); ok {

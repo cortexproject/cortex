@@ -17,7 +17,7 @@ import (
 
 func TestDeleteTenant(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
-	api := newTenantDeletionAPI(bkt, nil, log.NewNopLogger())
+	api := newTenantDeletionAPI(objstore.WithNoopInstr(bkt), nil, log.NewNopLogger())
 
 	{
 		resp := httptest.NewRecorder()
@@ -80,7 +80,7 @@ func TestDeleteTenantStatus(t *testing.T) {
 				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
 			}
 
-			api := newTenantDeletionAPI(bkt, nil, log.NewNopLogger())
+			api := newTenantDeletionAPI(objstore.WithNoopInstr(bkt), nil, log.NewNopLogger())
 
 			res, err := api.isBlocksForUserDeleted(context.Background(), username)
 			require.NoError(t, err)

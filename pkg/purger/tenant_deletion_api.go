@@ -20,7 +20,7 @@ import (
 )
 
 type TenantDeletionAPI struct {
-	bucketClient objstore.Bucket
+	bucketClient objstore.InstrumentedBucket
 	logger       log.Logger
 	cfgProvider  bucket.TenantConfigProvider
 }
@@ -34,7 +34,7 @@ func NewTenantDeletionAPI(storageCfg cortex_tsdb.BlocksStorageConfig, cfgProvide
 	return newTenantDeletionAPI(bucketClient, cfgProvider, logger), nil
 }
 
-func newTenantDeletionAPI(bkt objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *TenantDeletionAPI {
+func newTenantDeletionAPI(bkt objstore.InstrumentedBucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger) *TenantDeletionAPI {
 	return &TenantDeletionAPI{
 		bucketClient: bkt,
 		cfgProvider:  cfgProvider,
@@ -118,7 +118,7 @@ func (api *TenantDeletionAPI) isBlocksForUserDeleted(ctx context.Context, userID
 	return true, nil
 }
 
-func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
+func createBucketClient(cfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.Bucket, "purger", logger, reg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket client")

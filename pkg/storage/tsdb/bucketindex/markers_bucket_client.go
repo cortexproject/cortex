@@ -18,7 +18,7 @@ type globalMarkersBucket struct {
 
 // BucketWithGlobalMarkers wraps the input bucket into a bucket which also keeps track of markers
 // in the global markers location.
-func BucketWithGlobalMarkers(b objstore.Bucket) objstore.Bucket {
+func BucketWithGlobalMarkers(b objstore.InstrumentedBucket) objstore.InstrumentedBucket {
 	return &globalMarkersBucket{
 		parent: b,
 	}

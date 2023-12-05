@@ -57,7 +57,7 @@ type Config struct {
 
 	// Not used internally, meant to allow callers to wrap Buckets
 	// created using this config
-	Middlewares []func(objstore.Bucket) (objstore.Bucket, error) `yaml:"-"`
+	Middlewares []func(objstore.InstrumentedBucket) (objstore.InstrumentedBucket, error) `yaml:"-"`
 
 	// Used to inject additional backends into the config. Allows for this config to
 	// be embedded in multiple contexts and support non-object storage based backends.
@@ -103,7 +103,8 @@ func (cfg *Config) Validate() error {
 }
 
 // NewClient creates a new bucket client based on the configured backend
-func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (client objstore.Bucket, err error) {
+func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, reg prometheus.Registerer) (bucket objstore.InstrumentedBucket, err error) {
+	var client objstore.Bucket
 	switch cfg.Backend {
 	case S3:
 		client, err = s3.NewBucketClient(cfg.S3, name, logger)
@@ -123,17 +124,17 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		return nil, err
 	}
 
-	client = opentracing.WrapWithTraces(bucketWithMetrics(client, name, reg))
+	iClient := opentracing.WrapWithTraces(bucketWithMetrics(client, name, reg))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
-		client, err = wrap(client)
+		iClient, err = wrap(iClient)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return client, nil
+	return iClient, nil
 }
 
 func bucketWithMetrics(bucketClient objstore.Bucket, name string, reg prometheus.Registerer) objstore.Bucket {

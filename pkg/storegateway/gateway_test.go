@@ -957,7 +957,7 @@ func TestStoreGateway_SeriesQueryingShouldRemoveExternalLabels(t *testing.T) {
 			storageCfg := mockStorageConfig(t)
 			storageCfg.BucketStore.BucketIndex.Enabled = bucketIndexEnabled
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, defaultLimitsOverrides(t), mockLoggingLevel(), logger, nil)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, defaultLimitsOverrides(t), mockLoggingLevel(), logger, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
@@ -1056,7 +1056,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxChunksPerQueryLimit(t *testi
 			gatewayCfg.ShardingEnabled = false
 			storageCfg := mockStorageConfig(t)
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, overrides, mockLoggingLevel(), logger, nil)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, overrides, mockLoggingLevel(), logger, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
@@ -1145,7 +1145,7 @@ func TestStoreGateway_SeriesQueryingShouldEnforceMaxSeriesPerQueryLimit(t *testi
 			gatewayCfg.ShardingEnabled = false
 			storageCfg := mockStorageConfig(t)
 
-			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, nil, overrides, mockLoggingLevel(), logger, nil)
+			g, err := newStoreGateway(gatewayCfg, storageCfg, objstore.WithNoopInstr(bucketClient), nil, overrides, mockLoggingLevel(), logger, nil)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
 			defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck

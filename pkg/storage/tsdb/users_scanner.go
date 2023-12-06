@@ -38,38 +38,48 @@ func NewUsersScanner(bucketClient objstore.Bucket, isOwned func(userID string) (
 //
 // If sharding is enabled, returned lists contains only the users owned by this instance.
 func (s *UsersScanner) ScanUsers(ctx context.Context) (users, markedForDeletion []string, err error) {
+	scannedUsers := make(map[string]struct{})
+
+	// Scan users in the bucket.
 	err = s.bucketClient.Iter(ctx, "", func(entry string) error {
-		users = append(users, strings.TrimSuffix(entry, "/"))
+		userID := strings.TrimSuffix(entry, "/")
+		scannedUsers[userID] = struct{}{}
 		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Check users for being owned by instance, and split users into non-deleted and deleted.
-	// We do these checks after listing all users, to improve cacheability of Iter (result is only cached at the end of Iter call).
-	for ix := 0; ix < len(users); {
-		userID := users[ix]
+	// Scan users from the __markers__ directory.
+	err = s.bucketClient.Iter(ctx, util.GlobalMarkersDir, func(entry string) error {
+		// entry will be of the form __markers__/<user>/
+		parts := strings.Split(entry, objstore.DirDelim)
+		userID := parts[1]
+		scannedUsers[userID] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
 
-		// Check if it's owned by this instance.
-		owned, err := s.isOwned(userID)
-		if err != nil {
+	for userID := range scannedUsers {
+		// Filter out users not owned by this instance.
+		if owned, err := s.isOwned(userID); err != nil {
 			level.Warn(s.logger).Log("msg", "unable to check if user is owned by this shard", "user", userID, "err", err)
 		} else if !owned {
-			users = append(users[:ix], users[ix+1:]...)
 			continue
 		}
 
-		deletionMarkExists, err := TenantDeletionMarkExists(ctx, s.bucketClient, userID)
-		if err != nil {
+		// Filter users marked for deletion
+		if deletionMarkExists, err := TenantDeletionMarkExists(ctx, s.bucketClient, userID); err != nil {
 			level.Warn(s.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 		} else if deletionMarkExists {
-			users = append(users[:ix], users[ix+1:]...)
 			markedForDeletion = append(markedForDeletion, userID)
 			continue
 		}
 
-		ix++
+		// The remaining are the active users owned by this instance.
+		users = append(users, userID)
 	}
 
 	return users, markedForDeletion, nil

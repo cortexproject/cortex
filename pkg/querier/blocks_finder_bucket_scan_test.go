@@ -94,6 +94,7 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 
 	// Mock the storage to simulate a failure when reading objects.
 	bucket.MockIter("", []string{"user-1"}, nil)
+	bucket.MockIter("__markers__", []string{}, nil)
 	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json"}, nil)
 	bucket.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
 	bucket.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
@@ -139,6 +140,7 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 	// Mock the bucket to introduce a 1s sleep while iterating each tenant in the bucket.
 	bucket := &bucket.ClientMock{}
 	bucket.MockIter("", tenantIDs, nil)
+	bucket.MockIter("__markers__", []string{}, nil)
 	for _, tenantID := range tenantIDs {
 		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
 			time.Sleep(time.Second)
@@ -177,6 +179,7 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 	// Mock the bucket to introduce a 1s sleep while syncing each block in the bucket.
 	bucket := &bucket.ClientMock{}
 	bucket.MockIter("", []string{"user-1"}, nil)
+	bucket.MockIter("__markers__", []string{}, nil)
 	bucket.MockIter("user-1/", blockPaths, nil)
 	bucket.On("Exists", mock.Anything, mock.Anything).Return(false, nil).Run(func(args mock.Arguments) {
 		// We return the meta.json doesn't exist, but introduce a 1s delay for each call.

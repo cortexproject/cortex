@@ -1656,6 +1656,9 @@ func prepareConfig() Config {
 	// Set lower timeout for waiting on compactor to become ACTIVE in the ring for unit tests
 	compactorCfg.ShardingRing.WaitActiveInstanceTimeout = 5 * time.Second
 
+	// Set CachingBucketEnabled to true
+	compactorCfg.CachingBucketEnabled = true
+
 	return compactorCfg
 }
 

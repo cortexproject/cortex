@@ -54,6 +54,7 @@ func TestUsersScanner_ScanUsers_ShouldReturnUsersForWhichOwnerCheckOrTenantDelet
 	s := NewUsersScanner(bucketClient, isOwned, log.NewNopLogger())
 	actual, deleted, err := s.ScanUsers(context.Background())
 	require.NoError(t, err)
+	slices.Sort(actual)
 	assert.Equal(t, expected, actual)
 	assert.Empty(t, deleted)
 }

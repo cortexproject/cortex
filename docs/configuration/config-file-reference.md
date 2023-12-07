@@ -2023,7 +2023,7 @@ sharding_ring:
 [accept_malformed_index: <boolean> | default = false]
 
 # When enabled, caching bucket will be used for compactor, except cleaner
-# service.
+# service, which serves as the source of truth for block status
 # CLI flag: -compactor.caching-bucket-enabled
 [caching_bucket_enabled: <boolean> | default = false]
 ```

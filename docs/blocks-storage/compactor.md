@@ -298,4 +298,9 @@ compactor:
   # When enabled, index verification will ignore out of order label names.
   # CLI flag: -compactor.accept-malformed-index
   [accept_malformed_index: <boolean> | default = false]
+
+  # When enabled, caching bucket will be used for compactor, except cleaner
+  # service, which serves as the source of truth for block status
+  # CLI flag: -compactor.caching-bucket-enabled
+  [caching_bucket_enabled: <boolean> | default = false]
 ```

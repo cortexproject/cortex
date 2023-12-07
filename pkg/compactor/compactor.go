@@ -22,6 +22,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
+	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -209,6 +210,7 @@ type Config struct {
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
 
 	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
+	CachingBucketEnabled bool `yaml:"caching_bucket_enabled"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -247,6 +249,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
+	f.BoolVar(&cfg.CachingBucketEnabled, "compactor.caching-bucket-enabled", false, "When enabled, caching bucket will be used for compactor, except cleaner service, which serves as the source of truth for block status")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
@@ -588,6 +591,17 @@ func (c *Compactor) starting(ctx context.Context) error {
 		return errors.Wrap(err, "failed to start the blocks cleaner")
 	}
 
+	if c.compactorCfg.CachingBucketEnabled {
+		matchers := cortex_tsdb.NewMatchers()
+		// Do not cache tenant deletion marker and block deletion marker for compactor
+		matchers.SetMetaFileMatcher(func(name string) bool {
+			return strings.HasSuffix(name, "/"+metadata.MetaFilename)
+		})
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(cortex_tsdb.ChunksCacheConfig{}, c.storageCfg.BucketStore.MetadataCache, matchers, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+		if err != nil {
+			return errors.Wrap(err, "create caching bucket")
+		}
+	}
 	return nil
 }
 

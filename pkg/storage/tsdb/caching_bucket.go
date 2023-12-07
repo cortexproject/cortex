@@ -110,7 +110,7 @@ func (cfg *MetadataCacheConfig) Validate() error {
 	return cfg.CacheBackend.Validate()
 }
 
-func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
+func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, matchers Matchers, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false
 
@@ -121,7 +121,7 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 	if chunksCache != nil {
 		cachingConfigured = true
 		chunksCache = cache.NewTracingCache(chunksCache)
-		cfg.CacheGetRange("chunks", chunksCache, isTSDBChunkFile, chunksConfig.SubrangeSize, chunksConfig.AttributesTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
+		cfg.CacheGetRange("chunks", chunksCache, matchers.GetChunksMatcher(), chunksConfig.SubrangeSize, chunksConfig.AttributesTTL, chunksConfig.SubrangeTTL, chunksConfig.MaxGetRangeRequests)
 	}
 
 	metadataCache, err := createCache("metadata-cache", &metadataConfig.CacheBackend, logger, reg)
@@ -132,16 +132,16 @@ func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig Metadata
 		cachingConfigured = true
 		metadataCache = cache.NewTracingCache(metadataCache)
 
-		cfg.CacheExists("metafile", metadataCache, isMetaFile, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
-		cfg.CacheGet("metafile", metadataCache, isMetaFile, metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
-		cfg.CacheAttributes("metafile", metadataCache, isMetaFile, metadataConfig.MetafileAttributesTTL)
-		cfg.CacheAttributes("block-index", metadataCache, isBlockIndexFile, metadataConfig.BlockIndexAttributesTTL)
-		cfg.CacheGet("bucket-index", metadataCache, isBucketIndexFiles, metadataConfig.BucketIndexMaxSize, metadataConfig.BucketIndexContentTTL /* do not cache exist / not exist: */, 0, 0)
+		cfg.CacheExists("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
+		cfg.CacheGet("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileMaxSize, metadataConfig.MetafileContentTTL, metadataConfig.MetafileExistsTTL, metadataConfig.MetafileDoesntExistTTL)
+		cfg.CacheAttributes("metafile", metadataCache, matchers.GetMetafileMatcher(), metadataConfig.MetafileAttributesTTL)
+		cfg.CacheAttributes("block-index", metadataCache, matchers.GetBlockIndexMatcher(), metadataConfig.BlockIndexAttributesTTL)
+		cfg.CacheGet("bucket-index", metadataCache, matchers.GetBucketIndexMatcher(), metadataConfig.BucketIndexMaxSize, metadataConfig.BucketIndexContentTTL /* do not cache exist / not exist: */, 0, 0)
 
 		codec := snappyIterCodec{storecache.JSONIterCodec{}}
-		cfg.CacheIter("tenants-iter", metadataCache, isTenantsDir, metadataConfig.TenantsListTTL, codec)
-		cfg.CacheIter("tenant-blocks-iter", metadataCache, isTenantBlocksDir, metadataConfig.TenantBlocksListTTL, codec)
-		cfg.CacheIter("chunks-iter", metadataCache, isChunksDir, metadataConfig.ChunksListTTL, codec)
+		cfg.CacheIter("tenants-iter", metadataCache, matchers.GetTenantsIterMatcher(), metadataConfig.TenantsListTTL, codec)
+		cfg.CacheIter("tenant-blocks-iter", metadataCache, matchers.GetTenantBlocksIterMatcher(), metadataConfig.TenantBlocksListTTL, codec)
+		cfg.CacheIter("chunks-iter", metadataCache, matchers.GetChunksIterMatcher(), metadataConfig.ChunksListTTL, codec)
 	}
 
 	if !cachingConfigured {
@@ -176,6 +176,80 @@ func createCache(cacheName string, cacheBackend *CacheBackend, logger log.Logger
 	default:
 		return nil, errors.Errorf("unsupported cache type for cache %s: %s", cacheName, cacheBackend.Backend)
 	}
+}
+
+type Matchers struct {
+	matcherMap map[string]func(string) bool
+}
+
+func NewMatchers() Matchers {
+	matcherMap := make(map[string]func(string) bool)
+	matcherMap["chunks"] = isTSDBChunkFile
+	matcherMap["metafile"] = isMetaFile
+	matcherMap["block-index"] = isBlockIndexFile
+	matcherMap["bucket-index"] = isBucketIndexFiles
+	matcherMap["tenants-iter"] = isTenantsDir
+	matcherMap["tenant-blocks-iter"] = isTenantBlocksDir
+	matcherMap["chunks-iter"] = isChunksDir
+	return Matchers{
+		matcherMap: matcherMap,
+	}
+}
+
+func (m *Matchers) SetMetaFileMatcher(f func(string) bool) {
+	m.matcherMap["metafile"] = f
+}
+
+func (m *Matchers) SetChunksMatcher(f func(string) bool) {
+	m.matcherMap["chunks"] = f
+}
+
+func (m *Matchers) SetBlockIndexMatcher(f func(string) bool) {
+	m.matcherMap["block-index"] = f
+}
+
+func (m *Matchers) SetBucketIndexMatcher(f func(string) bool) {
+	m.matcherMap["bucket-index"] = f
+}
+
+func (m *Matchers) SetTenantsIterMatcher(f func(string) bool) {
+	m.matcherMap["tenants-iter"] = f
+}
+
+func (m *Matchers) SetTenantBlocksIterMatcher(f func(string) bool) {
+	m.matcherMap["tenant-blocks-iter"] = f
+}
+
+func (m *Matchers) SetChunksIterMatcher(f func(string) bool) {
+	m.matcherMap["chunks-iter"] = f
+}
+
+func (m *Matchers) GetChunksMatcher() func(string) bool {
+	return m.matcherMap["chunks"]
+}
+
+func (m *Matchers) GetMetafileMatcher() func(string) bool {
+	return m.matcherMap["metafile"]
+}
+
+func (m *Matchers) GetBlockIndexMatcher() func(string) bool {
+	return m.matcherMap["block-index"]
+}
+
+func (m *Matchers) GetBucketIndexMatcher() func(string) bool {
+	return m.matcherMap["bucket-index"]
+}
+
+func (m *Matchers) GetTenantsIterMatcher() func(string) bool {
+	return m.matcherMap["tenants-iter"]
+}
+
+func (m *Matchers) GetTenantBlocksIterMatcher() func(string) bool {
+	return m.matcherMap["tenant-blocks-iter"]
+}
+
+func (m *Matchers) GetChunksIterMatcher() func(string) bool {
+	return m.matcherMap["chunks-iter"]
 }
 
 var chunksMatcher = regexp.MustCompile(`^.*/chunks/\d+$`)

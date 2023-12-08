@@ -26,11 +26,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
-	"github.com/cortexproject/cortex/pkg/querier/series"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -156,7 +154,7 @@ func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, v1.QueryEngine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, v1.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
@@ -168,7 +166,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			QueryStoreAfter:     cfg.QueryStoreAfter,
 		}
 	}
-	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits, tombstonesLoader)
+	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits)
 	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(mint int64, maxt int64) (storage.Querier, error) {
@@ -252,14 +250,13 @@ type limiterHolder struct {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides, tombstonesLoader purger.TombstonesLoader) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides) storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
 			now:                 time.Now(),
 			mint:                mint,
 			maxt:                maxt,
 			chunkIterFn:         chunkIterFn,
-			tombstonesLoader:    tombstonesLoader,
 			limits:              limits,
 			maxQueryIntoFuture:  cfg.MaxQueryIntoFuture,
 			queryStoreForLabels: cfg.QueryStoreForLabels,
@@ -277,7 +274,6 @@ type querier struct {
 	now         time.Time
 	mint, maxt  int64
 
-	tombstonesLoader    purger.TombstonesLoader
 	limits              *validation.Overrides
 	maxQueryIntoFuture  time.Duration
 	queryStoreForLabels bool
@@ -398,19 +394,8 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		return storage.ErrSeriesSet(limitErr)
 	}
 
-	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
-	}
-
 	if len(queriers) == 1 {
-		seriesSet := queriers[0].Select(ctx, sortSeries, sp, matchers...)
-
-		if tombstones.Len() != 0 {
-			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
-		}
-
-		return seriesSet
+		return queriers[0].Select(ctx, sortSeries, sp, matchers...)
 	}
 
 	sets := make(chan storage.SeriesSet, len(queriers))
@@ -434,12 +419,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// we have all the sets from different sources (chunk from store, chunks from ingesters,
 	// time series from store and time series from ingesters).
 	// mergeSeriesSets will return sorted set.
-	seriesSet := q.mergeSeriesSets(result)
-
-	if tombstones.Len() != 0 {
-		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
-	}
-	return seriesSet
+	return q.mergeSeriesSets(result)
 }
 
 // LabelValues implements storage.Querier.

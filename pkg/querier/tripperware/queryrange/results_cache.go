@@ -38,14 +38,7 @@ import (
 var (
 	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
 	noStoreValue = "no-store"
-
-	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
-	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
-
-type CacheGenNumberLoader interface {
-	GetResultsCacheGenNumber(tenantIDs []string) string
-}
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
@@ -161,7 +154,6 @@ type resultsCache struct {
 	extractor                  Extractor
 	minCacheExtent             int64 // discard any cache extent smaller than this
 	merger                     tripperware.Merger
-	cacheGenNumberLoader       CacheGenNumberLoader
 	shouldCache                ShouldCacheFn
 	cacheQueryableSamplesStats bool
 }
@@ -179,7 +171,6 @@ func NewResultsCacheMiddleware(
 	limits tripperware.Limits,
 	merger tripperware.Merger,
 	extractor Extractor,
-	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
 	reg prometheus.Registerer,
 ) (tripperware.Middleware, cache.Cache, error) {
@@ -189,10 +180,6 @@ func NewResultsCacheMiddleware(
 	}
 	if cfg.Compression == "snappy" {
 		c = cache.NewSnappy(c, logger)
-	}
-
-	if cacheGenNumberLoader != nil {
-		c = cache.NewCacheGenNumMiddleware(c)
 	}
 
 	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
@@ -206,7 +193,6 @@ func NewResultsCacheMiddleware(
 			extractor:                  extractor,
 			minCacheExtent:             (5 * time.Minute).Milliseconds(),
 			splitter:                   splitter,
-			cacheGenNumberLoader:       cacheGenNumberLoader,
 			shouldCache:                shouldCache,
 			cacheQueryableSamplesStats: cfg.CacheQueryableSamplesStats,
 		}
@@ -230,10 +216,6 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 	if s.shouldCache != nil && !s.shouldCache(r) {
 		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "should not cache", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 		return s.next.Do(ctx, r)
-	}
-
-	if s.cacheGenNumberLoader != nil {
-		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	var (
@@ -282,25 +264,6 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 
 	if !s.isAtModifierCachable(ctx, req, maxCacheTime) {
 		return false
-	}
-
-	if s.cacheGenNumberLoader == nil {
-		return true
-	}
-
-	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
-	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
-
-	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
-		return false
-	}
-
-	for _, gen := range genNumbersFromResp {
-		if gen != genNumberFromCtx {
-			level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
-			return false
-		}
 	}
 
 	return true

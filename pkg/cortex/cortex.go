@@ -38,7 +38,6 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -302,7 +301,6 @@ type Cortex struct {
 	Flusher                  *flusher.Flusher
 	Frontend                 *frontendv1.Frontend
 	RuntimeConfig            *runtimeconfig.Manager
-	TombstonesLoader         purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	QuerierEngine            v1.QueryEngine

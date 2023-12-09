@@ -47,7 +47,7 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 		"shouldn't return error if query is invalid": {
 			url:                  "/query?query=up[4h",
 			queryPriorityEnabled: true,
-			err:                  parseError,
+			err:                  errParseExpr,
 		},
 		"should miss if query string empty - range query": {
 			url:                  "/query_range?query=",
@@ -56,7 +56,7 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 		"shouldn't return error if query is invalid, range query": {
 			url:                  "/query_range?query=up[4h",
 			queryPriorityEnabled: true,
-			err:                  parseError,
+			err:                  errParseExpr,
 		},
 		"should miss if neither instant nor range query": {
 			url:                  "/series",

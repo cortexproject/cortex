@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	parseError = errors.New("failed to parse expr")
+	errParseExpr = errors.New("failed to parse expr")
 )
 
 func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, lookbackDelta time.Duration) (int64, error) {
@@ -30,7 +30,7 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 	if err != nil {
 		// If query fails to be parsed, we throw a simple parse error
 		// and fail query later on querier.
-		return 0, parseError
+		return 0, errParseExpr
 	}
 
 	if len(queryPriority.Priorities) == 0 {

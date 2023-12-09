@@ -161,8 +161,10 @@ func NewQueryTripperware(
 
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
 						priority, err := GetPriority(r, userStr, limits, now, lookbackDelta)
-						if err != nil {
-							return nil, err
+						if err != nil && err == errParseExpr {
+							// If query is invalid, no need to go through tripperwares
+							// for further splitting.
+							return next.RoundTrip(r)
 						}
 						r.Header.Set(util.QueryPriorityHeaderKey, strconv.FormatInt(priority, 10))
 					}

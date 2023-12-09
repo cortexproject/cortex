@@ -1,6 +1,7 @@
 package tripperware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -9,6 +10,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	errParseExpr = errors.New("failed to parse expr")
 )
 
 func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, lookbackDelta time.Duration) (int64, error) {
@@ -23,7 +28,9 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
-		return 0, err
+		// If query fails to be parsed, we throw a simple parse error
+		// and fail query later on querier.
+		return 0, errParseExpr
 	}
 
 	if len(queryPriority.Priorities) == 0 {

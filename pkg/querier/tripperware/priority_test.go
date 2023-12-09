@@ -14,7 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t *testing.T) {
+func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString(t *testing.T) {
 	now := time.Now()
 	limits := mockLimits{queryPriority: validation.QueryPriority{
 		Priorities: []validation.PriorityDef{
@@ -33,6 +33,7 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t
 	type testCase struct {
 		url                  string
 		queryPriorityEnabled bool
+		err                  error
 	}
 
 	tests := map[string]testCase{
@@ -43,9 +44,19 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t
 			url:                  "/query?query=",
 			queryPriorityEnabled: true,
 		},
+		"shouldn't return error if query is invalid": {
+			url:                  "/query?query=up[4h",
+			queryPriorityEnabled: true,
+			err:                  errParseExpr,
+		},
 		"should miss if query string empty - range query": {
 			url:                  "/query_range?query=",
 			queryPriorityEnabled: true,
+		},
+		"shouldn't return error if query is invalid, range query": {
+			url:                  "/query_range?query=up[4h",
+			queryPriorityEnabled: true,
+			err:                  errParseExpr,
 		},
 		"should miss if neither instant nor range query": {
 			url:                  "/series",
@@ -58,7 +69,11 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrEmptyQueryString(t
 			limits.queryPriority.Enabled = testData.queryPriorityEnabled
 			req, _ := http.NewRequest(http.MethodPost, testData.url, bytes.NewReader([]byte{}))
 			priority, err := GetPriority(req, "", limits, now, 0)
-			assert.NoError(t, err)
+			if err != nil {
+				assert.Equal(t, testData.err, err)
+			} else {
+				assert.NoError(t, err)
+			}
 			assert.Equal(t, int64(0), priority)
 		})
 	}

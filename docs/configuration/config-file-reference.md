@@ -3053,10 +3053,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Configuration for query priority.
 query_priority:
   # Whether queries are assigned with priorities.
+  # CLI flag: -frontend.query-priority.enabled
   [enabled: <boolean> | default = false]
 
   # Priority assigned to all queries by default. Must be a unique value. Use
   # this as a baseline to make certain queries higher/lower priority.
+  # CLI flag: -frontend.query-priority.default-priority
   [default_priority: <int> | default = 0]
 
   # List of priority definitions.

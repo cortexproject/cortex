@@ -28,4 +28,7 @@ message Stats {
   uint64 fetched_samples_count = 7;
   // The limit hit when executing the query
   string limit_hit = 8 [(gogoproto.nullable) = true];
+  // The total number of split queries sent after going through all the middlewares.
+  // It includes the number of requests that might be discarded by the queue.
+  uint64 split_queries = 9;
 }

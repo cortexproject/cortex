@@ -294,6 +294,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	numSamples := stats.LoadFetchedSamples()
 	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
+	splitQueries := stats.LoadSplitQueries()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
@@ -324,6 +325,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		"fetched_samples_count", numSamples,
 		"fetched_chunks_bytes", numChunkBytes,
 		"fetched_data_bytes", numDataBytes,
+		"split_queries", splitQueries,
 		"status_code", statusCode,
 		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)

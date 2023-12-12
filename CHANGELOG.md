@@ -10,6 +10,7 @@
 * [ENHANCEMENT] Compactor: Add new compactor metric `cortex_compactor_start_duration_seconds`. #5683
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.18`. #5684
 * [ENHANCEMENT] Index Cache: Multi level cache adds config `max_backfill_items` to cap max items to backfill per async operation. #5686
+* [ENHANCEMENT] Query Frontend: Log number of split queries in `query stats` log. #5703
 
 ## 1.16.0 2023-11-20
 

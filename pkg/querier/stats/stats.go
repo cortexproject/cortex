@@ -180,6 +180,22 @@ func (s *QueryStats) LoadFetchedChunks() uint64 {
 	return atomic.LoadUint64(&s.FetchedChunksCount)
 }
 
+func (s *QueryStats) AddSplitQueries(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.SplitQueries, count)
+}
+
+func (s *QueryStats) LoadSplitQueries() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.SplitQueries)
+}
+
 // Merge the provided Stats into this one.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil {

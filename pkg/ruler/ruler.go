@@ -878,7 +878,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 
-	rulers, err := ring.GetReplicationSetForOperation(RingOp)
+	rulers, err := ring.GetReplicationSetForOperation(ListRuleRingOp)
 	if err != nil {
 		return nil, err
 	}

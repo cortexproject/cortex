@@ -26,6 +26,13 @@ var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceS
 	return s != ring.ACTIVE
 })
 
+// ListRuleRingOp is the operation used for getting rule groups from rulers.
+var ListRuleRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
+	// Although LEAVING ruler does not get any rule groups. If it is excluded, list rule will fail because not enough healthy instance.
+	// So we still try to read from the LEAVING ruler, although it might return empty result
+	return s != ring.ACTIVE && s != ring.LEAVING
+})
+
 // RingConfig masks the ring lifecycler config which contains
 // many options not really required by the rulers ring. This config
 // is used to strip down the config to the minimum, and avoid confusion

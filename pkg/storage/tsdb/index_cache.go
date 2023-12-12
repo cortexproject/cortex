@@ -204,13 +204,16 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			iReg = prometheus.WrapRegistererWith(prometheus.Labels{"level": fmt.Sprintf("L%v", i)}, registerer)
 		}
 
+		var (
+			cache storecache.IndexCache
+			err   error
+		)
 		switch backend {
 		case IndexCacheBackendInMemory:
-			c, err := newInMemoryIndexCache(cfg.InMemory, logger, iReg)
+			cache, err = newInMemoryIndexCache(cfg.InMemory, logger, iReg)
 			if err != nil {
-				return c, err
+				return cache, err
 			}
-			caches = append(caches, c)
 			enabledItems = append(enabledItems, cfg.InMemory.EnabledItems)
 		case IndexCacheBackendMemcached:
 			c, err := newMemcachedIndexCacheClient(cfg.Memcached.ClientConfig, logger, registerer)
@@ -218,11 +221,10 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 				return nil, err
 			}
 			// TODO(yeya24): expose TTL
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			cache, err = storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
 			if err != nil {
 				return nil, err
 			}
-			caches = append(caches, cache)
 			enabledItems = append(enabledItems, cfg.Memcached.EnabledItems)
 		case IndexCacheBackendRedis:
 			c, err := newRedisIndexCacheClient(cfg.Redis.ClientConfig, logger, iReg)
@@ -230,15 +232,15 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 				return nil, err
 			}
 			// TODO(yeya24): expose TTL
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			cache, err = storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
 			if err != nil {
 				return nil, err
 			}
-			caches = append(caches, cache)
 			enabledItems = append(enabledItems, cfg.Redis.EnabledItems)
 		default:
 			return nil, errUnsupportedIndexCacheBackend
 		}
+		caches = append(caches, storecache.NewTracingIndexCache(backend, cache))
 	}
 
 	return newMultiLevelCache(registerer, cfg.MultiLevel, enabledItems, caches...), nil

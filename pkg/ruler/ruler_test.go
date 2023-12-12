@@ -340,6 +340,8 @@ func TestGetRules(t *testing.T) {
 		shuffleShardSize int
 		rulesRequest     RulesRequest
 		expectedCount    map[string]int
+		rulerStateMap    map[string]ring.InstanceState
+		expectedError    error
 	}
 
 	ruleMap := rulesMap{
@@ -433,6 +435,24 @@ func TestGetRules(t *testing.T) {
 		},
 	}
 
+	rulerStateMapAllActive := map[string]ring.InstanceState{
+		"ruler1": ring.ACTIVE,
+		"ruler2": ring.ACTIVE,
+		"ruler3": ring.ACTIVE,
+	}
+
+	rulerStateMapOneLeaving := map[string]ring.InstanceState{
+		"ruler1": ring.ACTIVE,
+		"ruler2": ring.LEAVING,
+		"ruler3": ring.ACTIVE,
+	}
+
+	rulerStateMapOnePending := map[string]ring.InstanceState{
+		"ruler1": ring.ACTIVE,
+		"ruler2": ring.PENDING,
+		"ruler3": ring.ACTIVE,
+	}
+
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
@@ -472,6 +492,7 @@ func TestGetRules(t *testing.T) {
 			rulesRequest: RulesRequest{
 				Type: alertingRuleFilter,
 			},
+			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
 				"user1": 2,
 				"user2": 4,
@@ -481,6 +502,7 @@ func TestGetRules(t *testing.T) {
 		"Default Sharding with No Filter": {
 			sharding:         true,
 			shardingStrategy: util.ShardingStrategyDefault,
+			rulerStateMap:    rulerStateMapAllActive,
 			expectedCount: map[string]int{
 				"user1": 5,
 				"user2": 9,
@@ -491,6 +513,7 @@ func TestGetRules(t *testing.T) {
 			sharding:         true,
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
+			rulerStateMap:    rulerStateMapAllActive,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -507,6 +530,7 @@ func TestGetRules(t *testing.T) {
 			rulesRequest: RulesRequest{
 				RuleGroupNames: []string{"third"},
 			},
+			rulerStateMap: rulerStateMapAllActive,
 			expectedCount: map[string]int{
 				"user1": 2,
 				"user2": 1,
@@ -517,6 +541,7 @@ func TestGetRules(t *testing.T) {
 			sharding:         true,
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
+			rulerStateMap:    rulerStateMapAllActive,
 			rulesRequest: RulesRequest{
 				RuleGroupNames: []string{"second", "third"},
 				Type:           recordingRuleFilter,
@@ -531,6 +556,7 @@ func TestGetRules(t *testing.T) {
 			sharding:         true,
 			shuffleShardSize: 2,
 			shardingStrategy: util.ShardingStrategyShuffle,
+			rulerStateMap:    rulerStateMapAllActive,
 			rulesRequest: RulesRequest{
 				Type:  alertingRuleFilter,
 				Files: []string{"latency-test"},
@@ -540,6 +566,30 @@ func TestGetRules(t *testing.T) {
 				"user2": 0,
 				"user3": 1,
 			},
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter and one ruler is in LEAVING state": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulerStateMap:    rulerStateMapOneLeaving,
+			rulesRequest: RulesRequest{
+				Type: recordingRuleFilter,
+			},
+			expectedCount: map[string]int{
+				"user1": 3,
+				"user2": 5,
+				"user3": 1,
+			},
+		},
+		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter and one ruler is in Pending state": {
+			sharding:         true,
+			shuffleShardSize: 2,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			rulerStateMap:    rulerStateMapOnePending,
+			rulesRequest: RulesRequest{
+				Type: recordingRuleFilter,
+			},
+			expectedError: ring.ErrTooManyUnhealthyInstances,
 		},
 	}
 
@@ -593,7 +643,7 @@ func TestGetRules(t *testing.T) {
 						d = ring.NewDesc()
 					}
 					for rID, tokens := range allTokensByRuler {
-						d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", tokens, ring.ACTIVE, time.Now())
+						d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), "", tokens, tc.rulerStateMap[rID], time.Now())
 					}
 					return d, true, nil
 				})
@@ -616,7 +666,12 @@ func TestGetRules(t *testing.T) {
 				ctx := user.InjectOrgID(context.Background(), u)
 				forEachRuler(func(_ string, r *Ruler) {
 					ruleStateDescriptions, err := r.GetRules(ctx, tc.rulesRequest)
-					require.NoError(t, err)
+					if tc.expectedError != nil {
+						require.Error(t, tc.expectedError)
+						return
+					} else {
+						require.NoError(t, err)
+					}
 					rct := 0
 					for _, ruleStateDesc := range ruleStateDescriptions {
 						rct += len(ruleStateDesc.ActiveRules)

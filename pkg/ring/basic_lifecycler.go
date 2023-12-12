@@ -469,20 +469,21 @@ func (l *BasicLifecycler) heartbeat(ctx context.Context) {
 // changeState of the instance within the ring. This function is guaranteed
 // to be called within the lifecycler main goroutine.
 func (l *BasicLifecycler) changeState(ctx context.Context, state InstanceState) error {
+	oldState := l.GetState()
 	err := l.updateInstance(ctx, func(_ *Desc, i *InstanceDesc) bool {
 		// No-op if the state hasn't changed.
 		if i.State == state {
 			return false
 		}
-
 		i.State = state
 		return true
 	})
 
 	if err != nil {
-		level.Warn(l.logger).Log("msg", "failed to change instance state in the ring", "from", l.GetState(), "to", state, "err", err)
+		level.Info(l.logger).Log("msg", "failed to change instance state in the ring", "from", oldState, "to", state, "ring", l.ringName, "err", err)
+	} else {
+		level.Info(l.logger).Log("msg", "successfully changed instance state from", "old_state", oldState, "to", state, "ring", l.ringName)
 	}
-
 	return err
 }
 

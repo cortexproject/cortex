@@ -1013,7 +1013,7 @@ github.com/yuin/gopher-lua/pm
 # github.com/zhangyunhao116/umap v0.0.0-20221211160557-cb7705fafa39
 ## explicit; go 1.13
 github.com/zhangyunhao116/umap
-# go.etcd.io/etcd/api/v3 v3.5.10
+# go.etcd.io/etcd/api/v3 v3.5.11
 ## explicit; go 1.20
 go.etcd.io/etcd/api/v3/authpb
 go.etcd.io/etcd/api/v3/etcdserverpb

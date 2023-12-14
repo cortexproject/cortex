@@ -20,7 +20,6 @@ import (
 	amconfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
@@ -457,11 +456,6 @@ func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
-	err = am.migrateStateFilesToPerTenantDirectories()
-	if err != nil {
-		return err
-	}
-
 	defer func() {
 		if err == nil || am.subservices == nil {
 			return
@@ -532,119 +526,6 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	}
 
 	return nil
-}
-
-// migrateStateFilesToPerTenantDirectories migrates any existing configuration from old place to new hierarchy.
-// TODO: Remove in Cortex 1.11.
-func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() error {
-	migrate := func(from, to string) error {
-		level.Info(am.logger).Log("msg", "migrating alertmanager state", "from", from, "to", to)
-		err := os.Rename(from, to)
-		return errors.Wrapf(err, "failed to migrate alertmanager state from %v to %v", from, to)
-	}
-
-	st, err := am.getObsoleteFilesPerUser()
-	if err != nil {
-		return errors.Wrap(err, "failed to migrate alertmanager state files")
-	}
-
-	for userID, files := range st {
-		tenantDir := am.getTenantDirectory(userID)
-		err := os.MkdirAll(tenantDir, 0777)
-		if err != nil {
-			return errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
-		}
-
-		errs := tsdb_errors.NewMulti()
-
-		if files.notificationLogSnapshot != "" {
-			errs.Add(migrate(files.notificationLogSnapshot, filepath.Join(tenantDir, notificationLogSnapshot)))
-		}
-
-		if files.silencesSnapshot != "" {
-			errs.Add(migrate(files.silencesSnapshot, filepath.Join(tenantDir, silencesSnapshot)))
-		}
-
-		if files.templatesDir != "" {
-			errs.Add(migrate(files.templatesDir, filepath.Join(tenantDir, templatesDir)))
-		}
-
-		if err := errs.Err(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type obsoleteStateFiles struct {
-	notificationLogSnapshot string
-	silencesSnapshot        string
-	templatesDir            string
-}
-
-// getObsoleteFilesPerUser returns per-user set of files that should be migrated from old structure to new structure.
-func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsoleteStateFiles, error) {
-	files, err := os.ReadDir(am.cfg.DataDir)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list dir %v", am.cfg.DataDir)
-	}
-
-	// old names
-	const (
-		notificationLogPrefix = "nflog:"
-		silencesPrefix        = "silences:"
-		templates             = "templates"
-	)
-
-	result := map[string]obsoleteStateFiles{}
-
-	for _, f := range files {
-		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
-
-		if f.IsDir() {
-			// Process templates dir.
-			if f.Name() != templates {
-				// Ignore other files -- those are likely per tenant directories.
-				continue
-			}
-
-			templateDirs, err := os.ReadDir(fullPath)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to list dir %v", fullPath)
-			}
-
-			// Previously templates directory contained per-tenant subdirectory.
-			for _, d := range templateDirs {
-				if d.IsDir() {
-					v := result[d.Name()]
-					v.templatesDir = filepath.Join(fullPath, d.Name())
-					result[d.Name()] = v
-				} else {
-					level.Warn(am.logger).Log("msg", "ignoring unknown local file while migrating local alertmanager state files", "file", filepath.Join(fullPath, d.Name()))
-				}
-			}
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(f.Name(), notificationLogPrefix):
-			userID := strings.TrimPrefix(f.Name(), notificationLogPrefix)
-			v := result[userID]
-			v.notificationLogSnapshot = fullPath
-			result[userID] = v
-
-		case strings.HasPrefix(f.Name(), silencesPrefix):
-			userID := strings.TrimPrefix(f.Name(), silencesPrefix)
-			v := result[userID]
-			v.silencesSnapshot = fullPath
-			result[userID] = v
-
-		default:
-			level.Warn(am.logger).Log("msg", "ignoring unknown local data file while migrating local alertmanager state files", "file", fullPath)
-		}
-	}
-
-	return result, nil
 }
 
 func (am *MultitenantAlertmanager) run(ctx context.Context) error {
@@ -1297,7 +1178,7 @@ func (am *MultitenantAlertmanager) getPerUserDirectories() map[string]string {
 	return result
 }
 
-// UpdateState implements the Alertmanager service.
+// ReadState implements the Alertmanager service.
 func (am *MultitenantAlertmanager) ReadState(ctx context.Context, req *alertmanagerpb.ReadStateRequest) (*alertmanagerpb.ReadStateResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {

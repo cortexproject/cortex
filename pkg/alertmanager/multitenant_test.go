@@ -561,39 +561,6 @@ receivers:
 	}
 }
 
-func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *testing.T) {
-	ctx := context.Background()
-
-	const (
-		user1 = "user1"
-		user2 = "user2"
-	)
-
-	store := prepareInMemoryAlertStore()
-	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-		User:      user2,
-		RawConfig: simpleConfigOne,
-		Templates: []*alertspb.TemplateDesc{},
-	}))
-
-	reg := prometheus.NewPedanticRegistry()
-	cfg := mockAlertmanagerConfig(t)
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
-	require.NoError(t, err)
-
-	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user1))
-	createFile(t, filepath.Join(cfg.DataDir, "silences:"+user1))
-	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user2))
-	createFile(t, filepath.Join(cfg.DataDir, "templates", user2, "template.tpl"))
-
-	require.NoError(t, am.migrateStateFilesToPerTenantDirectories())
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot)))
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot)))
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot)))
-	require.True(t, dirExists(t, filepath.Join(cfg.DataDir, user2, templatesDir)))
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl")))
-}
-
 func fileExists(t *testing.T, path string) bool {
 	return checkExists(t, path, false)
 }

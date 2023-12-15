@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//       http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package featuregate // import "go.opentelemetry.io/collector/featuregate"
 
@@ -21,9 +10,19 @@ import (
 	"go.uber.org/multierr"
 )
 
-// NewFlag returns a flag.Value that directly applies feature gate statuses to a Registry.
-func NewFlag(reg *Registry) flag.Value {
-	return &flagValue{reg: reg}
+const (
+	featureGatesFlag            = "feature-gates"
+	featureGatesFlagDescription = "Comma-delimited list of feature gate identifiers. Prefix with '-' to disable the feature. '+' or no prefix will enable the feature."
+)
+
+// RegisterFlagsOption is an option for RegisterFlags.
+type RegisterFlagsOption interface {
+	private()
+}
+
+// RegisterFlags that directly applies feature gate statuses to a Registry.
+func (r *Registry) RegisterFlags(flagSet *flag.FlagSet, _ ...RegisterFlagsOption) {
+	flagSet.Var(&flagValue{reg: r}, featureGatesFlag, featureGatesFlagDescription)
 }
 
 // flagValue implements the flag.Value interface and directly applies feature gate statuses to a Registry.

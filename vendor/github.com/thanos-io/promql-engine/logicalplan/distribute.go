@@ -10,13 +10,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/query"
+)
+
+var (
+	RewrittenExternalLabelWarning = errors.Newf("%s: rewriting an external label with label_replace could lead to unpredictable results", annotations.PromQLWarning.Error())
 )
 
 type timeRange struct {
@@ -77,6 +83,8 @@ type RemoteExecution struct {
 	Engine          api.RemoteEngine
 	Query           string
 	QueryRangeStart time.Time
+
+	valueType parser.ValueType
 }
 
 func (r RemoteExecution) String() string {
@@ -90,7 +98,7 @@ func (r RemoteExecution) Pretty(level int) string { return r.String() }
 
 func (r RemoteExecution) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
 
-func (r RemoteExecution) Type() parser.ValueType { return parser.ValueTypeMatrix }
+func (r RemoteExecution) Type() parser.ValueType { return r.valueType }
 
 func (r RemoteExecution) PromQLExpr() {}
 
@@ -107,7 +115,7 @@ func (r Deduplicate) Pretty(level int) string { return r.String() }
 
 func (r Deduplicate) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
 
-func (r Deduplicate) Type() parser.ValueType { return parser.ValueTypeMatrix }
+func (r Deduplicate) Type() parser.ValueType { return r.Expressions[0].Type() }
 
 func (r Deduplicate) PromQLExpr() {}
 
@@ -119,7 +127,7 @@ func (r Noop) Pretty(level int) string { return r.String() }
 
 func (r Noop) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
 
-func (r Noop) Type() parser.ValueType { return parser.ValueTypeMatrix }
+func (r Noop) Type() parser.ValueType { return parser.ValueTypeVector }
 
 func (r Noop) PromQLExpr() {}
 
@@ -129,7 +137,6 @@ var distributiveAggregations = map[parser.ItemType]struct{}{
 	parser.SUM:     {},
 	parser.MIN:     {},
 	parser.MAX:     {},
-	parser.AVG:     {},
 	parser.GROUP:   {},
 	parser.COUNT:   {},
 	parser.BOTTOMK: {},
@@ -139,16 +146,18 @@ var distributiveAggregations = map[parser.ItemType]struct{}{
 // DistributedExecutionOptimizer produces a logical plan suitable for
 // distributed Query execution.
 type DistributedExecutionOptimizer struct {
-	Endpoints api.RemoteEndpoints
+	Endpoints          api.RemoteEndpoints
+	SkipBinaryPushdown bool
 }
 
-func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Options) parser.Expr {
+func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Options) (parser.Expr, annotations.Annotations) {
 	engines := m.Endpoints.Engines()
 	sort.Slice(engines, func(i, j int) bool {
 		return engines[i].MinT() < engines[j].MinT()
 	})
 
 	labelRanges := make(labelSetRanges)
+	engineLabels := make(map[string]struct{})
 	for _, e := range engines {
 		for _, lset := range e.LabelSets() {
 			lsetKey := lset.String()
@@ -156,13 +165,19 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 				start: time.UnixMilli(e.MinT()),
 				end:   time.UnixMilli(e.MaxT()),
 			})
+			lset.Range(func(lbl labels.Label) {
+				engineLabels[lbl.Name] = struct{}{}
+			})
 		}
 	}
 	minEngineOverlap := labelRanges.minOverlap()
+	if rewritesEngineLabels(plan, engineLabels) {
+		return plan, annotations.New().Add(RewrittenExternalLabelWarning)
+	}
 
 	TraverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
 		// If the current operation is not distributive, stop the traversal.
-		if !isDistributive(current) {
+		if !isDistributive(current, m.SkipBinaryPushdown) {
 			return true
 		}
 
@@ -186,9 +201,13 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 			}
 			return true
 		}
+		if isAbsent(*current) {
+			*current = m.distributeAbsent(*current, engines, calculateStartOffset(current, opts.LookbackDelta), opts)
+			return true
+		}
 
 		// If the parent operation is distributive, continue the traversal.
-		if isDistributive(parent) {
+		if isDistributive(parent, m.SkipBinaryPushdown) {
 			return false
 		}
 
@@ -196,7 +215,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 		return true
 	})
 
-	return plan
+	return plan, nil
 }
 
 func newRemoteAggregation(rootAggregation *parser.AggregateExpr, engines []api.RemoteEngine) parser.Expr {
@@ -232,12 +251,8 @@ func newRemoteAggregation(rootAggregation *parser.AggregateExpr, engines []api.R
 // For each engine which matches the time range of the query, it creates a RemoteExecution scoped to the range of the engine.
 // All remote executions are wrapped in a Deduplicate logical node to make sure that results from overlapping engines are deduplicated.
 func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engines []api.RemoteEngine, opts *query.Options, allowedStartOffset time.Duration) parser.Expr {
-	if isAbsent(*expr) {
-		return m.distributeAbsent(*expr, engines, opts)
-	}
-
 	startOffset := calculateStartOffset(expr, opts.LookbackDelta)
-	if allowedStartOffset < maxDuration(opts.LookbackDelta, startOffset) {
+	if allowedStartOffset < startOffset {
 		return *expr
 	}
 
@@ -253,6 +268,12 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 		if !matchesExternalLabelSet(*expr, e.LabelSets()) {
 			continue
 		}
+		if e.MinT() > opts.End.UnixMilli() {
+			continue
+		}
+		if e.MaxT() < opts.Start.UnixMilli()-startOffset.Milliseconds() {
+			continue
+		}
 
 		start, keep := getStartTimeForEngine(e, opts, startOffset, globalMinT)
 		if !keep {
@@ -263,6 +284,7 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 			Engine:          e,
 			Query:           (*expr).String(),
 			QueryRangeStart: start,
+			valueType:       (*expr).Type(),
 		})
 	}
 
@@ -275,14 +297,33 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 	}
 }
 
-func (m DistributedExecutionOptimizer) distributeAbsent(expr parser.Expr, engines []api.RemoteEngine, opts *query.Options) parser.Expr {
+func (m DistributedExecutionOptimizer) distributeAbsent(expr parser.Expr, engines []api.RemoteEngine, startOffset time.Duration, opts *query.Options) parser.Expr {
 	queries := make(RemoteExecutions, 0, len(engines))
-	for i := range engines {
+	for i, e := range engines {
+		if e.MaxT() < opts.Start.UnixMilli()-startOffset.Milliseconds() {
+			continue
+		}
+		if e.MinT() > opts.End.UnixMilli() {
+			continue
+		}
 		queries = append(queries, RemoteExecution{
 			Engine:          engines[i],
 			Query:           expr.String(),
 			QueryRangeStart: opts.Start,
+			valueType:       expr.Type(),
 		})
+	}
+	// We need to make sure that absent is at least evaluated against one engine.
+	// Otherwise, we will end up with an empty result (not absent) when no engine matches the query.
+	// For practicality, we choose the latest one since it likely has data in memory or on disk.
+	// TODO(fpetkovski): This could also solved by a synthetic node which acts as a number literal but has specific labels.
+	if len(queries) == 0 && len(engines) > 0 {
+		return RemoteExecution{
+			Engine:          engines[len(engines)-1],
+			Query:           expr.String(),
+			QueryRangeStart: opts.Start,
+			valueType:       expr.Type(),
+		}
 	}
 
 	var rootExpr parser.Expr = queries[0]
@@ -383,20 +424,14 @@ func numSteps(start, end time.Time, step time.Duration) int64 {
 	return (end.UnixMilli()-start.UnixMilli())/step.Milliseconds() + 1
 }
 
-func isDistributive(expr *parser.Expr) bool {
+func isDistributive(expr *parser.Expr, skipBinaryPushdown bool) bool {
 	if expr == nil {
 		return false
 	}
 
 	switch aggr := (*expr).(type) {
 	case *parser.BinaryExpr:
-		// Binary expressions are joins and need to be done across the entire
-		// data set. This is why we cannot push down aggregations where
-		// the operand is a binary expression.
-		// The only exception currently is pushing down binary expressions with a constant operand.
-		lhsConstant := isNumberLiteral(aggr.LHS)
-		rhsConstant := isNumberLiteral(aggr.RHS)
-		return lhsConstant || rhsConstant
+		return isBinaryExpressionWithOneConstantSide(aggr) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(aggr))
 	case *parser.AggregateExpr:
 		// Certain aggregations are currently not supported.
 		if _, ok := distributiveAggregations[aggr.Op]; !ok {
@@ -407,6 +442,22 @@ func isDistributive(expr *parser.Expr) bool {
 	}
 
 	return true
+}
+
+func isBinaryExpressionWithOneConstantSide(expr *parser.BinaryExpr) bool {
+	lhsConstant := isConstantExpr(expr.LHS)
+	rhsConstant := isConstantExpr(expr.RHS)
+	return (lhsConstant || rhsConstant)
+}
+
+func isBinaryExpressionWithDistributableMatching(expr *parser.BinaryExpr) bool {
+	if expr.VectorMatching == nil {
+		return false
+	}
+
+	// we can distribute if the vector matching contains the external labels so that
+	// all potential matching partners are contained in one engine
+	return !expr.VectorMatching.On && len(expr.VectorMatching.MatchingLabels) == 0
 }
 
 // matchesExternalLabels returns false if given matchers are not matching external labels.
@@ -450,17 +501,37 @@ func matchesExternalLabels(ms []*labels.Matcher, externalLabels labels.Labels) b
 	return true
 }
 
-func isNumberLiteral(expr parser.Expr) bool {
-	if _, ok := expr.(*parser.NumberLiteral); ok {
+func isConstantExpr(expr parser.Expr) bool {
+	// TODO: there are more possibilities for constant expressions
+	switch texpr := expr.(type) {
+	case *parser.NumberLiteral:
 		return true
-	}
-
-	stepInvariant, ok := expr.(*parser.StepInvariantExpr)
-	if !ok {
+	case *parser.StepInvariantExpr:
+		return isConstantExpr(texpr.Expr)
+	case *parser.ParenExpr:
+		return isConstantExpr(texpr.Expr)
+	case *parser.BinaryExpr:
+		return isConstantExpr(texpr.LHS) && isConstantExpr(texpr.RHS)
+	default:
 		return false
 	}
+}
 
-	return isNumberLiteral(stepInvariant.Expr)
+func rewritesEngineLabels(e parser.Expr, engineLabels map[string]struct{}) bool {
+	var result bool
+	TraverseBottomUp(nil, &e, func(parent *parser.Expr, node *parser.Expr) bool {
+		call, ok := (*node).(*parser.Call)
+		if !ok || call.Func.Name != "label_replace" {
+			return false
+		}
+		targetLabel := call.Args[1].(*parser.StringLiteral).Val
+		if _, ok := engineLabels[targetLabel]; ok {
+			result = true
+			return true
+		}
+		return false
+	})
+	return result
 }
 
 func maxTime(a, b time.Time) time.Time {

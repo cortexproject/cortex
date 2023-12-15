@@ -198,21 +198,20 @@ func (a *kAggregate) init(ctx context.Context) error {
 	return nil
 }
 
-func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, SampleIDs []uint64, samples []float64) {
-	for i, sId := range SampleIDs {
+func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, sampleIDs []uint64, samples []float64) {
+	for i, sId := range sampleIDs {
 		h := a.inputToHeap[sId]
-		if h.Len() < k || h.compare(h.entries[0].total, samples[i]) || (math.IsNaN(h.entries[0].total) && !math.IsNaN(samples[i])) {
-			if k == 1 && h.Len() == 1 {
-				h.entries[0].sId = sId
-				h.entries[0].total = samples[i]
-				continue
-			}
-
-			if h.Len() == k {
-				heap.Pop(h)
-			}
-
+		switch {
+		case h.Len() < k:
 			heap.Push(h, &entry{sId: sId, total: samples[i]})
+
+		case h.compare(h.entries[0].total, samples[i]) || (math.IsNaN(h.entries[0].total) && !math.IsNaN(samples[i])):
+			h.entries[0].sId = sId
+			h.entries[0].total = samples[i]
+
+			if k > 1 {
+				heap.Fix(h, 0)
+			}
 		}
 	}
 

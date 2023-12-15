@@ -12,7 +12,6 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
@@ -33,14 +32,14 @@ type matrixScanner struct {
 }
 
 type matrixSelector struct {
-	funcExpr *parser.Call
-	storage  engstore.SeriesSelector
-	call     FunctionCall
-	scanners []matrixScanner
-	series   []labels.Labels
-	once     sync.Once
-
-	vectorPool *model.VectorPool
+	vectorPool   *model.VectorPool
+	functionName string
+	storage      engstore.SeriesSelector
+	scalarArgs   []float64
+	call         FunctionCall
+	scanners     []matrixScanner
+	series       []labels.Labels
+	once         sync.Once
 
 	numSteps      int
 	mint          int64
@@ -68,22 +67,24 @@ var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supp
 func NewMatrixSelector(
 	pool *model.VectorPool,
 	selector engstore.SeriesSelector,
-	funcExpr *parser.Call,
+	functionName string,
+	arg float64,
 	opts *query.Options,
 	selectRange, offset time.Duration,
 	batchSize int64,
 	shard, numShard int,
 ) (model.VectorOperator, error) {
-	call, err := NewRangeVectorFunc(funcExpr.Func.Name)
+	call, err := NewRangeVectorFunc(functionName)
 	if err != nil {
 		return nil, err
 	}
-	isExtFunction := function.IsExtFunction(funcExpr.Func.Name)
+	isExtFunction := function.IsExtFunction(functionName)
 	m := &matrixSelector{
-		storage:    selector,
-		call:       call,
-		funcExpr:   funcExpr,
-		vectorPool: pool,
+		storage:      selector,
+		call:         call,
+		functionName: functionName,
+		vectorPool:   pool,
+		scalarArgs:   []float64{arg},
 
 		numSteps:      opts.NumSteps(),
 		mint:          opts.Start.UnixMilli(),
@@ -122,7 +123,7 @@ func (o *matrixSelector) Analyze() (model.OperatorTelemetry, []model.ObservableV
 func (o *matrixSelector) Explain() (me string, next []model.VectorOperator) {
 	r := time.Duration(o.selectRange) * time.Millisecond
 	if o.call != nil {
-		return fmt.Sprintf("[*matrixSelector] %v({%v}[%s] %v mod %v)", o.funcExpr.Func.Name, o.storage.Matchers(), r, o.shard, o.numShards), nil
+		return fmt.Sprintf("[*matrixSelector] %v({%v}[%s] %v mod %v)", o.functionName, o.storage.Matchers(), r, o.shard, o.numShards), nil
 	}
 	return fmt.Sprintf("[*matrixSelector] {%v}[%s] %v mod %v", o.storage.Matchers(), r, o.shard, o.numShards), nil
 }
@@ -150,7 +151,6 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 	if o.currentStep > o.maxt {
 		return nil, nil
 	}
-
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -197,6 +197,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 				StepTime:         seriesTs,
 				SelectRange:      o.selectRange,
 				Offset:           o.offset,
+				ScalarPoints:     o.scalarArgs,
 				MetricAppearedTs: series.metricAppearedTs,
 			})
 
@@ -245,7 +246,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 		b := labels.ScratchBuilder{}
 		for i, s := range series {
 			lbls := s.Labels()
-			if o.funcExpr.Func.Name != "last_over_time" {
+			if o.functionName != "last_over_time" {
 				// This modifies the array in place. Because labels.Labels
 				// can be re-used between different Select() calls, it means that
 				// we have to copy it here.
@@ -323,7 +324,13 @@ loop:
 				continue loop
 			}
 			if t >= mint {
-				out = append(out, Sample{T: t, H: fh})
+				n := len(out)
+				if cap(out) > n {
+					out = out[:len(out)+1]
+				} else {
+					out = append(out, Sample{})
+				}
+				out[n].T, out[n].H = t, fh
 			}
 		case chunkenc.ValFloat:
 			t, v := buf.At()
@@ -332,7 +339,13 @@ loop:
 			}
 			// Values in the buffer are guaranteed to be smaller than maxt.
 			if t >= mint {
-				out = append(out, Sample{T: t, F: v})
+				n := len(out)
+				if cap(out) > n {
+					out = out[:len(out)+1]
+				} else {
+					out = append(out, Sample{})
+				}
+				out[n].T, out[n].F, out[n].H = t, v, nil
 			}
 		}
 	}
@@ -342,12 +355,24 @@ loop:
 	case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
 		t, fh := it.AtFloatHistogram()
 		if t == maxt && !value.IsStaleNaN(fh.Sum) {
-			out = append(out, Sample{T: t, H: fh})
+			n := len(out)
+			if cap(out) > n {
+				out = out[:len(out)+1]
+			} else {
+				out = append(out, Sample{})
+			}
+			out[n].T, out[n].H = t, fh
 		}
 	case chunkenc.ValFloat:
 		t, v := it.At()
 		if t == maxt && !value.IsStaleNaN(v) {
-			out = append(out, Sample{T: t, F: v})
+			n := len(out)
+			if cap(out) > n {
+				out = out[:len(out)+1]
+			} else {
+				out = append(out, Sample{})
+			}
+			out[n].T, out[n].F, out[n].H = t, v, nil
 		}
 	}
 

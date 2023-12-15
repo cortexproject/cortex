@@ -82,6 +82,9 @@ ACC:
 			for j, s := range vector.Samples {
 				o.acc[vector.SampleIDs[j]] = append(o.acc[vector.SampleIDs[j]], Sample{T: vector.T, F: s})
 			}
+			for j, s := range vector.Histograms {
+				o.acc[vector.HistogramIDs[j]] = append(o.acc[vector.HistogramIDs[j]], Sample{T: vector.T, H: s})
+			}
 			o.next.GetPool().PutStepVector(vector)
 		}
 		o.next.GetPool().PutVectors(vectors)

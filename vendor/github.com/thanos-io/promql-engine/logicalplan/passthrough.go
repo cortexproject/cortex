@@ -5,6 +5,7 @@ package logicalplan
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -43,21 +44,21 @@ func matchingEngineTime(e api.RemoteEngine, opts *query.Options) bool {
 	return !(opts.Start.UnixMilli() > e.MaxT() || opts.End.UnixMilli() < e.MinT())
 }
 
-func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) parser.Expr {
+func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) (parser.Expr, annotations.Annotations) {
 	engines := m.Endpoints.Engines()
 	if len(engines) == 1 {
 		if !matchingEngineTime(engines[0], opts) {
-			return plan
+			return plan, nil
 		}
 		return RemoteExecution{
 			Engine:          engines[0],
 			Query:           plan.String(),
 			QueryRangeStart: opts.Start,
-		}
+		}, nil
 	}
 
 	if len(engines) == 0 {
-		return plan
+		return plan, nil
 	}
 
 	matchingLabelsEngines := make([]api.RemoteEngine, 0, len(engines))
@@ -79,8 +80,8 @@ func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) pa
 			Engine:          matchingLabelsEngines[0],
 			Query:           plan.String(),
 			QueryRangeStart: opts.Start,
-		}
+		}, nil
 	}
 
-	return plan
+	return plan, nil
 }

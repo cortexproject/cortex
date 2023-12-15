@@ -186,7 +186,7 @@ func newScalarAccumulator(expr parser.ItemType) (accumulator, error) {
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }
 
-func quantile(q float64, points []float64) float64 {
+func Quantile(q float64, points []float64) float64 {
 	if len(points) == 0 || math.IsNaN(q) {
 		return math.NaN()
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -28,12 +29,12 @@ var DefaultOptimizers = []Optimizer{
 }
 
 type Plan interface {
-	Optimize([]Optimizer) Plan
+	Optimize([]Optimizer) (Plan, annotations.Annotations)
 	Expr() parser.Expr
 }
 
 type Optimizer interface {
-	Optimize(expr parser.Expr, opts *query.Options) parser.Expr
+	Optimize(plan parser.Expr, opts *query.Options) (parser.Expr, annotations.Annotations)
 }
 
 type plan struct {
@@ -55,12 +56,15 @@ func New(expr parser.Expr, opts *query.Options) Plan {
 	}
 }
 
-func (p *plan) Optimize(optimizers []Optimizer) Plan {
+func (p *plan) Optimize(optimizers []Optimizer) (Plan, annotations.Annotations) {
+	annos := annotations.New()
 	for _, o := range optimizers {
-		p.expr = o.Optimize(p.expr, p.opts)
+		var a annotations.Annotations
+		p.expr, a = o.Optimize(p.expr, p.opts)
+		annos.Merge(a)
 	}
 
-	return &plan{expr: p.expr, opts: p.opts}
+	return &plan{expr: p.expr, opts: p.opts}, *annos
 }
 
 func (p *plan) Expr() parser.Expr {
@@ -102,6 +106,8 @@ func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 
 func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(parent *parser.Expr, node *parser.Expr) bool) bool {
 	switch node := (*current).(type) {
+	case *parser.StringLiteral:
+		return false
 	case *parser.NumberLiteral:
 		return false
 	case *parser.StepInvariantExpr:

@@ -235,7 +235,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
 			return ctxhttp.Do(ctx, client, req)
 		},
-	}, log.With(r.logger, "user", userID))
+	}, log.With(r.logger, "user", userID), userManagerRegistry)
 
 	n.run()
 

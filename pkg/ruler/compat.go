@@ -72,6 +72,11 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 	return 0, nil
 }
 
+func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
+	// AppendCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+	return 0, nil
+}
+
 func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
 	return 0, errors.New("exemplars are unsupported")
 }

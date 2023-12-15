@@ -5,6 +5,7 @@ package logicalplan
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -22,12 +23,12 @@ import (
 // and apply an additional filter for {c="d"}.
 type MergeSelectsOptimizer struct{}
 
-func (m MergeSelectsOptimizer) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
+func (m MergeSelectsOptimizer) Optimize(plan parser.Expr, _ *query.Options) (parser.Expr, annotations.Annotations) {
 	heap := make(matcherHeap)
-	extractSelectors(heap, expr)
-	replaceMatchers(heap, &expr)
+	extractSelectors(heap, plan)
+	replaceMatchers(heap, &plan)
 
-	return expr
+	return plan, nil
 }
 
 func extractSelectors(selectors matcherHeap, expr parser.Expr) {

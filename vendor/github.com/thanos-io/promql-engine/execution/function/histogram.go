@@ -184,9 +184,6 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if extlabels.ContainsDuplicateLabelSetAfterDroppingName(series) {
-		return extlabels.ErrDuplicateLabelSet
-	}
 
 	var (
 		hashBuf      = make([]byte, 0, 256)
@@ -205,12 +202,16 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 			hasBucketValue = false
 		}
 
-		lbls, _ = extlabels.DropMetricName(lbls, b)
 		hasher.Reset()
 		hashBuf = lbls.Bytes(hashBuf)
 		if _, err := hasher.Write(hashBuf); err != nil {
 			return err
 		}
+
+		// We check for duplicate series after dropped labels when
+		// showing the result of the query. Series that are equal after
+		// dropping name should not hash to the same bucket here.
+		lbls, _ = extlabels.DropMetricName(lbls, b)
 
 		seriesHash := hasher.Sum64()
 		seriesID, ok := seriesHashes[seriesHash]

@@ -821,14 +821,18 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
 	var blockIDsFetcher block.BlockIDsFetcher
+	var fetcherULogger log.Logger
 	if c.storageCfg.BucketStore.BucketIndex.Enabled {
-		blockIDsFetcher = bucketindex.NewBlockIDsFetcher(ulogger, c.bucketClient, userID, c.limits)
+		fetcherULogger = log.With(ulogger, "blockIdsFetcher", "BucketIndexBlockIDsFetcher")
+		blockIDsFetcher = bucketindex.NewBlockIDsFetcher(fetcherULogger, c.bucketClient, userID, c.limits)
+
 	} else {
-		blockIDsFetcher = block.NewBaseBlockIDsFetcher(ulogger, bucket)
+		fetcherULogger = log.With(ulogger, "blockIdsFetcher", "BaseBlockIDsFetcher")
+		blockIDsFetcher = block.NewBaseBlockIDsFetcher(fetcherULogger, bucket)
 	}
 
 	fetcher, err := block.NewMetaFetcher(
-		ulogger,
+		fetcherULogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
 		blockIDsFetcher,

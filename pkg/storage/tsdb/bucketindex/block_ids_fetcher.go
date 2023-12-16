@@ -60,8 +60,16 @@ func (f *BlockIDsFetcher) GetActiveAndPartialBlockIDs(ctx context.Context, ch ch
 		return nil, err
 	}
 
-	// Sent the active block ids
+	blocksMarkedForDeletion := idx.BlockDeletionMarks.GetULIDs()
+	blocksMarkedForDeletionMap := make(map[ulid.ULID]struct{})
+	for _, block := range blocksMarkedForDeletion {
+		blocksMarkedForDeletionMap[block] = struct{}{}
+	}
+	// Sent the ids of blocks not marked for deletion
 	for _, b := range idx.Blocks {
+		if _, ok := blocksMarkedForDeletionMap[b.ID]; ok {
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()

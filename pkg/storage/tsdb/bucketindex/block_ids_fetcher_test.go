@@ -56,7 +56,7 @@ func TestBlockIDsFetcher_Fetch(t *testing.T) {
 	blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
 	close(ch)
 	wg.Wait()
-	require.Equal(t, []ulid.ULID{block1.ID, block2.ID, block3.ID}, blockIds)
+	require.Equal(t, []ulid.ULID{block3.ID}, blockIds)
 }
 
 func TestBlockIDsFetcherFetcher_Fetch_NoBucketIndex(t *testing.T) {

@@ -466,8 +466,10 @@ func shardByUser(userID string) uint32 {
 func shardByAllLabels(userID string, labels []cortexpb.LabelAdapter) uint32 {
 	h := shardByUser(userID)
 	for _, label := range labels {
-		h = ingester_client.HashAdd32(h, label.Name)
-		h = ingester_client.HashAdd32(h, label.Value)
+		if len(label.Value) > 0 {
+			h = ingester_client.HashAdd32(h, label.Name)
+			h = ingester_client.HashAdd32(h, label.Value)
+		}
 	}
 	return h
 }

@@ -2391,6 +2391,7 @@ type prepConfig struct {
 	replicationFactor            int
 	enableTracker                bool
 	errFail                      error
+	tokens                       [][]uint32
 }
 
 func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []*prometheus.Registry, *ring.Ring) {
@@ -2417,6 +2418,12 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
 	for i := range ingesters {
+		var tokens []uint32
+		if len(cfg.tokens) > i {
+			tokens = cfg.tokens[i]
+		} else {
+			tokens = []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)}
+		}
 		addr := fmt.Sprintf("%d", i)
 		ingesterDescs[addr] = ring.InstanceDesc{
 			Addr:                addr,
@@ -2424,7 +2431,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			State:               ring.ACTIVE,
 			Timestamp:           time.Now().Unix(),
 			RegisteredTimestamp: time.Now().Add(-2 * time.Hour).Unix(),
-			Tokens:              []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)},
+			Tokens:              tokens,
 		}
 		ingestersByAddr[addr] = ingesters[i]
 	}
@@ -3299,6 +3306,86 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 					assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
 				}
 			}
+		})
+	}
+}
+
+func TestDistributor_Push_EmptyLabel(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "pushEmptyLabel")
+	type testcase struct {
+		name           string
+		inputSeries    []labels.Labels
+		expectedSeries labels.Labels
+	}
+
+	cases := []testcase{
+		{
+			name: "with empty label",
+			inputSeries: []labels.Labels{
+				{ //Token 1106054332 without filtering
+					{Name: "__name__", Value: "foo"},
+					{Name: "empty", Value: ""},
+				},
+				{ //Token 3827924124 without filtering
+					{Name: "__name__", Value: "foo"},
+					{Name: "changHash", Value: ""},
+				},
+			},
+			expectedSeries: labels.Labels{
+				//Token 1797290973
+				{Name: "__name__", Value: "foo"},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var err error
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+
+			token := [][]uint32{
+				{1},
+				{2},
+				{3},
+				{1106054333},
+				{5},
+				{6},
+				{7},
+				{8},
+				{9},
+				{3827924125},
+			}
+
+			ds, ingesters, _, _ := prepare(t, prepConfig{
+				numIngesters:      10,
+				happyIngesters:    10,
+				numDistributors:   1,
+				shardByAllLabels:  true,
+				limits:            &limits,
+				replicationFactor: 1,
+				shuffleShardSize:  10,
+				tokens:            token,
+			})
+
+			// Push the series to the distributor
+			req := mockWriteRequest(tc.inputSeries, 1, 1)
+			_, err = ds[0].Push(ctx, req)
+			require.NoError(t, err)
+
+			// Since each test pushes only 1 series, we do expect the ingester
+			// to have received exactly 1 series
+			ingesterWithSeries := 0
+			for i := range ingesters {
+				timeseries := ingesters[i].series()
+				if len(timeseries) > 0 {
+					ingesterWithSeries++
+				}
+			}
+			assert.Equal(t, 1, ingesterWithSeries)
 		})
 	}
 }

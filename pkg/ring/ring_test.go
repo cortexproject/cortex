@@ -2982,7 +2982,7 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_members_by_zone Number of members in the ring by zone
 		# TYPE ring_members_by_zone gauge
-	    ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
 		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2b"} 1
 		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2a"} 0
 		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2b"} 0
@@ -3046,7 +3046,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_members_by_zone Number of members in the ring by zone
 		# TYPE ring_members_by_zone gauge
-	    ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
 		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2b"} 1
 		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2a"} 0
 		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2b"} 0
@@ -3093,7 +3093,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_members{name="test",state="Unhealthy"} 0
 		# HELP ring_members_by_zone Number of members in the ring by zone
 		# TYPE ring_members_by_zone gauge
-	    ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
 		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2a"} 0
 		ring_members_by_zone{name="test",state="LEAVING",zone="us-west-2a"} 0
 		ring_members_by_zone{name="test",state="PENDING",zone="us-west-2a"} 0

@@ -265,11 +265,12 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 	if !s.isAtModifierCachable(ctx, req, maxCacheTime) {
 		return false
 	}
+	if !s.isOffsetCachable(ctx, req) {
+		return false
+	}
 
 	return true
 }
-
-var errAtModifierAfterEnd = errors.New("at modifier after end")
 
 // isAtModifierCachable returns true if the @ modifier result
 // is safe to cache.
@@ -280,6 +281,7 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	//      below maxCacheTime. In such cases if any tenant is intentionally
 	//      playing with old data, we could cache empty result if we look
 	//      beyond query end.
+	var errAtModifierAfterEnd = errors.New("at modifier after end")
 	query := r.GetQuery()
 	if !strings.Contains(query, "@") {
 		return true
@@ -319,6 +321,46 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	})
 
 	return atModCachable
+}
+
+// isOffsetCachable returns true if the offset is positive, result is safe to cache.
+// and false when offset is negative, result is not cached.
+func (s resultsCache) isOffsetCachable(ctx context.Context, r tripperware.Request) bool {
+	var errNegativeOffset = errors.New("negative offset")
+	query := r.GetQuery()
+	if !strings.Contains(query, "offset") {
+		return true
+	}
+	expr, err := parser.ParseExpr(query)
+	if err != nil {
+		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering offset as not cachable", "query", query, "err", err)
+		return false
+	}
+
+	offsetCachable := true
+	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
+		switch e := n.(type) {
+		case *parser.VectorSelector:
+			if e.OriginalOffset < 0 {
+				offsetCachable = false
+				return errNegativeOffset
+			}
+		case *parser.MatrixSelector:
+			offset := e.VectorSelector.(*parser.VectorSelector).OriginalOffset
+			if offset < 0 {
+				offsetCachable = false
+				return errNegativeOffset
+			}
+		case *parser.SubqueryExpr:
+			if e.OriginalOffset < 0 {
+				offsetCachable = false
+				return errNegativeOffset
+			}
+		}
+		return nil
+	})
+
+	return offsetCachable
 }
 
 func getHeaderValuesWithName(r tripperware.Response, headerName string) (headerValues []string) {

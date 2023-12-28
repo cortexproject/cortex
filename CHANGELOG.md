@@ -12,6 +12,7 @@
 * [ENHANCEMENT] Index Cache: Multi level cache adds config `max_backfill_items` to cap max items to backfill per async operation. #5686
 * [ENHANCEMENT] Query Frontend: Log number of split queries in `query stats` log. #5703
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
+* [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 
 
 ## 1.16.0 2023-11-20

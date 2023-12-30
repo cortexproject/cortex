@@ -86,11 +86,11 @@ func New(cfg Config) (DB, error) {
 	}
 
 	if len(cfg.PasswordFile) != 0 {
-		updatedUrl, err := SetUserPassword(u, cfg.PasswordFile)
+		updatedURL, err := SetUserPassword(u, cfg.PasswordFile)
 		if err != nil {
 			return nil, err
 		}
-		u = updatedUrl
+		u = updatedURL
 	}
 
 	var d DB

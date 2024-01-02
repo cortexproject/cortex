@@ -649,6 +649,10 @@ func (b *metricBucket) Name() string {
 	return b.bkt.Name()
 }
 
+type timingReadSeekCloser struct {
+	timingReadCloser
+}
+
 type timingReadCloser struct {
 	io.ReadCloser
 	objSize    int64
@@ -666,12 +670,13 @@ type timingReadCloser struct {
 	transferredBytes  *prometheus.HistogramVec
 }
 
-func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) *timingReadCloser {
+func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) io.ReadCloser {
 	// Initialize the metrics with 0.
 	dur.WithLabelValues(op)
 	failed.WithLabelValues(op)
 	objSize, objSizeErr := TryToGetSize(rc)
-	return &timingReadCloser{
+
+	trc := timingReadCloser{
 		ReadCloser:        rc,
 		objSize:           objSize,
 		objSizeErr:        objSizeErr,
@@ -684,6 +689,15 @@ func newTimingReadCloser(rc io.ReadCloser, op string, dur *prometheus.HistogramV
 		transferredBytes:  transferredBytes,
 		readBytes:         0,
 	}
+
+	_, ok := rc.(io.Seeker)
+	if ok {
+		return &timingReadSeekCloser{
+			timingReadCloser: trc,
+		}
+	}
+
+	return &trc
 }
 
 func (t *timingReadCloser) ObjectSize() (int64, error) {
@@ -718,4 +732,8 @@ func (rc *timingReadCloser) Read(b []byte) (n int, err error) {
 		rc.alreadyGotErr = true
 	}
 	return n, err
+}
+
+func (rsc *timingReadSeekCloser) Seek(offset int64, whence int) (int64, error) {
+	return (rsc.ReadCloser).(io.Seeker).Seek(offset, whence)
 }

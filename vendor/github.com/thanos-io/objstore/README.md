@@ -352,6 +352,8 @@ type: GCS
 config:
   bucket: ""
   service_account: ""
+  use_grpc: false
+  grpc_conn_pool_size: 0
 prefix: ""
 ```
 

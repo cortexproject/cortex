@@ -264,7 +264,4 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 // https://github.com/thanos-io/thanos/blob/fdeea3917591fc363a329cbe23af37c6fff0b5f0/go.mod#L265
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
-replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
-
-// v1.58.2 caused compile error on github.com/sercand/kuberesolver (even on v5.1.1)
-replace google.golang.org/grpc => google.golang.org/grpc v1.56.3
+replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5.1.1

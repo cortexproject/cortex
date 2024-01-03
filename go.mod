@@ -51,7 +51,7 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.4
-	github.com/thanos-io/objstore v0.0.0-20231123170144-bffedaa58acb
+	github.com/thanos-io/objstore v0.0.0-20231231041903-61cfed8cbb9d
 	github.com/thanos-io/promql-engine v0.0.0-20231127105941-257543af55e8
 	github.com/thanos-io/thanos v0.32.5-0.20231212162152-fc1a6edf7acc
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
@@ -264,7 +264,4 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 // https://github.com/thanos-io/thanos/blob/fdeea3917591fc363a329cbe23af37c6fff0b5f0/go.mod#L265
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
-replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v4 v4.0.0
-
-// v1.58.2 caused compile error on github.com/sercand/kuberesolver (even on v5.1.1)
-replace google.golang.org/grpc => google.golang.org/grpc v1.56.3
+replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5.1.1

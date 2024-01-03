@@ -19,6 +19,7 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
@@ -33,6 +34,12 @@ const DirDelim = "/"
 type Config struct {
 	Bucket         string `yaml:"bucket"`
 	ServiceAccount string `yaml:"service_account"`
+	UseGRPC        bool   `yaml:"use_grpc"`
+	// GRPCConnPoolSize controls the size of the gRPC connection pool and should only be used
+	// when direct path is not enabled.
+	// See https://pkg.go.dev/cloud.google.com/go/storage#hdr-Experimental_gRPC_API for more details
+	// on how to enable direct path.
+	GRPCConnPoolSize int `yaml:"grpc_conn_pool_size"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
@@ -75,7 +82,23 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 		option.WithUserAgent(fmt.Sprintf("thanos-%s/%s (%s)", component, version.Version, runtime.Version())),
 	)
 
-	gcsClient, err := storage.NewClient(ctx, opts...)
+	return newBucket(ctx, logger, gc, opts)
+}
+
+func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.ClientOption) (*Bucket, error) {
+	var (
+		err       error
+		gcsClient *storage.Client
+	)
+	if gc.UseGRPC {
+		opts = append(opts,
+			option.WithGRPCDialOption(grpc.WithRecvBufferPool(grpc.NewSharedBufferPool())),
+			option.WithGRPCConnectionPool(gc.GRPCConnPoolSize),
+		)
+		gcsClient, err = storage.NewGRPCClient(ctx, opts...)
+	} else {
+		gcsClient, err = storage.NewClient(ctx, opts...)
+	}
 	if err != nil {
 		return nil, err
 	}

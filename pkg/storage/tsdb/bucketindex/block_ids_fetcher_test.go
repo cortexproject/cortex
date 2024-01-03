@@ -53,7 +53,8 @@ func TestBlockIDsFetcher_Fetch(t *testing.T) {
 			blockIds = append(blockIds, id)
 		}
 	}()
-	blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+	_, err := blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+	require.NoError(t, err)
 	close(ch)
 	wg.Wait()
 	require.Equal(t, []ulid.ULID{block3.ID}, blockIds)
@@ -104,7 +105,8 @@ func TestBlockIDsFetcherFetcher_Fetch_NoBucketIndex(t *testing.T) {
 			blockIds = append(blockIds, id)
 		}
 	}()
-	blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+	_, err := blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+	require.NoError(t, err)
 	close(ch)
 	wg.Wait()
 	require.Equal(t, []ulid.ULID{block1.ID, block2.ID, block3.ID}, blockIds)

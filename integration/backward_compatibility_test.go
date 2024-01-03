@@ -33,14 +33,6 @@ var (
 	}
 )
 
-func preCortex110Flags(flags map[string]string) map[string]string {
-	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		// Store-gateway "wait ring stability" has been introduced in 1.10.0
-		"-store-gateway.sharding-ring.wait-stability-min-duration": "",
-		"-store-gateway.sharding-ring.wait-stability-max-duration": "",
-	})
-}
-
 func TestBackwardCompatibilityWithBlocksStorage(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {
 		t.Run(fmt.Sprintf("Backward compatibility upgrading from %s", previousImage), func(t *testing.T) {

@@ -64,7 +64,10 @@ func init() {
 		if slices.Contains(f.ArgTypes, parser.ValueTypeString) {
 			continue
 		}
-		defaultSupportedFuncs = append(defaultSupportedFuncs, f)
+		// Ignore experimental functions for now.
+		if !f.Experimental {
+			defaultSupportedFuncs = append(defaultSupportedFuncs, f)
+		}
 	}
 }
 

@@ -5,12 +5,9 @@ package engine
 
 import (
 	"context"
-
-	"io"
 	"math"
 	"runtime"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/efficientgo/core/errors"
@@ -18,14 +15,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 
-	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/execution"
 	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -61,11 +57,6 @@ type Opts struct {
 	// in the new engine, instead of falling back to prometheus engine.
 	DisableFallback bool
 
-	// DebugWriter specifies output for debug (multi-line) information meant for humans debugging the engine.
-	// If nil, nothing will be printed.
-	// NOTE: Users will not check the errors, debug writing is best effort.
-	DebugWriter io.Writer
-
 	// ExtLookbackDelta specifies what time range to use to determine valid previous sample for extended range functions.
 	// Defaults to 1 hour if not specified.
 	ExtLookbackDelta time.Duration
@@ -73,10 +64,6 @@ type Opts struct {
 	// EnableXFunctions enables custom xRate, xIncrease and xDelta functions.
 	// This will default to false.
 	EnableXFunctions bool
-
-	// EnableSubqueries enables the engine to handle subqueries without falling back to prometheus.
-	// This will default to false.
-	EnableSubqueries bool
 
 	// FallbackEngine
 	Engine v1.QueryEngine
@@ -98,78 +85,6 @@ func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
 		copy(optimizers, o.LogicalOptimizers)
 	}
 	return optimizers
-}
-
-type remoteEngine struct {
-	q         storage.Queryable
-	engine    *compatibilityEngine
-	labelSets []labels.Labels
-	maxt      int64
-	mint      int64
-}
-
-func NewRemoteEngine(opts Opts, q storage.Queryable, mint, maxt int64, labelSets []labels.Labels) *remoteEngine {
-	return &remoteEngine{
-		q:         q,
-		labelSets: labelSets,
-		maxt:      maxt,
-		mint:      mint,
-		engine:    New(opts),
-	}
-}
-
-func (l remoteEngine) MaxT() int64 {
-	return l.maxt
-}
-
-func (l remoteEngine) MinT() int64 {
-	return l.mint
-}
-
-func (l remoteEngine) LabelSets() []labels.Labels {
-	return l.labelSets
-}
-
-func (l remoteEngine) NewRangeQuery(ctx context.Context, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	return l.engine.NewRangeQuery(ctx, l.q, opts, qs, start, end, interval)
-}
-
-type distributedEngine struct {
-	endpoints    api.RemoteEndpoints
-	remoteEngine *compatibilityEngine
-}
-
-func NewDistributedEngine(opts Opts, endpoints api.RemoteEndpoints) v1.QueryEngine {
-	opts.LogicalOptimizers = []logicalplan.Optimizer{
-		logicalplan.PassthroughOptimizer{Endpoints: endpoints},
-		logicalplan.DistributeAvgOptimizer{},
-		logicalplan.DistributedExecutionOptimizer{Endpoints: endpoints},
-	}
-
-	return &distributedEngine{
-		endpoints:    endpoints,
-		remoteEngine: New(opts),
-	}
-}
-
-func (l distributedEngine) SetQueryLogger(log promql.QueryLogger) {}
-
-func (l distributedEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
-	// Some clients might only support second precision when executing queries.
-	ts = ts.Truncate(time.Second)
-
-	return l.remoteEngine.NewInstantQuery(ctx, q, opts, qs, ts)
-}
-
-func (l distributedEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
-	// Some clients might only support second precision when executing queries.
-	start = start.Truncate(time.Second)
-	end = end.Truncate(time.Second)
-	interval = interval.Truncate(time.Second)
-
-	return l.remoteEngine.NewRangeQuery(ctx, q, opts, qs, start, end, interval)
 }
 
 func New(opts Opts) *compatibilityEngine {
@@ -231,7 +146,6 @@ func New(opts Opts) *compatibilityEngine {
 		prom:      engine,
 		functions: functions,
 
-		debugWriter:       opts.DebugWriter,
 		disableFallback:   opts.DisableFallback,
 		logger:            opts.Logger,
 		lookbackDelta:     opts.LookbackDelta,
@@ -240,18 +154,22 @@ func New(opts Opts) *compatibilityEngine {
 		metrics:           metrics,
 		extLookbackDelta:  opts.ExtLookbackDelta,
 		enableAnalysis:    opts.EnableAnalysis,
-		enableSubqueries:  opts.EnableSubqueries,
 		noStepSubqueryIntervalFn: func(d time.Duration) time.Duration {
 			return time.Duration(opts.NoStepSubqueryIntervalFn(d.Milliseconds()) * 1000000)
 		},
 	}
 }
 
+var (
+	// Duplicate label checking logic uses a bitmap with 64 bits currently.
+	// As long as we use this method we need to have batches that are smaller
+	// then 64 steps.
+	ErrStepsBatchTooLarge = errors.New("'StepsBatch' must be less than 64")
+)
+
 type compatibilityEngine struct {
 	prom      v1.QueryEngine
 	functions map[string]*parser.Function
-
-	debugWriter io.Writer
 
 	disableFallback   bool
 	logger            log.Logger
@@ -262,7 +180,6 @@ type compatibilityEngine struct {
 
 	extLookbackDelta         time.Duration
 	enableAnalysis           bool
-	enableSubqueries         bool
 	noStepSubqueryIntervalFn func(time.Duration) time.Duration
 }
 
@@ -297,11 +214,13 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 		LookbackDelta:            opts.LookbackDelta(),
 		ExtLookbackDelta:         e.extLookbackDelta,
 		EnableAnalysis:           e.enableAnalysis,
-		EnableSubqueries:         e.enableSubqueries,
 		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
 	}
+	if qOpts.StepsBatch > 64 {
+		return nil, ErrStepsBatchTooLarge
+	}
 
-	lplan := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
+	lplan, warns := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
 	exec, err := execution.New(lplan.Expr(), q, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
@@ -312,18 +231,14 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 		return nil, err
 	}
 
-	if e.debugWriter != nil {
-		explain(e.debugWriter, exec, "", "")
-	}
-
 	return &compatibilityQuery{
-		Query:       &Query{exec: exec, opts: opts},
-		engine:      e,
-		expr:        expr,
-		ts:          ts,
-		t:           InstantQuery,
-		resultSort:  resultSort,
-		debugWriter: e.debugWriter,
+		Query:      &Query{exec: exec, opts: opts},
+		engine:     e,
+		expr:       expr,
+		ts:         ts,
+		warns:      warns,
+		t:          InstantQuery,
+		resultSort: resultSort,
 	}, nil
 }
 
@@ -354,11 +269,13 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 		LookbackDelta:            opts.LookbackDelta(),
 		ExtLookbackDelta:         e.extLookbackDelta,
 		EnableAnalysis:           e.enableAnalysis,
-		EnableSubqueries:         false, // not yet implemented for range queries.
 		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
 	}
+	if qOpts.StepsBatch > 64 {
+		return nil, ErrStepsBatchTooLarge
+	}
 
-	lplan := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
+	lplan, warns := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
 	exec, err := execution.New(lplan.Expr(), q, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
@@ -369,37 +286,14 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 		return nil, err
 	}
 
-	if e.debugWriter != nil {
-		explain(e.debugWriter, exec, "", "")
-	}
-
 	return &compatibilityQuery{
-		Query:       &Query{exec: exec, opts: opts},
-		engine:      e,
-		expr:        expr,
-		t:           RangeQuery,
-		debugWriter: e.debugWriter,
+		Query:  &Query{exec: exec, opts: opts},
+		engine: e,
+		expr:   expr,
+		warns:  warns,
+		t:      RangeQuery,
 	}, nil
 }
-
-type ExplainableQuery interface {
-	promql.Query
-
-	Explain() *ExplainOutputNode
-	Analyze() *AnalyzeOutputNode
-}
-
-type AnalyzeOutputNode struct {
-	OperatorTelemetry model.OperatorTelemetry `json:"telemetry,omitempty"`
-	Children          []AnalyzeOutputNode     `json:"children,omitempty"`
-}
-
-type ExplainOutputNode struct {
-	OperatorName string              `json:"name,omitempty"`
-	Children     []ExplainOutputNode `json:"children,omitempty"`
-}
-
-var _ ExplainableQuery = &compatibilityQuery{}
 
 type Query struct {
 	exec model.VectorOperator
@@ -414,164 +308,37 @@ func (q *Query) Explain() *ExplainOutputNode {
 
 func (q *Query) Analyze() *AnalyzeOutputNode {
 	if observableRoot, ok := q.exec.(model.ObservableVectorOperator); ok {
-		return analyzeVector(observableRoot)
+		return analyzeQuery(observableRoot)
 	}
 	return nil
 }
 
-func analyzeVector(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
-	telemetry, obsVectors := obsv.Analyze()
-
-	var children []AnalyzeOutputNode
-	for _, vector := range obsVectors {
-		children = append(children, *analyzeVector(vector))
-	}
-
-	return &AnalyzeOutputNode{
-		OperatorTelemetry: telemetry,
-		Children:          children,
-	}
-}
-
-func explainVector(v model.VectorOperator) *ExplainOutputNode {
-	name, vectors := v.Explain()
-
-	var children []ExplainOutputNode
-	for _, vector := range vectors {
-		children = append(children, *explainVector(vector))
-	}
-
-	return &ExplainOutputNode{
-		OperatorName: name,
-		Children:     children,
-	}
-}
-
-type sortOrder bool
-
-const (
-	sortOrderAsc  sortOrder = false
-	sortOrderDesc sortOrder = true
-)
-
-type resultSorter interface {
-	comparer(samples *promql.Vector) func(i, j int) bool
-}
-
-type sortFuncResultSort struct {
-	sortOrder sortOrder
-}
-
-type aggregateResultSort struct {
-	sortingLabels []string
-	groupBy       bool
-
-	sortOrder sortOrder
-}
-
-type noSortResultSort struct {
-}
-
-func newResultSort(expr parser.Expr) resultSorter {
-	switch texpr := expr.(type) {
-	case *parser.Call:
-		switch texpr.Func.Name {
-		case "sort":
-			return sortFuncResultSort{sortOrder: sortOrderAsc}
-		case "sort_desc":
-			return sortFuncResultSort{sortOrder: sortOrderDesc}
-		}
-	case *parser.AggregateExpr:
-		switch texpr.Op {
-		case parser.TOPK:
-			return aggregateResultSort{
-				sortingLabels: texpr.Grouping,
-				sortOrder:     sortOrderDesc,
-				groupBy:       !texpr.Without,
-			}
-		case parser.BOTTOMK:
-			return aggregateResultSort{
-				sortingLabels: texpr.Grouping,
-				sortOrder:     sortOrderAsc,
-				groupBy:       !texpr.Without,
-			}
-		}
-	}
-	return noSortResultSort{}
-}
-func (s noSortResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
-	return func(i, j int) bool { return i < j }
-}
-
-func valueCompare(order sortOrder, l, r float64) bool {
-	if math.IsNaN(r) {
-		return true
-	}
-	if order == sortOrderAsc {
-		return l < r
-	}
-	return l > r
-}
-
-func (s sortFuncResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
-	return func(i, j int) bool {
-		return valueCompare(s.sortOrder, (*samples)[i].F, (*samples)[j].F)
-	}
-}
-
-func (s aggregateResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
-	return func(i int, j int) bool {
-		var iLbls labels.Labels
-		var jLbls labels.Labels
-		iLb := labels.NewBuilder((*samples)[i].Metric)
-		jLb := labels.NewBuilder((*samples)[j].Metric)
-		if s.groupBy {
-			iLbls = iLb.Keep(s.sortingLabels...).Labels()
-			jLbls = jLb.Keep(s.sortingLabels...).Labels()
-		} else {
-			iLbls = iLb.Del(s.sortingLabels...).Labels()
-			jLbls = jLb.Del(s.sortingLabels...).Labels()
-		}
-
-		lblsCmp := labels.Compare(iLbls, jLbls)
-		if lblsCmp != 0 {
-			return lblsCmp < 0
-		}
-		return valueCompare(s.sortOrder, (*samples)[i].F, (*samples)[j].F)
-	}
-}
-
 type compatibilityQuery struct {
 	*Query
-	engine     *compatibilityEngine
-	expr       parser.Expr
-	ts         time.Time // Empty for range queries.
+	engine *compatibilityEngine
+	expr   parser.Expr
+	ts     time.Time // Empty for range queries.
+	warns  annotations.Annotations
+
 	t          QueryType
 	resultSort resultSorter
-
-	cancel context.CancelFunc
-
-	debugWriter io.Writer
+	cancel     context.CancelFunc
 }
 
 func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	ctx = warnings.NewContext(ctx)
 	defer func() {
-		if warns := warnings.FromContext(ctx); len(warns) > 0 {
-			ret.Warnings = warns
-		}
+		ret.Warnings = ret.Warnings.Merge(warnings.FromContext(ctx))
 	}()
 
 	// Handle case with strings early on as this does not need us to process samples.
 	switch e := q.expr.(type) {
 	case *parser.StringLiteral:
-		if q.debugWriter != nil {
-			analyze(q.debugWriter, q.exec.(model.ObservableVectorOperator), " ", "")
-		}
 		return &promql.Result{Value: promql.String{V: e.Val, T: q.ts.UnixMilli()}}
 	}
 	ret = &promql.Result{
-		Value: promql.Vector{},
+		Value:    promql.Vector{},
+		Warnings: q.warns,
 	}
 	defer recoverEngine(q.engine.logger, q.expr, &ret.Err)
 
@@ -588,8 +355,8 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	}
 
 	series := make([]promql.Series, len(resultSeries))
-	for i := 0; i < len(resultSeries); i++ {
-		series[i].Metric = resultSeries[i]
+	for i, s := range resultSeries {
+		series[i].Metric = s
 	}
 loop:
 	for {
@@ -638,32 +405,25 @@ loop:
 
 	// For range Query we expect always a Matrix value type.
 	if q.t == RangeQuery {
-		resultMatrix := make(promql.Matrix, 0, len(series))
+		matrix := make(promql.Matrix, 0, len(series))
 		for _, s := range series {
 			if len(s.Floats)+len(s.Histograms) == 0 {
 				continue
 			}
-			resultMatrix = append(resultMatrix, s)
+			matrix = append(matrix, s)
 		}
-		sort.Sort(resultMatrix)
-		if resultMatrix.ContainsSameLabelset() {
+		sort.Sort(matrix)
+		if matrix.ContainsSameLabelset() {
 			return newErrResult(ret, extlabels.ErrDuplicateLabelSet)
 		}
-		ret.Value = resultMatrix
-		if q.debugWriter != nil {
-			analyze(q.debugWriter, q.exec.(model.ObservableVectorOperator), "", "")
-		}
+		ret.Value = matrix
 		return ret
 	}
 
 	var result parser.Value
 	switch q.expr.Type() {
 	case parser.ValueTypeMatrix:
-		matrix := promql.Matrix(series)
-		if matrix.ContainsSameLabelset() {
-			return newErrResult(ret, extlabels.ErrDuplicateLabelSet)
-		}
-		result = matrix
+		result = promql.Matrix(series)
 	case parser.ValueTypeVector:
 		// Convert matrix with one value per series into vector.
 		vector := make(promql.Vector, 0, len(resultSeries))
@@ -688,9 +448,6 @@ loop:
 			}
 		}
 		sort.Slice(vector, q.resultSort.comparer(&vector))
-		if vector.ContainsSameLabelset() {
-			return newErrResult(ret, extlabels.ErrDuplicateLabelSet)
-		}
 		result = vector
 	case parser.ValueTypeScalar:
 		v := math.NaN()
@@ -760,50 +517,5 @@ func recoverEngine(logger log.Logger, expr parser.Expr, errp *error) {
 
 		level.Error(logger).Log("msg", "runtime panic in engine", "expr", expr.String(), "err", e, "stacktrace", string(buf))
 		*errp = errors.Wrap(err, "unexpected error")
-	}
-}
-
-func analyze(w io.Writer, o model.ObservableVectorOperator, indent, indentNext string) {
-	telemetry, next := o.Analyze()
-	_, _ = w.Write([]byte(indent))
-	_, _ = w.Write([]byte("Operator Time :"))
-	_, _ = w.Write([]byte(strconv.FormatInt(int64(telemetry.ExecutionTimeTaken()), 10)))
-	if len(next) == 0 {
-		_, _ = w.Write([]byte("\n"))
-		return
-	}
-	_, _ = w.Write([]byte(":\n"))
-
-	for i, n := range next {
-		if i == len(next)-1 {
-			analyze(w, n, indentNext+"└──", indentNext+"   ")
-		} else {
-			analyze(w, n, indentNext+"└──", indentNext+"   ")
-		}
-	}
-}
-
-func explain(w io.Writer, o model.VectorOperator, indent, indentNext string) {
-	me, next := o.Explain()
-	_, _ = w.Write([]byte(indent))
-	_, _ = w.Write([]byte(me))
-	if len(next) == 0 {
-		_, _ = w.Write([]byte("\n"))
-		return
-	}
-
-	if me == "[*CancellableOperator]" {
-		_, _ = w.Write([]byte(": "))
-		explain(w, next[0], "", indentNext)
-		return
-	}
-	_, _ = w.Write([]byte(":\n"))
-
-	for i, n := range next {
-		if i == len(next)-1 {
-			explain(w, n, indentNext+"└──", indentNext+"   ")
-		} else {
-			explain(w, n, indentNext+"├──", indentNext+"│  ")
-		}
 	}
 }

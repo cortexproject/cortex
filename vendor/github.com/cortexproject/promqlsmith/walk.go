@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -244,6 +245,7 @@ func (s *PromQLSmith) walkCall(valueTypes ...parser.ValueType) parser.Expr {
 			}
 		}
 	}
+	sort.Slice(funcs, func(i, j int) bool { return strings.Compare(funcs[i].Name, funcs[j].Name) < 0 })
 	expr.Func = funcs[s.rnd.Intn(len(funcs))]
 	s.walkFuncArgs(expr)
 	return expr
@@ -383,6 +385,7 @@ func exprsFromValueTypes(valueTypes []parser.ValueType) []ExprType {
 	for expr := range set {
 		res = append(res, expr)
 	}
+	sort.Slice(res, func(i, j int) bool { return res[i] < res[j] })
 	return res
 }
 
@@ -407,6 +410,7 @@ func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.
 			out = append(out, vt)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 
@@ -509,6 +513,9 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		for _, v := range m {
 			output = append(output, v)
 		}
+		sort.Slice(output, func(i, j int) bool {
+			return labels.Compare(output[i], output[j]) < 0
+		})
 		return output, false
 	case *parser.SubqueryExpr:
 		return getOutputSeries(node.Expr)

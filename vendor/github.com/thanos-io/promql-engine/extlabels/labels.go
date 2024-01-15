@@ -4,7 +4,6 @@
 package extlabels
 
 import (
-	"github.com/cespare/xxhash/v2"
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -12,29 +11,6 @@ import (
 var (
 	ErrDuplicateLabelSet = errors.New("vector cannot contain metrics with the same labelset")
 )
-
-func ContainsDuplicateLabelSetAfterDroppingName(series []labels.Labels) bool {
-	var (
-		buf  = make([]byte, 0, 256)
-		seen = make(map[uint64]struct{}, len(series))
-	)
-
-	b := labels.ScratchBuilder{}
-	for _, s := range series {
-		b.Reset()
-		buf = buf[:0]
-
-		lbls, _ := DropMetricName(s, b)
-		buf = lbls.Bytes(buf)
-
-		h := xxhash.Sum64(lbls.Bytes(buf))
-		if _, ok := seen[h]; ok {
-			return true
-		}
-		seen[h] = struct{}{}
-	}
-	return false
-}
 
 // DropMetricName removes the __name__ label and returns the dropped name and remaining labels.
 func DropMetricName(l labels.Labels, b labels.ScratchBuilder) (labels.Labels, labels.Label) {

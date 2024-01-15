@@ -1,3 +1,6 @@
+// Copyright (c) The Thanos Community Authors.
+// Licensed under the Apache License 2.0.
+
 package aggregate
 
 import (
@@ -78,106 +81,129 @@ func (s *sumAcc) Reset(_ float64) {
 	s.value = 0
 }
 
-type genericAcc struct {
-	zeroVal  float64
+func newMaxAcc() *maxAcc {
+	return &maxAcc{}
+}
+
+type maxAcc struct {
 	value    float64
 	hasValue bool
-	skipNaNs bool
-
-	aggregate       func(float64, float64) float64
-	vectorAggregate func([]float64, []*histogram.FloatHistogram) float64
 }
 
-func maxAggregate(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-func maxVecAggregate(fs []float64, _ []*histogram.FloatHistogram) float64 {
-	return floats.Max(fs)
-}
-
-func minAggregate(a, b float64) float64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-func minVecAggregate(fs []float64, _ []*histogram.FloatHistogram) float64 {
-	return floats.Min(fs)
-}
-
-func groupAggregate(_, _ float64) float64 { return 1 }
-func groupVecAggregate(_ []float64, _ []*histogram.FloatHistogram) float64 {
-	return 1
-}
-
-func newMaxAcc() *genericAcc {
-	return &genericAcc{
-		skipNaNs:        true,
-		zeroVal:         math.MinInt64,
-		aggregate:       maxAggregate,
-		vectorAggregate: maxVecAggregate,
-	}
-}
-
-func newMinAcc() *genericAcc {
-	return &genericAcc{
-		skipNaNs:        true,
-		zeroVal:         math.MaxInt64,
-		aggregate:       minAggregate,
-		vectorAggregate: minVecAggregate,
-	}
-}
-
-func newGroupAcc() *genericAcc {
-	return &genericAcc{
-		zeroVal:         1,
-		aggregate:       groupAggregate,
-		vectorAggregate: groupVecAggregate,
-	}
-}
-
-func (g *genericAcc) Add(v float64, _ *histogram.FloatHistogram) {
-	if g.skipNaNs && math.IsNaN(v) {
+func (c *maxAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) {
+	if len(vs) == 0 {
 		return
 	}
-	if !g.hasValue {
-		g.value = g.aggregate(g.zeroVal, v)
-		g.hasValue = true
+	fst, rem := vs[0], vs[1:]
+	c.Add(fst, nil)
+	if len(rem) == 0 {
 		return
 	}
-	g.hasValue = true
-	g.value = g.aggregate(g.value, v)
+	c.Add(floats.Max(rem), nil)
 }
 
-func (g *genericAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) {
+func (c *maxAcc) Add(v float64, h *histogram.FloatHistogram) {
+	if !c.hasValue {
+		c.value = v
+		c.hasValue = true
+		return
+	}
+	if c.value < v || math.IsNaN(c.value) {
+		c.value = v
+	}
+}
+
+func (c *maxAcc) Value() (float64, *histogram.FloatHistogram) {
+	return c.value, nil
+}
+
+func (c *maxAcc) HasValue() bool {
+	return c.hasValue
+}
+
+func (c *maxAcc) Reset(_ float64) {
+	c.hasValue = false
+	c.value = 0
+}
+
+func newMinAcc() *minAcc {
+	return &minAcc{}
+}
+
+type minAcc struct {
+	value    float64
+	hasValue bool
+}
+
+func (c *minAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) {
+	if len(vs) == 0 {
+		return
+	}
+	fst, rem := vs[0], vs[1:]
+	c.Add(fst, nil)
+	if len(rem) == 0 {
+		return
+	}
+	c.Add(floats.Min(rem), nil)
+}
+
+func (c *minAcc) Add(v float64, h *histogram.FloatHistogram) {
+	if !c.hasValue {
+		c.value = v
+		c.hasValue = true
+		return
+	}
+	if c.value > v || math.IsNaN(c.value) {
+		c.value = v
+	}
+}
+
+func (c *minAcc) Value() (float64, *histogram.FloatHistogram) {
+	return c.value, nil
+}
+
+func (c *minAcc) HasValue() bool {
+	return c.hasValue
+}
+
+func (c *minAcc) Reset(_ float64) {
+	c.hasValue = false
+	c.value = 0
+}
+
+func newGroupAcc() *groupAcc {
+	return &groupAcc{}
+}
+
+type groupAcc struct {
+	value    float64
+	hasValue bool
+}
+
+func (c *groupAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) {
 	if len(vs) == 0 && len(hs) == 0 {
 		return
 	}
-
-	if !g.hasValue || math.IsNaN(g.value) {
-		g.value = g.vectorAggregate(vs, hs)
-		g.hasValue = true
-		return
-	}
-	current := g.value
-	g.value = g.aggregate(current, g.vectorAggregate(vs, hs))
-	g.hasValue = true
+	c.hasValue = true
+	c.value = 1
 }
 
-func (g *genericAcc) Value() (float64, *histogram.FloatHistogram) {
-	return g.value, nil
+func (c *groupAcc) Add(v float64, h *histogram.FloatHistogram) {
+	c.hasValue = true
+	c.value = 1
 }
 
-func (g *genericAcc) HasValue() bool {
-	return g.hasValue
+func (c *groupAcc) Value() (float64, *histogram.FloatHistogram) {
+	return c.value, nil
 }
 
-func (g *genericAcc) Reset(_ float64) {
-	g.hasValue = false
-	g.value = 0
+func (c *groupAcc) HasValue() bool {
+	return c.hasValue
+}
+
+func (c *groupAcc) Reset(_ float64) {
+	c.hasValue = false
+	c.value = 0
 }
 
 type countAcc struct {
@@ -346,7 +372,7 @@ func (q *quantileAcc) Add(v float64, h *histogram.FloatHistogram) {
 }
 
 func (q *quantileAcc) Value() (float64, *histogram.FloatHistogram) {
-	return quantile(q.arg, q.points), nil
+	return Quantile(q.arg, q.points), nil
 }
 
 func (q *quantileAcc) HasValue() bool {

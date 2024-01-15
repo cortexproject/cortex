@@ -6,13 +6,15 @@ package logicalplan
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
-	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
-
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/query"
 )
@@ -28,12 +30,12 @@ var DefaultOptimizers = []Optimizer{
 }
 
 type Plan interface {
-	Optimize([]Optimizer) Plan
+	Optimize([]Optimizer) (Plan, annotations.Annotations)
 	Expr() parser.Expr
 }
 
 type Optimizer interface {
-	Optimize(expr parser.Expr, opts *query.Options) parser.Expr
+	Optimize(plan parser.Expr, opts *query.Options) (parser.Expr, annotations.Annotations)
 }
 
 type plan struct {
@@ -49,18 +51,28 @@ func New(expr parser.Expr, opts *query.Options) Plan {
 	// the engine handles sorting at the presentation layer
 	expr = trimSorts(expr)
 
+	// replace scanners by our logical nodes
+	expr = replaceSelectors(expr)
+
 	return &plan{
 		expr: expr,
 		opts: opts,
 	}
 }
 
-func (p *plan) Optimize(optimizers []Optimizer) Plan {
+func (p *plan) Optimize(optimizers []Optimizer) (Plan, annotations.Annotations) {
+	annos := annotations.New()
 	for _, o := range optimizers {
-		p.expr = o.Optimize(p.expr, p.opts)
+		var a annotations.Annotations
+		p.expr, a = o.Optimize(p.expr, p.opts)
+		annos.Merge(a)
 	}
+	// parens are just annoying and getting rid of them doesnt change the query
+	expr := trimParens(p.expr)
 
-	return &plan{expr: p.expr, opts: p.opts}
+	expr = insertDuplicateLabelChecks(expr)
+
+	return &plan{expr: expr, opts: p.opts}, *annos
 }
 
 func (p *plan) Expr() parser.Expr {
@@ -70,6 +82,7 @@ func (p *plan) Expr() parser.Expr {
 func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 	switch node := (*expr).(type) {
 	case *parser.StepInvariantExpr:
+		transform(expr)
 		traverse(&node.Expr, transform)
 	case *parser.VectorSelector:
 		transform(expr)
@@ -77,13 +90,19 @@ func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 		var x parser.Expr = node.VectorSelector
 		transform(expr)
 		traverse(&x, transform)
+	case *MatrixSelector:
+		var x parser.Expr = node.MatrixSelector
+		transform(expr)
+		traverse(&x, transform)
 	case *parser.MatrixSelector:
 		transform(expr)
 		traverse(&node.VectorSelector, transform)
 	case *parser.AggregateExpr:
 		transform(expr)
+		traverse(&node.Param, transform)
 		traverse(&node.Expr, transform)
 	case *parser.Call:
+		transform(expr)
 		for i := range node.Args {
 			traverse(&(node.Args[i]), transform)
 		}
@@ -92,20 +111,31 @@ func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 		traverse(&node.LHS, transform)
 		traverse(&node.RHS, transform)
 	case *parser.UnaryExpr:
+		transform(expr)
 		traverse(&node.Expr, transform)
 	case *parser.ParenExpr:
+		transform(expr)
 		traverse(&node.Expr, transform)
 	case *parser.SubqueryExpr:
+		transform(expr)
+		traverse(&node.Expr, transform)
+	case CheckDuplicateLabels:
+		transform(expr)
 		traverse(&node.Expr, transform)
 	}
 }
 
 func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(parent *parser.Expr, node *parser.Expr) bool) bool {
 	switch node := (*current).(type) {
+	case *parser.StringLiteral:
+		return false
 	case *parser.NumberLiteral:
 		return false
 	case *parser.StepInvariantExpr:
-		return TraverseBottomUp(current, &node.Expr, transform)
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
+			return stop
+		}
+		return transform(parent, current)
 	case *parser.VectorSelector:
 		return transform(parent, current)
 	case *VectorSelector:
@@ -113,6 +143,12 @@ func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(
 			return stop
 		}
 		var x parser.Expr = node.VectorSelector
+		return TraverseBottomUp(current, &x, transform)
+	case *MatrixSelector:
+		if stop := transform(parent, current); stop {
+			return stop
+		}
+		var x parser.Expr = node.MatrixSelector
 		return TraverseBottomUp(current, &x, transform)
 	case *parser.MatrixSelector:
 		return transform(current, &node.VectorSelector)
@@ -143,13 +179,71 @@ func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(
 		}
 		return transform(parent, current)
 	case *parser.SubqueryExpr:
-		return TraverseBottomUp(current, &node.Expr, transform)
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
+			return stop
+		}
+		return transform(parent, current)
+	case CheckDuplicateLabels:
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
+			return stop
+		}
+		return transform(parent, current)
 	}
-
 	return true
 }
 
+func replaceSelectors(plan parser.Expr) parser.Expr {
+	traverse(&plan, func(current *parser.Expr) {
+		switch t := (*current).(type) {
+		case *parser.MatrixSelector:
+			*current = &MatrixSelector{MatrixSelector: t, OriginalString: t.String()}
+		case *parser.VectorSelector:
+			*current = &VectorSelector{VectorSelector: t}
+		case *parser.Call:
+			if t.Func.Name != "timestamp" {
+				return
+			}
+			switch v := unwrapParens(t.Args[0]).(type) {
+			case *parser.VectorSelector:
+				*current = &VectorSelector{VectorSelector: v, SelectTimestamp: true}
+			case *parser.StepInvariantExpr:
+				vs, ok := unwrapParens(v.Expr).(*parser.VectorSelector)
+				if ok {
+					// Prometheus weirdness
+					if vs.Timestamp != nil {
+						vs.OriginalOffset = 0
+					}
+					*current = &VectorSelector{VectorSelector: vs, SelectTimestamp: true}
+				}
+			}
+		}
+	})
+	return plan
+}
+
 func trimSorts(expr parser.Expr) parser.Expr {
+	canTrimSorts := true
+	// We cannot trim inner sort if its an argument to a timestamp function.
+	// If we would do it we could transform "timestamp(sort(X))" into "timestamp(X)"
+	// Which might return actual timestamps of samples instead of query execution timestamp.
+	TraverseBottomUp(nil, &expr, func(parent, current *parser.Expr) bool {
+		if current == nil || parent == nil {
+			return true
+		}
+		e, pok := (*parent).(*parser.Call)
+		f, cok := (*current).(*parser.Call)
+
+		if pok && cok {
+			if e.Func.Name == "timestamp" && strings.HasPrefix(f.Func.Name, "sort") {
+				canTrimSorts = false
+				return true
+			}
+		}
+		return false
+	})
+	if !canTrimSorts {
+		return expr
+	}
 	TraverseBottomUp(nil, &expr, func(parent, current *parser.Expr) bool {
 		if current == nil || parent == nil {
 			return true
@@ -162,6 +256,34 @@ func trimSorts(expr parser.Expr) parser.Expr {
 			}
 		}
 		return false
+	})
+	return expr
+}
+
+func trimParens(expr parser.Expr) parser.Expr {
+	TraverseBottomUp(nil, &expr, func(parent, current *parser.Expr) bool {
+		if current == nil || parent == nil {
+			return true
+		}
+		switch (*parent).(type) {
+		case *parser.ParenExpr:
+			*parent = *current
+		}
+		return false
+	})
+	return expr
+}
+
+func insertDuplicateLabelChecks(expr parser.Expr) parser.Expr {
+	traverse(&expr, func(node *parser.Expr) {
+		switch t := (*node).(type) {
+		case *parser.AggregateExpr, *parser.UnaryExpr, *parser.BinaryExpr, *parser.Call:
+			*node = CheckDuplicateLabels{Expr: t}
+		case *VectorSelector:
+			if t.SelectTimestamp {
+				*node = CheckDuplicateLabels{Expr: t}
+			}
+		}
 	})
 	return expr
 }
@@ -278,6 +400,15 @@ func newStepInvariantExpr(expr parser.Expr) parser.Expr {
 	return &parser.StepInvariantExpr{Expr: expr}
 }
 
+func unwrapParens(expr parser.Expr) parser.Expr {
+	switch t := expr.(type) {
+	case *parser.ParenExpr:
+		return unwrapParens(t.Expr)
+	default:
+		return t
+	}
+}
+
 // Copy from https://github.com/prometheus/prometheus/blob/v2.39.1/promql/engine.go#L2658.
 func setOffsetForAtModifier(evalTime int64, expr parser.Expr) {
 	getOffset := func(ts *int64, originalOffset time.Duration, path []parser.Node) time.Duration {
@@ -341,14 +472,76 @@ func subqueryTimes(path []parser.Node) (time.Duration, time.Duration, *int64) {
 }
 
 func setOffsetForInnerSubqueries(expr parser.Expr, opts *query.Options) {
-	parser.Inspect(expr, func(node parser.Node, path []parser.Node) error {
-		switch n := node.(type) {
-		case *parser.SubqueryExpr:
-			nOpts := query.NestedOptionsForSubquery(opts, n)
-			setOffsetForAtModifier(nOpts.Start.UnixMilli(), n.Expr)
-			setOffsetForInnerSubqueries(n.Expr, nOpts)
-			return errors.New("stop iteration")
+	switch n := expr.(type) {
+	case *parser.SubqueryExpr:
+		nOpts := query.NestedOptionsForSubquery(opts, n)
+		setOffsetForAtModifier(nOpts.Start.UnixMilli(), n.Expr)
+		setOffsetForInnerSubqueries(n.Expr, nOpts)
+	default:
+		for _, c := range parser.Children(n) {
+			setOffsetForInnerSubqueries(c.(parser.Expr), opts)
 		}
-		return nil
-	})
+	}
 }
+
+// VectorSelector is vector selector with additional configuration set by optimizers.
+type VectorSelector struct {
+	*parser.VectorSelector
+	Filters         []*labels.Matcher
+	BatchSize       int64
+	SelectTimestamp bool
+}
+
+func (f VectorSelector) String() string {
+	if f.SelectTimestamp {
+		// If we pushed down timestamp into the vector selector we need to render the proper
+		// PromQL again.
+		return fmt.Sprintf("timestamp(%s)", f.VectorSelector.String())
+	}
+	return f.VectorSelector.String()
+}
+
+func (f VectorSelector) Pretty(level int) string { return f.String() }
+
+func (f VectorSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
+
+func (f VectorSelector) Type() parser.ValueType { return parser.ValueTypeVector }
+
+func (f VectorSelector) PromQLExpr() {}
+
+// MatrixSelector is matrix selector with additional configuration set by optimizers.
+// It is used so we can get rid of VectorSelector in distributed mode too.
+type MatrixSelector struct {
+	*parser.MatrixSelector
+
+	// Needed because this operator is used in the distributed mode
+	OriginalString string
+}
+
+func (f MatrixSelector) String() string {
+	return f.OriginalString
+}
+
+func (f MatrixSelector) Pretty(level int) string { return f.String() }
+
+func (f MatrixSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
+
+func (f MatrixSelector) Type() parser.ValueType { return parser.ValueTypeVector }
+
+func (f MatrixSelector) PromQLExpr() {}
+
+type CheckDuplicateLabels struct {
+	Expr parser.Expr
+}
+
+func (c CheckDuplicateLabels) String() string {
+	return c.Expr.String()
+}
+
+func (c CheckDuplicateLabels) Pretty(level int) string { return c.Expr.Pretty(level) }
+
+func (c CheckDuplicateLabels) PositionRange() posrange.PositionRange { return c.Expr.PositionRange() }
+
+func (c CheckDuplicateLabels) Type() parser.ValueType { return c.Expr.Type() }
+
+func (c CheckDuplicateLabels) PromQLExpr() {}

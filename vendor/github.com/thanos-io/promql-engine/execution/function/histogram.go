@@ -13,11 +13,11 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/extlabels"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type histogramSeries struct {
@@ -28,12 +28,12 @@ type histogramSeries struct {
 
 // histogramOperator is a function operator that calculates percentiles.
 type histogramOperator struct {
-	pool *model.VectorPool
+	model.OperatorTelemetry
+	once   sync.Once
+	series []labels.Labels
 
+	pool     *model.VectorPool
 	funcArgs parser.Expressions
-
-	once     sync.Once
-	series   []labels.Labels
 	scalarOp model.VectorOperator
 	vectorOp model.VectorOperator
 
@@ -47,27 +47,34 @@ type histogramOperator struct {
 
 	// seriesBuckets are the buckets for each individual conventional histogram series.
 	seriesBuckets []buckets
-	model.OperatorTelemetry
 }
 
-func (o *histogramOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*functionOperator]")
-	next := make([]model.ObservableVectorOperator, 0, 2)
-	if obsScalarOp, ok := o.scalarOp.(model.ObservableVectorOperator); ok {
-		next = append(next, obsScalarOp)
+func newHistogramOperator(
+	pool *model.VectorPool,
+	funcArgs parser.Expressions,
+	scalarOp model.VectorOperator,
+	vectorOp model.VectorOperator,
+	opts *query.Options,
+) *histogramOperator {
+	return &histogramOperator{
+		pool:              pool,
+		funcArgs:          funcArgs,
+		scalarOp:          scalarOp,
+		vectorOp:          vectorOp,
+		scalarPoints:      make([]float64, opts.StepsBatch),
+		OperatorTelemetry: model.NewTelemetry(histogramOperatorName, opts.EnableAnalysis),
 	}
-	if obsVectorOp, ok := o.vectorOp.(model.ObservableVectorOperator); ok {
-		next = append(next, obsVectorOp)
-	}
-	return o, next
 }
 
 func (o *histogramOperator) Explain() (me string, next []model.VectorOperator) {
 	next = []model.VectorOperator{o.scalarOp, o.vectorOp}
-	return fmt.Sprintf("[*functionOperator] histogram_quantile(%v)", o.funcArgs), next
+	return fmt.Sprintf("%s(%v)", histogramOperatorName, o.funcArgs), next
 }
 
 func (o *histogramOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	if err != nil {
@@ -82,12 +89,15 @@ func (o *histogramOperator) GetPool() *model.VectorPool {
 }
 
 func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
-	start := time.Now()
+
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	if err != nil {
@@ -116,7 +126,6 @@ func (o *histogramOperator) Next(ctx context.Context) ([]model.StepVector, error
 		o.scalarOp.GetPool().PutStepVector(scalar)
 	}
 	o.scalarOp.GetPool().PutVectors(scalars)
-	o.AddExecutionTimeTaken(time.Since(start))
 
 	return o.processInputSeries(vectors)
 }
@@ -174,8 +183,8 @@ func (o *histogramOperator) processInputSeries(vectors []model.StepVector) ([]mo
 		out = append(out, step)
 		o.vectorOp.GetPool().PutStepVector(vector)
 	}
-
 	o.vectorOp.GetPool().PutVectors(vectors)
+
 	return out, nil
 }
 
@@ -183,9 +192,6 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 	series, err := o.vectorOp.Series(ctx)
 	if err != nil {
 		return err
-	}
-	if extlabels.ContainsDuplicateLabelSetAfterDroppingName(series) {
-		return extlabels.ErrDuplicateLabelSet
 	}
 
 	var (
@@ -205,12 +211,16 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 			hasBucketValue = false
 		}
 
-		lbls, _ = extlabels.DropMetricName(lbls, b)
 		hasher.Reset()
 		hashBuf = lbls.Bytes(hashBuf)
 		if _, err := hasher.Write(hashBuf); err != nil {
 			return err
 		}
+
+		// We check for duplicate series after dropped labels when
+		// showing the result of the query. Series that are equal after
+		// dropping name should not hash to the same bucket here.
+		lbls, _ = extlabels.DropMetricName(lbls, b)
 
 		seriesHash := hasher.Sum64()
 		seriesID, ok := seriesHashes[seriesHash]

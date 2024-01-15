@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"math"
 	"sync"
-
-	"golang.org/x/exp/slices"
+	"time"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/efficientgo/core/errors"
 	"github.com/zhangyunhao116/umap"
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -67,7 +67,9 @@ func NewVectorOperator(
 	returnBool bool,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
-	o := &vectorOperator{
+	return &vectorOperator{
+		OperatorTelemetry: model.NewTelemetry("[vectorBinary]", opts.EnableAnalysis),
+
 		pool:       pool,
 		lhs:        lhs,
 		rhs:        rhs,
@@ -75,35 +77,20 @@ func NewVectorOperator(
 		opType:     opType,
 		returnBool: returnBool,
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
-	}
-
-	o.OperatorTelemetry = &model.NoopTelemetry{}
-	if opts.EnableAnalysis {
-		o.OperatorTelemetry = &model.TrackedTelemetry{}
-	}
-	return o, nil
-}
-
-func (o *vectorOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*vectorOperator]")
-	next := make([]model.ObservableVectorOperator, 0, 2)
-	if obsnextParamOp, ok := o.lhs.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnextParamOp)
-	}
-	if obsnext, ok := o.rhs.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
-	}
-	return o, next
+	}, nil
 }
 
 func (o *vectorOperator) Explain() (me string, next []model.VectorOperator) {
 	if o.matching.On {
-		return fmt.Sprintf("[*vectorOperator] %s %v on %v group %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.MatchingLabels, o.matching.Include), []model.VectorOperator{o.lhs, o.rhs}
+		return fmt.Sprintf("[vectorBinary] %s - %v, on: %v, group: %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.MatchingLabels, o.matching.Include), []model.VectorOperator{o.lhs, o.rhs}
 	}
-	return fmt.Sprintf("[*vectorOperator] %s %v ignoring %v group %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.On, o.matching.Include), []model.VectorOperator{o.lhs, o.rhs}
+	return fmt.Sprintf("[vectorBinary] %s - %v, ignoring: %v, group: %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.On, o.matching.Include), []model.VectorOperator{o.lhs, o.rhs}
 }
 
 func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	if err := o.initOnce(ctx); err != nil {
 		return nil, err
 	}
@@ -111,6 +98,9 @@ func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -297,6 +287,11 @@ func (o *vectorOperator) execBinaryArithmetic(lhs, rhs model.StepVector) (model.
 		hcs, lcs = rhs, lhs
 	default:
 		return step, errors.Newf("Unexpected matching cardinality: %s", o.matching.Card.String())
+	}
+
+	// shortcut: if we have no samples on the high card side we cannot compute pairings
+	if len(hcs.Samples) == 0 {
+		return step, nil
 	}
 
 	for i, sampleID := range lcs.SampleIDs {
@@ -505,6 +500,7 @@ func signatureFunc(on bool, names ...string) func(labels.Labels) uint64 {
 
 // Lifted from: https://github.com/prometheus/prometheus/blob/a38179c4e183d9b50b271167bf90050eda8ec3d1/promql/engine.go#L2430.
 // TODO: call with histogram values in followup PR.
+// nolint: unparam
 func vectorElemBinop(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
 	switch op {
 	case parser.ADD:

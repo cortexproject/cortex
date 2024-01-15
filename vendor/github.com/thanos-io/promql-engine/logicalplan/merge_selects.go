@@ -5,6 +5,7 @@ package logicalplan
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -22,17 +23,17 @@ import (
 // and apply an additional filter for {c="d"}.
 type MergeSelectsOptimizer struct{}
 
-func (m MergeSelectsOptimizer) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
+func (m MergeSelectsOptimizer) Optimize(plan parser.Expr, _ *query.Options) (parser.Expr, annotations.Annotations) {
 	heap := make(matcherHeap)
-	extractSelectors(heap, expr)
-	replaceMatchers(heap, &expr)
+	extractSelectors(heap, plan)
+	replaceMatchers(heap, &plan)
 
-	return expr
+	return plan, nil
 }
 
 func extractSelectors(selectors matcherHeap, expr parser.Expr) {
 	traverse(&expr, func(node *parser.Expr) {
-		e, ok := (*node).(*parser.VectorSelector)
+		e, ok := (*node).(*VectorSelector)
 		if !ok {
 			return
 		}
@@ -48,8 +49,6 @@ func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
 	traverse(expr, func(node *parser.Expr) {
 		var matchers []*labels.Matcher
 		switch e := (*node).(type) {
-		case *parser.VectorSelector:
-			matchers = e.LabelMatchers
 		case *VectorSelector:
 			matchers = e.LabelMatchers
 		default:
@@ -84,12 +83,6 @@ func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
 			}
 
 			switch e := (*node).(type) {
-			case *parser.VectorSelector:
-				e.LabelMatchers = replacement
-				*node = &VectorSelector{
-					VectorSelector: e,
-					Filters:        filters,
-				}
 			case *VectorSelector:
 				e.LabelMatchers = replacement
 				e.Filters = filters

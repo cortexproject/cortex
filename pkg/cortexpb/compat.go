@@ -10,11 +10,12 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.

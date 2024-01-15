@@ -274,6 +274,9 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 	if allowedStartOffset < startOffset {
 		return *expr
 	}
+	if isConstantExpr(*expr) {
+		return *expr
+	}
 
 	var globalMinT int64 = math.MaxInt64
 	for _, e := range engines {
@@ -450,16 +453,16 @@ func isDistributive(expr *parser.Expr, skipBinaryPushdown bool) bool {
 		return false
 	}
 
-	switch aggr := (*expr).(type) {
+	switch e := (*expr).(type) {
 	case *parser.BinaryExpr:
-		return isBinaryExpressionWithOneConstantSide(aggr) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(aggr))
+		return isBinaryExpressionWithOneConstantSide(e) || (!skipBinaryPushdown && isBinaryExpressionWithDistributableMatching(e))
 	case *parser.AggregateExpr:
 		// Certain aggregations are currently not supported.
-		if _, ok := distributiveAggregations[aggr.Op]; !ok {
+		if _, ok := distributiveAggregations[e.Op]; !ok {
 			return false
 		}
 	case *parser.Call:
-		return len(aggr.Args) > 0
+		return len(e.Args) > 0
 	}
 
 	return true
@@ -531,6 +534,12 @@ func isConstantExpr(expr parser.Expr) bool {
 		return isConstantExpr(texpr.Expr)
 	case *parser.ParenExpr:
 		return isConstantExpr(texpr.Expr)
+	case *parser.Call:
+		constArgs := true
+		for _, arg := range texpr.Args {
+			constArgs = constArgs && isConstantExpr(arg)
+		}
+		return constArgs
 	case *parser.BinaryExpr:
 		return isConstantExpr(texpr.LHS) && isConstantExpr(texpr.RHS)
 	default:

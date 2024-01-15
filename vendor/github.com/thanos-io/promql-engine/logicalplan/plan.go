@@ -70,6 +70,8 @@ func (p *plan) Optimize(optimizers []Optimizer) (Plan, annotations.Annotations) 
 	// parens are just annoying and getting rid of them doesnt change the query
 	expr := trimParens(p.expr)
 
+	expr = insertDuplicateLabelChecks(expr)
+
 	return &plan{expr: expr, opts: p.opts}, *annos
 }
 
@@ -80,6 +82,7 @@ func (p *plan) Expr() parser.Expr {
 func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 	switch node := (*expr).(type) {
 	case *parser.StepInvariantExpr:
+		transform(expr)
 		traverse(&node.Expr, transform)
 	case *parser.VectorSelector:
 		transform(expr)
@@ -116,6 +119,9 @@ func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 	case *parser.SubqueryExpr:
 		transform(expr)
 		traverse(&node.Expr, transform)
+	case CheckDuplicateLabels:
+		transform(expr)
+		traverse(&node.Expr, transform)
 	}
 }
 
@@ -126,7 +132,10 @@ func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(
 	case *parser.NumberLiteral:
 		return false
 	case *parser.StepInvariantExpr:
-		return TraverseBottomUp(current, &node.Expr, transform)
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
+			return stop
+		}
+		return transform(parent, current)
 	case *parser.VectorSelector:
 		return transform(parent, current)
 	case *VectorSelector:
@@ -170,6 +179,11 @@ func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(
 		}
 		return transform(parent, current)
 	case *parser.SubqueryExpr:
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
+			return stop
+		}
+		return transform(parent, current)
+	case CheckDuplicateLabels:
 		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
 			return stop
 		}
@@ -256,6 +270,20 @@ func trimParens(expr parser.Expr) parser.Expr {
 			*parent = *current
 		}
 		return false
+	})
+	return expr
+}
+
+func insertDuplicateLabelChecks(expr parser.Expr) parser.Expr {
+	traverse(&expr, func(node *parser.Expr) {
+		switch t := (*node).(type) {
+		case *parser.AggregateExpr, *parser.UnaryExpr, *parser.BinaryExpr, *parser.Call:
+			*node = CheckDuplicateLabels{Expr: t}
+		case *VectorSelector:
+			if t.SelectTimestamp {
+				*node = CheckDuplicateLabels{Expr: t}
+			}
+		}
 	})
 	return expr
 }
@@ -501,3 +529,19 @@ func (f MatrixSelector) PositionRange() posrange.PositionRange { return posrange
 func (f MatrixSelector) Type() parser.ValueType { return parser.ValueTypeVector }
 
 func (f MatrixSelector) PromQLExpr() {}
+
+type CheckDuplicateLabels struct {
+	Expr parser.Expr
+}
+
+func (c CheckDuplicateLabels) String() string {
+	return c.Expr.String()
+}
+
+func (c CheckDuplicateLabels) Pretty(level int) string { return c.Expr.Pretty(level) }
+
+func (c CheckDuplicateLabels) PositionRange() posrange.PositionRange { return c.Expr.PositionRange() }
+
+func (c CheckDuplicateLabels) Type() parser.ValueType { return c.Expr.Type() }
+
+func (c CheckDuplicateLabels) PromQLExpr() {}

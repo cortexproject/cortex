@@ -60,44 +60,25 @@ func newOperator(expr parser.Expr, storage *engstore.SelectorPool, opts *query.O
 	case *parser.NumberLiteral:
 		return scan.NewNumberLiteralSelector(model.NewVectorPool(opts.StepsBatch), opts, e.Val), nil
 	case *logicalplan.VectorSelector:
-		op := newVectorSelector(e, storage, opts, hints)
-		if e.SelectTimestamp {
-			// we will drop the __name__ label here, so we need to check for duplicate labels
-			return exchange.NewDuplicateLabelCheck(op, opts), nil
-		}
-		return op, nil
+		return newVectorSelector(e, storage, opts, hints), nil
 	case *parser.Call:
-		op, err := newCall(e, storage, opts, hints)
-		if err != nil {
-			return nil, err
-		}
-		return exchange.NewDuplicateLabelCheck(op, opts), nil
+		return newCall(e, storage, opts, hints)
 	case *parser.AggregateExpr:
-		op, err := newAggregateExpression(e, storage, opts, hints)
-		if err != nil {
-			return nil, err
-		}
-		return exchange.NewDuplicateLabelCheck(op, opts), nil
+		return newAggregateExpression(e, storage, opts, hints)
 	case *parser.BinaryExpr:
-		op, err := newBinaryExpression(e, storage, opts, hints)
-		if err != nil {
-			return nil, err
-		}
-		return exchange.NewDuplicateLabelCheck(op, opts), nil
+		return newBinaryExpression(e, storage, opts, hints)
 	case *parser.ParenExpr:
 		return newOperator(e.Expr, storage, opts, hints)
 	case *parser.UnaryExpr:
-		op, err := newUnaryExpression(e, storage, opts, hints)
-		if err != nil {
-			return nil, err
-		}
-		return exchange.NewDuplicateLabelCheck(op, opts), nil
+		return newUnaryExpression(e, storage, opts, hints)
 	case *parser.StepInvariantExpr:
 		return newStepInvariantExpression(e, storage, opts, hints)
 	case logicalplan.Deduplicate:
 		return newDeduplication(e, storage, opts, hints)
 	case logicalplan.RemoteExecution:
 		return newRemoteExecution(e, opts, hints)
+	case logicalplan.CheckDuplicateLabels:
+		return newDuplicateLabelCheck(e, storage, opts, hints)
 	case logicalplan.Noop:
 		return noop.NewOperator(), nil
 	case logicalplan.UserDefinedExpr:
@@ -430,6 +411,14 @@ func newRemoteExecution(e logicalplan.RemoteExecution, opts *query.Options, hint
 	selectorOpts.LookbackDelta = 0
 	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, &selectorOpts, hints)
 	return exchange.NewConcurrent(remoteExec, 2, opts), nil
+}
+
+func newDuplicateLabelCheck(e logicalplan.CheckDuplicateLabels, storage *engstore.SelectorPool, opts *query.Options, hints storage.SelectHints) (model.VectorOperator, error) {
+	op, err := newOperator(e.Expr, storage, opts, hints)
+	if err != nil {
+		return nil, err
+	}
+	return exchange.NewDuplicateLabelCheck(op, opts), nil
 }
 
 // Copy from https://github.com/prometheus/prometheus/blob/v2.39.1/promql/engine.go#L791.

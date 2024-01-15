@@ -89,9 +89,6 @@ func (s *PromQLSmith) walkAggregateParam(op parser.ItemType) parser.Expr {
 // or function that returns matrix.
 func (s *PromQLSmith) walkBinaryExpr(valueTypes ...parser.ValueType) parser.Expr {
 	valueTypes = keepValueTypes(valueTypes, vectorAndScalarValueTypes)
-	if len(valueTypes) == 0 {
-		valueTypes = vectorAndScalarValueTypes
-	}
 	expr := &parser.BinaryExpr{
 		Op: s.walkBinaryOp(!slices.Contains(valueTypes, parser.ValueTypeVector)),
 		VectorMatching: &parser.VectorMatching{
@@ -399,7 +396,11 @@ func wrapParenExpr(expr parser.Expr) parser.Expr {
 
 // keepValueTypes picks value types that we should keep from the input.
 // input shouldn't contain duplicate value types.
+// If no input value types are provided, use value types to keep as result.
 func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.ValueType {
+	if len(input) == 0 {
+		return keep
+	}
 	out := make([]parser.ValueType, 0, len(keep))
 	s := make(map[parser.ValueType]struct{})
 	for _, vt := range keep {
@@ -513,6 +514,9 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		for _, v := range m {
 			output = append(output, v)
 		}
+		sort.Slice(output, func(i, j int) bool {
+			return labels.Compare(output[i], output[j]) < 0
+		})
 		return output, false
 	case *parser.SubqueryExpr:
 		return getOutputSeries(node.Expr)

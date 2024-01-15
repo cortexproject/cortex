@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go v1.48.14
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
 	github.com/cespare/xxhash v1.1.0
-	github.com/cortexproject/promqlsmith v0.0.0-20231206201345-a7d143cf5966
+	github.com/cortexproject/promqlsmith v0.0.0-20240115062247-9ed0dfba956d
 	github.com/dustin/go-humanize v1.0.1
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
@@ -44,9 +44,9 @@ require (
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/prometheus/client_model v0.5.0
-	github.com/prometheus/common v0.45.0
+	github.com/prometheus/common v0.45.1-0.20231122191551-832cd6e99f99
 	// Prometheus maps version 2.x.y to tags v0.x.y.
-	github.com/prometheus/prometheus v0.48.1-0.20231212213830-d0c2d9c0b9cc
+	github.com/prometheus/prometheus v0.48.1-0.20231231112717-756202aa4fc0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5

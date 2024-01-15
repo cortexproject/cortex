@@ -128,7 +128,7 @@ func hashMetric(
 	grouping []string,
 	groupingSet map[string]struct{},
 	buf []byte,
-) (uint64, string, labels.Labels) {
+) (uint64, labels.Labels) {
 	buf = buf[:0]
 	builder.Reset()
 
@@ -142,12 +142,12 @@ func hashMetric(
 			}
 			builder.Add(lbl.Name, lbl.Value)
 		})
-		key, bytes := metric.HashWithoutLabels(buf, grouping...)
-		return key, string(bytes), builder.Labels()
+		key, _ := metric.HashWithoutLabels(buf, grouping...)
+		return key, builder.Labels()
 	}
 
 	if len(grouping) == 0 {
-		return 0, "", labels.Labels{}
+		return 0, labels.Labels{}
 	}
 
 	metric.Range(func(lbl labels.Label) {
@@ -156,8 +156,8 @@ func hashMetric(
 		}
 		builder.Add(lbl.Name, lbl.Value)
 	})
-	key, bytes := metric.HashForLabels(buf, grouping...)
-	return key, string(bytes), builder.Labels()
+	key, _ := metric.HashForLabels(buf, grouping...)
+	return key, builder.Labels()
 }
 
 func newScalarAccumulator(expr parser.ItemType) (accumulator, error) {

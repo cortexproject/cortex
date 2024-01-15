@@ -175,6 +175,12 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 		return plan, annotations.New().Add(RewrittenExternalLabelWarning)
 	}
 
+	// TODO(fpetkovski): Consider changing TraverseBottomUp to pass in a list of parents in the transform function.
+	parents := make(map[*parser.Expr]*parser.Expr)
+	TraverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
+		parents[current] = parent
+		return false
+	})
 	TraverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
 		// If the current operation is not distributive, stop the traversal.
 		if !isDistributive(current, m.SkipBinaryPushdown) {
@@ -190,7 +196,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 			}
 
 			remoteAggregation := newRemoteAggregation(aggr, engines)
-			subQueries := m.distributeQuery(&remoteAggregation, engines, opts, minEngineOverlap)
+			subQueries := m.distributeQuery(&remoteAggregation, engines, m.subqueryOpts(parents, current, opts), minEngineOverlap)
 			*current = &parser.AggregateExpr{
 				Op:       localAggregation,
 				Expr:     subQueries,
@@ -202,7 +208,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 			return true
 		}
 		if isAbsent(*current) {
-			*current = m.distributeAbsent(*current, engines, calculateStartOffset(current, opts.LookbackDelta), opts)
+			*current = m.distributeAbsent(*current, engines, calculateStartOffset(current, opts.LookbackDelta), m.subqueryOpts(parents, current, opts))
 			return true
 		}
 
@@ -211,11 +217,24 @@ func (m DistributedExecutionOptimizer) Optimize(plan parser.Expr, opts *query.Op
 			return false
 		}
 
-		*current = m.distributeQuery(current, engines, opts, minEngineOverlap)
+		*current = m.distributeQuery(current, engines, m.subqueryOpts(parents, current, opts), minEngineOverlap)
 		return true
 	})
 
 	return plan, nil
+}
+
+func (m DistributedExecutionOptimizer) subqueryOpts(parents map[*parser.Expr]*parser.Expr, current *parser.Expr, opts *query.Options) *query.Options {
+	subqueryParents := make([]*parser.SubqueryExpr, 0, len(parents))
+	for p := parents[current]; p != nil; p = parents[p] {
+		if subquery, ok := (*p).(*parser.SubqueryExpr); ok {
+			subqueryParents = append(subqueryParents, subquery)
+		}
+	}
+	for i := len(subqueryParents) - 1; i >= 0; i-- {
+		opts = query.NestedOptionsForSubquery(opts, subqueryParents[i])
+	}
+	return opts
 }
 
 func newRemoteAggregation(rootAggregation *parser.AggregateExpr, engines []api.RemoteEngine) parser.Expr {
@@ -410,11 +429,13 @@ func calculateStartOffset(expr *parser.Expr, lookbackDelta time.Duration) time.D
 	var selectRange time.Duration
 	var offset time.Duration
 	traverse(expr, func(node *parser.Expr) {
-		if matrixSelector, ok := (*node).(*parser.MatrixSelector); ok {
-			selectRange = matrixSelector.Range
-		}
-		if vectorSelector, ok := (*node).(*parser.VectorSelector); ok {
-			offset = vectorSelector.Offset
+		switch n := (*node).(type) {
+		case *parser.SubqueryExpr:
+			selectRange += n.Range
+		case *MatrixSelector:
+			selectRange += n.Range
+		case *VectorSelector:
+			offset = n.Offset
 		}
 	})
 	return maxDuration(offset+selectRange, lookbackDelta)
@@ -467,7 +488,7 @@ func matchesExternalLabelSet(expr parser.Expr, externalLabelSet []labels.Labels)
 	}
 	var selectorSet [][]*labels.Matcher
 	traverse(&expr, func(current *parser.Expr) {
-		vs, ok := (*current).(*parser.VectorSelector)
+		vs, ok := (*current).(*VectorSelector)
 		if ok {
 			selectorSet = append(selectorSet, vs.LabelMatchers)
 		}

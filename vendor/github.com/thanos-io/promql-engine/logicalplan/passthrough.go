@@ -63,7 +63,7 @@ func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) (p
 
 	matchingLabelsEngines := make([]api.RemoteEngine, 0, len(engines))
 	TraverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
-		if vs, ok := (*current).(*parser.VectorSelector); ok {
+		if vs, ok := (*current).(*VectorSelector); ok {
 			for _, e := range engines {
 				if !labelSetsMatch(vs.LabelMatchers, e.LabelSets()...) {
 					continue

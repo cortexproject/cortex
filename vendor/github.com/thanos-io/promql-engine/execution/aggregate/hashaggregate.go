@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -59,8 +59,8 @@ func NewHashAggregate(
 	// Grouping labels need to be sorted in order for metric hashing to work.
 	// https://github.com/prometheus/prometheus/blob/8ed39fdab1ead382a354e45ded999eb3610f8d5f/model/labels/labels.go#L162-L181
 	slices.Sort(labels)
-	a := &aggregate{
-		OperatorTelemetry: &model.TrackedTelemetry{},
+	return &aggregate{
+		OperatorTelemetry: model.NewTelemetry("[aggregate]", opts.EnableAnalysis),
 
 		next:        next,
 		paramOp:     paramOp,
@@ -70,21 +70,7 @@ func NewHashAggregate(
 		aggregation: aggregation,
 		labels:      labels,
 		stepsBatch:  opts.StepsBatch,
-	}
-
-	return a, nil
-}
-
-func (a *aggregate) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	a.SetName("[*aggregate]")
-	var ops []model.ObservableVectorOperator
-	if obsnextParamOp, ok := a.paramOp.(model.ObservableVectorOperator); ok {
-		ops = append(ops, obsnextParamOp)
-	}
-	if obsnext, ok := a.next.(model.ObservableVectorOperator); ok {
-		ops = append(ops, obsnext)
-	}
-	return a, ops
+	}, nil
 }
 
 func (a *aggregate) Explain() (me string, next []model.VectorOperator) {
@@ -94,12 +80,15 @@ func (a *aggregate) Explain() (me string, next []model.VectorOperator) {
 	}
 	ops = append(ops, a.next)
 	if a.by {
-		return fmt.Sprintf("[*aggregate] %v by (%v)", a.aggregation.String(), a.labels), ops
+		return fmt.Sprintf("[aggregate] %v by (%v)", a.aggregation.String(), a.labels), ops
 	}
-	return fmt.Sprintf("[*aggregate] %v without (%v)", a.aggregation.String(), a.labels), ops
+	return fmt.Sprintf("[aggregate] %v without (%v)", a.aggregation.String(), a.labels), ops
 }
 
 func (a *aggregate) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	a.once.Do(func() { err = a.initializeTables(ctx) })
 	if err != nil {
@@ -114,13 +103,14 @@ func (a *aggregate) GetPool() *model.VectorPool {
 }
 
 func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
-	start := time.Now()
-	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
 
 	var err error
 	a.once.Do(func() { err = a.initializeTables(ctx) })
@@ -247,7 +237,7 @@ func (a *aggregate) initializeScalarTables(ctx context.Context) ([]aggregateTabl
 		labelsMap[lblName] = struct{}{}
 	}
 	for i := 0; i < len(series); i++ {
-		hash, _, lbls := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
+		hash, lbls := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
 		output, ok := outputMap[hash]
 		if !ok {
 			output = &model.Series{

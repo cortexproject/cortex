@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type dedupSample struct {
@@ -30,6 +31,8 @@ type dedupCache []dedupSample
 // if multiple samples with the same ID are present in a StepVector, dedupOperator
 // will keep the last sample in that vector.
 type dedupOperator struct {
+	model.OperatorTelemetry
+
 	once   sync.Once
 	series []labels.Labels
 
@@ -38,34 +41,25 @@ type dedupOperator struct {
 	// outputIndex is a slice that is used as an index from input sample ID to output sample ID.
 	outputIndex []uint64
 	dedupCache  dedupCache
-	model.OperatorTelemetry
 }
 
-func NewDedupOperator(pool *model.VectorPool, next model.VectorOperator) model.VectorOperator {
-	d := &dedupOperator{
-		next: next,
-		pool: pool,
+func NewDedupOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) model.VectorOperator {
+	return &dedupOperator{
+		OperatorTelemetry: model.NewTelemetry("[dedup]", opts.EnableAnalysis),
+		next:              next,
+		pool:              pool,
 	}
-	d.OperatorTelemetry = &model.TrackedTelemetry{}
-	return d
-}
-
-func (d *dedupOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	d.SetName("[*dedup]")
-	next := make([]model.ObservableVectorOperator, 0, 1)
-	if obsnext, ok := d.next.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
-	}
-	return d, next
 }
 
 func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { d.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	d.once.Do(func() { err = d.loadSeries(ctx) })
 	if err != nil {
 		return nil, err
 	}
-	start := time.Now()
 
 	in, err := d.next.Next(ctx)
 	if err != nil {
@@ -105,12 +99,14 @@ func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 		}
 		result = append(result, out)
 	}
-	d.AddExecutionTimeTaken(time.Since(start))
 
 	return result, nil
 }
 
 func (d *dedupOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { d.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	d.once.Do(func() { err = d.loadSeries(ctx) })
 	if err != nil {
@@ -124,7 +120,7 @@ func (d *dedupOperator) GetPool() *model.VectorPool {
 }
 
 func (d *dedupOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[*dedup]", []model.VectorOperator{d.next}
+	return "[dedup]", []model.VectorOperator{d.next}
 }
 
 func (d *dedupOperator) loadSeries(ctx context.Context) error {

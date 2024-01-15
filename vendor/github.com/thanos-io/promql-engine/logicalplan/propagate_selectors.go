@@ -47,11 +47,11 @@ func (m PropagateMatchersOptimizer) Optimize(plan parser.Expr, _ *query.Options)
 }
 
 func propagateMatchers(binOp *parser.BinaryExpr) {
-	lhSelector, ok := binOp.LHS.(*parser.VectorSelector)
+	lhSelector, ok := binOp.LHS.(*VectorSelector)
 	if !ok {
 		return
 	}
-	rhSelector, ok := binOp.RHS.(*parser.VectorSelector)
+	rhSelector, ok := binOp.RHS.(*VectorSelector)
 	if !ok {
 		return
 	}
@@ -106,7 +106,7 @@ func makeUnion(lhMatchers map[string]*labels.Matcher, rhMatchers map[string]*lab
 	return union, false
 }
 
-func toMatcherMap(lhSelector *parser.VectorSelector) map[string]*labels.Matcher {
+func toMatcherMap(lhSelector *VectorSelector) map[string]*labels.Matcher {
 	lhMatchers := make(map[string]*labels.Matcher)
 	for _, m := range lhSelector.LabelMatchers {
 		lhMatchers[m.Name] = m

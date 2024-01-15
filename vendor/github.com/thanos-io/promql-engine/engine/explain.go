@@ -28,17 +28,18 @@ type ExplainOutputNode struct {
 
 var _ ExplainableQuery = &compatibilityQuery{}
 
-func analyzeVector(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
-	telemetry, obsVectors := obsv.Analyze()
-
-	var children []AnalyzeOutputNode
-	for _, vector := range obsVectors {
-		children = append(children, *analyzeVector(vector))
+func analyzeQuery(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
+	_, children := obsv.Explain()
+	var childTelemetry []AnalyzeOutputNode
+	for _, child := range children {
+		if obsChild, ok := child.(model.ObservableVectorOperator); ok {
+			childTelemetry = append(childTelemetry, *analyzeQuery(obsChild))
+		}
 	}
 
 	return &AnalyzeOutputNode{
-		OperatorTelemetry: telemetry,
-		Children:          children,
+		OperatorTelemetry: obsv,
+		Children:          childTelemetry,
 	}
 }
 

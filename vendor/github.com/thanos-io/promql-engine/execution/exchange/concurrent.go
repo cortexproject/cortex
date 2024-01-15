@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -27,30 +28,24 @@ type concurrencyOperator struct {
 	model.OperatorTelemetry
 }
 
-func NewConcurrent(next model.VectorOperator, bufferSize int) model.VectorOperator {
-	c := &concurrencyOperator{
+func NewConcurrent(next model.VectorOperator, bufferSize int, opts *query.Options) model.VectorOperator {
+	return &concurrencyOperator{
+		OperatorTelemetry: model.NewTelemetry("[concurrent]", opts.EnableAnalysis),
+
 		next:       next,
 		buffer:     make(chan maybeStepVector, bufferSize),
 		bufferSize: bufferSize,
 	}
-	c.OperatorTelemetry = &model.TrackedTelemetry{}
-	return c
-}
-
-func (c *concurrencyOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	c.SetName(("[*concurrencyOperator]"))
-	next := make([]model.ObservableVectorOperator, 0, 1)
-	if obsnext, ok := c.next.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
-	}
-	return c, next
 }
 
 func (c *concurrencyOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[*concurrencyOperator(buff=%v)]", c.bufferSize), []model.VectorOperator{c.next}
+	return fmt.Sprintf("[concurrent(buff=%v)]", c.bufferSize), []model.VectorOperator{c.next}
 }
 
 func (c *concurrencyOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
+
 	return c.next.Series(ctx)
 }
 
@@ -59,13 +54,15 @@ func (c *concurrencyOperator) GetPool() *model.VectorPool {
 }
 
 func (c *concurrencyOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
 
-	start := time.Now()
 	c.once.Do(func() {
 		go c.pull(ctx)
 		go c.drainBufferOnCancel(ctx)
@@ -78,7 +75,6 @@ func (c *concurrencyOperator) Next(ctx context.Context) ([]model.StepVector, err
 	if r.err != nil {
 		return nil, r.err
 	}
-	c.AddExecutionTimeTaken(time.Since(start))
 
 	return r.stepVector, nil
 }

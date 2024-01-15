@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	engstore "github.com/thanos-io/promql-engine/execution/storage"
@@ -19,8 +18,8 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
-
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
 type vectorScanner struct {
@@ -52,6 +51,8 @@ type vectorSelector struct {
 
 	shard     int
 	numShards int
+
+	selectTimestamp bool
 }
 
 // NewVectorSelector creates operator which selects vector of series.
@@ -60,13 +61,16 @@ func NewVectorSelector(
 	selector engstore.SeriesSelector,
 	queryOpts *query.Options,
 	offset time.Duration,
+	hints storage.SelectHints,
 	batchSize int64,
+	selectTimestamp bool,
 	shard, numShards int,
 ) model.VectorOperator {
 	o := &vectorSelector{
-		OperatorTelemetry: &model.NoopTelemetry{},
-		storage:           selector,
-		vectorPool:        pool,
+		OperatorTelemetry: model.NewTelemetry("[vectorSelector]", queryOpts.EnableAnalysis),
+
+		storage:    selector,
+		vectorPool: pool,
 
 		mint:            queryOpts.Start.UnixMilli(),
 		maxt:            queryOpts.End.UnixMilli(),
@@ -79,9 +83,8 @@ func NewVectorSelector(
 
 		shard:     shard,
 		numShards: numShards,
-	}
-	if queryOpts.EnableAnalysis {
-		o.OperatorTelemetry = &model.TrackedTelemetry{}
+
+		selectTimestamp: selectTimestamp,
 	}
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -92,16 +95,14 @@ func NewVectorSelector(
 	return o
 }
 
-func (o *vectorSelector) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*vectorSelector]")
-	return o, nil
-}
-
 func (o *vectorSelector) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[*vectorSelector] {%v} %v mod %v", o.storage.Matchers(), o.shard, o.numShards), nil
+	return fmt.Sprintf("[vectorSelector] {%v} %v mod %v", o.storage.Matchers(), o.shard, o.numShards), nil
 }
 
 func (o *vectorSelector) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -113,6 +114,9 @@ func (o *vectorSelector) GetPool() *model.VectorPool {
 }
 
 func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -122,8 +126,6 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, nil
 	}
 
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -144,12 +146,15 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			seriesTs = ts
 		)
 		for currStep := 0; currStep < o.numSteps && seriesTs <= o.maxt; currStep++ {
-			_, v, h, ok, err := selectPoint(series.samples, seriesTs, o.lookbackDelta, o.offset)
+			t, v, h, ok, err := selectPoint(series.samples, seriesTs, o.lookbackDelta, o.offset)
 			if err != nil {
 				return nil, err
 			}
+			if o.selectTimestamp {
+				v = float64(t) / 1000
+			}
 			if ok {
-				if h != nil {
+				if h != nil && !o.selectTimestamp {
 					vectors[currStep].AppendHistogram(o.vectorPool, series.signature, h)
 				} else {
 					vectors[currStep].AppendSample(o.vectorPool, series.signature, v)
@@ -162,7 +167,6 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		o.currentStep += o.step * int64(o.numSteps)
 		o.currentSeries = 0
 	}
-
 	return vectors, nil
 }
 
@@ -175,6 +179,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			return
 		}
 
+		b := labels.NewBuilder(labels.EmptyLabels())
 		o.scanners = make([]vectorScanner, len(series))
 		o.series = make([]labels.Labels, len(series))
 		for i, s := range series {
@@ -183,7 +188,13 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 				signature: s.Signature,
 				samples:   storage.NewMemoizedIterator(s.Iterator(nil), o.lookbackDelta),
 			}
-			o.series[i] = s.Labels()
+			b.Reset(s.Labels())
+			// if we have pushed down a timestamp function into the scan we need to drop
+			// the __name__ label
+			if o.selectTimestamp {
+				b.Del(labels.MetricName)
+			}
+			o.series[i] = b.Labels()
 		}
 
 		numSeries := int64(len(o.series))

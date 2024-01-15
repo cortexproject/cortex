@@ -17,47 +17,55 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
 )
 
-type relabelFunctionOperator struct {
+type relabelOperator struct {
+	model.OperatorTelemetry
+
 	next     model.VectorOperator
 	funcExpr *parser.Call
 	once     sync.Once
 	series   []labels.Labels
-	model.OperatorTelemetry
 }
 
-func (o *relabelFunctionOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*relabelFunctionOperator]")
-	next := make([]model.ObservableVectorOperator, 0, 1)
-	if obsnext, ok := o.next.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
+func newRelabelOperator(
+	next model.VectorOperator,
+	funcExpr *parser.Call,
+	opts *query.Options,
+) *relabelOperator {
+	return &relabelOperator{
+		OperatorTelemetry: model.NewTelemetry(relabelOperatorName, opts.EnableAnalysis),
+		next:              next,
+		funcExpr:          funcExpr,
 	}
-	return o, next
 }
 
-func (o *relabelFunctionOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[*relabelFunctionOperator]", []model.VectorOperator{}
+func (o *relabelOperator) Explain() (me string, next []model.VectorOperator) {
+	return relabelOperatorName, []model.VectorOperator{}
 }
 
-func (o *relabelFunctionOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+func (o *relabelOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	return o.series, err
 }
 
-func (o *relabelFunctionOperator) GetPool() *model.VectorPool {
+func (o *relabelOperator) GetPool() *model.VectorPool {
 	return o.next.GetPool()
 }
 
-func (o *relabelFunctionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *relabelOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 	start := time.Now()
-	next, err := o.next.Next(ctx)
-	o.AddExecutionTimeTaken(time.Since(start))
-	return next, err
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
+	return o.next.Next(ctx)
 }
 
-func (o *relabelFunctionOperator) loadSeries(ctx context.Context) (err error) {
+func (o *relabelOperator) loadSeries(ctx context.Context) (err error) {
 	series, err := o.next.Series(ctx)
 	if err != nil {
 		return err
@@ -86,7 +94,7 @@ func unwrap(expr parser.Expr) (string, error) {
 	}
 }
 
-func (o *relabelFunctionOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
+func (o *relabelOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
 	labelJoinDst, err := unwrap(o.funcExpr.Args[1])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
@@ -124,7 +132,7 @@ func (o *relabelFunctionOperator) loadSeriesForLabelJoin(series []labels.Labels)
 	}
 	return nil
 }
-func (o *relabelFunctionOperator) loadSeriesForLabelReplace(series []labels.Labels) error {
+func (o *relabelOperator) loadSeriesForLabelReplace(series []labels.Labels) error {
 	labelReplaceDst, err := unwrap(o.funcExpr.Args[1])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")

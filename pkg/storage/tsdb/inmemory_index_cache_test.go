@@ -4,6 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/efficientgo/core/testutil"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
@@ -14,11 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/tenancy"
-	"math/rand"
-	"strconv"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestInMemoryIndexCache_UpdateItem(t *testing.T) {

@@ -4,10 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // AllUsers returns true to each call and should be used whenever the UsersScanner should not filter out

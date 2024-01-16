@@ -555,9 +555,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		histograms = make([]cortexpb.Histogram, 0, len(ts.Histograms))
 		// TODO(yeya24): we need to have validations for native histograms
 		// at some point. Skip validations for now.
-		for _, h := range ts.Histograms {
-			histograms = append(histograms, h)
-		}
+		histograms = append(histograms, ts.Histograms...)
 	}
 
 	return cortexpb.PreallocTimeseries{

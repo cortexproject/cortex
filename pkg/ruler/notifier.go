@@ -11,6 +11,7 @@ import (
 
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	config_util "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
@@ -43,12 +44,12 @@ type rulerNotifier struct {
 	logger    gklog.Logger
 }
 
-func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
+func newRulerNotifier(o *notifier.Options, l gklog.Logger, registerer prometheus.Registerer) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
 		notifier:  notifier.NewManager(o, l),
 		sdCancel:  sdCancel,
-		sdManager: discovery.NewManager(sdCtx, l),
+		sdManager: discovery.NewManager(sdCtx, l, registerer),
 		logger:    l,
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -14,23 +15,30 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/ringbuffer"
 )
 
-// TODO: only instant subqueries for now.
 type subqueryOperator struct {
+	model.OperatorTelemetry
+
 	next        model.VectorOperator
 	pool        *model.VectorPool
 	call        FunctionCall
 	mint        int64
 	maxt        int64
 	currentStep int64
+	step        int64
+	stepsBatch  int
 
 	funcExpr *parser.Call
 	subQuery *parser.SubqueryExpr
 
 	onceSeries sync.Once
 	series     []labels.Labels
-	acc        [][]Sample
+
+	lastVectors   []model.StepVector
+	lastCollected int
+	buffers       []*ringbuffer.RingBuffer[Value]
 }
 
 func NewSubqueryOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options, funcExpr *parser.Call, subQuery *parser.SubqueryExpr) (model.VectorOperator, error) {
@@ -38,25 +46,37 @@ func NewSubqueryOperator(pool *model.VectorPool, next model.VectorOperator, opts
 	if err != nil {
 		return nil, err
 	}
+	step := opts.Step.Milliseconds()
+	if step == 0 {
+		step = 1
+	}
 	return &subqueryOperator{
-		next:        next,
-		call:        call,
-		pool:        pool,
-		funcExpr:    funcExpr,
-		subQuery:    subQuery,
-		mint:        opts.Start.UnixMilli(),
-		maxt:        opts.End.UnixMilli(),
-		currentStep: opts.Start.UnixMilli(),
+		OperatorTelemetry: model.NewTelemetry("[subquery]", opts.EnableAnalysis),
+
+		next:          next,
+		call:          call,
+		pool:          pool,
+		funcExpr:      funcExpr,
+		subQuery:      subQuery,
+		mint:          opts.Start.UnixMilli(),
+		maxt:          opts.End.UnixMilli(),
+		currentStep:   opts.Start.UnixMilli(),
+		step:          step,
+		stepsBatch:    opts.StepsBatch,
+		lastCollected: -1,
 	}, nil
 }
 
 func (o *subqueryOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[*subqueryOperator] %v()", o.funcExpr.Func.Name), []model.VectorOperator{o.next}
+	return fmt.Sprintf("[subquery] %v()", o.funcExpr.Func.Name), []model.VectorOperator{o.next}
 }
 
 func (o *subqueryOperator) GetPool() *model.VectorPool { return o.pool }
 
 func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.OperatorTelemetry.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -69,48 +89,96 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		return nil, err
 	}
 
-ACC:
-	for {
-		vectors, err := o.next.Next(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if len(vectors) == 0 {
-			break ACC
-		}
-		for _, vector := range vectors {
-			for j, s := range vector.Samples {
-				o.acc[vector.SampleIDs[j]] = append(o.acc[vector.SampleIDs[j]], Sample{T: vector.T, F: s})
-			}
-			o.next.GetPool().PutStepVector(vector)
-		}
-		o.next.GetPool().PutVectors(vectors)
-	}
-
 	res := o.pool.GetVectorBatch()
-	sv := o.pool.GetStepVector(o.currentStep)
-	for sampleId, rangeSamples := range o.acc {
-		f, h, ok := o.call(FunctionArgs{
-			Samples:     rangeSamples,
-			StepTime:    o.currentStep,
-			SelectRange: o.subQuery.Range.Milliseconds(),
-			Offset:      o.subQuery.Offset.Milliseconds(),
-		})
-		if ok {
-			if h != nil {
-				sv.AppendHistogram(o.pool, uint64(sampleId), h)
-			} else {
-				sv.AppendSample(o.pool, uint64(sampleId), f)
+	for i := 0; o.currentStep <= o.maxt && i < o.stepsBatch; i++ {
+		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds()
+		maxt := o.currentStep - o.subQuery.OriginalOffset.Milliseconds()
+		for _, b := range o.buffers {
+			b.DropBefore(mint)
+		}
+		if len(o.lastVectors) > 0 {
+			for _, v := range o.lastVectors[o.lastCollected+1:] {
+				if v.T > maxt {
+					break
+				}
+				o.collect(v, mint)
+				o.lastCollected++
+			}
+			if o.lastCollected == len(o.lastVectors)-1 {
+				o.next.GetPool().PutVectors(o.lastVectors)
+				o.lastVectors = nil
+				o.lastCollected = -1
 			}
 		}
-	}
-	res = append(res, sv)
 
-	o.currentStep++
+	ACC:
+		for len(o.lastVectors) == 0 {
+			vectors, err := o.next.Next(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if len(vectors) == 0 {
+				break ACC
+			}
+			for j, vector := range vectors {
+				if vector.T > maxt {
+					o.lastVectors = vectors
+					o.lastCollected = j - 1
+					break ACC
+				}
+				o.collect(vector, mint)
+			}
+			o.next.GetPool().PutVectors(vectors)
+		}
+
+		sv := o.pool.GetStepVector(o.currentStep)
+		for sampleId, rangeSamples := range o.buffers {
+			f, h, ok := o.call(FunctionArgs{
+				Samples:     rangeSamples.Samples(),
+				StepTime:    maxt,
+				SelectRange: o.subQuery.Range.Milliseconds(),
+			})
+			if ok {
+				if h != nil {
+					sv.AppendHistogram(o.pool, uint64(sampleId), h)
+				} else {
+					sv.AppendSample(o.pool, uint64(sampleId), f)
+				}
+			}
+		}
+		res = append(res, sv)
+
+		o.currentStep += o.step
+	}
 	return res, nil
 }
 
+func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
+	if v.T < mint {
+		o.next.GetPool().PutStepVector(v)
+		return
+	}
+	for i, s := range v.Samples {
+		buffer := o.buffers[v.SampleIDs[i]]
+		if buffer.Len() > 0 && v.T <= buffer.MaxT() {
+			continue
+		}
+		buffer.Push(v.T, Value{F: s})
+	}
+	for i, s := range v.Histograms {
+		buffer := o.buffers[v.HistogramIDs[i]]
+		if buffer.Len() > 0 && v.T < buffer.MaxT() {
+			continue
+		}
+		buffer.Push(v.T, Value{H: s})
+	}
+	o.next.GetPool().PutStepVector(v)
+}
+
 func (o *subqueryOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.OperatorTelemetry.AddExecutionTimeTaken(time.Since(start)) }()
+
 	if err := o.initSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -127,7 +195,10 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 		}
 
 		o.series = make([]labels.Labels, len(series))
-		o.acc = make([][]Sample, len(series))
+		o.buffers = make([]*ringbuffer.RingBuffer[Value], len(series))
+		for i := range o.buffers {
+			o.buffers[i] = ringbuffer.New[Value](8)
+		}
 		var b labels.ScratchBuilder
 		for i, s := range series {
 			lbls := s
@@ -136,6 +207,7 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 			}
 			o.series[i] = lbls
 		}
+		o.pool.SetStepSize(len(o.series))
 	})
 	return err
 }

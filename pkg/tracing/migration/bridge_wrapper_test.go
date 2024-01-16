@@ -9,6 +9,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 )
@@ -18,7 +19,7 @@ var (
 	spanID     trace.SpanID  = [8]byte{byte(11)}
 	traceIDKey               = "Traceid"
 	spanIDKey                = "Spanid"
-	noopTracer               = trace.NewNoopTracerProvider().Tracer("")
+	noopTracer               = noop.NewTracerProvider().Tracer("")
 	noopSpan                 = func() trace.Span {
 		_, s := noopTracer.Start(context.Background(), "")
 		return s

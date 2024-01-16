@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -88,9 +89,6 @@ func (s *PromQLSmith) walkAggregateParam(op parser.ItemType) parser.Expr {
 // or function that returns matrix.
 func (s *PromQLSmith) walkBinaryExpr(valueTypes ...parser.ValueType) parser.Expr {
 	valueTypes = keepValueTypes(valueTypes, vectorAndScalarValueTypes)
-	if len(valueTypes) == 0 {
-		valueTypes = vectorAndScalarValueTypes
-	}
 	expr := &parser.BinaryExpr{
 		Op: s.walkBinaryOp(!slices.Contains(valueTypes, parser.ValueTypeVector)),
 		VectorMatching: &parser.VectorMatching{
@@ -244,6 +242,7 @@ func (s *PromQLSmith) walkCall(valueTypes ...parser.ValueType) parser.Expr {
 			}
 		}
 	}
+	sort.Slice(funcs, func(i, j int) bool { return strings.Compare(funcs[i].Name, funcs[j].Name) < 0 })
 	expr.Func = funcs[s.rnd.Intn(len(funcs))]
 	s.walkFuncArgs(expr)
 	return expr
@@ -383,6 +382,7 @@ func exprsFromValueTypes(valueTypes []parser.ValueType) []ExprType {
 	for expr := range set {
 		res = append(res, expr)
 	}
+	sort.Slice(res, func(i, j int) bool { return res[i] < res[j] })
 	return res
 }
 
@@ -396,7 +396,11 @@ func wrapParenExpr(expr parser.Expr) parser.Expr {
 
 // keepValueTypes picks value types that we should keep from the input.
 // input shouldn't contain duplicate value types.
+// If no input value types are provided, use value types to keep as result.
 func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.ValueType {
+	if len(input) == 0 {
+		return keep
+	}
 	out := make([]parser.ValueType, 0, len(keep))
 	s := make(map[parser.ValueType]struct{})
 	for _, vt := range keep {
@@ -407,6 +411,7 @@ func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.
 			out = append(out, vt)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 
@@ -509,6 +514,9 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		for _, v := range m {
 			output = append(output, v)
 		}
+		sort.Slice(output, func(i, j int) bool {
+			return labels.Compare(output[i], output[j]) < 0
+		})
 		return output, false
 	case *parser.SubqueryExpr:
 		return getOutputSeries(node.Expr)

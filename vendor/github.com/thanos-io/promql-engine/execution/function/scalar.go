@@ -11,42 +11,48 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
 )
 
-type scalarFunctionOperator struct {
+type scalarOperator struct {
 	pool *model.VectorPool
 	next model.VectorOperator
 	model.OperatorTelemetry
 }
 
-func (o *scalarFunctionOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*scalarFunctionOperator]")
-	next := make([]model.ObservableVectorOperator, 0, 1)
-	if obsnext, ok := o.next.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
+func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) *scalarOperator {
+	return &scalarOperator{
+		pool:              pool,
+		next:              next,
+		OperatorTelemetry: model.NewTelemetry(scalarOperatorName, opts.EnableAnalysis),
 	}
-	return o, next
 }
 
-func (o *scalarFunctionOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[*scalarFunctionOperator]", []model.VectorOperator{}
+func (o *scalarOperator) Explain() (me string, next []model.VectorOperator) {
+	return scalarOperatorName, []model.VectorOperator{o.next}
 }
 
-func (o *scalarFunctionOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+func (o *scalarOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	return nil, nil
 }
 
-func (o *scalarFunctionOperator) GetPool() *model.VectorPool {
+func (o *scalarOperator) GetPool() *model.VectorPool {
 	return o.pool
 }
 
-func (o *scalarFunctionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *scalarOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
-	start := time.Now()
+
 	in, err := o.next.Next(ctx)
 	if err != nil {
 		return nil, err
@@ -67,7 +73,6 @@ func (o *scalarFunctionOperator) Next(ctx context.Context) ([]model.StepVector, 
 		o.next.GetPool().PutStepVector(vector)
 	}
 	o.next.GetPool().PutVectors(in)
-	o.AddExecutionTimeTaken(time.Since(start))
 
 	return result, nil
 }

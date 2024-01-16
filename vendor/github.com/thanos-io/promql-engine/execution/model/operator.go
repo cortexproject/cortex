@@ -10,43 +10,50 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type NoopTelemetry struct{}
+type OperatorTelemetry interface {
+	AddExecutionTimeTaken(time.Duration)
+	ExecutionTimeTaken() time.Duration
+	Name() string
+}
+
+func NewTelemetry(name string, enabled bool) OperatorTelemetry {
+	if enabled {
+		return NewTrackedTelemetry(name)
+	}
+	return NewNoopTelemetry(name)
+
+}
+
+type NoopTelemetry struct {
+	name string
+}
+
+func NewNoopTelemetry(name string) *NoopTelemetry {
+	return &NoopTelemetry{name: name}
+}
+
+func (tm *NoopTelemetry) Name() string { return tm.name }
+
+func (tm *NoopTelemetry) AddExecutionTimeTaken(t time.Duration) {}
+
+func (tm *NoopTelemetry) ExecutionTimeTaken() time.Duration {
+	return time.Duration(0)
+}
 
 type TrackedTelemetry struct {
 	name          string
 	ExecutionTime time.Duration
 }
 
-func (ti *NoopTelemetry) AddExecutionTimeTaken(t time.Duration) {}
-
-func (ti *TrackedTelemetry) AddExecutionTimeTaken(t time.Duration) {
-	ti.ExecutionTime += t
+func NewTrackedTelemetry(name string) *TrackedTelemetry {
+	return &TrackedTelemetry{name: name}
 }
 
 func (ti *TrackedTelemetry) Name() string {
 	return ti.name
 }
 
-func (ti *TrackedTelemetry) SetName(operatorName string) {
-	ti.name = operatorName
-}
-
-func (ti *NoopTelemetry) Name() string {
-	return ""
-}
-
-func (ti *NoopTelemetry) SetName(operatorName string) {}
-
-type OperatorTelemetry interface {
-	AddExecutionTimeTaken(time.Duration)
-	ExecutionTimeTaken() time.Duration
-	SetName(string)
-	Name() string
-}
-
-func (ti *NoopTelemetry) ExecutionTimeTaken() time.Duration {
-	return time.Duration(0)
-}
+func (ti *TrackedTelemetry) AddExecutionTimeTaken(t time.Duration) { ti.ExecutionTime += t }
 
 func (ti *TrackedTelemetry) ExecutionTimeTaken() time.Duration {
 	return ti.ExecutionTime
@@ -55,7 +62,6 @@ func (ti *TrackedTelemetry) ExecutionTimeTaken() time.Duration {
 type ObservableVectorOperator interface {
 	VectorOperator
 	OperatorTelemetry
-	Analyze() (OperatorTelemetry, []ObservableVectorOperator)
 }
 
 // VectorOperator performs operations on series in step by step fashion.

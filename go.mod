@@ -51,7 +51,7 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.4
-	github.com/thanos-io/objstore v0.0.0-20231231041903-61cfed8cbb9d
+	github.com/thanos-io/objstore v0.0.0-20240116185442-6ecabdddaab1
 	github.com/thanos-io/promql-engine v0.0.0-20240115075159-7de619aae856
 	github.com/thanos-io/thanos v0.33.1-0.20240115194623-324846f66d5d
 	github.com/uber/jaeger-client-go v2.30.0+incompatible

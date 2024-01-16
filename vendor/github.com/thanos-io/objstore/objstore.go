@@ -232,6 +232,19 @@ func NopCloserWithSize(r io.Reader) io.ReadCloser {
 	return nopCloserWithObjectSize{r}
 }
 
+type nopSeekerCloserWithObjectSize struct{ io.Reader }
+
+func (nopSeekerCloserWithObjectSize) Close() error                 { return nil }
+func (n nopSeekerCloserWithObjectSize) ObjectSize() (int64, error) { return TryToGetSize(n.Reader) }
+
+func (n nopSeekerCloserWithObjectSize) Seek(offset int64, whence int) (int64, error) {
+	return n.Reader.(io.Seeker).Seek(offset, whence)
+}
+
+func nopSeekerCloserWithSize(r io.Reader) io.ReadSeekCloser {
+	return nopSeekerCloserWithObjectSize{r}
+}
+
 // UploadDir uploads all files in srcdir to the bucket with into a top-level directory
 // named dstdir. It is a caller responsibility to clean partial upload in case of failure.
 func UploadDir(ctx context.Context, logger log.Logger, bkt Bucket, srcdir, dstdir string, options ...UploadOption) error {
@@ -595,8 +608,16 @@ func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) err
 	const op = OpUpload
 	b.ops.WithLabelValues(op).Inc()
 
+	_, ok := r.(io.Seeker)
+	var nopR io.ReadCloser
+	if ok {
+		nopR = nopSeekerCloserWithSize(r)
+	} else {
+		nopR = NopCloserWithSize(r)
+	}
+
 	trc := newTimingReadCloser(
-		NopCloserWithSize(r),
+		nopR,
 		op,
 		b.opsDuration,
 		b.opsFailures,

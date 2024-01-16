@@ -22,7 +22,10 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
+	"github.com/thanos-io/thanos/pkg/errutil"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -789,6 +792,10 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 		if lastErr == nil {
 			return nil
 		}
+		if c.isCausedByPermissionDenied(lastErr) {
+			level.Warn(c.logger).Log("msg", "skipping compactUser due to PermissionDenied", "user", userID, "err", lastErr)
+			return nil
+		}
 
 		retries.Wait()
 	}
@@ -1023,4 +1030,31 @@ func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
 	}
 
 	return result
+}
+
+func (c *Compactor) isCausedByPermissionDenied(err error) bool {
+	cause := errors.Cause(err)
+	if compact.IsRetryError(cause) || compact.IsHaltError(cause) {
+		cause = errors.Unwrap(cause)
+	}
+	if multiErr, ok := cause.(errutil.NonNilMultiRootError); ok {
+		for _, err := range multiErr {
+			if c.isPermissionDeniedErr(err) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.isPermissionDeniedErr(cause)
+}
+
+func (c *Compactor) isPermissionDeniedErr(err error) bool {
+	if c.bucketClient.IsAccessDeniedErr(err) {
+		return true
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return s.Code() == codes.PermissionDenied
 }

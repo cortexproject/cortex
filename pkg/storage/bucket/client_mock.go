@@ -14,7 +14,7 @@ import (
 
 var (
 	errObjectDoesNotExist  = errors.New("object does not exist")
-	errKeyPermissionDenied = errors.New("object key permission denied")
+	ErrKeyPermissionDenied = errors.New("object key permission denied")
 )
 
 // ClientMock mocks objstore.Bucket
@@ -188,7 +188,7 @@ func (m *ClientMock) IsObjNotFoundErr(err error) bool {
 
 // IsAccessDeniedErr mocks objstore.Bucket.IsAccessDeniedErr()
 func (m *ClientMock) IsAccessDeniedErr(err error) bool {
-	return err == errKeyPermissionDenied
+	return err == ErrKeyPermissionDenied
 }
 
 // ObjectSize mocks objstore.Bucket.Attributes()

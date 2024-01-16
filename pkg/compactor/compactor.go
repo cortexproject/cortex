@@ -787,39 +787,12 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 		MaxRetries: c.compactorCfg.CompactionRetries,
 	})
 
-	isPermissionDeniedErr := func(err error) bool {
-		if c.bucketClient.IsAccessDeniedErr(err) {
-			return true
-		}
-		s, ok := status.FromError(err)
-		if !ok {
-			return false
-		}
-		return s.Code() == codes.PermissionDenied
-	}
-
 	for retries.Ongoing() {
 		lastErr = c.compactUser(ctx, userID)
 		if lastErr == nil {
 			return nil
 		}
-		skipPermissionDeniedErr := false
-		cause := errors.Cause(lastErr)
-		if compact.IsRetryError(cause) || compact.IsHaltError(cause) {
-			cause = errors.Unwrap(cause)
-		}
-		if multiErr, ok := cause.(errutil.NonNilMultiRootError); ok {
-			for _, err := range multiErr {
-				if isPermissionDeniedErr(err) {
-					skipPermissionDeniedErr = true
-					break
-				}
-			}
-		} else {
-			skipPermissionDeniedErr = isPermissionDeniedErr(cause)
-		}
-
-		if skipPermissionDeniedErr {
+		if c.isCausedByPermissionDenied(lastErr) {
 			level.Warn(c.logger).Log("msg", "skipping compactUser due to PermissionDenied", "user", userID, "err", lastErr)
 			return nil
 		}
@@ -1057,4 +1030,31 @@ func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
 	}
 
 	return result
+}
+
+func (c *Compactor) isCausedByPermissionDenied(err error) bool {
+	cause := errors.Cause(err)
+	if compact.IsRetryError(cause) || compact.IsHaltError(cause) {
+		cause = errors.Unwrap(cause)
+	}
+	if multiErr, ok := cause.(errutil.NonNilMultiRootError); ok {
+		for _, err := range multiErr {
+			if c.isPermissionDeniedErr(err) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.isPermissionDeniedErr(cause)
+}
+
+func (c *Compactor) isPermissionDeniedErr(err error) bool {
+	if c.bucketClient.IsAccessDeniedErr(err) {
+		return true
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return s.Code() == codes.PermissionDenied
 }

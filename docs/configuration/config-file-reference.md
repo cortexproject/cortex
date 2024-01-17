@@ -5024,6 +5024,12 @@ otel:
   # CLI flag: -tracing.otel.sample-ratio
   [sample_ratio: <float> | default = 0.001]
 
+  # If enabled, use round_robin gRPC load balancing policy. By default, use
+  # pick_first policy. For more details, please refer to
+  # https://github.com/grpc/grpc/blob/master/doc/load-balancing.md#load-balancing-policies.
+  # CLI flag: -tracing.otel.round-robin
+  [round_robin: <boolean> | default = false]
+
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other
   # TLS flag is set. If set to false, insecure connection to gRPC server will be
   # used.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/sercand/kuberesolver"
 	"github.com/weaveworks/common/tracing"
 	"go.opentelemetry.io/contrib/propagators/aws/xray"
 	"google.golang.org/grpc/credentials"
@@ -91,16 +92,23 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 			level.Warn(util_log.Logger).Log("msg", "DEPRECATED: otel.otlp and otel.oltp both set, using otel.otlp because otel.oltp is deprecated")
 		}
 
-		options := []otlptracegrpc.Option{
-			otlptracegrpc.WithEndpoint(c.Otel.OtlpEndpoint),
-		}
-
+		endpoint := c.Otel.OtlpEndpoint
 		if (c.Otel.OtlpEndpoint == "") && (len(c.Otel.OltpEndpoint) > 0) {
 			level.Warn(util_log.Logger).Log("msg", "DEPRECATED: otel.oltp is deprecated use otel.otlp")
-			options = []otlptracegrpc.Option{
-				otlptracegrpc.WithEndpoint(c.Otel.OltpEndpoint),
-			}
+			endpoint = c.Otel.OltpEndpoint
 		}
+		options := []otlptracegrpc.Option{
+			otlptracegrpc.WithEndpoint(endpoint),
+		}
+		// Following https://github.com/sercand/kuberesolver/blob/master/builder.go#L96.
+		if strings.HasPrefix(endpoint, "kubernetes://") {
+			// Registers the kuberesolver which resolves endpoint with prefix kubernetes://
+			// as kubernetes service endpoint addresses.
+			kuberesolver.RegisterInCluster()
+		}
+
+		// Always use `round_robin` gRPC client side load balancing.
+		options = append(options, otlptracegrpc.WithServiceConfig(`{"loadBalancingPolicy": "round_robin"}`))
 
 		if c.Otel.TLSEnabled {
 			tlsConfig, err := c.Otel.TLS.GetTLSConfig()

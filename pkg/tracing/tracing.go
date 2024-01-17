@@ -42,6 +42,7 @@ type Otel struct {
 	OtlpEndpoint   string              `yaml:"otlp_endpoint" json:"otlp_endpoint"`
 	ExporterType   string              `yaml:"exporter_type" json:"exporter_type"`
 	SampleRatio    float64             `yaml:"sample_ratio" json:"sample_ratio"`
+	RoundRobin     bool                `yaml:"round_robin" json:"round_robin"`
 	TLSEnabled     bool                `yaml:"tls_enabled"`
 	TLS            tls.ClientConfig    `yaml:"tls"`
 	ExtraDetectors []resource.Detector `yaml:"-"`
@@ -56,6 +57,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Otel.OtlpEndpoint, p+".otel.otlp-endpoint", "", "otl collector endpoint that the driver will use to send spans.")
 	f.StringVar(&c.Otel.ExporterType, p+".otel.exporter-type", "", "enhance/modify traces/propagators for specific exporter. If empty, OTEL defaults will apply. Supported values are: `awsxray.`")
 	f.BoolVar(&c.Otel.TLSEnabled, p+".otel.tls-enabled", c.Otel.TLSEnabled, "Enable TLS in the GRPC client. This flag needs to be enabled when any other TLS flag is set. If set to false, insecure connection to gRPC server will be used.")
+	f.BoolVar(&c.Otel.RoundRobin, p+".otel.round-robin", false, "If enabled, use round_robin gRPC load balancing policy. By default, use pick_first policy. For more details, please refer to https://github.com/grpc/grpc/blob/master/doc/load-balancing.md#load-balancing-policies.")
 	c.Otel.TLS.RegisterFlagsWithPrefix(p+".otel.tls", f)
 }
 
@@ -107,8 +109,9 @@ func SetupTracing(ctx context.Context, name string, c Config) (func(context.Cont
 			kuberesolver.RegisterInCluster()
 		}
 
-		// Always use `round_robin` gRPC client side load balancing.
-		options = append(options, otlptracegrpc.WithServiceConfig(`{"loadBalancingPolicy": "round_robin"}`))
+		if c.Otel.RoundRobin {
+			options = append(options, otlptracegrpc.WithServiceConfig(`{"loadBalancingPolicy": "round_robin"}`))
+		}
 
 		if c.Otel.TLSEnabled {
 			tlsConfig, err := c.Otel.TLS.GetTLSConfig()

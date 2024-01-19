@@ -2,10 +2,12 @@ package tsdb
 
 import (
 	"flag"
+
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
+	"github.com/thanos-io/thanos/pkg/model"
 
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -97,5 +99,6 @@ func (cfg *RedisClientConfig) ToRedisClientConfig() cacheutil.RedisClientConfig 
 			ServerName:         cfg.TLS.ServerName,
 			InsecureSkipVerify: cfg.TLS.InsecureSkipVerify,
 		},
+		CacheSize: model.Bytes(cfg.CacheSize),
 	}
 }

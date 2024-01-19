@@ -2,11 +2,12 @@ package tsdb
 
 import (
 	"flag"
-	"github.com/thanos-io/thanos/pkg/model"
+
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
+	"github.com/thanos-io/thanos/pkg/model"
 
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )

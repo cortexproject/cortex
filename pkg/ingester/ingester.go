@@ -1998,6 +1998,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
+		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -2050,9 +2051,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			func() bool {
-				// Allow uploading compacted blocks. It is fine since compacted
-				//  blocks should only happen when OOO is enabled in ingester.
-				return true
+				// There is no need to upload compacted blocks since OOO blocks
+				// won't be compacted due to overlap.
+				return false
 			},
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,

@@ -116,7 +116,7 @@ func (s *BucketAlertStore) SetAlertConfig(ctx context.Context, cfg alertspb.Aler
 		return err
 	}
 
-	return s.getUserBucket(cfg.User).Upload(ctx, cfg.User, bytes.NewBuffer(cfgBytes))
+	return s.getUserBucket(cfg.User).Upload(ctx, cfg.User, bytes.NewReader(cfgBytes))
 }
 
 // DeleteAlertConfig implements alertstore.AlertStore.
@@ -168,7 +168,7 @@ func (s *BucketAlertStore) SetFullState(ctx context.Context, userID string, fs a
 		return err
 	}
 
-	return bkt.Upload(ctx, fullStateName, bytes.NewBuffer(fsBytes))
+	return bkt.Upload(ctx, fullStateName, bytes.NewReader(fsBytes))
 }
 
 // DeleteFullState implements alertstore.AlertStore.

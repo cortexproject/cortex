@@ -97,8 +97,8 @@ func TestSyncRuleGroups(t *testing.T) {
 }
 
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {
-	m.userManagerMtx.Lock()
-	defer m.userManagerMtx.Unlock()
+	m.userManagerMtx.RLock()
+	defer m.userManagerMtx.RUnlock()
 
 	return m.userManagers[user]
 }

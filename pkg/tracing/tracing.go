@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
-	"github.com/sercand/kuberesolver"
+	"github.com/sercand/kuberesolver/v4"
 	"github.com/weaveworks/common/tracing"
 	"go.opentelemetry.io/contrib/propagators/aws/xray"
 	"google.golang.org/grpc/credentials"

@@ -80,7 +80,7 @@ require (
 	github.com/VictoriaMetrics/fastcache v1.12.1
 	github.com/cespare/xxhash/v2 v2.2.0
 	github.com/google/go-cmp v0.6.0
-	github.com/sercand/kuberesolver v2.4.0+incompatible
+	github.com/sercand/kuberesolver/v4 v4.0.0
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	google.golang.org/protobuf v1.31.0
 )
@@ -197,7 +197,6 @@ require (
 	github.com/rs/cors v1.9.0 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/sercand/kuberesolver/v4 v4.0.0 // indirect
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c // indirect
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
@@ -276,4 +275,5 @@ replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0
 
 replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5.1.1
 
-replace google.golang.org/grpc => google.golang.org/grpc v1.57.2
+// Pin kuberesolver/v5 to support new grpc version. Need to upgrade kuberesolver version on weaveworks/common.
+replace github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1

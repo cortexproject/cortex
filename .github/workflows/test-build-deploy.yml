@@ -56,6 +56,26 @@ jobs:
       - name: Run Tests
         run: make BUILD_IN_CONTAINER=false test
 
+  security:
+    name: CodeQL
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  
   build:
     runs-on: ubuntu-20.04
     container:

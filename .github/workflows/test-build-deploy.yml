@@ -300,3 +300,4 @@ jobs:
           QUAY_REGISTRY_USER: ${{secrets.QUAY_REGISTRY_USER}}
           QUAY_REGISTRY_PASSWORD: ${{secrets.QUAY_REGISTRY_PASSWORD}}
           NOQUAY: ${{secrets.NOQUAY}}
+          

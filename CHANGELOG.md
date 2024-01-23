@@ -13,6 +13,7 @@
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.18`. #5684
 * [ENHANCEMENT] Index Cache: Multi level cache adds config `max_backfill_items` to cap max items to backfill per async operation. #5686
 * [ENHANCEMENT] Query Frontend: Log number of split queries in `query stats` log. #5703
+* [ENHANCEMENT] Logging: Added new options for logging HTTP request headers: `-server.log-request-headers` enables logging HTTP request headers, `-server.log-request-headers-exclude-list` allows users to specify headers which should not be logged. #5744
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
 * [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 * [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734

@@ -798,7 +798,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.48.1-0.20240115084306-17920623e7cd
+# github.com/prometheus/prometheus v0.49.0-rc.2.0.20240122173321-c095ba24f274
 ## explicit; go 1.20
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery
@@ -871,9 +871,9 @@ github.com/sean-/seed
 # github.com/segmentio/fasthash v1.0.3
 ## explicit; go 1.11
 github.com/segmentio/fasthash/fnv1a
-# github.com/sercand/kuberesolver v2.4.0+incompatible => github.com/sercand/kuberesolver/v5 v5.1.1
+# github.com/sercand/kuberesolver/v4 v4.0.0 => github.com/sercand/kuberesolver/v5 v5.1.1
 ## explicit; go 1.18
-github.com/sercand/kuberesolver
+github.com/sercand/kuberesolver/v4
 # github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 ## explicit; go 1.19
 github.com/shurcooL/httpfs/filter
@@ -885,6 +885,9 @@ github.com/shurcooL/vfsgen
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
+# github.com/soheilhy/cmux v0.1.5
+## explicit; go 1.11
+github.com/soheilhy/cmux
 # github.com/sony/gobreaker v0.5.0
 ## explicit; go 1.12
 github.com/sony/gobreaker
@@ -933,7 +936,7 @@ github.com/thanos-io/promql-engine/extlabels
 github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
-# github.com/thanos-io/thanos v0.33.1-0.20240115194623-324846f66d5d
+# github.com/thanos-io/thanos v0.33.1-0.20240122182532-e215fa599b4a
 ## explicit; go 1.21
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -1012,7 +1015,7 @@ github.com/vimeo/galaxycache/http
 github.com/vimeo/galaxycache/lru
 github.com/vimeo/galaxycache/promoter
 github.com/vimeo/galaxycache/singleflight
-# github.com/weaveworks/common v0.0.0-20221201103051-7c2720a9024d
+# github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 ## explicit; go 1.14
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/grpc
@@ -1208,7 +1211,7 @@ go4.org/intern
 # go4.org/unsafe/assume-no-moving-gc v0.0.0-20230525183740-e7c30c78aeb2
 ## explicit; go 1.11
 go4.org/unsafe/assume-no-moving-gc
-# golang.org/x/crypto v0.17.0
+# golang.org/x/crypto v0.18.0
 ## explicit; go 1.18
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1230,7 +1233,7 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.14.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
-# golang.org/x/net v0.19.0
+# golang.org/x/net v0.20.0
 ## explicit; go 1.18
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -1264,7 +1267,7 @@ golang.org/x/oauth2/jwt
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.15.0
+# golang.org/x/sys v0.16.0
 ## explicit; go 1.18
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
@@ -1511,3 +1514,4 @@ sigs.k8s.io/yaml
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5.1.1
+# github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1

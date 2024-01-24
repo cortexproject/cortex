@@ -1770,7 +1770,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	numSamples := 0
 	numSeries := 0
-	numSeries, numSamples, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	totalDataBytes := 0
+	numSeries, numSamples, totalDataBytes, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -1778,22 +1779,25 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
-	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples)
+	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples, "data_bytes", totalDataBytes)
+	spanlog.SetTag("series", numSeries)
+	spanlog.SetTag("samples", numSamples)
+	spanlog.SetTag("data_bytes", totalDataBytes)
 	return nil
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, nil, matchers...)
 	if ss.Err() != nil {
-		return 0, 0, ss.Err()
+		return 0, 0, 0, ss.Err()
 	}
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
@@ -1819,7 +1823,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			// It is not guaranteed that chunk returned by iterator is populated.
 			// For now just return error. We could also try to figure out how to read the chunk.
 			if meta.Chunk == nil {
-				return 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
+				return 0, 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
 			}
 
 			ch := client.Chunk{
@@ -1832,7 +1836,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			case chunkenc.EncXOR:
 				ch.Encoding = int32(encoding.PrometheusXorChunk)
 			default:
-				return 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
+				return 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
 			}
 
 			ts.Chunks = append(ts.Chunks, ch)
@@ -1840,6 +1844,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		}
 		numSeries++
 		tsSize := ts.Size()
+		totalBatchSizeBytes += tsSize
 
 		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(chunkSeries) >= queryStreamBatchSize {
 			// Adding this series to the batch would make it too big,
@@ -1848,7 +1853,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 				Chunkseries: chunkSeries,
 			})
 			if err != nil {
-				return 0, 0, err
+				return 0, 0, 0, err
 			}
 
 			batchSizeBytes = 0
@@ -1861,7 +1866,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	// Final flush any existing metrics
@@ -1870,11 +1875,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			Chunkseries: chunkSeries,
 		})
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, 0, err
 		}
 	}
 
-	return numSeries, numSamples, nil
+	return numSeries, numSamples, totalBatchSizeBytes, nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {

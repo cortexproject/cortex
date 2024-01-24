@@ -19,7 +19,7 @@ test-build-deploy.yml specifies a workflow that runs all Cortex continuous integ
 | test                   | Runs units tests on Cassandra testing framework.                                                                              | CI   |
 | integration-configs-db | Integration tests for database configurations.                                                                                | CI   |
 | integration            | Runs integration tests after upgrading golang, pulling necessary docker images and downloading necessary module dependencies. | CI   |
-| Security/CodeQL           | CodeQL is a semantic code analysis engine used for automating security checks, enabling developers to write and run queries to identify vulnerabilities and improve code security  | CI 
+| Security/CodeQL        | CodeQL is a semantic code analysis engine used for automating security checks to improve code security.                       | CI   |
 | build                  | Builds and saves an up-to-date Cortex image and website.                                                                      | CI   |
 | deploy_website         | Deploys the latest version of Cortex website to gh-pages branch. Triggered within workflow.                                   | CD   |
 | deploy                 | Deploys the latest Cortex image.                                                                                              | CD   |

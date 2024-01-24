@@ -252,7 +252,7 @@ func (b *BucketRuleStore) SetRuleGroup(ctx context.Context, userID string, names
 		return err
 	}
 
-	return userBucket.Upload(ctx, getRuleGroupObjectKey(namespace, group.Name), bytes.NewBuffer(data))
+	return userBucket.Upload(ctx, getRuleGroupObjectKey(namespace, group.Name), bytes.NewReader(data))
 }
 
 // DeleteRuleGroup implements rules.RuleStore.

@@ -62,7 +62,11 @@ In this case, you will need to use the IP address of your host machine.
 You can usually get it by running `hostname -I | awk '{print $1}'` in your terminal.
 For example, if the IP is `192.168.1.100`, use `http://192.168.1.100:9009/prometheus`.
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
+**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus) and run the command below to stop Grafana:
+
+```sh
+$ docker stop grafana
+```
 
 ## Horizontally scale out
 

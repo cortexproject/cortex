@@ -7195,7 +7195,7 @@ Blocks: B1, B3, B5, B7&lt;/li>
 &lt;h4 id="load-balancing-across-distributors">Load balancing across distributors&lt;/h4>
 &lt;p>We recommend randomly load balancing write requests across distributor instances. For example, if you&amp;rsquo;re running Cortex in a Kubernetes cluster, you could run the distributors as a Kubernetes &lt;a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service&lt;/a>.&lt;/p>
 &lt;h3 id="ingester">Ingester&lt;/h3>
-&lt;p>The &lt;strong>ingester&lt;/strong> service is responsible for writing incoming series to a &lt;a href="#storage">long-term storage backend&lt;/a> on the write path and returning in-memory series samples for queries on the read path.&lt;/p>
+&lt;p>The &lt;strong>ingester&lt;/strong> service is responsible for writing incoming series to a &lt;a href="#block-storage">long-term storage backend&lt;/a> on the write path and returning in-memory series samples for queries on the read path.&lt;/p>
 &lt;p>Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 2 hours). For this reason, the &lt;a href="#querier">queriers&lt;/a> may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.&lt;/p>
 &lt;p>Ingesters contain a &lt;strong>lifecycler&lt;/strong> which manages the lifecycle of an ingester and stores the &lt;strong>ingester state&lt;/strong> in the &lt;a href="#the-hash-ring">hash ring&lt;/a>. Each ingester could be in one of the following states:&lt;/p>
 &lt;ul>
@@ -7217,7 +7217,7 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;li>Replication&lt;/li>
 &lt;li>Write-ahead log (WAL)&lt;/li>
 &lt;/ol>
-&lt;p>The &lt;strong>replication&lt;/strong> is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster loses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.&lt;/p>
+&lt;p>The &lt;strong>replication&lt;/strong> is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster loses an ingester, the in-memory series held by the lost ingester are also replicated to at least another ingester. In the event of a single ingester failure, no time series samples will be lost. However, in the event of multiple ingester failures, time series may be potentially lost if the failures affect all the ingesters holding the replicas of a specific time series.&lt;/p>
 &lt;p>The &lt;strong>write-ahead log&lt;/strong> (WAL) is used to write to a persistent disk all incoming series samples until they&amp;rsquo;re flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.&lt;/p>
 &lt;p>Contrary to the sole replication and given the persistent disk data is not lost, in the event of multiple ingesters failure each ingester will recover the in-memory series samples from WAL upon subsequent restart. The replication is still recommended in order to ensure no temporary failures on the read path in the event of a single ingester failure.&lt;/p>
 &lt;h4 id="ingesters-write-de-amplification">Ingesters write de-amplification&lt;/h4>
@@ -7225,7 +7225,7 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;p>Write de-amplification is the main source of Cortex&amp;rsquo;s low total cost of ownership (TCO).&lt;/p>
 &lt;h3 id="querier">Querier&lt;/h3>
 &lt;p>The &lt;strong>querier&lt;/strong> service handles queries using the &lt;a href="https://prometheus.io/docs/prometheus/latest/querying/basics/">PromQL&lt;/a> query language.&lt;/p>
-&lt;p>Queriers fetch series samples both from the ingesters and long-term storage: the ingesters hold the in-memory series which have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples; to resolve this, for a given time series the querier internally &lt;strong>deduplicates&lt;/strong> samples with the same exact timestamp.&lt;/p>
+&lt;p>Queriers fetch series samples both from the ingesters and long-term storage. The ingesters hold the in-memory series that have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples. To address this, the querier internally &lt;strong>deduplicates&lt;/strong> samples with the exact same timestamp for a given time series.&lt;/p>
 &lt;p>Queriers are &lt;strong>stateless&lt;/strong> and can be scaled up and down as needed.&lt;/p>
 &lt;h3 id="compactor">Compactor&lt;/h3>
 &lt;p>The &lt;strong>compactor&lt;/strong> is a service which is responsible to:&lt;/p>
@@ -7258,7 +7258,7 @@ The ingester has failed to heartbeat to the ring&amp;rsquo;s KV Store. While in 
 &lt;h4 id="queueing">Queueing&lt;/h4>
 &lt;p>The query frontend queuing mechanism is used to:&lt;/p>
 &lt;ul>
-&lt;li>Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.&lt;/li>
+&lt;li>Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the total cost of ownership (TCO).&lt;/li>
 &lt;li>Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).&lt;/li>
 &lt;li>Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.&lt;/li>
 &lt;/ul>

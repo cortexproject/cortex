@@ -121,7 +121,7 @@ We recommend randomly load balancing write requests across distributor instances
 
 ### Ingester
 
-The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#storage) on the write path and returning in-memory series samples for queries on the read path.
+The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#block-storage) on the write path and returning in-memory series samples for queries on the read path.
 
 Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 2 hours). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
 
@@ -147,7 +147,7 @@ If an ingester process crashes or exits abruptly, all the in-memory series that 
 1. Replication
 2. Write-ahead log (WAL)
 
-The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster loses an ingester, the in-memory series hold by the lost ingester are also replicated at least to another ingester. In the event of a single ingester failure, no time series samples will be lost while, in the event of multiple ingesters failure, time series may be potentially lost if failure affects all the ingesters holding the replicas of a specific time series.
+The **replication** is used to hold multiple (typically 3) replicas of each time series in the ingesters. If the Cortex cluster loses an ingester, the in-memory series held by the lost ingester are also replicated to at least another ingester. In the event of a single ingester failure, no time series samples will be lost. However, in the event of multiple ingester failures, time series may be potentially lost if the failures affect all the ingesters holding the replicas of a specific time series.
 
 The **write-ahead log** (WAL) is used to write to a persistent disk all incoming series samples until they're flushed to the long-term storage. In the event of an ingester failure, a subsequent process restart will replay the WAL and recover the in-memory series samples.
 
@@ -163,7 +163,7 @@ Write de-amplification is the main source of Cortex's low total cost of ownershi
 
 The **querier** service handles queries using the [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/) query language.
 
-Queriers fetch series samples both from the ingesters and long-term storage: the ingesters hold the in-memory series which have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples; to resolve this, for a given time series the querier internally **deduplicates** samples with the same exact timestamp.
+Queriers fetch series samples both from the ingesters and long-term storage. The ingesters hold the in-memory series that have not yet been flushed to the long-term storage. Because of the replication factor, it is possible that the querier may receive duplicated samples. To address this, the querier internally **deduplicates** samples with the exact same timestamp for a given time series.
 
 Queriers are **stateless** and can be scaled up and down as needed.
 
@@ -203,13 +203,13 @@ Flow of the query in the system when using query-frontend:
 3) Querier picks up the query, and executes it.
 4) Querier sends result back to query-frontend, which then forwards it to the client.
 
-Query frontend can also be used with any Prometheus-API compatible service. In this mode Cortex can be used as an query accelerator with it's caching and splitting features on other prometheus query engines like Thanos Querier or your own Prometheus server.  Query frontend needs to be configured with downstream url address(via the `-frontend.downstream-url` CLI flag), which is the endpoint of the prometheus server intended to be connected with Cortex.
+Query frontend can also be used with any Prometheus-API compatible service. In this mode Cortex can be used as an query accelerator with it's caching and splitting features on other prometheus query engines like Thanos Querier or your own Prometheus server. Query frontend needs to be configured with downstream url address(via the `-frontend.downstream-url` CLI flag), which is the endpoint of the prometheus server intended to be connected with Cortex.
 
 #### Queueing
 
 The query frontend queuing mechanism is used to:
 
-* Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+* Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the total cost of ownership (TCO).
 * Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
 * Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
 

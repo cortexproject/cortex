@@ -121,7 +121,7 @@ We recommend randomly load balancing write requests across distributor instances
 
 ### Ingester
 
-The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#block-storage) on the write path and returning in-memory series samples for queries on the read path.
+The **ingester** service is responsible for writing incoming series to a [long-term storage backend](#blocks-storage) on the write path and returning in-memory series samples for queries on the read path.
 
 Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 2 hours). For this reason, the [queriers](#querier) may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.
 

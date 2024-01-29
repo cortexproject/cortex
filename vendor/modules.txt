@@ -581,7 +581,7 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
-# github.com/klauspost/compress v1.17.4
+# github.com/klauspost/compress v1.17.5
 ## explicit; go 1.19
 github.com/klauspost/compress
 github.com/klauspost/compress/flate
@@ -592,6 +592,7 @@ github.com/klauspost/compress/gzhttp/writer/gzkp
 github.com/klauspost/compress/gzip
 github.com/klauspost/compress/huff0
 github.com/klauspost/compress/internal/cpuinfo
+github.com/klauspost/compress/internal/race
 github.com/klauspost/compress/internal/snapref
 github.com/klauspost/compress/s2
 github.com/klauspost/compress/snappy

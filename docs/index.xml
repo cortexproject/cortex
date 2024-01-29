@@ -7195,7 +7195,7 @@ Blocks: B1, B3, B5, B7&lt;/li>
 &lt;h4 id="load-balancing-across-distributors">Load balancing across distributors&lt;/h4>
 &lt;p>We recommend randomly load balancing write requests across distributor instances. For example, if you&amp;rsquo;re running Cortex in a Kubernetes cluster, you could run the distributors as a Kubernetes &lt;a href="https://kubernetes.io/docs/concepts/services-networking/service/">Service&lt;/a>.&lt;/p>
 &lt;h3 id="ingester">Ingester&lt;/h3>
-&lt;p>The &lt;strong>ingester&lt;/strong> service is responsible for writing incoming series to a &lt;a href="#block-storage">long-term storage backend&lt;/a> on the write path and returning in-memory series samples for queries on the read path.&lt;/p>
+&lt;p>The &lt;strong>ingester&lt;/strong> service is responsible for writing incoming series to a &lt;a href="#blocks-storage">long-term storage backend&lt;/a> on the write path and returning in-memory series samples for queries on the read path.&lt;/p>
 &lt;p>Incoming series are not immediately written to the storage but kept in memory and periodically flushed to the storage (by default, 2 hours). For this reason, the &lt;a href="#querier">queriers&lt;/a> may need to fetch samples both from ingesters and long-term storage while executing a query on the read path.&lt;/p>
 &lt;p>Ingesters contain a &lt;strong>lifecycler&lt;/strong> which manages the lifecycle of an ingester and stores the &lt;strong>ingester state&lt;/strong> in the &lt;a href="#the-hash-ring">hash ring&lt;/a>. Each ingester could be in one of the following states:&lt;/p>
 &lt;ul>

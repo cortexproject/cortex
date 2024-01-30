@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/cortexproject/cortex/pkg/util"
@@ -16,7 +17,7 @@ var (
 	errParseExpr = errors.New("failed to parse expr")
 )
 
-func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, lookbackDelta time.Duration) (int64, error) {
+func GetPriority(r *http.Request, userID string, limits Limits, now time.Time) (int64, error) {
 	isQuery := strings.HasSuffix(r.URL.Path, "/query")
 	isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 	queryPriority := limits.QueryPriority(userID)
@@ -39,7 +40,7 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 
 	var startTime, endTime int64
 	if isQuery {
-		if t, err := util.ParseTimeParam(r, "time", now.Unix()); err == nil {
+		if t, err := util.ParseTimeParam(r, "time", now.UnixMilli()); err == nil {
 			startTime = t
 			endTime = t
 		}
@@ -53,13 +54,12 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, l
 	}
 
 	es := &parser.EvalStmt{
-		Expr:          expr,
-		Start:         util.TimeFromMillis(startTime),
-		End:           util.TimeFromMillis(endTime),
-		LookbackDelta: lookbackDelta,
+		Expr:  expr,
+		Start: util.TimeFromMillis(startTime),
+		End:   util.TimeFromMillis(endTime),
 	}
 
-	minTime, maxTime := FindMinMaxTime(es)
+	minTime, maxTime := promql.FindMinMaxTime(es)
 
 	for _, priority := range queryPriority.Priorities {
 		for _, attribute := range priority.QueryAttributes {
@@ -84,24 +84,18 @@ func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, sta
 	}
 
 	if timeWindow.Start != 0 {
-		startTimeThreshold := now.Add(-1 * time.Duration(timeWindow.Start).Abs()).Truncate(time.Second).Unix()
+		startTimeThreshold := now.Add(-1 * time.Duration(timeWindow.Start).Abs()).Add(-1 * time.Minute).Truncate(time.Minute).UnixMilli()
 		if startTime < startTimeThreshold {
 			return false
 		}
 	}
 
 	if timeWindow.End != 0 {
-		endTimeThreshold := now.Add(-1 * time.Duration(timeWindow.End).Abs()).Add(1 * time.Second).Truncate(time.Second).Unix()
+		endTimeThreshold := now.Add(-1 * time.Duration(timeWindow.End).Abs()).Add(1 * time.Minute).Truncate(time.Minute).UnixMilli()
 		if endTime > endTimeThreshold {
 			return false
 		}
 	}
 
 	return true
-}
-
-func FindMinMaxTime(s *parser.EvalStmt) (int64, int64) {
-	// Placeholder until Prometheus is updated to include
-	// https://github.com/prometheus/prometheus/commit/9e3df532d8294d4fe3284bde7bc96db336a33552
-	return s.Start.Unix(), s.End.Unix()
 }

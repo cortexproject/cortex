@@ -201,7 +201,6 @@ func TestRoundTrip(t *testing.T) {
 				querysharding.NewQueryAnalyzer(),
 				time.Minute,
 				tc.maxSubQuerySteps,
-				0,
 			)
 			resp, err := tw(downstream).RoundTrip(req)
 			if tc.expectedErr == nil {

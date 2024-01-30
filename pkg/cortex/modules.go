@@ -478,7 +478,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryAnalyzer,
 		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Querier.MaxSubQuerySteps,
-		t.Cfg.Querier.LookbackDelta,
 	)
 
 	return services.NewIdleService(nil, func(_ error) error {

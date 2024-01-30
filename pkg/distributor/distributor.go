@@ -583,20 +583,8 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	inflight := d.inflightPushRequests.Inc()
 	defer d.inflightPushRequests.Dec()
 
-	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
-		return nil, errTooManyInflightPushRequests
-	}
-
-	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
-		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
-			return nil, errMaxSamplesPushRateLimitReached
-		}
-	}
-
 	now := time.Now()
 	d.activeUsers.UpdateUserTimestamp(userID, now)
-
-	removeReplica := false
 
 	numSamples := 0
 	numExemplars := 0
@@ -610,6 +598,17 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
+	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
+		return nil, errTooManyInflightPushRequests
+	}
+
+	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
+		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
+			return nil, errMaxSamplesPushRateLimitReached
+		}
+	}
+
+	removeReplica := false
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 

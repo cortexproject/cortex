@@ -69,7 +69,7 @@ func NewIDGenerator() *IDGenerator {
 	gen := &IDGenerator{}
 	var rngSeed int64
 	_ = binary.Read(crand.Reader, binary.LittleEndian, &rngSeed)
-	gen.randSource = rand.New(rand.NewSource(rngSeed))
+	gen.randSource = rand.New(rand.NewSource(rngSeed)) //nolint:gosec // G404: Use of weak random number generator (math/rand instead of crypto/rand) is ignored as this is not security-sensitive.
 	return gen
 }
 

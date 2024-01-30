@@ -77,8 +77,10 @@ func (xray Propagator) Inject(ctx context.Context, carrier propagation.TextMapCa
 	if sc.TraceFlags() == traceFlagSampled {
 		samplingFlag = isSampled
 	}
-	headers := []string{traceIDKey, kvDelimiter, xrayTraceID, traceHeaderDelimiter, parentIDKey,
-		kvDelimiter, parentID.String(), traceHeaderDelimiter, sampleFlagKey, kvDelimiter, samplingFlag}
+	headers := []string{
+		traceIDKey, kvDelimiter, xrayTraceID, traceHeaderDelimiter, parentIDKey,
+		kvDelimiter, parentID.String(), traceHeaderDelimiter, sampleFlagKey, kvDelimiter, samplingFlag,
+	}
 
 	carrier.Set(traceHeaderKey, strings.Join(headers, ""))
 }
@@ -110,7 +112,7 @@ func extract(headerVal string) (trace.SpanContext, error) {
 			part = headerVal[pos:delimiterIndex]
 			pos = delimiterIndex + 1
 		} else {
-			//last part
+			// last part
 			part = strings.TrimSpace(headerVal[pos:])
 			pos = len(headerVal)
 		}
@@ -125,13 +127,13 @@ func extract(headerVal string) (trace.SpanContext, error) {
 				return empty, err
 			}
 		} else if strings.HasPrefix(part, parentIDKey) {
-			//extract parentId
+			// extract parentId
 			scc.SpanID, err = trace.SpanIDFromHex(value)
 			if err != nil {
 				return empty, errInvalidSpanIDLength
 			}
 		} else if strings.HasPrefix(part, sampleFlagKey) {
-			//extract traceflag
+			// extract traceflag
 			scc.TraceFlags = parseTraceFlag(value)
 		}
 	}

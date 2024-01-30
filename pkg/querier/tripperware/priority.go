@@ -17,7 +17,7 @@ var (
 	errParseExpr = errors.New("failed to parse expr")
 )
 
-func GetPriority(r *http.Request, userID string, limits Limits, now time.Time) (int64, error) {
+func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, lookbackDelta time.Duration) (int64, error) {
 	isQuery := strings.HasSuffix(r.URL.Path, "/query")
 	isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
 	queryPriority := limits.QueryPriority(userID)
@@ -54,9 +54,10 @@ func GetPriority(r *http.Request, userID string, limits Limits, now time.Time) (
 	}
 
 	es := &parser.EvalStmt{
-		Expr:  expr,
-		Start: util.TimeFromMillis(startTime),
-		End:   util.TimeFromMillis(endTime),
+		Expr:          expr,
+		Start:         util.TimeFromMillis(startTime),
+		End:           util.TimeFromMillis(endTime),
+		LookbackDelta: lookbackDelta,
 	}
 
 	minTime, maxTime := promql.FindMinMaxTime(es)

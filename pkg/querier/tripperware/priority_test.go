@@ -68,7 +68,7 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 		t.Run(testName, func(t *testing.T) {
 			limits.queryPriority.Enabled = testData.queryPriorityEnabled
 			req, _ := http.NewRequest(http.MethodPost, testData.url, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now)
+			priority, err := GetPriority(req, "", limits, now, 0)
 			if err != nil {
 				assert.Equal(t, testData.err, err)
 			} else {
@@ -132,7 +132,7 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 			limits.queryPriority.Priorities[0].QueryAttributes[0].Regex = testData.regex
 			limits.queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = regexp.MustCompile(testData.regex)
 			req, _ := http.NewRequest(http.MethodPost, "/query?query="+testData.query, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now)
+			priority, err := GetPriority(req, "", limits, now, 0)
 			assert.NoError(t, err)
 			assert.Equal(t, int64(testData.expectedPriority), priority)
 		})
@@ -165,6 +165,7 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 		start            time.Time
 		end              time.Time
 		expectedPriority int
+		lookbackDelta    time.Duration
 	}
 
 	tests := map[string]testCase{
@@ -217,6 +218,11 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 			end:              now.Add(-10 * time.Minute),
 			expectedPriority: 0,
 		},
+		"should consider lookback delta": {
+			time:             now.Add(-45 * time.Minute),
+			expectedPriority: 0,
+			lookbackDelta:    2 * time.Minute,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -231,7 +237,7 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 				url = "/query?query=sum(up)"
 			}
 			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now)
+			priority, err := GetPriority(req, "", limits, now, testData.lookbackDelta)
 			assert.NoError(t, err)
 			assert.Equal(t, int64(testData.expectedPriority), priority)
 		})
@@ -286,7 +292,7 @@ func Test_GetPriorityShouldNotConsiderStartAndEndTimeIfEmpty(t *testing.T) {
 				url = "/query?query=sum(up)"
 			}
 			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now)
+			priority, err := GetPriority(req, "", limits, now, 0)
 			assert.NoError(t, err)
 			assert.Equal(t, int64(1), priority)
 		})

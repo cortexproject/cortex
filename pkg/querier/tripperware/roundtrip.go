@@ -105,6 +105,7 @@ func NewQueryTripperware(
 	queryAnalyzer querysharding.Analyzer,
 	defaultSubQueryInterval time.Duration,
 	maxSubQuerySteps int64,
+	lookbackDelta time.Duration,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -159,7 +160,7 @@ func NewQueryTripperware(
 					}
 
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
-						priority, err := GetPriority(r, userStr, limits, now)
+						priority, err := GetPriority(r, userStr, limits, now, lookbackDelta)
 						if err != nil && err == errParseExpr {
 							// If query is invalid, no need to go through tripperwares
 							// for further splitting.

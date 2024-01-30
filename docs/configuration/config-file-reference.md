@@ -5091,14 +5091,15 @@ otel:
 # Regex that the query string should match. If not set, it won't be checked.
 [regex: <string> | default = ""]
 
-# Time window that the query should be within. If not set, it won't be checked.
+# Time window that the evaluated query (including subqueries and querier
+# lookback period) should be within. If not set, it won't be checked.
 time_window:
-  # Start of the time window that the query should be within. If set to 0, it
-  # won't be checked.
+  # Start of the time window that the evaluated query (including subqueries and
+  # querier lookback period) should be within. If set to 0, it won't be checked.
   [start: <int> | default = 0]
 
-  # End of the time window that the query should be within. If set to 0, it
-  # won't be checked.
+  # End of the time window that the evaluated query (including subqueries and
+  # querier lookback period) should be within. If set to 0, it won't be checked.
   [end: <int> | default = 0]
 ```
 

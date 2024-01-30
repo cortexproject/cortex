@@ -201,7 +201,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		return nil
 	}
 	err := fmt.Errorf("failed to CAS %s", key)
-	level.Error(c.logger).Log("msg", "failed to CAS after retries", "key", key, "err", err)
+	level.Error(c.logger).Log("msg", "failed to CAS after retries", "key", key)
 	return err
 }
 

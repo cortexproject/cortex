@@ -62,7 +62,7 @@ require (
 	go.opentelemetry.io/contrib/propagators/aws v1.22.0
 	go.opentelemetry.io/otel v1.22.0
 	go.opentelemetry.io/otel/bridge/opentracing v1.22.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.21.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.22.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.21.0
 	go.opentelemetry.io/otel/sdk v1.22.0
 	go.opentelemetry.io/otel/trace v1.22.0
@@ -82,7 +82,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/sercand/kuberesolver/v4 v4.0.0
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.32.0
 )
 
 require (

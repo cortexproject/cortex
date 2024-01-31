@@ -167,8 +167,8 @@ func NewQueryTripperware(
 					}
 
 					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
-					r.Header.Set(util.DataFetchMinTime, strconv.FormatInt(minTime, 10))
-					r.Header.Set(util.DataFetchMaxTime, strconv.FormatInt(maxTime, 10))
+					r.Header.Set(util.DataFetchMinTime, strconv.FormatFloat(float64(minTime)/float64(1000), 'f', -1, 64))
+					r.Header.Set(util.DataFetchMaxTime, strconv.FormatFloat(float64(maxTime)/float64(1000), 'f', -1, 64))
 
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
 						priority, err := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))

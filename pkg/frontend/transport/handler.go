@@ -348,6 +348,12 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	if queryPriority := r.Header.Get(util.QueryPriorityHeaderKey); len(queryPriority) > 0 {
 		logMessage = append(logMessage, "priority", queryPriority)
 	}
+	if dataFetchMinTime := r.Header.Get(util.DataFetchMinTime); len(dataFetchMinTime) > 0 {
+		logMessage = append(logMessage, "data_fetch_min_time", dataFetchMinTime)
+	}
+	if dataFetchMaxTime := r.Header.Get(util.DataFetchMaxTime); len(dataFetchMaxTime) > 0 {
+		logMessage = append(logMessage, "data_fetch_max_time", dataFetchMaxTime)
+	}
 
 	if error != nil {
 		s, ok := status.FromError(error)

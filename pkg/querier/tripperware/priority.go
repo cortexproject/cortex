@@ -2,65 +2,28 @@ package tripperware
 
 import (
 	"errors"
-	"net/http"
-	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
-
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 var (
-	errParseExpr = errors.New("failed to parse expr")
+	errQueryPriorityDisabled = errors.New("query priority disabled")
+	errEmptyQueryString      = errors.New("empty query string")
 )
 
-func GetPriority(r *http.Request, userID string, limits Limits, now time.Time, lookbackDelta time.Duration) (int64, error) {
-	isQuery := strings.HasSuffix(r.URL.Path, "/query")
-	isQueryRange := strings.HasSuffix(r.URL.Path, "/query_range")
-	queryPriority := limits.QueryPriority(userID)
-	query := r.FormValue("query")
-
-	if (!isQuery && !isQueryRange) || !queryPriority.Enabled || query == "" {
-		return 0, nil
+func GetPriority(query string, minTime, maxTime int64, now time.Time, queryPriority validation.QueryPriority) (int64, error) {
+	if !queryPriority.Enabled {
+		return 0, errQueryPriorityDisabled
 	}
 
-	expr, err := parser.ParseExpr(query)
-	if err != nil {
-		// If query fails to be parsed, we throw a simple parse error
-		// and fail query later on querier.
-		return 0, errParseExpr
+	if query == "" {
+		return 0, errEmptyQueryString
 	}
 
 	if len(queryPriority.Priorities) == 0 {
 		return queryPriority.DefaultPriority, nil
 	}
-
-	var startTime, endTime int64
-	if isQuery {
-		if t, err := util.ParseTimeParam(r, "time", now.UnixMilli()); err == nil {
-			startTime = t
-			endTime = t
-		}
-	} else if isQueryRange {
-		if st, err := util.ParseTime(r.FormValue("start")); err == nil {
-			if et, err := util.ParseTime(r.FormValue("end")); err == nil {
-				startTime = st
-				endTime = et
-			}
-		}
-	}
-
-	es := &parser.EvalStmt{
-		Expr:          expr,
-		Start:         util.TimeFromMillis(startTime),
-		End:           util.TimeFromMillis(endTime),
-		LookbackDelta: lookbackDelta,
-	}
-
-	minTime, maxTime := promql.FindMinMaxTime(es)
 
 	for _, priority := range queryPriority.Priorities {
 		for _, attribute := range priority.QueryAttributes {

@@ -22,6 +22,8 @@ import (
 )
 
 const QueryPriorityHeaderKey = "X-Cortex-Query-Priority"
+const DataFetchMinTime = "X-Data-Fetch-Min-Time"
+const DataFetchMaxTime = "X-Data-Fetch-Max-Time"
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
 
 // IsRequestBodyTooLarge returns true if the error is "http: request body too large".

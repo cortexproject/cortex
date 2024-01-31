@@ -17,6 +17,7 @@ package tripperware
 
 import (
 	"context"
+	"github.com/prometheus/prometheus/promql/parser"
 	"io"
 	"net/http"
 	"strconv"
@@ -159,14 +160,23 @@ func NewQueryTripperware(
 						}
 					}
 
+					expr, err := parser.ParseExpr(query)
+					if err != nil {
+						// If query is invalid, no need to go through tripperwares for further splitting.
+						return next.RoundTrip(r)
+					}
+
+					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
+					r.Header.Set(util.DataFetchMinTime, strconv.FormatInt(minTime, 10))
+					r.Header.Set(util.DataFetchMaxTime, strconv.FormatInt(maxTime, 10))
+
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
-						priority, err := GetPriority(r, userStr, limits, now, lookbackDelta)
-						if err != nil && err == errParseExpr {
-							// If query is invalid, no need to go through tripperwares
-							// for further splitting.
-							return next.RoundTrip(r)
+						priority, err := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
+						if err != nil {
+							level.Debug(log).Log("msg", "failed to get query priority for user", "user", userStr, "err", err.Error())
+						} else {
+							r.Header.Set(util.QueryPriorityHeaderKey, strconv.FormatInt(priority, 10))
 						}
-						r.Header.Set(util.QueryPriorityHeaderKey, strconv.FormatInt(priority, 10))
 					}
 				}
 

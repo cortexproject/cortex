@@ -17,7 +17,6 @@ package tripperware
 
 import (
 	"context"
-	"github.com/prometheus/prometheus/promql/parser"
 	"io"
 	"net/http"
 	"strconv"
@@ -29,6 +28,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"

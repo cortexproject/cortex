@@ -3,12 +3,12 @@ package util
 import (
 	"bytes"
 	"fmt"
-	"github.com/prometheus/prometheus/promql/parser"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

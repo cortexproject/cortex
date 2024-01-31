@@ -1,6 +1,3 @@
-//go:build integration_querier
-// +build integration_querier
-
 package integration
 
 import (
@@ -31,27 +28,32 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 		tenantShardSize          int
 		ingesterStreamingEnabled bool
 		indexCacheBackend        string
+		chunkCacheBackend        string
 		bucketIndexEnabled       bool
 	}{
 		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
 			blocksShardingStrategy:   "",
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			chunkCacheBackend:        tsdb.CacheBackendMemcached,
 		},
 		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, memcached)": {
 			blocksShardingStrategy:   "",
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
+			chunkCacheBackend:        tsdb.CacheBackendMemcached,
 		},
 		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
 			blocksShardingStrategy:   "",
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:        tsdb.CacheBackendRedis,
 		},
 		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, redis)": {
 			blocksShardingStrategy:   "",
 			ingesterStreamingEnabled: false,
 			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
+			chunkCacheBackend:        tsdb.CacheBackendRedis,
 		},
 		"blocks default sharding, ingester gRPC streaming disabled, inmemory index cache": {
 			blocksShardingStrategy:   "default",
@@ -67,12 +69,14 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			blocksShardingStrategy:   "default",
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			chunkCacheBackend:        tsdb.CacheBackendMemcached,
 		},
 		"blocks shuffle sharding, ingester gRPC streaming enabled, memcached index cache": {
 			blocksShardingStrategy:   "shuffle-sharding",
 			tenantShardSize:          1,
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+			chunkCacheBackend:        tsdb.CacheBackendMemcached,
 		},
 		"blocks default sharding, ingester gRPC streaming enabled, inmemory index cache, bucket index enabled": {
 			blocksShardingStrategy:   "default",
@@ -91,6 +95,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			blocksShardingStrategy:   "default",
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:        tsdb.CacheBackendRedis,
 			bucketIndexEnabled:       true,
 		},
 		"blocks shuffle sharding, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
@@ -98,6 +103,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:          1,
 			ingesterStreamingEnabled: true,
 			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:        tsdb.CacheBackendRedis,
 			bucketIndexEnabled:       true,
 		},
 	}
@@ -121,6 +127,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-blocks-storage.bucket-store.sync-interval":        "1s",
 					"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
 					"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
+					"-blocks-storage.bucket-store.chunks-cache.backend": testCfg.chunkCacheBackend,
 					"-store-gateway.sharding-enabled":                   strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
 					"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
 					"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
@@ -143,6 +150,11 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				}
 				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
+				}
+				if testCfg.chunkCacheBackend == tsdb.CacheBackendMemcached {
+					flags["-blocks-storage.bucket-store.chunks-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+				} else if testCfg.chunkCacheBackend == tsdb.CacheBackendRedis {
+					flags["-blocks-storage.bucket-store.chunks-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
 				// Start Cortex components.

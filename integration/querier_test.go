@@ -278,7 +278,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				var l0CacheHits float64
 				if numberOfCacheBackends > 1 {
 					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
 					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(6+5+3)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
@@ -298,7 +297,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					require.NoError(t, err)
 					// Make sure l1 cache requests + l0 cache hits is 14.
 					require.Equal(t, float64(14), l1IndexCacheRequests[0]+l0IndexCacheHits[0])
-					l0CacheHits = l0IndexCacheHits[0]
 				} else {
 					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(6+5+3)), "thanos_store_index_cache_requests_total"))

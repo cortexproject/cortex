@@ -225,7 +225,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			caches = append(caches, cache)
 			enabledItems = append(enabledItems, cfg.Memcached.EnabledItems)
 		case IndexCacheBackendRedis:
-			c, err := newRedisIndexCacheClient(cfg.Redis.ClientConfig, logger, iReg)
+			c, err := newRedisIndexCacheClient(cfg.Redis.ClientConfig, logger, registerer)
 			if err != nil {
 				return nil, err
 			}

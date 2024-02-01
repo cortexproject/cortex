@@ -95,7 +95,9 @@ func TestConfig_Validate(t *testing.T) {
 			expected: nil,
 		},
 		"should fail because the ingestionTenantShardSize is a non-positive number": {
-			initConfig: func(_ *Config) {},
+			initConfig: func(cfg *Config) {
+				cfg.ShardingStrategy = "shuffle-sharding"
+			},
 			initLimits: func(limits *validation.Limits) {
 				limits.IngestionTenantShardSize = -1
 			},

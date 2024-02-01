@@ -354,7 +354,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		"should include data fetch min and max time": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
 			header:      http.Header{util.DataFetchMinTime: []string{"1704067200"}, util.DataFetchMaxTime: []string{"1704153600"}},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 data_fetch_min_time=1704067200 data_fetch_max_time=1704153600 param_query=up`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 mint=1704067200 maxt=1704153600 param_query=up`,
 		},
 	}
 

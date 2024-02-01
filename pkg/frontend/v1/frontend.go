@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -19,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -100,8 +100,8 @@ type request struct {
 }
 
 func (r request) Priority() int64 {
-	priority, err := strconv.ParseInt(httpgrpcutil.GetHeader(*r.request, util.QueryPriorityHeaderKey), 10, 64)
-	if err != nil {
+	priority, ok := r.originalCtx.Value(tripperware.QueryPriorityCtxKey).(int64)
+	if !ok {
 		return 0
 	}
 

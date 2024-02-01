@@ -38,6 +38,10 @@ func FormatTimeModel(t model.Time) string {
 	return TimeFromMillis(int64(t)).String()
 }
 
+func FormatMillisToSeconds(ms int64) string {
+	return strconv.FormatFloat(float64(ms)/float64(1000), 'f', -1, 64)
+}
+
 // ParseTime parses the string into an int64, milliseconds since epoch.
 func ParseTime(s string) (int64, error) {
 	if t, err := strconv.ParseFloat(s, 64); err == nil {

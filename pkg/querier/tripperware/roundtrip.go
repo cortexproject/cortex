@@ -19,7 +19,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -167,15 +166,15 @@ func NewQueryTripperware(
 					}
 
 					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
-					r.Header.Set(util.DataFetchMinTime, strconv.FormatFloat(float64(minTime)/float64(1000), 'f', -1, 64))
-					r.Header.Set(util.DataFetchMaxTime, strconv.FormatFloat(float64(maxTime)/float64(1000), 'f', -1, 64))
+					*r = *r.WithContext(context.WithValue(r.Context(), DataFetchMinTimeCtxKey, minTime))
+					*r = *r.WithContext(context.WithValue(r.Context(), DataFetchMaxTimeCtxKey, maxTime))
 
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
 						priority, err := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
 						if err != nil {
 							level.Debug(log).Log("msg", "failed to get query priority for user", "user", userStr, "err", err.Error())
 						} else {
-							r.Header.Set(util.QueryPriorityHeaderKey, strconv.FormatInt(priority, 10))
+							*r = *r.WithContext(context.WithValue(r.Context(), QueryPriorityCtxKey, priority))
 						}
 					}
 				}

@@ -345,14 +345,14 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
 	}
-	if queryPriority := r.Header.Get(util.QueryPriorityHeaderKey); len(queryPriority) > 0 {
+	if queryPriority, ok := r.Context().Value(tripperware.QueryPriorityCtxKey).(int64); ok {
 		logMessage = append(logMessage, "priority", queryPriority)
 	}
-	if dataFetchMinTime := r.Header.Get(util.DataFetchMinTime); len(dataFetchMinTime) > 0 {
-		logMessage = append(logMessage, "mint", dataFetchMinTime)
+	if maxT, ok := r.Context().Value(tripperware.DataFetchMaxTimeCtxKey).(int64); ok {
+		logMessage = append(logMessage, "maxt", util.FormatMillisToSeconds(maxT))
 	}
-	if dataFetchMaxTime := r.Header.Get(util.DataFetchMaxTime); len(dataFetchMaxTime) > 0 {
-		logMessage = append(logMessage, "maxt", dataFetchMaxTime)
+	if minT, ok := r.Context().Value(tripperware.DataFetchMinTimeCtxKey).(int64); ok {
+		logMessage = append(logMessage, "mint", util.FormatMillisToSeconds(minT))
 	}
 
 	if error != nil {

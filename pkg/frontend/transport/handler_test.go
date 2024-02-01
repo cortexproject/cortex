@@ -21,7 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -312,6 +312,9 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		queryString url.Values
 		queryStats  *querier_stats.QueryStats
 		header      http.Header
+		priority    int64
+		maxT        int64
+		minT        int64
 		responseErr error
 		expectedLog string
 	}
@@ -348,19 +351,29 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		},
 		"should include query priority": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
-			header:      http.Header{util.QueryPriorityHeaderKey: []string{"99"}},
+			priority:    99,
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 priority=99 param_query=up`,
 		},
 		"should include data fetch min and max time": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
-			header:      http.Header{util.DataFetchMinTime: []string{"1704067200"}, util.DataFetchMaxTime: []string{"1704153600"}},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 mint=1704067200 maxt=1704153600 param_query=up`,
+			minT:        1704067200000,
+			maxT:        1704153600000,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 maxt=1704153600 mint=1704067200 param_query=up`,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			req.Header = testData.header
+			if testData.priority > 0 {
+				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.QueryPriorityCtxKey, testData.priority))
+			}
+			if testData.minT > 0 {
+				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.DataFetchMinTimeCtxKey, testData.minT))
+			}
+			if testData.maxT > 0 {
+				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.DataFetchMaxTimeCtxKey, testData.maxT))
+			}
 			handler.reportQueryStats(req, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
 			data, err := io.ReadAll(outputBuf)
 			require.NoError(t, err)

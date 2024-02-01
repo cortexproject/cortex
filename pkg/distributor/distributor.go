@@ -49,7 +49,7 @@ var (
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be a positive integer")
 
 	// Distributor instance limits errors.
 	errTooManyInflightPushRequests    = errors.New("too many inflight push requests in distributor")
@@ -178,8 +178,12 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
+	if limits.IngestionTenantShardSize < 0 {
 		return errInvalidTenantShardSize
+	}
+
+	if limits.IngestionTenantShardSize == 0 && cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		level.Warn(util_log.Logger).Log("msg", "identified sharding strategy: %s, with shard size of 0, this will fallback to default sharding strategy", util.ShardingStrategyShuffle)
 	}
 
 	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
@@ -583,8 +587,20 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	inflight := d.inflightPushRequests.Inc()
 	defer d.inflightPushRequests.Dec()
 
+	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
+		return nil, errTooManyInflightPushRequests
+	}
+
+	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
+		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
+			return nil, errMaxSamplesPushRateLimitReached
+		}
+	}
+
 	now := time.Now()
 	d.activeUsers.UpdateUserTimestamp(userID, now)
+
+	removeReplica := false
 
 	numSamples := 0
 	numExemplars := 0
@@ -598,17 +614,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
 
-	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
-		return nil, errTooManyInflightPushRequests
-	}
-
-	if d.cfg.InstanceLimits.MaxIngestionRate > 0 {
-		if rate := d.ingestionRate.Rate(); rate >= d.cfg.InstanceLimits.MaxIngestionRate {
-			return nil, errMaxSamplesPushRateLimitReached
-		}
-	}
-
-	removeReplica := false
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
@@ -673,11 +678,10 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
 	d.ingestionRate.Add(int64(totalN))
 
-	subRing := d.ingestersRing
-
-	// Obtain a subring if required.
-	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
+	// Determine Shuffle Sharding Strategy
+	subRing, err := d.GetShuffleShardingRing(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	keys := append(seriesKeys, metadataKeys...)
@@ -689,6 +693,23 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	return &cortexpb.WriteResponse{}, firstPartialErr
+}
+
+func (d *Distributor) GetShuffleShardingRing(ctx context.Context) (ring.ReadRing, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	//Get any overrides for the current tenant
+	limits := d.limits.GetOverridesForUser(userID)
+	//Retrieves all the current ingesters rings.
+	subRing := d.ingestersRing
+	//Determines if Shuffle Sharding is enabled and or the overrides has a Sharding Strategy of greater than 0.
+	if d.cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize > 0 {
+		subRing = d.ingestersRing.ShuffleShard(userID, limits.IngestionTenantShardSize)
+	}
+
+	return subRing, nil
 }
 
 func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string) error {

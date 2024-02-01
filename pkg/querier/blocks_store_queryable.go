@@ -138,6 +138,8 @@ type BlocksStoreQueryable struct {
 	metrics         *blocksStoreQueryableMetrics
 	limits          BlocksStoreLimits
 
+	storeGatewayQueryStatsEnabled bool
+
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -149,6 +151,7 @@ func NewBlocksStoreQueryable(
 	consistency *BlocksConsistencyChecker,
 	limits BlocksStoreLimits,
 	queryStoreAfter time.Duration,
+	storeGatewayQueryStatsEnabled bool,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*BlocksStoreQueryable, error) {
@@ -158,15 +161,16 @@ func NewBlocksStoreQueryable(
 	}
 
 	q := &BlocksStoreQueryable{
-		stores:             stores,
-		finder:             finder,
-		consistency:        consistency,
-		queryStoreAfter:    queryStoreAfter,
-		logger:             logger,
-		subservices:        manager,
-		subservicesWatcher: services.NewFailureWatcher(),
-		metrics:            newBlocksStoreQueryableMetrics(reg),
-		limits:             limits,
+		stores:                        stores,
+		finder:                        finder,
+		consistency:                   consistency,
+		queryStoreAfter:               queryStoreAfter,
+		logger:                        logger,
+		subservices:                   manager,
+		subservicesWatcher:            services.NewFailureWatcher(),
+		metrics:                       newBlocksStoreQueryableMetrics(reg),
+		limits:                        limits,
+		storeGatewayQueryStatsEnabled: storeGatewayQueryStatsEnabled,
 	}
 
 	q.Service = services.NewBasicService(q.starting, q.running, q.stopping)
@@ -256,7 +260,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		reg,
 	)
 
-	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg.QueryStoreAfter, logger, reg)
+	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg.QueryStoreAfter, querierCfg.StoreGatewayQueryStatsEnabled, logger, reg)
 }
 
 func (q *BlocksStoreQueryable) starting(ctx context.Context) error {
@@ -291,15 +295,16 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 	}
 
 	return &blocksStoreQuerier{
-		minT:            mint,
-		maxT:            maxt,
-		finder:          q.finder,
-		stores:          q.stores,
-		metrics:         q.metrics,
-		limits:          q.limits,
-		consistency:     q.consistency,
-		logger:          q.logger,
-		queryStoreAfter: q.queryStoreAfter,
+		minT:                          mint,
+		maxT:                          maxt,
+		finder:                        q.finder,
+		stores:                        q.stores,
+		metrics:                       q.metrics,
+		limits:                        q.limits,
+		consistency:                   q.consistency,
+		logger:                        q.logger,
+		queryStoreAfter:               q.queryStoreAfter,
+		storeGatewayQueryStatsEnabled: q.storeGatewayQueryStatsEnabled,
 	}, nil
 }
 
@@ -315,6 +320,10 @@ type blocksStoreQuerier struct {
 	// If set, the querier manipulates the max time to not be greater than
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
 	queryStoreAfter time.Duration
+
+	// If enabled, query stats of store gateway requests will be logged
+	// using `info` level.
+	storeGatewayQueryStatsEnabled bool
 }
 
 // Select implements storage.Querier interface.
@@ -753,7 +762,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			// Use number of blocks queried to check whether we should log the query
 			// or not. It might be logging too much but good to understand per request
 			// performance.
-			if seriesQueryStats.BlocksQueried > 0 {
+			if q.storeGatewayQueryStatsEnabled && seriesQueryStats.BlocksQueried > 0 {
 				level.Info(spanLog).Log("msg", "store gateway series request stats",
 					"instance", c.RemoteAddress(),
 					"queryable_chunk_bytes_fetched", chunkBytes,

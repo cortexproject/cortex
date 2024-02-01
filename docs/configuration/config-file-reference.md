@@ -3527,6 +3527,10 @@ store_gateway_client:
   # CLI flag: -querier.store-gateway-client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
+# If enabled, store gateway query stats will be logged using `info` log level.
+# CLI flag: -querier.store-gateway-query-stats-enabled
+[store_gateway_query_stats: <boolean> | default = true]
+
 # When distributor's sharding strategy is shuffle-sharding and this setting is >
 # 0, queriers fetch in-memory series from the minimum set of required ingesters,
 # selecting only ingesters which may have received series since 'now - lookback

@@ -52,12 +52,12 @@ func (c *compatibleChunksIterator) At() (int64, float64) {
 	return c.it.At()
 }
 
-func (c *compatibleChunksIterator) AtHistogram() (int64, *histogram.Histogram) {
+func (c *compatibleChunksIterator) AtHistogram(*histogram.Histogram) (int64, *histogram.Histogram) {
 	c.err = ErrNativeHistogramsUnsupported
 	return 0, nil
 }
 
-func (c *compatibleChunksIterator) AtFloatHistogram() (int64, *histogram.FloatHistogram) {
+func (c *compatibleChunksIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	c.err = ErrNativeHistogramsUnsupported
 	return 0, nil
 }

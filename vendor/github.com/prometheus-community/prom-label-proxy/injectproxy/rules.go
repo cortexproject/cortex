@@ -207,11 +207,8 @@ func (r *routes) filterRules(lvalues []string, resp *apiResponse) (interface{}, 
 	for _, rg := range rgs.RuleGroups {
 		var rules []rule
 		for _, rule := range rg.Rules {
-			for _, lbl := range rule.Labels() {
-				if lbl.Name == r.label && slices.Contains(lvalues, lbl.Value) {
-					rules = append(rules, rule)
-					break
-				}
+			if lval := rule.Labels().Get(r.label); lval != "" && slices.Contains(lvalues, lval) {
+				rules = append(rules, rule)
 			}
 		}
 		if len(rules) > 0 {
@@ -231,11 +228,8 @@ func (r *routes) filterAlerts(lvalues []string, resp *apiResponse) (interface{},
 
 	filtered := []*alert{}
 	for _, alert := range data.Alerts {
-		for _, lbl := range alert.Labels {
-			if lbl.Name == r.label && slices.Contains(lvalues, lbl.Value) {
-				filtered = append(filtered, alert)
-				break
-			}
+		if lval := alert.Labels.Get(r.label); lval != "" && slices.Contains(lvalues, lval) {
+			filtered = append(filtered, alert)
 		}
 	}
 

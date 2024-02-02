@@ -39,14 +39,19 @@ type Optimizer interface {
 }
 
 type plan struct {
-	expr parser.Expr
-	opts *query.Options
+	expr     parser.Expr
+	opts     *query.Options
+	planOpts PlanOptions
 }
 
-func New(expr parser.Expr, opts *query.Options) Plan {
-	expr = preprocessExpr(expr, opts.Start, opts.End)
-	setOffsetForAtModifier(opts.Start.UnixMilli(), expr)
-	setOffsetForInnerSubqueries(expr, opts)
+type PlanOptions struct {
+	DisableDuplicateLabelCheck bool
+}
+
+func New(expr parser.Expr, queryOpts *query.Options, planOpts PlanOptions) Plan {
+	expr = preprocessExpr(expr, queryOpts.Start, queryOpts.End)
+	setOffsetForAtModifier(queryOpts.Start.UnixMilli(), expr)
+	setOffsetForInnerSubqueries(expr, queryOpts)
 
 	// the engine handles sorting at the presentation layer
 	expr = trimSorts(expr)
@@ -55,8 +60,9 @@ func New(expr parser.Expr, opts *query.Options) Plan {
 	expr = replaceSelectors(expr)
 
 	return &plan{
-		expr: expr,
-		opts: opts,
+		expr:     expr,
+		opts:     queryOpts,
+		planOpts: planOpts,
 	}
 }
 
@@ -67,10 +73,12 @@ func (p *plan) Optimize(optimizers []Optimizer) (Plan, annotations.Annotations) 
 		p.expr, a = o.Optimize(p.expr, p.opts)
 		annos.Merge(a)
 	}
-	// parens are just annoying and getting rid of them doesnt change the query
+	// parens are just annoying and getting rid of them doesn't change the query
 	expr := trimParens(p.expr)
 
-	expr = insertDuplicateLabelChecks(expr)
+	if !p.planOpts.DisableDuplicateLabelCheck {
+		expr = insertDuplicateLabelChecks(expr)
+	}
 
 	return &plan{expr: expr, opts: p.opts}, *annos
 }

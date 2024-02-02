@@ -59,6 +59,10 @@ jobs:
   security:
     name: CodeQL
     runs-on: ubuntu-20.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

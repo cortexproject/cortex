@@ -27,15 +27,27 @@ func TestIngesterSharding(t *testing.T) {
 		tenantShardSize             int
 		expectedIngestersWithSeries int
 	}{
-		"default sharding strategy should spread series across all ingesters": {
+		//Default Sharding Strategy
+		"default sharding strategy should be ignored and spread across all ingesters": {
 			shardingStrategy:            "default",
 			tenantShardSize:             2, // Ignored by default strategy.
 			expectedIngestersWithSeries: 3,
 		},
+		"default sharding strategy should spread series across all ingesters": {
+			shardingStrategy:            "default",
+			tenantShardSize:             0, // Ignored by default strategy.
+			expectedIngestersWithSeries: 3,
+		},
+		//Shuffle Sharding Strategy
 		"shuffle-sharding strategy should spread series across the configured shard size number of ingesters": {
 			shardingStrategy:            "shuffle-sharding",
 			tenantShardSize:             2,
 			expectedIngestersWithSeries: 2,
+		},
+		"Tenant Shard Size of 0 should leverage all ingesters": {
+			shardingStrategy:            "shuffle-sharding",
+			tenantShardSize:             0,
+			expectedIngestersWithSeries: 3,
 		},
 	}
 
@@ -125,7 +137,7 @@ func TestIngesterSharding(t *testing.T) {
 			// We expect that only ingesters belonging to tenant's shard have been queried if
 			// shuffle sharding is enabled.
 			expectedIngesters := ingesters.NumInstances()
-			if testData.shardingStrategy == "shuffle-sharding" {
+			if testData.shardingStrategy == "shuffle-sharding" && testData.tenantShardSize > 0 {
 				expectedIngesters = testData.tenantShardSize
 			}
 

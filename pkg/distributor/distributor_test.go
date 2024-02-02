@@ -76,14 +76,14 @@ func TestConfig_Validate(t *testing.T) {
 			initLimits: func(_ *validation.Limits) {},
 			expected:   errInvalidShardingStrategy,
 		},
-		"should fail if the default shard size is 0 on when sharding strategy = shuffle-sharding": {
+		"should pass sharding strategy when IngestionTenantShardSize = 0": {
 			initConfig: func(cfg *Config) {
 				cfg.ShardingStrategy = "shuffle-sharding"
 			},
 			initLimits: func(limits *validation.Limits) {
 				limits.IngestionTenantShardSize = 0
 			},
-			expected: errInvalidTenantShardSize,
+			expected: nil,
 		},
 		"should pass if the default shard size > 0 on when sharding strategy = shuffle-sharding": {
 			initConfig: func(cfg *Config) {
@@ -93,6 +93,15 @@ func TestConfig_Validate(t *testing.T) {
 				limits.IngestionTenantShardSize = 3
 			},
 			expected: nil,
+		},
+		"should fail because the ingestionTenantShardSize is a non-positive number": {
+			initConfig: func(cfg *Config) {
+				cfg.ShardingStrategy = "shuffle-sharding"
+			},
+			initLimits: func(limits *validation.Limits) {
+				limits.IngestionTenantShardSize = -1
+			},
+			expected: errInvalidTenantShardSize,
 		},
 	}
 

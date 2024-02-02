@@ -132,7 +132,6 @@ func (c *chunkMergeIterator) Err() error {
 
 type extraIterator interface {
 	chunkenc.Iterator
-	AtTime() int64
 }
 
 type seriesIteratorHeap []extraIterator
@@ -141,8 +140,8 @@ func (h *seriesIteratorHeap) Len() int      { return len(*h) }
 func (h *seriesIteratorHeap) Swap(i, j int) { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
 
 func (h *seriesIteratorHeap) Less(i, j int) bool {
-	iT := (*h)[i].AtTime()
-	jT := (*h)[j].AtTime()
+	iT, _ := (*h)[i].At()
+	jT, _ := (*h)[j].At()
 	return iT < jT
 }
 

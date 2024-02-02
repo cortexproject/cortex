@@ -46,6 +46,7 @@ type routes struct {
 	mux            http.Handler
 	modifiers      map[string]func(*http.Response) error
 	errorOnReplace bool
+	regexMatch     bool
 }
 
 type options struct {
@@ -53,6 +54,7 @@ type options struct {
 	passthroughPaths []string
 	errorOnReplace   bool
 	registerer       prometheus.Registerer
+	regexMatch       bool
 }
 
 type Option interface {
@@ -93,6 +95,13 @@ func WithPassthroughPaths(paths []string) Option {
 func WithErrorOnReplace() Option {
 	return optionFunc(func(o *options) {
 		o.errorOnReplace = true
+	})
+}
+
+// WithRegexMatch causes the proxy to handle tenant name as regexp
+func WithRegexMatch() Option {
+	return optionFunc(func(o *options) {
+		o.regexMatch = true
 	})
 }
 
@@ -279,6 +288,7 @@ func NewRoutes(upstream *url.URL, label string, extractLabeler ExtractLabeler, o
 		label:          label,
 		el:             extractLabeler,
 		errorOnReplace: opt.errorOnReplace,
+		regexMatch:     opt.regexMatch,
 	}
 	mux := newStrictMux(newInstrumentedMux(http.NewServeMux(), opt.registerer))
 
@@ -305,18 +315,21 @@ func NewRoutes(upstream *url.URL, label string, extractLabeler ExtractLabeler, o
 		// Reject multi label values with assertSingleLabelValue() because the
 		// semantics of the Silences API don't support multi-label matchers.
 		mux.Handle("/api/v2/silences", r.el.ExtractLabel(
-			enforceMethods(
-				assertSingleLabelValue(r.silences),
-				"GET", "POST",
+			r.errorIfRegexpMatch(
+				enforceMethods(
+					assertSingleLabelValue(r.silences),
+					"GET", "POST",
+				),
 			),
 		)),
 		mux.Handle("/api/v2/silence/", r.el.ExtractLabel(
-			enforceMethods(
-				assertSingleLabelValue(r.deleteSilence),
-				"DELETE",
+			r.errorIfRegexpMatch(
+				enforceMethods(
+					assertSingleLabelValue(r.deleteSilence),
+					"DELETE",
+				),
 			),
 		)),
-
 		mux.Handle("/api/v2/alerts/groups", r.el.ExtractLabel(enforceMethods(r.enforceFilterParameter, "GET"))),
 		mux.Handle("/api/v2/alerts", r.el.ExtractLabel(enforceMethods(r.alerts, "GET"))),
 	)
@@ -386,6 +399,17 @@ func enforceMethods(h http.HandlerFunc, methods ...string) http.HandlerFunc {
 	}
 }
 
+func (r *routes) errorIfRegexpMatch(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		if r.regexMatch {
+			prometheusAPIError(w, "support for regex match not implemented", http.StatusNotImplemented)
+			return
+		}
+
+		next(w, req)
+	}
+}
+
 type ctxKey int
 
 const keyLabel ctxKey = iota
@@ -438,16 +462,34 @@ func (r *routes) query(w http.ResponseWriter, req *http.Request) {
 	var matcher *labels.Matcher
 
 	if len(MustLabelValues(req.Context())) > 1 {
+		if r.regexMatch {
+			prometheusAPIError(w, "Only one label value allowed with regex match", http.StatusBadRequest)
+			return
+		}
 		matcher = &labels.Matcher{
 			Name:  r.label,
 			Type:  labels.MatchRegexp,
 			Value: labelValuesToRegexpString(MustLabelValues(req.Context())),
 		}
 	} else {
+		matcherType := labels.MatchEqual
+		matcherValue := MustLabelValue(req.Context())
+		if r.regexMatch {
+			compiledRegex, err := regexp.Compile(matcherValue)
+			if err != nil {
+				prometheusAPIError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if compiledRegex.MatchString("") {
+				prometheusAPIError(w, "Regex should not match empty string", http.StatusBadRequest)
+				return
+			}
+			matcherType = labels.MatchRegexp
+		}
 		matcher = &labels.Matcher{
 			Name:  r.label,
-			Type:  labels.MatchEqual,
-			Value: MustLabelValue(req.Context()),
+			Type:  matcherType,
+			Value: matcherValue,
 		}
 	}
 

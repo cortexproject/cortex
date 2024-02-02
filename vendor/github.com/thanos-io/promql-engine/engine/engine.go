@@ -73,6 +73,11 @@ type Opts struct {
 
 	// SelectorBatchSize specifies the maximum number of samples to be returned by selectors in a single batch.
 	SelectorBatchSize int64
+
+	// The Prometheus engine has internal check for duplicate labels produced by functions, aggregations or binary operators.
+	// This check can produce false positives when querying time-series data which does not conform to the Prometheus data model,
+	// and can be disabled if it leads to false positives.
+	DisableDuplicateLabelChecks bool
 }
 
 func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
@@ -146,7 +151,9 @@ func New(opts Opts) *compatibilityEngine {
 		prom:      engine,
 		functions: functions,
 
-		disableFallback:   opts.DisableFallback,
+		disableDuplicateLabelChecks: opts.DisableDuplicateLabelChecks,
+		disableFallback:             opts.DisableFallback,
+
 		logger:            opts.Logger,
 		lookbackDelta:     opts.LookbackDelta,
 		logicalOptimizers: opts.getLogicalOptimizers(),
@@ -171,7 +178,9 @@ type compatibilityEngine struct {
 	prom      v1.QueryEngine
 	functions map[string]*parser.Function
 
-	disableFallback   bool
+	disableDuplicateLabelChecks bool
+	disableFallback             bool
+
 	logger            log.Logger
 	lookbackDelta     time.Duration
 	logicalOptimizers []logicalplan.Optimizer
@@ -220,7 +229,11 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 		return nil, ErrStepsBatchTooLarge
 	}
 
-	lplan, warns := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
+	planOpts := logicalplan.PlanOptions{
+		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
+	}
+	lplan, warns := logicalplan.New(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
+
 	exec, err := execution.New(lplan.Expr(), q, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
@@ -275,7 +288,10 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 		return nil, ErrStepsBatchTooLarge
 	}
 
-	lplan, warns := logicalplan.New(expr, qOpts).Optimize(e.logicalOptimizers)
+	planOpts := logicalplan.PlanOptions{
+		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
+	}
+	lplan, warns := logicalplan.New(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
 	exec, err := execution.New(lplan.Expr(), q, qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()

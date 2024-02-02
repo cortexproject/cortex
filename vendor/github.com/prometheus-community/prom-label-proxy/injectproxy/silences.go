@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -73,10 +74,24 @@ func (r *routes) enforceFilterParameter(w http.ResponseWriter, req *http.Request
 			Value: labelValuesToRegexpString(MustLabelValues(req.Context())),
 		}
 	} else {
+		matcherType := labels.MatchEqual
+		matcherValue := MustLabelValue(req.Context())
+		if r.regexMatch {
+			compiledRegex, err := regexp.Compile(matcherValue)
+			if err != nil {
+				prometheusAPIError(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if compiledRegex.MatchString("") {
+				prometheusAPIError(w, "Regex should not match empty string", http.StatusBadRequest)
+				return
+			}
+			matcherType = labels.MatchRegexp
+		}
 		proxyLabelMatch = labels.Matcher{
-			Type:  labels.MatchEqual,
+			Type:  matcherType,
 			Name:  r.label,
-			Value: MustLabelValue(req.Context()),
+			Value: matcherValue,
 		}
 	}
 

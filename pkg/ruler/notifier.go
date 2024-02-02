@@ -44,12 +44,12 @@ type rulerNotifier struct {
 	logger    gklog.Logger
 }
 
-func newRulerNotifier(o *notifier.Options, l gklog.Logger, registerer prometheus.Registerer) *rulerNotifier {
+func newRulerNotifier(o *notifier.Options, l gklog.Logger, registerer prometheus.Registerer, sdMetrics map[string]discovery.DiscovererMetrics) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
 		notifier:  notifier.NewManager(o, l),
 		sdCancel:  sdCancel,
-		sdManager: discovery.NewManager(sdCtx, l, registerer),
+		sdManager: discovery.NewManager(sdCtx, l, registerer, sdMetrics),
 		logger:    l,
 	}
 }

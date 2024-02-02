@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -37,8 +39,9 @@ type DefaultMultiTenantManager struct {
 	userManagerMetrics *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
-	notifiersMtx sync.Mutex
-	notifiers    map[string]*rulerNotifier
+	notifiersMtx              sync.Mutex
+	notifiers                 map[string]*rulerNotifier
+	notifiersDiscoveryMetrics map[string]discovery.DiscovererMetrics
 
 	managersTotal                 prometheus.Gauge
 	lastReloadSuccessful          *prometheus.GaugeVec
@@ -59,14 +62,27 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		reg.MustRegister(userManagerMetrics)
 	}
 
+	discoveryMetricRegister := reg
+	if discoveryMetricRegister == nil {
+		discoveryMetricRegister = prometheus.DefaultRegisterer
+	}
+
+	notifiersDiscoveryMetrics, err := discovery.CreateAndRegisterSDMetrics(discoveryMetricRegister)
+
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to register service discovery metrics", "err", err)
+		os.Exit(1)
+	}
+
 	return &DefaultMultiTenantManager{
-		cfg:                cfg,
-		notifierCfg:        ncfg,
-		managerFactory:     managerFactory,
-		notifiers:          map[string]*rulerNotifier{},
-		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]RulesManager{},
-		userManagerMetrics: userManagerMetrics,
+		cfg:                       cfg,
+		notifierCfg:               ncfg,
+		managerFactory:            managerFactory,
+		notifiers:                 map[string]*rulerNotifier{},
+		notifiersDiscoveryMetrics: notifiersDiscoveryMetrics,
+		mapper:                    newMapper(cfg.RulePath, logger),
+		userManagers:              map[string]RulesManager{},
+		userManagerMetrics:        userManagerMetrics,
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -235,7 +251,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
 			return ctxhttp.Do(ctx, client, req)
 		},
-	}, log.With(r.logger, "user", userID), userManagerRegistry)
+	}, log.With(r.logger, "user", userID), userManagerRegistry, r.notifiersDiscoveryMetrics)
 
 	n.run()
 

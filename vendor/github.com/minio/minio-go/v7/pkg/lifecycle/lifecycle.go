@@ -211,35 +211,43 @@ func (t Transition) MarshalXML(en *xml.Encoder, startElement xml.StartElement) e
 
 // And And Rule for LifecycleTag, to be used in LifecycleRuleFilter
 type And struct {
-	XMLName xml.Name `xml:"And" json:"-"`
-	Prefix  string   `xml:"Prefix" json:"Prefix,omitempty"`
-	Tags    []Tag    `xml:"Tag" json:"Tags,omitempty"`
+	XMLName               xml.Name `xml:"And" json:"-"`
+	Prefix                string   `xml:"Prefix" json:"Prefix,omitempty"`
+	Tags                  []Tag    `xml:"Tag" json:"Tags,omitempty"`
+	ObjectSizeLessThan    int64    `xml:"ObjectSizeLessThan,omitempty" json:"ObjectSizeLessThan,omitempty"`
+	ObjectSizeGreaterThan int64    `xml:"ObjectSizeGreaterThan,omitempty" json:"ObjectSizeGreaterThan,omitempty"`
 }
 
 // IsEmpty returns true if Tags field is null
 func (a And) IsEmpty() bool {
-	return len(a.Tags) == 0 && a.Prefix == ""
+	return len(a.Tags) == 0 && a.Prefix == "" &&
+		a.ObjectSizeLessThan == 0 && a.ObjectSizeGreaterThan == 0
 }
 
 // Filter will be used in selecting rule(s) for lifecycle configuration
 type Filter struct {
-	XMLName xml.Name `xml:"Filter" json:"-"`
-	And     And      `xml:"And,omitempty" json:"And,omitempty"`
-	Prefix  string   `xml:"Prefix,omitempty" json:"Prefix,omitempty"`
-	Tag     Tag      `xml:"Tag,omitempty" json:"Tag,omitempty"`
+	XMLName               xml.Name `xml:"Filter" json:"-"`
+	And                   And      `xml:"And,omitempty" json:"And,omitempty"`
+	Prefix                string   `xml:"Prefix,omitempty" json:"Prefix,omitempty"`
+	Tag                   Tag      `xml:"Tag,omitempty" json:"Tag,omitempty"`
+	ObjectSizeLessThan    int64    `xml:"ObjectSizeLessThan,omitempty" json:"ObjectSizeLessThan,omitempty"`
+	ObjectSizeGreaterThan int64    `xml:"ObjectSizeGreaterThan,omitempty" json:"ObjectSizeGreaterThan,omitempty"`
 }
 
 // IsNull returns true if all Filter fields are empty.
 func (f Filter) IsNull() bool {
-	return f.Tag.IsEmpty() && f.And.IsEmpty() && f.Prefix == ""
+	return f.Tag.IsEmpty() && f.And.IsEmpty() && f.Prefix == "" &&
+		f.ObjectSizeLessThan == 0 && f.ObjectSizeGreaterThan == 0
 }
 
 // MarshalJSON customizes json encoding by removing empty values.
 func (f Filter) MarshalJSON() ([]byte, error) {
 	type filter struct {
-		And    *And   `json:"And,omitempty"`
-		Prefix string `json:"Prefix,omitempty"`
-		Tag    *Tag   `json:"Tag,omitempty"`
+		And                   *And   `json:"And,omitempty"`
+		Prefix                string `json:"Prefix,omitempty"`
+		Tag                   *Tag   `json:"Tag,omitempty"`
+		ObjectSizeLessThan    int64  `json:"ObjectSizeLessThan,omitempty"`
+		ObjectSizeGreaterThan int64  `json:"ObjectSizeGreaterThan,omitempty"`
 	}
 
 	newf := filter{
@@ -251,6 +259,8 @@ func (f Filter) MarshalJSON() ([]byte, error) {
 	if !f.And.IsEmpty() {
 		newf.And = &f.And
 	}
+	newf.ObjectSizeLessThan = f.ObjectSizeLessThan
+	newf.ObjectSizeGreaterThan = f.ObjectSizeGreaterThan
 	return json.Marshal(newf)
 }
 
@@ -271,7 +281,19 @@ func (f Filter) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 			return err
 		}
 	default:
-		// Always print Prefix field when both And & Tag are empty
+		if f.ObjectSizeLessThan > 0 {
+			if err := e.EncodeElement(f.ObjectSizeLessThan, xml.StartElement{Name: xml.Name{Local: "ObjectSizeLessThan"}}); err != nil {
+				return err
+			}
+			break
+		}
+		if f.ObjectSizeGreaterThan > 0 {
+			if err := e.EncodeElement(f.ObjectSizeGreaterThan, xml.StartElement{Name: xml.Name{Local: "ObjectSizeGreaterThan"}}); err != nil {
+				return err
+			}
+			break
+		}
+		// Print empty Prefix field only when everything else is empty
 		if err := e.EncodeElement(f.Prefix, xml.StartElement{Name: xml.Name{Local: "Prefix"}}); err != nil {
 			return err
 		}

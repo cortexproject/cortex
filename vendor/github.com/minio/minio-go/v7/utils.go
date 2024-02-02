@@ -528,6 +528,14 @@ func isStandardQueryValue(qsKey string) bool {
 	return supportedQueryValues[qsKey]
 }
 
+// Per documentation at https://docs.aws.amazon.com/AmazonS3/latest/userguide/LogFormat.html#LogFormatCustom, the
+// set of query params starting with "x-" are ignored by S3.
+const allowedCustomQueryPrefix = "x-"
+
+func isCustomQueryValue(qsKey string) bool {
+	return strings.HasPrefix(qsKey, allowedCustomQueryPrefix)
+}
+
 var (
 	md5Pool    = sync.Pool{New: func() interface{} { return md5.New() }}
 	sha256Pool = sync.Pool{New: func() interface{} { return sha256.New() }}

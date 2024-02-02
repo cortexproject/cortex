@@ -77,6 +77,7 @@ type PutObjectOptions struct {
 	ContentDisposition      string
 	ContentLanguage         string
 	CacheControl            string
+	Expires                 time.Time
 	Mode                    RetentionMode
 	RetainUntilDate         time.Time
 	ServerSideEncryption    encrypt.ServerSide
@@ -151,6 +152,10 @@ func (opts PutObjectOptions) Header() (header http.Header) {
 	}
 	if opts.CacheControl != "" {
 		header.Set("Cache-Control", opts.CacheControl)
+	}
+
+	if !opts.Expires.IsZero() {
+		header.Set("Expires", opts.Expires.UTC().Format(http.TimeFormat))
 	}
 
 	if opts.Mode != "" {

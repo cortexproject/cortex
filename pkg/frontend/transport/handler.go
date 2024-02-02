@@ -348,11 +348,11 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	if queryPriority, ok := r.Context().Value(tripperware.QueryPriorityCtxKey).(int64); ok {
 		logMessage = append(logMessage, "priority", queryPriority)
 	}
-	if maxT, ok := r.Context().Value(tripperware.DataFetchMaxTimeCtxKey).(int64); ok {
-		logMessage = append(logMessage, "maxt", util.FormatMillisToSeconds(maxT))
+	if maxT, ok := r.Context().Value(tripperware.DataFetchedMaxTimeCtxKey).(int64); ok {
+		logMessage = append(logMessage, "data_fetched_max_time", util.FormatMillisToSeconds(maxT))
 	}
-	if minT, ok := r.Context().Value(tripperware.DataFetchMinTimeCtxKey).(int64); ok {
-		logMessage = append(logMessage, "mint", util.FormatMillisToSeconds(minT))
+	if minT, ok := r.Context().Value(tripperware.DataFetchedMinTimeCtxKey).(int64); ok {
+		logMessage = append(logMessage, "data_fetched_min_time", util.FormatMillisToSeconds(minT))
 	}
 
 	if error != nil {

@@ -369,10 +369,10 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.QueryPriorityCtxKey, testData.priority))
 			}
 			if testData.minT > 0 {
-				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.DataFetchMinTimeCtxKey, testData.minT))
+				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.DataFetchedMinTimeCtxKey, testData.minT))
 			}
 			if testData.maxT > 0 {
-				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.DataFetchMaxTimeCtxKey, testData.maxT))
+				*req = *req.WithContext(context.WithValue(req.Context(), tripperware.DataFetchedMaxTimeCtxKey, testData.maxT))
 			}
 			handler.reportQueryStats(req, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
 			data, err := io.ReadAll(outputBuf)

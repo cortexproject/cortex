@@ -13,9 +13,9 @@ import (
 type contextKey string
 
 const (
-	DataFetchMinTimeCtxKey = contextKey("dataFetchMinTime")
-	DataFetchMaxTimeCtxKey = contextKey("dataFetchMaxTime")
-	QueryPriorityCtxKey    = contextKey("queryPriority")
+	DataFetchedMinTimeCtxKey = contextKey("dataFetchedMinTime")
+	DataFetchedMaxTimeCtxKey = contextKey("dataFetchedMaxTime")
+	QueryPriorityCtxKey      = contextKey("queryPriority")
 )
 
 // RequestResponse contains a request response and the respective request that was used.

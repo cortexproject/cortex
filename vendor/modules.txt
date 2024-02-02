@@ -904,7 +904,7 @@ github.com/stretchr/objx
 github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20240116185442-6ecabdddaab1
+# github.com/thanos-io/objstore v0.0.0-20240128223450-bdadaefbfe03
 ## explicit; go 1.20
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
@@ -1120,8 +1120,8 @@ go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconvut
 # go.opentelemetry.io/contrib/propagators/autoprop v0.38.0
 ## explicit; go 1.18
 go.opentelemetry.io/contrib/propagators/autoprop
-# go.opentelemetry.io/contrib/propagators/aws v1.17.0
-## explicit; go 1.19
+# go.opentelemetry.io/contrib/propagators/aws v1.22.0
+## explicit; go 1.20
 go.opentelemetry.io/contrib/propagators/aws/xray
 # go.opentelemetry.io/contrib/propagators/b3 v1.13.0
 ## explicit; go 1.18

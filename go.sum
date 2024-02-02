@@ -1453,8 +1453,8 @@ github.com/tencentyun/cos-go-sdk-v5 v0.7.40 h1:W6vDGKCHe4wBACI1d2UgE6+50sJFhRWU4
 github.com/tencentyun/cos-go-sdk-v5 v0.7.40/go.mod h1:4dCEtLHGh8QPxHEkgq+nFaky7yZxQuYwgSJM87icDaw=
 github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e h1:f1Zsv7OAU9iQhZwigp50Yl38W10g/vd5NC8Rdk1Jzng=
 github.com/thanos-community/galaxycache v0.0.0-20211122094458-3a32041a1f1e/go.mod h1:jXcofnrSln/cLI6/dhlBxPQZEEQHVPCcFaH75M+nSzM=
-github.com/thanos-io/objstore v0.0.0-20240116185442-6ecabdddaab1 h1:8taDMdkqtKO6uB+JKwXnz2jByLwBLY+GnXp3ShXjUKY=
-github.com/thanos-io/objstore v0.0.0-20240116185442-6ecabdddaab1/go.mod h1:RMvJQnpB4QQiYGg1gF8mnPJg6IkIPY28Buh8f6b+F0c=
+github.com/thanos-io/objstore v0.0.0-20240128223450-bdadaefbfe03 h1:VEu81Atmor2RVr5iGzlLc7E8X9jd1ux0ze4Ie5Qw8n0=
+github.com/thanos-io/objstore v0.0.0-20240128223450-bdadaefbfe03/go.mod h1:RMvJQnpB4QQiYGg1gF8mnPJg6IkIPY28Buh8f6b+F0c=
 github.com/thanos-io/promql-engine v0.0.0-20240115075159-7de619aae856 h1:4PxgeNqMIWScmt8+oOjG6puF8Dhn2rPGOFBwuIf24SI=
 github.com/thanos-io/promql-engine v0.0.0-20240115075159-7de619aae856/go.mod h1:3pmodeI6v0zeezI1m9dE0ZaUXqiNSceZj1ZrQIXvHE4=
 github.com/thanos-io/thanos v0.33.1-0.20240122182532-e215fa599b4a h1:mIJcBO1DsBnGSjoesNGUUgam3vCGh1FNaUDyQnhg3+c=
@@ -1531,8 +1531,8 @@ go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.46.1 h1:aFJWCqJ
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.46.1/go.mod h1:sEGXWArGqc3tVa+ekntsN65DmVbVeW+7lTKTjZF3/Fo=
 go.opentelemetry.io/contrib/propagators/autoprop v0.38.0 h1:WZwiLCwOL0XW/6TVT7LTtdRDveoHZ6q3wL+0iYsBcdE=
 go.opentelemetry.io/contrib/propagators/autoprop v0.38.0/go.mod h1:JBebP2d0HiffbfelbIEoBOCl4790g7Z8lD1scUd3Vd8=
-go.opentelemetry.io/contrib/propagators/aws v1.17.0 h1:IX8d7l2uRw61BlmZBOTQFaK+y22j6vytMVTs9wFrO+c=
-go.opentelemetry.io/contrib/propagators/aws v1.17.0/go.mod h1:pAlCYRWff4uGqRXOVn3WP8pDZ5E0K56bEoG7a1VSL4k=
+go.opentelemetry.io/contrib/propagators/aws v1.22.0 h1:SKtPYiel5TWrE9gib3F4/BUcrvVjKsA5CH9xnWvj6cQ=
+go.opentelemetry.io/contrib/propagators/aws v1.22.0/go.mod h1:zau7d6VqIVtBLLoD+WIufyXK6ZWhSdpiG6tY/hBXu+Y=
 go.opentelemetry.io/contrib/propagators/b3 v1.13.0 h1:f17PBmZK60RoHvOpJVqEka8oS2EXjpjHquESD/8zZ50=
 go.opentelemetry.io/contrib/propagators/b3 v1.13.0/go.mod h1:zy2hz1TpGUoJzSwlBchVGvVAFQS8s2pglKLbrAFZ+Sc=
 go.opentelemetry.io/contrib/propagators/jaeger v1.13.0 h1:+tVlvpiQMOCzi4EYCaBjblibpyKfqoph0fcITmtXMws=

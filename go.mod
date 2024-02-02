@@ -51,7 +51,7 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.9.5
 	github.com/stretchr/testify v1.8.4
-	github.com/thanos-io/objstore v0.0.0-20240116185442-6ecabdddaab1
+	github.com/thanos-io/objstore v0.0.0-20240128223450-bdadaefbfe03
 	github.com/thanos-io/promql-engine v0.0.0-20240115075159-7de619aae856
 	github.com/thanos-io/thanos v0.33.1-0.20240122182532-e215fa599b4a
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
@@ -59,7 +59,7 @@ require (
 	go.etcd.io/etcd/api/v3 v3.5.11
 	go.etcd.io/etcd/client/pkg/v3 v3.5.9
 	go.etcd.io/etcd/client/v3 v3.5.7
-	go.opentelemetry.io/contrib/propagators/aws v1.17.0
+	go.opentelemetry.io/contrib/propagators/aws v1.22.0
 	go.opentelemetry.io/otel v1.22.0
 	go.opentelemetry.io/otel/bridge/opentracing v1.22.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.21.0

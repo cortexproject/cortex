@@ -1,28 +1,14 @@
 package tripperware
 
 import (
-	"errors"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-var (
-	errQueryPriorityDisabled = errors.New("query priority disabled")
-	errEmptyQueryString      = errors.New("empty query string")
-)
-
-func GetPriority(query string, minTime, maxTime int64, now time.Time, queryPriority validation.QueryPriority) (int64, error) {
-	if !queryPriority.Enabled {
-		return 0, errQueryPriorityDisabled
-	}
-
-	if query == "" {
-		return 0, errEmptyQueryString
-	}
-
-	if len(queryPriority.Priorities) == 0 {
-		return queryPriority.DefaultPriority, nil
+func GetPriority(query string, minTime, maxTime int64, now time.Time, queryPriority validation.QueryPriority) int64 {
+	if !queryPriority.Enabled || query == "" || len(queryPriority.Priorities) == 0 {
+		return queryPriority.DefaultPriority
 	}
 
 	for _, priority := range queryPriority.Priorities {
@@ -34,12 +20,12 @@ func GetPriority(query string, minTime, maxTime int64, now time.Time, queryPrior
 			}
 
 			if isWithinTimeAttributes(attribute.TimeWindow, now, minTime, maxTime) {
-				return priority.Priority, nil
+				return priority.Priority
 			}
 		}
 	}
 
-	return queryPriority.DefaultPriority, nil
+	return queryPriority.DefaultPriority
 }
 
 func isWithinTimeAttributes(timeWindow validation.TimeWindow, now time.Time, startTime, endTime int64) bool {

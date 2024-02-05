@@ -295,6 +295,8 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
 	splitQueries := stats.LoadSplitQueries()
+	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
+	dataSelectMinTime := stats.LoadDataSelectMinTime()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
@@ -339,20 +341,20 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		logMessage = append(logMessage, "content_encoding", encoding)
 	}
 
+	if dataSelectMaxTime > 0 {
+		logMessage = append(logMessage, "data_select_max_time", util.FormatMillisToSeconds(dataSelectMaxTime))
+	}
+	if dataSelectMinTime > 0 {
+		logMessage = append(logMessage, "data_select_min_time", util.FormatMillisToSeconds(dataSelectMinTime))
+	}
 	if query := queryString.Get("query"); len(query) > 0 {
 		logMessage = append(logMessage, "query_length", len(query))
 	}
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
 	}
-	if queryPriority, ok := r.Context().Value(tripperware.QueryPriorityCtxKey).(int64); ok {
-		logMessage = append(logMessage, "priority", queryPriority)
-	}
-	if maxT, ok := r.Context().Value(tripperware.DataFetchedMaxTimeCtxKey).(int64); ok {
-		logMessage = append(logMessage, "data_fetched_max_time", util.FormatMillisToSeconds(maxT))
-	}
-	if minT, ok := r.Context().Value(tripperware.DataFetchedMinTimeCtxKey).(int64); ok {
-		logMessage = append(logMessage, "data_fetched_min_time", util.FormatMillisToSeconds(minT))
+	if priority, ok := stats.LoadPriority(); ok {
+		logMessage = append(logMessage, "priority", priority)
 	}
 
 	if error != nil {

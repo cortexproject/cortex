@@ -29,18 +29,15 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 
 	type testCase struct {
 		query                string
-		err                  error
 		queryPriorityEnabled bool
 	}
 
 	tests := map[string]testCase{
 		"should miss if query priority not enabled": {
 			query: "up",
-			err:   errQueryPriorityDisabled,
 		},
 		"should miss if query string empty": {
 			query:                "",
-			err:                  errEmptyQueryString,
 			queryPriorityEnabled: true,
 		},
 	}
@@ -48,12 +45,7 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			limits.queryPriority.Enabled = testData.queryPriorityEnabled
-			priority, err := GetPriority(testData.query, 0, 0, now, limits.queryPriority)
-			if err != nil {
-				assert.Equal(t, testData.err, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			priority := GetPriority(testData.query, 0, 0, now, limits.queryPriority)
 			assert.Equal(t, int64(0), priority)
 		})
 	}
@@ -111,8 +103,7 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			limits.queryPriority.Priorities[0].QueryAttributes[0].Regex = testData.regex
 			limits.queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = regexp.MustCompile(testData.regex)
-			priority, err := GetPriority(testData.query, 0, 0, now, limits.queryPriority)
-			assert.NoError(t, err)
+			priority := GetPriority(testData.query, 0, 0, now, limits.queryPriority)
 			assert.Equal(t, int64(testData.expectedPriority), priority)
 		})
 	}
@@ -180,8 +171,7 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			priority, err := GetPriority("sum(up)", testData.start.UnixMilli(), testData.end.UnixMilli(), now, limits.queryPriority)
-			assert.NoError(t, err)
+			priority := GetPriority("sum(up)", testData.start.UnixMilli(), testData.end.UnixMilli(), now, limits.queryPriority)
 			assert.Equal(t, int64(testData.expectedPriority), priority)
 		})
 	}
@@ -225,8 +215,7 @@ func Test_GetPriorityShouldNotConsiderStartAndEndTimeIfEmpty(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			priority, err := GetPriority("sum(up)", testData.start.Unix(), testData.end.Unix(), now, limits.queryPriority)
-			assert.NoError(t, err)
+			priority := GetPriority("sum(up)", testData.start.Unix(), testData.end.Unix(), now, limits.queryPriority)
 			assert.Equal(t, int64(1), priority)
 		})
 	}

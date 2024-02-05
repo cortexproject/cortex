@@ -10,14 +10,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-type contextKey string
-
-const (
-	DataFetchedMinTimeCtxKey = contextKey("dataFetchedMinTime")
-	DataFetchedMaxTimeCtxKey = contextKey("dataFetchedMaxTime")
-	QueryPriorityCtxKey      = contextKey("queryPriority")
-)
-
 // RequestResponse contains a request response and the respective request that was used.
 type RequestResponse struct {
 	Request  Request

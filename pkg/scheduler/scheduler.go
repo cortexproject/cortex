@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -167,7 +167,7 @@ type schedulerRequest struct {
 }
 
 func (s schedulerRequest) Priority() int64 {
-	priority, ok := s.ctx.Value(tripperware.QueryPriorityCtxKey).(int64)
+	priority, ok := stats.FromContext(s.ctx).LoadPriority()
 	if !ok {
 		return 0
 	}

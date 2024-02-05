@@ -32,6 +32,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -165,17 +166,14 @@ func NewQueryTripperware(
 						return next.RoundTrip(r)
 					}
 
+					reqStats := stats.FromContext(r.Context())
 					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
-					*r = *r.WithContext(context.WithValue(r.Context(), DataFetchedMinTimeCtxKey, minTime))
-					*r = *r.WithContext(context.WithValue(r.Context(), DataFetchedMaxTimeCtxKey, maxTime))
+					reqStats.SetDataSelectMaxTime(maxTime)
+					reqStats.SetDataSelectMinTime(minTime)
 
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
-						priority, err := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
-						if err != nil {
-							level.Debug(log).Log("msg", "failed to get query priority for user", "user", userStr, "err", err.Error())
-						} else {
-							*r = *r.WithContext(context.WithValue(r.Context(), QueryPriorityCtxKey, priority))
-						}
+						priority := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
+						reqStats.SetPriority(priority)
 					}
 				}
 

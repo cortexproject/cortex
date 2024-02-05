@@ -311,9 +311,6 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		queryString url.Values
 		queryStats  *querier_stats.QueryStats
 		header      http.Header
-		priority    int64
-		maxT        int64
-		minT        int64
 		responseErr error
 		expectedLog string
 	}

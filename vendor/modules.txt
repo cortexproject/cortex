@@ -798,7 +798,7 @@ github.com/prometheus/exporter-toolkit/web
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/prometheus/prometheus v0.49.2-0.20240202164002-aa845f7c12ce
+# github.com/prometheus/prometheus v0.49.2-0.20240205174859-6005ac6f9dc6
 ## explicit; go 1.20
 github.com/prometheus/prometheus/config
 github.com/prometheus/prometheus/discovery

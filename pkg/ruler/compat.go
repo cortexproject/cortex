@@ -325,17 +325,19 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
-			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
-			Context:         user.InjectOrgID(ctx, userID),
-			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
-			Logger:          log.With(logger, "user", userID),
-			Registerer:      reg,
-			OutageTolerance: cfg.OutageTolerance,
-			ForGracePeriod:  cfg.ForGracePeriod,
-			ResendDelay:     cfg.ResendDelay,
+			Appendable:             NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
+			Queryable:              q,
+			QueryFunc:              RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
+			Context:                user.InjectOrgID(ctx, userID),
+			ExternalURL:            cfg.ExternalURL.URL,
+			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			Logger:                 log.With(logger, "user", userID),
+			Registerer:             reg,
+			OutageTolerance:        cfg.OutageTolerance,
+			ForGracePeriod:         cfg.ForGracePeriod,
+			ResendDelay:            cfg.ResendDelay,
+			ConcurrentEvalsEnabled: cfg.ConcurrentEvalsEnabled,
+			MaxConcurrentEvals:     cfg.MaxConcurrentEvals,
 		})
 	}
 }

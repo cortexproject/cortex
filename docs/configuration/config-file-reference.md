@@ -3968,6 +3968,16 @@ alertmanager_client:
 # CLI flag: -ruler.resend-delay
 [resend_delay: <duration> | default = 1m]
 
+# If enabled, rules from a single rule group can be evaluated concurrently if
+# there is no dependency between each other. Max concurrency for each rule group
+# is controlled via ruler.max-concurrent-evals flag.
+# CLI flag: -ruler.concurrent-evals-enabled
+[concurrent_evals_enabled: <boolean> | default = false]
+
+# Max concurrency for a single rule group to evaluate independent rules.
+# CLI flag: -ruler.max-concurrent-evals
+[max_concurrent_evals: <int> | default = 1]
+
 # Distribute rule evaluation using ring backend
 # CLI flag: -ruler.enable-sharding
 [enable_sharding: <boolean> | default = false]

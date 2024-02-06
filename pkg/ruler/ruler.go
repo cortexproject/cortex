@@ -117,9 +117,10 @@ type Config struct {
 	// Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.
 	ForGracePeriod time.Duration `yaml:"for_grace_period"`
 	// Minimum amount of time to wait before resending an alert to Alertmanager.
-	ResendDelay            time.Duration `yaml:"resend_delay"`
-	ConcurrentEvalsEnabled bool          `yaml:"concurrent_evals_enabled"`
-	MaxConcurrentEvals     int64         `yaml:"max_concurrent_evals"`
+	ResendDelay time.Duration `yaml:"resend_delay"`
+
+	ConcurrentEvalsEnabled bool  `yaml:"concurrent_evals_enabled"`
+	MaxConcurrentEvals     int64 `yaml:"max_concurrent_evals"`
 
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`

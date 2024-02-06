@@ -64,13 +64,13 @@ type PriorityDef struct {
 
 type QueryAttribute struct {
 	Regex         string     `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked."`
-	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Time window that the query should be within. If not set, it won't be checked."`
+	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
 	CompiledRegex *regexp.Regexp
 }
 
 type TimeWindow struct {
-	Start model.Duration `yaml:"start" json:"start" doc:"nocli|description=Start of the time window that the query should be within. If set to 0, it won't be checked.|default=0"`
-	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the time window that the query should be within. If set to 0, it won't be checked.|default=0"`
+	Start model.Duration `yaml:"start" json:"start" doc:"nocli|description=Start of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
+	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
 }
 
 // Limits describe all the limits for users; can be used to describe global default

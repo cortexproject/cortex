@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -100,8 +99,8 @@ type request struct {
 }
 
 func (r request) Priority() int64 {
-	priority, err := strconv.ParseInt(httpgrpcutil.GetHeader(*r.request, util.QueryPriorityHeaderKey), 10, 64)
-	if err != nil {
+	priority, ok := stats.FromContext(r.originalCtx).LoadPriority()
+	if !ok {
 		return 0
 	}
 

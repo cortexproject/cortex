@@ -21,7 +21,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -348,8 +347,19 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		},
 		"should include query priority": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
-			header:      http.Header{util.QueryPriorityHeaderKey: []string{"99"}},
+			queryStats: &querier_stats.QueryStats{
+				Priority:         99,
+				PriorityAssigned: true,
+			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 priority=99 param_query=up`,
+		},
+		"should include data fetch min and max time": {
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			queryStats: &querier_stats.QueryStats{
+				DataSelectMaxTime: 1704153600000,
+				DataSelectMinTime: 1704067200000,
+			},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
 		},
 	}
 

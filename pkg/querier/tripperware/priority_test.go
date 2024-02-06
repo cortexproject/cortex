@@ -1,10 +1,7 @@
 package tripperware
 
 import (
-	"bytes"
-	"net/http"
 	"regexp"
-	"strconv"
 	"testing"
 	"time"
 
@@ -31,35 +28,16 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 	}}
 
 	type testCase struct {
-		url                  string
+		query                string
 		queryPriorityEnabled bool
-		err                  error
 	}
 
 	tests := map[string]testCase{
 		"should miss if query priority not enabled": {
-			url: "/query?query=up",
+			query: "up",
 		},
 		"should miss if query string empty": {
-			url:                  "/query?query=",
-			queryPriorityEnabled: true,
-		},
-		"shouldn't return error if query is invalid": {
-			url:                  "/query?query=up[4h",
-			queryPriorityEnabled: true,
-			err:                  errParseExpr,
-		},
-		"should miss if query string empty - range query": {
-			url:                  "/query_range?query=",
-			queryPriorityEnabled: true,
-		},
-		"shouldn't return error if query is invalid, range query": {
-			url:                  "/query_range?query=up[4h",
-			queryPriorityEnabled: true,
-			err:                  errParseExpr,
-		},
-		"should miss if neither instant nor range query": {
-			url:                  "/series",
+			query:                "",
 			queryPriorityEnabled: true,
 		},
 	}
@@ -67,13 +45,7 @@ func Test_GetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInvalidQueryString
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			limits.queryPriority.Enabled = testData.queryPriorityEnabled
-			req, _ := http.NewRequest(http.MethodPost, testData.url, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now, 0)
-			if err != nil {
-				assert.Equal(t, testData.err, err)
-			} else {
-				assert.NoError(t, err)
-			}
+			priority := GetPriority(testData.query, 0, 0, now, limits.queryPriority)
 			assert.Equal(t, int64(0), priority)
 		})
 	}
@@ -131,9 +103,7 @@ func Test_GetPriorityShouldConsiderRegex(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			limits.queryPriority.Priorities[0].QueryAttributes[0].Regex = testData.regex
 			limits.queryPriority.Priorities[0].QueryAttributes[0].CompiledRegex = regexp.MustCompile(testData.regex)
-			req, _ := http.NewRequest(http.MethodPost, "/query?query="+testData.query, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now, 0)
-			assert.NoError(t, err)
+			priority := GetPriority(testData.query, 0, 0, now, limits.queryPriority)
 			assert.Equal(t, int64(testData.expectedPriority), priority)
 		})
 	}
@@ -161,58 +131,38 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 	}}
 
 	type testCase struct {
-		time             time.Time
 		start            time.Time
 		end              time.Time
 		expectedPriority int
 	}
 
 	tests := map[string]testCase{
-		"should hit instant query between start and end time": {
-			time:             now.Add(-30 * time.Minute),
-			expectedPriority: 1,
-		},
-		"should hit instant query equal to start time": {
-			time:             now.Add(-45 * time.Minute),
-			expectedPriority: 1,
-		},
-		"should hit instant query equal to end time": {
-			time:             now.Add(-15 * time.Minute),
-			expectedPriority: 1,
-		},
-		"should miss instant query outside of end time": {
-			expectedPriority: 0,
-		},
-		"should miss instant query outside of start time": {
-			time:             now.Add(-60 * time.Minute),
-			expectedPriority: 0,
-		},
-		"should hit range query between start and end time": {
+		"should hit between start and end time": {
 			start:            now.Add(-40 * time.Minute),
 			end:              now.Add(-20 * time.Minute),
 			expectedPriority: 1,
 		},
-		"should hit range query equal to start and end time": {
+		"should hit equal to start and end time": {
 			start:            now.Add(-45 * time.Minute),
 			end:              now.Add(-15 * time.Minute),
 			expectedPriority: 1,
 		},
-		"should miss range query outside of start time": {
+		"should miss outside of start time": {
 			start:            now.Add(-50 * time.Minute),
 			end:              now.Add(-15 * time.Minute),
 			expectedPriority: 0,
 		},
-		"should miss range query completely outside of start time": {
+		"should miss completely outside of start time": {
 			start:            now.Add(-50 * time.Minute),
 			end:              now.Add(-45 * time.Minute),
 			expectedPriority: 0,
 		},
-		"should miss range query outside of end time": {
+		"should miss outside of end time": {
 			start:            now.Add(-45 * time.Minute),
 			end:              now.Add(-10 * time.Minute),
 			expectedPriority: 0,
 		},
-		"should miss range query completely outside of end time": {
+		"should miss completely outside of end time": {
 			start:            now.Add(-15 * time.Minute),
 			end:              now.Add(-10 * time.Minute),
 			expectedPriority: 0,
@@ -221,18 +171,7 @@ func Test_GetPriorityShouldConsiderStartAndEndTime(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			var url string
-			if !testData.time.IsZero() {
-				url = "/query?query=sum(up)&time=" + strconv.FormatInt(testData.time.Unix(), 10)
-			} else if !testData.start.IsZero() {
-				url = "/query_range?query=sum(up)&start=" + strconv.FormatInt(testData.start.Unix(), 10)
-				url += "&end=" + strconv.FormatInt(testData.end.Unix(), 10)
-			} else {
-				url = "/query?query=sum(up)"
-			}
-			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now, 0)
-			assert.NoError(t, err)
+			priority := GetPriority("sum(up)", testData.start.UnixMilli(), testData.end.UnixMilli(), now, limits.queryPriority)
 			assert.Equal(t, int64(testData.expectedPriority), priority)
 		})
 	}
@@ -255,20 +194,20 @@ func Test_GetPriorityShouldNotConsiderStartAndEndTimeIfEmpty(t *testing.T) {
 	}}
 
 	type testCase struct {
-		time  time.Time
 		start time.Time
 		end   time.Time
 	}
 
 	tests := map[string]testCase{
-		"should hit instant query with no time": {},
-		"should hit instant query with future time": {
-			time: now.Add(1000000 * time.Hour),
+		"should hit with future time": {
+			start: now,
+			end:   now.Add(1000000 * time.Hour),
 		},
-		"should hit instant query with very old time": {
-			time: now.Add(-1000000 * time.Hour),
+		"should hit with very old time": {
+			start: now.Add(-1000000 * time.Hour),
+			end:   now,
 		},
-		"should hit range query with very wide time window": {
+		"should hit with very wide time window": {
 			start: now.Add(-1000000 * time.Hour),
 			end:   now.Add(1000000 * time.Hour),
 		},
@@ -276,18 +215,7 @@ func Test_GetPriorityShouldNotConsiderStartAndEndTimeIfEmpty(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			var url string
-			if !testData.time.IsZero() {
-				url = "/query?query=sum(up)&time=" + strconv.FormatInt(testData.time.Unix(), 10)
-			} else if !testData.start.IsZero() {
-				url = "/query_range?query=sum(up)&start=" + strconv.FormatInt(testData.start.Unix(), 10)
-				url += "&end=" + strconv.FormatInt(testData.end.Unix(), 10)
-			} else {
-				url = "/query?query=sum(up)"
-			}
-			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
-			priority, err := GetPriority(req, "", limits, now, 0)
-			assert.NoError(t, err)
+			priority := GetPriority("sum(up)", testData.start.Unix(), testData.end.Unix(), now, limits.queryPriority)
 			assert.Equal(t, int64(1), priority)
 		})
 	}

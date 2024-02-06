@@ -16,7 +16,11 @@ var ctxKey = contextKey(0)
 
 type QueryStats struct {
 	Stats
-	m sync.Mutex
+	PriorityAssigned  bool
+	Priority          int64
+	DataSelectMaxTime int64
+	DataSelectMinTime int64
+	m                 sync.Mutex
 }
 
 // ContextWithEmptyStats returns a context with empty stats.
@@ -194,6 +198,58 @@ func (s *QueryStats) LoadSplitQueries() uint64 {
 	}
 
 	return atomic.LoadUint64(&s.SplitQueries)
+}
+
+func (s *QueryStats) SetPriority(priority int64) {
+	if s == nil {
+		return
+	}
+
+	if !s.PriorityAssigned {
+		s.PriorityAssigned = true
+	}
+
+	atomic.StoreInt64(&s.Priority, priority)
+}
+
+func (s *QueryStats) LoadPriority() (int64, bool) {
+	if s == nil {
+		return 0, false
+	}
+
+	return atomic.LoadInt64(&s.Priority), s.PriorityAssigned
+}
+
+func (s *QueryStats) SetDataSelectMaxTime(dataSelectMaxTime int64) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.DataSelectMaxTime, dataSelectMaxTime)
+}
+
+func (s *QueryStats) LoadDataSelectMaxTime() int64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadInt64(&s.DataSelectMaxTime)
+}
+
+func (s *QueryStats) SetDataSelectMinTime(dataSelectMinTime int64) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.DataSelectMinTime, dataSelectMinTime)
+}
+
+func (s *QueryStats) LoadDataSelectMinTime() int64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadInt64(&s.DataSelectMinTime)
 }
 
 // Merge the provided Stats into this one.

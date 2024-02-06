@@ -5095,14 +5095,18 @@ otel:
 # Regex that the query string should match. If not set, it won't be checked.
 [regex: <string> | default = ""]
 
-# Time window that the query should be within. If not set, it won't be checked.
+# Overall data select time window (including range selectors, modifiers and
+# lookback delta) that the query should be within. If not set, it won't be
+# checked.
 time_window:
-  # Start of the time window that the query should be within. If set to 0, it
-  # won't be checked.
+  # Start of the data select time window (including range selectors, modifiers
+  # and lookback delta) that the query should be within. If set to 0, it won't
+  # be checked.
   [start: <int> | default = 0]
 
-  # End of the time window that the query should be within. If set to 0, it
-  # won't be checked.
+  # End of the data select time window (including range selectors, modifiers and
+  # lookback delta) that the query should be within. If set to 0, it won't be
+  # checked.
   [end: <int> | default = 0]
 ```
 

@@ -19,7 +19,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -28,10 +27,12 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -159,14 +160,20 @@ func NewQueryTripperware(
 						}
 					}
 
+					expr, err := parser.ParseExpr(query)
+					if err != nil {
+						// If query is invalid, no need to go through tripperwares for further splitting.
+						return next.RoundTrip(r)
+					}
+
+					reqStats := stats.FromContext(r.Context())
+					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
+					reqStats.SetDataSelectMaxTime(maxTime)
+					reqStats.SetDataSelectMinTime(minTime)
+
 					if limits != nil && limits.QueryPriority(userStr).Enabled {
-						priority, err := GetPriority(r, userStr, limits, now, lookbackDelta)
-						if err != nil && err == errParseExpr {
-							// If query is invalid, no need to go through tripperwares
-							// for further splitting.
-							return next.RoundTrip(r)
-						}
-						r.Header.Set(util.QueryPriorityHeaderKey, strconv.FormatInt(priority, 10))
+						priority := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
+						reqStats.SetPriority(priority)
 					}
 				}
 

@@ -5,7 +5,6 @@ import (
 	"flag"
 	"io"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -22,6 +21,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	//lint:ignore faillint scheduler needs to retrieve priority from the context
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -167,8 +168,8 @@ type schedulerRequest struct {
 }
 
 func (s schedulerRequest) Priority() int64 {
-	priority, err := strconv.ParseInt(httpgrpcutil.GetHeader(*s.request, util.QueryPriorityHeaderKey), 10, 64)
-	if err != nil {
+	priority, ok := stats.FromContext(s.ctx).LoadPriority()
+	if !ok {
 		return 0
 	}
 

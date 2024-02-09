@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,7 +31,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
-	thanos_testutil "github.com/thanos-io/thanos/pkg/testutil/e2eutil"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -1065,8 +1065,19 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
 	b2 := createTSDBBlock(t, bucketClient, "user-1", 20, 30, map[string]string{"__name__": "Teste"})
 
-	err := thanos_testutil.PutOutOfOrderIndex(path.Join(tmpDir, "user-1", b1.String()), 10, 20)
+	// Read bad index file.
+	indexFile, err := os.Open("testdata/out_of_order_chunks/index")
 	require.NoError(t, err)
+	indexFileStat, err := indexFile.Stat()
+	require.NoError(t, err)
+
+	dir := path.Join(tmpDir, "user-1", b1.String())
+	outputFile, err := os.OpenFile(path.Join(dir, "index"), os.O_RDWR|os.O_TRUNC, 0755)
+	require.NoError(t, err)
+
+	n, err := io.Copy(outputFile, indexFile)
+	require.NoError(t, err)
+	require.Equal(t, indexFileStat.Size(), n)
 
 	cfg := prepareConfig()
 	cfg.SkipBlocksWithOutOfOrderChunksEnabled = true
@@ -1097,7 +1108,7 @@ func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	// Wait until a run has completed.
 	cortex_testutil.Poll(t, 5*time.Second, true, func() interface{} {
-		if _, err := os.Stat(path.Join(tmpDir, "user-1", b1.String(), "no-compact-mark.json")); err == nil {
+		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
 			return true
 		}
 		return false

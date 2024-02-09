@@ -44,8 +44,9 @@ var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 
 	// Validation errors.
-	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+	errInvalidShardingStrategy   = errors.New("invalid sharding strategy")
+	errInvalidTenantShardSize    = errors.New("invalid tenant shard size, the value must be greater than 0")
+	errInvalidMaxConcurrentEvals = errors.New("invalid max concurrent evals, the value must be greater than 0")
 )
 
 const (
@@ -95,7 +96,7 @@ type Config struct {
 	RulePath string `yaml:"rule_path"`
 
 	// URL of the Alertmanager to send notifications to.
-	// If your are configuring the ruler to send to a Cortex Alertmanager,
+	// If you are configuring the ruler to send to a Cortex Alertmanager,
 	// ensure this includes any path set in the Alertmanager external URL.
 	AlertmanagerURL string `yaml:"alertmanager_url"`
 	// Whether to use DNS SRV records to discover Alertmanager.
@@ -117,6 +118,9 @@ type Config struct {
 	ForGracePeriod time.Duration `yaml:"for_grace_period"`
 	// Minimum amount of time to wait before resending an alert to Alertmanager.
 	ResendDelay time.Duration `yaml:"resend_delay"`
+
+	ConcurrentEvalsEnabled bool  `yaml:"concurrent_evals_enabled"`
+	MaxConcurrentEvals     int64 `yaml:"max_concurrent_evals"`
 
 	// Enable sharding rule groups.
 	EnableSharding   bool          `yaml:"enable_sharding"`
@@ -148,6 +152,10 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 
 	if err := cfg.ClientTLSConfig.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid ruler gRPC client config")
+	}
+
+	if cfg.ConcurrentEvalsEnabled && cfg.MaxConcurrentEvals <= 0 {
+		return errInvalidMaxConcurrentEvals
 	}
 	return nil
 }
@@ -188,6 +196,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
+	f.BoolVar(&cfg.ConcurrentEvalsEnabled, "ruler.concurrent-evals-enabled", false, `If enabled, rules from a single rule group can be evaluated concurrently if there is no dependency between each other. Max concurrency for each rule group is controlled via ruler.max-concurrent-evals flag.`)
+	f.Int64Var(&cfg.MaxConcurrentEvals, "ruler.max-concurrent-evals", 1, `Max concurrency for a single rule group to evaluate independent rules.`)
 
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")

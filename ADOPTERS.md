@@ -2,6 +2,7 @@
 
 This is the list of organisations that are using Cortex in **production environments** to power their metrics and monitoring systems. Please send PRs to add or remove organisations.
 
+* [Adobe](https://www.adobe.com)
 * [Amazon Web Services (AWS)](https://aws.amazon.com/prometheus)
 * [Aspen Mesh](https://aspenmesh.io/)
 * [Buoyant](https://buoyant.io/)

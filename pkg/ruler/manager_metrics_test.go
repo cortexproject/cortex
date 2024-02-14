@@ -10,6 +10,8 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func TestManagerMetricsWithRuleGroupLabel(t *testing.T) {
@@ -554,5 +556,42 @@ func TestMetricsArePerUser(t *testing.T) {
 		}
 
 		assert.True(t, foundUserLabel, "user label not found for metric %s", desc.String())
+	}
+}
+
+func TestRuleEvalMetricsDeletePerUserMetrics(t *testing.T) {
+	dir := t.TempDir()
+	reg := prometheus.NewPedanticRegistry()
+
+	m := NewRuleEvalMetrics(Config{RulePath: dir, EnableQueryStats: true}, reg)
+	m.TotalWritesVec.WithLabelValues("fake1").Add(10)
+	m.TotalWritesVec.WithLabelValues("fake2").Add(10)
+	m.FailedWritesVec.WithLabelValues("fake1").Add(10)
+	m.FailedWritesVec.WithLabelValues("fake2").Add(10)
+	m.TotalQueriesVec.WithLabelValues("fake1").Add(10)
+	m.TotalQueriesVec.WithLabelValues("fake2").Add(10)
+	m.FailedQueriesVec.WithLabelValues("fake1").Add(10)
+	m.FailedQueriesVec.WithLabelValues("fake2").Add(10)
+	m.RulerQuerySeconds.WithLabelValues("fake1").Add(10)
+	m.RulerQuerySeconds.WithLabelValues("fake2").Add(10)
+
+	metricNames := []string{"cortex_ruler_write_requests_total", "cortex_ruler_write_requests_failed_total", "cortex_ruler_queries_total", "cortex_ruler_queries_failed_total", "cortex_ruler_query_seconds_total"}
+	gm, err := reg.Gather()
+	require.NoError(t, err)
+	mfm, err := util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	for _, name := range metricNames {
+		require.Contains(t, mfm[name].String(), "value:\"fake1\"")
+		require.Contains(t, mfm[name].String(), "value:\"fake2\"")
+	}
+
+	m.deletePerUserMetrics("fake1")
+	gm, err = reg.Gather()
+	require.NoError(t, err)
+	mfm, err = util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	for _, name := range metricNames {
+		require.NotContains(t, mfm[name].String(), "value:\"fake1\"")
+		require.Contains(t, mfm[name].String(), "value:\"fake2\"")
 	}
 }

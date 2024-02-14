@@ -26,9 +26,10 @@ import (
 )
 
 type DefaultMultiTenantManager struct {
-	cfg            Config
-	notifierCfg    *config.Config
-	managerFactory ManagerFactory
+	cfg             Config
+	notifierCfg     *config.Config
+	managerFactory  ManagerFactory
+	ruleEvalMetrics *RuleEvalMetrics
 
 	mapper *mapper
 
@@ -51,7 +52,7 @@ type DefaultMultiTenantManager struct {
 	logger                        log.Logger
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -78,6 +79,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		cfg:                       cfg,
 		notifierCfg:               ncfg,
 		managerFactory:            managerFactory,
+		ruleEvalMetrics:           evalMetrics,
 		notifiers:                 map[string]*rulerNotifier{},
 		notifiersDiscoveryMetrics: notifiersDiscoveryMetrics,
 		mapper:                    newMapper(cfg.RulePath, logger),
@@ -130,6 +132,9 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
+			if r.ruleEvalMetrics != nil {
+				r.ruleEvalMetrics.deletePerUserMetrics(userID)
+			}
 			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}

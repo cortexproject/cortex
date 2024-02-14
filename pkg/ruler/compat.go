@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -279,32 +278,7 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
-	totalWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_total",
-		Help: "Number of write requests to ingesters.",
-	}, []string{"user"})
-	failedWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_failed_total",
-		Help: "Number of failed write requests to ingesters.",
-	}, []string{"user"})
-
-	totalQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_total",
-		Help: "Number of queries executed by ruler.",
-	}, []string{"user"})
-	failedQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_failed_total",
-		Help: "Number of failed queries by ruler.",
-	}, []string{"user"})
-	var rulerQuerySeconds *prometheus.CounterVec
-	if cfg.EnableQueryStats {
-		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_query_seconds_total",
-			Help: "Total amount of wall clock time spent processing queries by the ruler.",
-		}, []string{"user"})
-	}
-
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer) ManagerFactory {
 	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
 	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
 	// Errors from PromQL are always "user" errors.
@@ -312,14 +286,14 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		var queryTime prometheus.Counter
-		if rulerQuerySeconds != nil {
-			queryTime = rulerQuerySeconds.WithLabelValues(userID)
+		if evalMetrics.RulerQuerySeconds != nil {
+			queryTime = evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
 		}
 
-		failedQueries := failedQueriesVec.WithLabelValues(userID)
-		totalQueries := totalQueriesVec.WithLabelValues(userID)
-		totalWrites := totalWritesVec.WithLabelValues(userID)
-		failedWrites := failedWritesVec.WithLabelValues(userID)
+		failedQueries := evalMetrics.FailedQueriesVec.WithLabelValues(userID)
+		totalQueries := evalMetrics.TotalQueriesVec.WithLabelValues(userID)
+		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
+		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
 
 		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)

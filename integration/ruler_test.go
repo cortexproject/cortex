@@ -741,7 +741,6 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 	}
 
 	matcher := labels.MustNewMatcher(labels.MatchEqual, "user", user)
-	var totalQueries = []float64{0}
 
 	// Verify that user-failures don't increase cortex_ruler_queries_failed_total
 	for groupName, expression := range map[string]string{
@@ -769,19 +768,20 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, float64(0), sum[0])
 
+			// Check that cortex_ruler_queries_total went up
+			totalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"}, e2e.WithLabelMatchers(matcher))
+			require.NoError(t, err)
+			require.Greater(t, totalQueries[0], float64(0))
+
 			// Delete rule before checkin "cortex_ruler_queries_total", as we want to reuse value for next test.
 			require.NoError(t, c.DeleteRuleGroup(namespace, groupName))
 
 			// Wait until ruler has unloaded the group. We don't use any matcher, so there should be no groups (in fact, metric disappears).
 			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_group_rules"}, e2e.SkipMissingMetrics))
 
-			// Check that cortex_ruler_queries_total went up since last test.
-			newTotalQueries, err := ruler.SumMetrics([]string{"cortex_ruler_queries_total"}, e2e.WithLabelMatchers(matcher))
-			require.NoError(t, err)
-			require.Greater(t, newTotalQueries[0], totalQueries[0])
-
-			// Remember totalQueries for next test.
-			totalQueries = newTotalQueries
+			// Deleting the rule group should clean up the cortex_ruler_queries_total metrics
+			_, err = ruler.SumMetrics([]string{"cortex_ruler_queries_total"}, e2e.WithLabelMatchers(matcher))
+			require.EqualError(t, err, "metric=cortex_ruler_queries_total service=ruler: metric not found")
 		})
 	}
 

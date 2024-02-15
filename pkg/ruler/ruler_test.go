@@ -175,7 +175,9 @@ func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Eng
 
 func newManager(t *testing.T, cfg Config) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, nil)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger)
+	metrics := NewRuleEvalMetrics(cfg, nil)
+	managerFactory := DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, metrics, nil)
+	manager, err := NewDefaultMultiTenantManager(cfg, managerFactory, metrics, reg, logger)
 	require.NoError(t, err)
 
 	return manager
@@ -221,9 +223,9 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 
 func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, store rulestore.RuleStore, rulerAddrMap map[string]*Ruler) (*Ruler, *DefaultMultiTenantManager) {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
-
-	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger())
+	metrics := NewRuleEvalMetrics(rulerConfig, reg)
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, metrics, reg)
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, metrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	ruler, err := newRuler(

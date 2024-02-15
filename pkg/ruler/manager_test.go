@@ -14,13 +14,14 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestSyncRuleGroups(t *testing.T) {
 	dir := t.TempDir()
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -94,6 +95,47 @@ func TestSyncRuleGroups(t *testing.T) {
 	test.Poll(t, 1*time.Second, false, func() interface{} {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
+}
+
+func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
+	dir := t.TempDir()
+	reg := prometheus.NewPedanticRegistry()
+	evalMetrics := NewRuleEvalMetrics(Config{RulePath: dir, EnableQueryStats: true}, reg)
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, evalMetrics, reg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	const user = "testUser"
+
+	evalMetrics.TotalWritesVec.WithLabelValues(user).Add(10)
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user,
+			},
+		},
+	}
+	m.SyncRuleGroups(context.Background(), userRules)
+	gm, err := reg.Gather()
+	require.NoError(t, err)
+	mfm, err := util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Contains(t, mfm["cortex_ruler_write_requests_total"].String(), "value:\""+user+"\"")
+	require.Contains(t, mfm["cortex_ruler_config_last_reload_successful"].String(), "value:\""+user+"\"")
+
+	// Passing empty map / nil stops all managers.
+	m.SyncRuleGroups(context.Background(), nil)
+	require.Nil(t, getManager(m, user))
+
+	gm, err = reg.Gather()
+	require.NoError(t, err)
+	mfm, err = util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.NotContains(t, mfm["cortex_ruler_write_requests_total"].String(), "value:\""+user+"\"")
+	require.NotContains(t, mfm["cortex_ruler_config_last_reload_successful"].String(), "value:\""+user+"\"")
 }
 
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {

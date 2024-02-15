@@ -127,7 +127,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.63"
+	libraryVersion = "v7.0.67"
 )
 
 // User Agent should always following the below style.
@@ -234,7 +234,7 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	clnt.httpClient = &http.Client{
 		Jar:       jar,
 		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}

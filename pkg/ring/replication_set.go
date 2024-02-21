@@ -104,7 +104,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 				// No need to check failuresByZone since tracker
 				// should already succeed before reaching here.
 				if waiting == 0 {
-					results = append(results, resultsPerZone[zone])
+					results = append(results, resultsPerZone[zone]...)
 				}
 			}
 			return results, nil
@@ -112,7 +112,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 	}
 
 	for zone := range resultsPerZone {
-		results = append(results, resultsPerZone[zone])
+		results = append(results, resultsPerZone[zone]...)
 	}
 	return results, nil
 }

@@ -91,7 +91,7 @@ func (t *zoneAwareResultTracker) done(instance *InstanceDesc, result interface{}
 	} else {
 		if _, ok := t.resultsPerZone[instance.Zone]; !ok {
 			// If it is the first result in the zone, then total number of instances
-			// in this zone should be current waiting required + 1, since this is called after done.
+			// in this zone should be number of waiting required.
 			t.resultsPerZone[instance.Zone] = make([]interface{}, 0, t.waitingByZone[instance.Zone])
 		}
 		t.resultsPerZone[instance.Zone] = append(t.resultsPerZone[instance.Zone], result)

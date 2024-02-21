@@ -33,19 +33,19 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance2, nil)
+				tracker.done(&instance2, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance3, nil)
+				tracker.done(&instance3, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance4, nil)
+				tracker.done(&instance4, nil, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 			},
@@ -57,11 +57,11 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance2, errors.New("test"))
+				tracker.done(&instance2, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
 			},
@@ -73,15 +73,15 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance2, errors.New("test"))
+				tracker.done(&instance2, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance3, errors.New("test"))
+				tracker.done(&instance3, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
 			},
@@ -93,21 +93,65 @@ func TestDefaultResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance2, errors.New("test"))
+				tracker.done(&instance2, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance3, errors.New("test"))
+				tracker.done(&instance3, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance4, errors.New("test"))
+				tracker.done(&instance4, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
+			},
+		},
+		"record and getResults": {
+			instances: []InstanceDesc{instance1, instance2, instance3, instance4},
+			maxErrors: 1,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance1, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance2, 2, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance3, 3, nil)
+				assert.True(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				assert.Equal(t, []interface{}{1, 2, 3}, tracker.getResults())
+			},
+		},
+		"record and getResults2": {
+			instances: []InstanceDesc{instance1, instance2, instance3, instance4},
+			maxErrors: 1,
+			run: func(t *testing.T, tracker *defaultResultTracker) {
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance1, []int{1, 1, 1}, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance2, []int{2, 2, 2}, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance3, []int{3, 3, 3}, nil)
+				assert.True(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				assert.Equal(t, []interface{}{[]int{1, 1, 1}, []int{2, 2, 2}, []int{3, 3, 3}}, tracker.getResults())
 			},
 		},
 	}
@@ -130,6 +174,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 	tests := map[string]struct {
 		instances           []InstanceDesc
 		maxUnavailableZones int
+		zoneResultsQuorum   bool
 		run                 func(t *testing.T, tracker *zoneAwareResultTracker)
 	}{
 		"should succeed on no instances to track": {
@@ -147,17 +192,115 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, 1, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance2, nil)
+				tracker.done(&instance2, 1, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance3, nil)
+				tracker.done(&instance3, 1, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
+
+				assert.Equal(t, []interface{}{1, 1, 1}, tracker.getResults())
+			},
+		},
+		"should succeed once all 6 instances succeed on max unavailable zones = 0": {
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			maxUnavailableZones: 0,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance1, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance2, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance3, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance4, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance5, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance6, 1, nil)
+				assert.True(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				assert.Equal(t, []interface{}{1, 1, 1, 1, 1, 1}, tracker.getResults())
+			},
+		},
+		"should succeed once all 5 instances succeed on max unavailable zones = 1, zone results quorum disabled": {
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			maxUnavailableZones: 1,
+			zoneResultsQuorum:   false,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance1, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance2, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance3, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance5, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance4, 1, nil)
+				assert.True(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				assert.Equal(t, []interface{}{1, 1, 1, 1, 1}, tracker.getResults())
+			},
+		},
+		"should succeed once all 5 instances succeed on max unavailable zones = 1, zone results quorum enabled": {
+			instances:           []InstanceDesc{instance1, instance2, instance3, instance4, instance5, instance6},
+			maxUnavailableZones: 1,
+			zoneResultsQuorum:   true,
+			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance1, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance2, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance3, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance5, 1, nil)
+				assert.False(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				tracker.done(&instance4, 1, nil)
+				assert.True(t, tracker.succeeded())
+				assert.False(t, tracker.failed())
+
+				assert.Equal(t, []interface{}{1, 1, 1, 1}, tracker.getResults())
 			},
 		},
 		"should fail on 1st failing instance on max unavailable zones = 0": {
@@ -167,11 +310,11 @@ func TestZoneAwareResultTracker(t *testing.T) {
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance2, errors.New("test"))
+				tracker.done(&instance2, nil, errors.New("test"))
 				assert.False(t, tracker.succeeded())
 				assert.True(t, tracker.failed())
 			},
@@ -182,19 +325,19 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Track failing instances.
 				for _, instance := range []InstanceDesc{instance1, instance2} {
-					tracker.done(&instance, errors.New("test"))
+					tracker.done(&instance, nil, errors.New("test"))
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
 				}
 
 				// Track successful instances.
 				for _, instance := range []InstanceDesc{instance3, instance4, instance5} {
-					tracker.done(&instance, nil)
+					tracker.done(&instance, nil, nil)
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
 				}
 
-				tracker.done(&instance6, nil)
+				tracker.done(&instance6, nil, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 			},
@@ -205,12 +348,12 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Track successful instances.
 				for _, instance := range []InstanceDesc{instance1, instance2, instance3} {
-					tracker.done(&instance, nil)
+					tracker.done(&instance, nil, nil)
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
 				}
 
-				tracker.done(&instance4, nil)
+				tracker.done(&instance4, nil, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 			},
@@ -221,17 +364,17 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Track failing instances.
 				for _, instance := range []InstanceDesc{instance1, instance2, instance3, instance4} {
-					tracker.done(&instance, errors.New("test"))
+					tracker.done(&instance, nil, errors.New("test"))
 					assert.False(t, tracker.succeeded())
 					assert.False(t, tracker.failed())
 				}
 
 				// Track successful instances.
-				tracker.done(&instance5, nil)
+				tracker.done(&instance5, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
-				tracker.done(&instance6, nil)
+				tracker.done(&instance6, nil, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 			},
@@ -241,17 +384,17 @@ func TestZoneAwareResultTracker(t *testing.T) {
 			maxUnavailableZones: 2,
 			run: func(t *testing.T, tracker *zoneAwareResultTracker) {
 				// Zone-a
-				tracker.done(&instance1, nil)
+				tracker.done(&instance1, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
 				// Zone-b
-				tracker.done(&instance3, nil)
+				tracker.done(&instance3, nil, nil)
 				assert.False(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 
 				// Zone-a
-				tracker.done(&instance2, nil)
+				tracker.done(&instance2, nil, nil)
 				assert.True(t, tracker.succeeded())
 				assert.False(t, tracker.failed())
 			},
@@ -260,7 +403,7 @@ func TestZoneAwareResultTracker(t *testing.T) {
 
 	for testName, testCase := range tests {
 		t.Run(testName, func(t *testing.T) {
-			testCase.run(t, newZoneAwareResultTracker(testCase.instances, testCase.maxUnavailableZones))
+			testCase.run(t, newZoneAwareResultTracker(testCase.instances, testCase.maxUnavailableZones, testCase.zoneResultsQuorum))
 		})
 	}
 }

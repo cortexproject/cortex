@@ -33,7 +33,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 	// Initialise the result tracker, which is used to keep track of successes and failures.
 	var tracker replicationSetResultTracker
 	if r.MaxUnavailableZones > 0 {
-		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
+		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones, zoneResultsQuorum)
 	} else {
 		tracker = newDefaultResultTracker(r.Instances, r.MaxErrors)
 	}
@@ -68,11 +68,10 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 		}(i, &r.Instances[i])
 	}
 
-	resultsPerZone := make(map[string][]interface{}, r.GetNumOfZones())
 	for !tracker.succeeded() {
 		select {
 		case res := <-ch:
-			tracker.done(res.instance, res.err)
+			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
 				if tracker.failed() {
 					return nil, res.err
@@ -82,11 +81,6 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 				if delay > 0 && r.MaxUnavailableZones == 0 {
 					forceStart <- struct{}{}
 				}
-			} else {
-				if _, ok := resultsPerZone[res.instance.Zone]; !ok {
-					resultsPerZone[res.instance.Zone] = make([]interface{}, 0, len(r.Instances))
-				}
-				resultsPerZone[res.instance.Zone] = append(resultsPerZone[res.instance.Zone], res.res)
 			}
 
 		case <-ctx.Done():
@@ -94,27 +88,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 		}
 	}
 
-	results := make([]interface{}, 0, len(r.Instances))
-	// If zoneResultsQuorum and zone awareness is enabled, include
-	// results from the zones that already reached quorum only.
-	if zoneResultsQuorum && r.MaxUnavailableZones > 0 {
-		zoneAwareTracker, ok := tracker.(*zoneAwareResultTracker)
-		if ok {
-			for zone, waiting := range zoneAwareTracker.waitingByZone {
-				// No need to check failuresByZone since tracker
-				// should already succeed before reaching here.
-				if waiting == 0 {
-					results = append(results, resultsPerZone[zone]...)
-				}
-			}
-			return results, nil
-		}
-	}
-
-	for zone := range resultsPerZone {
-		results = append(results, resultsPerZone[zone]...)
-	}
-	return results, nil
+	return tracker.getResults(), nil
 }
 
 // Includes returns whether the replication set includes the replica with the provided addr.

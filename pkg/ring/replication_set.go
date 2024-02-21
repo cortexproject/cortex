@@ -21,15 +21,16 @@ type ReplicationSet struct {
 }
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
-// MaxErrors and returning early otherwise.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
+// MaxErrors and returning early otherwise. zoneResultsQuorum allows only include
+// results from zones that already reach quorum to improve performance.
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}
 		err      error
 		instance *InstanceDesc
 	}
 
-	// Initialise the result tracker, which is use to keep track of successes and failures.
+	// Initialise the result tracker, which is used to keep track of successes and failures.
 	var tracker replicationSetResultTracker
 	if r.MaxUnavailableZones > 0 {
 		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
@@ -67,8 +68,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 		}(i, &r.Instances[i])
 	}
 
-	results := make([]interface{}, 0, len(r.Instances))
-
+	resultsPerZone := make(map[string][]interface{}, r.GetNumOfZones())
 	for !tracker.succeeded() {
 		select {
 		case res := <-ch:
@@ -83,7 +83,10 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 					forceStart <- struct{}{}
 				}
 			} else {
-				results = append(results, res.res)
+				if _, ok := resultsPerZone[res.instance.Zone]; !ok {
+					resultsPerZone[res.instance.Zone] = make([]interface{}, 0, len(r.Instances))
+				}
+				resultsPerZone[res.instance.Zone] = append(resultsPerZone[res.instance.Zone], res.res)
 			}
 
 		case <-ctx.Done():
@@ -91,6 +94,26 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 		}
 	}
 
+	results := make([]interface{}, 0, len(r.Instances))
+	// If zoneResultsQuorum and zone awareness is enabled, include
+	// results from the zones that already reached quorum only.
+	if zoneResultsQuorum && r.MaxUnavailableZones > 0 {
+		zoneAwareTracker, ok := tracker.(*zoneAwareResultTracker)
+		if ok {
+			for zone, waiting := range zoneAwareTracker.waitingByZone {
+				// No need to check failuresByZone since tracker
+				// should already succeed before reaching here.
+				if waiting == 0 {
+					results = append(results, resultsPerZone[zone])
+				}
+			}
+			return results, nil
+		}
+	}
+
+	for zone := range resultsPerZone {
+		results = append(results, resultsPerZone[zone])
+	}
 	return results, nil
 }
 

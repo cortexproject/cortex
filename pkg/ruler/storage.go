@@ -12,6 +12,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/configdb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
+	"github.com/cortexproject/cortex/pkg/ruler/rulestore/storeproxy"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
@@ -42,4 +43,9 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 	}
 
 	return store, nil
+}
+
+// new rulestore proxy
+func NewMergeableStore(rstore rulestore.RuleStore, logger log.Logger) rulestore.RuleStore {
+	return storeproxy.NewMergeableStore(rstore, logger)
 }

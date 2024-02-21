@@ -21,18 +21,19 @@ type ReplicationSet struct {
 }
 
 // Do function f in parallel for all replicas in the set, erroring is we exceed
-// MaxErrors and returning early otherwise.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
+// MaxErrors and returning early otherwise. zoneResultsQuorum allows only include
+// results from zones that already reach quorum to improve performance.
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
 	type instanceResult struct {
 		res      interface{}
 		err      error
 		instance *InstanceDesc
 	}
 
-	// Initialise the result tracker, which is use to keep track of successes and failures.
+	// Initialise the result tracker, which is used to keep track of successes and failures.
 	var tracker replicationSetResultTracker
 	if r.MaxUnavailableZones > 0 {
-		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
+		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones, zoneResultsQuorum)
 	} else {
 		tracker = newDefaultResultTracker(r.Instances, r.MaxErrors)
 	}
@@ -67,12 +68,10 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 		}(i, &r.Instances[i])
 	}
 
-	results := make([]interface{}, 0, len(r.Instances))
-
 	for !tracker.succeeded() {
 		select {
 		case res := <-ch:
-			tracker.done(res.instance, res.err)
+			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
 				if tracker.failed() {
 					return nil, res.err
@@ -82,8 +81,6 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 				if delay > 0 && r.MaxUnavailableZones == 0 {
 					forceStart <- struct{}{}
 				}
-			} else {
-				results = append(results, res.res)
 			}
 
 		case <-ctx.Done():
@@ -91,7 +88,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 		}
 	}
 
-	return results, nil
+	return tracker.getResults(), nil
 }
 
 // Includes returns whether the replication set includes the replica with the provided addr.

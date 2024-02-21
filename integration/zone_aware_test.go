@@ -151,3 +151,95 @@ func TestZoneAwareReplication(t *testing.T) {
 	require.Equal(t, 500, res.StatusCode)
 
 }
+
+func TestZoneResultsQuorum(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := BlocksStorageFlags()
+	flags["-distributor.shard-by-all-labels"] = "true"
+	flags["-distributor.replication-factor"] = "3"
+	flags["-distributor.zone-awareness-enabled"] = "true"
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components.
+	ingesterFlags := func(zone string) map[string]string {
+		return mergeFlags(flags, map[string]string{
+			"-ingester.availability-zone": zone,
+		})
+	}
+
+	ingester1 := e2ecortex.NewIngesterWithConfigFile("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-a"), "")
+	ingester2 := e2ecortex.NewIngesterWithConfigFile("ingester-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-a"), "")
+	ingester3 := e2ecortex.NewIngesterWithConfigFile("ingester-3", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-b"), "")
+	ingester4 := e2ecortex.NewIngesterWithConfigFile("ingester-4", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-b"), "")
+	ingester5 := e2ecortex.NewIngesterWithConfigFile("ingester-5", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-c"), "")
+	ingester6 := e2ecortex.NewIngesterWithConfigFile("ingester-6", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", ingesterFlags("zone-c"), "")
+	require.NoError(t, s.StartAndWaitReady(ingester1, ingester2, ingester3, ingester4, ingester5, ingester6))
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	flagsZoneResultsQuorum := mergeFlags(flags, map[string]string{
+		"-distributor.zone-results-quorum-metadata": "true",
+	})
+	querierZoneResultsQuorum := e2ecortex.NewQuerier("querier-zrq", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flagsZoneResultsQuorum, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, querier, querierZoneResultsQuorum))
+
+	// Wait until distributor and queriers have updated the ring.
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(6), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(6), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	require.NoError(t, querierZoneResultsQuorum.WaitSumMetricsWithOptions(e2e.Equals(6), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
+	require.NoError(t, err)
+	clientZoneResultsQuorum, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querierZoneResultsQuorum.HTTPEndpoint(), "", "", userID)
+	require.NoError(t, err)
+
+	// Push some series
+	now := time.Now()
+	numSeries := 100
+	expectedVectors := map[string]model.Vector{}
+
+	for i := 1; i <= numSeries; i++ {
+		metricName := fmt.Sprintf("series_%d", i)
+		series, expectedVector := generateSeries(metricName, now)
+		res, err := client.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+
+		expectedVectors[metricName] = expectedVector
+	}
+
+	start := now.Add(-time.Hour)
+	end := now.Add(time.Hour)
+	res1, err := client.LabelNames(start, end)
+	require.NoError(t, err)
+	res2, err := clientZoneResultsQuorum.LabelNames(start, end)
+	require.NoError(t, err)
+	assert.Equal(t, res1, res2)
+
+	values1, err := client.LabelValues(labels.MetricName, start, end, nil)
+	require.NoError(t, err)
+	values2, err := clientZoneResultsQuorum.LabelValues(labels.MetricName, start, end, nil)
+	require.NoError(t, err)
+	assert.Equal(t, values1, values2)
+
+	series1, err := client.Series([]string{`{__name__=~"series_1|series_2|series_3|series_4|series_5"}`}, start, end)
+	require.NoError(t, err)
+	series2, err := clientZoneResultsQuorum.Series([]string{`{__name__=~"series_1|series_2|series_3|series_4|series_5"}`}, start, end)
+	require.NoError(t, err)
+	assert.Equal(t, series1, series2)
+}

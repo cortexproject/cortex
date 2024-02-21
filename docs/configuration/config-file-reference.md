@@ -2338,6 +2338,12 @@ ring:
   # CLI flag: -distributor.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
 
+# If zone awareness and this both enabled, when querying metadata APIs (labels
+# names, values and series), only results from quorum number of zones will be
+# included.
+# CLI flag: -distributor.zone-results-quorum-metadata
+[zone_results_quorum_metadata: <boolean> | default = false]
+
 instance_limits:
   # Max ingestion rate (samples/sec) that this distributor will accept. This
   # limit is per-distributor, not per-tenant. Additional push requests will be

@@ -236,10 +236,4 @@ func TestZoneResultsQuorum(t *testing.T) {
 	values2, err := clientZoneResultsQuorum.LabelValues(labels.MetricName, start, end, nil)
 	require.NoError(t, err)
 	assert.Equal(t, values1, values2)
-
-	series1, err := client.Series([]string{`{__name__=~"series_1|series_2|series_3|series_4|series_5"}`}, start, end)
-	require.NoError(t, err)
-	series2, err := clientZoneResultsQuorum.Series([]string{`{__name__=~"series_1|series_2|series_3|series_4|series_5"}`}, start, end)
-	require.NoError(t, err)
-	assert.Equal(t, series1, series2)
 }

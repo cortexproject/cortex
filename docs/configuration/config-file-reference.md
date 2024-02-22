@@ -4233,6 +4233,15 @@ ring:
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
+  # The replication factor to use when loading rule groups for API HA.
+  # CLI flag: -ruler.ring.replication-factor
+  [replication_factor: <int> | default = 1]
+
+  # True to enable zone-awareness and load rule groups across different
+  # availability zones for API HA.
+  # CLI flag: -ruler.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]

@@ -75,6 +75,7 @@ func defaultRulerConfig(t testing.TB) Config {
 	cfg.Ring.InstanceAddr = "localhost"
 	cfg.Ring.InstanceID = "localhost"
 	cfg.Ring.FinalSleep = 0
+	cfg.Ring.ReplicationFactor = 1
 	cfg.EnableQueryStats = false
 
 	return cfg
@@ -619,6 +620,7 @@ func TestGetRules(t *testing.T) {
 					KVStore: kv.Config{
 						Mock: kvStore,
 					},
+					ReplicationFactor: 1,
 				}
 
 				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
@@ -1124,7 +1126,8 @@ func TestSharding(t *testing.T) {
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
-						HeartbeatTimeout: 1 * time.Minute,
+						HeartbeatTimeout:  1 * time.Minute,
+						ReplicationFactor: 1,
 					},
 					FlushCheckPeriod: 0,
 					EnabledTenants:   tc.enabledUsers,
@@ -1261,7 +1264,8 @@ func Test_LoadPartialGroups(t *testing.T) {
 			KVStore: kv.Config{
 				Mock: kvStore,
 			},
-			HeartbeatTimeout: 1 * time.Minute,
+			HeartbeatTimeout:  1 * time.Minute,
+			ReplicationFactor: 1,
 		},
 		FlushCheckPeriod: 0,
 	}
@@ -1784,7 +1788,8 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 						KVStore: kv.Config{
 							Mock: kvStore,
 						},
-						HeartbeatTimeout: 1 * time.Minute,
+						HeartbeatTimeout:  1 * time.Minute,
+						ReplicationFactor: 1,
 					},
 					FlushCheckPeriod: 0,
 				}

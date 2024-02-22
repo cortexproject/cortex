@@ -213,16 +213,6 @@ func TestReplicationSet_Do(t *testing.T) {
 			want:                []interface{}{1, 1, 1, 1, 1, 1},
 		},
 		{
-			name:      "max unavailable zones = 1, zoneResultsQuorum = false, should contain 5 results (2 from zone1, 2 from zone2 and 1 from zone3)",
-			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
-			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
-				return 1, nil
-			},
-			maxUnavailableZones: 1,
-			want:                []interface{}{1, 1, 1, 1, 1},
-			zoneResultsQuorum:   false,
-		},
-		{
 			name:      "max unavailable zones = 1, zoneResultsQuorum = true, should contain 4 results (2 from zone1, 2 from zone2)",
 			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
 			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {

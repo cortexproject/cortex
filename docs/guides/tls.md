@@ -38,7 +38,7 @@ openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -o
 
 Note that the above script generates certificates that are valid for 100000 days.
 This can be changed by adjusting the `-days` option in the above commands.
-It is recommended that the certs be replaced atleast once every 2 years.
+It is recommended that the certs be replaced at least once every 2 years.
 
 The above script generates keys `client.key, server.key` and certs
 `client.crt, server.crt` for both the client and server. The CA cert is

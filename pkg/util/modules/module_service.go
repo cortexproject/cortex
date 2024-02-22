@@ -15,7 +15,7 @@ import (
 var ErrStopProcess = errors.New("stop process")
 
 // moduleService is a Service implementation that adds waiting for dependencies to start before starting,
-// and dependant modules to stop before stopping this module service.
+// and dependent modules to stop before stopping this module service.
 type moduleService struct {
 	services.Service
 
@@ -59,7 +59,7 @@ func (w *moduleService) start(serviceContext context.Context) error {
 		}
 	}
 
-	// we don't want to let this service to stop until all dependant services are stopped,
+	// we don't want to let this service to stop until all dependent services are stopped,
 	// so we use independent context here
 	level.Info(w.logger).Log("msg", "initialising", "module", w.name)
 	err := w.service.StartAsync(context.Background())

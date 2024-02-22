@@ -85,7 +85,7 @@ To prepare release branch, first create new release branch (release-X.Y) in Cort
      * `[BUGFIX]`
    - Run `./tools/release/check-changelog.sh LAST-RELEASE-TAG...master` and add any missing PR which includes user-facing changes
 
-Once your PR with release prepartion is approved, merge it to "release-X.Y" branch, and continue with publishing.
+Once your PR with release preparation is approved, merge it to "release-X.Y" branch, and continue with publishing.
 
 ### Publish a release candidate
 
@@ -127,7 +127,7 @@ To publish a stable release:
 1. Open a PR to add the new version to the backward compatibility integration test (`integration/backward_compatibility_test.go`)
 
 ### <a name="sing-and-sbom"></a>Sign the release artifacts and generate SBOM
-1. Make sure you have the release brnach checked out, and you don't have any local modifications
+1. Make sure you have the release branch checked out, and you don't have any local modifications
 1. Create and `cd` to an empty directory not within the project directory
 1. Run `mkdir sbom`
 1. Generate SBOMs using https://github.com/kubernetes-sigs/bom

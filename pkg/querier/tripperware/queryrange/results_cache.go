@@ -289,7 +289,7 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
-		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
+		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering @ modifier as not cacheable", "query", query, "err", err)
 		return false
 	}
 
@@ -333,7 +333,7 @@ func (s resultsCache) isOffsetCachable(ctx context.Context, r tripperware.Reques
 	}
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
-		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering offset as not cachable", "query", query, "err", err)
+		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering offset as not cacheable", "query", query, "err", err)
 		return false
 	}
 

@@ -274,8 +274,8 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 			t.Run(tc.name+fmt.Sprintf(", thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
 				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 				var wQueriables []QueryableWithFilter
-				for _, queriable := range tc.storeQueriables {
-					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
+				for _, queryable := range tc.storeQueriables {
+					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 				}
 				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
 				opts := promql.EngineOpts{
@@ -480,8 +480,8 @@ func TestLimits(t *testing.T) {
 		t.Run(tc.name+fmt.Sprintf(", Test: %d", i), func(t *testing.T) {
 			wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 			var wQueriables []QueryableWithFilter
-			for _, queriable := range tc.storeQueriables {
-				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
+			for _, queryable := range tc.storeQueriables {
+				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 			}
 			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 			require.NoError(t, err)

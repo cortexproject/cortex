@@ -269,7 +269,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
 
-	// During startup we wont have a default value so we don't want to overwrite them
+	// During startup we won't have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
 		*l = *defaultLimits
 		// Make copy of default limits. Otherwise unmarshalling would modify map in default limits.
@@ -833,7 +833,7 @@ func SmallestPositiveIntPerTenant(tenantIDs []string, f func(string) int) int {
 
 // SmallestPositiveNonZeroFloat64PerTenant is returning the minimal positive and
 // non-zero value of the supplied limit function for all given tenants. In many
-// limits a value of 0 means unlimted so the method will return 0 only if all
+// limits a value of 0 means unlimited so the method will return 0 only if all
 // inputs have a limit of 0 or an empty tenant list is given.
 func SmallestPositiveNonZeroFloat64PerTenant(tenantIDs []string, f func(string) float64) float64 {
 	var result *float64
@@ -851,7 +851,7 @@ func SmallestPositiveNonZeroFloat64PerTenant(tenantIDs []string, f func(string) 
 
 // SmallestPositiveNonZeroDurationPerTenant is returning the minimal positive
 // and non-zero value of the supplied limit function for all given tenants. In
-// many limits a value of 0 means unlimted so the method will return 0 only if
+// many limits a value of 0 means unlimited so the method will return 0 only if
 // all inputs have a limit of 0 or an empty tenant list is given.
 func SmallestPositiveNonZeroDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
 	var result *time.Duration

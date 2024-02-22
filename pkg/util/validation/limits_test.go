@@ -369,7 +369,7 @@ alertmanager_notification_rate_limit_per_integration:
 			expectedBurstSize: 222,
 		},
 
-		"infinte limit": {
+		"infinite limit": {
 			inputYAML: `
 alertmanager_notification_rate_limit_per_integration:
   email: .inf

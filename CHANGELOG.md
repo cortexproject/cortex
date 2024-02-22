@@ -304,7 +304,7 @@
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction. #4707
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics. #4708
 * [FEATURE] Add shuffle sharding for the compactor #4433
-* [FEATURE] Querier: Use streaming for ingester metdata APIs. #4725
+* [FEATURE] Querier: Use streaming for ingester metadata APIs. #4725
 * [ENHANCEMENT] Update Go version to 1.17.8. #4602 #4604 #4658
 * [ENHANCEMENT] Keep track of discarded samples due to bad relabel configuration in `cortex_discarded_samples_total`. #4503
 * [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
@@ -443,7 +443,7 @@
   * `memberlist_client_kv_store_value_tombstones`
   * `memberlist_client_kv_store_value_tombstones_removed_total`
   * `memberlist_client_messages_to_broadcast_dropped_total`
-* [ENHANCEMENT] Alertmanager: Added `-alertmanager.max-dispatcher-aggregation-groups` option to control max number of active dispatcher groups in Alertmanager (per tenant, also overrideable). When the limit is reached, Dispatcher produces log message and increases `cortex_alertmanager_dispatcher_aggregation_group_limit_reached_total` metric. #4254
+* [ENHANCEMENT] Alertmanager: Added `-alertmanager.max-dispatcher-aggregation-groups` option to control max number of active dispatcher groups in Alertmanager (per tenant, also overridable). When the limit is reached, Dispatcher produces log message and increases `cortex_alertmanager_dispatcher_aggregation_group_limit_reached_total` metric. #4254
 * [ENHANCEMENT] Alertmanager: Added `-alertmanager.max-alerts-count` and `-alertmanager.max-alerts-size-bytes` to control max number of alerts and total size of alerts that a single user can have in Alertmanager's memory. Adding more alerts will fail with a log message and incrementing `cortex_alertmanager_alerts_insert_limited_total` metric (per-user). These limits can be overrided by using per-tenant overrides. Current values are tracked in `cortex_alertmanager_alerts_limiter_current_alerts` and `cortex_alertmanager_alerts_limiter_current_alerts_size_bytes` metrics. #4253
 * [ENHANCEMENT] Store-gateway: added `-store-gateway.sharding-ring.wait-stability-min-duration` and `-store-gateway.sharding-ring.wait-stability-max-duration` support to store-gateway, to wait for ring stability at startup. #4271
 * [ENHANCEMENT] Ruler: added `rule_group` label to metrics `cortex_prometheus_rule_group_iterations_total` and `cortex_prometheus_rule_group_iterations_missed_total`. #4121
@@ -530,7 +530,7 @@
 * [ENHANCEMENT] Alertmanager: validate configured `-alertmanager.web.external-url` and fail if ends with `/`. #4081
 * [ENHANCEMENT] Alertmanager: added `-alertmanager.receivers-firewall.block.cidr-networks` and `-alertmanager.receivers-firewall.block.private-addresses` to block specific network addresses in HTTP-based Alertmanager receiver integrations. #4085
 * [ENHANCEMENT] Allow configuration of Cassandra's host selection policy. #4069
-* [ENHANCEMENT] Store-gateway: retry synching blocks if a per-tenant sync fails. #3975 #4088
+* [ENHANCEMENT] Store-gateway: retry syncing blocks if a per-tenant sync fails. #3975 #4088
 * [ENHANCEMENT] Add metric `cortex_tcp_connections` exposing the current number of accepted TCP connections. #4099
 * [ENHANCEMENT] Querier: Allow federated queries to run concurrently. #4065
 * [ENHANCEMENT] Label Values API call now supports `match[]` parameter when querying blocks on storage (assuming `-querier.query-store-for-labels-enabled` is enabled). #4133
@@ -607,7 +607,7 @@
   * Prevent compaction loop in TSDB on data gap.
 * [ENHANCEMENT] Query-Frontend now returns server side performance metrics using `Server-Timing` header when query stats is enabled. #3685
 * [ENHANCEMENT] Runtime Config: Add a `mode` query parameter for the runtime config endpoint. `/runtime_config?mode=diff` now shows the YAML runtime configuration with all values that differ from the defaults. #3700
-* [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests berfore/after they are pushed. #3755
+* [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests before/after they are pushed. #3755
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [ENHANCEMENT] Alertmanager: Remove a tenant's alertmanager instead of pausing it as we determine it is no longer needed. #3722
 * [ENHANCEMENT] Blocks storage: added more configuration options to S3 client. #3775
@@ -895,7 +895,7 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218 #3292
 * [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235
 * [ENHANCEMENT] Return an explicit error when the store-gateway is explicitly requested without a blocks storage engine. #3287
-* [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules synching performances when ruler sharding is enabled. #3269
+* [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules syncing performances when ruler sharding is enabled. #3269
 * [ENHANCEMENT] Added `-<prefix>.redis.tls-insecure-skip-verify` flag. #3298
 * [ENHANCEMENT] Added `cortex_alertmanager_config_last_reload_successful_seconds` metric to show timestamp of last successful AM config reload. #3289
 * [ENHANCEMENT] Blocks storage: reduced number of bucket listing operations to list block content (applies to newly created blocks only). #3363
@@ -1453,7 +1453,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
   * `-flusher.concurrent-flushes` for number of concurrent flushes.
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
 * [FEATURE] Ingesters can now have an optional availability zone set, to ensure metric replication is distributed across zones. This is set via the `-ingester.availability-zone` flag or the `availability_zone` field in the config file. #2317
-* [ENHANCEMENT] Better re-use of connections to DynamoDB and S3. #2268
+* [ENHANCEMENT] Better reuse of connections to DynamoDB and S3. #2268
 * [ENHANCEMENT] Reduce number of goroutines used while executing a single index query. #2280
 * [ENHANCEMENT] Experimental TSDB: Add support for local `filesystem` backend. #2245
 * [ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. #2290
@@ -2243,7 +2243,7 @@ migrate  -path <absolute_path_to_cortex>/cmd/cortex/migrations -database postgre
 
 ## 0.4.0 / 2019-12-02
 
-* [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
+* [CHANGE] The frontend component has been refactored to be easier to reuse. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
 * [CHANGE] Removed direct DB/API access from the ruler. `-ruler.configs.url` has been now deprecated. #1579
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
 * [CHANGE] Setting `-ingester.max-transfer-retries` to 0 now disables hand-over when ingester is shutting down. Previously, zero meant infinite number of attempts. #1771

@@ -217,7 +217,7 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 		}
 	}
 
-	// if the response is gziped, lets unzip it here
+	// if the response is gzipped, lets unzip it here
 	if strings.EqualFold(res.Header.Get("Content-Encoding"), "gzip") {
 		gReader, err := gzip.NewReader(buf)
 		if err != nil {
@@ -232,7 +232,7 @@ func BodyBuffer(res *http.Response, logger log.Logger) ([]byte, error) {
 }
 
 func BodyBufferFromHTTPGRPCResponse(res *httpgrpc.HTTPResponse, logger log.Logger) ([]byte, error) {
-	// if the response is gziped, lets unzip it here
+	// if the response is gzipped, lets unzip it here
 	headers := http.Header{}
 	for _, h := range res.Headers {
 		headers[h.Key] = h.Values

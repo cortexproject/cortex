@@ -175,7 +175,7 @@ func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (re
 	}
 
 	// Ensure groups are sorted by smallest range, oldest min time first. The rationale
-	// is that we wanna favor smaller ranges first (ie. to deduplicate samples sooner
+	// is that we want to favor smaller ranges first (ie. to deduplicate samples sooner
 	// than later) and older ones are more likely to be "complete" (no missing block still
 	// to be uploaded).
 	sort.SliceStable(groups, func(i, j int) bool {
@@ -484,7 +484,7 @@ func groupBlocksByRange(blocks []*metadata.Meta, tr int64) []blocksGroup {
 		group.rangeStart = getRangeStart(m, tr)
 		group.rangeEnd = group.rangeStart + tr
 
-		// Skip blocks that don't fall into the range. This can happen via mis-alignment or
+		// Skip blocks that don't fall into the range. This can happen via misalignment or
 		// by being the multiple of the intended range.
 		if m.MaxTime > group.rangeEnd {
 			i++

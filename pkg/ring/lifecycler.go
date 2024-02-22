@@ -753,7 +753,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 		i.setState(targetState)
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
-		// Need to make sure we didnt change the num of tokens configured
+		// Need to make sure we didn't change the num of tokens configured
 		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
 		needTokens := i.cfg.NumTokens - len(myTokens)
 

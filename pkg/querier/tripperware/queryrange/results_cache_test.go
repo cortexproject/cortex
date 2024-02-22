@@ -893,7 +893,7 @@ func TestHandleHit(t *testing.T) {
 		{
 			name: "Should not throw error if complete-overlapped smaller Extent is erroneous",
 			input: &PrometheusRequest{
-				// This request is carefully crated such that cachedEntry is not used to fulfill
+				// This request is carefully created such that cachedEntry is not used to fulfill
 				// the request.
 				Start: 160,
 				End:   180,

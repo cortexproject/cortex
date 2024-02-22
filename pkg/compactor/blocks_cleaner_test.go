@@ -115,7 +115,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 
 	// If the markers migration is enabled, then we create the fixture blocks without
 	// writing the deletion marks in the global location, because they will be migrated
-	// at statup.
+	// at startup.
 	if !options.markersMigrationEnabled {
 		bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 	}

@@ -18,12 +18,12 @@ type BlockIDsFetcher struct {
 	bkt                 objstore.Bucket
 	userID              string
 	cfgProvider         bucket.TenantConfigProvider
-	baseBlockIDsFetcher block.BlockIDsFetcher
+	baseBlockIDsFetcher block.Lister
 }
 
 func NewBlockIDsFetcher(logger log.Logger, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider) *BlockIDsFetcher {
 	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-	baseBlockIDsFetcher := block.NewBaseBlockIDsFetcher(logger, userBkt)
+	baseBlockIDsFetcher := block.NewRecursiveLister(logger, userBkt)
 	return &BlockIDsFetcher{
 		logger:              logger,
 		bkt:                 bkt,

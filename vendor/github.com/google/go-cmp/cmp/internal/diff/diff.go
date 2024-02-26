@@ -4,7 +4,7 @@
 
 // Package diff implements an algorithm for producing edit-scripts.
 // The edit-script is a sequence of operations needed to transform one list
-// of symbols into another (or vice-versa). The edits allowed are insertions,
+// of symbols into another (or vice versa). The edits allowed are insertions,
 // deletions, and modifications. The summation of all edits is called the
 // Levenshtein distance as this problem is well-known in computer science.
 //

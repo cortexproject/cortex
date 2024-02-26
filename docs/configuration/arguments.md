@@ -504,7 +504,7 @@ The DNS service discovery, inspired from Thanos DNS SD, supports different disco
 - **`dnssrvnoa+`**<br />
   The domain name after the prefix is looked up as a SRV query, with no A/AAAA lookup made after that. For example: `dnssrvnoa+_memcached._tcp.memcached.namespace.svc.cluster.local`
 
-If **no prefix** is provided, the provided IP or hostname will be used straight away without pre-resolving it.
+If **no prefix** is provided, the provided IP or hostname will be used straightaway without pre-resolving it.
 
 If you are using a managed memcached service from [Google Cloud](https://cloud.google.com/memorystore/docs/memcached/auto-discovery-overview), or [AWS](https://docs.aws.amazon.com/AmazonElastiCache/latest/mem-ug/AutoDiscovery.HowAutoDiscoveryWorks.html), use the [auto-discovery](./config-file-reference.md#memcached-client-config) flag instead of DNS discovery, then use the discovery/configuration endpoint as the domain name without any prefix.
 

@@ -64,6 +64,10 @@ const (
 	typeMetadata = "metadata"
 
 	instanceIngestionRateTickInterval = time.Second
+
+	// mergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
+	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
+	mergeSlicesParallelism = 8
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -965,23 +969,13 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
 	defer span.Finish()
-	valueSet := map[string]struct{}{}
-	for _, resp := range resps {
-		for _, v := range resp.([]string) {
-			valueSet[v] = struct{}{}
-		}
+	values := make([][]string, len(resps))
+	for i, resp := range resps {
+		values[i] = resp.([]string)
 	}
-
-	values := make([]string, 0, len(valueSet))
-	for v := range valueSet {
-		values = append(values, v)
-	}
-
-	// We need the values returned to be sorted.
-	sort.Strings(values)
-	span.SetTag("result_length", len(values))
-
-	return values, nil
+	r := util.MergeSlicesParallel(mergeSlicesParallelism, values...)
+	span.SetTag("result_length", len(r))
+	return r, nil
 }
 
 // LabelValuesForLabelName returns all the label values that are associated with a given label name.
@@ -1045,22 +1039,14 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 
 	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
 	defer span.Finish()
-	valueSet := map[string]struct{}{}
-	for _, resp := range resps {
-		for _, v := range resp.([]string) {
-			valueSet[v] = struct{}{}
-		}
+	values := make([][]string, len(resps))
+	for i, resp := range resps {
+		values[i] = resp.([]string)
 	}
+	r := util.MergeSlicesParallel(mergeSlicesParallelism, values...)
+	span.SetTag("result_length", len(r))
 
-	values := make([]string, 0, len(valueSet))
-	for v := range valueSet {
-		values = append(values, v)
-	}
-
-	sort.Strings(values)
-	span.SetTag("result_length", len(values))
-
-	return values, nil
+	return r, nil
 }
 
 func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time) ([]string, error) {

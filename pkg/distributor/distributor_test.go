@@ -1664,6 +1664,16 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 		lblValuesDuplicateRatio float64
 	}{
 		{
+			numIngesters:            16,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.67, // Final Result will have 33% of the total size - replication factor of 3 and no duplicates
+		},
+		{
+			numIngesters:            16,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.98,
+		},
+		{
 			numIngesters:            150,
 			lblValuesPerIngester:    1000,
 			lblValuesDuplicateRatio: 0.67, // Final Result will have 33% of the total size - replication factor of 3 and no duplicates

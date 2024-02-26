@@ -36,10 +36,10 @@ func StringsClone(s string) string {
 }
 
 // MergeSlicesParallel merge sorted slices in parallel
-// using the MergeSlicesV2 function
+// using the MergeSortedSlices function
 func MergeSlicesParallel(parallelism int, a ...[]string) []string {
 	if parallelism <= 1 {
-		return MergeSlicesV2(a...)
+		return MergeSortedSlices(a...)
 	}
 	if len(a) == 0 {
 		return nil
@@ -57,7 +57,7 @@ func MergeSlicesParallel(parallelism int, a ...[]string) []string {
 		wg.Add(1)
 		go func(i int) {
 			m := min(len(a), i+batchSize)
-			c <- MergeSlicesV2(a[i:m]...)
+			c <- MergeSortedSlices(a[i:m]...)
 			wg.Done()
 		}(i)
 	}
@@ -71,7 +71,7 @@ func MergeSlicesParallel(parallelism int, a ...[]string) []string {
 		r = append(r, s)
 	}
 
-	return MergeSlicesV2(r...)
+	return MergeSortedSlices(r...)
 }
 
 func NewStringListIter(s []string) *StringListIter {
@@ -96,9 +96,9 @@ func (s *StringListIter) At() string { return s.cur }
 
 var MAX_STRING = string([]byte{0xff})
 
-// MergeSlicesV2 merges a set of sorted string slices into a single ones
+// MergeSortedSlices merges a set of sorted string slices into a single ones
 // while removing all duplicates.
-func MergeSlicesV2(a ...[]string) []string {
+func MergeSortedSlices(a ...[]string) []string {
 	if len(a) == 1 {
 		return a[0]
 	}

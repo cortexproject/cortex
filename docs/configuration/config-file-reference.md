@@ -1151,7 +1151,7 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
 
-      set_async_circuit_breaker:
+      set_async_circuit_breaker_config:
         # If true, enable circuit breaker.
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.enabled
         [enabled: <boolean> | default = false]
@@ -1280,7 +1280,7 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
       [cache_size: <int> | default = 0]
 
-      set_async_circuit_breaker:
+      set_async_circuit_breaker_config:
         # If true, enable circuit breaker.
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.enabled
         [enabled: <boolean> | default = false]
@@ -1380,7 +1380,7 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
 
-      set_async_circuit_breaker:
+      set_async_circuit_breaker_config:
         # If true, enable circuit breaker.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.enabled
         [enabled: <boolean> | default = false]
@@ -1504,7 +1504,7 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.cache-size
       [cache_size: <int> | default = 0]
 
-      set_async_circuit_breaker:
+      set_async_circuit_breaker_config:
         # If true, enable circuit breaker.
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.enabled
         [enabled: <boolean> | default = false]
@@ -1602,7 +1602,7 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
 
-      set_async_circuit_breaker:
+      set_async_circuit_breaker_config:
         # If true, enable circuit breaker.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.enabled
         [enabled: <boolean> | default = false]
@@ -1726,7 +1726,7 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.cache-size
       [cache_size: <int> | default = 0]
 
-      set_async_circuit_breaker:
+      set_async_circuit_breaker_config:
         # If true, enable circuit breaker.
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.enabled
         [enabled: <boolean> | default = false]

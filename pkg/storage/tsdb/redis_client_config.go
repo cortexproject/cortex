@@ -40,7 +40,7 @@ type RedisClientConfig struct {
 	CacheSize int `yaml:"cache_size"`
 
 	// SetAsyncCircuitBreaker configures the circuit breaker for SetAsync operations.
-	SetAsyncCircuitBreaker CircuitBreakerConfig `yaml:"set_async_circuit_breaker"`
+	SetAsyncCircuitBreaker CircuitBreakerConfig `yaml:"set_async_circuit_breaker_config"`
 }
 
 func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {

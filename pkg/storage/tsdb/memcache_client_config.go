@@ -19,7 +19,7 @@ type MemcachedClientConfig struct {
 	MaxGetMultiBatchSize   int                  `yaml:"max_get_multi_batch_size"`
 	MaxItemSize            int                  `yaml:"max_item_size"`
 	AutoDiscovery          bool                 `yaml:"auto_discovery"`
-	SetAsyncCircuitBreaker CircuitBreakerConfig `yaml:"set_async_circuit_breaker"`
+	SetAsyncCircuitBreaker CircuitBreakerConfig `yaml:"set_async_circuit_breaker_config"`
 }
 
 func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {

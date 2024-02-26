@@ -937,7 +937,7 @@ github.com/thanos-io/promql-engine/extlabels
 github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
-# github.com/thanos-io/thanos v0.34.1-0.20240201134136-94f971bc2b7f
+# github.com/thanos-io/thanos v0.34.2-0.20240226184600-e7cd6c1c60fb
 ## explicit; go 1.21
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader

@@ -553,7 +553,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
 
 		var err error
-		blockIdsFetcher := block.NewBaseBlockIDsFetcher(userLogger, fetcherBkt)
+		blockIdsFetcher := block.NewRecursiveLister(userLogger, fetcherBkt)
 		fetcher, err = block.NewMetaFetcher(
 			userLogger,
 			u.cfg.BucketStore.MetaSyncConcurrency,

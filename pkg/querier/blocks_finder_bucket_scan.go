@@ -384,7 +384,7 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 		filters = append(filters, storegateway.NewIgnoreNonQueryableBlocksFilter(d.logger, d.cfg.IgnoreBlocksWithin))
 	}
 
-	blockIdsFetcher := block.NewBaseBlockIDsFetcher(userLogger, userBucket)
+	blockIdsFetcher := block.NewRecursiveLister(userLogger, userBucket)
 	f, err := block.NewMetaFetcher(
 		userLogger,
 		d.cfg.MetasConcurrency,

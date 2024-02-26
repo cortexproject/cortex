@@ -827,7 +827,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	// out of order chunks or index file too big.
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
-	var blockIDsFetcher block.BlockIDsFetcher
+	var blockIDsFetcher block.Lister
 	var fetcherULogger log.Logger
 	if c.storageCfg.BucketStore.BucketIndex.Enabled {
 		fetcherULogger = log.With(ulogger, "blockIdsFetcher", "BucketIndexBlockIDsFetcher")
@@ -835,7 +835,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 
 	} else {
 		fetcherULogger = log.With(ulogger, "blockIdsFetcher", "BaseBlockIDsFetcher")
-		blockIDsFetcher = block.NewBaseBlockIDsFetcher(fetcherULogger, bucket)
+		blockIDsFetcher = block.NewRecursiveLister(fetcherULogger, bucket)
 	}
 
 	fetcher, err := block.NewMetaFetcher(

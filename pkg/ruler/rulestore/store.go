@@ -10,7 +10,7 @@ import (
 var (
 	// ErrGroupNotFound is returned if a rule group does not exist
 	ErrGroupNotFound = errors.New("group does not exist")
-	// ErrAccessDenied is returned access denied error was returned when trying to laod the group
+	// ErrAccessDenied is returned access denied error was returned when trying to load the group
 	ErrAccessDenied = errors.New("access denied")
 	// ErrGroupNamespaceNotFound is returned if a namespace does not exist
 	ErrGroupNamespaceNotFound = errors.New("group namespace does not exist")

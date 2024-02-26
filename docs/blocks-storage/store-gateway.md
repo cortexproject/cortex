@@ -633,11 +633,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
     [max_inflight_requests: <int> | default = 0]
 
-    # Maximum number of concurrent tenants synching blocks.
+    # Maximum number of concurrent tenants syncing blocks.
     # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
     [tenant_sync_concurrency: <int> | default = 10]
 
-    # Maximum number of concurrent blocks synching per tenant.
+    # Maximum number of concurrent blocks syncing per tenant.
     # CLI flag: -blocks-storage.bucket-store.block-sync-concurrency
     [block_sync_concurrency: <int> | default = 20]
 

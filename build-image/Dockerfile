@@ -7,7 +7,7 @@ RUN curl -sL https://deb.nodesource.com/setup_14.x | bash -
 RUN apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install website builder dependencies. Whenever you change these version, please also change website/package.json
-# and viceversa.
+# and vice versa.
 RUN npm install -g postcss-cli@7.1.2 autoprefixer@9.8.5
 
 ENV SHFMT_VERSION=3.2.4

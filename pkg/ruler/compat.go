@@ -260,7 +260,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 	}
 }
 
-// This interface mimicks rules.Manager API. Interface is used to simplify tests.
+// This interface mimics rules.Manager API. Interface is used to simplify tests.
 type RulesManager interface {
 	// Starts rules manager. Blocks until Stop is called.
 	Run()

@@ -1221,7 +1221,7 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 
 	for _, tc := range []struct {
 		name             string
-		valueBeforeSend  *data // value in KV store before sending messsage
+		valueBeforeSend  *data // value in KV store before sending message
 		msgToSend        *data
 		valueAfterSend   *data // value in KV store after sending message
 		broadcastMessage *data // broadcasted change, if not nil

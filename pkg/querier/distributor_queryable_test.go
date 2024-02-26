@@ -198,7 +198,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 func TestIngesterStreaming(t *testing.T) {
 	t.Parallel()
 
-	// We need to make sure that there is atleast one chunk present,
+	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
 	require.NoError(t, err)
@@ -379,7 +379,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 }
 
 func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
-	// We need to make sure that there is atleast one chunk present,
+	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
 	require.NoError(t, err)

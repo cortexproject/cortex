@@ -8,7 +8,7 @@ import (
 
 func TestV2SilenceId_ReturnsNewestSilence(t *testing.T) {
 
-	// We re-use MergeV2Silences so we rely on that being primarily tested elsewhere.
+	// We reuse MergeV2Silences so we rely on that being primarily tested elsewhere.
 
 	in := [][]byte{
 		[]byte(`{"id":"77b580dd-1d9c-4b7e-9bba-13ac173cb4e5","status":{"state":"expired"},` +

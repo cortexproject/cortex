@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// mapper is designed to enusre the provided rule sets are identical
+// mapper is designed to ensure the provided rule sets are identical
 // to the on-disk rules tracked by the prometheus manager
 type mapper struct {
 	Path string // Path specifies the directory in which rule files will be mapped.

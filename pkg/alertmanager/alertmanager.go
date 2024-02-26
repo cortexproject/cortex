@@ -111,7 +111,7 @@ type Alertmanager struct {
 	lastPipeline notify.Stage
 
 	// The Dispatcher is the only component we need to recreate when we call ApplyConfig.
-	// Given its metrics don't have any variable labels we need to re-use the same metrics.
+	// Given its metrics don't have any variable labels we need to reuse the same metrics.
 	dispatcherMetrics *dispatch.DispatcherMetrics
 	// This needs to be set to the hash of the config. All the hashes need to be same
 	// for deduping of alerts to work, hence we need this metric. See https://github.com/prometheus/alertmanager/issues/596

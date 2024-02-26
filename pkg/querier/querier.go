@@ -122,7 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config
 func (cfg *Config) Validate() error {
-	// Ensure the config wont create a situation where no queriers are returned.
+	// Ensure the config won't create a situation where no queriers are returned.
 	if cfg.QueryIngestersWithin != 0 && cfg.QueryStoreAfter != 0 {
 		if cfg.QueryStoreAfter >= cfg.QueryIngestersWithin {
 			return errBadLookbackConfigs
@@ -214,7 +214,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 }
 
 // NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a
-// Queryable with a ChunkQueryable stub, that errors once it get's called.
+// Queryable with a ChunkQueryable stub, that errors once it gets called.
 func NewSampleAndChunkQueryable(q storage.Queryable) storage.SampleAndChunkQueryable {
 	return &sampleAndChunkQueryable{q}
 }

@@ -130,7 +130,7 @@ func copyString(s string) string {
 	return string(b)
 }
 
-// copyToKey is required as underlying strings might be mmaped.
+// copyToKey is required as underlying strings might be memory-mapped.
 func copyToKey(l labels.Label) storecache.CacheKeyPostings {
 	return storecache.CacheKeyPostings(labels.Label{Value: copyString(l.Value), Name: copyString(l.Name)})
 }

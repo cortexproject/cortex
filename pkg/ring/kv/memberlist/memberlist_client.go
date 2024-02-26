@@ -579,7 +579,7 @@ func (m *KV) joinMembersOnStarting(members []string) error {
 	return err
 }
 
-// Provides a dns-based member disovery to join a memberlist cluster w/o knowning members' addresses upfront.
+// Provides a dns-based member discovery to join a memberlist cluster w/o knowning members' addresses upfront.
 func (m *KV) discoverMembers(ctx context.Context, members []string) []string {
 	if len(members) == 0 {
 		return nil

@@ -510,7 +510,7 @@ If you are using a managed memcached service from [Google Cloud](https://cloud.g
 
 ## Logging of IP of reverse proxy
 
-If a reverse proxy is used in front of Cortex it might be diffult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
+If a reverse proxy is used in front of Cortex it might be difficult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.
 
 - `-server.log_source_ips_enabled`
 

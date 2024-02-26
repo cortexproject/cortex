@@ -679,7 +679,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 //   - Does not start the lifecycler.
 //
 // this is a special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
-// on Flush method and flush all openened TSDBs when called.
+// on Flush method and flush all opened TSDBs when called.
 func NewForFlusher(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
 	if err != nil {
@@ -2455,7 +2455,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 		return tsdbNotActive
 	}
 
-	// If TSDB is fully closed, we will set state to 'closed', which will prevent this defered closing -> active transition.
+	// If TSDB is fully closed, we will set state to 'closed', which will prevent this deferred closing -> active transition.
 	defer userDB.casState(closing, active)
 
 	// Make sure we don't ignore any possible inflight pushes.

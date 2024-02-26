@@ -546,7 +546,7 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			filters)
 	} else {
 		// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
-		// belong to the store-gateway shard. We need to run the BucketStore synching anyway
+		// belong to the store-gateway shard. We need to run the BucketStore syncing anyway
 		// in order to unload previous tenants in case of a resharding leading to tenants
 		// moving out from the store-gateway shard and also make sure both MetaFetcher and
 		// BucketStore metrics are correctly updated.

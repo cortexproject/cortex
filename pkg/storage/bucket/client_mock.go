@@ -131,7 +131,7 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 	}
 }
 
-// MockGetRequireUpload is a convenient method to mock Get() return resulst after upload,
+// MockGetRequireUpload is a convenient method to mock Get() return results after upload,
 // otherwise return errObjectDoesNotExist
 func (m *ClientMock) MockGetRequireUpload(name, content string, err error) {
 	m.uploaded.Store(name, false)

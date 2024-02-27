@@ -253,6 +253,55 @@ func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
 	require.NotContains(t, mfm["cortex_ruler_config_last_reload_successful"].String(), "value:\""+user+"\"")
 }
 
+func TestBackupRules(t *testing.T) {
+	dir := t.TempDir()
+	reg := prometheus.NewPedanticRegistry()
+	evalMetrics := NewRuleEvalMetrics(Config{RulePath: dir, EnableQueryStats: true}, reg)
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, evalMetrics, reg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	const user1 = "testUser"
+	const user2 = "testUser2"
+
+	require.Equal(t, 0, len(m.GetBackupRules(user1)))
+	require.Equal(t, 0, len(m.GetBackupRules(user2)))
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user1: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user1,
+			},
+		},
+		user2: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group2",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user1,
+			},
+		},
+	}
+	m.BackUpRuleGroups(context.TODO(), userRules)
+	managerOptions := &promRules.ManagerOptions{}
+	g1 := promRules.NewGroup(promRules.GroupOptions{
+		Name:     userRules[user1][0].Name,
+		File:     userRules[user1][0].Namespace,
+		Interval: userRules[user1][0].Interval,
+		Opts:     managerOptions,
+	})
+	g2 := promRules.NewGroup(promRules.GroupOptions{
+		Name:     userRules[user2][0].Name,
+		File:     userRules[user2][0].Namespace,
+		Interval: userRules[user2][0].Interval,
+		Opts:     managerOptions,
+	})
+	requireGroupsEqual(t, m.GetBackupRules(user1), []*promRules.Group{g1})
+	requireGroupsEqual(t, m.GetBackupRules(user2), []*promRules.Group{g2})
+}
+
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {
 	m.userManagerMtx.RLock()
 	defer m.userManagerMtx.RUnlock()

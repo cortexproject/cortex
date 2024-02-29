@@ -79,7 +79,7 @@ Next we're going to show how you can run a scale out Cortex cluster using Docker
 ```sh
 $ make ./cmd/cortex/.uptodate
 $ docker network create cortex
-$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
+$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 hashicorp/consul
 ```
 
 Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note the Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
@@ -142,7 +142,7 @@ First, create a network and run a new Consul and Grafana:
 
 ```sh
 $ docker network create cortex
-$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
+$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 hashicorp/consul
 $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 ```
 

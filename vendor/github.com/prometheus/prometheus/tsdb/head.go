@@ -340,7 +340,7 @@ type headMetrics struct {
 	chunksRemoved             prometheus.Counter
 	gcDuration                prometheus.Summary
 	samplesAppended           *prometheus.CounterVec
-	outOfOrderSamplesAppended prometheus.Counter
+	outOfOrderSamplesAppended *prometheus.CounterVec
 	outOfBoundSamples         *prometheus.CounterVec
 	outOfOrderSamples         *prometheus.CounterVec
 	tooOldSamples             *prometheus.CounterVec
@@ -420,10 +420,10 @@ func newHeadMetrics(h *Head, r prometheus.Registerer) *headMetrics {
 			Name: "prometheus_tsdb_head_samples_appended_total",
 			Help: "Total number of appended samples.",
 		}, []string{"type"}),
-		outOfOrderSamplesAppended: prometheus.NewCounter(prometheus.CounterOpts{
+		outOfOrderSamplesAppended: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "prometheus_tsdb_head_out_of_order_samples_appended_total",
 			Help: "Total number of appended out of order samples.",
-		}),
+		}, []string{"type"}),
 		outOfBoundSamples: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "prometheus_tsdb_out_of_bound_samples_total",
 			Help: "Total number of out of bound samples ingestion failed attempts with out of order support disabled.",
@@ -717,6 +717,7 @@ func (h *Head) Init(minValidTime int64) error {
 
 	h.startWALReplayStatus(startFrom, endAt)
 
+	syms := labels.NewSymbolTable() // One table for the whole WAL.
 	multiRef := map[chunks.HeadSeriesRef]chunks.HeadSeriesRef{}
 	if err == nil && startFrom >= snapIdx {
 		sr, err := wlog.NewSegmentsReader(dir)
@@ -731,7 +732,7 @@ func (h *Head) Init(minValidTime int64) error {
 
 		// A corrupted checkpoint is a hard error for now and requires user
 		// intervention. There's likely little data that can be recovered anyway.
-		if err := h.loadWAL(wlog.NewReader(sr), multiRef, mmappedChunks, oooMmappedChunks); err != nil {
+		if err := h.loadWAL(wlog.NewReader(sr), syms, multiRef, mmappedChunks, oooMmappedChunks); err != nil {
 			return fmt.Errorf("backfill checkpoint: %w", err)
 		}
 		h.updateWALReplayStatusRead(startFrom)
@@ -764,7 +765,7 @@ func (h *Head) Init(minValidTime int64) error {
 		if err != nil {
 			return fmt.Errorf("segment reader (offset=%d): %w", offset, err)
 		}
-		err = h.loadWAL(wlog.NewReader(sr), multiRef, mmappedChunks, oooMmappedChunks)
+		err = h.loadWAL(wlog.NewReader(sr), syms, multiRef, mmappedChunks, oooMmappedChunks)
 		if err := sr.Close(); err != nil {
 			level.Warn(h.logger).Log("msg", "Error while closing the wal segments reader", "err", err)
 		}
@@ -792,7 +793,7 @@ func (h *Head) Init(minValidTime int64) error {
 			}
 
 			sr := wlog.NewSegmentBufReader(s)
-			err = h.loadWBL(wlog.NewReader(sr), multiRef, lastMmapRef)
+			err = h.loadWBL(wlog.NewReader(sr), syms, multiRef, lastMmapRef)
 			if err := sr.Close(); err != nil {
 				level.Warn(h.logger).Log("msg", "Error while closing the wbl segments reader", "err", err)
 			}

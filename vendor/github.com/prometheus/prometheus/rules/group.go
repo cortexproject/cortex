@@ -17,12 +17,12 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"go.uber.org/atomic"
-	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
@@ -464,7 +464,7 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			}(time.Now())
 
 			if sp.SpanContext().IsSampled() && sp.SpanContext().HasTraceID() {
-				logger = log.WithPrefix(logger, "traceID", sp.SpanContext().TraceID())
+				logger = log.WithPrefix(logger, "trace_id", sp.SpanContext().TraceID())
 			}
 
 			g.metrics.EvalTotal.WithLabelValues(GroupKey(g.File(), g.Name())).Inc()

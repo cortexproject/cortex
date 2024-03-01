@@ -5492,7 +5492,7 @@ func (c *DynamoDB) RestoreTableToPointInTimeRequest(input *RestoreTableToPointIn
 //
 // Restores the specified table to the specified point in time within EarliestRestorableDateTime
 // and LatestRestorableDateTime. You can restore your table to any point in
-// time during the last 35 days. Any number of users can execute up to 4 concurrent
+// time during the last 35 days. Any number of users can execute up to 50 concurrent
 // restores (any type of restore) in a given account.
 //
 // When you restore using point in time recovery, DynamoDB restores your table
@@ -7518,10 +7518,10 @@ func (c *DynamoDB) UpdateTableRequest(input *UpdateTableInput) (req *request.Req
 //   - Create a new global secondary index on the table. After the index begins
 //     backfilling, you can use UpdateTable to perform other operations.
 //
-// UpdateTable is an asynchronous operation; while it is executing, the table
-// status changes from ACTIVE to UPDATING. While it is UPDATING, you cannot
-// issue another UpdateTable request. When the table returns to the ACTIVE state,
-// the UpdateTable operation is complete.
+// UpdateTable is an asynchronous operation; while it's executing, the table
+// status changes from ACTIVE to UPDATING. While it's UPDATING, you can't issue
+// another UpdateTable request on the base table nor any replicas. When the
+// table returns to the ACTIVE state, the UpdateTable operation is complete.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -26608,7 +26608,7 @@ type UpdateTableInput struct {
 
 	// Represents the DynamoDB Streams configuration for the table.
 	//
-	// You receive a ResourceInUseException if you try to enable a stream on a table
+	// You receive a ValidationException if you try to enable a stream on a table
 	// that already has a stream, or if you try to disable a stream on a table that
 	// doesn't have a stream.
 	StreamSpecification *StreamSpecification `type:"structure"`

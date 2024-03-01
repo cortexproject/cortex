@@ -22,6 +22,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,13 +31,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/regexp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -1080,8 +1079,6 @@ type EvalNodeHelper struct {
 	Dmn map[uint64]labels.Labels
 	// funcHistogramQuantile for classic histograms.
 	signatureToMetricWithBuckets map[string]*metricWithBuckets
-	// label_replace.
-	regex *regexp.Regexp
 
 	lb           *labels.Builder
 	lblBuf       []byte
@@ -1409,6 +1406,15 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, annotations.Annotatio
 				break
 			}
 		}
+
+		// Special handling for functions that work on series not samples.
+		switch e.Func.Name {
+		case "label_replace":
+			return ev.evalLabelReplace(e.Args)
+		case "label_join":
+			return ev.evalLabelJoin(e.Args)
+		}
+
 		if !matrixArg {
 			// Does not have a matrix argument.
 			return ev.rangeEval(nil, func(v []parser.Value, _ [][]EvalSeriesHelper, enh *EvalNodeHelper) (Vector, annotations.Annotations) {
@@ -1494,10 +1500,14 @@ func (ev *evaluator) eval(expr parser.Expr) (parser.Value, annotations.Annotatio
 						otherInArgs[j][0].F = otherArgs[j][0].Floats[step].F
 					}
 				}
-				maxt := ts - offset
-				mint := maxt - selRange
-				// Evaluate the matrix selector for this series for this step.
-				floats, histograms = ev.matrixIterSlice(it, mint, maxt, floats, histograms)
+				// Evaluate the matrix selector for this series
+				// for this step, but only if this is the 1st
+				// iteration or no @ modifier has been used.
+				if ts == ev.startTimestamp || selVS.Timestamp == nil {
+					maxt := ts - offset
+					mint := maxt - selRange
+					floats, histograms = ev.matrixIterSlice(it, mint, maxt, floats, histograms)
+				}
 				if len(floats)+len(histograms) == 0 {
 					continue
 				}
@@ -2865,8 +2875,7 @@ func (ev *evaluator) aggregation(e *parser.AggregateExpr, grouping []string, par
 		case parser.AVG:
 			if aggr.hasFloat && aggr.hasHistogram {
 				// We cannot aggregate histogram sample with a float64 sample.
-				metricName := aggr.labels.Get(labels.MetricName)
-				annos.Add(annotations.NewMixedFloatsHistogramsWarning(metricName, e.Expr.PositionRange()))
+				annos.Add(annotations.NewMixedFloatsHistogramsAggWarning(e.Expr.PositionRange()))
 				continue
 			}
 			if aggr.hasHistogram {
@@ -2919,8 +2928,7 @@ func (ev *evaluator) aggregation(e *parser.AggregateExpr, grouping []string, par
 		case parser.SUM:
 			if aggr.hasFloat && aggr.hasHistogram {
 				// We cannot aggregate histogram sample with a float64 sample.
-				metricName := aggr.labels.Get(labels.MetricName)
-				annos.Add(annotations.NewMixedFloatsHistogramsWarning(metricName, e.Expr.PositionRange()))
+				annos.Add(annotations.NewMixedFloatsHistogramsAggWarning(e.Expr.PositionRange()))
 				continue
 			}
 			if aggr.hasHistogram {

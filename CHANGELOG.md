@@ -24,6 +24,7 @@
 * [ENHANCEMENT] Querier: Added `querier.store-gateway-query-stats-enabled` to enable or disable store gateway query stats log. #5749
 * [ENHANCEMENT] Upgrade to go 1.21.6. #5765
 * [ENHANCEMENT] AlertManager: Retrying AlertManager Delete Silence on error #5794
+* [ENHANCEMENT] Ingester: Add new ingester metric `cortex_ingester_max_inflight_query_requests`. #5798
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
 * [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 * [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734

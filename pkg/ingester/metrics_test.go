@@ -8,7 +8,148 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+
+	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
+
+func TestIngesterMetrics(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
+	inflightPushRequests := &atomic.Int64{}
+	maxInflightQueryRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests.Track(98)
+	inflightPushRequests.Store(14)
+
+	m := newIngesterMetrics(mainReg,
+		false,
+		true,
+		func() *InstanceLimits {
+			return &InstanceLimits{
+				MaxIngestionRate:        12,
+				MaxInMemoryTenants:      1,
+				MaxInMemorySeries:       11,
+				MaxInflightPushRequests: 6,
+			}
+		},
+		ingestionRate,
+		inflightPushRequests,
+		&maxInflightQueryRequests)
+
+	require.NotNil(t, m)
+
+	err := testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+			# HELP cortex_ingester_inflight_push_requests Current number of inflight push requests in ingester.
+			# TYPE cortex_ingester_inflight_push_requests gauge
+			cortex_ingester_inflight_push_requests 14
+			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.
+			# TYPE cortex_ingester_max_inflight_query_requests gauge
+			cortex_ingester_max_inflight_query_requests 98
+			# HELP cortex_ingester_ingested_exemplars_failures_total The total number of exemplars that errored on ingestion.
+			# TYPE cortex_ingester_ingested_exemplars_failures_total counter
+			cortex_ingester_ingested_exemplars_failures_total 0
+			# HELP cortex_ingester_ingested_exemplars_total The total number of exemplars ingested.
+			# TYPE cortex_ingester_ingested_exemplars_total counter
+			cortex_ingester_ingested_exemplars_total 0
+			# HELP cortex_ingester_ingested_metadata_failures_total The total number of metadata that errored on ingestion.
+			# TYPE cortex_ingester_ingested_metadata_failures_total counter
+			cortex_ingester_ingested_metadata_failures_total 0
+			# HELP cortex_ingester_ingested_metadata_total The total number of metadata ingested.
+			# TYPE cortex_ingester_ingested_metadata_total counter
+			cortex_ingester_ingested_metadata_total 0
+			# HELP cortex_ingester_ingested_samples_failures_total The total number of samples that errored on ingestion.
+			# TYPE cortex_ingester_ingested_samples_failures_total counter
+			cortex_ingester_ingested_samples_failures_total 0
+			# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
+			# TYPE cortex_ingester_ingested_samples_total counter
+			cortex_ingester_ingested_samples_total 0
+			# HELP cortex_ingester_ingestion_rate_samples_per_second Current ingestion rate in samples/sec that ingester is using to limit access.
+			# TYPE cortex_ingester_ingestion_rate_samples_per_second gauge
+			cortex_ingester_ingestion_rate_samples_per_second 0
+			# HELP cortex_ingester_instance_limits Instance limits used by this ingester.
+			# TYPE cortex_ingester_instance_limits gauge
+			cortex_ingester_instance_limits{limit="max_inflight_push_requests"} 6
+			cortex_ingester_instance_limits{limit="max_ingestion_rate"} 12
+			cortex_ingester_instance_limits{limit="max_series"} 11
+			cortex_ingester_instance_limits{limit="max_tenants"} 1
+			# HELP cortex_ingester_memory_metadata The current number of metadata in memory.
+			# TYPE cortex_ingester_memory_metadata gauge
+			cortex_ingester_memory_metadata 0
+			# HELP cortex_ingester_memory_series The current number of series in memory.
+			# TYPE cortex_ingester_memory_series gauge
+			cortex_ingester_memory_series 0
+			# HELP cortex_ingester_memory_users The current number of users in memory.
+			# TYPE cortex_ingester_memory_users gauge
+			cortex_ingester_memory_users 0
+			# HELP cortex_ingester_queried_chunks The total number of chunks returned from queries.
+			# TYPE cortex_ingester_queried_chunks histogram
+			cortex_ingester_queried_chunks_bucket{le="10"} 0
+			cortex_ingester_queried_chunks_bucket{le="80"} 0
+			cortex_ingester_queried_chunks_bucket{le="640"} 0
+			cortex_ingester_queried_chunks_bucket{le="5120"} 0
+			cortex_ingester_queried_chunks_bucket{le="40960"} 0
+			cortex_ingester_queried_chunks_bucket{le="327680"} 0
+			cortex_ingester_queried_chunks_bucket{le="2.62144e+06"} 0
+			cortex_ingester_queried_chunks_bucket{le="+Inf"} 0
+			cortex_ingester_queried_chunks_sum 0
+			cortex_ingester_queried_chunks_count 0
+			# HELP cortex_ingester_queried_exemplars The total number of exemplars returned from queries.
+			# TYPE cortex_ingester_queried_exemplars histogram
+			cortex_ingester_queried_exemplars_bucket{le="10"} 0
+			cortex_ingester_queried_exemplars_bucket{le="50"} 0
+			cortex_ingester_queried_exemplars_bucket{le="250"} 0
+			cortex_ingester_queried_exemplars_bucket{le="1250"} 0
+			cortex_ingester_queried_exemplars_bucket{le="6250"} 0
+			cortex_ingester_queried_exemplars_bucket{le="+Inf"} 0
+			cortex_ingester_queried_exemplars_sum 0
+			cortex_ingester_queried_exemplars_count 0
+			# HELP cortex_ingester_queried_samples The total number of samples returned from queries.
+			# TYPE cortex_ingester_queried_samples histogram
+			cortex_ingester_queried_samples_bucket{le="10"} 0
+			cortex_ingester_queried_samples_bucket{le="80"} 0
+			cortex_ingester_queried_samples_bucket{le="640"} 0
+			cortex_ingester_queried_samples_bucket{le="5120"} 0
+			cortex_ingester_queried_samples_bucket{le="40960"} 0
+			cortex_ingester_queried_samples_bucket{le="327680"} 0
+			cortex_ingester_queried_samples_bucket{le="2.62144e+06"} 0
+			cortex_ingester_queried_samples_bucket{le="2.097152e+07"} 0
+			cortex_ingester_queried_samples_bucket{le="+Inf"} 0
+			cortex_ingester_queried_samples_sum 0
+			cortex_ingester_queried_samples_count 0
+			# HELP cortex_ingester_queried_series The total number of series returned from queries.
+			# TYPE cortex_ingester_queried_series histogram
+			cortex_ingester_queried_series_bucket{le="10"} 0
+			cortex_ingester_queried_series_bucket{le="80"} 0
+			cortex_ingester_queried_series_bucket{le="640"} 0
+			cortex_ingester_queried_series_bucket{le="5120"} 0
+			cortex_ingester_queried_series_bucket{le="40960"} 0
+			cortex_ingester_queried_series_bucket{le="327680"} 0
+			cortex_ingester_queried_series_bucket{le="+Inf"} 0
+			cortex_ingester_queried_series_sum 0
+			cortex_ingester_queried_series_count 0
+			# HELP cortex_ingester_queries_total The total number of queries the ingester has handled.
+			# TYPE cortex_ingester_queries_total counter
+			cortex_ingester_queries_total 0
+	`))
+	require.NoError(t, err)
+
+	require.Equal(t, int64(98), maxInflightQueryRequests.Load())
+	maxInflightQueryRequests.Tick()
+
+	err = testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.
+			# TYPE cortex_ingester_max_inflight_query_requests gauge
+			cortex_ingester_max_inflight_query_requests 98
+	`), "cortex_ingester_max_inflight_query_requests")
+	require.NoError(t, err)
+	maxInflightQueryRequests.Tick()
+	err = testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.
+			# TYPE cortex_ingester_max_inflight_query_requests gauge
+			cortex_ingester_max_inflight_query_requests 0
+	`), "cortex_ingester_max_inflight_query_requests")
+	require.NoError(t, err)
+}
 
 func TestTSDBMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()

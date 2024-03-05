@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -284,10 +285,11 @@ type querier struct {
 	limiterHolder       *limiterHolder
 }
 
-func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int64, int64, storage.Querier, []storage.Querier, error) {
+func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_stats.QueryStats, string, int64, int64, storage.Querier, []storage.Querier, error) {
+	stats := querier_stats.FromContext(ctx)
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return ctx, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
 
 	q.limiterHolder.limiterInitializer.Do(func() {
@@ -298,12 +300,12 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int
 
 	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
 	if err != nil {
-		return ctx, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
 
 	dqr, err := q.distributor.Querier(mint, maxt)
 	if err != nil {
-		return ctx, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
 	metadataQuerier := dqr
 
@@ -319,23 +321,27 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int
 
 		cqr, err := s.Querier(mint, maxt)
 		if err != nil {
-			return ctx, userID, 0, 0, nil, nil, err
+			return ctx, stats, userID, 0, 0, nil, nil, err
 		}
 
 		queriers = append(queriers, cqr)
 	}
-	return ctx, userID, mint, maxt, metadataQuerier, queriers, nil
+	return ctx, stats, userID, mint, maxt, metadataQuerier, queriers, nil
 }
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	ctx, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return storage.EmptySeriesSet()
 	} else if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
+	startT := time.Now()
+	defer func() {
+		stats.AddQueryStorageWallTime(time.Since(startT))
+	}()
 
 	log, ctx := spanlogger.New(ctx, "querier.Select")
 	defer log.Span.Finish()
@@ -426,12 +432,17 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
+	startT := time.Now()
+	defer func() {
+		stats.AddQueryStorageWallTime(time.Since(startT))
+	}()
+
 	if !q.queryStoreForLabels {
 		return metadataQuerier.LabelValues(ctx, name, matchers...)
 	}
@@ -475,12 +486,16 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 }
 
 func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
+	startT := time.Now()
+	defer func() {
+		stats.AddQueryStorageWallTime(time.Since(startT))
+	}()
 
 	if !q.queryStoreForLabels {
 		return metadataQuerier.LabelNames(ctx, matchers...)

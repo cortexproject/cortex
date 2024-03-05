@@ -289,6 +289,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 
 func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	wallTime := stats.LoadWallTime()
+	queryStorageWallTime := stats.LoadQueryStorageWallTime()
 	numSeries := stats.LoadFetchedSeries()
 	numChunks := stats.LoadFetchedChunks()
 	numSamples := stats.LoadFetchedSamples()
@@ -355,6 +356,11 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	}
 	if priority, ok := stats.LoadPriority(); ok {
 		logMessage = append(logMessage, "priority", priority)
+	}
+	if sws := queryStorageWallTime.Seconds(); sws > 0 {
+		// Only include query storage wall time field if set. This value can be 0
+		// for query APIs that don't call `Querier` interface.
+		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
 	}
 
 	if error != nil {

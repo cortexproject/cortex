@@ -31,4 +31,6 @@ message Stats {
   // The total number of split queries sent after going through all the middlewares.
   // It includes the number of requests that might be discarded by the queue.
   uint64 split_queries = 9;
+  // The sum of wall time spent in the querier to fetch and merge data from storage.
+  google.protobuf.Duration query_storage_wall_time = 10 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
 }

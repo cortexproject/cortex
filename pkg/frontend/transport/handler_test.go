@@ -326,16 +326,17 @@ func TestReportQueryStatsFormat(t *testing.T) {
 		"should include query stats": {
 			queryStats: &querier_stats.QueryStats{
 				Stats: querier_stats.Stats{
-					WallTime:            3 * time.Second,
-					FetchedSeriesCount:  100,
-					FetchedChunksCount:  200,
-					FetchedSamplesCount: 300,
-					FetchedChunkBytes:   1024,
-					FetchedDataBytes:    2048,
-					SplitQueries:        10,
+					WallTime:             3 * time.Second,
+					QueryStorageWallTime: 100 * time.Minute,
+					FetchedSeriesCount:   100,
+					FetchedChunksCount:   200,
+					FetchedSamplesCount:  300,
+					FetchedChunkBytes:    1024,
+					FetchedDataBytes:     2048,
+					SplitQueries:         10,
 				},
 			},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 query_storage_wall_time_seconds=6000`,
 		},
 		"should include user agent": {
 			header:      http.Header{"User-Agent": []string{"Grafana"}},

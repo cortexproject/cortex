@@ -17,8 +17,8 @@ func TestIngesterMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
 	inflightPushRequests := &atomic.Int64{}
-	maxInflightQueryRequests := &atomic.Int64{}
-	maxInflightQueryRequests.Store(98)
+	maxInflightQueryRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests.Track(98)
 	inflightPushRequests.Store(14)
 
 	m := newIngesterMetrics(mainReg,
@@ -34,7 +34,7 @@ func TestIngesterMetrics(t *testing.T) {
 		},
 		ingestionRate,
 		inflightPushRequests,
-		maxInflightQueryRequests)
+		&maxInflightQueryRequests)
 
 	require.NotNil(t, m)
 
@@ -133,7 +133,22 @@ func TestIngesterMetrics(t *testing.T) {
 	`))
 	require.NoError(t, err)
 
-	require.Equal(t, int64(0), maxInflightQueryRequests.Load())
+	require.Equal(t, int64(98), maxInflightQueryRequests.Load())
+	maxInflightQueryRequests.Tick()
+
+	err = testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.
+			# TYPE cortex_ingester_max_inflight_query_requests gauge
+			cortex_ingester_max_inflight_query_requests 98
+	`), "cortex_ingester_max_inflight_query_requests")
+	require.NoError(t, err)
+	maxInflightQueryRequests.Tick()
+	err = testutil.GatherAndCompare(mainReg, bytes.NewBufferString(`
+			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.
+			# TYPE cortex_ingester_max_inflight_query_requests gauge
+			cortex_ingester_max_inflight_query_requests 0
+	`), "cortex_ingester_max_inflight_query_requests")
+	require.NoError(t, err)
 }
 
 func TestTSDBMetrics(t *testing.T) {

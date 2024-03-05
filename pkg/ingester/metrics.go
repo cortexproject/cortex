@@ -55,7 +55,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	instanceLimitsFn func() *InstanceLimits,
 	ingestionRate *util_math.EwmaRate,
 	inflightPushRequests *atomic.Int64,
-	maxInflightQueryRequests *atomic.Int64,
+	maxInflightQueryRequests *util_math.MaxTracker,
 ) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
@@ -206,9 +206,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help: "Max number of inflight query requests in ingester.",
 		}, func() float64 {
 			if maxInflightQueryRequests != nil {
-				r := maxInflightQueryRequests.Load()
-				maxInflightQueryRequests.Store(0)
-				return float64(r)
+				return float64(maxInflightQueryRequests.Load())
 			}
 			return 0
 		}),

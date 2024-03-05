@@ -83,6 +83,9 @@ const (
 
 	// Period at which to attempt purging metadata from memory.
 	metadataPurgePeriod = 5 * time.Minute
+
+	// Period at which we should reset the max inflight query requests counter.
+	maxInflightRequestResetPeriod = 1 * time.Minute
 )
 
 var (
@@ -202,7 +205,7 @@ type Ingester struct {
 	inflightPushRequests atomic.Int64
 
 	inflightQueryRequests    atomic.Int64
-	maxInflightQueryRequests atomic.Int64
+	maxInflightQueryRequests util_math.MaxTracker
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -831,6 +834,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
 
+	maxInflightRequestResetTicker := time.NewTicker(maxInflightRequestResetPeriod)
+	defer maxInflightRequestResetTicker.Stop()
+
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -847,6 +853,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries()
+		case <-maxInflightRequestResetTicker.C:
+			i.maxInflightQueryRequests.Tick()
 		case <-userTSDBConfigTicker.C:
 			i.updateUserTSDBConfigs()
 		case <-ctx.Done():
@@ -1820,10 +1828,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 }
 
 func (i *Ingester) trackInflightQueryRequest() func() {
-	max := i.inflightQueryRequests.Inc()
-	if m := i.maxInflightQueryRequests.Load(); max > m {
-		i.maxInflightQueryRequests.CompareAndSwap(m, max)
-	}
+	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 	return func() {
 		i.inflightQueryRequests.Dec()
 	}

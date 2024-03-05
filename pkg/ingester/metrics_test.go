@@ -42,9 +42,9 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_inflight_push_requests Current number of inflight push requests in ingester.
 			# TYPE cortex_ingester_inflight_push_requests gauge
 			cortex_ingester_inflight_push_requests 14
-			# HELP cortex_ingester_inflight_query_requests Max number of inflight query requests in ingester.
-			# TYPE cortex_ingester_inflight_query_requests gauge
-			cortex_ingester_inflight_query_requests 98
+			# HELP cortex_ingester_max_inflight_query_requests Max number of inflight query requests in ingester.
+			# TYPE cortex_ingester_max_inflight_query_requests gauge
+			cortex_ingester_max_inflight_query_requests 98
 			# HELP cortex_ingester_ingested_exemplars_failures_total The total number of exemplars that errored on ingestion.
 			# TYPE cortex_ingester_ingested_exemplars_failures_total counter
 			cortex_ingester_ingested_exemplars_failures_total 0

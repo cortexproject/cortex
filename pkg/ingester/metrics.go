@@ -54,7 +54,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	activeSeriesEnabled bool,
 	instanceLimitsFn func() *InstanceLimits,
 	ingestionRate *util_math.EwmaRate,
-	inflightRequests *atomic.Int64,
+	inflightPushRequests *atomic.Int64,
 	maxInflightQueryRequests *atomic.Int64,
 ) *ingesterMetrics {
 	const (
@@ -195,14 +195,14 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_inflight_push_requests",
 			Help: "Current number of inflight push requests in ingester.",
 		}, func() float64 {
-			if inflightRequests != nil {
-				return float64(inflightRequests.Load())
+			if inflightPushRequests != nil {
+				return float64(inflightPushRequests.Load())
 			}
 			return 0
 		}),
 
 		inflightQueryRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
-			Name: "cortex_ingester_inflight_query_requests",
+			Name: "cortex_ingester_max_inflight_query_requests",
 			Help: "Max number of inflight query requests in ingester.",
 		}, func() float64 {
 			if maxInflightQueryRequests != nil {

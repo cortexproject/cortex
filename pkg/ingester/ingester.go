@@ -200,6 +200,9 @@ type Ingester struct {
 	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
 	ingestionRate        *util_math.EwmaRate
 	inflightPushRequests atomic.Int64
+
+	inflightQueryRequests    atomic.Int64
+	maxInflightQueryRequests atomic.Int64
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -627,7 +630,13 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		logger:        logger,
 		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 	}
-	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, i.ingestionRate, &i.inflightPushRequests)
+	i.metrics = newIngesterMetrics(registerer,
+		false,
+		cfg.ActiveSeriesMetricsEnabled,
+		i.getInstanceLimits,
+		i.ingestionRate,
+		&i.inflightPushRequests,
+		&i.maxInflightQueryRequests)
 
 	// Replace specific metrics which we can't directly track but we need to read
 	// them from the underlying system (ie. TSDB).
@@ -692,7 +701,14 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		TSDBState: newTSDBState(bucketClient, registerer),
 		logger:    logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, false, false, i.getInstanceLimits, nil, &i.inflightPushRequests)
+	i.metrics = newIngesterMetrics(registerer,
+		false,
+		false,
+		i.getInstanceLimits,
+		nil,
+		&i.inflightPushRequests,
+		&i.maxInflightQueryRequests,
+	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
 
@@ -1250,6 +1266,9 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return nil, err
 	}
 
+	c := i.trackInflightQueryRequest()
+	defer c()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1322,6 +1341,9 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
+	c := i.trackInflightQueryRequest()
+	defer c()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1370,6 +1392,8 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
@@ -1377,6 +1401,8 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 
 // LabelValuesStream returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelsValuesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1451,6 +1477,8 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelNamesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
@@ -1458,6 +1486,8 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // LabelNamesStream return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelNamesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1741,6 +1771,9 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
+	c := i.trackInflightQueryRequest()
+	defer c()
+
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
@@ -1784,6 +1817,16 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	spanlog.SetTag("samples", numSamples)
 	spanlog.SetTag("data_bytes", totalDataBytes)
 	return nil
+}
+
+func (i *Ingester) trackInflightQueryRequest() func() {
+	max := i.inflightQueryRequests.Inc()
+	if m := i.maxInflightQueryRequests.Load(); max > m {
+		i.maxInflightQueryRequests.CompareAndSwap(m, max)
+	}
+	return func() {
+		i.inflightQueryRequests.Dec()
+	}
 }
 
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface

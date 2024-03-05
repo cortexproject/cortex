@@ -163,6 +163,46 @@ func TestLoader_GetIndex_ShouldCacheIndexNotFoundError(t *testing.T) {
 	))
 }
 
+func TestLoader_ShouldNotCacheContextCancelled(t *testing.T) {
+	ctx := context.Background()
+	reg := prometheus.NewPedanticRegistry()
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+
+	// Create a bucket index.
+	idx := &Index{
+		Version: IndexVersion1,
+		Blocks: Blocks{
+			{ID: ulid.MustNew(1, nil), MinTime: 10, MaxTime: 20},
+		},
+		BlockDeletionMarks: nil,
+		UpdatedAt:          time.Now().Unix(),
+	}
+	require.NoError(t, WriteIndex(ctx, bkt, "user-1", nil, idx))
+
+	// Create the loader.
+	cfg := LoaderConfig{
+		CheckInterval:         time.Second,
+		UpdateOnStaleInterval: time.Second,
+		UpdateOnErrorInterval: time.Hour, // Intentionally high to not hit it.
+		IdleTimeout:           time.Hour, // Intentionally high to not hit it.
+	}
+
+	loader := NewLoader(cfg, bkt, nil, log.NewNopLogger(), reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, loader))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(ctx, loader))
+	})
+
+	cancelledContext, cancel := context.WithCancel(ctx)
+	cancel()
+
+	_, _, err := loader.GetIndex(cancelledContext, "user-1")
+	require.ErrorIs(t, err, context.Canceled)
+	actualIdx, _, err := loader.GetIndex(ctx, "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, idx, actualIdx)
+}
+
 func TestLoader_ShouldUpdateIndexInBackgroundOnPreviousLoadSuccess(t *testing.T) {
 	ctx := context.Background()
 	reg := prometheus.NewPedanticRegistry()

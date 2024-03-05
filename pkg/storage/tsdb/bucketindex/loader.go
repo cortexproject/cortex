@@ -144,6 +144,10 @@ func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, e
 }
 
 func (l *Loader) cacheIndex(userID string, idx *Index, ss Status, err error) {
+	if errors.Is(err, context.Canceled) {
+		level.Info(l.logger).Log("msg", "skipping cache bucket index", "err", err)
+		return
+	}
 	l.indexesMx.Lock()
 	defer l.indexesMx.Unlock()
 
@@ -215,7 +219,10 @@ func (l *Loader) updateCachedIndex(ctx context.Context, userID string) {
 	l.indexesMx.Unlock()
 
 	idx, err := ReadIndex(readCtx, l.bkt, userID, l.cfgProvider, l.logger)
-	if err != nil && !errors.Is(err, ErrIndexNotFound) && !errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {
+	if err != nil &&
+		!errors.Is(err, ErrIndexNotFound) &&
+		!errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) &&
+		!errors.Is(err, context.Canceled) {
 		l.loadFailures.Inc()
 		level.Warn(l.logger).Log("msg", "unable to update bucket index", "user", userID, "err", err)
 		return

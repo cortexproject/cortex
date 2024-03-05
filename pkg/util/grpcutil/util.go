@@ -69,7 +69,7 @@ func HTTPHeaderPropagationClientInterceptor(ctx context.Context, method string, 
 func HTTPHeaderPropagationStreamClientInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string,
 	streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	ctx = injectForwardedHeadersIntoMetadata(ctx)
-	return streamer(ctx, desc, cc, method)
+	return streamer(ctx, desc, cc, method, opts...)
 }
 
 // injectForwardedHeadersIntoMetadata implements HTTPHeaderPropagationClientInterceptor and HTTPHeaderPropagationStreamClientInterceptor

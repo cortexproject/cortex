@@ -272,3 +272,6 @@ replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5
 
 // Pin kuberesolver/v5 to support new grpc version. Need to upgrade kuberesolver version on weaveworks/common.
 replace github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1
+
+// Using grafana labs gomemcache fork. This fork has multiples opmizations over the original bradfitz gomemcache
+replace github.com/bradfitz/gomemcache => github.com/grafana/gomemcache v0.0.0-20240229205252-cd6a66d6fb56

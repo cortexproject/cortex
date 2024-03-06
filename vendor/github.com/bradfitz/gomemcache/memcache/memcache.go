@@ -1,5 +1,5 @@
 /*
-Copyright 2011 The gomemcache AUTHORS
+Copyright 2011 Google Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ package memcache
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"strconv"
 	"strings"
@@ -48,7 +48,7 @@ var (
 	// CompareAndSwap) failed because the condition was not satisfied.
 	ErrNotStored = errors.New("memcache: item not stored")
 
-	// ErrServer means that a server error occurred.
+	// ErrServerError means that a server error occurred.
 	ErrServerError = errors.New("memcache: server error")
 
 	// ErrNoStats means that no statistics were available.
@@ -65,11 +65,20 @@ var (
 
 const (
 	// DefaultTimeout is the default socket read/write timeout.
-	DefaultTimeout = 500 * time.Millisecond
+	DefaultTimeout = 100 * time.Millisecond
 
 	// DefaultMaxIdleConns is the default maximum number of idle connections
 	// kept for any single address.
 	DefaultMaxIdleConns = 2
+
+	// releaseIdleConnsCheckFrequency is how frequently to check if there are idle
+	// connections to release, in order to honor the configured min conns headroom.
+	releaseIdleConnsCheckFrequency = time.Minute
+
+	// defaultRecentlyUsedConnsThreshold is the default grace period given to an
+	// idle connection to consider it "recently used". The default value has been
+	// set equal to the default TCP TIME_WAIT timeout in linux.
+	defaultRecentlyUsedConnsThreshold = 2 * time.Minute
 )
 
 const buffered = 8 // arbitrary buffered channel size, for readability
@@ -100,7 +109,6 @@ func legalKey(key string) bool {
 
 var (
 	crlf            = []byte("\r\n")
-	space           = []byte(" ")
 	resultOK        = []byte("OK\r\n")
 	resultStored    = []byte("STORED\r\n")
 	resultNotStored = []byte("NOT_STORED\r\n")
@@ -113,6 +121,7 @@ var (
 
 	resultClientErrorPrefix = []byte("CLIENT_ERROR ")
 	versionPrefix           = []byte("VERSION")
+	valuePrefix             = []byte("VALUE ")
 )
 
 // New returns a memcache client using the provided server(s)
@@ -120,29 +129,43 @@ var (
 // it gets a proportional amount of weight.
 func New(server ...string) *Client {
 	ss := new(ServerList)
-	ss.SetServers(server...)
+	_ = ss.SetServers(server...)
 	return NewFromSelector(ss)
 }
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
-	return &Client{selector: ss}
+	c := &Client{
+		selector: ss,
+		closed:   make(chan struct{}),
+	}
+
+	go c.releaseIdleConnectionsUntilClosed()
+
+	return c
 }
 
 // Client is a memcache client.
 // It is safe for unlocked use by multiple concurrent goroutines.
 type Client struct {
-	// DialContext connects to the address on the named network using the
-	// provided context.
-	//
-	// To connect to servers using TLS (memcached running with "--enable-ssl"),
-	// use a DialContext func that uses tls.Dialer.DialContext. See this
-	// package's tests as an example.
-	DialContext func(ctx context.Context, network, address string) (net.Conn, error)
+	// DialTimeout specifies a custom dialer used to dial new connections to a server.
+	DialTimeout func(network, address string, timeout time.Duration) (net.Conn, error)
 
 	// Timeout specifies the socket read/write timeout.
 	// If zero, DefaultTimeout is used.
 	Timeout time.Duration
+
+	// ConnectTimeout specifies the timeout for new connections.
+	// If zero, DefaultTimeout is used.
+	ConnectTimeout time.Duration
+
+	// MinIdleConnsHeadroomPercentage specifies the percentage of minimum number of idle connections
+	// that should be kept open, compared to the number of free but recently used connections.
+	// If there are idle connections but none of them has been recently used, then all idle
+	// connections get closed.
+	//
+	// If the configured value is negative, idle connections are never closed.
+	MinIdleConnsHeadroomPercentage float64
 
 	// MaxIdleConns specifies the maximum number of idle connections that will
 	// be maintained per address. If less than one, DefaultMaxIdleConns will be
@@ -151,6 +174,26 @@ type Client struct {
 	// Consider your expected traffic rates and latency carefully. This should
 	// be set to a number higher than your peak parallel requests.
 	MaxIdleConns int
+
+	// WriteBufferSizeBytes specifies the size of the write buffer (in bytes). The buffer
+	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
+	WriteBufferSizeBytes int
+
+	// ReadBufferSizeBytes specifies the size of the read buffer (in bytes). The buffer
+	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
+	ReadBufferSizeBytes int
+
+	// recentlyUsedConnsThreshold is the default grace period given to an
+	// idle connection to consider it "recently used". Recently used connections
+	// are never closed even if idle.
+	//
+	// This field is used for testing.
+	recentlyUsedConnsThreshold time.Duration
+
+	// closed channel gets closed once the Client.Close() is called. Once closed,
+	// resources should be released.
+	closed    chan struct{}
+	closeOnce sync.Once
 
 	selector ServerSelector
 
@@ -175,11 +218,8 @@ type Item struct {
 	// Zero means the Item has no expiration time.
 	Expiration int32
 
-	// CasID is the compare and swap ID.
-	//
-	// It's populated by get requests and then the same value is
-	// required for a CompareAndSwap request to succeed.
-	CasID uint64
+	// Compare and swap ID.
+	casid uint64
 }
 
 // conn is a connection to a server.
@@ -188,6 +228,10 @@ type conn struct {
 	rw   *bufio.ReadWriter
 	addr net.Addr
 	c    *Client
+
+	// The timestamp since when this connection is idle. This is used to close
+	// idle connections.
+	idleSince time.Time
 }
 
 // release returns this connection back to the client's free pool
@@ -196,7 +240,7 @@ func (cn *conn) release() {
 }
 
 func (cn *conn) extendDeadline() {
-	cn.nc.SetDeadline(time.Now().Add(cn.c.netTimeout()))
+	_ = cn.nc.SetDeadline(time.Now().Add(cn.c.netTimeout()))
 }
 
 // condRelease releases this connection if the error pointed to by err
@@ -222,6 +266,8 @@ func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
 		cn.nc.Close()
 		return
 	}
+
+	cn.idleSince = time.Now()
 	c.freeconn[addr.String()] = append(freelist, cn)
 }
 
@@ -235,6 +281,9 @@ func (c *Client) getFreeConn(addr net.Addr) (cn *conn, ok bool) {
 	if !ok || len(freelist) == 0 {
 		return nil, false
 	}
+
+	// Pop the connection from the end of the list. This way we prefer to always reuse
+	// the same connections, so that the min idle connections logic is effective.
 	cn = freelist[len(freelist)-1]
 	c.freeconn[addr.String()] = freelist[:len(freelist)-1]
 	return cn, true
@@ -247,11 +296,89 @@ func (c *Client) netTimeout() time.Duration {
 	return DefaultTimeout
 }
 
+func (c *Client) connectTimeout() time.Duration {
+	if c.ConnectTimeout != 0 {
+		return c.ConnectTimeout
+	}
+	return DefaultTimeout
+}
+
 func (c *Client) maxIdleConns() int {
 	if c.MaxIdleConns > 0 {
 		return c.MaxIdleConns
 	}
 	return DefaultMaxIdleConns
+}
+
+func (c *Client) Close() {
+	c.closeOnce.Do(func() {
+		close(c.closed)
+	})
+}
+
+func (c *Client) releaseIdleConnectionsUntilClosed() {
+	for {
+		select {
+		case <-time.After(releaseIdleConnsCheckFrequency):
+			c.releaseIdleConnections()
+		case <-c.closed:
+			return
+		}
+	}
+}
+
+func (c *Client) releaseIdleConnections() {
+	var toClose []io.Closer
+
+	// Nothing to do if min idle connections headroom is disabled (negative value).
+	minIdleHeadroomPercentage := c.MinIdleConnsHeadroomPercentage
+	if minIdleHeadroomPercentage < 0 {
+		return
+	}
+
+	// Get the recently used connections threshold, falling back to the default one.
+	recentlyUsedThreshold := c.recentlyUsedConnsThreshold
+	if recentlyUsedThreshold == 0 {
+		recentlyUsedThreshold = defaultRecentlyUsedConnsThreshold
+	}
+
+	c.lk.Lock()
+
+	for addr, freeConnections := range c.freeconn {
+		numIdle := 0
+
+		// Count the number of idle connections. Since the least used connections are at the beginning
+		// of the list, we can stop searching as soon as we find a non-idle connection.
+		for _, freeConn := range freeConnections {
+			if time.Since(freeConn.idleSince) < recentlyUsedThreshold {
+				break
+			}
+
+			numIdle++
+		}
+
+		// Compute the number of connections to close. It keeps a number of idle connections equal to
+		// the configured headroom.
+		numRecentlyUsed := len(freeConnections) - numIdle
+		numIdleToKeep := int(math.Max(0, math.Ceil(float64(numRecentlyUsed)*minIdleHeadroomPercentage/100)))
+		numIdleToClose := numIdle - numIdleToKeep
+		if numIdleToClose <= 0 {
+			continue
+		}
+
+		// Close idle connections.
+		for i := 0; i < numIdleToClose; i++ {
+			toClose = append(toClose, freeConnections[i].nc)
+		}
+		c.freeconn[addr] = c.freeconn[addr][numIdleToClose:]
+	}
+
+	// Release the lock and then close the connections.
+	c.lk.Unlock()
+
+	for _, freeConn := range toClose {
+		freeConn.Close()
+	}
 }
 
 // ConnectTimeoutError is the error type used when it takes
@@ -266,18 +393,11 @@ func (cte *ConnectTimeoutError) Error() string {
 }
 
 func (c *Client) dial(addr net.Addr) (net.Conn, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.netTimeout())
-	defer cancel()
-
-	dialerContext := c.DialContext
-	if dialerContext == nil {
-		dialer := net.Dialer{
-			Timeout: c.netTimeout(),
-		}
-		dialerContext = dialer.DialContext
+	dialTimeout := c.DialTimeout
+	if dialTimeout == nil {
+		dialTimeout = net.DialTimeout
 	}
-
-	nc, err := dialerContext(ctx, addr.Network(), addr.String())
+	nc, err := dialTimeout(addr.Network(), addr.String(), c.connectTimeout())
 	if err == nil {
 		return nc, nil
 	}
@@ -290,6 +410,11 @@ func (c *Client) dial(addr net.Addr) (net.Conn, error) {
 }
 
 func (c *Client) getConn(addr net.Addr) (*conn, error) {
+	var (
+		writer *bufio.Writer
+		reader *bufio.Reader
+	)
+
 	cn, ok := c.getFreeConn(addr)
 	if ok {
 		cn.extendDeadline()
@@ -299,10 +424,25 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Init buffered writer.
+	if c.WriteBufferSizeBytes > 0 {
+		writer = bufio.NewWriterSize(nc, c.WriteBufferSizeBytes)
+	} else {
+		writer = bufio.NewWriter(nc)
+	}
+
+	// Init buffered reader.
+	if c.ReadBufferSizeBytes > 0 {
+		reader = bufio.NewReaderSize(nc, c.ReadBufferSizeBytes)
+	} else {
+		reader = bufio.NewReader(nc)
+	}
+
 	cn = &conn{
 		nc:   nc,
 		addr: addr,
-		rw:   bufio.NewReadWriter(bufio.NewReader(nc), bufio.NewWriter(nc)),
+		rw:   bufio.NewReadWriter(reader, writer),
 		c:    c,
 	}
 	cn.extendDeadline()
@@ -331,9 +471,10 @@ func (c *Client) FlushAll() error {
 
 // Get gets the item for the given key. ErrCacheMiss is returned for a
 // memcache cache miss. The key must be at most 250 bytes in length.
-func (c *Client) Get(key string) (item *Item, err error) {
+func (c *Client) Get(key string, opts ...Option) (item *Item, err error) {
+	options := newOptions(opts...)
 	err = c.withKeyAddr(key, func(addr net.Addr) error {
-		return c.getFromAddr(addr, []string{key}, func(it *Item) { item = it })
+		return c.getFromAddr(addr, []string{key}, options, func(it *Item) { item = it })
 	})
 	if err == nil && item == nil {
 		err = ErrCacheMiss
@@ -363,30 +504,31 @@ func (c *Client) withKeyAddr(key string, fn func(net.Addr) error) (err error) {
 	return fn(addr)
 }
 
-func (c *Client) withAddrRw(addr net.Addr, fn func(*bufio.ReadWriter) error) (err error) {
+func (c *Client) withAddrRw(addr net.Addr, fn func(*conn) error) (err error) {
 	cn, err := c.getConn(addr)
 	if err != nil {
 		return err
 	}
 	defer cn.condRelease(&err)
-	return fn(cn.rw)
+	return fn(cn)
 }
 
-func (c *Client) withKeyRw(key string, fn func(*bufio.ReadWriter) error) error {
+func (c *Client) withKeyRw(key string, fn func(*conn) error) error {
 	return c.withKeyAddr(key, func(addr net.Addr) error {
 		return c.withAddrRw(addr, fn)
 	})
 }
 
-func (c *Client) getFromAddr(addr net.Addr, keys []string, cb func(*Item)) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+func (c *Client) getFromAddr(addr net.Addr, keys []string, opts *Options, cb func(*Item)) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "gets %s\r\n", strings.Join(keys, " ")); err != nil {
 			return err
 		}
 		if err := rw.Flush(); err != nil {
 			return err
 		}
-		if err := parseGetResponse(rw.Reader, cb); err != nil {
+		if err := c.parseGetResponse(rw.Reader, conn, opts, cb); err != nil {
 			return err
 		}
 		return nil
@@ -395,7 +537,8 @@ func (c *Client) getFromAddr(addr net.Addr, keys []string, cb func(*Item)) error
 
 // flushAllFromAddr send the flush_all command to the given addr
 func (c *Client) flushAllFromAddr(addr net.Addr) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "flush_all\r\n"); err != nil {
 			return err
 		}
@@ -418,7 +561,8 @@ func (c *Client) flushAllFromAddr(addr net.Addr) error {
 
 // ping sends the version command to the given addr
 func (c *Client) ping(addr net.Addr) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "version\r\n"); err != nil {
 			return err
 		}
@@ -441,7 +585,8 @@ func (c *Client) ping(addr net.Addr) error {
 }
 
 func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) error {
-	return c.withAddrRw(addr, func(rw *bufio.ReadWriter) error {
+	return c.withAddrRw(addr, func(conn *conn) error {
+		rw := conn.rw
 		for _, key := range keys {
 			if _, err := fmt.Fprintf(rw, "touch %s %d\r\n", key, expiration); err != nil {
 				return err
@@ -470,9 +615,11 @@ func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) e
 // items may have fewer elements than the input slice, due to memcache
 // cache misses. Each key must be at most 250 bytes in length.
 // If no error is returned, the returned map will also be non-nil.
-func (c *Client) GetMulti(keys []string) (map[string]*Item, error) {
+func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, error) {
+	options := newOptions(opts...)
+
 	var lk sync.Mutex
-	m := make(map[string]*Item)
+	m := make(map[string]*Item, len(keys))
 	addItemToMap := func(it *Item) {
 		lk.Lock()
 		defer lk.Unlock()
@@ -494,12 +641,13 @@ func (c *Client) GetMulti(keys []string) (map[string]*Item, error) {
 	ch := make(chan error, buffered)
 	for addr, keys := range keyMap {
 		go func(addr net.Addr, keys []string) {
-			ch <- c.getFromAddr(addr, keys, addItemToMap)
+			err := c.getFromAddr(addr, keys, options, addItemToMap)
+			ch <- err
 		}(addr, keys)
 	}
 
 	var err error
-	for _ = range keyMap {
+	for range keyMap {
 		if ge := <-ch; ge != nil {
 			err = ge
 		}
@@ -509,9 +657,12 @@ func (c *Client) GetMulti(keys []string) (map[string]*Item, error) {
 
 // parseGetResponse reads a GET response from r and calls cb for each
 // read and allocated Item
-func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
+func (c *Client) parseGetResponse(r *bufio.Reader, conn *conn, opts *Options, cb func(*Item)) error {
 	for {
+		// extend deadline before each additional call, otherwise all cumulative calls use the same overall deadline
+		conn.extendDeadline()
 		line, err := r.ReadSlice('\n')
+
 		if err != nil {
 			return err
 		}
@@ -523,14 +674,16 @@ func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
 		if err != nil {
 			return err
 		}
-		it.Value = make([]byte, size+2)
+		buffSize := size + 2
+		buff := opts.Alloc.Get(buffSize)
+		it.Value = (*buff)[:buffSize]
 		_, err = io.ReadFull(r, it.Value)
 		if err != nil {
-			it.Value = nil
+			opts.Alloc.Put(buff)
 			return err
 		}
 		if !bytes.HasSuffix(it.Value, crlf) {
-			it.Value = nil
+			opts.Alloc.Put(buff)
 			return fmt.Errorf("memcache: corrupt get result read")
 		}
 		it.Value = it.Value[:size]
@@ -541,17 +694,49 @@ func parseGetResponse(r *bufio.Reader, cb func(*Item)) error {
 // scanGetResponseLine populates it and returns the declared size of the item.
 // It does not read the bytes of the item.
 func scanGetResponseLine(line []byte, it *Item) (size int, err error) {
-	pattern := "VALUE %s %d %d %d\r\n"
-	dest := []interface{}{&it.Key, &it.Flags, &size, &it.CasID}
-	if bytes.Count(line, space) == 3 {
-		pattern = "VALUE %s %d %d\r\n"
-		dest = dest[:3]
-	}
-	n, err := fmt.Sscanf(string(line), pattern, dest...)
-	if err != nil || n != len(dest) {
+	errf := func(line []byte) (int, error) {
 		return -1, fmt.Errorf("memcache: unexpected line in get response: %q", line)
 	}
-	return size, nil
+	if !bytes.HasPrefix(line, valuePrefix) || !bytes.HasSuffix(line, []byte("\r\n")) {
+		return errf(line)
+	}
+	s := string(line[6 : len(line)-2])
+	var rest string
+	var found bool
+	it.Key, rest, found = cut(s, ' ')
+	if !found {
+		return errf(line)
+	}
+	val, rest, found := cut(rest, ' ')
+	if !found {
+		return errf(line)
+	}
+	flags64, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
+		return errf(line)
+	}
+	it.Flags = uint32(flags64)
+	val, rest, found = cut(rest, ' ')
+	size64, err := strconv.ParseUint(val, 10, 32)
+	if err != nil {
+		return errf(line)
+	}
+	if !found { // final CAS ID is optional.
+		return int(size64), nil
+	}
+	it.casid, err = strconv.ParseUint(rest, 10, 64)
+	if err != nil {
+		return errf(line)
+	}
+	return int(size64), nil
+}
+
+// Similar to strings.Cut in Go 1.18, but sep can only be 1 byte.
+func cut(s string, sep byte) (before, after string, found bool) {
+	if i := strings.IndexByte(s, sep); i >= 0 {
+		return s[:i], s[i+1:], true
+	}
+	return s, "", false
 }
 
 // Set writes the given item, unconditionally.
@@ -583,26 +768,6 @@ func (c *Client) replace(rw *bufio.ReadWriter, item *Item) error {
 	return c.populateOne(rw, "replace", item)
 }
 
-// Append appends the given item to the existing item, if a value already
-// exists for its key. ErrNotStored is returned if that condition is not met.
-func (c *Client) Append(item *Item) error {
-	return c.onItem(item, (*Client).append)
-}
-
-func (c *Client) append(rw *bufio.ReadWriter, item *Item) error {
-	return c.populateOne(rw, "append", item)
-}
-
-// Prepend prepends the given item to the existing item, if a value already
-// exists for its key. ErrNotStored is returned if that condition is not met.
-func (c *Client) Prepend(item *Item) error {
-	return c.onItem(item, (*Client).prepend)
-}
-
-func (c *Client) prepend(rw *bufio.ReadWriter, item *Item) error {
-	return c.populateOne(rw, "prepend", item)
-}
-
 // CompareAndSwap writes the given item that was previously returned
 // by Get, if the value was neither modified or evicted between the
 // Get and the CompareAndSwap calls. The item's Key should not change
@@ -625,7 +790,7 @@ func (c *Client) populateOne(rw *bufio.ReadWriter, verb string, item *Item) erro
 	var err error
 	if verb == "cas" {
 		_, err = fmt.Fprintf(rw, "%s %s %d %d %d %d\r\n",
-			verb, item.Key, item.Flags, item.Expiration, len(item.Value), item.CasID)
+			verb, item.Key, item.Flags, item.Expiration, len(item.Value), item.casid)
 	} else {
 		_, err = fmt.Fprintf(rw, "%s %s %d %d %d\r\n",
 			verb, item.Key, item.Flags, item.Expiration, len(item.Value))
@@ -694,15 +859,15 @@ func writeExpectf(rw *bufio.ReadWriter, expect []byte, format string, args ...in
 // Delete deletes the item with the provided key. The error ErrCacheMiss is
 // returned if the item didn't already exist in the cache.
 func (c *Client) Delete(key string) error {
-	return c.withKeyRw(key, func(rw *bufio.ReadWriter) error {
-		return writeExpectf(rw, resultDeleted, "delete %s\r\n", key)
+	return c.withKeyRw(key, func(conn *conn) error {
+		return writeExpectf(conn.rw, resultDeleted, "delete %s\r\n", key)
 	})
 }
 
 // DeleteAll deletes all items in the cache.
 func (c *Client) DeleteAll() error {
-	return c.withKeyRw("", func(rw *bufio.ReadWriter) error {
-		return writeExpectf(rw, resultDeleted, "flush_all\r\n")
+	return c.withKeyRw("", func(conn *conn) error {
+		return writeExpectf(conn.rw, resultDeleted, "flush_all\r\n")
 	})
 }
 
@@ -733,7 +898,8 @@ func (c *Client) Decrement(key string, delta uint64) (newValue uint64, err error
 
 func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
 	var val uint64
-	err := c.withKeyRw(key, func(rw *bufio.ReadWriter) error {
+	err := c.withKeyRw(key, func(conn *conn) error {
+		rw := conn.rw
 		line, err := writeReadLine(rw, "%s %s %d\r\n", verb, key, delta)
 		if err != nil {
 			return err
@@ -752,25 +918,4 @@ func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
 		return nil
 	})
 	return val, err
-}
-
-// Close closes any open connections.
-//
-// It returns the first error encountered closing connections, but always
-// closes all connections.
-//
-// After Close, the Client may still be used.
-func (c *Client) Close() error {
-	c.lk.Lock()
-	defer c.lk.Unlock()
-	var ret error
-	for _, conns := range c.freeconn {
-		for _, c := range conns {
-			if err := c.nc.Close(); err != nil && ret == nil {
-				ret = err
-			}
-		}
-	}
-	c.freeconn = nil
-	return ret
 }

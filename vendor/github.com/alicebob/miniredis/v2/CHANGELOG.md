@@ -1,6 +1,27 @@
 ## Changelog
 
 
+### v2.31.1
+
+- support COUNT in SCAN and ZSCAN (thanks @BarakSilverfort)
+- support for OBJECT IDLETIME (thanks @nerd2)
+- support for HRANDFIELD (thanks @sejin-P)
+
+
+### v2.31.0
+
+- support for MEMORY USAGE (thanks @davidroman0O)
+- test against Redis 7.2.0
+- support for CLIENT SETNAME/GETNAME (thanks @mr-karan)
+- fix very small numbers (thanks @zsh1995)
+- use the same float-to-string logic real Redis uses
+
+
+### v2.30.5
+
+- support SMISMEMBER (thanks @sandyharvie)
+
+
 ### v2.30.4
 
 - fix ZADD LT/LG (thanks @sejin-P)
@@ -97,7 +118,7 @@
 
 ### v2.16.1
 
-- fix ZINTERSTORE with wets (thanks @lingjl2010 and @okhowang)
+- fix ZINTERSTORE with sets (thanks @lingjl2010 and @okhowang)
 - fix exclusive ranges in XRANGE (thanks @joseotoro)
 
 

@@ -20,6 +20,7 @@ func commandsSet(m *Miniredis) {
 	m.srv.Register("SINTERSTORE", m.cmdSinterstore)
 	m.srv.Register("SISMEMBER", m.cmdSismember)
 	m.srv.Register("SMEMBERS", m.cmdSmembers)
+	m.srv.Register("SMISMEMBER", m.cmdSmismember)
 	m.srv.Register("SMOVE", m.cmdSmove)
 	m.srv.Register("SPOP", m.cmdSpop)
 	m.srv.Register("SRANDMEMBER", m.cmdSrandmember)
@@ -290,6 +291,50 @@ func (m *Miniredis) cmdSmembers(c *server.Peer, cmd string, args []string) {
 		for _, elem := range members {
 			c.WriteBulk(elem)
 		}
+	})
+}
+
+// SMISMEMBER
+func (m *Miniredis) cmdSmismember(c *server.Peer, cmd string, args []string) {
+	if len(args) < 2 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	key, values := args[0], args[1:]
+
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+
+		if !db.exists(key) {
+			c.WriteLen(len(values))
+			for range values {
+				c.WriteInt(0)
+			}
+			return
+		}
+
+		if db.t(key) != "set" {
+			c.WriteError(ErrWrongType.Error())
+			return
+		}
+
+		c.WriteLen(len(values))
+		for _, value := range values {
+			if db.setIsMember(key, value) {
+				c.WriteInt(1)
+			} else {
+				c.WriteInt(0)
+			}
+		}
+		return
 	})
 }
 

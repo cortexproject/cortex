@@ -103,6 +103,7 @@ Implemented commands:
    - HLEN
    - HMGET
    - HMSET
+   - HRANDFIELD
    - HSET
    - HSETNX
    - HSTRLEN
@@ -144,18 +145,20 @@ Implemented commands:
    - SINTERSTORE
    - SISMEMBER
    - SMEMBERS
+   - SMISMEMBER
    - SMOVE
    - SPOP -- see m.Seed(...)
    - SRANDMEMBER -- see m.Seed(...)
    - SREM
+   - SSCAN
    - SUNION
    - SUNIONSTORE
-   - SSCAN
  - Sorted Set keys (complete)
    - ZADD
    - ZCARD
    - ZCOUNT
    - ZINCRBY
+   - ZINTER
    - ZINTERSTORE
    - ZLEXCOUNT
    - ZPOPMIN
@@ -321,7 +324,7 @@ Commands which will probably not be implemented:
 
 ## &c.
 
-Integration tests are run against Redis 7.0.7. The [./integration](./integration/) subdir
+Integration tests are run against Redis 7.2.0. The [./integration](./integration/) subdir
 compares miniredis against a real redis instance.
 
 The Redis 6 RESP3 protocol is supported. If there are problems, please open

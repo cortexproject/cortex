@@ -33,9 +33,14 @@ func optDuration(c *server.Peer, src string, dest *time.Duration) bool {
 		c.WriteError(msgInvalidTimeout)
 		return false
 	}
-	if n < 0 || math.IsInf(n, 0) {
+	if n < 0 {
 		setDirty(c)
-		c.WriteError(msgNegTimeout)
+		c.WriteError(msgTimeoutNegative)
+		return false
+	}
+	if math.IsInf(n, 0) {
+		setDirty(c)
+		c.WriteError(msgTimeoutIsOutOfRange)
 		return false
 	}
 

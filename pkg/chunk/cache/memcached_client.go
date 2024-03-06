@@ -141,7 +141,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		}),
 	}
 	if cfg.CBFailures > 0 {
-		newClient.Client.DialTimeout = newClient.dialViaCircuitBreaker
+		newClient.Client.DialContext = newClient.dialViaCircuitBreaker
 	}
 
 	if len(cfg.Addresses) > 0 {
@@ -163,7 +163,7 @@ func (c *memcachedClient) circuitBreakerStateChange(name string, from gobreaker.
 	level.Info(c.logger).Log("msg", "circuit-breaker state change", "name", name, "from-state", from, "to-state", to)
 }
 
-func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout time.Duration) (net.Conn, error) {
+func (c *memcachedClient) dialViaCircuitBreaker(_ context.Context, network, address string) (net.Conn, error) {
 	c.Lock()
 	cb := c.cbs[address]
 	if cb == nil {
@@ -181,7 +181,7 @@ func (c *memcachedClient) dialViaCircuitBreaker(network, address string, timeout
 	c.Unlock()
 
 	conn, err := cb.Execute(func() (interface{}, error) {
-		return net.DialTimeout(network, address, timeout)
+		return net.DialTimeout(network, address, c.cbTimeout)
 	})
 	if err != nil {
 		return nil, err

@@ -184,6 +184,24 @@ func (s *QueryStats) LoadFetchedChunks() uint64 {
 	return atomic.LoadUint64(&s.FetchedChunksCount)
 }
 
+// AddQueryStorageWallTime adds some time to the counter.
+func (s *QueryStats) AddQueryStorageWallTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddInt64((*int64)(&s.QueryStorageWallTime), int64(t))
+}
+
+// LoadQueryStorageWallTime returns current query storage wall time.
+func (s *QueryStats) LoadQueryStorageWallTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+
+	return time.Duration(atomic.LoadInt64((*int64)(&s.QueryStorageWallTime)))
+}
+
 func (s *QueryStats) AddSplitQueries(count uint64) {
 	if s == nil {
 		return
@@ -259,6 +277,7 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	}
 
 	s.AddWallTime(other.LoadWallTime())
+	s.AddQueryStorageWallTime(other.LoadQueryStorageWallTime())
 	s.AddFetchedSeries(other.LoadFetchedSeries())
 	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 	s.AddFetchedDataBytes(other.LoadFetchedDataBytes())

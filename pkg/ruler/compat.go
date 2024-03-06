@@ -245,6 +245,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 				"query", qs,
 				"cortex_ruler_query_seconds_total", querySeconds,
 				"query_wall_time_seconds", queryStats.WallTime,
+				"query_storage_wall_time_seconds", queryStats.QueryStorageWallTime,
 				"fetched_series_count", queryStats.FetchedSeriesCount,
 				"fetched_chunks_count", queryStats.FetchedChunksCount,
 				"fetched_samples_count", queryStats.FetchedSamplesCount,

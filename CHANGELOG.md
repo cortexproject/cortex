@@ -36,7 +36,7 @@
 * [BUGFIX] Distributor: Shuffle-Sharding with IngestionTenantShardSize == 0, default sharding strategy should be used #5189
 * [BUGFIX] Cortex: Fix GRPC stream clients not honoring overrides for call options. #5797
 * [BUGFIX] Ring DDB: Fix lifecycle for ring counting unhealthy pods as healthy. #5838
-
+* [BUGFIX] Improve GetRules performance #5805
 
 ## 1.16.0 2023-11-20
 

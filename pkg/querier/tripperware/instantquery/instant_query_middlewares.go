@@ -1,6 +1,8 @@
 package instantquery
 
 import (
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 
@@ -11,9 +13,11 @@ func Middlewares(
 	log log.Logger,
 	limits tripperware.Limits,
 	queryAnalyzer querysharding.Analyzer,
+	lookbackDelta time.Duration,
 ) ([]tripperware.Middleware, error) {
-	var m []tripperware.Middleware
-
-	m = append(m, tripperware.ShardByMiddleware(log, limits, InstantQueryCodec, queryAnalyzer))
+	m := []tripperware.Middleware{
+		NewLimitsMiddleware(limits, lookbackDelta),
+		tripperware.ShardByMiddleware(log, limits, InstantQueryCodec, queryAnalyzer),
+	}
 	return m, nil
 }

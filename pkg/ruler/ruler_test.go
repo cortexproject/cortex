@@ -87,6 +87,7 @@ type ruleLimits struct {
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	disabledRuleGroups   validation.DisabledRuleGroups
+	maxQueryLength       time.Duration
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -108,6 +109,8 @@ func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 func (r ruleLimits) DisabledRuleGroups(userID string) validation.DisabledRuleGroups {
 	return r.disabledRuleGroups
 }
+
+func (r ruleLimits) MaxQueryLength(_ string) time.Duration { return r.maxQueryLength }
 
 func newEmptyQueryable() storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {

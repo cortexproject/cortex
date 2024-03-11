@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -15,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
@@ -24,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -145,6 +148,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
 	EvaluationDelay(userID string) time.Duration
+	MaxQueryLength(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
@@ -154,8 +158,24 @@ type RulesLimits interface {
 // EngineQueryFunc returns a new engine query function by passing an altered timestamp.
 // Modified from Prometheus rules.EngineQueryFunc
 // https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
-func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
+func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		// Enforce the max query length.
+		maxQueryLength := overrides.MaxQueryLength(userID)
+		if maxQueryLength > 0 {
+			expr, err := parser.ParseExpr(qs)
+			// If failed to parse expression, skip checking select range.
+			// Fail the query in the engine.
+			if err == nil {
+				// Enforce query length across all selectors in the query.
+				min, max := promql.FindMinMaxTime(&parser.EvalStmt{Expr: expr, Start: util.TimeFromMillis(0), End: util.TimeFromMillis(0), LookbackDelta: lookbackDelta})
+				diff := util.TimeFromMillis(max).Sub(util.TimeFromMillis(min))
+				if diff > maxQueryLength {
+					return nil, validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, diff, maxQueryLength))
+				}
+			}
+		}
+
 		evaluationDelay := overrides.EvaluationDelay(userID)
 		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t.Add(-evaluationDelay))
 		if err != nil {
@@ -296,7 +316,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
 		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
 
-		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID)
+		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID, cfg.LookbackDelta)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
 
 		return rules.NewManager(&rules.ManagerOptions{

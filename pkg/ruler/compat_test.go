@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type fakePusher struct {
@@ -173,9 +175,10 @@ func TestPusherErrors(t *testing.T) {
 
 func TestMetricsQueryFuncErrors(t *testing.T) {
 	for name, tc := range map[string]struct {
-		returnedError         error
-		expectedQueries       int
-		expectedFailedQueries int
+		returnedError          error
+		expectedQueries        int
+		expectedFailedQueries  int
+		notWrapQueryableErrors bool
 	}{
 		"no error": {
 			expectedQueries:       1,
@@ -223,13 +226,24 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			expectedQueries:       1,
 			expectedFailedQueries: 1, // unknown errors are not 400, so they are reported.
 		},
+
+		"max query length validation error": {
+			returnedError:          validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, "10000", "1000")),
+			expectedQueries:        1,
+			expectedFailedQueries:  0,
+			notWrapQueryableErrors: true,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			queries := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
 
 			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
-				return promql.Vector{}, WrapQueryableErrors(tc.returnedError)
+				err := tc.returnedError
+				if !tc.notWrapQueryableErrors {
+					err = WrapQueryableErrors(err)
+				}
+				return promql.Vector{}, err
 			}
 			qf := MetricsQueryFunc(mockFunc, queries, failures)
 

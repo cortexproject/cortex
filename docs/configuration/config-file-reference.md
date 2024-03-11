@@ -3714,6 +3714,12 @@ store_gateway_client:
 # engine.
 # CLI flag: -querier.thanos-engine
 [thanos_engine: <boolean> | default = false]
+
+# If enabled, ignore max query length check at Querier select method. Users can
+# choose to ignore it since the validation can be done before Querier evaluation
+# like at Query Frontend or Ruler.
+# CLI flag: -querier.ignore-max-query-length
+[ignore_max_query_length: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`

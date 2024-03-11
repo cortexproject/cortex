@@ -26,3 +26,4 @@ func Setup(t *testing.T) db.DB {
 func Cleanup(t *testing.T, database db.DB) {
 	require.NoError(t, database.Close())
 }
+

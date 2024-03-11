@@ -77,7 +77,7 @@ func TestLimitsMiddleware_MaxQueryLookback(t *testing.T) {
 			}
 
 			limits := mockLimits{maxQueryLookback: testData.maxQueryLookback}
-			middleware := NewLimitsMiddleware(limits)
+			middleware := NewLimitsMiddleware(limits, 5*time.Minute)
 
 			innerRes := NewEmptyPrometheusResponse()
 			inner := &mockHandler{}
@@ -117,6 +117,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 
 	tests := map[string]struct {
 		maxQueryLength time.Duration
+		query          string
 		reqStartTime   time.Time
 		reqEndTime     time.Time
 		expectedErr    string
@@ -126,10 +127,30 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			reqStartTime:   time.Unix(0, 0),
 			reqEndTime:     now,
 		},
+		"even though failed to parse expression, should return no error since request will pass to next middleware": {
+			query:          `up[`,
+			reqStartTime:   now.Add(-time.Hour),
+			reqEndTime:     now,
+			maxQueryLength: thirtyDays,
+		},
 		"should succeed on a query on short time range, ending now": {
 			maxQueryLength: thirtyDays,
 			reqStartTime:   now.Add(-time.Hour),
 			reqEndTime:     now,
+		},
+		"should fail on query with time window > max query length": {
+			query:          "up[31d]",
+			maxQueryLength: thirtyDays,
+			reqStartTime:   now.Add(-time.Hour),
+			reqEndTime:     now,
+			expectedErr:    "the query time range exceeds the limit",
+		},
+		"should fail on query with time window > max query length, considering multiple selects": {
+			query:          "rate(up[20d]) + rate(up[20d] offset 20d)",
+			maxQueryLength: thirtyDays,
+			reqStartTime:   now.Add(-time.Hour),
+			reqEndTime:     now,
+			expectedErr:    "the query time range exceeds the limit",
 		},
 		"should succeed on a query on short time range, ending in the past": {
 			maxQueryLength: thirtyDays,
@@ -160,12 +181,16 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			req := &PrometheusRequest{
+				Query: testData.query,
 				Start: util.TimeToMillis(testData.reqStartTime),
 				End:   util.TimeToMillis(testData.reqEndTime),
 			}
+			if req.Query == "" {
+				req.Query = "up"
+			}
 
 			limits := mockLimits{maxQueryLength: testData.maxQueryLength}
-			middleware := NewLimitsMiddleware(limits)
+			middleware := NewLimitsMiddleware(limits, 5*time.Minute)
 
 			innerRes := NewEmptyPrometheusResponse()
 			inner := &mockHandler{}

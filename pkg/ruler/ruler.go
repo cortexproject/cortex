@@ -136,6 +136,9 @@ type Config struct {
 
 	RingCheckPeriod time.Duration `yaml:"-"`
 
+	// Field will be populated during runtime.
+	LookbackDelta time.Duration `yaml:"-"`
+
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
 }

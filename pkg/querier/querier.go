@@ -85,6 +85,9 @@ type Config struct {
 	// Experimental. Use https://github.com/thanos-io/promql-engine rather than
 	// the Prometheus query engine.
 	ThanosEngine bool `yaml:"thanos_engine"`
+
+	// Ignore max query length check at Querier.
+	IgnoreMaxQueryLength bool `yaml:"ignore_max_query_length"`
 }
 
 var (
@@ -119,6 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
 	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-io/promql-engine rather than the Prometheus promql engine.")
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
+	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 }
 
 // Validate the config
@@ -256,16 +260,17 @@ type limiterHolder struct {
 func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides) storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
-			now:                 time.Now(),
-			mint:                mint,
-			maxt:                maxt,
-			chunkIterFn:         chunkIterFn,
-			limits:              limits,
-			maxQueryIntoFuture:  cfg.MaxQueryIntoFuture,
-			queryStoreForLabels: cfg.QueryStoreForLabels,
-			distributor:         distributor,
-			stores:              stores,
-			limiterHolder:       &limiterHolder{},
+			now:                  time.Now(),
+			mint:                 mint,
+			maxt:                 maxt,
+			chunkIterFn:          chunkIterFn,
+			limits:               limits,
+			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
+			queryStoreForLabels:  cfg.QueryStoreForLabels,
+			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
+			distributor:          distributor,
+			stores:               stores,
+			limiterHolder:        &limiterHolder{},
 		}
 
 		return q, nil
@@ -283,6 +288,8 @@ type querier struct {
 	distributor         QueryableWithFilter
 	stores              []QueryableWithFilter
 	limiterHolder       *limiterHolder
+
+	ignoreMaxQueryLength bool
 }
 
 func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_stats.QueryStats, string, int64, int64, storage.Querier, []storage.Querier, error) {
@@ -397,9 +404,11 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// Validate query time range. This validation should be done only for instant / range queries and
 	// NOT for metadata queries (series, labels) because the query-frontend doesn't support splitting
 	// of such queries.
-	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
-		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
-		return storage.ErrSeriesSet(limitErr)
+	if !q.ignoreMaxQueryLength {
+		if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+			limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+			return storage.ErrSeriesSet(limitErr)
+		}
 	}
 
 	if len(queriers) == 1 {

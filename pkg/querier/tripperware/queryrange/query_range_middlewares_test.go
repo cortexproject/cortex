@@ -60,6 +60,7 @@ func TestRoundTrip(t *testing.T) {
 		qa,
 		PrometheusCodec,
 		ShardedPrometheusCodec,
+		5*time.Minute,
 	)
 	require.NoError(t, err)
 

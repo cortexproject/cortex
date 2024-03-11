@@ -457,12 +457,13 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		queryAnalyzer,
 		prometheusCodec,
 		shardedPrometheusCodec,
+		t.Cfg.Querier.LookbackDelta,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, queryAnalyzer)
+	instantQueryMiddlewares, err := instantquery.Middlewares(util_log.Logger, t.Overrides, queryAnalyzer, t.Cfg.Querier.LookbackDelta)
 	if err != nil {
 		return nil, err
 	}
@@ -548,6 +549,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		return nil, nil
 	}
 
+	t.Cfg.Ruler.LookbackDelta = t.Cfg.Querier.LookbackDelta
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	metrics := ruler.NewRuleEvalMetrics(t.Cfg.Ruler, prometheus.DefaultRegisterer)
 

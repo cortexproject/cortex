@@ -833,6 +833,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 		queryStartTime time.Time
 		queryEndTime   time.Time
 		expected       error
+
+		// If enabled, skip max query length check at Querier.
+		ignoreMaxQueryLength bool
 	}{
 		"should allow query on short time range and rate time window close to the limit": {
 			query:          "rate(foo[29d])",
@@ -858,6 +861,13 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			queryEndTime:   time.Now(),
 			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 721h1m0s, limit: 720h0m0s)"),
 		},
+		"max query length check ignored, invalid query is still allowed": {
+			query:                "rate(foo[1m])",
+			queryStartTime:       time.Now().Add(-maxQueryLength).Add(-time.Hour),
+			queryEndTime:         time.Now(),
+			expected:             nil,
+			ignoreMaxQueryLength: true,
+		},
 	}
 
 	opts := promql.EngineOpts{
@@ -873,6 +883,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			flagext.DefaultValues(&cfg)
 			// Disable active query tracker to avoid mmap error.
 			cfg.ActiveQueryTrackerDir = ""
+			cfg.IgnoreMaxQueryLength = testData.ignoreMaxQueryLength
 
 			limits := DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)

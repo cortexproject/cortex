@@ -35,6 +35,7 @@
 * [ENHANCEMENT] Ruler: Improve GetRules response time by refactoring mutexes and introducing a temporary rules cache in `ruler/manager.go`. #5805
 * [ENHANCEMENT] Querier: Add context error check when merging slices from ingesters for GetLabel operations. #5837
 * [ENHANCEMENT] Ring: Add experimental `-ingester.tokens-generator-strategy=minimize-spread` flag to enable the new minimize spread token generator strategy. #5855
+* [ENHANCEMENT] Query Frontend: Ensure error response returned by Query Frontend follows Prometheus API error response format. #5811
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
 * [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 * [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734

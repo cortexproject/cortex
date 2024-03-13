@@ -16,16 +16,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -239,8 +241,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
+	logger := util_log.WithContext(r.Context(), f.log)
 	if err != nil {
-		writeError(w, err, hs)
+		writeError(logger, w, err, hs)
 		return
 	}
 
@@ -252,7 +255,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// log copy response body error so that we will know even though success response code returned
 	bytesCopied, err := io.Copy(w, resp.Body)
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
+		level.Error(logger).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
 }
 
@@ -441,7 +444,7 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 	return fields
 }
 
-func writeError(w http.ResponseWriter, err error, additionalHeaders http.Header) {
+func writeError(logger log.Logger, w http.ResponseWriter, err error, additionalHeaders http.Header) {
 	switch err {
 	case context.Canceled:
 		err = errCanceled
@@ -453,20 +456,35 @@ func writeError(w http.ResponseWriter, err error, additionalHeaders http.Header)
 		}
 	}
 
+	headers := w.Header()
+	for k, values := range additionalHeaders {
+		for _, value := range values {
+			headers.Set(k, value)
+		}
+	}
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
-		for k, values := range additionalHeaders {
-			resp.Headers = append(resp.Headers, &httpgrpc.Header{Key: k, Values: values})
+		code := int(resp.Code)
+		var errTyp v1.ErrorType
+		switch resp.Code {
+		case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
+			errTyp = v1.ErrBadData
+		case StatusClientClosedRequest:
+			errTyp = v1.ErrCanceled
+		case http.StatusGatewayTimeout:
+			errTyp = v1.ErrTimeout
+		case http.StatusUnprocessableEntity:
+			errTyp = v1.ErrExec
+		case int32(codes.PermissionDenied):
+			// Convert gRPC status code to HTTP status code.
+			code = http.StatusUnprocessableEntity
+			errTyp = v1.ErrBadData
+		default:
+			errTyp = v1.ErrServer
 		}
-		_ = server.WriteResponse(w, resp)
+		util_api.RespondError(logger, w, errTyp, string(resp.Body), code)
 	} else {
-		headers := w.Header()
-		for k, values := range additionalHeaders {
-			for _, value := range values {
-				headers.Set(k, value)
-			}
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 	}
 }
 

@@ -2,12 +2,15 @@ package instantquery
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -20,6 +23,9 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		thirtyDays = 30 * 24 * time.Hour
 	)
 
+	wrongQuery := `up[`
+	_, parserErr := parser.ParseExpr(wrongQuery)
+
 	tests := map[string]struct {
 		maxQueryLength time.Duration
 		query          string
@@ -31,6 +37,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		"even though failed to parse expression, should return no error since request will pass to next middleware": {
 			query:          `up[`,
 			maxQueryLength: thirtyDays,
+			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, parserErr.Error()).Error(),
 		},
 		"should succeed on a query not exceeding time range": {
 			query:          `up`,

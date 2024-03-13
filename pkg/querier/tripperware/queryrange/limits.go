@@ -84,8 +84,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 
 		expr, err := parser.ParseExpr(r.GetQuery())
 		if err != nil {
-			// Let Querier propagates the parsing error.
-			return l.next.Do(ctx, r)
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
 		// Enforce query length across all selectors in the query.

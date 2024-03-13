@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,14 +14,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/codes"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -34,19 +39,111 @@ func TestWriteError(t *testing.T) {
 		status            int
 		err               error
 		additionalHeaders http.Header
+		expectedErrResp   util_api.Response
 	}{
-		{http.StatusInternalServerError, errors.New("unknown"), http.Header{"User-Agent": []string{"Golang"}}},
-		{http.StatusInternalServerError, errors.New("unknown"), nil},
-		{http.StatusGatewayTimeout, context.DeadlineExceeded, nil},
-		{StatusClientClosedRequest, context.Canceled, nil},
-		{StatusClientClosedRequest, context.Canceled, http.Header{"User-Agent": []string{"Golang"}}},
-		{StatusClientClosedRequest, context.Canceled, http.Header{"User-Agent": []string{"Golang"}, "Content-Type": []string{"application/json"}}},
-		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, ""), http.Header{}},
-		{http.StatusRequestEntityTooLarge, errors.New("http: request body too large"), http.Header{}},
+		{
+			http.StatusInternalServerError,
+			errors.New("unknown"),
+			http.Header{"User-Agent": []string{"Golang"}},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrServer,
+				Error:     "unknown",
+			},
+		},
+		{
+			http.StatusInternalServerError,
+			errors.New("unknown"),
+			nil,
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrServer,
+				Error:     "unknown",
+			},
+		},
+		{
+			http.StatusGatewayTimeout,
+			context.DeadlineExceeded,
+			nil,
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrTimeout,
+				Error:     "",
+			},
+		},
+		{
+			StatusClientClosedRequest,
+			context.Canceled,
+			nil,
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrCanceled,
+				Error:     "",
+			},
+		},
+		{
+			StatusClientClosedRequest,
+			context.Canceled,
+			http.Header{"User-Agent": []string{"Golang"}},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrCanceled,
+				Error:     "",
+			},
+		},
+		{
+			StatusClientClosedRequest,
+			context.Canceled,
+			http.Header{"User-Agent": []string{"Golang"}, "Content-Type": []string{"application/json"}},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrCanceled,
+				Error:     "",
+			},
+		},
+		{http.StatusBadRequest,
+			httpgrpc.Errorf(http.StatusBadRequest, ""),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrBadData,
+				Error:     "",
+			},
+		},
+		{
+			http.StatusRequestEntityTooLarge,
+			errors.New("http: request body too large"),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrBadData,
+				Error:     "http: request body too large",
+			},
+		},
+		{
+			http.StatusUnprocessableEntity,
+			httpgrpc.Errorf(http.StatusUnprocessableEntity, "limit hit"),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrExec,
+				Error:     "limit hit",
+			},
+		},
+		{
+			http.StatusUnprocessableEntity,
+			httpgrpc.Errorf(int(codes.PermissionDenied), "permission denied"),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrBadData,
+				Error:     "permission denied",
+			},
+		},
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeError(w, test.err, test.additionalHeaders)
+			writeError(util_log.Logger, w, test.err, test.additionalHeaders)
 			require.Equal(t, test.status, w.Result().StatusCode)
 			expectedAdditionalHeaders := test.additionalHeaders
 			if expectedAdditionalHeaders != nil {
@@ -55,6 +152,18 @@ func TestWriteError(t *testing.T) {
 						require.Equal(t, values, value)
 					}
 				}
+			}
+			data, err := io.ReadAll(w.Result().Body)
+			require.NoError(t, err)
+			var res util_api.Response
+			err = json.Unmarshal(data, &res)
+			require.NoError(t, err)
+			resp, ok := httpgrpc.HTTPResponseFromError(test.err)
+			if ok {
+				require.Equal(t, string(resp.Body), res.Error)
+			} else {
+				require.Equal(t, test.err.Error(), res.Error)
+
 			}
 		})
 	}

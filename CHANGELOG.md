@@ -27,6 +27,7 @@
 * [ENHANCEMENT] Ingester: Add new ingester metric `cortex_ingester_max_inflight_query_requests`. #5798
 * [ENHANCEMENT] Query: Added `query_storage_wall_time` to Query Frontend and Ruler query stats log for wall time spent on fetching data from storage. Query evaluation is not included. #5799
 * [ENHANCEMENT] Query: Added additional max query length check at Query Frontend and Ruler. Added `-querier.ignore-max-query-length` flag to disable max query length check at Querier. #5808
+* [ENHANCEMENT] Query Frontend: Ensure error response returned by Query Frontend follows Prometheus API error response format. #5811
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
 * [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 * [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734

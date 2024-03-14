@@ -57,7 +57,6 @@ func (merr *multiError) Is(target error) bool {
 	}
 	return false
 }
-<<<<<<< HEAD
 
 func extractErrors(err error) []error {
 	if err == nil {
@@ -78,5 +77,3 @@ func extractErrors(err error) []error {
 
 	return append(([]error)(nil), eg.Errors()...)
 }
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)

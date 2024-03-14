@@ -1,20 +1,5 @@
 // Copyright The OpenTelemetry Authors
-<<<<<<< HEAD
 // SPDX-License-Identifier: Apache-2.0
-=======
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//       http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 
 package pcommon // import "go.opentelemetry.io/collector/pdata/pcommon"
 
@@ -86,105 +71,66 @@ type Value internal.Value
 
 // NewValueEmpty creates a new Value with an empty value.
 func NewValueEmpty() Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueStr creates a new Value with the given string value.
 func NewValueStr(v string) Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: v}}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_StringValue{StringValue: v}})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueInt creates a new Value with the given int64 value.
 func NewValueInt(v int64) Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_IntValue{IntValue: v}}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_IntValue{IntValue: v}})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueDouble creates a new Value with the given float64 value.
 func NewValueDouble(v float64) Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_DoubleValue{DoubleValue: v}}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_DoubleValue{DoubleValue: v}})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueBool creates a new Value with the given bool value.
 func NewValueBool(v bool) Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_BoolValue{BoolValue: v}}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_BoolValue{BoolValue: v}})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueMap creates a new Value of map type.
 func NewValueMap() Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueSlice creates a new Value of array type.
 func NewValueSlice() Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}}, &state)
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}})
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // NewValueBytes creates a new empty Value of byte type.
 func NewValueBytes() Value {
-<<<<<<< HEAD
 	state := internal.StateMutable
 	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_BytesValue{BytesValue: nil}}, &state)
 }
 
 func newValue(orig *otlpcommon.AnyValue, state *internal.State) Value {
 	return Value(internal.NewValue(orig, state))
-=======
-	return newValue(&otlpcommon.AnyValue{Value: &otlpcommon.AnyValue_BytesValue{BytesValue: nil}})
-}
-
-func newValue(orig *otlpcommon.AnyValue) Value {
-	return Value(internal.NewValue(orig))
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 func (v Value) getOrig() *otlpcommon.AnyValue {
 	return internal.GetOrigValue(internal.Value(v))
 }
 
-<<<<<<< HEAD
 func (v Value) getState() *internal.State {
 	return internal.GetValueState(internal.Value(v))
 }
 
 // FromRaw sets the value from the given raw value.
 // Calling this function on zero-initialized Value will cause a panic.
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) FromRaw(iv any) error {
 	switch tv := iv.(type) {
 	case nil:
@@ -254,108 +200,59 @@ func (v Value) Type() ValueType {
 // Str returns the string value associated with this Value.
 // The shorter name is used instead of String to avoid implementing fmt.Stringer interface.
 // If the Type() is not ValueTypeStr then returns empty string.
-<<<<<<< HEAD
-=======
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Str() string {
 	return v.getOrig().GetStringValue()
 }
 
 // Int returns the int64 value associated with this Value.
 // If the Type() is not ValueTypeInt then returns int64(0).
-<<<<<<< HEAD
-=======
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Int() int64 {
 	return v.getOrig().GetIntValue()
 }
 
 // Double returns the float64 value associated with this Value.
 // If the Type() is not ValueTypeDouble then returns float64(0).
-<<<<<<< HEAD
-=======
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Double() float64 {
 	return v.getOrig().GetDoubleValue()
 }
 
 // Bool returns the bool value associated with this Value.
 // If the Type() is not ValueTypeBool then returns false.
-<<<<<<< HEAD
-=======
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Bool() bool {
 	return v.getOrig().GetBoolValue()
 }
 
 // Map returns the map value associated with this Value.
-<<<<<<< HEAD
 // If the function is called on zero-initialized Value or if the Type() is not ValueTypeMap
 // then it returns an invalid map. Note that using such map can cause panic.
-=======
-// If the Type() is not ValueTypeMap then returns an invalid map. Note that using
-// such map can cause panic.
-//
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Map() Map {
 	kvlist := v.getOrig().GetKvlistValue()
 	if kvlist == nil {
 		return Map{}
 	}
-<<<<<<< HEAD
 	return newMap(&kvlist.Values, internal.GetValueState(internal.Value(v)))
 }
 
 // Slice returns the slice value associated with this Value.
 // If the function is called on zero-initialized Value or if the Type() is not ValueTypeSlice
 // then returns an invalid slice. Note that using such slice can cause panic.
-=======
-	return newMap(&kvlist.Values)
-}
-
-// Slice returns the slice value associated with this Value.
-// If the Type() is not ValueTypeSlice then returns an invalid slice. Note that using
-// such slice can cause panic.
-//
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Slice() Slice {
 	arr := v.getOrig().GetArrayValue()
 	if arr == nil {
 		return Slice{}
 	}
-<<<<<<< HEAD
 	return newSlice(&arr.Values, internal.GetValueState(internal.Value(v)))
 }
 
 // Bytes returns the ByteSlice value associated with this Value.
 // If the function is called on zero-initialized Value or if the Type() is not ValueTypeBytes
 // then returns an invalid ByteSlice object. Note that using such slice can cause panic.
-=======
-	return newSlice(&arr.Values)
-}
-
-// Bytes returns the ByteSlice value associated with this Value.
-// If the Type() is not ValueTypeBytes then returns an invalid ByteSlice object. Note that using
-// such slice can cause panic.
-//
-// Calling this function on zero-initialized Value will cause a panic.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) Bytes() ByteSlice {
 	bv, ok := v.getOrig().GetValue().(*otlpcommon.AnyValue_BytesValue)
 	if !ok {
 		return ByteSlice{}
 	}
-<<<<<<< HEAD
 	return ByteSlice(internal.NewByteSlice(&bv.BytesValue, internal.GetValueState(internal.Value(v))))
-=======
-	return ByteSlice(internal.NewByteSlice(&bv.BytesValue))
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // SetStr replaces the string value associated with this Value,
@@ -364,10 +261,7 @@ func (v Value) Bytes() ByteSlice {
 // fmt.Stringer interface by the corresponding getter method.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetStr(sv string) {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	v.getOrig().Value = &otlpcommon.AnyValue_StringValue{StringValue: sv}
 }
 
@@ -375,10 +269,7 @@ func (v Value) SetStr(sv string) {
 // it also changes the type to be ValueTypeInt.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetInt(iv int64) {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	v.getOrig().Value = &otlpcommon.AnyValue_IntValue{IntValue: iv}
 }
 
@@ -386,10 +277,7 @@ func (v Value) SetInt(iv int64) {
 // it also changes the type to be ValueTypeDouble.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetDouble(dv float64) {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	v.getOrig().Value = &otlpcommon.AnyValue_DoubleValue{DoubleValue: dv}
 }
 
@@ -397,47 +285,31 @@ func (v Value) SetDouble(dv float64) {
 // it also changes the type to be ValueTypeBool.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetBool(bv bool) {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	v.getOrig().Value = &otlpcommon.AnyValue_BoolValue{BoolValue: bv}
 }
 
 // SetEmptyBytes sets value to an empty byte slice and returns it.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetEmptyBytes() ByteSlice {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
 	bv := otlpcommon.AnyValue_BytesValue{BytesValue: nil}
 	v.getOrig().Value = &bv
 	return ByteSlice(internal.NewByteSlice(&bv.BytesValue, v.getState()))
-=======
-	bv := otlpcommon.AnyValue_BytesValue{BytesValue: nil}
-	v.getOrig().Value = &bv
-	return ByteSlice(internal.NewByteSlice(&bv.BytesValue))
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // SetEmptyMap sets value to an empty map and returns it.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetEmptyMap() Map {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
 	kv := &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}
 	v.getOrig().Value = kv
 	return newMap(&kv.KvlistValue.Values, v.getState())
-=======
-	kv := &otlpcommon.AnyValue_KvlistValue{KvlistValue: &otlpcommon.KeyValueList{}}
-	v.getOrig().Value = kv
-	return newMap(&kv.KvlistValue.Values)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // SetEmptySlice sets value to an empty slice and returns it.
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) SetEmptySlice() Slice {
-<<<<<<< HEAD
 	v.getState().AssertMutable()
 	av := &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}
 	v.getOrig().Value = av
@@ -448,15 +320,6 @@ func (v Value) SetEmptySlice() Slice {
 // Calling this function on zero-initialized Value will cause a panic.
 func (v Value) CopyTo(dest Value) {
 	dest.getState().AssertMutable()
-=======
-	av := &otlpcommon.AnyValue_ArrayValue{ArrayValue: &otlpcommon.ArrayValue{}}
-	v.getOrig().Value = av
-	return newSlice(&av.ArrayValue.Values)
-}
-
-// CopyTo copies the Value instance overriding the destination.
-func (v Value) CopyTo(dest Value) {
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	destOrig := dest.getOrig()
 	switch ov := v.getOrig().Value.(type) {
 	case *otlpcommon.AnyValue_KvlistValue:
@@ -470,11 +333,7 @@ func (v Value) CopyTo(dest Value) {
 			return
 		}
 		// Deep copy to dest.
-<<<<<<< HEAD
 		newMap(&ov.KvlistValue.Values, v.getState()).CopyTo(newMap(&kv.KvlistValue.Values, dest.getState()))
-=======
-		newMap(&ov.KvlistValue.Values).CopyTo(newMap(&kv.KvlistValue.Values))
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	case *otlpcommon.AnyValue_ArrayValue:
 		av, ok := destOrig.Value.(*otlpcommon.AnyValue_ArrayValue)
 		if !ok {
@@ -486,11 +345,7 @@ func (v Value) CopyTo(dest Value) {
 			return
 		}
 		// Deep copy to dest.
-<<<<<<< HEAD
 		newSlice(&ov.ArrayValue.Values, v.getState()).CopyTo(newSlice(&av.ArrayValue.Values, dest.getState()))
-=======
-		newSlice(&ov.ArrayValue.Values).CopyTo(newSlice(&av.ArrayValue.Values))
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	case *otlpcommon.AnyValue_BytesValue:
 		bv, ok := destOrig.Value.(*otlpcommon.AnyValue_BytesValue)
 		if !ok {
@@ -508,10 +363,7 @@ func (v Value) CopyTo(dest Value) {
 // AsString converts an OTLP Value object of any type to its equivalent string
 // representation. This differs from Str which only returns a non-empty value
 // if the ValueType is ValueTypeStr.
-<<<<<<< HEAD
 // Calling this function on zero-initialized Value will cause a panic.
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 func (v Value) AsString() string {
 	switch v.Type() {
 	case ValueTypeEmpty:
@@ -600,48 +452,32 @@ func (v Value) AsRaw() any {
 
 func newKeyValueString(k string, v string) otlpcommon.KeyValue {
 	orig := otlpcommon.KeyValue{Key: k}
-<<<<<<< HEAD
 	state := internal.StateMutable
 	akv := newValue(&orig.Value, &state)
-=======
-	akv := newValue(&orig.Value)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	akv.SetStr(v)
 	return orig
 }
 
 func newKeyValueInt(k string, v int64) otlpcommon.KeyValue {
 	orig := otlpcommon.KeyValue{Key: k}
-<<<<<<< HEAD
 	state := internal.StateMutable
 	akv := newValue(&orig.Value, &state)
-=======
-	akv := newValue(&orig.Value)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	akv.SetInt(v)
 	return orig
 }
 
 func newKeyValueDouble(k string, v float64) otlpcommon.KeyValue {
 	orig := otlpcommon.KeyValue{Key: k}
-<<<<<<< HEAD
 	state := internal.StateMutable
 	akv := newValue(&orig.Value, &state)
-=======
-	akv := newValue(&orig.Value)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	akv.SetDouble(v)
 	return orig
 }
 
 func newKeyValueBool(k string, v bool) otlpcommon.KeyValue {
 	orig := otlpcommon.KeyValue{Key: k}
-<<<<<<< HEAD
 	state := internal.StateMutable
 	akv := newValue(&orig.Value, &state)
-=======
-	akv := newValue(&orig.Value)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	akv.SetBool(v)
 	return orig
 }

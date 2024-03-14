@@ -18,18 +18,11 @@ Once a `Gate` has been marked as `Stable`, it must have a `RemovalVersion` set.
 ```go
 var myFeatureGate = featuregate.GlobalRegistry().MustRegister(
 	"namespaced.uniqueIdentifier",
-<<<<<<< HEAD
 	featuregate.Stable,
     featuregate.WithRegisterFromVersion("v0.65.0")
 	featuregate.WithRegisterDescription("A brief description of what the gate controls"),
 	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/6167"),
 	featuregate.WithRegisterToVersion("v0.70.0"))
-=======
-	featuregate.Stable, 
-	featuregate.WithRegisterDescription("A brief description of what the gate controls"),
-	featuregate.WithRegisterReferenceURL("https://github.com/open-telemetry/opentelemetry-collector/issues/6167"),
-	featuregate.WithRegisterRemovalVersion("v0.70.0"))
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 ```
 
 The status of the gate may later be checked by interrogating the global 
@@ -68,7 +61,6 @@ modeled after the [system used by Kubernetes](https://kubernetes.io/docs/referen
    through a `Gate`.
 2. A `beta` stage where the feature has been well tested and is enabled by 
    default but can be disabled through a `Gate`.
-<<<<<<< HEAD
 3. A generally available or `stable` stage where the feature is permanently enabled. At this stage
    the gate should no longer be explicitly used. Disabling the gate will produce an error and
    explicitly enabling will produce a warning log.
@@ -83,13 +75,3 @@ Features that make it to the `beta` stage are intended to reach general availabi
 If, after wider use, it is determined that the gate should be discontinued it will be reverted to the `alpha` stage
 for 2 releases and then proceed to the `deprecated` stage. If instead it is ready for general availability it will
 proceed to the `stable` stage.
-=======
-3. A generally available stage where the feature is permanently enabled and 
-   the `Gate` is no longer operative.
-
-Features that prove unworkable in the `alpha` stage may be discontinued 
-without proceeding to the `beta` stage.  Features that make it to the `beta` 
-stage will not be dropped and will eventually reach general availability 
-where the `Gate` that allowed them to be disabled during the `beta` stage 
-will be removed.
->>>>>>> 90dc0587b (Initial OTLP ingest support)

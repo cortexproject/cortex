@@ -1,26 +1,10 @@
 // Copyright The OpenTelemetry Authors
-<<<<<<< HEAD
 // SPDX-License-Identifier: Apache-2.0
-=======
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//       http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 
 package featuregate // import "go.opentelemetry.io/collector/featuregate"
 
 import (
 	"fmt"
-<<<<<<< HEAD
 	"net/url"
 	"regexp"
 	"sort"
@@ -37,14 +21,6 @@ var (
 	// IDs' characters must be alphanumeric or dots.
 	idRegexp = regexp.MustCompile(`^[0-9a-zA-Z\.]*$`)
 )
-=======
-	"sort"
-	"sync"
-	"sync/atomic"
-)
-
-var globalRegistry = NewRegistry()
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 
 // GlobalRegistry returns the global Registry.
 func GlobalRegistry() *Registry {
@@ -62,7 +38,6 @@ func NewRegistry() *Registry {
 
 // RegisterOption allows to configure additional information about a Gate during registration.
 type RegisterOption interface {
-<<<<<<< HEAD
 	apply(g *Gate) error
 }
 
@@ -70,32 +45,17 @@ type registerOptionFunc func(g *Gate) error
 
 func (ro registerOptionFunc) apply(g *Gate) error {
 	return ro(g)
-=======
-	apply(g *Gate)
-}
-
-type registerOptionFunc func(g *Gate)
-
-func (ro registerOptionFunc) apply(g *Gate) {
-	ro(g)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 }
 
 // WithRegisterDescription adds description for the Gate.
 func WithRegisterDescription(description string) RegisterOption {
-<<<<<<< HEAD
 	return registerOptionFunc(func(g *Gate) error {
 		g.description = description
 		return nil
-=======
-	return registerOptionFunc(func(g *Gate) {
-		g.description = description
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	})
 }
 
 // WithRegisterReferenceURL adds a URL that has all the contextual information about the Gate.
-<<<<<<< HEAD
 // referenceURL must be a valid URL as defined by `net/url.Parse`.
 func WithRegisterReferenceURL(referenceURL string) RegisterOption {
 	return registerOptionFunc(func(g *Gate) error {
@@ -138,19 +98,6 @@ func WithRegisterToVersion(toVersion string) RegisterOption {
 
 		g.toVersion = to
 		return nil
-=======
-func WithRegisterReferenceURL(url string) RegisterOption {
-	return registerOptionFunc(func(g *Gate) {
-		g.referenceURL = url
-	})
-}
-
-// WithRegisterRemovalVersion is used when the Gate is considered StageStable,
-// to inform users that referencing the gate is no longer needed.
-func WithRegisterRemovalVersion(version string) RegisterOption {
-	return registerOptionFunc(func(g *Gate) {
-		g.removalVersion = version
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	})
 }
 
@@ -163,7 +110,6 @@ func (r *Registry) MustRegister(id string, stage Stage, opts ...RegisterOption) 
 	return g
 }
 
-<<<<<<< HEAD
 func validateID(id string) error {
 	if id == "" {
 		return fmt.Errorf("empty ID")
@@ -182,16 +128,11 @@ func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Ga
 		return nil, fmt.Errorf("invalid ID %q: %w", id, err)
 	}
 
-=======
-// Register a Gate and return it. The returned Gate can be used to check if is enabled or not.
-func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Gate, error) {
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	g := &Gate{
 		id:    id,
 		stage: stage,
 	}
 	for _, opt := range opts {
-<<<<<<< HEAD
 		err := opt.apply(g)
 		if err != nil {
 			return nil, fmt.Errorf("failed to apply option: %w", err)
@@ -199,12 +140,6 @@ func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Ga
 	}
 	switch g.stage {
 	case StageAlpha, StageDeprecated:
-=======
-		opt.apply(g)
-	}
-	switch g.stage {
-	case StageAlpha:
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 		g.enabled = &atomic.Bool{}
 	case StageBeta, StageStable:
 		enabled := &atomic.Bool{}
@@ -213,7 +148,6 @@ func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Ga
 	default:
 		return nil, fmt.Errorf("unknown stage value %q for gate %q", stage, id)
 	}
-<<<<<<< HEAD
 	if (g.stage == StageStable || g.stage == StageDeprecated) && g.toVersion == nil {
 		return nil, fmt.Errorf("no removal version set for %v gate %q", g.stage.String(), id)
 	}
@@ -222,11 +156,6 @@ func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Ga
 		return nil, fmt.Errorf("toVersion %q is before fromVersion %q", g.toVersion, g.fromVersion)
 	}
 
-=======
-	if g.stage == StageStable && g.removalVersion == "" {
-		return nil, fmt.Errorf("no removal version set for stable gate %q", id)
-	}
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	if _, loaded := r.gates.LoadOrStore(id, g); loaded {
 		return nil, fmt.Errorf("attempted to add pre-existing gate %q", id)
 	}
@@ -237,7 +166,6 @@ func (r *Registry) Register(id string, stage Stage, opts ...RegisterOption) (*Ga
 func (r *Registry) Set(id string, enabled bool) error {
 	v, ok := r.gates.Load(id)
 	if !ok {
-<<<<<<< HEAD
 		validGates := []string{}
 		r.VisitAll(func(g *Gate) {
 			validGates = append(validGates, g.ID())
@@ -260,15 +188,6 @@ func (r *Registry) Set(id string, enabled bool) error {
 	default:
 		g.enabled.Store(enabled)
 	}
-=======
-		return fmt.Errorf("no such feature gate %q", id)
-	}
-	g := v.(*Gate)
-	if g.stage == StageStable {
-		return fmt.Errorf("feature gate %q is stable, can not be modified", id)
-	}
-	g.enabled.Store(enabled)
->>>>>>> 90dc0587b (Initial OTLP ingest support)
 	return nil
 }
 

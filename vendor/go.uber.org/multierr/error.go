@@ -142,6 +142,7 @@ package multierr // import "go.uber.org/multierr"
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"

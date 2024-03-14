@@ -27,7 +27,6 @@ package multierr
 func (merr *multiError) Unwrap() []error {
 	return merr.Errors()
 }
-<<<<<<< HEAD
 
 type multipleErrors interface {
 	Unwrap() []error
@@ -47,5 +46,3 @@ func extractErrors(err error) []error {
 
 	return append(([]error)(nil), eg.Unwrap()...)
 }
-=======
->>>>>>> 90dc0587b (Initial OTLP ingest support)

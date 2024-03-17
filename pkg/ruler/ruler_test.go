@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"io"
 	"math/rand"
 	"net/http"
@@ -17,8 +16,6 @@ import (
 	"testing"
 	"time"
 	"unsafe"
-
-	"github.com/thanos-io/objstore"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -36,12 +33,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"

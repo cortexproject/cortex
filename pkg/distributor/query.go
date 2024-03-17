@@ -23,33 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// Query multiple ingesters and returns a Matrix of samples.
-func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	var matrix model.Matrix
-	err := instrument.CollectedRequest(ctx, "Distributor.Query", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		req, err := ingester_client.ToQueryRequest(from, to, matchers)
-		if err != nil {
-			return err
-		}
-
-		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
-		if err != nil {
-			return err
-		}
-
-		matrix, err = d.queryIngesters(ctx, replicationSet, req)
-		if err != nil {
-			return err
-		}
-
-		if s := opentracing.SpanFromContext(ctx); s != nil {
-			s.LogKV("series", len(matrix))
-		}
-		return nil
-	})
-	return matrix, err
-}
-
 func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*ingester_client.ExemplarQueryResponse, error) {
 	var result *ingester_client.ExemplarQueryResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryExemplars", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {

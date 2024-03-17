@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"io"
 	"math/rand"
 	"net/http"
@@ -1548,7 +1549,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
 	d := &querier.MockDistributor{}
-	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		model.Matrix{
 			&model.SampleStream{
 				Metric: model.Metric{
@@ -1558,11 +1559,22 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 				},
 				Values: []model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
 			},
-		},
-		nil)
+		}, nil)
+
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&client.QueryStreamResponse{
+			Timeseries: []cortexpb.TimeSeries{
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
+						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
+					},
+					Samples: []cortexpb.Sample{{TimestampMs: downAtTimeMs, Value: float64(downAtActiveSec)}},
+				},
+			},
+		}, nil)
 	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
 	querierConfig := querier.DefaultQuerierConfig()
-	querierConfig.IngesterStreaming = false
 
 	// set up an empty store
 	queryables := []querier.QueryableWithFilter{
@@ -1657,14 +1669,14 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 	user3Group1Token := tokenForGroup(user3Group1)
 
 	d := &querier.MockDistributor{}
-	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		model.Matrix{
-			&model.SampleStream{
-				Values: []model.SamplePair{},
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&client.QueryStreamResponse{
+			Timeseries: []cortexpb.TimeSeries{
+				{
+					Samples: []cortexpb.Sample{},
+				},
 			},
 		}, nil)
-	querierConfig := querier.DefaultQuerierConfig()
-	querierConfig.IngesterStreaming = false
 
 	ruleGroupDesc := func(user, name, namespace string) *rulespb.RuleGroupDesc {
 		return &rulespb.RuleGroupDesc{

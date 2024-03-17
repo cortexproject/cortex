@@ -61,7 +61,6 @@ func main() {
 	var (
 		cfg                  cortex.Config
 		eventSampleRate      int
-		ballastBytes         int
 		mutexProfileFraction int
 		blockProfileRate     int
 		printVersion         bool

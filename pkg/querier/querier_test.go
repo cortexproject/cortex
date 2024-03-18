@@ -181,11 +181,6 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}
 
 	db, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
-	samplePairs := []model.SamplePair{}
-
-	for _, s := range samples {
-		samplePairs = append(samplePairs, model.SamplePair{Timestamp: model.Time(s.TimestampMs), Value: model.SampleValue(s.Value)})
-	}
 
 	distributor := &MockDistributor{}
 

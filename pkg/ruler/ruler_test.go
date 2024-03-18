@@ -22,7 +22,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -1548,17 +1547,6 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
 	d := &querier.MockDistributor{}
-	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		model.Matrix{
-			&model.SampleStream{
-				Metric: model.Metric{
-					labels.MetricName: "ALERTS_FOR_STATE",
-					// user1's only alert rule
-					labels.AlertName: model.LabelValue(mockRules["user1"][0].GetRules()[0].Alert),
-				},
-				Values: []model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
-			},
-		}, nil)
 
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{

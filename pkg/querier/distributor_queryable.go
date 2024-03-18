@@ -75,7 +75,6 @@ func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bo
 type distributorQuerier struct {
 	distributor          Distributor
 	mint, maxt           int64
-	streaming            bool
 	streamingMetadata    bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration

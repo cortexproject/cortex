@@ -20,10 +20,6 @@ type MockDistributor struct {
 	mock.Mock
 }
 
-func (m *MockDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).(model.Matrix), args.Error(1)
-}
 func (m *MockDistributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error) {
 	args := m.Called(ctx, from, to, matchers)
 	return args.Get(0).(*client.ExemplarQueryResponse), args.Error(1)

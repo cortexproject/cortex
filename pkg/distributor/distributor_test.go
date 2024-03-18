@@ -1019,11 +1019,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 			assert.Equal(t, &cortexpb.WriteResponse{}, writeResponse)
 			assert.Nil(t, err)
 
-			response, err := ds[0].Query(ctx, 0, 10, tc.matchers...)
-			sort.Sort(response)
-			assert.Equal(t, tc.expectedResponse, response)
-			assert.Equal(t, tc.expectedError, err)
-
+			var response model.Matrix
 			series, err := ds[0].QueryStream(ctx, 0, 10, tc.matchers...)
 			assert.Equal(t, tc.expectedError, err)
 
@@ -1040,7 +1036,6 @@ func TestDistributor_PushQuery(t *testing.T) {
 			// if all other ones are successful, so we're good either has been queried X or X-1
 			// ingesters.
 			if tc.expectedError == nil {
-				assert.Contains(t, []int{tc.expectedIngesters, tc.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "Query"))
 				assert.Contains(t, []int{tc.expectedIngesters, tc.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "QueryStream"))
 			}
 		})
@@ -2038,10 +2033,7 @@ func TestSlowQueries(t *testing.T) {
 					shardByAllLabels: shardByAllLabels,
 				})
 
-				_, err := ds[0].Query(ctx, 0, 10, nameMatcher)
-				assert.Equal(t, expectedErr, err)
-
-				_, err = ds[0].QueryStream(ctx, 0, 10, nameMatcher)
+				_, err := ds[0].QueryStream(ctx, 0, 10, nameMatcher)
 				assert.Equal(t, expectedErr, err)
 			})
 		}

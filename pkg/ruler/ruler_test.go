@@ -17,14 +17,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/thanos-io/objstore"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -35,12 +32,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
@@ -1548,21 +1547,21 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	downAtActiveAtTime := currentTime.Add(time.Minute * -25)
 	downAtActiveSec := downAtActiveAtTime.Unix()
 	d := &querier.MockDistributor{}
-	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		model.Matrix{
-			&model.SampleStream{
-				Metric: model.Metric{
-					labels.MetricName: "ALERTS_FOR_STATE",
-					// user1's only alert rule
-					labels.AlertName: model.LabelValue(mockRules["user1"][0].GetRules()[0].Alert),
+
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&client.QueryStreamResponse{
+			Timeseries: []cortexpb.TimeSeries{
+				{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
+						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
+					},
+					Samples: []cortexpb.Sample{{TimestampMs: downAtTimeMs, Value: float64(downAtActiveSec)}},
 				},
-				Values: []model.SamplePair{{Timestamp: model.Time(downAtTimeMs), Value: model.SampleValue(downAtActiveSec)}},
 			},
-		},
-		nil)
+		}, nil)
 	d.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Panic("This should not be called for the ruler use-cases.")
 	querierConfig := querier.DefaultQuerierConfig()
-	querierConfig.IngesterStreaming = false
 
 	// set up an empty store
 	queryables := []querier.QueryableWithFilter{
@@ -1657,14 +1656,14 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 	user3Group1Token := tokenForGroup(user3Group1)
 
 	d := &querier.MockDistributor{}
-	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		model.Matrix{
-			&model.SampleStream{
-				Values: []model.SamplePair{},
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&client.QueryStreamResponse{
+			Timeseries: []cortexpb.TimeSeries{
+				{
+					Samples: []cortexpb.Sample{},
+				},
 			},
 		}, nil)
-	querierConfig := querier.DefaultQuerierConfig()
-	querierConfig.IngesterStreaming = false
 
 	ruleGroupDesc := func(user, name, namespace string) *rulespb.RuleGroupDesc {
 		return &rulespb.RuleGroupDesc{

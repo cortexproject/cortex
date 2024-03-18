@@ -114,10 +114,6 @@ querier:
   # CLI flag: -querier.batch-iterators
   [batch_iterators: <boolean> | default = true]
 
-  # Use streaming RPCs to query ingester.
-  # CLI flag: -querier.ingester-streaming
-  [ingester_streaming: <boolean> | default = true]
-
   # Use streaming RPCs for metadata APIs from ingester.
   # CLI flag: -querier.ingester-metadata-streaming
   [ingester_metadata_streaming: <boolean> | default = false]

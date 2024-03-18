@@ -27,87 +27,70 @@ import (
 
 func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 	tests := map[string]struct {
-		blocksShardingStrategy   string // Empty means sharding is disabled.
-		tenantShardSize          int
-		ingesterStreamingEnabled bool
-		indexCacheBackend        string
-		chunkCacheBackend        string
-		bucketIndexEnabled       bool
+		blocksShardingStrategy string // Empty means sharding is disabled.
+		tenantShardSize        int
+		indexCacheBackend      string
+		chunkCacheBackend      string
+		bucketIndexEnabled     bool
 	}{
-		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
-			blocksShardingStrategy:   "",
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-			chunkCacheBackend:        tsdb.CacheBackendMemcached,
+		"blocks sharding disabled, memcached index cache": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, memcached)": {
-			blocksShardingStrategy:   "",
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
-			chunkCacheBackend:        tsdb.CacheBackendMemcached,
+		"blocks sharding disabled, multilevel index cache (inmemory, memcached)": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
-			blocksShardingStrategy:   "",
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-			chunkCacheBackend:        tsdb.CacheBackendRedis,
+		"blocks sharding disabled, redis index cache": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
 		},
-		"blocks sharding disabled, ingester gRPC streaming disabled, multilevel index cache (inmemory, redis)": {
-			blocksShardingStrategy:   "",
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
-			chunkCacheBackend:        tsdb.CacheBackendRedis,
+		"blocks sharding disabled, multilevel index cache (inmemory, redis)": {
+			blocksShardingStrategy: "",
+			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
 		},
-		"blocks default sharding, ingester gRPC streaming disabled, inmemory index cache": {
-			blocksShardingStrategy:   "default",
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
+		"blocks default sharding, inmemory index cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
 		},
-		"blocks default sharding, ingester gRPC streaming enabled, inmemory index cache": {
-			blocksShardingStrategy:   "default",
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
+		"blocks default sharding, memcached index cache": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks default sharding, ingester gRPC streaming enabled, memcached index cache": {
-			blocksShardingStrategy:   "default",
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-			chunkCacheBackend:        tsdb.CacheBackendMemcached,
+		"blocks shuffle sharding, memcached index cache": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks shuffle sharding, ingester gRPC streaming enabled, memcached index cache": {
-			blocksShardingStrategy:   "shuffle-sharding",
-			tenantShardSize:          1,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-			chunkCacheBackend:        tsdb.CacheBackendMemcached,
+		"blocks default sharding, inmemory index cache, bucket index enabled": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
+			bucketIndexEnabled:     true,
 		},
-		"blocks default sharding, ingester gRPC streaming enabled, inmemory index cache, bucket index enabled": {
-			blocksShardingStrategy:   "default",
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
-			bucketIndexEnabled:       true,
+		"blocks shuffle sharding, memcached index cache, bucket index enabled": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
+			bucketIndexEnabled:     true,
 		},
-		"blocks shuffle sharding, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
-			blocksShardingStrategy:   "shuffle-sharding",
-			tenantShardSize:          1,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
-			bucketIndexEnabled:       true,
+		"blocks default sharding, redis index cache, bucket index enabled": {
+			blocksShardingStrategy: "default",
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
+			bucketIndexEnabled:     true,
 		},
-		"blocks default sharding, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
-			blocksShardingStrategy:   "default",
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-			chunkCacheBackend:        tsdb.CacheBackendRedis,
-			bucketIndexEnabled:       true,
-		},
-		"blocks shuffle sharding, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
-			blocksShardingStrategy:   "shuffle-sharding",
-			tenantShardSize:          1,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-			chunkCacheBackend:        tsdb.CacheBackendRedis,
-			bucketIndexEnabled:       true,
+		"blocks shuffle sharding, redis index cache, bucket index enabled": {
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
+			bucketIndexEnabled:     true,
 		},
 	}
 
@@ -134,7 +117,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-store-gateway.sharding-enabled":                   strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
 					"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
 					"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
-					"-querier.ingester-streaming":                       strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 					"-querier.query-store-for-labels-enabled":           "true",
 					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
@@ -319,52 +301,39 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 
 func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 	tests := map[string]struct {
-		blocksShardingEnabled    bool
-		ingesterStreamingEnabled bool
-		indexCacheBackend        string
-		bucketIndexEnabled       bool
+		blocksShardingEnabled bool
+		indexCacheBackend     string
+		bucketIndexEnabled    bool
 	}{
-		"blocks sharding enabled, ingester gRPC streaming disabled, inmemory index cache": {
-			blocksShardingEnabled:    true,
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
+		"blocks sharding enabled, inmemory index cache": {
+			blocksShardingEnabled: true,
+			indexCacheBackend:     tsdb.IndexCacheBackendInMemory,
 		},
-		"blocks sharding enabled, ingester gRPC streaming enabled, inmemory index cache": {
-			blocksShardingEnabled:    true,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendInMemory,
+		"blocks sharding disabled, memcached index cache": {
+			blocksShardingEnabled: false,
+			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
 		},
-		"blocks sharding disabled, ingester gRPC streaming disabled, memcached index cache": {
-			blocksShardingEnabled:    false,
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		"blocks sharding enabled, memcached index cache": {
+			blocksShardingEnabled: true,
+			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
 		},
-		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache": {
-			blocksShardingEnabled:    true,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
+		"blocks sharding enabled, memcached index cache, bucket index enabled": {
+			blocksShardingEnabled: true,
+			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
+			bucketIndexEnabled:    true,
 		},
-		"blocks sharding enabled, ingester gRPC streaming enabled, memcached index cache, bucket index enabled": {
-			blocksShardingEnabled:    true,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendMemcached,
-			bucketIndexEnabled:       true,
+		"blocks sharding disabled,redis index cache": {
+			blocksShardingEnabled: false,
+			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
 		},
-		"blocks sharding disabled, ingester gRPC streaming disabled, redis index cache": {
-			blocksShardingEnabled:    false,
-			ingesterStreamingEnabled: false,
-			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
+		"blocks sharding enabled, redis index cache": {
+			blocksShardingEnabled: true,
+			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
 		},
-		"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache": {
-			blocksShardingEnabled:    true,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-		},
-		"blocks sharding enabled, ingester gRPC streaming enabled, redis index cache, bucket index enabled": {
-			blocksShardingEnabled:    true,
-			ingesterStreamingEnabled: true,
-			indexCacheBackend:        tsdb.IndexCacheBackendRedis,
-			bucketIndexEnabled:       true,
+		"blocks sharding enabled, redis index cache, bucket index enabled": {
+			blocksShardingEnabled: true,
+			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
+			bucketIndexEnabled:    true,
 		},
 	}
 
@@ -398,7 +367,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
 					"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
 					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
-					"-querier.ingester-streaming":                       strconv.FormatBool(testCfg.ingesterStreamingEnabled),
 					"-querier.query-store-for-labels-enabled":           "true",
 					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 					// Ingester.
@@ -1041,7 +1009,6 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.tsdb.ship-interval":         "1s",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
-		"-querier.ingester-streaming":                "true",
 		"-querier.query-store-for-labels-enabled":    "true",
 		"-querier.max-fetched-series-per-query":      "3",
 	})

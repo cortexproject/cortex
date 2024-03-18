@@ -101,7 +101,7 @@ func main() {
 	flag.BoolVar(&printModules, "modules", false, "List available values that can be used as target.")
 
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
-	flagext.DeprecatedFlag(flag.CommandLine, "mem-ballast-size-bytes", "Deprecated: Setting this flag will not take any effect. Size of memory ballast to allocate", util_log.Logger)
+	flagext.DeprecatedFlag(flag.CommandLine, "mem-ballast-size-bytes", "Deprecated: Setting this flag will not take any effect, for similar functionality use GOMEMLIMIT. Size of memory ballast to allocate", util_log.Logger)
 
 	usage := flag.CommandLine.Usage
 	flag.CommandLine.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }

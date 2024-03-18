@@ -5,7 +5,7 @@ go 1.21
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/alecthomas/units v0.0.0-20231202071711-9a357b53e9c9
-	github.com/alicebob/miniredis/v2 v2.30.4
+	github.com/alicebob/miniredis/v2 v2.32.1
 	github.com/armon/go-metrics v0.4.1
 	github.com/aws/aws-sdk-go v1.50.25
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
@@ -203,7 +203,7 @@ require (
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/vimeo/galaxycache v0.0.0-20210323154928-b7e5d71c067a // indirect
 	github.com/weaveworks/promrus v1.2.0 // indirect
-	github.com/yuin/gopher-lua v1.1.0 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zhangyunhao116/umap v0.0.0-20221211160557-cb7705fafa39 // indirect
 	go.mongodb.org/mongo-driver v1.13.1 // indirect
 	go.opencensus.io v0.24.0 // indirect

@@ -61,7 +61,6 @@ func main() {
 	var (
 		cfg                  cortex.Config
 		eventSampleRate      int
-		ballastBytes         int
 		mutexProfileFraction int
 		blockProfileRate     int
 		printVersion         bool
@@ -96,11 +95,13 @@ func main() {
 	_ = flag.CommandLine.Bool(configExpandENV, false, "Expands ${var} or $var in config according to the values of the environment variables.")
 
 	flag.IntVar(&eventSampleRate, "event.sample-rate", 0, "How often to sample observability events (0 = never).")
-	flag.IntVar(&ballastBytes, "mem-ballast-size-bytes", 0, "Size of memory ballast to allocate.")
 	flag.IntVar(&mutexProfileFraction, "debug.mutex-profile-fraction", 0, "Fraction of mutex contention events that are reported in the mutex profile. On average 1/rate events are reported. 0 to disable.")
 	flag.IntVar(&blockProfileRate, "debug.block-profile-rate", 0, "Fraction of goroutine blocking events that are reported in the blocking profile. 1 to include every blocking event in the profile, 0 to disable.")
 	flag.BoolVar(&printVersion, "version", false, "Print Cortex version and exit.")
 	flag.BoolVar(&printModules, "modules", false, "List available values that can be used as target.")
+
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(flag.CommandLine, "mem-ballast-size-bytes", "Deprecated: Setting this flag will not take any effect, for similar functionality use GOMEMLIMIT. Size of memory ballast to allocate", util_log.Logger)
 
 	usage := flag.CommandLine.Usage
 	flag.CommandLine.Usage = func() { /* don't do anything by default, we will print usage ourselves, but only when requested. */ }
@@ -151,10 +152,6 @@ func main() {
 	}
 
 	util_log.InitLogger(&cfg.Server)
-
-	// Allocate a block of memory to alter GC behaviour. See https://github.com/golang/go/issues/23044
-	ballast := make([]byte, ballastBytes)
-
 	util.InitEvents(eventSampleRate)
 
 	ctx, cancelFn := context.WithCancel(context.Background())
@@ -203,7 +200,6 @@ func main() {
 	err = t.Run()
 	cancelFn()
 
-	runtime.KeepAlive(ballast)
 	util_log.CheckFatal("running cortex", err)
 }
 

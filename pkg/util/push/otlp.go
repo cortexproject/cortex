@@ -1,18 +1,17 @@
 package push
 
 import (
-	"io"
 	"net/http"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -31,16 +30,7 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 				logger = log.WithSourceIPs(source, logger)
 			}
 		}
-
-		buf, err := io.ReadAll(r.Body)
-		if err != nil {
-			level.Error(logger).Log("err", err.Error())
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		req := pmetricotlp.NewExportRequest()
-		err = req.UnmarshalProto(buf)
+		req, err := remote.DecodeOTLPWriteRequest(r)
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)

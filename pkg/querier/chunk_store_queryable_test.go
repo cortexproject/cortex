@@ -20,9 +20,6 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
-// Make sure that chunkSeries implements SeriesWithChunks
-var _ SeriesWithChunks = &chunkSeries{}
-
 func TestChunkQueryable(t *testing.T) {
 	t.Parallel()
 	opts := promql.EngineOpts{

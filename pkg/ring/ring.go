@@ -193,12 +193,13 @@ type Ring struct {
 	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*Ring
 
-	memberOwnershipGaugeVec *prometheus.GaugeVec
-	numMembersGaugeVec      *prometheus.GaugeVec
-	totalTokensGauge        prometheus.Gauge
-	numTokensGaugeVec       *prometheus.GaugeVec
-	oldestTimestampGaugeVec *prometheus.GaugeVec
-	reportedOwners          map[string]struct{}
+	memberOwnershipGaugeVec  *prometheus.GaugeVec
+	numMembersGaugeVec       *prometheus.GaugeVec
+	numMembersByZoneGaugeVec *prometheus.GaugeVec
+	totalTokensGauge         prometheus.Gauge
+	numTokensGaugeVec        *prometheus.GaugeVec
+	oldestTimestampGaugeVec  *prometheus.GaugeVec
+	reportedOwners           map[string]struct{}
 
 	logger log.Logger
 }
@@ -249,6 +250,11 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Help:        "Number of members in the ring",
 			ConstLabels: map[string]string{"name": name}},
 			[]string{"state"}),
+		numMembersByZoneGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "ring_members_by_zone",
+			Help:        "Number of members in the ring by zone",
+			ConstLabels: map[string]string{"name": name}},
+			[]string{"zone", "state"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
@@ -338,6 +344,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
+	prevRingZones := r.ringZones
 	r.ringDesc = ringDesc
 	r.ringTokens = ringTokens
 	r.ringTokensByZone = ringTokensByZone
@@ -347,6 +354,24 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	if r.shuffledSubringCache != nil {
 		// Invalidate all cached subrings.
 		r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
+	}
+	//cleaning up non-existent zone metrics
+	for _, prevZone := range prevRingZones {
+		zoneStillExists := false
+		for _, currZone := range r.ringZones {
+			if prevZone == currZone {
+				zoneStillExists = true
+				break
+			}
+		}
+		if !zoneStillExists {
+			//need to remove non existing zone
+			for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
+				if ok := r.numMembersByZoneGaugeVec.DeleteLabelValues(prevZone, s); !ok {
+					level.Warn(r.logger).Log("msg", "failed to remove ring_members_by_zone metric for non existing zone", "zone", prevZone, "state", s)
+				}
+			}
+		}
 	}
 	r.updateRingMetrics(rc)
 }
@@ -604,12 +629,20 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 	}
 
 	numByState := map[string]int{}
+	numByZoneAndState := map[string]map[string]int{}
 	oldestTimestampByState := map[string]int64{}
 
 	// Initialized to zero so we emit zero-metrics (instead of not emitting anything)
-	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
-		numByState[s] = 0
-		oldestTimestampByState[s] = 0
+	zones := r.ringZones
+	for _, zone := range zones {
+		if _, ok := numByZoneAndState[zone]; !ok {
+			numByZoneAndState[zone] = make(map[string]int)
+		}
+		for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String()} {
+			numByState[s] = 0
+			oldestTimestampByState[s] = 0
+			numByZoneAndState[zone][s] = 0
+		}
 	}
 
 	for _, instance := range r.ringDesc.Ingesters {
@@ -618,6 +651,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 			s = unhealthy
 		}
 		numByState[s]++
+		numByZoneAndState[instance.Zone][s]++
 		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
 			oldestTimestampByState[s] = instance.Timestamp
 		}
@@ -625,6 +659,11 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 
 	for state, count := range numByState {
 		r.numMembersGaugeVec.WithLabelValues(state).Set(float64(count))
+	}
+	for zone, numByStateCount := range numByZoneAndState {
+		for state, count := range numByStateCount {
+			r.numMembersByZoneGaugeVec.WithLabelValues(zone, state).Set(float64(count))
+		}
 	}
 	for state, timestamp := range oldestTimestampByState {
 		r.oldestTimestampGaugeVec.WithLabelValues(state).Set(float64(timestamp))

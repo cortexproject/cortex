@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -433,10 +434,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	// we have all the sets from different sources (chunk from store, chunks from ingesters,
-	// time series from store and time series from ingesters).
-	// mergeSeriesSets will return sorted set.
-	return q.mergeSeriesSets(result)
+	return storage.NewMergeSeriesSet(result, storage.ChainedSeriesMerge)
 }
 
 // LabelValues implements storage.Querier.
@@ -552,74 +550,6 @@ func (querier) Close() error {
 	return nil
 }
 
-func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
-	// Here we deal with sets that are based on chunks and build single set from them.
-	// Remaining sets are merged with chunks-based one using storage.NewMergeSeriesSet
-
-	otherSets := []storage.SeriesSet(nil)
-	chunks := []chunk.Chunk(nil)
-
-	for _, set := range sets {
-		nonChunkSeries := []storage.Series(nil)
-
-		// SeriesSet may have some series backed up by chunks, and some not.
-		for set.Next() {
-			s := set.At()
-
-			if sc, ok := s.(SeriesWithChunks); ok {
-				chunks = append(chunks, sc.Chunks()...)
-			} else {
-				nonChunkSeries = append(nonChunkSeries, s)
-			}
-		}
-
-		if err := set.Err(); err != nil {
-			otherSets = append(otherSets, storage.ErrSeriesSet(err))
-		} else if len(nonChunkSeries) > 0 {
-			otherSets = append(otherSets, &sliceSeriesSet{series: nonChunkSeries, ix: -1})
-		}
-	}
-
-	if len(chunks) == 0 {
-		return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
-	}
-
-	// partitionChunks returns set with sorted series, so it can be used by NewMergeSeriesSet
-	chunksSet := partitionChunks(chunks, q.mint, q.maxt, q.chunkIterFn)
-
-	if len(otherSets) == 0 {
-		return chunksSet
-	}
-
-	otherSets = append(otherSets, chunksSet)
-	return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
-}
-
-type sliceSeriesSet struct {
-	series []storage.Series
-	ix     int
-}
-
-func (s *sliceSeriesSet) Next() bool {
-	s.ix++
-	return s.ix < len(s.series)
-}
-
-func (s *sliceSeriesSet) At() storage.Series {
-	if s.ix < 0 || s.ix >= len(s.series) {
-		return nil
-	}
-	return s.series[s.ix]
-}
-
-func (s *sliceSeriesSet) Err() error {
-	return nil
-}
-
-func (s *sliceSeriesSet) Warnings() annotations.Annotations {
-	return nil
-}
-
 type storeQueryable struct {
 	QueryableWithFilter
 	QueryStoreAfter time.Duration
@@ -726,12 +656,11 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 
 	series := make([]storage.Series, 0, len(chunksBySeries))
 	for i := range chunksBySeries {
-		series = append(series, &chunkSeries{
-			labels:            chunksBySeries[i][0].Metric,
-			chunks:            chunksBySeries[i],
-			chunkIteratorFunc: iteratorFunc,
-			mint:              mint,
-			maxt:              maxt,
+		series = append(series, &storage.SeriesEntry{
+			Lset: chunksBySeries[i][0].Metric,
+			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
+				return iteratorFunc(chunksBySeries[i], model.Time(mint), model.Time(maxt))
+			},
 		})
 	}
 

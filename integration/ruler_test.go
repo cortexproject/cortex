@@ -461,7 +461,7 @@ func testRulerAPIWithSharding(t *testing.T, enableAPIRulesBackup bool) {
 	}
 	if enableAPIRulesBackup {
 		overrides["-ruler.ring.replication-factor"] = "3"
-		overrides["-ruler.api-enable-rules-backup"] = "true"
+		overrides["-experimental.ruler.api-enable-rules-backup"] = "true"
 	}
 	rulerFlags := mergeFlags(
 		BlocksStorageFlags(),

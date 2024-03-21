@@ -35,9 +35,9 @@ func (r *loader) Parse(query string) (parser.Expr, error) {
 // rulesBackupManager is an in-memory store that holds []promRules.Group of multiple users. It only stores the Groups,
 // it doesn't evaluate them.
 type rulesBackupManager struct {
-	backupRuleGroupsMtx sync.RWMutex
-	backupRuleGroups    map[string][]*promRules.Group
-	cfg                 Config
+	backupRuleGroupsMtx      sync.RWMutex
+	inMemoryRuleGroupsBackup map[string][]*promRules.Group
+	cfg                      Config
 
 	logger log.Logger
 
@@ -47,9 +47,9 @@ type rulesBackupManager struct {
 
 func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registerer) *rulesBackupManager {
 	return &rulesBackupManager{
-		backupRuleGroups: make(map[string][]*promRules.Group),
-		cfg:              cfg,
-		logger:           logger,
+		inMemoryRuleGroupsBackup: make(map[string][]*promRules.Group),
+		cfg:                      cfg,
+		logger:                   logger,
 
 		backupGroupRulesCount: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
@@ -80,7 +80,7 @@ func (r *rulesBackupManager) backUpRuleGroups(_ context.Context, ruleGroups map[
 	r.backupRuleGroupsMtx.Lock()
 	defer r.backupRuleGroupsMtx.Unlock()
 	r.updateMetrics(backupRuleGroups)
-	r.backupRuleGroups = backupRuleGroups
+	r.inMemoryRuleGroupsBackup = backupRuleGroups
 }
 
 // ruleGroupListToPromGroups converts rulespb.RuleGroupList to []*promRules.Group by creating a single use
@@ -120,7 +120,7 @@ func (r *rulesBackupManager) getRuleGroups(userID string) []*promRules.Group {
 	var result []*promRules.Group
 	r.backupRuleGroupsMtx.RLock()
 	defer r.backupRuleGroupsMtx.RUnlock()
-	if groups, exists := r.backupRuleGroups[userID]; exists {
+	if groups, exists := r.inMemoryRuleGroupsBackup[userID]; exists {
 		result = groups
 	}
 	return result
@@ -134,7 +134,7 @@ func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string][]*promRul
 			r.backupGroupRulesCount.WithLabelValues(user, key).Set(float64(len(g.Rules())))
 			keptGroups[key] = nil
 		}
-		oldGroups := r.backupRuleGroups[user]
+		oldGroups := r.inMemoryRuleGroupsBackup[user]
 		for _, g := range oldGroups {
 			key := promRules.GroupKey(g.File(), g.Name())
 			if _, exists := keptGroups[key]; !exists {
@@ -143,7 +143,7 @@ func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string][]*promRul
 		}
 	}
 
-	for user, groups := range r.backupRuleGroups {
+	for user, groups := range r.inMemoryRuleGroupsBackup {
 		if _, exists := newBackupGroups[user]; exists {
 			continue
 		}

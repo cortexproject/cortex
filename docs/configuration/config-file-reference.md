@@ -4233,12 +4233,13 @@ ring:
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
-  # The replication factor to use when loading rule groups for API HA.
+  # EXPERIMENTAL: The replication factor to use when loading rule groups for API
+  # HA.
   # CLI flag: -ruler.ring.replication-factor
   [replication_factor: <int> | default = 1]
 
-  # True to enable zone-awareness and load rule groups across different
-  # availability zones for API HA.
+  # EXPERIMENTAL: True to enable zone-awareness and load rule groups across
+  # different availability zones for API HA.
   # CLI flag: -ruler.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
@@ -4263,19 +4264,19 @@ ring:
 # CLI flag: -experimental.ruler.enable-api
 [enable_api: <boolean> | default = false]
 
-# Enable rulers to store a copy of rules owned by other rulers with default
-# state (state before any evaluation) and send this copy in list API requests as
-# backup in case the ruler who owns the rule fails to send its rules. This
-# allows the rules API to handle ruler outage by returning rules with default
-# state. Ring replication-factor needs to be set to 3 or more for this to be
-# useful.
-# CLI flag: -ruler.api-enable-rules-backup
+# EXPERIMENTAL: Enable rulers to store a copy of rules owned by other rulers
+# with default state (state before any evaluation) and send this copy in list
+# API requests as backup in case the ruler who owns the rule fails to send its
+# rules. This allows the rules API to handle ruler outage by returning rules
+# with default state. Ring replication-factor needs to be set to 3 or more for
+# this to be useful.
+# CLI flag: -experimental.ruler.api-enable-rules-backup
 [api_enable_rules_backup: <boolean> | default = false]
 
-# Remove duplicate rules in the prometheus rules and alerts API response. If
-# there are duplicate rules the rule with the latest evaluation timestamp will
-# be kept.
-# CLI flag: -ruler.api-deduplicate-rules
+# EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API
+# response. If there are duplicate rules the rule with the latest evaluation
+# timestamp will be kept.
+# CLI flag: -experimental.ruler.api-deduplicate-rules
 [api_deduplicate_rules: <boolean> | default = false]
 
 # Comma separated list of tenants whose rules this ruler can evaluate. If

@@ -115,7 +115,7 @@ func TestBackUpRuleGroups(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			manager.backUpRuleGroups(context.TODO(), tc.input)
-			require.Equal(t, len(tc.expectedOutput), len(manager.backupRuleGroups))
+			require.Equal(t, len(tc.expectedOutput), len(manager.inMemoryRuleGroupsBackup))
 			for user, expectedGroupOptions := range tc.expectedOutput {
 				loadedGroups := manager.getRuleGroups(user)
 				expectedGroups := make([]*promRules.Group, 0, len(expectedGroupOptions))

@@ -1,12 +1,13 @@
 package rulespb
 
 import (
+	"testing"
+	"time"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v3"
-	"testing"
-	"time"
 )
 
 func TestProto(t *testing.T) {

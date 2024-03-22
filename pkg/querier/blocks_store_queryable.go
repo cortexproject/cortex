@@ -407,7 +407,7 @@ func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, match
 		return nil, nil, err
 	}
 
-	return strutil.MergeSlices(resValueSets...), resWarnings, nil
+	return util.MergeSlicesParallel(util.DefaultMergeSlicesParallelism, resValueSets...), resWarnings, nil
 }
 
 func (q *blocksStoreQuerier) Close() error {

@@ -166,7 +166,7 @@ func (r *DefaultMultiTenantManager) deleteRuleCache(user string) {
 }
 
 func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
-	r.rulesBackupManager.backUpRuleGroups(ctx, ruleGroups)
+	r.rulesBackupManager.setRuleGroups(ctx, ruleGroups)
 }
 
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the

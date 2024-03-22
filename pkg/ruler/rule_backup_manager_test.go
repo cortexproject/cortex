@@ -114,7 +114,7 @@ func TestBackUpRuleGroups(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			manager.backUpRuleGroups(context.TODO(), tc.input)
+			manager.setRuleGroups(context.TODO(), tc.input)
 			require.Equal(t, len(tc.expectedOutput), len(manager.inMemoryRuleGroupsBackup))
 			for user, expectedGroupOptions := range tc.expectedOutput {
 				loadedGroups := manager.getRuleGroups(user)
@@ -154,7 +154,7 @@ func TestBackUpRuleGroupsMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	manager := newRulesBackupManager(cfg, log.NewNopLogger(), reg)
 
-	manager.backUpRuleGroups(context.TODO(), map[string]rulespb.RuleGroupList{
+	manager.setRuleGroups(context.TODO(), map[string]rulespb.RuleGroupList{
 		"user1": {&g1, &g2},
 		"user2": {&g1},
 	})
@@ -183,7 +183,7 @@ func TestBackUpRuleGroupsMetrics(t *testing.T) {
 		"rule_group": "ns1;g2",
 	}, float64(1))
 
-	manager.backUpRuleGroups(context.TODO(), map[string]rulespb.RuleGroupList{
+	manager.setRuleGroups(context.TODO(), map[string]rulespb.RuleGroupList{
 		"user1": {&g2Updated},
 	})
 	gm, err = reg.Gather()

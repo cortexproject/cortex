@@ -64,8 +64,8 @@ func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registe
 	}
 }
 
-// backUpRuleGroups updates the map[string][]*promRules.Group that the rulesBackupManager stores in memory.
-func (r *rulesBackupManager) backUpRuleGroups(_ context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+// setRuleGroups updates the map[string][]*promRules.Group that the rulesBackupManager stores in memory.
+func (r *rulesBackupManager) setRuleGroups(_ context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
 	backupRuleGroups := make(map[string][]*promRules.Group)
 	for user, groups := range ruleGroups {
 		promGroups, err := r.ruleGroupListToPromGroups(user, groups)

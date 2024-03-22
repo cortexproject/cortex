@@ -908,6 +908,7 @@ func BenchmarkBlocksStoreQuerier_Labels(b *testing.B) {
 		for j := i; j < i+300; j++ {
 			values = append(values, fmt.Sprintf("Value_%v", j))
 		}
+		sort.Strings(values)
 		resps[&storeGatewayClientMock{
 			remoteAddr: "1.1.1.1",
 			mockedLabelValuesResponse: &storepb.LabelValuesResponse{

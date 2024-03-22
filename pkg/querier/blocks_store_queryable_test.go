@@ -892,6 +892,56 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 }
 
+func BenchmarkBlocksStoreQuerier_Labels(b *testing.B) {
+	const (
+		minT = int64(10)
+		maxT = int64(20)
+	)
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+	reg := prometheus.NewPedanticRegistry()
+	blocks := bucketindex.Blocks{}
+	resps := map[BlocksStoreClient][]ulid.ULID{}
+	for i := 0; i < 500; i++ {
+		b := &bucketindex.Block{ID: ulid.MustNew(uint64(i), nil)}
+		blocks = append(blocks, b)
+		values := []string{}
+		for j := i; j < i+300; j++ {
+			values = append(values, fmt.Sprintf("Value_%v", j))
+		}
+		resps[&storeGatewayClientMock{
+			remoteAddr: "1.1.1.1",
+			mockedLabelValuesResponse: &storepb.LabelValuesResponse{
+				Values:   values,
+				Warnings: []string{},
+				Hints:    mockValuesHints(b.ID),
+			},
+		}] = []ulid.ULID{b.ID}
+	}
+
+	stores := &blocksStoreSetMock{mockedResponses: []interface{}{resps}, rotateMockResults: true}
+	finder := &blocksFinderMock{}
+
+	finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT).Return(blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+
+	q := &blocksStoreQuerier{
+		minT:        minT,
+		maxT:        maxT,
+		finder:      finder,
+		stores:      stores,
+		consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+		logger:      log.NewNopLogger(),
+		metrics:     newBlocksStoreQueryableMetrics(reg),
+		limits:      &blocksStoreLimitsMock{},
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _, err := q.LabelValues(ctx, labels.MetricName)
+		require.NoError(b, err)
+	}
+}
+
 func TestBlocksStoreQuerier_Labels(t *testing.T) {
 	t.Parallel()
 
@@ -1619,6 +1669,8 @@ type blocksStoreSetMock struct {
 
 	mockedResponses []interface{}
 	nextResult      int
+
+	rotateMockResults bool
 }
 
 func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.ULID][]string, _ map[ulid.ULID]map[string]int) (map[BlocksStoreClient][]ulid.ULID, error) {
@@ -1628,6 +1680,10 @@ func (m *blocksStoreSetMock) GetClientsFor(_ string, _ []ulid.ULID, _ map[ulid.U
 
 	res := m.mockedResponses[m.nextResult]
 	m.nextResult++
+
+	if m.rotateMockResults {
+		m.nextResult = m.nextResult % len(m.mockedResponses)
+	}
 
 	if err, ok := res.(error); ok {
 		return nil, err

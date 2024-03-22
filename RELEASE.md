@@ -146,7 +146,7 @@ To publish a stable release:
 1. Sign the files with your PGP key: `find . -maxdepth 1 -type f | xargs -L 1 gpg --armor --detach-sign`
 1. Attach `sbom.tar.gz` to the release
 1. Attach the generated `.asc` files to the release
-1. Attach `sign.pub` which contains the the public key of the PGP key you used to sign the binaries
+1. Attach `sign.pub` which contains the public key of the PGP key you used to sign the binaries
    * You can get the public key by doing `gpg --armor --export <your@email.address>`
 
 ### How to tag a release

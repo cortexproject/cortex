@@ -492,7 +492,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 			err = c.CheckReplica(ctx, "user1", "replicaGroup", "replica-1", testData.updateTime)
 			require.NoError(t, err)
 
-			// Assert on the the received timestamp
+			// Assert on the received timestamp
 			checkReplicaTimestamp(t, time.Second, c, "user1", "replicaGroup", "replica-1", testData.expectedTimestamp)
 		})
 	}

@@ -40,8 +40,13 @@ type MultiRuntimeConfig struct {
 	// or to gossip). Doing this allows nice migration between stores. Empty values are ignored.
 	PrimaryStore string `yaml:"primary"`
 
-	// Mirroring enabled or not. Nil = no change.
-	Mirroring *bool `yaml:"mirror_enabled"`
+	// Mirroring enabled or not.
+	Mirroring bool `yaml:"mirror_enabled"`
+}
+
+func (cfg *MultiRuntimeConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.PrimaryStore, prefix+".primary", "", "The primary store used by MultiClient. Can be updated at runtime to switch between different stores, enabling smooth migration.")
+	f.BoolVar(&cfg.Mirroring, prefix+".mirror-enabled", false, "Indicates whether mirroring is enabled or disabled.")
 }
 
 type kvclient struct {
@@ -119,14 +124,12 @@ func (m *MultiClient) watchConfigChannel(ctx context.Context, configChannel <-ch
 				return
 			}
 
-			if cfg.Mirroring != nil {
-				enabled := *cfg.Mirroring
-				old := m.mirroringEnabled.Swap(enabled)
-				if old != enabled {
-					level.Info(m.logger).Log("msg", "toggled mirroring", "enabled", enabled)
-				}
-				m.updateMirrorEnabledGauge()
+			enabled := cfg.Mirroring
+			old := m.mirroringEnabled.Swap(enabled)
+			if old != enabled {
+				level.Info(m.logger).Log("msg", "toggled mirroring", "enabled", enabled)
 			}
+			m.updateMirrorEnabledGauge()
 
 			if cfg.PrimaryStore != "" {
 				switched, err := m.setNewPrimaryClient(cfg.PrimaryStore)

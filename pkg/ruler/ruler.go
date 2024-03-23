@@ -829,15 +829,16 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest) ([]*Grou
 				alerts := []*AlertStateDesc{}
 				for _, a := range rule.ActiveAlerts() {
 					alerts = append(alerts, &AlertStateDesc{
-						State:       a.State.String(),
-						Labels:      cortexpb.FromLabelsToLabelAdapters(a.Labels),
-						Annotations: cortexpb.FromLabelsToLabelAdapters(a.Annotations),
-						Value:       a.Value,
-						ActiveAt:    a.ActiveAt,
-						FiredAt:     a.FiredAt,
-						ResolvedAt:  a.ResolvedAt,
-						LastSentAt:  a.LastSentAt,
-						ValidUntil:  a.ValidUntil,
+						State:           a.State.String(),
+						Labels:          cortexpb.FromLabelsToLabelAdapters(a.Labels),
+						Annotations:     cortexpb.FromLabelsToLabelAdapters(a.Annotations),
+						Value:           a.Value,
+						ActiveAt:        a.ActiveAt,
+						FiredAt:         a.FiredAt,
+						ResolvedAt:      a.ResolvedAt,
+						LastSentAt:      a.LastSentAt,
+						ValidUntil:      a.ValidUntil,
+						KeepFiringSince: a.KeepFiringSince,
 					})
 				}
 				ruleDesc = &RuleStateDesc{

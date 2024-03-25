@@ -13,40 +13,40 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 )
 
-type BlockIDsFetcher struct {
-	logger              log.Logger
-	bkt                 objstore.Bucket
-	userID              string
-	cfgProvider         bucket.TenantConfigProvider
-	baseBlockIDsFetcher block.Lister
+type BlockLister struct {
+	logger      log.Logger
+	bkt         objstore.Bucket
+	userID      string
+	cfgProvider bucket.TenantConfigProvider
+	baseLister  block.Lister
 }
 
-func NewBlockIDsFetcher(logger log.Logger, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider) *BlockIDsFetcher {
+func NewBlockLister(logger log.Logger, bkt objstore.Bucket, userID string, cfgProvider bucket.TenantConfigProvider) *BlockLister {
 	userBkt := bucket.NewUserBucketClient(userID, bkt, cfgProvider)
-	baseBlockIDsFetcher := block.NewRecursiveLister(logger, userBkt)
-	return &BlockIDsFetcher{
-		logger:              logger,
-		bkt:                 bkt,
-		userID:              userID,
-		cfgProvider:         cfgProvider,
-		baseBlockIDsFetcher: baseBlockIDsFetcher,
+	baseLister := block.NewConcurrentLister(logger, userBkt)
+	return &BlockLister{
+		logger:      logger,
+		bkt:         bkt,
+		userID:      userID,
+		cfgProvider: cfgProvider,
+		baseLister:  baseLister,
 	}
 }
 
-func (f *BlockIDsFetcher) GetActiveAndPartialBlockIDs(ctx context.Context, ch chan<- ulid.ULID) (partialBlocks map[ulid.ULID]bool, err error) {
+func (f *BlockLister) GetActiveAndPartialBlockIDs(ctx context.Context, ch chan<- ulid.ULID) (partialBlocks map[ulid.ULID]bool, err error) {
 	// Fetch the bucket index.
 	idx, err := ReadIndex(ctx, f.bkt, f.userID, f.cfgProvider, f.logger)
 	if errors.Is(err, ErrIndexNotFound) {
 		// This is a legit case happening when the first blocks of a tenant have recently been uploaded by ingesters
 		// and their bucket index has not been created yet.
 		// Fallback to BaseBlockIDsFetcher.
-		return f.baseBlockIDsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+		return f.baseLister.GetActiveAndPartialBlockIDs(ctx, ch)
 	}
 	if errors.Is(err, ErrIndexCorrupted) {
 		// In case a single tenant bucket index is corrupted, we want to return empty active blocks and parital blocks, so skipping this compaction cycle
 		level.Error(f.logger).Log("msg", "corrupted bucket index found", "user", f.userID, "err", err)
 		// Fallback to BaseBlockIDsFetcher.
-		return f.baseBlockIDsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
+		return f.baseLister.GetActiveAndPartialBlockIDs(ctx, ch)
 	}
 
 	if errors.Is(err, bucket.ErrCustomerManagedKeyAccessDenied) {

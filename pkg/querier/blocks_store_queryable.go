@@ -219,6 +219,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			CacheDir:                 storageCfg.BucketStore.SyncDir,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
+			BlockDiscoveryStrategy:   storageCfg.BucketStore.BlockDiscoveryStrategy,
 		}, bucketClient, limits, logger, reg)
 	}
 

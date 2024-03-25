@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"flag"
-	"github.com/cortexproject/cortex/pkg/util"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (

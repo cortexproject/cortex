@@ -1673,6 +1673,7 @@ func prepareConfig() Config {
 func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits) (*Compactor, *tsdbCompactorMock, *tsdbPlannerMock, *concurrency.SyncBuffer, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
+	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()

@@ -827,22 +827,26 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	// out of order chunks or index file too big.
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
-	var blockIDsFetcher block.Lister
-	var fetcherULogger log.Logger
-	if c.storageCfg.BucketStore.BucketIndex.Enabled {
-		fetcherULogger = log.With(ulogger, "blockIdsFetcher", "BucketIndexBlockIDsFetcher")
-		blockIDsFetcher = bucketindex.NewBlockIDsFetcher(fetcherULogger, c.bucketClient, userID, c.limits)
-
-	} else {
-		fetcherULogger = log.With(ulogger, "blockIdsFetcher", "BaseBlockIDsFetcher")
-		blockIDsFetcher = block.NewRecursiveLister(fetcherULogger, bucket)
+	var blockLister block.Lister
+	switch cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy) {
+	case cortex_tsdb.ConcurrentDiscovery:
+		blockLister = block.NewConcurrentLister(ulogger, bucket)
+	case cortex_tsdb.RecursiveDiscovery:
+		blockLister = block.NewRecursiveLister(ulogger, bucket)
+	case cortex_tsdb.BucketIndexDiscovery:
+		if !c.storageCfg.BucketStore.BucketIndex.Enabled {
+			return cortex_tsdb.ErrInvalidBucketIndexBlockDiscoveryStrategy
+		}
+		blockLister = bucketindex.NewBlockLister(ulogger, c.bucketClient, userID, c.limits)
+	default:
+		return cortex_tsdb.ErrBlockDiscoveryStrategy
 	}
 
 	fetcher, err := block.NewMetaFetcher(
-		fetcherULogger,
+		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
-		blockIDsFetcher,
+		blockLister,
 		c.metaSyncDirForUser(userID),
 		reg,
 		// List of filters to apply (order matters).

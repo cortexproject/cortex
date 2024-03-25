@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -35,7 +34,6 @@ func (r *loader) Parse(query string) (parser.Expr, error) {
 // rulesBackupManager is an in-memory store that holds []promRules.Group of multiple users. It only stores the Groups,
 // it doesn't evaluate them.
 type rulesBackupManager struct {
-	backupRuleGroupsMtx      sync.RWMutex
 	inMemoryRuleGroupsBackup map[string][]*promRules.Group
 	cfg                      Config
 
@@ -77,8 +75,6 @@ func (r *rulesBackupManager) setRuleGroups(_ context.Context, ruleGroups map[str
 		backupRuleGroups[user] = promGroups
 		r.lastBackupReloadSuccessful.WithLabelValues(user).Set(1)
 	}
-	r.backupRuleGroupsMtx.Lock()
-	defer r.backupRuleGroupsMtx.Unlock()
 	r.updateMetrics(backupRuleGroups)
 	r.inMemoryRuleGroupsBackup = backupRuleGroups
 }
@@ -118,8 +114,6 @@ func (r *rulesBackupManager) ruleGroupListToPromGroups(user string, ruleGroups r
 // getRuleGroups returns the []*promRules.Group that rulesBackupManager stores for a given user
 func (r *rulesBackupManager) getRuleGroups(userID string) []*promRules.Group {
 	var result []*promRules.Group
-	r.backupRuleGroupsMtx.RLock()
-	defer r.backupRuleGroupsMtx.RUnlock()
 	if groups, exists := r.inMemoryRuleGroupsBackup[userID]; exists {
 		result = groups
 	}

@@ -388,13 +388,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		labelSet1 []model.LabelSet
 		labelSet2 []model.LabelSet
 	)
-	for retries.Ongoing() {
-		labelSet1, err = c1.Series([]string{`{job="test"}`}, start, end)
-		require.NoError(t, err)
-
-		retries.Wait()
-	}
-	retries.Reset()
+	// Wait until both Store Gateways load the block.
 	for retries.Ongoing() {
 		labelSet1, err = c1.Series([]string{`{job="test"}`}, start, end)
 		require.NoError(t, err)
@@ -422,7 +416,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		res1, newRes1, res2, newRes2 []model.LabelSet
 	}
 
-	now = time.Now()
 	cases := make([]*testCase, 0, 1000)
 	for i := 0; i < 1000; i++ {
 		matchers := ps.WalkSelectors()

@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
-	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
@@ -297,48 +296,4 @@ func CreateBlock(
 	}
 
 	return id, nil
-}
-
-func gatherMaxSeriesSize(ctx context.Context, fn string) (int64, error) {
-	r, err := index.NewFileReader(fn)
-	if err != nil {
-		return 0, errors.Wrap(err, "open index file")
-	}
-	defer runutil.CloseWithErrCapture(&err, r, "gather index issue file reader")
-
-	key, value := index.AllPostingsKey()
-	p, err := r.Postings(ctx, key, value)
-	if err != nil {
-		return 0, errors.Wrap(err, "get all postings")
-	}
-
-	// As of version two all series entries are 16 byte padded. All references
-	// we get have to account for that to get the correct offset.
-	offsetMultiplier := 1
-	version := r.Version()
-	if version >= 2 {
-		offsetMultiplier = 16
-	}
-
-	// Per series.
-	var (
-		prevId        storage.SeriesRef
-		maxSeriesSize int64
-	)
-	for p.Next() {
-		id := p.At()
-		if prevId != 0 {
-			// Approximate size.
-			seriesSize := int64(id-prevId) * int64(offsetMultiplier)
-			if seriesSize > maxSeriesSize {
-				maxSeriesSize = seriesSize
-			}
-		}
-		prevId = id
-	}
-	if p.Err() != nil {
-		return 0, errors.Wrap(err, "walk postings")
-	}
-
-	return maxSeriesSize, nil
 }

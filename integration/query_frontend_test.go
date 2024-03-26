@@ -567,31 +567,32 @@ func TestQueryFrontendMaxQueryLengthLimits(t *testing.T) {
 	}), "")
 	require.NoError(t, s.Start(queryFrontend, queryFrontendWithSharding))
 
-	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
-	cSharding, err = e2ecortex.NewClient("", queryFrontendWithSharding.HTTPEndpoint(), "", "", "user-1")
+	cSharding, err := e2ecortex.NewClient("", queryFrontendWithSharding.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
+	now := time.Now()
 	// We expect request to hit max query length limit.
-	resp, body, err := c.QueryRangeRaw(`rate(test[1m])`, seriesTimestamp.Add(-90*time.Hour*24), seriesTimestamp, 10*time.Hour)
+	resp, body, err := c.QueryRangeRaw(`rate(test[1m])`, now.Add(-90*time.Hour*24), now, 10*time.Hour)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.Contains(t, string(body), "the query time range exceeds the limit")
 
 	// We expect request to hit max query length limit.
-	resp, body, err = cSharding.QueryRangeRaw(`rate(test[1m])`, seriesTimestamp.Add(-90*time.Hour*24), seriesTimestamp, 10*time.Hour)
+	resp, body, err = cSharding.QueryRangeRaw(`rate(test[1m])`, now.Add(-90*time.Hour*24), now, 10*time.Hour)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.Contains(t, string(body), "the query time range exceeds the limit")
 
 	// We expect request to hit max query length limit.
-	resp, body, err = c.QueryRaw(`rate(test[90d])`, series2Timestamp)
+	resp, body, err = c.QueryRaw(`rate(test[90d])`, now)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.Contains(t, string(body), "the query time range exceeds the limit")
 
 	// We expect request to hit max query length limit.
-	resp, body, err = cSharding.QueryRaw(`rate(test[90d])`, series2Timestamp)
+	resp, body, err = cSharding.QueryRaw(`rate(test[90d])`, now)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.Contains(t, string(body), "the query time range exceeds the limit")

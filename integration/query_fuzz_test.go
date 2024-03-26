@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/promqlsmith"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/prometheus/common/model"
@@ -31,7 +32,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/promqlsmith"
 )
 
 func TestVerticalShardingFuzz(t *testing.T) {

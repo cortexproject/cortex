@@ -690,8 +690,8 @@ github.com/coreos/go-systemd/v22 v22.3.2/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSV
 github.com/coreos/go-systemd/v22 v22.4.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/coreos/go-systemd/v22 v22.5.0 h1:RrqgGjYQKalulkV8NGVIfkXQf6YYmOyiJKk8iXXhfZs=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
-github.com/cortexproject/promqlsmith v0.0.0-20240115062247-9ed0dfba956d h1:VSA/aQtOyhIuxnL3YsI7/hdYhf1rWdmiJOcVPTO4dVg=
-github.com/cortexproject/promqlsmith v0.0.0-20240115062247-9ed0dfba956d/go.mod h1:by/B++NlNa8Hp+d2054cy3YR4ijhPNGnuWjUWOUppms=
+github.com/cortexproject/promqlsmith v0.0.0-20240326071418-c2a9ca1e89f5 h1:UfuB6no2X1BcKxICY63lzgY+XaPMQ/Wv4woP3p0L+mg=
+github.com/cortexproject/promqlsmith v0.0.0-20240326071418-c2a9ca1e89f5/go.mod h1:fcysbw4fOsOipXKeXPXWSh7tXrUQSUr5V4duojv0oCM=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

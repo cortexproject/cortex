@@ -328,6 +328,117 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 			matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName))
 		}
 	}
+	matchers = append(matchers, s.enforceMatchers...)
+
+	return matchers
+}
+
+// walkSelectors is similar to walkLabelMatchers, but used for generating various
+// types of matchers more than simple equal matcher.
+func (s *PromQLSmith) walkSelectors() []*labels.Matcher {
+	if len(s.seriesSet) == 0 {
+		return nil
+	}
+	orders := s.rnd.Perm(len(s.labelNames))
+	items := randRange((len(s.labelNames)+1)/2, len(s.labelNames))
+	matchers := make([]*labels.Matcher, 0, items)
+
+	var (
+		value  string
+		repeat bool
+	)
+	for i := 0; i < items; {
+		res := s.rnd.Intn(4)
+		name := s.labelNames[orders[i]]
+		matchType := labels.MatchType(res)
+		switch matchType {
+		case labels.MatchEqual:
+			val := s.rnd.Float64()
+			if val > 0.95 {
+				value = ""
+			} else if val > 0.9 {
+				value = "not_exist_value"
+			} else {
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx]
+			}
+		case labels.MatchNotEqual:
+			switch s.rnd.Intn(3) {
+			case 0:
+				value = ""
+			case 1:
+				value = "not_exist_value"
+			default:
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx]
+			}
+		case labels.MatchRegexp:
+			val := s.rnd.Float64()
+			if val > 0.95 {
+				value = ""
+			} else if val > 0.9 {
+				value = "not_exist_value"
+			} else if val > 0.8 {
+				value = ".*"
+			} else if val > 0.7 {
+				value = ".+"
+			} else if val > 0.5 {
+				// Prefix
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx][:len(s.labelValues[name][idx])/2] + ".*"
+			} else {
+				valueOrders := s.rnd.Perm(len(s.labelValues[name]))
+				valueItems := s.rnd.Intn(len(s.labelValues[name]))
+				var sb strings.Builder
+				for j := 0; j < valueItems; j++ {
+					sb.WriteString(s.labelValues[name][valueOrders[j]])
+					if j < valueItems-1 {
+						sb.WriteString("|")
+					}
+				}
+				// Randomly attach a non-existent value.
+				if s.rnd.Intn(2) == 1 {
+					sb.WriteString("|not_exist_value")
+				}
+			}
+		case labels.MatchNotRegexp:
+			val := s.rnd.Float64()
+			if val > 0.8 {
+				value = ""
+			} else if val > 0.6 {
+				value = "not_exist_value"
+			} else if val > 0.4 {
+				// Prefix
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx][:len(s.labelValues[name][idx])/2] + ".*"
+			} else {
+				valueOrders := s.rnd.Perm(len(s.labelValues[name]))
+				valueItems := s.rnd.Intn(len(s.labelValues[name]))
+				var sb strings.Builder
+				for j := 0; j < valueItems; j++ {
+					sb.WriteString(s.labelValues[name][valueOrders[j]])
+					if j < valueItems-1 {
+						sb.WriteString("|")
+					}
+				}
+				// Randomly attach a non-existent value.
+				if s.rnd.Intn(2) == 1 {
+					sb.WriteString("|not_exist_value")
+				}
+			}
+		default:
+			panic("unsupported label matcher type")
+		}
+		matchers = append(matchers, labels.MustNewMatcher(matchType, name, value))
+
+		if !repeat && s.rnd.Intn(3) == 0 {
+			repeat = true
+		} else {
+			i++
+		}
+	}
+	matchers = append(matchers, s.enforceMatchers...)
+
 	return matchers
 }
 
@@ -539,4 +650,8 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		return nil, false
 	}
 	return lbls, stop
+}
+
+func randRange(min, max int) int {
+	return rand.Intn(max-min) + min
 }

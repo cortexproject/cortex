@@ -246,11 +246,7 @@ func CreateBlock(
 		var ref storage.SeriesRef
 		start := RandRange(rnd, mint, maxt)
 		for j := 0; j < numSamples; j++ {
-			if ref == 0 {
-				ref, err = app.Append(0, series[i], start, float64(i+j))
-			} else {
-				ref, err = app.Append(ref, series[i], start, float64(i+j))
-			}
+			ref, err = app.Append(ref, series[i], start, float64(i+j))
 			if err != nil {
 				if rerr := app.Rollback(); rerr != nil {
 					err = errors.Wrapf(err, "rollback failed: %v", rerr)

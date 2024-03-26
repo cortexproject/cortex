@@ -3,6 +3,7 @@ package promqlsmith
 import (
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/exp/slices"
 )
@@ -81,6 +82,8 @@ type options struct {
 	enableAtModifier       bool
 	enableVectorMatching   bool
 	atModifierMaxTimestamp int64
+
+	enforceLabelMatchers []*labels.Matcher
 }
 
 func (o *options) applyDefaults() {
@@ -161,5 +164,11 @@ func WithEnabledFunctions(enabledFunctions []*parser.Function) Option {
 func WithEnabledExprs(enabledExprs []ExprType) Option {
 	return optionFunc(func(o *options) {
 		o.enabledExprs = enabledExprs
+	})
+}
+
+func WithEnforceLabelMatchers(matchers []*labels.Matcher) Option {
+	return optionFunc(func(o *options) {
+		o.enforceLabelMatchers = matchers
 	})
 }

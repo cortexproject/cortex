@@ -45,8 +45,10 @@ type PromQLSmith struct {
 	enableVectorMatching   bool
 	atModifierMaxTimestamp int64
 
-	seriesSet  []labels.Labels
-	labelNames []string
+	seriesSet       []labels.Labels
+	labelNames      []string
+	labelValues     map[string][]string
+	enforceMatchers []*labels.Matcher
 
 	supportedExprs  []ExprType
 	supportedAggrs  []parser.ItemType
@@ -65,7 +67,6 @@ func New(rnd *rand.Rand, seriesSet []labels.Labels, opts ...Option) *PromQLSmith
 	ps := &PromQLSmith{
 		rnd:                    rnd,
 		seriesSet:              filterEmptySeries(seriesSet),
-		labelNames:             labelNamesFromLabelSet(seriesSet),
 		supportedExprs:         options.enabledExprs,
 		supportedAggrs:         options.enabledAggrs,
 		supportedBinops:        options.enabledBinops,
@@ -74,7 +75,9 @@ func New(rnd *rand.Rand, seriesSet []labels.Labels, opts ...Option) *PromQLSmith
 		enableAtModifier:       options.enableAtModifier,
 		atModifierMaxTimestamp: options.atModifierMaxTimestamp,
 		enableVectorMatching:   options.enableVectorMatching,
+		enforceMatchers:        options.enforceLabelMatchers,
 	}
+	ps.labelNames, ps.labelValues = labelNameAndValuesFromLabelSet(seriesSet)
 	return ps
 }
 
@@ -87,6 +90,11 @@ func (s *PromQLSmith) WalkInstantQuery() parser.Expr {
 // WalkRangeQuery walks the ast and generate an expression that can be used in range query.
 func (s *PromQLSmith) WalkRangeQuery() parser.Expr {
 	return s.Walk(vectorAndScalarValueTypes...)
+}
+
+// WalkSelectors generates random label matchers based on the input series labels.
+func (s *PromQLSmith) WalkSelectors() []*labels.Matcher {
+	return s.walkSelectors()
 }
 
 // Walk will walk the ast tree using one of the randomly generated expr type.
@@ -111,16 +119,24 @@ func filterEmptySeries(seriesSet []labels.Labels) []labels.Labels {
 	return output
 }
 
-func labelNamesFromLabelSet(labelSet []labels.Labels) []string {
-	s := make(map[string]struct{})
+func labelNameAndValuesFromLabelSet(labelSet []labels.Labels) ([]string, map[string][]string) {
+	labelValueSet := make(map[string]map[string]struct{})
 	for _, lbls := range labelSet {
 		lbls.Range(func(lbl labels.Label) {
-			s[lbl.Name] = struct{}{}
+			if _, ok := labelValueSet[lbl.Name]; !ok {
+				labelValueSet[lbl.Name] = make(map[string]struct{})
+			}
+			labelValueSet[lbl.Name][lbl.Value] = struct{}{}
 		})
 	}
-	output := make([]string, 0, len(s))
-	for name := range s {
-		output = append(output, name)
+	labelNames := make([]string, 0, len(labelValueSet))
+	labelValues := make(map[string][]string)
+	for name, values := range labelValueSet {
+		labelNames = append(labelNames, name)
+		labelValues[name] = make([]string, 0, len(values))
+		for val := range values {
+			labelValues[name] = append(labelValues[name], val)
+		}
 	}
-	return output
+	return labelNames, labelValues
 }

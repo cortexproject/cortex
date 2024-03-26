@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go v1.50.25
 	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
 	github.com/cespare/xxhash v1.1.0
-	github.com/cortexproject/promqlsmith v0.0.0-20240115062247-9ed0dfba956d
+	github.com/cortexproject/promqlsmith v0.0.0-20240326071418-c2a9ca1e89f5
 	github.com/dustin/go-humanize v1.0.1
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb

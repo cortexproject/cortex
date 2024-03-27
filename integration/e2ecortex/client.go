@@ -88,6 +88,25 @@ func NewClient(
 	return c, nil
 }
 
+// NewPromQueryClient makes a new client but used for Prometheus Query only.
+func NewPromQueryClient(address string) (*Client, error) {
+	// Create querier API client
+	querierAPIClient, err := promapi.NewClient(promapi.Config{
+		Address: "http://" + address,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Client{
+		timeout:       5 * time.Second,
+		httpClient:    &http.Client{},
+		querierClient: promv1.NewAPI(querierAPIClient),
+	}
+
+	return c, nil
+}
+
 // Push the input timeseries to the remote endpoint
 func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	// Create write request

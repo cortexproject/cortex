@@ -6,6 +6,7 @@ package integration
 import (
 	"context"
 	"math/rand"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -458,6 +459,174 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		t.Logf("finished store gateway lazy expanded posting fuzzing tests, %d test cases failed", failures)
 		// TODO: switch to Fail after we fix the bug in upstream Thanos.
 		//require.Failf(t, "finished store gateway lazy expanded posting fuzzing tests", "%d test cases failed", failures)
+	}
+}
+
+func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+		"-querier.query-store-for-labels-enabled":          "true",
+		"-ring.store":                                "consul",
+		"-consul.hostname":                           consul.NetworkHTTPEndpoint(),
+		"-store-gateway.sharding-enabled":            "false",
+		"-blocks-storage.bucket-store.sync-interval": "1s",
+		"-blocks-storage.bucket-store.lazy-expanded-postings-enabled": "true",
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Start Cortex replicas.
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, storeGateway))
+
+	querier := e2ecortex.NewQuerier("querier-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	now := time.Now()
+	// Push some series to Cortex.
+	start := now.Add(-time.Minute * 20)
+	startMs := start.UnixMilli()
+	end := now.Add(-time.Minute * 10)
+	endMs := end.UnixMilli()
+	numSeries := 1000
+	numSamples := 50
+	lbls := make([]labels.Labels, 0, numSeries)
+	scrapeInterval := (10 * time.Second).Milliseconds()
+	metricName := "http_requests_total"
+	statusCodes := []string{"200", "400", "404", "500", "502"}
+	for i := 0; i < numSeries; i++ {
+		lbl := labels.Labels{
+			{Name: labels.MetricName, Value: metricName},
+			{Name: "job", Value: "test"},
+			{Name: "series", Value: strconv.Itoa(i % 200)},
+			{Name: "status_code", Value: statusCodes[i%5]},
+		}
+		lbls = append(lbls, lbl)
+	}
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	dir := filepath.Join(s.SharedDir(), "data")
+	err = os.MkdirAll(dir, os.ModePerm)
+	require.NoError(t, err)
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+	bkt := bucket.NewUserBucketClient("user-1", storage.GetBucket(), nil)
+	id, err := e2e.CreateBlock(ctx, rnd, dir, lbls, numSamples, start.UnixMilli(), end.UnixMilli(), scrapeInterval, 10)
+	require.NoError(t, err)
+	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Wait for store to sync blocks.
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
+
+	c1, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+	// Ensure the entire path of directories exist.
+
+	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
+	require.NoError(t, err)
+	prom := e2edb.NewPrometheus(map[string]string{})
+	require.NoError(t, s.StartAndWaitReady(prom))
+
+	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())
+	require.NoError(t, err)
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 5 * time.Second,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 5,
+	})
+
+	var (
+		labelSet1 []model.LabelSet
+		labelSet2 []model.LabelSet
+	)
+	// Wait until both Store Gateway and Prometheus load the block.
+	for retries.Ongoing() {
+		labelSet1, err = c1.Series([]string{`{job="test"}`}, start, end)
+		require.NoError(t, err)
+		labelSet2, err = c2.Series([]string{`{job="test"}`}, start, end)
+		require.NoError(t, err)
+
+		if cmp.Equal(labelSet1, labelSet2, labelSetsComparer) {
+			break
+		}
+
+		retries.Wait()
+	}
+
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnforceLabelMatchers([]*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName),
+			labels.MustNewMatcher(labels.MatchEqual, "job", "test"),
+		}),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	type testCase struct {
+		matchers                     string
+		res1, newRes1, res2, newRes2 []model.LabelSet
+	}
+
+	cases := make([]*testCase, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		matchers := ps.WalkSelectors()
+		matcherStrings := storepb.PromMatchersToString(matchers...)
+		minT := e2e.RandRange(rnd, startMs, endMs)
+		maxT := e2e.RandRange(rnd, minT+1, endMs)
+
+		res1, err := c1.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
+		require.NoError(t, err)
+		res2, err := c2.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
+		require.NoError(t, err)
+
+		// Try again with a different timestamp and let requests hit posting cache.
+		minT = e2e.RandRange(rnd, startMs, endMs)
+		maxT = e2e.RandRange(rnd, minT+1, endMs)
+		newRes1, err := c1.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
+		require.NoError(t, err)
+		newRes2, err := c2.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
+		require.NoError(t, err)
+
+		cases = append(cases, &testCase{
+			matchers: matcherStrings,
+			res1:     res1,
+			newRes1:  newRes1,
+			res2:     res2,
+			newRes2:  newRes2,
+		})
+	}
+
+	failures := 0
+	for i, tc := range cases {
+		if !cmp.Equal(tc.res1, tc.res2, labelSetsComparer) {
+			t.Logf("case %d results mismatch for the first attempt.\n%s\nres1 len: %d data: %s\nres2 len: %d data: %s\n", i, tc.matchers, len(tc.res1), tc.res1, len(tc.res2), tc.res2)
+			failures++
+		} else if !cmp.Equal(tc.newRes1, tc.newRes2, labelSetsComparer) {
+			t.Logf("case %d results mismatch for the second attempt.\n%s\nres1 len: %d data: %s\nres2 len: %d data: %s\n", i, tc.matchers, len(tc.newRes1), tc.newRes1, len(tc.newRes2), tc.newRes2)
+			failures++
+		}
+	}
+	if failures > 0 {
+		//t.Logf("finished store gateway lazy expanded posting fuzzing tests with Prometheus, %d test cases failed", failures)
+		// TODO: switch to Fail after we fix the bug in upstream Thanos.
+		require.Failf(t, "finished store gateway lazy expanded posting fuzzing tests", "%d test cases failed", failures)
 	}
 }
 

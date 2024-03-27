@@ -2,7 +2,9 @@ package e2edb
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -72,7 +74,7 @@ func NewPrometheus(flags map[string]string) *e2e.HTTPService {
 }
 
 func NewPrometheusWithName(name string, flags map[string]string) *e2e.HTTPService {
-	return e2e.NewHTTPService(
+	prom := e2e.NewHTTPService(
 		name,
 		images.Prometheus,
 		e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
@@ -80,9 +82,11 @@ func NewPrometheusWithName(name string, flags map[string]string) *e2e.HTTPServic
 			"--storage.tsdb.max-block-duration": "2h",
 			"--log.level":                       "info",
 			"--web.listen-address":              ":9090",
-			"--config.file":                     "/etc/prometheus/prometheus.yml",
+			"--config.file":                     filepath.Join(e2e.ContainerSharedDir, "prometheus.yml"),
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(9090, "/-/ready", 200, 200),
 		9090,
 	)
+	prom.SetUser(strconv.Itoa(os.Getuid()))
+	return prom
 }

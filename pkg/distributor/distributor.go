@@ -64,10 +64,6 @@ const (
 	typeMetadata = "metadata"
 
 	instanceIngestionRateTickInterval = time.Second
-
-	// mergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
-	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
-	mergeSlicesParallelism = 8
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -973,7 +969,7 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 	for i, resp := range resps {
 		values[i] = resp.([]string)
 	}
-	r := util.MergeSlicesParallel(mergeSlicesParallelism, values...)
+	r := util.MergeSlicesParallel(util.DefaultMergeSlicesParallelism, values...)
 	span.SetTag("result_length", len(r))
 	return r, nil
 }
@@ -1043,7 +1039,7 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	for i, resp := range resps {
 		values[i] = resp.([]string)
 	}
-	r := util.MergeSlicesParallel(mergeSlicesParallelism, values...)
+	r := util.MergeSlicesParallel(util.DefaultMergeSlicesParallelism, values...)
 	span.SetTag("result_length", len(r))
 
 	return r, nil

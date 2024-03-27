@@ -80,7 +80,7 @@ func NewPrometheusWithName(name string, flags map[string]string) *e2e.HTTPServic
 			"--storage.tsdb.max-block-duration": "2h",
 			"--log.level":                       "info",
 			"--web.listen-address":              ":9090",
-			"--config.file":                     filepath.Join(e2e.ContainerSharedDir, "prometheus.yml"),
+			"--config.file":                     "/etc/prometheus/prometheus.yml",
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(9090, "/-/ready", 200, 200),
 		9090,

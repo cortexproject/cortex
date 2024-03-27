@@ -538,10 +538,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 
 	c1, err := e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
-	// Ensure the entire path of directories exist.
 
-	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
-	require.NoError(t, err)
 	prom := e2edb.NewPrometheus(map[string]string{})
 	require.NoError(t, s.StartAndWaitReady(prom))
 

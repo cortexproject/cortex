@@ -17,6 +17,7 @@
 package series
 
 import (
+	"context"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -167,9 +168,12 @@ func MatrixToSeriesSet(sortSeries bool, m model.Matrix) storage.SeriesSet {
 }
 
 // MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
-func MetricsToSeriesSet(sortSeries bool, ms []metric.Metric) storage.SeriesSet {
+func MetricsToSeriesSet(ctx context.Context, sortSeries bool, ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
+		if ctx.Err() != nil {
+			return storage.ErrSeriesSet(ctx.Err())
+		}
 		series = append(series, &ConcreteSeries{
 			labels:  metricToLabels(m.Metric),
 			samples: nil,

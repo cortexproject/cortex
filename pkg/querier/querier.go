@@ -437,7 +437,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// we have all the sets from different sources (chunk from store, chunks from ingesters,
 	// time series from store and time series from ingesters).
 	// mergeSeriesSets will return sorted set.
-	return q.mergeSeriesSets(result)
+	return q.mergeSeriesSets(ctx, result)
 }
 
 // LabelValues implements storage.Querier.
@@ -553,7 +553,7 @@ func (querier) Close() error {
 	return nil
 }
 
-func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
+func (q querier) mergeSeriesSets(ctx context.Context, sets []storage.SeriesSet) storage.SeriesSet {
 	// Here we deal with sets that are based on chunks and build single set from them.
 	// Remaining sets are merged with chunks-based one using storage.NewMergeSeriesSet
 
@@ -565,6 +565,9 @@ func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
 
 		// SeriesSet may have some series backed up by chunks, and some not.
 		for set.Next() {
+			if ctx.Err() != nil {
+				return storage.ErrSeriesSet(ctx.Err())
+			}
 			s := set.At()
 
 			if sc, ok := s.(SeriesWithChunks); ok {

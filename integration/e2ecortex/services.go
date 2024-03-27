@@ -200,32 +200,6 @@ func NewIngesterWithConfigFile(name string, store RingStore, address, configFile
 	)
 }
 
-func NewTableManager(name string, flags map[string]string, image string) *CortexService {
-	return NewTableManagerWithConfigFile(name, "", flags, image)
-}
-
-func NewTableManagerWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
-	if configFile != "" {
-		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
-	}
-
-	if image == "" {
-		image = GetDefaultImage()
-	}
-
-	return NewCortexService(
-		name,
-		image,
-		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
-			"-target":    "table-manager",
-			"-log.level": "warn",
-		}, flags))...),
-		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
-		httpPort,
-		grpcPort,
-	)
-}
-
 func NewQueryFrontend(name string, flags map[string]string, image string) *CortexService {
 	return NewQueryFrontendWithConfigFile(name, "", flags, image)
 }
@@ -428,34 +402,6 @@ func NewRuler(name string, consulAddress string, flags map[string]string, image 
 			// Store-gateway ring backend.
 			"-store-gateway.sharding-enabled":                 "true",
 			"-store-gateway.sharding-ring.replication-factor": "1",
-		}, flags))...),
-		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
-		httpPort,
-		grpcPort,
-	)
-}
-
-func NewPurger(name string, flags map[string]string, image string) *CortexService {
-	return NewPurgerWithConfigFile(name, "", flags, image)
-}
-
-func NewPurgerWithConfigFile(name, configFile string, flags map[string]string, image string) *CortexService {
-	if configFile != "" {
-		flags["-config.file"] = filepath.Join(e2e.ContainerSharedDir, configFile)
-	}
-
-	if image == "" {
-		image = GetDefaultImage()
-	}
-
-	return NewCortexService(
-		name,
-		image,
-		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
-			"-target":                   "purger",
-			"-log.level":                "warn",
-			"-purger.object-store-type": "filesystem",
-			"-local.chunk-directory":    e2e.ContainerSharedDir,
 		}, flags))...),
 		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
 		httpPort,

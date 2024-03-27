@@ -2,7 +2,9 @@ package e2edb
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -17,18 +19,6 @@ const (
 // NewMinio returns minio server, used as a local replacement for S3.
 func NewMinio(port int, bktNames ...string) *e2e.HTTPService {
 	return newMinio(port, map[string]string{}, bktNames...)
-}
-
-// NewMinioWithKES returns minio server, configured to talk to a KES service.
-func NewMinioWithKES(port int, kesEndpoint, rootKeyFile, rootCertFile, caCertFile string, bktNames ...string) *e2e.HTTPService {
-	kesEnvVars := map[string]string{
-		"MINIO_KMS_KES_ENDPOINT":  kesEndpoint,
-		"MINIO_KMS_KES_KEY_FILE":  filepath.Join(e2e.ContainerSharedDir, rootKeyFile),
-		"MINIO_KMS_KES_CERT_FILE": filepath.Join(e2e.ContainerSharedDir, rootCertFile),
-		"MINIO_KMS_KES_CAPATH":    filepath.Join(e2e.ContainerSharedDir, caCertFile),
-		"MINIO_KMS_KES_KEY_NAME":  "my-minio-key",
-	}
-	return newMinio(port, kesEnvVars, bktNames...)
 }
 
 func newMinio(port int, envVars map[string]string, bktNames ...string) *e2e.HTTPService {
@@ -51,22 +41,6 @@ func newMinio(port int, envVars map[string]string, bktNames ...string) *e2e.HTTP
 	envVars["MINIO_BROWSER"] = "off"
 	envVars["ENABLE_HTTPS"] = "0"
 	m.SetEnvVars(envVars)
-	return m
-}
-
-// NewKES returns KES server, used as a local key management store
-func NewKES(port int, serverKeyFile, serverCertFile, rootCertFile string) *e2e.HTTPService {
-	// Run this as a shell command, so sub-shell can evaluate 'identity' of root user.
-	command := fmt.Sprintf("/kes server --addr 0.0.0.0:%d --key=%s --cert=%s --root=$(/kes tool identity of %s) --auth=off --quiet",
-		port, filepath.Join(e2e.ContainerSharedDir, serverKeyFile), filepath.Join(e2e.ContainerSharedDir, serverCertFile), filepath.Join(e2e.ContainerSharedDir, rootCertFile))
-
-	m := e2e.NewHTTPService(
-		"kes",
-		images.KES,
-		e2e.NewCommandWithoutEntrypoint("sh", "-c", command),
-		nil, // KES only supports https calls - TODO make Scenario able to call https or poll plain TCP socket.
-		port,
-	)
 	return m
 }
 
@@ -95,14 +69,24 @@ func NewETCD() *e2e.HTTPService {
 		9000, // Metrics
 	)
 }
+func NewPrometheus(flags map[string]string) *e2e.HTTPService {
+	return NewPrometheusWithName("prometheus", flags)
+}
 
-func NewDynamoDB() *e2e.HTTPService {
-	return e2e.NewHTTPService(
-		"dynamodb",
-		images.DynamoDB,
-		e2e.NewCommand("-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"),
-		// DynamoDB doesn't have a readiness probe, so we check if the / works even if returns 400
-		e2e.NewHTTPReadinessProbe(8000, "/", 400, 400),
-		8000,
+func NewPrometheusWithName(name string, flags map[string]string) *e2e.HTTPService {
+	prom := e2e.NewHTTPService(
+		name,
+		images.Prometheus,
+		e2e.NewCommandWithoutEntrypoint("prometheus", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"--storage.tsdb.path":               filepath.Join(e2e.ContainerSharedDir, "data"),
+			"--storage.tsdb.max-block-duration": "2h",
+			"--log.level":                       "info",
+			"--web.listen-address":              ":9090",
+			"--config.file":                     filepath.Join(e2e.ContainerSharedDir, "prometheus.yml"),
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(9090, "/-/ready", 200, 200),
+		9090,
 	)
+	prom.SetUser(strconv.Itoa(os.Getuid()))
+	return prom
 }

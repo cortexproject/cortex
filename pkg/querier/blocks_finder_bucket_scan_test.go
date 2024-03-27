@@ -521,5 +521,6 @@ func prepareBucketScanBlocksFinderConfig() BucketScanBlocksFinderConfig {
 		MetasConcurrency:         10,
 		IgnoreDeletionMarksDelay: time.Hour,
 		IgnoreBlocksWithin:       10 * time.Hour, // All blocks created in the last 10 hour shouldn't be scanned.
+		BlockDiscoveryStrategy:   string(cortex_tsdb.RecursiveDiscovery),
 	}
 }

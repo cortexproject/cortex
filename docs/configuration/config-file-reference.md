@@ -1850,6 +1850,17 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
 
+  # One of concurrent, recursive, bucket_index. When set to concurrent, stores
+  # will concurrently issue one call per directory to discover active blocks in
+  # the bucket. The recursive strategy iterates through all objects in the
+  # bucket, recursively traversing into each directory. This avoids N+1 calls at
+  # the expense of having slower bucket iterations. bucket_index strategy can be
+  # used in Compactor only and utilizes the existing bucket index to fetch block
+  # IDs to sync. This avoids iterating the bucket but can be impacted by delays
+  # of cleaner creating bucket index.
+  # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
+  [block_discovery_strategy: <string> | default = "concurrent"]
+
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
   # The pool is shared across all tenants. 0 to disable the limit.
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes

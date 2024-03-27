@@ -2,12 +2,15 @@ package queryrange
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -115,6 +118,9 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 
 	now := time.Now()
 
+	wrongQuery := `up[`
+	_, parserErr := parser.ParseExpr(wrongQuery)
+
 	tests := map[string]struct {
 		maxQueryLength time.Duration
 		query          string
@@ -132,6 +138,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 			reqStartTime:   now.Add(-time.Hour),
 			reqEndTime:     now,
 			maxQueryLength: thirtyDays,
+			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, parserErr.Error()).Error(),
 		},
 		"should succeed on a query on short time range, ending now": {
 			maxQueryLength: thirtyDays,

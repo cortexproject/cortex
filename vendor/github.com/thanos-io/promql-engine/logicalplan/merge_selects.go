@@ -32,7 +32,7 @@ func (m MergeSelectsOptimizer) Optimize(plan parser.Expr, _ *query.Options) (par
 }
 
 func extractSelectors(selectors matcherHeap, expr parser.Expr) {
-	traverse(&expr, func(node *parser.Expr) {
+	Traverse(&expr, func(node *parser.Expr) {
 		e, ok := (*node).(*VectorSelector)
 		if !ok {
 			return
@@ -46,7 +46,7 @@ func extractSelectors(selectors matcherHeap, expr parser.Expr) {
 }
 
 func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
-	traverse(expr, func(node *parser.Expr) {
+	Traverse(expr, func(node *parser.Expr) {
 		var matchers []*labels.Matcher
 		switch e := (*node).(type) {
 		case *VectorSelector:

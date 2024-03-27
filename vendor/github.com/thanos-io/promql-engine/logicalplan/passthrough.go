@@ -52,7 +52,7 @@ func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) (p
 		}
 		return RemoteExecution{
 			Engine:          engines[0],
-			Query:           plan.String(),
+			Query:           plan,
 			QueryRangeStart: opts.Start,
 		}, nil
 	}
@@ -78,7 +78,7 @@ func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) (p
 	if len(matchingLabelsEngines) == 1 && matchingEngineTime(matchingLabelsEngines[0], opts) {
 		return RemoteExecution{
 			Engine:          matchingLabelsEngines[0],
-			Query:           plan.String(),
+			Query:           plan,
 			QueryRangeStart: opts.Start,
 		}, nil
 	}

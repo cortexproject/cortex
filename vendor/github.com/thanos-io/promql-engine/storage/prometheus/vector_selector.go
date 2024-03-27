@@ -1,7 +1,7 @@
 // Copyright (c) The Thanos Community Authors.
 // Licensed under the Apache License 2.0.
 
-package scan
+package prometheus
 
 import (
 	"context"
@@ -11,15 +11,14 @@ import (
 
 	"github.com/efficientgo/core/errors"
 
-	"github.com/thanos-io/promql-engine/execution/model"
-	engstore "github.com/thanos-io/promql-engine/execution/storage"
-	"github.com/thanos-io/promql-engine/query"
-
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type vectorScanner struct {
@@ -31,7 +30,7 @@ type vectorScanner struct {
 type vectorSelector struct {
 	model.OperatorTelemetry
 
-	storage  engstore.SeriesSelector
+	storage  SeriesSelector
 	scanners []vectorScanner
 	series   []labels.Labels
 
@@ -58,10 +57,9 @@ type vectorSelector struct {
 // NewVectorSelector creates operator which selects vector of series.
 func NewVectorSelector(
 	pool *model.VectorPool,
-	selector engstore.SeriesSelector,
+	selector SeriesSelector,
 	queryOpts *query.Options,
 	offset time.Duration,
-	hints storage.SelectHints,
 	batchSize int64,
 	selectTimestamp bool,
 	shard, numShards int,

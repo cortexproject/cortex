@@ -13,10 +13,10 @@ import (
 	"github.com/efficientgo/core/errors"
 	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 )
 
@@ -83,19 +83,8 @@ func (o *relabelOperator) loadSeries(ctx context.Context) (err error) {
 	return err
 }
 
-func unwrap(expr parser.Expr) (string, error) {
-	switch texpr := expr.(type) {
-	case *parser.StringLiteral:
-		return texpr.Val, nil
-	case *parser.ParenExpr:
-		return unwrap(texpr.Expr)
-	default:
-		return "", errors.New("unexpected type")
-	}
-}
-
 func (o *relabelOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
-	labelJoinDst, err := unwrap(o.funcExpr.Args[1])
+	labelJoinDst, err := logicalplan.UnwrapString(o.funcExpr.Args[1])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
@@ -104,12 +93,12 @@ func (o *relabelOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
 	}
 
 	var labelJoinSrcLabels []string
-	labelJoinSep, err := unwrap(o.funcExpr.Args[2])
+	labelJoinSep, err := logicalplan.UnwrapString(o.funcExpr.Args[2])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
 	for j := 3; j < len(o.funcExpr.Args); j++ {
-		srcLabel, err := unwrap(o.funcExpr.Args[j])
+		srcLabel, err := logicalplan.UnwrapString(o.funcExpr.Args[j])
 		if err != nil {
 			return errors.Wrap(err, "unable to unwrap string argument")
 		}
@@ -133,22 +122,22 @@ func (o *relabelOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
 	return nil
 }
 func (o *relabelOperator) loadSeriesForLabelReplace(series []labels.Labels) error {
-	labelReplaceDst, err := unwrap(o.funcExpr.Args[1])
+	labelReplaceDst, err := logicalplan.UnwrapString(o.funcExpr.Args[1])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
 	if !prommodel.LabelName(labelReplaceDst).IsValid() {
 		return errors.Newf("invalid destination label name in label_replace: %s", labelReplaceDst)
 	}
-	labelReplaceRepl, err := unwrap(o.funcExpr.Args[2])
+	labelReplaceRepl, err := logicalplan.UnwrapString(o.funcExpr.Args[2])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
-	labelReplaceSrc, err := unwrap(o.funcExpr.Args[3])
+	labelReplaceSrc, err := logicalplan.UnwrapString(o.funcExpr.Args[3])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
-	labelReplaceRegexVal, err := unwrap(o.funcExpr.Args[4])
+	labelReplaceRegexVal, err := logicalplan.UnwrapString(o.funcExpr.Args[4])
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}

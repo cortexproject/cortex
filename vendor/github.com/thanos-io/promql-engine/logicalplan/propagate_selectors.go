@@ -19,7 +19,7 @@ import (
 type PropagateMatchersOptimizer struct{}
 
 func (m PropagateMatchersOptimizer) Optimize(plan parser.Expr, _ *query.Options) (parser.Expr, annotations.Annotations) {
-	traverse(&plan, func(expr *parser.Expr) {
+	Traverse(&plan, func(expr *parser.Expr) {
 		binOp, ok := (*expr).(*parser.BinaryExpr)
 		if !ok {
 			return

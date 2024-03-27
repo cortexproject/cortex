@@ -9,11 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/query"
@@ -57,7 +55,7 @@ func New(expr parser.Expr, queryOpts *query.Options, planOpts PlanOptions) Plan 
 	expr = trimSorts(expr)
 
 	// replace scanners by our logical nodes
-	expr = replaceSelectors(expr)
+	expr = replacePrometheusNodes(expr)
 
 	return &plan{
 		expr:     expr,
@@ -74,6 +72,8 @@ func (p *plan) Optimize(optimizers []Optimizer) (Plan, annotations.Annotations) 
 		annos.Merge(a)
 	}
 	// parens are just annoying and getting rid of them doesn't change the query
+	// NOTE: we need to do this here to not break the distributed optimizer since
+	// rendering subqueries String() method depends on parens sometimes.
 	expr := trimParens(p.expr)
 
 	if !p.planOpts.DisableDuplicateLabelCheck {
@@ -87,59 +87,69 @@ func (p *plan) Expr() parser.Expr {
 	return p.expr
 }
 
-func traverse(expr *parser.Expr, transform func(*parser.Expr)) {
+func Traverse(expr *parser.Expr, transform func(*parser.Expr)) {
 	switch node := (*expr).(type) {
+	case *parser.StringLiteral, *parser.NumberLiteral:
+		transform(expr)
 	case *parser.StepInvariantExpr:
 		transform(expr)
-		traverse(&node.Expr, transform)
+		Traverse(&node.Expr, transform)
+	case *StepInvariantExpr:
+		transform(expr)
+		Traverse(&node.Expr, transform)
 	case *parser.VectorSelector:
 		transform(expr)
 	case *VectorSelector:
 		var x parser.Expr = node.VectorSelector
 		transform(expr)
-		traverse(&x, transform)
+		Traverse(&x, transform)
 	case *MatrixSelector:
-		var x parser.Expr = node.MatrixSelector
+		var x parser.Expr = node.VectorSelector
 		transform(expr)
-		traverse(&x, transform)
+		Traverse(&x, transform)
 	case *parser.MatrixSelector:
 		transform(expr)
-		traverse(&node.VectorSelector, transform)
+		Traverse(&node.VectorSelector, transform)
 	case *parser.AggregateExpr:
 		transform(expr)
-		traverse(&node.Param, transform)
-		traverse(&node.Expr, transform)
+		Traverse(&node.Param, transform)
+		Traverse(&node.Expr, transform)
 	case *parser.Call:
 		transform(expr)
 		for i := range node.Args {
-			traverse(&(node.Args[i]), transform)
+			Traverse(&(node.Args[i]), transform)
 		}
 	case *parser.BinaryExpr:
 		transform(expr)
-		traverse(&node.LHS, transform)
-		traverse(&node.RHS, transform)
+		Traverse(&node.LHS, transform)
+		Traverse(&node.RHS, transform)
 	case *parser.UnaryExpr:
 		transform(expr)
-		traverse(&node.Expr, transform)
+		Traverse(&node.Expr, transform)
 	case *parser.ParenExpr:
 		transform(expr)
-		traverse(&node.Expr, transform)
+		Traverse(&node.Expr, transform)
 	case *parser.SubqueryExpr:
 		transform(expr)
-		traverse(&node.Expr, transform)
+		Traverse(&node.Expr, transform)
 	case CheckDuplicateLabels:
 		transform(expr)
-		traverse(&node.Expr, transform)
+		Traverse(&node.Expr, transform)
 	}
 }
 
 func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(parent *parser.Expr, node *parser.Expr) bool) bool {
 	switch node := (*current).(type) {
-	case *parser.StringLiteral:
-		return false
-	case *parser.NumberLiteral:
-		return false
+	case *parser.StringLiteral, *StringLiteral:
+		return transform(parent, current)
+	case *parser.NumberLiteral, *NumberLiteral:
+		return transform(parent, current)
 	case *parser.StepInvariantExpr:
+		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
+			return stop
+		}
+		return transform(parent, current)
+	case *StepInvariantExpr:
 		if stop := TraverseBottomUp(current, &node.Expr, transform); stop {
 			return stop
 		}
@@ -156,7 +166,7 @@ func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(
 		if stop := transform(parent, current); stop {
 			return stop
 		}
-		var x parser.Expr = node.MatrixSelector
+		var x parser.Expr = node.VectorSelector
 		return TraverseBottomUp(current, &x, transform)
 	case *parser.MatrixSelector:
 		return transform(current, &node.VectorSelector)
@@ -200,32 +210,60 @@ func TraverseBottomUp(parent *parser.Expr, current *parser.Expr, transform func(
 	return true
 }
 
-func replaceSelectors(plan parser.Expr) parser.Expr {
-	traverse(&plan, func(current *parser.Expr) {
-		switch t := (*current).(type) {
-		case *parser.MatrixSelector:
-			*current = &MatrixSelector{MatrixSelector: t, OriginalString: t.String()}
-		case *parser.VectorSelector:
-			*current = &VectorSelector{VectorSelector: t}
-		case *parser.Call:
-			if t.Func.Name != "timestamp" {
-				return
-			}
-			switch v := unwrapParens(t.Args[0]).(type) {
+func replacePrometheusNodes(plan parser.Expr) parser.Expr {
+	switch t := (plan).(type) {
+	case *parser.StringLiteral:
+		return &StringLiteral{Val: t.Val}
+	case *parser.NumberLiteral:
+		return &NumberLiteral{Val: t.Val}
+	case *parser.StepInvariantExpr:
+		return &StepInvariantExpr{Expr: replacePrometheusNodes(t.Expr)}
+	case *parser.MatrixSelector:
+		return &MatrixSelector{VectorSelector: replacePrometheusNodes(t.VectorSelector), Range: t.Range, OriginalString: t.String()}
+	case *parser.VectorSelector:
+		return &VectorSelector{VectorSelector: t}
+
+	//TODO: we dont yet have logical nodes for these, keep traversing here but set fields in-place
+	case *parser.Call:
+		if t.Func.Name == "timestamp" {
+			// pushed-down timestamp function
+			switch v := UnwrapParens(t.Args[0]).(type) {
 			case *parser.VectorSelector:
-				*current = &VectorSelector{VectorSelector: v, SelectTimestamp: true}
+				return &VectorSelector{VectorSelector: v, SelectTimestamp: true}
 			case *parser.StepInvariantExpr:
-				vs, ok := unwrapParens(v.Expr).(*parser.VectorSelector)
+				vs, ok := UnwrapParens(v.Expr).(*parser.VectorSelector)
 				if ok {
 					// Prometheus weirdness
 					if vs.Timestamp != nil {
 						vs.OriginalOffset = 0
 					}
-					*current = &VectorSelector{VectorSelector: vs, SelectTimestamp: true}
+					return &VectorSelector{VectorSelector: vs, SelectTimestamp: true}
 				}
 			}
 		}
-	})
+		// nested timestamp functions
+		for i, arg := range t.Args {
+			t.Args[i] = replacePrometheusNodes(arg)
+		}
+		return t
+	case *parser.ParenExpr:
+		t.Expr = replacePrometheusNodes(t.Expr)
+		return t
+	case *parser.UnaryExpr:
+		t.Expr = replacePrometheusNodes(t.Expr)
+		return t
+	case *parser.AggregateExpr:
+		t.Expr = replacePrometheusNodes(t.Expr)
+		t.Param = replacePrometheusNodes(t.Param)
+		return t
+	case *parser.BinaryExpr:
+		t.LHS = replacePrometheusNodes(t.LHS)
+		t.RHS = replacePrometheusNodes(t.RHS)
+		return t
+	case *parser.SubqueryExpr:
+		t.Expr = replacePrometheusNodes(t.Expr)
+		return t
+	}
 	return plan
 }
 
@@ -283,7 +321,7 @@ func trimParens(expr parser.Expr) parser.Expr {
 }
 
 func insertDuplicateLabelChecks(expr parser.Expr) parser.Expr {
-	traverse(&expr, func(node *parser.Expr) {
+	Traverse(&expr, func(node *parser.Expr) {
 		switch t := (*node).(type) {
 		case *parser.AggregateExpr, *parser.UnaryExpr, *parser.BinaryExpr, *parser.Call:
 			*node = CheckDuplicateLabels{Expr: t}
@@ -408,15 +446,6 @@ func newStepInvariantExpr(expr parser.Expr) parser.Expr {
 	return &parser.StepInvariantExpr{Expr: expr}
 }
 
-func unwrapParens(expr parser.Expr) parser.Expr {
-	switch t := expr.(type) {
-	case *parser.ParenExpr:
-		return unwrapParens(t.Expr)
-	default:
-		return t
-	}
-}
-
 // Copy from https://github.com/prometheus/prometheus/blob/v2.39.1/promql/engine.go#L2658.
 func setOffsetForAtModifier(evalTime int64, expr parser.Expr) {
 	getOffset := func(ts *int64, originalOffset time.Duration, path []parser.Node) time.Duration {
@@ -491,65 +520,3 @@ func setOffsetForInnerSubqueries(expr parser.Expr, opts *query.Options) {
 		}
 	}
 }
-
-// VectorSelector is vector selector with additional configuration set by optimizers.
-type VectorSelector struct {
-	*parser.VectorSelector
-	Filters         []*labels.Matcher
-	BatchSize       int64
-	SelectTimestamp bool
-}
-
-func (f VectorSelector) String() string {
-	if f.SelectTimestamp {
-		// If we pushed down timestamp into the vector selector we need to render the proper
-		// PromQL again.
-		return fmt.Sprintf("timestamp(%s)", f.VectorSelector.String())
-	}
-	return f.VectorSelector.String()
-}
-
-func (f VectorSelector) Pretty(level int) string { return f.String() }
-
-func (f VectorSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
-
-func (f VectorSelector) Type() parser.ValueType { return parser.ValueTypeVector }
-
-func (f VectorSelector) PromQLExpr() {}
-
-// MatrixSelector is matrix selector with additional configuration set by optimizers.
-// It is used so we can get rid of VectorSelector in distributed mode too.
-type MatrixSelector struct {
-	*parser.MatrixSelector
-
-	// Needed because this operator is used in the distributed mode
-	OriginalString string
-}
-
-func (f MatrixSelector) String() string {
-	return f.OriginalString
-}
-
-func (f MatrixSelector) Pretty(level int) string { return f.String() }
-
-func (f MatrixSelector) PositionRange() posrange.PositionRange { return posrange.PositionRange{} }
-
-func (f MatrixSelector) Type() parser.ValueType { return parser.ValueTypeVector }
-
-func (f MatrixSelector) PromQLExpr() {}
-
-type CheckDuplicateLabels struct {
-	Expr parser.Expr
-}
-
-func (c CheckDuplicateLabels) String() string {
-	return c.Expr.String()
-}
-
-func (c CheckDuplicateLabels) Pretty(level int) string { return c.Expr.Pretty(level) }
-
-func (c CheckDuplicateLabels) PositionRange() posrange.PositionRange { return c.Expr.PositionRange() }
-
-func (c CheckDuplicateLabels) Type() parser.ValueType { return c.Expr.Type() }
-
-func (c CheckDuplicateLabels) PromQLExpr() {}

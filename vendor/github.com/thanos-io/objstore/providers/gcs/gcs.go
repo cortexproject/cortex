@@ -8,9 +8,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/go-kit/log"
@@ -19,16 +21,22 @@ import (
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
+	htransport "google.golang.org/api/transport/http"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gopkg.in/yaml.v2"
 
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/objstore/exthttp"
 )
 
 // DirDelim is the delimiter used to model a directory structure in an object store bucket.
 const DirDelim = "/"
+
+var DefaultConfig = Config{
+	HTTPConfig: exthttp.DefaultHTTPConfig,
+}
 
 // Config stores the configuration for gcs bucket.
 type Config struct {
@@ -39,7 +47,8 @@ type Config struct {
 	// when direct path is not enabled.
 	// See https://pkg.go.dev/cloud.google.com/go/storage#hdr-Experimental_gRPC_API for more details
 	// on how to enable direct path.
-	GRPCConnPoolSize int `yaml:"grpc_conn_pool_size"`
+	GRPCConnPoolSize int                `yaml:"grpc_conn_pool_size"`
+	HTTPConfig       exthttp.HTTPConfig `yaml:"http_config"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
@@ -51,14 +60,23 @@ type Bucket struct {
 	closer io.Closer
 }
 
-// NewBucket returns a new Bucket against the given bucket handle.
-func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string) (*Bucket, error) {
-	var gc Config
-	if err := yaml.Unmarshal(conf, &gc); err != nil {
-		return nil, err
+// parseConfig unmarshals a buffer into a Config with default values.
+func parseConfig(conf []byte) (Config, error) {
+	config := DefaultConfig
+	if err := yaml.UnmarshalStrict(conf, &config); err != nil {
+		return Config{}, err
 	}
 
-	return NewBucketWithConfig(ctx, logger, gc, component)
+	return config, nil
+}
+
+// NewBucket returns a new Bucket against the given bucket handle.
+func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string) (*Bucket, error) {
+	config, err := parseConfig(conf)
+	if err != nil {
+		return nil, err
+	}
+	return NewBucketWithConfig(ctx, logger, config, component)
 }
 
 // NewBucketWithConfig returns a new Bucket with gcs Config struct.
@@ -81,6 +99,34 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 	opts = append(opts,
 		option.WithUserAgent(fmt.Sprintf("thanos-%s/%s (%s)", component, version.Version, runtime.Version())),
 	)
+
+	// Check if a roundtripper has been set in the config
+	// otherwise build the default transport.
+	var rt http.RoundTripper
+	if gc.HTTPConfig.Transport != nil {
+		rt = gc.HTTPConfig.Transport
+	} else {
+		var err error
+		rt, err = exthttp.DefaultTransport(gc.HTTPConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// GCS uses some defaults when "options.WithHTTPClient" is not used that are important when we call
+	// htransport.NewTransport namely the scopes that are then used for OAth authentication. So to build our own
+	// http client we need to se those defaults
+	opts = append(opts, option.WithScopes(storage.ScopeFullControl, "https://www.googleapis.com/auth/cloud-platform"))
+	gRT, err := htransport.NewTransport(context.Background(), rt, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	httpCli := &http.Client{
+		Transport: gRT,
+		Timeout:   time.Duration(gc.HTTPConfig.IdleConnTimeout),
+	}
+	opts = append(opts, option.WithHTTPClient(httpCli))
 
 	return newBucket(ctx, logger, gc, opts)
 }

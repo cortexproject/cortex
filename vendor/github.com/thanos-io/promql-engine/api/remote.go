@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type RemoteEndpoints interface {
@@ -19,7 +20,7 @@ type RemoteEngine interface {
 	MaxT() int64
 	MinT() int64
 	LabelSets() []labels.Labels
-	NewRangeQuery(ctx context.Context, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error)
+	NewRangeQuery(ctx context.Context, opts promql.QueryOpts, plan parser.Expr, start, end time.Time, interval time.Duration) (promql.Query, error)
 }
 
 type staticEndpoints struct {

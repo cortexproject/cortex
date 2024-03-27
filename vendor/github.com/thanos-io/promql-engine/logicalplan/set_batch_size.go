@@ -22,7 +22,7 @@ type SelectorBatchSize struct {
 // when a binary expression precedes the aggregate.
 func (m SelectorBatchSize) Optimize(plan parser.Expr, _ *query.Options) (parser.Expr, annotations.Annotations) {
 	canBatch := false
-	traverse(&plan, func(current *parser.Expr) {
+	Traverse(&plan, func(current *parser.Expr) {
 		switch e := (*current).(type) {
 		case *parser.Call:
 			//TODO: calls can reduce the labelset of the input; think histogram_quantile reducing

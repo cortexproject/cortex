@@ -81,7 +81,7 @@ func (rs RemoteExecutions) String() string {
 // remote execution of a Query against the given PromQL Engine.
 type RemoteExecution struct {
 	Engine          api.RemoteEngine
-	Query           string
+	Query           parser.Expr
 	QueryRangeStart time.Time
 
 	valueType parser.ValueType
@@ -274,7 +274,7 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 	if allowedStartOffset < startOffset {
 		return *expr
 	}
-	if isConstantExpr(*expr) {
+	if IsConstantExpr(*expr) {
 		return *expr
 	}
 
@@ -304,7 +304,7 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *parser.Expr, engine
 
 		remoteQueries = append(remoteQueries, RemoteExecution{
 			Engine:          e,
-			Query:           (*expr).String(),
+			Query:           *expr,
 			QueryRangeStart: start,
 			valueType:       (*expr).Type(),
 		})
@@ -330,7 +330,7 @@ func (m DistributedExecutionOptimizer) distributeAbsent(expr parser.Expr, engine
 		}
 		queries = append(queries, RemoteExecution{
 			Engine:          engines[i],
-			Query:           expr.String(),
+			Query:           expr,
 			QueryRangeStart: opts.Start,
 			valueType:       expr.Type(),
 		})
@@ -342,7 +342,7 @@ func (m DistributedExecutionOptimizer) distributeAbsent(expr parser.Expr, engine
 	if len(queries) == 0 && len(engines) > 0 {
 		return RemoteExecution{
 			Engine:          engines[len(engines)-1],
-			Query:           expr.String(),
+			Query:           expr,
 			QueryRangeStart: opts.Start,
 			valueType:       expr.Type(),
 		}
@@ -431,7 +431,7 @@ func calculateStartOffset(expr *parser.Expr, lookbackDelta time.Duration) time.D
 
 	var selectRange time.Duration
 	var offset time.Duration
-	traverse(expr, func(node *parser.Expr) {
+	Traverse(expr, func(node *parser.Expr) {
 		switch n := (*node).(type) {
 		case *parser.SubqueryExpr:
 			selectRange += n.Range
@@ -461,16 +461,14 @@ func isDistributive(expr *parser.Expr, skipBinaryPushdown bool) bool {
 		if _, ok := distributiveAggregations[e.Op]; !ok {
 			return false
 		}
-	case *parser.Call:
-		return len(e.Args) > 0
 	}
 
 	return true
 }
 
 func isBinaryExpressionWithOneConstantSide(expr *parser.BinaryExpr) bool {
-	lhsConstant := isConstantExpr(expr.LHS)
-	rhsConstant := isConstantExpr(expr.RHS)
+	lhsConstant := IsConstantExpr(expr.LHS)
+	rhsConstant := IsConstantExpr(expr.RHS)
 	return (lhsConstant || rhsConstant)
 }
 
@@ -490,7 +488,7 @@ func matchesExternalLabelSet(expr parser.Expr, externalLabelSet []labels.Labels)
 		return true
 	}
 	var selectorSet [][]*labels.Matcher
-	traverse(&expr, func(current *parser.Expr) {
+	Traverse(&expr, func(current *parser.Expr) {
 		vs, ok := (*current).(*VectorSelector)
 		if ok {
 			selectorSet = append(selectorSet, vs.LabelMatchers)
@@ -525,28 +523,6 @@ func matchesExternalLabels(ms []*labels.Matcher, externalLabels labels.Labels) b
 	return true
 }
 
-func isConstantExpr(expr parser.Expr) bool {
-	// TODO: there are more possibilities for constant expressions
-	switch texpr := expr.(type) {
-	case *parser.NumberLiteral:
-		return true
-	case *parser.StepInvariantExpr:
-		return isConstantExpr(texpr.Expr)
-	case *parser.ParenExpr:
-		return isConstantExpr(texpr.Expr)
-	case *parser.Call:
-		constArgs := true
-		for _, arg := range texpr.Args {
-			constArgs = constArgs && isConstantExpr(arg)
-		}
-		return constArgs
-	case *parser.BinaryExpr:
-		return isConstantExpr(texpr.LHS) && isConstantExpr(texpr.RHS)
-	default:
-		return false
-	}
-}
-
 func rewritesEngineLabels(e parser.Expr, engineLabels map[string]struct{}) bool {
 	var result bool
 	TraverseBottomUp(nil, &e, func(parent *parser.Expr, node *parser.Expr) bool {
@@ -554,7 +530,7 @@ func rewritesEngineLabels(e parser.Expr, engineLabels map[string]struct{}) bool 
 		if !ok || call.Func.Name != "label_replace" {
 			return false
 		}
-		targetLabel := call.Args[1].(*parser.StringLiteral).Val
+		targetLabel := UnsafeUnwrapString(call.Args[1])
 		if _, ok := engineLabels[targetLabel]; ok {
 			result = true
 			return true

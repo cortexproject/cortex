@@ -119,7 +119,7 @@ func (h *Webhook) getParams() map[string]string {
 
 func (h *Webhook) Poll(b *Bot, dest chan Update, stop chan struct{}) {
 	if err := b.SetWebhook(h); err != nil {
-		b.debug(err)
+		b.OnError(err, nil)
 		close(stop)
 		return
 	}

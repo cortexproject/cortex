@@ -77,6 +77,7 @@ var (
 // Bad request errors
 var (
 	ErrBadButtonData          = NewError(400, "Bad Request: BUTTON_DATA_INVALID")
+	ErrBadUserID              = NewError(400, "Bad Request: USER_ID_INVALID")
 	ErrBadPollOptions         = NewError(400, "Bad Request: expected an Array of String as options")
 	ErrBadURLContent          = NewError(400, "Bad Request: failed to get HTTP URL content")
 	ErrCantEditMessage        = NewError(400, "Bad Request: message can't be edited")
@@ -117,6 +118,10 @@ var (
 	ErrWrongTypeOfContent     = NewError(400, "Bad Request: wrong type of the web page content")
 	ErrWrongURL               = NewError(400, "Bad Request: wrong HTTP URL specified")
 	ErrForwardMessage         = NewError(400, "Bad Request: administrators of the chat restricted message forwarding")
+	ErrUserAlreadyParticipant = NewError(400, "Bad Request: USER_ALREADY_PARTICIPANT", "User is already a participant")
+	ErrHideRequesterMissing   = NewError(400, "Bad Request: HIDE_REQUESTER_MISSING")
+	ErrChannelsTooMuch        = NewError(400, "Bad Request: CHANNELS_TOO_MUCH")
+	ErrChannelsTooMuchUser    = NewError(400, "Bad Request: USER_CHANNELS_TOO_MUCH")
 )
 
 // Forbidden errors
@@ -124,6 +129,7 @@ var (
 	ErrBlockedByUser        = NewError(403, "Forbidden: bot was blocked by the user")
 	ErrKickedFromGroup      = NewError(403, "Forbidden: bot was kicked from the group chat")
 	ErrKickedFromSuperGroup = NewError(403, "Forbidden: bot was kicked from the supergroup chat")
+	ErrKickedFromChannel    = NewError(403, "Forbidden: bot was kicked from the channel chat")
 	ErrNotStartedByUser     = NewError(403, "Forbidden: bot can't initiate conversation with a user")
 	ErrUserIsDeactivated    = NewError(403, "Forbidden: user is deactivated")
 )
@@ -141,6 +147,8 @@ func Err(s string) error {
 		return ErrInternal
 	case ErrBadButtonData.ʔ():
 		return ErrBadButtonData
+	case ErrBadUserID.ʔ():
+		return ErrBadUserID
 	case ErrBadPollOptions.ʔ():
 		return ErrBadPollOptions
 	case ErrBadURLContent.ʔ():
@@ -225,12 +233,22 @@ func Err(s string) error {
 		return ErrKickedFromGroup
 	case ErrKickedFromSuperGroup.ʔ():
 		return ErrKickedFromSuperGroup
+	case ErrKickedFromChannel.ʔ():
+		return ErrKickedFromChannel
 	case ErrNotStartedByUser.ʔ():
 		return ErrNotStartedByUser
 	case ErrUserIsDeactivated.ʔ():
 		return ErrUserIsDeactivated
 	case ErrForwardMessage.ʔ():
 		return ErrForwardMessage
+	case ErrUserAlreadyParticipant.ʔ():
+		return ErrUserAlreadyParticipant
+	case ErrHideRequesterMissing.ʔ():
+		return ErrHideRequesterMissing
+	case ErrChannelsTooMuch.ʔ():
+		return ErrChannelsTooMuch
+	case ErrChannelsTooMuchUser.ʔ():
+		return ErrChannelsTooMuchUser
 	default:
 		return nil
 	}

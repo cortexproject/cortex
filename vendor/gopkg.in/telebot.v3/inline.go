@@ -93,9 +93,9 @@ type Results []Result
 
 // MarshalJSON makes sure IQRs have proper IDs and Type variables set.
 func (results Results) MarshalJSON() ([]byte, error) {
-	for _, result := range results {
+	for i, result := range results {
 		if result.ResultID() == "" {
-			result.SetResultID(fmt.Sprintf("%d", &result))
+			result.SetResultID(fmt.Sprintf("%d", &results[i]))
 		}
 		if err := inferIQR(result); err != nil {
 			return nil, err

@@ -44,11 +44,13 @@ type dedupOperator struct {
 }
 
 func NewDedupOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) model.VectorOperator {
-	return &dedupOperator{
-		OperatorTelemetry: model.NewTelemetry("[dedup]", opts.EnableAnalysis),
-		next:              next,
-		pool:              pool,
+	oper := &dedupOperator{
+		next: next,
+		pool: pool,
 	}
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
 func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
@@ -119,8 +121,12 @@ func (d *dedupOperator) GetPool() *model.VectorPool {
 	return d.pool
 }
 
-func (d *dedupOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[dedup]", []model.VectorOperator{d.next}
+func (d *dedupOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{d.next}
+}
+
+func (d *dedupOperator) String() string {
+	return "[dedup]"
 }
 
 func (d *dedupOperator) loadSeries(ctx context.Context) error {

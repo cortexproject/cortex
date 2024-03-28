@@ -18,7 +18,6 @@ type Recipient interface {
 // This is pretty cool, since it lets bots implement
 // custom Sendables for complex kind of media or
 // chat objects spanning across multiple messages.
-//
 type Sendable interface {
 	Send(*Bot, Recipient, *SendOptions) (*Message, error)
 }

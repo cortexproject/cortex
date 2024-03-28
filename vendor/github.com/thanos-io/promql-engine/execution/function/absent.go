@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -20,28 +19,34 @@ type absentOperator struct {
 	model.OperatorTelemetry
 
 	once     sync.Once
-	funcExpr *parser.Call
+	funcExpr *logicalplan.FunctionCall
 	series   []labels.Labels
 	pool     *model.VectorPool
 	next     model.VectorOperator
 }
 
 func newAbsentOperator(
-	funcExpr *parser.Call,
+	funcExpr *logicalplan.FunctionCall,
 	pool *model.VectorPool,
 	next model.VectorOperator,
 	opts *query.Options,
 ) *absentOperator {
-	return &absentOperator{
-		OperatorTelemetry: model.NewTelemetry(absentOperatorName, opts.EnableAnalysis),
-		funcExpr:          funcExpr,
-		pool:              pool,
-		next:              next,
+	oper := &absentOperator{
+		funcExpr: funcExpr,
+		pool:     pool,
+		next:     next,
 	}
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
-func (o *absentOperator) Explain() (me string, next []model.VectorOperator) {
-	return absentOperatorName, []model.VectorOperator{o.next}
+func (o *absentOperator) String() string {
+	return "[absent]"
+}
+
+func (o *absentOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{o.next}
 }
 
 func (o *absentOperator) Series(_ context.Context) ([]labels.Labels, error) {
@@ -63,7 +68,7 @@ func (o *absentOperator) loadSeries() {
 		case *logicalplan.VectorSelector:
 			lm = append(n.LabelMatchers, n.Filters...)
 		case *logicalplan.MatrixSelector:
-			v := n.VectorSelector.(*logicalplan.VectorSelector)
+			v := n.VectorSelector
 			lm = append(v.LabelMatchers, v.Filters...)
 		default:
 			o.series = []labels.Labels{labels.EmptyLabels()}

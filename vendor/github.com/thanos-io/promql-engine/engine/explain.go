@@ -29,7 +29,7 @@ type ExplainOutputNode struct {
 var _ ExplainableQuery = &compatibilityQuery{}
 
 func analyzeQuery(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
-	_, children := obsv.Explain()
+	children := obsv.Explain()
 	var childTelemetry []AnalyzeOutputNode
 	for _, child := range children {
 		if obsChild, ok := child.(model.ObservableVectorOperator); ok {
@@ -44,7 +44,7 @@ func analyzeQuery(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
 }
 
 func explainVector(v model.VectorOperator) *ExplainOutputNode {
-	name, vectors := v.Explain()
+	vectors := v.Explain()
 
 	var children []ExplainOutputNode
 	for _, vector := range vectors {
@@ -52,7 +52,7 @@ func explainVector(v model.VectorOperator) *ExplainOutputNode {
 	}
 
 	return &ExplainOutputNode{
-		OperatorName: name,
+		OperatorName: v.String(),
 		Children:     children,
 	}
 }

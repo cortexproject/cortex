@@ -24,14 +24,16 @@ type timestampOperator struct {
 }
 
 func newTimestampOperator(next model.VectorOperator, opts *query.Options) *timestampOperator {
-	return &timestampOperator{
-		next:              next,
-		OperatorTelemetry: model.NewTelemetry(timestampOperatorName, opts.EnableAnalysis),
+	oper := &timestampOperator{
+		next: next,
 	}
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
-func (o *timestampOperator) Explain() (me string, next []model.VectorOperator) {
-	return timestampOperatorName, []model.VectorOperator{o.next}
+func (o *timestampOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{o.next}
 }
 
 func (o *timestampOperator) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -42,6 +44,10 @@ func (o *timestampOperator) Series(ctx context.Context) ([]labels.Labels, error)
 		return nil, err
 	}
 	return o.series, nil
+}
+
+func (o *timestampOperator) String() string {
+	return "[timestamp]"
 }
 
 func (o *timestampOperator) loadSeries(ctx context.Context) error {

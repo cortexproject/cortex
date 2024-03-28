@@ -32,9 +32,7 @@ type numberLiteralSelector struct {
 }
 
 func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val float64) *numberLiteralSelector {
-	return &numberLiteralSelector{
-		OperatorTelemetry: model.NewTelemetry("[numberLiteral]", opts.EnableAnalysis),
-
+	oper := &numberLiteralSelector{
 		vectorPool:  pool,
 		numSteps:    opts.NumSteps(),
 		mint:        opts.Start.UnixMilli(),
@@ -43,10 +41,17 @@ func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val f
 		currentStep: opts.Start.UnixMilli(),
 		val:         val,
 	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	return oper
 }
 
-func (o *numberLiteralSelector) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[numberLiteral] %v", o.val), nil
+func (o *numberLiteralSelector) Explain() (next []model.VectorOperator) {
+	return nil
+}
+
+func (o *numberLiteralSelector) String() string {
+	return fmt.Sprintf("[numberLiteral] %v", o.val)
 }
 
 func (o *numberLiteralSelector) Series(context.Context) ([]labels.Labels, error) {

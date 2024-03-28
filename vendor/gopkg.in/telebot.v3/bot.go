@@ -160,21 +160,20 @@ var (
 //
 // Example:
 //
-//		b.Handle("/start", func (c tele.Context) error {
-//			return c.Reply("Hello!")
-// 		})
+//	b.Handle("/start", func (c tele.Context) error {
+//		return c.Reply("Hello!")
+//	})
 //
-//		b.Handle(&inlineButton, func (c tele.Context) error {
-//			return c.Respond(&tele.CallbackResponse{Text: "Hello!"})
-//		})
+//	b.Handle(&inlineButton, func (c tele.Context) error {
+//		return c.Respond(&tele.CallbackResponse{Text: "Hello!"})
+//	})
 //
 // Middleware usage:
 //
-//		b.Handle("/ban", onBan, middleware.Whitelist(ids...))
-//
+//	b.Handle("/ban", onBan, middleware.Whitelist(ids...))
 func (b *Bot) Handle(endpoint interface{}, h HandlerFunc, m ...MiddlewareFunc) {
 	if len(b.group.middleware) > 0 {
-		m = append(b.group.middleware, m...)
+		m = appendMiddleware(b.group.middleware, m)
 	}
 
 	handler := func(c Context) error {
@@ -256,16 +255,16 @@ func (b *Bot) NewContext(u Update) Context {
 // some Sendable (or string!) and optional send options.
 //
 // NOTE:
-// 		Since most arguments are of type interface{}, but have pointer
-// 		method receivers, make sure to pass them by-pointer, NOT by-value.
+//
+//	Since most arguments are of type interface{}, but have pointer
+//	method receivers, make sure to pass them by-pointer, NOT by-value.
 //
 // What is a send option exactly? It can be one of the following types:
 //
-//     - *SendOptions (the actual object accepted by Telegram API)
-//     - *ReplyMarkup (a component of SendOptions)
-//     - Option (a shortcut flag for popular options)
-//     - ParseMode (HTML, Markdown, etc)
-//
+//   - *SendOptions (the actual object accepted by Telegram API)
+//   - *ReplyMarkup (a component of SendOptions)
+//   - Option (a shortcut flag for popular options)
+//   - ParseMode (HTML, Markdown, etc)
 func (b *Bot) Send(to Recipient, what interface{}, opts ...interface{}) (*Message, error) {
 	if to == nil {
 		return nil, ErrBadRecipient
@@ -284,6 +283,7 @@ func (b *Bot) Send(to Recipient, what interface{}, opts ...interface{}) (*Messag
 }
 
 // SendAlbum sends multiple instances of media as a single message.
+// To include the caption, make sure the first Inputtable of an album has it.
 // From all existing options, it only supports tele.Silent.
 func (b *Bot) SendAlbum(to Recipient, a Album, opts ...interface{}) ([]Message, error) {
 	if to == nil {
@@ -437,14 +437,13 @@ func (b *Bot) Copy(to Recipient, msg Editable, options ...interface{}) (*Message
 //
 // Use cases:
 //
-//     b.Edit(m, m.Text, newMarkup)
-//     b.Edit(m, "new <b>text</b>", tele.ModeHTML)
-//     b.Edit(m, &tele.ReplyMarkup{...})
-//     b.Edit(m, &tele.Photo{File: ...})
-//     b.Edit(m, tele.Location{42.1337, 69.4242})
-//     b.Edit(c, "edit inline message from the callback")
-//     b.Edit(r, "edit message from chosen inline result")
-//
+//	b.Edit(m, m.Text, newMarkup)
+//	b.Edit(m, "new <b>text</b>", tele.ModeHTML)
+//	b.Edit(m, &tele.ReplyMarkup{...})
+//	b.Edit(m, &tele.Photo{File: ...})
+//	b.Edit(m, tele.Location{42.1337, 69.4242})
+//	b.Edit(c, "edit inline message from the callback")
+//	b.Edit(r, "edit message from chosen inline result")
 func (b *Bot) Edit(msg Editable, what interface{}, opts ...interface{}) (*Message, error) {
 	var (
 		method string
@@ -503,7 +502,6 @@ func (b *Bot) Edit(msg Editable, what interface{}, opts ...interface{}) (*Messag
 //
 // If edited message is sent by the bot, returns it,
 // otherwise returns nil and ErrTrueResult.
-//
 func (b *Bot) EditReplyMarkup(msg Editable, markup *ReplyMarkup) (*Message, error) {
 	msgID, chatID := msg.MessageSig()
 	params := make(map[string]string)
@@ -537,7 +535,6 @@ func (b *Bot) EditReplyMarkup(msg Editable, markup *ReplyMarkup) (*Message, erro
 //
 // If edited message is sent by the bot, returns it,
 // otherwise returns nil and ErrTrueResult.
-//
 func (b *Bot) EditCaption(msg Editable, caption string, opts ...interface{}) (*Message, error) {
 	msgID, chatID := msg.MessageSig()
 
@@ -571,9 +568,8 @@ func (b *Bot) EditCaption(msg Editable, caption string, opts ...interface{}) (*M
 //
 // Use cases:
 //
-//     b.EditMedia(m, &tele.Photo{File: tele.FromDisk("chicken.jpg")})
-//     b.EditMedia(m, &tele.Video{File: tele.FromURL("http://video.mp4")})
-//
+//	b.EditMedia(m, &tele.Photo{File: tele.FromDisk("chicken.jpg")})
+//	b.EditMedia(m, &tele.Video{File: tele.FromURL("http://video.mp4")})
 func (b *Bot) EditMedia(msg Editable, media Inputtable, opts ...interface{}) (*Message, error) {
 	var (
 		repr  string
@@ -655,15 +651,14 @@ func (b *Bot) EditMedia(msg Editable, media Inputtable, opts ...interface{}) (*M
 // Delete removes the message, including service messages.
 // This function will panic upon nil Editable.
 //
-//     - A message can only be deleted if it was sent less than 48 hours ago.
-//     - A dice message in a private chat can only be deleted if it was sent more than 24 hours ago.
-//     - Bots can delete outgoing messages in private chats, groups, and supergroups.
-//     - Bots can delete incoming messages in private chats.
-//     - Bots granted can_post_messages permissions can delete outgoing messages in channels.
-//     - If the bot is an administrator of a group, it can delete any message there.
-//     - If the bot has can_delete_messages permission in a supergroup or a
-//       channel, it can delete any message there.
-//
+//   - A message can only be deleted if it was sent less than 48 hours ago.
+//   - A dice message in a private chat can only be deleted if it was sent more than 24 hours ago.
+//   - Bots can delete outgoing messages in private chats, groups, and supergroups.
+//   - Bots can delete incoming messages in private chats.
+//   - Bots granted can_post_messages permissions can delete outgoing messages in channels.
+//   - If the bot is an administrator of a group, it can delete any message there.
+//   - If the bot has can_delete_messages permission in a supergroup or a
+//     channel, it can delete any message there.
 func (b *Bot) Delete(msg Editable) error {
 	msgID, chatID := msg.MessageSig()
 
@@ -685,8 +680,7 @@ func (b *Bot) Delete(msg Editable) error {
 //
 // Currently, Telegram supports only a narrow range of possible
 // actions, these are aligned as constants of this package.
-//
-func (b *Bot) Notify(to Recipient, action ChatAction) error {
+func (b *Bot) Notify(to Recipient, action ChatAction, threadID ...int) error {
 	if to == nil {
 		return ErrBadRecipient
 	}
@@ -694,6 +688,10 @@ func (b *Bot) Notify(to Recipient, action ChatAction) error {
 	params := map[string]string{
 		"chat_id": to.Recipient(),
 		"action":  string(action),
+	}
+
+	if len(threadID) > 0 {
+		params["message_thread_id"] = strconv.Itoa(threadID[0])
 	}
 
 	_, err := b.Raw("sendChatAction", params)
@@ -705,10 +703,9 @@ func (b *Bot) Notify(to Recipient, action ChatAction) error {
 //
 // Example:
 //
-//		b.Ship(query)          // OK
-//		b.Ship(query, opts...) // OK with options
-//		b.Ship(query, "Oops!") // Error message
-//
+//	b.Ship(query)          // OK
+//	b.Ship(query, opts...) // OK with options
+//	b.Ship(query, "Oops!") // Error message
 func (b *Bot) Ship(query *ShippingQuery, what ...interface{}) error {
 	params := map[string]string{
 		"shipping_query_id": query.ID,
@@ -761,9 +758,8 @@ func (b *Bot) Accept(query *PreCheckoutQuery, errorMessage ...string) error {
 //
 // Example:
 //
-//		b.Respond(c)
-//		b.Respond(c, response)
-//
+//	b.Respond(c)
+//	b.Respond(c, response)
 func (b *Bot) Respond(c *Callback, resp ...*CallbackResponse) error {
 	var r *CallbackResponse
 	if resp == nil {
@@ -821,7 +817,6 @@ func (b *Bot) AnswerWebApp(query *Query, r Result) (*WebAppMessage, error) {
 //
 // Usually, Telegram-provided File objects miss FilePath so you might need to
 // perform an additional request to fetch them.
-//
 func (b *Bot) FileByID(fileID string) (File, error) {
 	params := map[string]string{
 		"file_id": fileID,
@@ -901,7 +896,6 @@ func (b *Bot) File(file *File) (io.ReadCloser, error) {
 //
 // If the message is sent by the bot, returns it,
 // otherwise returns nil and ErrTrueResult.
-//
 func (b *Bot) StopLiveLocation(msg Editable, opts ...interface{}) (*Message, error) {
 	msgID, chatID := msg.MessageSig()
 
@@ -926,7 +920,6 @@ func (b *Bot) StopLiveLocation(msg Editable, opts ...interface{}) (*Message, err
 //
 // It supports ReplyMarkup.
 // This function will panic upon nil Editable.
-//
 func (b *Bot) StopPoll(msg Editable, opts ...interface{}) (*Poll, error) {
 	msgID, chatID := msg.MessageSig()
 
@@ -966,7 +959,6 @@ func (b *Bot) Leave(chat *Chat) error {
 //
 // It supports Silent option.
 // This function will panic upon nil Editable.
-//
 func (b *Bot) Pin(msg Editable, opts ...interface{}) error {
 	msgID, chatID := msg.MessageSig()
 
@@ -1011,7 +1003,6 @@ func (b *Bot) UnpinAll(chat *Chat) error {
 //
 // Including current name of the user for one-on-one conversations,
 // current username of a user, group or channel, etc.
-//
 func (b *Bot) ChatByID(id int64) (*Chat, error) {
 	return b.ChatByUsername(strconv.FormatInt(id, 10))
 }
@@ -1109,9 +1100,8 @@ func (b *Bot) MenuButton(chat *User) (*MenuButton, error) {
 //
 // It accepts two kinds of menu button arguments:
 //
-//     - MenuButtonType for simple menu buttons (default, commands)
-//     - MenuButton complete structure for web_app menu button type
-//
+//   - MenuButtonType for simple menu buttons (default, commands)
+//   - MenuButton complete structure for web_app menu button type
 func (b *Bot) SetMenuButton(chat *User, mb interface{}) error {
 	params := map[string]interface{}{
 		"chat_id": chat.Recipient(),

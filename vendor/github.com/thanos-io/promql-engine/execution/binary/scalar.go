@@ -71,9 +71,7 @@ func NewScalar(
 		operandValIdx = 1
 	}
 
-	return &scalarOperator{
-		OperatorTelemetry: model.NewTelemetry("[vectorScalarBinary]", opts.EnableAnalysis),
-
+	oper := &scalarOperator{
 		pool:          pool,
 		next:          next,
 		scalar:        scalar,
@@ -84,12 +82,16 @@ func NewScalar(
 		operandValIdx: operandValIdx,
 		returnBool:    returnBool,
 		bothScalars:   scalarSide == ScalarSideBoth,
-	}, nil
+	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(op, opts.EnableAnalysis)
+
+	return oper, nil
 
 }
 
-func (o *scalarOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[vectorScalarBinary] %s", parser.ItemTypeStr[o.opType]), []model.VectorOperator{o.next, o.scalar}
+func (o *scalarOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{o.next, o.scalar}
 }
 
 func (o *scalarOperator) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -102,6 +104,10 @@ func (o *scalarOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 		return nil, err
 	}
 	return o.series, nil
+}
+
+func (o *scalarOperator) String() string {
+	return fmt.Sprintf("[vectorScalarBinary] %s", parser.ItemTypeStr[o.opType])
 }
 
 func (o *scalarOperator) Next(ctx context.Context) ([]model.StepVector, error) {

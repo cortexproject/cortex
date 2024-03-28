@@ -85,8 +85,6 @@ func NewMatrixSelector(
 	}
 	isExtFunction := function.IsExtFunction(functionName)
 	m := &matrixSelector{
-		OperatorTelemetry: model.NewTelemetry("matrixSelector", opts.EnableAnalysis),
-
 		storage:      selector,
 		call:         call,
 		functionName: functionName,
@@ -110,6 +108,7 @@ func NewMatrixSelector(
 
 		extLookbackDelta: opts.ExtLookbackDelta.Milliseconds(),
 	}
+	m.OperatorTelemetry = model.NewTelemetry(m, opts.EnableAnalysis)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -120,12 +119,8 @@ func NewMatrixSelector(
 	return m, nil
 }
 
-func (o *matrixSelector) Explain() (me string, next []model.VectorOperator) {
-	r := time.Duration(o.selectRange) * time.Millisecond
-	if o.call != nil {
-		return fmt.Sprintf("[matrixSelector] %v({%v}[%s] %v mod %v)", o.functionName, o.storage.Matchers(), r, o.shard, o.numShards), nil
-	}
-	return fmt.Sprintf("[matrixSelector] {%v}[%s] %v mod %v", o.storage.Matchers(), r, o.shard, o.numShards), nil
+func (o *matrixSelector) Explain() []model.VectorOperator {
+	return nil
 }
 
 func (o *matrixSelector) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -259,6 +254,14 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
 	})
 	return err
+}
+
+func (o *matrixSelector) String() string {
+	r := time.Duration(o.selectRange) * time.Millisecond
+	if o.call != nil {
+		return fmt.Sprintf("[matrixSelector] %v({%v}[%s] %v mod %v)", o.functionName, o.storage.Matchers(), r, o.shard, o.numShards)
+	}
+	return fmt.Sprintf("[matrixSelector] {%v}[%s] %v mod %v", o.storage.Matchers(), r, o.shard, o.numShards)
 }
 
 // matrixIterSlice populates a matrix vector covering the requested range for a

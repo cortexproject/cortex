@@ -358,16 +358,22 @@ func (s *PromQLSmith) walkSelectors() []*labels.Matcher {
 				value = ""
 			} else if val > 0.9 {
 				value = "not_exist_value"
+			} else if val > 0.8 {
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
 			} else {
 				idx := s.rnd.Intn(len(s.labelValues[name]))
 				value = s.labelValues[name][idx]
 			}
 		case labels.MatchNotEqual:
-			switch s.rnd.Intn(3) {
+			switch s.rnd.Intn(4) {
 			case 0:
 				value = ""
 			case 1:
 				value = "not_exist_value"
+			case 2:
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
 			default:
 				idx := s.rnd.Intn(len(s.labelValues[name]))
 				value = s.labelValues[name][idx]
@@ -378,6 +384,9 @@ func (s *PromQLSmith) walkSelectors() []*labels.Matcher {
 				value = ""
 			} else if val > 0.9 {
 				value = "not_exist_value"
+			} else if val > 0.85 {
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
 			} else if val > 0.8 {
 				value = ".*"
 			} else if val > 0.7 {
@@ -405,8 +414,11 @@ func (s *PromQLSmith) walkSelectors() []*labels.Matcher {
 			val := s.rnd.Float64()
 			if val > 0.8 {
 				value = ""
-			} else if val > 0.6 {
+			} else if val > 0.7 {
 				value = "not_exist_value"
+			} else if val > 0.6 {
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
 			} else if val > 0.4 {
 				// Prefix
 				idx := s.rnd.Intn(len(s.labelValues[name]))

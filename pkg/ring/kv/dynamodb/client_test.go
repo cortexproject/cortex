@@ -232,7 +232,7 @@ func Test_CAS_UpdateStale(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}
 	descMock := &DescMock{}
-	descMockResult := &DescMock{id: "result"}
+	descMockResult := &DescMock{}
 	startTime := time.Now().UTC().Add(-time.Millisecond)
 
 	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
@@ -399,7 +399,6 @@ func (m *CodecMock) DecodeMultiKey(map[string][]byte) (interface{}, error) {
 }
 
 type DescMock struct {
-	id string
 	mock.Mock
 }
 

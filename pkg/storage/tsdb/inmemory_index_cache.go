@@ -2,7 +2,6 @@ package tsdb
 
 import (
 	"context"
-	"reflect"
 	"unsafe"
 
 	"github.com/VictoriaMetrics/fastcache"
@@ -122,12 +121,7 @@ func yoloBuf(s string) []byte {
 }
 
 func copyString(s string) string {
-	var b []byte
-	h := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	h.Data = (*reflect.StringHeader)(unsafe.Pointer(&s)).Data
-	h.Len = len(s)
-	h.Cap = len(s)
-	return string(b)
+	return string(unsafe.Slice(unsafe.StringData(s), len(s)))
 }
 
 // copyToKey is required as underlying strings might be memory-mapped.

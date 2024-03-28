@@ -973,7 +973,10 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 	for i, resp := range resps {
 		values[i] = resp.([]string)
 	}
-	r := util.MergeSlicesParallel(mergeSlicesParallelism, values...)
+	r, err := util.MergeSlicesParallel(ctx, mergeSlicesParallelism, values...)
+	if err != nil {
+		return nil, err
+	}
 	span.SetTag("result_length", len(r))
 	return r, nil
 }
@@ -1043,7 +1046,10 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	for i, resp := range resps {
 		values[i] = resp.([]string)
 	}
-	r := util.MergeSlicesParallel(mergeSlicesParallelism, values...)
+	r, err := util.MergeSlicesParallel(ctx, mergeSlicesParallelism, values...)
+	if err != nil {
+		return nil, err
+	}
 	span.SetTag("result_length", len(r))
 
 	return r, nil

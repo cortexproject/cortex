@@ -228,6 +228,40 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 	})
 }
 
+func Test_CAS_UpdateStale(t *testing.T) {
+	ddbMock := NewDynamodbClientMock()
+	codecMock := &CodecMock{}
+	descMock := &DescMock{}
+	descMockResult := &DescMock{}
+	startTime := time.Now().UTC().Add(-time.Millisecond)
+
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, defaultBackoff)
+	expectedUpdatedKeys := []string{"t1", "t2"}
+	expectedUpdated := map[string][]byte{
+		expectedUpdatedKeys[0]: []byte(expectedUpdatedKeys[0]),
+		expectedUpdatedKeys[1]: []byte(expectedUpdatedKeys[1]),
+	}
+	expectedBatch := map[dynamodbKey][]byte{
+		{primaryKey: key, sortKey: expectedUpdatedKeys[0]}: []byte(expectedUpdatedKeys[0]),
+		{primaryKey: key, sortKey: expectedUpdatedKeys[1]}: []byte(expectedUpdatedKeys[1]),
+	}
+
+	ddbMock.On("Query").Return(map[string][]byte{}, nil).Once()
+	codecMock.On("DecodeMultiKey").Return(descMock, nil).Once()
+	descMock.On("Clone").Return(descMock).Once()
+	descMock.On("FindDifference", descMockResult).Return(descMockResult, []string{}, nil).Once()
+	codecMock.On("EncodeMultiKey").Return(expectedUpdated, nil).Once()
+	ddbMock.On("Batch", context.TODO(), expectedBatch, []dynamodbKey{}).Once()
+
+	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+		return descMockResult, true, nil
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, descMockResult, c.staleData[key].data)
+	require.True(t, startTime.Before(c.staleData[key].timestamp))
+}
+
 func Test_WatchPrefix(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}

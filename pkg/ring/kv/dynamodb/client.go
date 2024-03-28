@@ -189,7 +189,12 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		}
 
 		if len(putRequests) > 0 || len(deleteRequests) > 0 {
-			return c.kv.Batch(ctx, putRequests, deleteRequests)
+			err = c.kv.Batch(ctx, putRequests, deleteRequests)
+			if err != nil {
+				return err
+			}
+			c.updateStaleData(key, r, time.Now().UTC())
+			return nil
 		}
 
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {

@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
@@ -22,12 +24,15 @@ import (
 
 const (
 	queryRange                    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
-	query                         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680"
-	queryNonShardable             = "/api/v1/query?time=1536716898&query=container_memory_rss&start=1536673680"
+	query                         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29"
+	queryNonShardable             = "/api/v1/query?time=1536716898&query=container_memory_rss"
 	queryExemplar                 = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
 	querySubqueryStepSizeTooSmall = "/api/v1/query?query=up%5B30d%3A%5D"
+	queryExceedsMaxQueryLength    = "/api/v1/query?query=up%5B90d%5D"
+	seriesQuery                   = "/api/v1/series?match[]"
 
-	responseBody = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	responseBody        = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
+	instantResponseBody = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 )
 
 type mockRequest struct {
@@ -45,8 +50,11 @@ type mockCodec struct {
 }
 
 func (c mockCodec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (Request, error) {
-	if r.URL.String() == query || r.URL.String() == queryRange {
+	if strings.HasPrefix(r.URL.String(), "/api/v1/query_range") {
 		return &mockRequest{resp: responseBody}, nil
+	}
+	if strings.HasPrefix(r.URL.String(), "/api/v1/query") {
+		return &mockRequest{resp: instantResponseBody}, nil
 	}
 	return mockRequest{}, nil
 }
@@ -91,13 +99,20 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	middlewares := []Middleware{
+	instantMiddlewares := []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return mockMiddleware{}
+		}),
+	}
+	rangeMiddlewares := []Middleware{
 		MiddlewareFunc(func(next Handler) Handler {
 			return mockMiddleware{}
 		}),
 	}
 
-	limits := validation.Limits{}
+	limits := validation.Limits{
+		MaxQueryLength: model.Duration(time.Hour * 24 * 60),
+	}
 	flagext.DefaultValues(&limits)
 	defaultOverrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
@@ -124,6 +139,12 @@ func TestRoundTrip(t *testing.T) {
 			maxSubQuerySteps: 11000,
 		},
 		{
+			path:             seriesQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+		},
+		{
 			path:             queryRange,
 			expectedBody:     responseBody,
 			limits:           defaultOverrides,
@@ -131,39 +152,33 @@ func TestRoundTrip(t *testing.T) {
 		},
 		{
 			path:             query,
-			expectedBody:     "bar",
+			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
 		},
 		{
 			path:             queryNonShardable,
-			expectedBody:     "bar",
+			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
-			maxSubQuerySteps: 11000,
-		},
-		{
-			path:             queryNonShardable,
-			expectedBody:     "bar",
-			limits:           shardingOverrides,
 			maxSubQuerySteps: 11000,
 		},
 		{
 			path:             query,
-			expectedBody:     responseBody,
+			expectedBody:     instantResponseBody,
 			limits:           shardingOverrides,
 			maxSubQuerySteps: 11000,
 		},
 		// Shouldn't hit subquery step limit because max steps is set to 0 so this check is disabled.
 		{
 			path:             querySubqueryStepSizeTooSmall,
-			expectedBody:     "bar",
+			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 0,
 		},
 		// Shouldn't hit subquery step limit because max steps is higher, which is 100K.
 		{
 			path:             querySubqueryStepSizeTooSmall,
-			expectedBody:     "bar",
+			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 100000,
 		},
@@ -173,11 +188,15 @@ func TestRoundTrip(t *testing.T) {
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
 		},
+		{
+			// The query should go to instant query middlewares rather than forwarding to next.
+			path:             queryExceedsMaxQueryLength,
+			expectedBody:     instantResponseBody,
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+		},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
-			if tc.path != querySubqueryStepSizeTooSmall {
-				return
-			}
 			//parallel testing causes data race
 			req, err := http.NewRequest("GET", tc.path, http.NoBody)
 			require.NoError(t, err)
@@ -193,8 +212,8 @@ func TestRoundTrip(t *testing.T) {
 			tw := NewQueryTripperware(log.NewNopLogger(),
 				nil,
 				nil,
-				middlewares,
-				middlewares,
+				rangeMiddlewares,
+				instantMiddlewares,
 				mockCodec{},
 				mockCodec{},
 				tc.limits,

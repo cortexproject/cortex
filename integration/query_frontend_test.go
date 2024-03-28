@@ -530,3 +530,70 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 	// We shouldn't be able to see any retries.
 	require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_query_frontend_retries"}, e2e.WaitMissingMetrics))
 }
+
+func TestQueryFrontendMaxQueryLengthLimits(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":                "1s",
+		"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+		"-blocks-storage.bucket-store.max-chunk-pool-bytes": "1",
+		"-store.max-query-length":                           "30d",
+	})
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components for the write path.
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+
+	// Wait until the distributor has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	queryFrontendWithSharding := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend-sharding", "", mergeFlags(flags, map[string]string{
+		"-frontend.query-vertical-shard-size": "2",
+	}), "")
+	require.NoError(t, s.Start(queryFrontend, queryFrontendWithSharding))
+
+	c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+	cSharding, err := e2ecortex.NewClient("", queryFrontendWithSharding.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	// We expect request to hit max query length limit.
+	resp, body, err := c.QueryRangeRaw(`rate(test[1m])`, now.Add(-90*time.Hour*24), now, 10*time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Contains(t, string(body), "the query time range exceeds the limit")
+
+	// We expect request to hit max query length limit.
+	resp, body, err = cSharding.QueryRangeRaw(`rate(test[1m])`, now.Add(-90*time.Hour*24), now, 10*time.Hour)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Contains(t, string(body), "the query time range exceeds the limit")
+
+	// We expect request to hit max query length limit.
+	resp, body, err = c.QueryRaw(`rate(test[90d])`, now)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Contains(t, string(body), "the query time range exceeds the limit")
+
+	// We expect request to hit max query length limit.
+	resp, body, err = cSharding.QueryRaw(`rate(test[90d])`, now)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Contains(t, string(body), "the query time range exceeds the limit")
+}

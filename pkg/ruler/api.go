@@ -258,6 +258,9 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 
 	// keep data.groups are in order
 	sort.Slice(groups, func(i, j int) bool {
+		if groups[i].File == groups[j].File {
+			return groups[i].Name < groups[j].Name
+		}
 		return groups[i].File < groups[j].File
 	})
 

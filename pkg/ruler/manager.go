@@ -44,6 +44,9 @@ type DefaultMultiTenantManager struct {
 	notifiers                 map[string]*rulerNotifier
 	notifiersDiscoveryMetrics map[string]discovery.DiscovererMetrics
 
+	// rules backup
+	rulesBackupManager *rulesBackupManager
+
 	managersTotal                 prometheus.Gauge
 	lastReloadSuccessful          *prometheus.GaugeVec
 	lastReloadSuccessfulTimestamp *prometheus.GaugeVec
@@ -85,6 +88,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		mapper:                    newMapper(cfg.RulePath, logger),
 		userManagers:              map[string]RulesManager{},
 		userManagerMetrics:        userManagerMetrics,
+		rulesBackupManager:        newRulesBackupManager(cfg, logger, reg),
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -142,8 +146,12 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 	r.managersTotal.Set(float64(len(r.userManagers)))
 }
 
+func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+	r.rulesBackupManager.setRuleGroups(ctx, ruleGroups)
+}
+
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
-// the users Prometheus Rules Manager.
+// users Prometheus Rules Manager.
 func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
@@ -277,6 +285,10 @@ func (r *DefaultMultiTenantManager) GetRules(userID string) []*promRules.Group {
 	}
 	r.userManagerMtx.Unlock()
 	return groups
+}
+
+func (r *DefaultMultiTenantManager) GetBackupRules(userID string) []*promRules.Group {
+	return r.rulesBackupManager.getRuleGroups(userID)
 }
 
 func (r *DefaultMultiTenantManager) Stop() {

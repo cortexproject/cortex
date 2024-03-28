@@ -7,6 +7,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/logicalplan"
 
@@ -46,8 +48,8 @@ func (l remoteEngine) LabelSets() []labels.Labels {
 	return l.labelSets
 }
 
-func (l remoteEngine) NewRangeQuery(ctx context.Context, opts promql.QueryOpts, qs string, start, end time.Time, interval time.Duration) (promql.Query, error) {
-	return l.engine.NewRangeQuery(ctx, l.q, opts, qs, start, end, interval)
+func (l remoteEngine) NewRangeQuery(ctx context.Context, opts promql.QueryOpts, plan parser.Expr, start, end time.Time, interval time.Duration) (promql.Query, error) {
+	return l.engine.NewRangeQuery(ctx, l.q, opts, plan.String(), start, end, interval)
 }
 
 type distributedEngine struct {

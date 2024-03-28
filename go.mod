@@ -51,9 +51,9 @@ require (
 	github.com/sony/gobreaker v0.5.0
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.8.4
-	github.com/thanos-io/objstore v0.0.0-20240128223450-bdadaefbfe03
-	github.com/thanos-io/promql-engine v0.0.0-20240125175542-4a8e9731acba
-	github.com/thanos-io/thanos v0.34.2-0.20240226184600-e7cd6c1c60fb
+	github.com/thanos-io/objstore v0.0.0-20240309075357-e8336a5fd5f3
+	github.com/thanos-io/promql-engine v0.0.0-20240318110350-23714ea2522d
+	github.com/thanos-io/thanos v0.34.2-0.20240327180044-4d7a75f40ae1
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.12
@@ -82,7 +82,7 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/sercand/kuberesolver/v4 v4.0.0
 	golang.org/x/exp v0.0.0-20240119083558-1b970713d09a
-	google.golang.org/protobuf v1.32.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
@@ -91,10 +91,10 @@ require (
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	cloud.google.com/go/iam v1.1.5 // indirect
 	cloud.google.com/go/storage v1.35.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.0.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/internal v1.5.2 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.0 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.1 // indirect
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751 // indirect

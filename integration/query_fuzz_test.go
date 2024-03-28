@@ -456,9 +456,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		}
 	}
 	if failures > 0 {
-		t.Logf("finished store gateway lazy expanded posting fuzzing tests, %d test cases failed", failures)
-		// TODO: switch to Fail after we fix the bug in upstream Thanos.
-		//require.Failf(t, "finished store gateway lazy expanded posting fuzzing tests", "%d test cases failed", failures)
+		require.Failf(t, "finished store gateway lazy expanded posting fuzzing tests", "%d test cases failed", failures)
 	}
 }
 
@@ -623,9 +621,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		}
 	}
 	if failures > 0 {
-		t.Logf("finished store gateway lazy expanded posting fuzzing tests with Prometheus, %d test cases failed", failures)
-		// TODO: switch to Fail after we fix the bug in upstream Thanos.
-		//require.Failf(t, "finished store gateway lazy expanded posting fuzzing tests", "%d test cases failed", failures)
+		require.Failf(t, "finished store gateway lazy expanded posting fuzzing tests with Prometheus", "%d test cases failed", failures)
 	}
 }
 

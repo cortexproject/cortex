@@ -429,6 +429,10 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			Help:        "Number of bytes transferred from/to bucket per operation.",
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     prometheus.ExponentialBuckets(2<<14, 2, 16), // 32KiB, 64KiB, ... 1GiB
+			// Use factor=2 for native histograms, which gives similar buckets as the original exponential buckets.
+			NativeHistogramBucketFactor: 2,
+			NativeHistogramMaxBucketNumber: 100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"operation"}),
 
 		opsDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
@@ -436,6 +440,10 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			Help:        "Duration of successful operations against the bucket per operation - iter operations include time spent on each callback.",
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
+			// Use the recommended defaults for native histograms with 10% growth factor.
+			NativeHistogramBucketFactor: 1.1,
+			NativeHistogramMaxBucketNumber: 100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"operation"}),
 
 		lastSuccessfulUploadTime: promauto.With(reg).NewGauge(prometheus.GaugeOpts{

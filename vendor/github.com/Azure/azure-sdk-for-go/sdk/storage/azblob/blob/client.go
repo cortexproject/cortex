@@ -8,15 +8,17 @@ package blob
 
 import (
 	"context"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"io"
+	"math"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/base"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
@@ -25,9 +27,7 @@ import (
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
-type ClientOptions struct {
-	azcore.ClientOptions
-}
+type ClientOptions base.ClientOptions
 
 // Client represents a URL to an Azure Storage blob; the blob may be a block blob, append blob, or page blob.
 type Client base.Client[generated.BlobClient]
@@ -37,12 +37,16 @@ type Client base.Client[generated.BlobClient]
 //   - cred - an Azure AD credential, typically obtained via the azidentity module
 //   - options - client options; pass nil to accept the default values
 func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptions) (*Client, error) {
-	authPolicy := runtime.NewBearerTokenPolicy(cred, []string{shared.TokenScope}, nil)
+	audience := base.GetAudience((*base.ClientOptions)(options))
+	authPolicy := shared.NewStorageChallengePolicy(cred, audience)
 	conOptions := shared.GetClientOptions(options)
-	conOptions.PerRetryPolicies = append(conOptions.PerRetryPolicies, authPolicy)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
-	return (*Client)(base.NewBlobClient(blobURL, pl, nil)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewBlobClient(blobURL, azClient, &cred, (*base.ClientOptions)(conOptions))), nil
 }
 
 // NewClientWithNoCredential creates an instance of Client with the specified values.
@@ -51,9 +55,12 @@ func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptio
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
 
-	return (*Client)(base.NewBlobClient(blobURL, pl, nil)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewBlobClient(blobURL, azClient, nil, (*base.ClientOptions)(conOptions))), nil
 }
 
 // NewClientWithSharedKeyCredential creates an instance of Client with the specified values.
@@ -63,10 +70,13 @@ func NewClientWithNoCredential(blobURL string, options *ClientOptions) (*Client,
 func NewClientWithSharedKeyCredential(blobURL string, cred *SharedKeyCredential, options *ClientOptions) (*Client, error) {
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
-	conOptions.PerRetryPolicies = append(conOptions.PerRetryPolicies, authPolicy)
-	pl := runtime.NewPipeline(exported.ModuleName, exported.ModuleVersion, runtime.PipelineOptions{}, &conOptions.ClientOptions)
+	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
-	return (*Client)(base.NewBlobClient(blobURL, pl, cred)), nil
+	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
+	if err != nil {
+		return nil, err
+	}
+	return (*Client)(base.NewBlobClient(blobURL, azClient, cred, (*base.ClientOptions)(conOptions))), nil
 }
 
 // NewClientFromConnectionString creates an instance of Client with the specified values.
@@ -100,6 +110,14 @@ func (b *Client) sharedKey() *SharedKeyCredential {
 	return base.SharedKey((*base.Client[generated.BlobClient])(b))
 }
 
+func (b *Client) credential() any {
+	return base.Credential((*base.Client[generated.BlobClient])(b))
+}
+
+func (b *Client) getClientOptions() *base.ClientOptions {
+	return base.GetClientOptions((*base.Client[generated.BlobClient])(b))
+}
+
 // URL returns the URL endpoint used by the Client object.
 func (b *Client) URL() string {
 	return b.generated().Endpoint()
@@ -114,7 +132,7 @@ func (b *Client) WithSnapshot(snapshot string) (*Client, error) {
 	}
 	p.Snapshot = snapshot
 
-	return (*Client)(base.NewBlobClient(p.String(), b.generated().Pipeline(), b.sharedKey())), nil
+	return (*Client)(base.NewBlobClient(p.String(), b.generated().InternalClient(), b.credential(), b.getClientOptions())), nil
 }
 
 // WithVersionID creates a new AppendBlobURL object identical to the source but with the specified version id.
@@ -126,7 +144,7 @@ func (b *Client) WithVersionID(versionID string) (*Client, error) {
 	}
 	p.VersionID = versionID
 
-	return (*Client)(base.NewBlobClient(p.String(), b.generated().Pipeline(), b.sharedKey())), nil
+	return (*Client)(base.NewBlobClient(p.String(), b.generated().InternalClient(), b.credential(), b.getClientOptions())), nil
 }
 
 // Delete marks the specified blob or snapshot for deletion. The blob is later deleted during garbage collection.
@@ -259,8 +277,16 @@ func (b *Client) SetLegalHold(ctx context.Context, legalHold bool, options *SetL
 // CopyFromURL synchronously copies the data at the source URL to a block blob, with sizes up to 256 MB.
 // For more information, see https://docs.microsoft.com/en-us/rest/api/storageservices/copy-blob-from-url.
 func (b *Client) CopyFromURL(ctx context.Context, copySource string, options *CopyFromURLOptions) (CopyFromURLResponse, error) {
-	copyOptions, smac, mac, lac := options.format()
-	resp, err := b.generated().CopyFromURL(ctx, copySource, copyOptions, smac, mac, lac)
+	copyOptions, smac, mac, lac, cpkScopeInfo := options.format()
+	resp, err := b.generated().CopyFromURL(ctx, copySource, copyOptions, smac, mac, lac, cpkScopeInfo)
+	return resp, err
+}
+
+// GetAccountInfo provides account level information
+// For more information, see https://learn.microsoft.com/en-us/rest/api/storageservices/get-account-information?tabs=shared-access-signatures.
+func (b *Client) GetAccountInfo(ctx context.Context, o *GetAccountInfoOptions) (GetAccountInfoResponse, error) {
+	getAccountInfoOptions := o.format()
+	resp, err := b.generated().GetAccountInfo(ctx, getAccountInfoOptions)
 	return resp, err
 }
 
@@ -304,8 +330,8 @@ func (b *Client) GetSASURL(permissions sas.BlobPermissions, expiry time.Time, o 
 
 // Concurrent Download Functions -----------------------------------------------------------------------------------------
 
-// download downloads an Azure blob to a WriterAt in parallel.
-func (b *Client) download(ctx context.Context, writer io.WriterAt, o downloadOptions) (int64, error) {
+// downloadBuffer downloads an Azure blob to a WriterAt in parallel.
+func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downloadOptions) (int64, error) {
 	if o.BlockSize == 0 {
 		o.BlockSize = DefaultDownloadBlockSize
 	}
@@ -313,12 +339,11 @@ func (b *Client) download(ctx context.Context, writer io.WriterAt, o downloadOpt
 	count := o.Range.Count
 	if count == CountToEnd { // If size not specified, calculate it
 		// If we don't have the length at all, get it
-		downloadBlobOptions := o.getDownloadBlobOptions(HTTPRange{}, nil)
-		dr, err := b.DownloadStream(ctx, downloadBlobOptions)
+		gr, err := b.GetProperties(ctx, o.getBlobPropertiesOptions())
 		if err != nil {
 			return 0, err
 		}
-		count = *dr.ContentLength - o.Range.Offset
+		count = *gr.ContentLength - o.Range.Offset
 	}
 
 	if count <= 0 {
@@ -334,6 +359,7 @@ func (b *Client) download(ctx context.Context, writer io.WriterAt, o downloadOpt
 		OperationName: "downloadBlobToWriterAt",
 		TransferSize:  count,
 		ChunkSize:     o.BlockSize,
+		NumChunks:     uint16(((count - 1) / o.BlockSize) + 1),
 		Concurrency:   o.Concurrency,
 		Operation: func(ctx context.Context, chunkStart int64, count int64) error {
 			downloadBlobOptions := o.getDownloadBlobOptions(HTTPRange{
@@ -372,6 +398,165 @@ func (b *Client) download(ctx context.Context, writer io.WriterAt, o downloadOpt
 	return count, nil
 }
 
+// downloadFile downloads an Azure blob to a Writer. The blocks are downloaded parallely,
+// but written to file serially
+func (b *Client) downloadFile(ctx context.Context, writer io.Writer, o downloadOptions) (int64, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if o.BlockSize == 0 {
+		o.BlockSize = DefaultDownloadBlockSize
+	}
+
+	if o.Concurrency == 0 {
+		o.Concurrency = DefaultConcurrency
+	}
+
+	count := o.Range.Count
+	if count == CountToEnd { //Calculate size if not specified
+		gr, err := b.GetProperties(ctx, o.getBlobPropertiesOptions())
+		if err != nil {
+			return 0, err
+		}
+		count = *gr.ContentLength - o.Range.Offset
+	}
+
+	if count <= 0 {
+		// The file is empty, there is nothing to download.
+		return 0, nil
+	}
+
+	progress := int64(0)
+	progressLock := &sync.Mutex{}
+
+	// helper routine to get body
+	getBodyForRange := func(ctx context.Context, chunkStart, size int64) (io.ReadCloser, error) {
+		downloadBlobOptions := o.getDownloadBlobOptions(HTTPRange{
+			Offset: chunkStart + o.Range.Offset,
+			Count:  size,
+		}, nil)
+		dr, err := b.DownloadStream(ctx, downloadBlobOptions)
+		if err != nil {
+			return nil, err
+		}
+
+		var body io.ReadCloser = dr.NewRetryReader(ctx, &o.RetryReaderOptionsPerBlock)
+		if o.Progress != nil {
+			rangeProgress := int64(0)
+			body = streaming.NewResponseProgress(
+				body,
+				func(bytesTransferred int64) {
+					diff := bytesTransferred - rangeProgress
+					rangeProgress = bytesTransferred
+					progressLock.Lock()
+					progress += diff
+					o.Progress(progress)
+					progressLock.Unlock()
+				})
+		}
+
+		return body, nil
+	}
+
+	// if file fits in a single buffer, we'll download here.
+	if count <= o.BlockSize {
+		body, err := getBodyForRange(ctx, int64(0), count)
+		if err != nil {
+			return 0, err
+		}
+		defer body.Close()
+
+		return io.Copy(writer, body)
+	}
+
+	buffers := shared.NewMMBPool(int(o.Concurrency), o.BlockSize)
+	defer buffers.Free()
+
+	numChunks := uint16((count-1)/o.BlockSize + 1)
+	for bufferCounter := float64(0); bufferCounter < math.Min(float64(numChunks), float64(o.Concurrency)); bufferCounter++ {
+		if _, err := buffers.Grow(); err != nil {
+			return 0, err
+		}
+	}
+
+	acquireBuffer := func() ([]byte, error) {
+		return <-buffers.Acquire(), nil
+	}
+
+	blocks := make([]chan []byte, numChunks)
+	for b := range blocks {
+		blocks[b] = make(chan []byte)
+	}
+
+	/*
+	 * We have created as many channels as the number of chunks we have.
+	 * Each downloaded block will be sent to the channel matching its
+	 * sequence number, i.e. 0th block is sent to 0th channel, 1st block
+	 * to 1st channel and likewise. The blocks are then read and written
+	 * to the file serially by below goroutine. Do note that the blocks
+	 * are still downloaded parallelly from n/w, only serialized
+	 * and written to file here.
+	 */
+	writerError := make(chan error)
+	writeSize := int64(0)
+	go func(ch chan error) {
+		for _, block := range blocks {
+			select {
+			case <-ctx.Done():
+				return
+			case block := <-block:
+				n, err := writer.Write(block)
+				writeSize += int64(n)
+				buffers.Release(block[:cap(block)])
+				if err != nil {
+					ch <- err
+					return
+				}
+			}
+		}
+		ch <- nil
+	}(writerError)
+
+	// Prepare and do parallel download.
+	err := shared.DoBatchTransfer(ctx, &shared.BatchTransferOptions{
+		OperationName: "downloadBlobToWriterAt",
+		TransferSize:  count,
+		ChunkSize:     o.BlockSize,
+		NumChunks:     numChunks,
+		Concurrency:   o.Concurrency,
+		Operation: func(ctx context.Context, chunkStart int64, count int64) error {
+			buff, err := acquireBuffer()
+			if err != nil {
+				return err
+			}
+
+			body, err := getBodyForRange(ctx, chunkStart, count)
+			if err != nil {
+				buffers.Release(buff)
+				return nil
+			}
+
+			_, err = io.ReadFull(body, buff[:count])
+			body.Close()
+			if err != nil {
+				return err
+			}
+
+			blockIndex := chunkStart / o.BlockSize
+			blocks[blockIndex] <- buff[:count]
+			return nil
+		},
+	})
+
+	if err != nil {
+		return 0, err
+	}
+	// error from writer thread.
+	if err = <-writerError; err != nil {
+		return 0, err
+	}
+	return writeSize, nil
+}
+
 // DownloadStream reads a range of bytes from a blob. The response also includes the blob's properties and metadata.
 // For more information, see https://docs.microsoft.com/rest/api/storageservices/get-blob.
 func (b *Client) DownloadStream(ctx context.Context, o *DownloadStreamOptions) (DownloadStreamResponse, error) {
@@ -400,7 +585,7 @@ func (b *Client) DownloadBuffer(ctx context.Context, buffer []byte, o *DownloadB
 	if o == nil {
 		o = &DownloadBufferOptions{}
 	}
-	return b.download(ctx, shared.NewBytesWriter(buffer), (downloadOptions)(*o))
+	return b.downloadBuffer(ctx, shared.NewBytesWriter(buffer), (downloadOptions)(*o))
 }
 
 // DownloadFile downloads an Azure blob to a local file.
@@ -410,6 +595,11 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 		o = &DownloadFileOptions{}
 	}
 	do := (*downloadOptions)(o)
+
+	filePointer, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return 0, err
+	}
 
 	// 1. Calculate the size of the destination file
 	var size int64
@@ -439,7 +629,15 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 	}
 
 	if size > 0 {
-		return b.download(ctx, file, *do)
+		writeSize, err := b.downloadFile(ctx, file, *do)
+		if err != nil {
+			return 0, err
+		}
+		_, err = file.Seek(filePointer, io.SeekStart)
+		if err != nil {
+			return 0, err
+		}
+		return writeSize, nil
 	} else { // if the blob's size is 0, there is no need in downloading it
 		return 0, nil
 	}

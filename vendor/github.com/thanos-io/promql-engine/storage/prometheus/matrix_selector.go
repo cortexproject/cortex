@@ -1,7 +1,7 @@
 // Copyright (c) The Thanos Community Authors.
 // Licensed under the Apache License 2.0.
 
-package scan
+package prometheus
 
 import (
 	"context"
@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/thanos-io/promql-engine/execution/function"
 	"github.com/thanos-io/promql-engine/execution/model"
-	engstore "github.com/thanos-io/promql-engine/execution/storage"
+	"github.com/thanos-io/promql-engine/execution/scan"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
@@ -27,9 +28,9 @@ type matrixScanner struct {
 	labels    labels.Labels
 	signature uint64
 
-	buffer           *ringbuffer.RingBuffer[Value]
+	buffer           *ringbuffer.RingBuffer[scan.Value]
 	iterator         chunkenc.Iterator
-	lastSample       ringbuffer.Sample[Value]
+	lastSample       ringbuffer.Sample[scan.Value]
 	metricAppearedTs *int64
 }
 
@@ -38,11 +39,11 @@ type matrixSelector struct {
 
 	vectorPool   *model.VectorPool
 	functionName string
-	storage      engstore.SeriesSelector
+	storage      SeriesSelector
 	scalarArgs   []float64
-	call         FunctionCall
+	call         scan.FunctionCall
 	scanners     []matrixScanner
-	bufferTail   []ringbuffer.Sample[Value]
+	bufferTail   []ringbuffer.Sample[scan.Value]
 	series       []labels.Labels
 	once         sync.Once
 
@@ -70,7 +71,7 @@ var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supp
 // NewMatrixSelector creates operator which selects vector of series over time.
 func NewMatrixSelector(
 	pool *model.VectorPool,
-	selector engstore.SeriesSelector,
+	selector SeriesSelector,
 	functionName string,
 	arg float64,
 	opts *query.Options,
@@ -78,7 +79,7 @@ func NewMatrixSelector(
 	batchSize int64,
 	shard, numShard int,
 ) (model.VectorOperator, error) {
-	call, err := NewRangeVectorFunc(functionName)
+	call, err := scan.NewRangeVectorFunc(functionName)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +92,7 @@ func NewMatrixSelector(
 		functionName: functionName,
 		vectorPool:   pool,
 		scalarArgs:   []float64{arg},
-		bufferTail:   make([]ringbuffer.Sample[Value], 16),
+		bufferTail:   make([]ringbuffer.Sample[scan.Value], 16),
 
 		numSteps:      opts.NumSteps(),
 		mint:          opts.Start.UnixMilli(),
@@ -193,7 +194,7 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok := o.call(FunctionArgs{
+			f, h, ok := o.call(scan.FunctionArgs{
 				Samples:          series.buffer.Samples(),
 				StepTime:         seriesTs,
 				SelectRange:      o.selectRange,
@@ -246,8 +247,8 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 				labels:     lbls,
 				signature:  s.Signature,
 				iterator:   s.Iterator(nil),
-				lastSample: ringbuffer.Sample[Value]{T: math.MinInt64},
-				buffer:     ringbuffer.New[Value](8),
+				lastSample: ringbuffer.Sample[scan.Value]{T: math.MinInt64},
+				buffer:     ringbuffer.New[scan.Value](8),
 			}
 			o.series[i] = lbls
 		}
@@ -277,7 +278,7 @@ func (m *matrixScanner) selectPoints(mint, maxt int64) error {
 
 	mint = maxInt64(mint, m.buffer.MaxT()+1)
 	if m.lastSample.T >= mint {
-		m.buffer.ReadIntoNext(func(s *ringbuffer.Sample[Value]) bool {
+		m.buffer.ReadIntoNext(func(s *ringbuffer.Sample[scan.Value]) bool {
 			s.T, s.V.F = m.lastSample.T, m.lastSample.V.F
 			if m.lastSample.V.H != nil {
 				if s.V.H == nil {
@@ -296,13 +297,19 @@ func (m *matrixScanner) selectPoints(mint, maxt int64) error {
 		switch valType {
 		case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
 			var stop bool
-			m.buffer.ReadIntoNext(func(s *ringbuffer.Sample[Value]) bool {
+			m.buffer.ReadIntoNext(func(s *ringbuffer.Sample[scan.Value]) (keep bool) {
+				if s.V.H == nil {
+					s.V.H = &histogram.FloatHistogram{}
+				}
 				s.T, s.V.H = m.iterator.AtFloatHistogram(s.V.H)
 				if value.IsStaleNaN(s.V.H.Sum) {
 					return false
 				}
+				if s.T < mint {
+					return false
+				}
 				if s.T > maxt {
-					m.lastSample.T, m.lastSample.V.H = s.T, s.V.H
+					m.lastSample.T, m.lastSample.V.H = s.T, s.V.H.Copy()
 					stop = true
 					return false
 				}
@@ -321,11 +328,10 @@ func (m *matrixScanner) selectPoints(mint, maxt int64) error {
 				return nil
 			}
 			if t >= mint {
-				m.buffer.Push(t, Value{F: v})
+				m.buffer.Push(t, scan.Value{F: v})
 			}
 		}
 	}
-
 	return m.iterator.Err()
 }
 
@@ -346,7 +352,7 @@ func (m *matrixScanner) selectExtPoints(mint, maxt, extLookbackDelta int64) erro
 
 	mint = maxInt64(mint, m.buffer.MaxT()+1)
 	if m.lastSample.T >= mint {
-		m.buffer.Push(m.lastSample.T, Value{F: m.lastSample.V.F, H: m.lastSample.V.H})
+		m.buffer.Push(m.lastSample.T, scan.Value{F: m.lastSample.V.F, H: m.lastSample.V.H})
 		m.lastSample.T = math.MinInt64
 		mint = maxInt64(m.buffer.MaxT()+1, mint)
 	}
@@ -369,10 +375,10 @@ func (m *matrixScanner) selectExtPoints(mint, maxt, extLookbackDelta int64) erro
 				return nil
 			}
 			if t >= mint || !appendedPointBeforeMint {
-				m.buffer.Push(t, Value{F: v})
+				m.buffer.Push(t, scan.Value{F: v})
 				appendedPointBeforeMint = true
 			} else {
-				m.buffer.ReadIntoLast(func(s *ringbuffer.Sample[Value]) {
+				m.buffer.ReadIntoLast(func(s *ringbuffer.Sample[scan.Value]) {
 					s.T, s.V.F, s.V.H = t, v, nil
 				})
 			}

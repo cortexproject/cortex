@@ -136,7 +136,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
-		return series.MetricsToSeriesSet(sortSeries, ms)
+		return series.MetricsToSeriesSet(ctx, sortSeries, ms)
 	}
 
 	return q.streamingSelect(ctx, sortSeries, minT, maxT, matchers)

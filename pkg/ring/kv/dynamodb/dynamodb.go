@@ -57,13 +57,12 @@ func newDynamodbKV(cfg Config, logger log.Logger) (dynamodbKV, error) {
 		return dynamodbKV{}, err
 	}
 
+	awsCfg := aws.NewConfig()
 	if len(cfg.Region) > 0 {
-		sess.Config = &aws.Config{
-			Region: aws.String(cfg.Region),
-		}
+		awsCfg = awsCfg.WithRegion(cfg.Region)
 	}
 
-	dynamoDB := dynamodb.New(sess)
+	dynamoDB := dynamodb.New(sess, awsCfg)
 
 	ddbKV := &dynamodbKV{
 		ddbClient: dynamoDB,

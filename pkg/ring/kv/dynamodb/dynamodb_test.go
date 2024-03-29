@@ -3,7 +3,6 @@ package dynamodb
 import (
 	"context"
 	"fmt"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"strconv"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func Test_TTLDisabled(t *testing.T) {
 }
 
 func Test_newDynamodbKV(t *testing.T) {
-	_, err := newDynamodbKV(Config{Region: "us-west-2", TableName: "TEST"}, util_log.Logger)
+	_, err := newDynamodbKV(Config{Region: "us-west-2", TableName: "TEST"}, TestLogger{})
 
 	require.NoError(t, err)
 }

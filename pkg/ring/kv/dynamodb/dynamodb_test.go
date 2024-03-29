@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"strconv"
 	"testing"
 	"time"
@@ -26,6 +27,12 @@ func Test_TTLDisabled(t *testing.T) {
 	_, err := ddb.Put(context.TODO(), dynamodbKey{primaryKey: "test", sortKey: "test1"}, []byte("TEST"))
 	require.NoError(t, err)
 
+}
+
+func Test_newDynamodbKV(t *testing.T) {
+	_, err := newDynamodbKV(Config{Region: "us-west-2", TableName: "TEST"}, util_log.Logger)
+
+	require.NoError(t, err)
 }
 
 func Test_TTL(t *testing.T) {

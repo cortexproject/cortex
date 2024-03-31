@@ -28,6 +28,12 @@ func Test_TTLDisabled(t *testing.T) {
 
 }
 
+func Test_newDynamodbKV(t *testing.T) {
+	_, err := newDynamodbKV(Config{Region: "us-west-2", TableName: "TEST"}, TestLogger{})
+
+	require.NoError(t, err)
+}
+
 func Test_TTL(t *testing.T) {
 	ddbClientMock := &mockDynamodb{
 		putItem: func(input *dynamodb.PutItemInput) *dynamodb.PutItemOutput {

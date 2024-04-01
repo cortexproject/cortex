@@ -82,7 +82,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		os.Exit(1)
 	}
 
-	return &DefaultMultiTenantManager{
+	m := &DefaultMultiTenantManager{
 		cfg:                       cfg,
 		notifierCfg:               ncfg,
 		managerFactory:            managerFactory,
@@ -93,7 +93,6 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		userManagers:              map[string]RulesManager{},
 		userManagerMetrics:        userManagerMetrics,
 		ruleCache:                 map[string][]*promRules.Group{},
-		rulesBackupManager:        newRulesBackupManager(cfg, logger, reg),
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -116,7 +115,11 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		}, []string{"user"}),
 		registry: reg,
 		logger:   logger,
-	}, nil
+	}
+	if cfg.APIEnableRulesBackup {
+		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
+	}
+	return m, nil
 }
 
 func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
@@ -166,7 +169,9 @@ func (r *DefaultMultiTenantManager) deleteRuleCache(user string) {
 }
 
 func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
-	r.rulesBackupManager.setRuleGroups(ctx, ruleGroups)
+	if r.rulesBackupManager != nil {
+		r.rulesBackupManager.setRuleGroups(ctx, ruleGroups)
+	}
 }
 
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
@@ -342,7 +347,10 @@ func (r *DefaultMultiTenantManager) GetRules(userID string) []*promRules.Group {
 }
 
 func (r *DefaultMultiTenantManager) GetBackupRules(userID string) []*promRules.Group {
-	return r.rulesBackupManager.getRuleGroups(userID)
+	if r.rulesBackupManager != nil {
+		return r.rulesBackupManager.getRuleGroups(userID)
+	}
+	return nil
 }
 
 func (r *DefaultMultiTenantManager) Stop() {

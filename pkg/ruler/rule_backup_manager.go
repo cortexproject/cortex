@@ -3,6 +3,8 @@ package ruler
 import (
 	"context"
 	"errors"
+	"net/url"
+	"path/filepath"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -39,7 +41,7 @@ type rulesBackupManager struct {
 
 	logger log.Logger
 
-	backupGroupRulesCount      *prometheus.GaugeVec
+	backupRuleGroup            *prometheus.GaugeVec
 	lastBackupReloadSuccessful *prometheus.GaugeVec
 }
 
@@ -49,10 +51,10 @@ func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registe
 		cfg:                      cfg,
 		logger:                   logger,
 
-		backupGroupRulesCount: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		backupRuleGroup: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
-			Name:      "ruler_backup_rule_group_rules",
-			Help:      "The number of backed up rules",
+			Name:      "ruler_backup_rule_group",
+			Help:      "Boolean set to 1 indicating the ruler stores the rule group as backup.",
 		}, []string{"user", "rule_group"}),
 		lastBackupReloadSuccessful: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
@@ -124,15 +126,17 @@ func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string][]*promRul
 	for user, groups := range newBackupGroups {
 		keptGroups := make(map[string][]interface{})
 		for _, g := range groups {
-			key := promRules.GroupKey(g.File(), g.Name())
-			r.backupGroupRulesCount.WithLabelValues(user, key).Set(float64(len(g.Rules())))
+			fullFileName := r.getFilePathForGroup(g, user)
+			key := promRules.GroupKey(fullFileName, g.Name())
+			r.backupRuleGroup.WithLabelValues(user, key).Set(1)
 			keptGroups[key] = nil
 		}
 		oldGroups := r.inMemoryRuleGroupsBackup[user]
 		for _, g := range oldGroups {
-			key := promRules.GroupKey(g.File(), g.Name())
+			fullFileName := r.getFilePathForGroup(g, user)
+			key := promRules.GroupKey(fullFileName, g.Name())
 			if _, exists := keptGroups[key]; !exists {
-				r.backupGroupRulesCount.DeleteLabelValues(user, key)
+				r.backupRuleGroup.DeleteLabelValues(user, key)
 			}
 		}
 	}
@@ -142,9 +146,18 @@ func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string][]*promRul
 			continue
 		}
 		for _, g := range groups {
-			key := promRules.GroupKey(g.File(), g.Name())
-			r.backupGroupRulesCount.DeleteLabelValues(user, key)
+			fullFileName := r.getFilePathForGroup(g, user)
+			key := promRules.GroupKey(fullFileName, g.Name())
+			r.backupRuleGroup.DeleteLabelValues(user, key)
 		}
 		r.lastBackupReloadSuccessful.DeleteLabelValues(user)
 	}
+}
+
+// getFilePathForGroup returns the supposed file path of the group if it was being evaluated.
+// This is based on how mapper.go generates file paths.
+func (r *rulesBackupManager) getFilePathForGroup(g *promRules.Group, user string) string {
+	dirPath := filepath.Join(r.cfg.RulePath, user)
+	encodedFileName := url.PathEscape(g.File())
+	return filepath.Join(dirPath, encodedFileName)
 }

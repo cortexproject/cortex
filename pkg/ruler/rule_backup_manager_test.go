@@ -2,6 +2,8 @@ package ruler
 
 import (
 	"context"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -154,6 +156,13 @@ func TestBackUpRuleGroupsMetrics(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	manager := newRulesBackupManager(cfg, log.NewNopLogger(), reg)
 
+	getGroupName := func(g *rulespb.RuleGroupDesc, user string) string {
+		dirPath := filepath.Join(cfg.RulePath, user)
+		encodedFileName := url.PathEscape(g.Namespace)
+		path := filepath.Join(dirPath, encodedFileName)
+		return promRules.GroupKey(path, g.Name)
+	}
+
 	manager.setRuleGroups(context.TODO(), map[string]rulespb.RuleGroupList{
 		"user1": {&g1, &g2},
 		"user2": {&g1},
@@ -169,18 +178,18 @@ func TestBackUpRuleGroupsMetrics(t *testing.T) {
 	requireMetricEqual(t, mfm["cortex_ruler_backup_last_reload_successful"].Metric[1], map[string]string{
 		"user": "user2",
 	}, float64(1))
-	require.Equal(t, 3, len(mfm["cortex_ruler_backup_rule_group_rules"].Metric))
-	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group_rules"].Metric[0], map[string]string{
+	require.Equal(t, 3, len(mfm["cortex_ruler_backup_rule_group"].Metric))
+	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group"].Metric[0], map[string]string{
 		"user":       "user1",
-		"rule_group": "ns1;g1",
+		"rule_group": getGroupName(&g1, "user1"),
 	}, float64(1))
-	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group_rules"].Metric[1], map[string]string{
+	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group"].Metric[1], map[string]string{
+		"user":       "user1",
+		"rule_group": getGroupName(&g2, "user1"),
+	}, float64(1))
+	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group"].Metric[2], map[string]string{
 		"user":       "user2",
-		"rule_group": "ns1;g1",
-	}, float64(1))
-	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group_rules"].Metric[2], map[string]string{
-		"user":       "user1",
-		"rule_group": "ns1;g2",
+		"rule_group": getGroupName(&g1, "user2"),
 	}, float64(1))
 
 	manager.setRuleGroups(context.TODO(), map[string]rulespb.RuleGroupList{
@@ -194,11 +203,11 @@ func TestBackUpRuleGroupsMetrics(t *testing.T) {
 	requireMetricEqual(t, mfm["cortex_ruler_backup_last_reload_successful"].Metric[0], map[string]string{
 		"user": "user1",
 	}, float64(1))
-	require.Equal(t, 1, len(mfm["cortex_ruler_backup_rule_group_rules"].Metric))
-	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group_rules"].Metric[0], map[string]string{
+	require.Equal(t, 1, len(mfm["cortex_ruler_backup_rule_group"].Metric))
+	requireMetricEqual(t, mfm["cortex_ruler_backup_rule_group"].Metric[0], map[string]string{
 		"user":       "user1",
-		"rule_group": "ns1;g2",
-	}, float64(2))
+		"rule_group": getGroupName(&g2, "user1"),
+	}, float64(1))
 }
 
 func requireGroupsEqual(t *testing.T, a []*promRules.Group, b []*promRules.Group) {

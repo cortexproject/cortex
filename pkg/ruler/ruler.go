@@ -324,7 +324,7 @@ func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 
 		rulerGetRulesFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ruler_get_rules_failure_total",
-			Help: "The total number of failed rules request sent to rulers.",
+			Help: "The total number of failed rules request sent to rulers in getShardedRules.",
 		}, []string{"ruler"}),
 	}
 
@@ -472,7 +472,7 @@ func tokenForGroup(g *rulespb.RuleGroupDesc) uint32 {
 	return ringHasher.Sum32()
 }
 
-func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, instanceAddr string) (bool, error) {
+func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, instanceAddr string, forBackup bool) (bool, error) {
 
 	hash := tokenForGroup(g)
 
@@ -481,36 +481,25 @@ func instanceOwnsRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRu
 		return false, errors.Wrap(err, "error reading ring to verify rule group ownership")
 	}
 
-	// Even if the replication factor is set to a number bigger than 1, only the first ruler evaluates the rule group
-	ownsRuleGroup := rlrs.Instances[0].Addr == instanceAddr
+	var ownsRuleGroup bool
+	if forBackup {
+		// Only the second up to the last replica are used as backup
+		for i := 1; i < len(rlrs.Instances); i++ {
+			if rlrs.Instances[i].Addr == instanceAddr {
+				ownsRuleGroup = true
+				break
+			}
+		}
+	} else {
+		// Even if the replication factor is set to a number bigger than 1, only the first ruler evaluates the rule group
+		ownsRuleGroup = rlrs.Instances[0].Addr == instanceAddr
+	}
+
 	if ownsRuleGroup && ruleGroupDisabled(g, disabledRuleGroups) {
 		return false, &DisabledRuleGroupErr{Message: fmt.Sprintf("rule group %s, namespace %s, user %s is disabled", g.Name, g.Namespace, g.User)}
 	}
 
 	return ownsRuleGroup, nil
-}
-
-func instanceBacksUpRuleGroup(r ring.ReadRing, g *rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, instanceAddr string) (bool, error) {
-	hash := tokenForGroup(g)
-
-	rlrs, err := r.Get(hash, RingOp, nil, nil, nil)
-	if err != nil {
-		return false, errors.Wrap(err, "error reading ring to verify rule group backup ownership")
-	}
-
-	var backupRuleGroup bool
-	// Only the second up to the last replica is used a backup
-	for i := 1; i < len(rlrs.Instances); i++ {
-		if rlrs.Instances[i].Addr == instanceAddr {
-			backupRuleGroup = true
-			break
-		}
-	}
-
-	if backupRuleGroup && ruleGroupDisabled(g, disabledRuleGroups) {
-		return false, &DisabledRuleGroupErr{Message: fmt.Sprintf("rule group %s, namespace %s, user %s is disabled", g.Name, g.Namespace, g.User)}
-	}
-	return backupRuleGroup, nil
 }
 
 func (r *Ruler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -788,7 +777,7 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabl
 	// Prune the rule group to only contain rules that this ruler is responsible for, based on ring.
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
-		owned, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr)
+		owned, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr, false)
 		if err != nil {
 			switch e := err.(type) {
 			case *DisabledRuleGroupErr:
@@ -820,7 +809,7 @@ func filterRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabl
 func filterBackupRuleGroups(userID string, ruleGroups []*rulespb.RuleGroupDesc, disabledRuleGroups validation.DisabledRuleGroups, ring ring.ReadRing, instanceAddr string, log log.Logger, ringCheckErrors prometheus.Counter) []*rulespb.RuleGroupDesc {
 	var result []*rulespb.RuleGroupDesc
 	for _, g := range ruleGroups {
-		backup, err := instanceBacksUpRuleGroup(ring, g, disabledRuleGroups, instanceAddr)
+		backup, err := instanceOwnsRuleGroup(ring, g, disabledRuleGroups, instanceAddr, true)
 		if err != nil {
 			switch e := err.(type) {
 			case *DisabledRuleGroupErr:
@@ -1011,11 +1000,11 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 	}
 
 	var (
-		mtx    sync.Mutex
-		merged []*GroupStateDesc
-		errs   []error
+		mtx      sync.Mutex
+		merged   []*GroupStateDesc
+		errCount int
 	)
-	failedZones := make(map[string]interface{})
+	failedZones := make(map[string]struct{})
 
 	zoneByAddress := make(map[string]string)
 	if r.cfg.APIEnableRulesBackup {
@@ -1047,9 +1036,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 			// be able to handle failures.
 			if r.cfg.APIEnableRulesBackup && len(jobs) >= r.cfg.Ring.ReplicationFactor {
 				mtx.Lock()
-				failedZones[zoneByAddress[addr]] = nil
-				errs = append(errs, err)
-				failed := (rulers.MaxUnavailableZones > 0 && len(failedZones) > rulers.MaxUnavailableZones) || (rulers.MaxUnavailableZones <= 0 && len(errs) > rulers.MaxErrors)
+				failedZones[zoneByAddress[addr]] = struct{}{}
+				errCount += 1
+				failed := (rulers.MaxUnavailableZones > 0 && len(failedZones) > rulers.MaxUnavailableZones) || (rulers.MaxUnavailableZones <= 0 && errCount > rulers.MaxErrors)
 				mtx.Unlock()
 				if !failed {
 					return nil

@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +22,14 @@ import (
 func TestSyncRuleGroups(t *testing.T) {
 	dir := t.TempDir()
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, nil, log.NewNopLogger())
+	waitDurations := []time.Duration{
+		1 * time.Millisecond,
+		1 * time.Millisecond,
+	}
+
+	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
+
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, ruleManagerFactory, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -97,11 +105,118 @@ func TestSyncRuleGroups(t *testing.T) {
 	})
 }
 
+func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
+	dir := t.TempDir()
+	const user = "testUser"
+	userRules := map[string]rulespb.RuleGroupList{
+		user: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user,
+			},
+		},
+	}
+
+	groupsToReturn := [][]*promRules.Group{
+		{
+			promRules.NewGroup(promRules.GroupOptions{
+				Name:     "group1",
+				File:     "ns",
+				Interval: 60,
+				Limit:    0,
+				Opts:     &promRules.ManagerOptions{},
+			}),
+		},
+		{
+			promRules.NewGroup(promRules.GroupOptions{
+				Name:     "group1",
+				File:     "ns",
+				Interval: 60,
+				Limit:    0,
+				Opts:     &promRules.ManagerOptions{},
+			}),
+			promRules.NewGroup(promRules.GroupOptions{
+				Name:     "group2",
+				File:     "ns",
+				Interval: 60,
+				Limit:    0,
+				Opts:     &promRules.ManagerOptions{},
+			}),
+		},
+	}
+
+	waitDurations := []time.Duration{
+		5 * time.Millisecond,
+		1 * time.Second,
+	}
+
+	ruleManagerFactory := RuleManagerFactory(groupsToReturn, waitDurations)
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, ruleManagerFactory, nil, prometheus.NewRegistry(), log.NewNopLogger())
+	require.NoError(t, err)
+
+	m.SyncRuleGroups(context.Background(), userRules)
+	mgr := getManager(m, user)
+	require.NotNil(t, mgr)
+
+	test.Poll(t, 1*time.Second, true, func() interface{} {
+		return mgr.(*mockRulesManager).running.Load()
+	})
+	groups := m.GetRules(user)
+	require.Len(t, groups, len(groupsToReturn[0]), "expected %d but got %d", len(groupsToReturn[0]), len(groups))
+
+	// update rules and call list rules concurrently
+	userRules = map[string]rulespb.RuleGroupList{
+		user: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user,
+			},
+			&rulespb.RuleGroupDesc{
+				Name:      "group2",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user,
+			},
+		},
+	}
+	go m.SyncRuleGroups(context.Background(), userRules)
+
+	groups = m.GetRules(user)
+
+	require.Len(t, groups, len(groupsToReturn[0]), "expected %d but got %d", len(groupsToReturn[0]), len(groups))
+	test.Poll(t, 5*time.Second, len(groupsToReturn[1]), func() interface{} {
+		groups = m.GetRules(user)
+		return len(groups)
+	})
+
+	test.Poll(t, 1*time.Second, true, func() interface{} {
+		return mgr.(*mockRulesManager).running.Load()
+	})
+
+	m.Stop()
+
+	test.Poll(t, 1*time.Second, false, func() interface{} {
+		return mgr.(*mockRulesManager).running.Load()
+	})
+}
+
 func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
 	dir := t.TempDir()
 	reg := prometheus.NewPedanticRegistry()
 	evalMetrics := NewRuleEvalMetrics(Config{RulePath: dir, EnableQueryStats: true}, reg)
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, evalMetrics, reg, log.NewNopLogger())
+
+	waitDurations := []time.Duration{
+		1 * time.Millisecond,
+		1 * time.Millisecond,
+	}
+
+	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
+
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -139,19 +254,52 @@ func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
 }
 
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {
-	m.userManagerMtx.Lock()
-	defer m.userManagerMtx.Unlock()
+	m.userManagerMtx.RLock()
+	defer m.userManagerMtx.RUnlock()
 
 	return m.userManagers[user]
 }
 
-func factory(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ prometheus.Registerer) RulesManager {
-	return &mockRulesManager{done: make(chan struct{})}
+func RuleManagerFactory(groupsToReturn [][]*promRules.Group, waitDurations []time.Duration) ManagerFactory {
+	return func(_ context.Context, _ string, _ *notifier.Manager, _ log.Logger, _ prometheus.Registerer) RulesManager {
+		return &mockRulesManager{
+			done:           make(chan struct{}),
+			groupsToReturn: groupsToReturn,
+			waitDurations:  waitDurations,
+			iteration:      -1,
+		}
+	}
 }
 
 type mockRulesManager struct {
-	running atomic.Bool
-	done    chan struct{}
+	mtx            sync.Mutex
+	groupsToReturn [][]*promRules.Group
+	iteration      int
+	waitDurations  []time.Duration
+	running        atomic.Bool
+	done           chan struct{}
+}
+
+func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, _ promRules.GroupEvalIterationFunc) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	ticker := time.NewTicker(m.waitDurations[m.iteration+1])
+	select {
+	case <-ticker.C:
+		m.iteration = m.iteration + 1
+		return nil
+	case <-m.done:
+		return nil
+	}
+}
+
+func (m *mockRulesManager) RuleGroups() []*promRules.Group {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	if m.iteration < 0 {
+		return nil
+	}
+	return m.groupsToReturn[m.iteration]
 }
 
 func (m *mockRulesManager) Run() {
@@ -162,12 +310,4 @@ func (m *mockRulesManager) Run() {
 func (m *mockRulesManager) Stop() {
 	m.running.Store(false)
 	close(m.done)
-}
-
-func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, _ promRules.GroupEvalIterationFunc) error {
-	return nil
-}
-
-func (m *mockRulesManager) RuleGroups() []*promRules.Group {
-	return nil
 }

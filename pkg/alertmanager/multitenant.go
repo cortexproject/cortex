@@ -65,12 +65,12 @@ var (
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
 type MultitenantAlertmanagerConfig struct {
-	DataDir        string           `yaml:"data_dir"`
-	Retention      time.Duration    `yaml:"retention"`
-	ExternalURL    flagext.URLValue `yaml:"external_url"`
-	PollInterval   time.Duration    `yaml:"poll_interval"`
-	MaxRecvMsgSize int64            `yaml:"max_recv_msg_size"`
-	FeatureFlags   string           `yaml:"feature_flags"`
+	DataDir        string                 `yaml:"data_dir"`
+	Retention      time.Duration          `yaml:"retention"`
+	ExternalURL    flagext.URLValue       `yaml:"external_url"`
+	PollInterval   time.Duration          `yaml:"poll_interval"`
+	MaxRecvMsgSize int64                  `yaml:"max_recv_msg_size"`
+	EnableFeature  flagext.StringSliceCSV `yaml:"enable_feature"`
 
 	// Enable sharding for the Alertmanager
 	ShardingEnabled bool       `yaml:"sharding_enabled"`
@@ -127,7 +127,7 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
 	f.Var(&cfg.EnabledTenants, "alertmanager.enabled-tenants", "Comma separated list of tenants whose alerts this alertmanager can process. If specified, only these tenants will be handled by alertmanager, otherwise this alertmanager can process alerts from all tenants.")
 	f.Var(&cfg.DisabledTenants, "alertmanager.disabled-tenants", "Comma separated list of tenants whose alerts this alertmanager cannot process. If specified, a alertmanager that would normally pick the specified tenant(s) for processing will ignore them instead.")
-	f.StringVar(&cfg.FeatureFlags, "alertmanager.enable-feature", "", fmt.Sprintf("Prometheus AlertManager experimental features to enable. The flag can be repeated to enable multiple features. Valid options: %s", strings.Join(featurecontrol.AllowedFlags, ", ")))
+	f.Var(&cfg.EnableFeature, "alertmanager.enable-feature", fmt.Sprintf("Comma separated list of prometheus alertManager features to enable. Valid options: %s", strings.Join(featurecontrol.AllowedFlags, ", ")))
 
 	cfg.AlertmanagerClient.RegisterFlagsWithPrefix("alertmanager.alertmanager-client", f)
 	cfg.Persister.RegisterFlagsWithPrefix("alertmanager", f)
@@ -981,7 +981,7 @@ func (am *MultitenantAlertmanager) newAlertmanager(userID string, amConfig *amco
 		Limits:            am.limits,
 		APIConcurrency:    am.cfg.APIConcurrency,
 		GCInterval:        am.cfg.GCInterval,
-		FeatureFlags:      am.cfg.FeatureFlags,
+		FeatureFlags:      am.cfg.EnableFeature.String(),
 	}, reg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start Alertmanager for user %v: %v", userID, err)

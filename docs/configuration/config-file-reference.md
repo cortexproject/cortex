@@ -293,6 +293,12 @@ The `alertmanager_config` configures the Cortex alertmanager.
 # CLI flag: -alertmanager.max-recv-msg-size
 [max_recv_msg_size: <int> | default = 16777216]
 
+# Prometheus AlertManager experimental features to enable. The flag can be
+# repeated to enable multiple features. Valid options: receiver-name-in-metrics,
+# classic-mode, utf8-strict-mode
+# CLI flag: -alertmanager.enable-feature
+[feature_flags: <string> | default = ""]
+
 # Shard tenants across multiple alertmanager instances.
 # CLI flag: -alertmanager.sharding-enabled
 [sharding_enabled: <boolean> | default = false]

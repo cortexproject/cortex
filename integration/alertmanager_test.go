@@ -70,7 +70,7 @@ func TestAlertmanager(t *testing.T) {
 	assertServiceMetricsPrefixes(t, AlertManager, alertmanager)
 
 	// Test compression by inspecting the response Headers
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/v1/alerts", alertmanager.HTTPEndpoint()), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/v2/alerts", alertmanager.HTTPEndpoint()), nil)
 	require.NoError(t, err)
 
 	req.Header.Set("X-Scope-OrgID", "user-1")
@@ -487,18 +487,6 @@ func TestAlertmanagerSharding(t *testing.T) {
 					e2e.SkipMissingMetrics))
 			}
 
-			// Endpoint: GET /v1/alerts
-			{
-				// Reads will query at least two replicas and merge the results.
-				// Therefore, the alerts we posted should always be visible.
-
-				for _, c := range clients {
-					list, err := c.GetAlertsV1(context.Background())
-					require.NoError(t, err)
-					assert.ElementsMatch(t, []string{"alert_1", "alert_2", "alert_3"}, alertNames(list))
-				}
-			}
-
 			// Endpoint: GET /v2/alerts
 			{
 				for _, c := range clients {
@@ -525,8 +513,6 @@ func TestAlertmanagerSharding(t *testing.T) {
 					require.Contains(t, groups, "group_2")
 					assert.ElementsMatch(t, []string{"alert_3"}, alertNames(groups["group_2"]))
 				}
-
-				// Note: /v1/alerts/groups does not exist.
 			}
 
 			// Check the alerts were eventually written to every replica.

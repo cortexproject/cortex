@@ -805,6 +805,8 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (stri
 		return "", fmt.Errorf("error creating request: %v", err)
 	}
 
+	req.Header.Set("Content-Type", "application/json")
+
 	resp, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
 		return "", err

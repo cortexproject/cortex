@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
+	"github.com/prometheus/alertmanager/featurecontrol"
 	"net/http"
 	"net/url"
 	"path"
@@ -86,6 +87,8 @@ type Config struct {
 	PersisterConfig   PersisterConfig
 	APIConcurrency    int
 	GCInterval        time.Duration
+
+	FeatureFlags string
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -243,7 +246,13 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		}
 	}
 
-	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
+	featureConfig, err := featurecontrol.NewFlags(am.logger, cfg.FeatureFlags)
+	if err != nil {
+		level.Error(am.logger).Log("msg", "error parsing the feature flag list", "err", err)
+		return nil, errors.Wrap(err, "error parsing the feature flag list")
+	}
+
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig)
 
 	am.wg.Add(1)
 	go func() {
@@ -390,7 +399,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		waitFunc,
 		am.inhibitor,
 		silence.NewSilencer(am.silences, am.marker, am.logger),
-		timeIntervals,
+		timeinterval.NewIntervener(timeIntervals),
 		am.nflog,
 		am.state,
 	)
@@ -495,7 +504,7 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 				return
 			}
 			n = wrapper(name, n)
-			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
+			integrations = append(integrations, notify.NewIntegration(n, rs, name, i, nc.Name))
 		}
 	)
 

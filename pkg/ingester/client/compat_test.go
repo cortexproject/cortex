@@ -54,9 +54,25 @@ func TestQueryRequest(t *testing.T) {
 	if !reflect.DeepEqual(haveTo, to) {
 		t.Fatalf("Bad to FromQueryRequest(ToQueryRequest) round trip")
 	}
-	if !reflect.DeepEqual(haveMatchers, matchers) {
+	if !matchersEqual(haveMatchers, matchers) {
 		t.Fatalf("Bad have FromQueryRequest(ToQueryRequest) round trip - %v != %v", haveMatchers, matchers)
 	}
+}
+
+func matchersEqual(expected, actual []*labels.Matcher) bool {
+	if len(expected) != len(actual) {
+		return false
+	}
+
+	for i := 0; i < len(expected); i++ {
+		a := actual[i]
+		e := expected[i]
+		if a.Name != e.Name || a.Value != e.Value || a.Type != e.Type {
+			return false
+		}
+	}
+
+	return true
 }
 
 func buildTestMatrix(numSeries int, samplesPerSeries int, offset int) model.Matrix {

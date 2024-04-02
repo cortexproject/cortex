@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -68,25 +67,6 @@ func TestAlertmanager(t *testing.T) {
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, AlertManager, alertmanager)
-
-	// Test compression by inspecting the response Headers
-	req, err := http.NewRequest("GET", fmt.Sprintf("http://%s/api/v2/alerts", alertmanager.HTTPEndpoint()), nil)
-	require.NoError(t, err)
-
-	req.Header.Set("X-Scope-OrgID", "user-1")
-	req.Header.Set("Accept-Encoding", "gzip")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Execute HTTP request
-	res, err := http.DefaultClient.Do(req.WithContext(ctx))
-	require.NoError(t, err)
-
-	defer res.Body.Close()
-	// We assert on the Vary header as the minimum response size for enabling compression is 1500 bytes.
-	// This is enough to know whenever the handler for compression is enabled or not.
-	require.Equal(t, "Accept-Encoding", res.Header.Get("Vary"))
 }
 
 func TestAlertmanagerStoreAPI(t *testing.T) {

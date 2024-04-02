@@ -871,44 +871,6 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (stri
 	return decoded.Data.SilenceID, nil
 }
 
-func (c *Client) GetSilencesV1(ctx context.Context) ([]types.Silence, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	resp, body, err := c.alertmanagerClient.Do(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
-	}
-
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("getting silences failed with status %d and error %v", resp.StatusCode, string(body))
-	}
-
-	type response struct {
-		Status string          `json:"status"`
-		Data   []types.Silence `json:"data"`
-	}
-
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
-		return nil, err
-	}
-
-	if decoded.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data, nil
-}
-
 func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v2/silences", nil)
 
@@ -936,44 +898,6 @@ func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
 	}
 
 	return decoded, nil
-}
-
-func (c *Client) GetSilenceV1(ctx context.Context, id string) (types.Silence, error) {
-	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v1/silence/%s", url.PathEscape(id)), nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return types.Silence{}, fmt.Errorf("error creating request: %v", err)
-	}
-
-	resp, body, err := c.alertmanagerClient.Do(ctx, req)
-	if err != nil {
-		return types.Silence{}, err
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return types.Silence{}, ErrNotFound
-	}
-
-	if resp.StatusCode/100 != 2 {
-		return types.Silence{}, fmt.Errorf("getting silence failed with status %d and error %v", resp.StatusCode, string(body))
-	}
-
-	type response struct {
-		Status string        `json:"status"`
-		Data   types.Silence `json:"data"`
-	}
-
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
-		return types.Silence{}, err
-	}
-
-	if decoded.Status != "success" {
-		return types.Silence{}, fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data, nil
 }
 
 func (c *Client) GetSilenceV2(ctx context.Context, id string) (types.Silence, error) {

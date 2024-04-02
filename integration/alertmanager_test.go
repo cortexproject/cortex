@@ -360,42 +360,12 @@ func TestAlertmanagerSharding(t *testing.T) {
 				assert.Equal(t, comment(3), ids[id3].Comment)
 				assert.Equal(t, s3, ids[id3].Status.State)
 			}
-
-			// Endpoint: GET /v1/silences
-			{
-				for _, c := range clients {
-					list, err := c.GetSilencesV1(context.Background())
-					require.NoError(t, err)
-					assertSilences(list, types.SilenceStateActive, types.SilenceStateActive, types.SilenceStateActive)
-				}
-			}
-
 			// Endpoint: GET /v2/silences
 			{
 				for _, c := range clients {
 					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
 					assertSilences(list, types.SilenceStateActive, types.SilenceStateActive, types.SilenceStateActive)
-				}
-			}
-
-			// Endpoint: GET /v1/silence/{id}
-			{
-				for _, c := range clients {
-					sil1, err := c.GetSilenceV1(context.Background(), id1)
-					require.NoError(t, err)
-					assert.Equal(t, comment(1), sil1.Comment)
-					assert.Equal(t, types.SilenceStateActive, sil1.Status.State)
-
-					sil2, err := c.GetSilenceV1(context.Background(), id2)
-					require.NoError(t, err)
-					assert.Equal(t, comment(2), sil2.Comment)
-					assert.Equal(t, types.SilenceStateActive, sil2.Status.State)
-
-					sil3, err := c.GetSilenceV1(context.Background(), id3)
-					require.NoError(t, err)
-					assert.Equal(t, comment(3), sil3.Comment)
-					assert.Equal(t, types.SilenceStateActive, sil3.Status.State)
 				}
 			}
 

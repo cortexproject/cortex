@@ -88,8 +88,6 @@ type Config struct {
 	PersisterConfig   PersisterConfig
 	APIConcurrency    int
 	GCInterval        time.Duration
-
-	FeatureFlags string
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -247,7 +245,8 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		}
 	}
 
-	featureConfig, err := featurecontrol.NewFlags(am.logger, cfg.FeatureFlags)
+	// Lets not enable any AM experimental feature for now.
+	featureConfig, err := featurecontrol.NewFlags(am.logger, "")
 	if err != nil {
 		level.Error(am.logger).Log("msg", "error parsing the feature flag list", "err", err)
 		return nil, errors.Wrap(err, "error parsing the feature flag list")

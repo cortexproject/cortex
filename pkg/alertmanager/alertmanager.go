@@ -5,7 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
-	"github.com/prometheus/alertmanager/featurecontrol"
+
 	"net/http"
 	"net/url"
 	"path"
@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
+	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"

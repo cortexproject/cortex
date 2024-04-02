@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -1512,7 +1511,7 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		t.Run(fmt.Sprintf("thanos engine enabled=%t", thanosEngine), func(t *testing.T) {
-			var queryEngine v1.QueryEngine
+			var queryEngine promql.QueryEngine
 			if thanosEngine {
 				queryEngine = engine.New(engine.Opts{
 					EngineOpts:        opts,

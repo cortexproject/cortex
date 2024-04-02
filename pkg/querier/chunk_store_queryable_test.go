@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -35,7 +34,7 @@ func TestChunkQueryable(t *testing.T) {
 			for _, encoding := range encodings {
 				for _, query := range queries {
 					t.Run(fmt.Sprintf("%s/%s/%s/ thanos engine enabled = %t", testcase.name, encoding.name, query.query, thanosEngine), func(t *testing.T) {
-						var queryEngine v1.QueryEngine
+						var queryEngine promql.QueryEngine
 						if thanosEngine {
 							queryEngine = engine.New(engine.Opts{
 								EngineOpts:        opts,

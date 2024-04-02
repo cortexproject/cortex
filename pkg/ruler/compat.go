@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -158,7 +157,7 @@ type RulesLimits interface {
 // EngineQueryFunc returns a new engine query function by passing an altered timestamp.
 // Modified from Prometheus rules.EngineQueryFunc
 // https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
-func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
+func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// Enforce the max query length.
 		maxQueryLength := overrides.MaxQueryLength(userID)
@@ -299,7 +298,7 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer) ManagerFactory {
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine promql.QueryEngine, overrides RulesLimits, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer) ManagerFactory {
 	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
 	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
 	// Errors from PromQL are always "user" errors.

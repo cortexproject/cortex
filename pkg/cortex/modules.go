@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -556,7 +555,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
 		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 
-		var queryEngine v1.QueryEngine
+		var queryEngine promql.QueryEngine
 		opts := promql.EngineOpts{
 			Logger:               util_log.Logger,
 			Reg:                  rulerRegisterer,

@@ -793,7 +793,7 @@ func (c *Client) GetAlertGroups(ctx context.Context) ([]AlertGroup, error) {
 
 // CreateSilence creates a new silence and returns the unique identifier of the silence.
 func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (string, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
+	u := c.alertmanagerClient.URL("api/prom/api/v2/silences", nil)
 
 	data, err := json.Marshal(silence)
 	if err != nil {

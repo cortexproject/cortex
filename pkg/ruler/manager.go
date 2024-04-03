@@ -346,7 +346,7 @@ func (r *DefaultMultiTenantManager) GetRules(userID string) []*promRules.Group {
 	return groups
 }
 
-func (r *DefaultMultiTenantManager) GetBackupRules(userID string) []*promRules.Group {
+func (r *DefaultMultiTenantManager) GetBackupRules(userID string) rulespb.RuleGroupList {
 	if r.rulesBackupManager != nil {
 		return r.rulesBackupManager.getRuleGroups(userID)
 	}

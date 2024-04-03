@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
+	"github.com/prometheus/prometheus/promql/parser"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
@@ -224,7 +225,7 @@ type MultiTenantManager interface {
 	// GetRules fetches rules for a particular tenant (userID).
 	GetRules(userID string) []*promRules.Group
 	// GetBackupRules fetches rules for a particular tenant (userID) that the ruler stores for backup purposes
-	GetBackupRules(userID string) []*promRules.Group
+	GetBackupRules(userID string) rulespb.RuleGroupList
 	// Stop stops all Manager components.
 	Stop()
 	// ValidateRuleGroup validates a rulegroup
@@ -851,11 +852,6 @@ func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) ([]*Gro
 func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) ([]*GroupStateDesc, error) {
 	groups := r.manager.GetRules(userID)
 
-	if includeBackups {
-		backupGroups := r.manager.GetBackupRules(userID)
-		groups = append(groups, backupGroups...)
-	}
-
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
 	prefix := filepath.Join(r.cfg.RulePath, userID) + "/"
 
@@ -971,6 +967,101 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 				}
 			default:
 				return nil, errors.Errorf("failed to assert type of rule '%v'", rule.Name())
+			}
+			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
+		}
+		if len(groupDesc.ActiveRules) > 0 {
+			groupDescs = append(groupDescs, groupDesc)
+		}
+	}
+
+	if !includeBackups {
+		return groupDescs, nil
+	}
+
+	backupGroups := r.manager.GetBackupRules(userID)
+	for _, group := range backupGroups {
+		if len(fileSet) > 0 {
+			if _, OK := fileSet[group.GetNamespace()]; !OK {
+				continue
+			}
+		}
+
+		if len(ruleGroupNameSet) > 0 {
+			if _, OK := ruleGroupNameSet[group.GetName()]; !OK {
+				continue
+			}
+		}
+		interval := r.cfg.EvaluationInterval
+		if group.Interval != 0 {
+			interval = group.Interval
+		}
+
+		groupDesc := &GroupStateDesc{
+			Group: &rulespb.RuleGroupDesc{
+				Name:      group.GetName(),
+				Namespace: group.GetNamespace(),
+				Interval:  interval,
+				User:      userID,
+				Limit:     group.Limit,
+			},
+			// We are keeping default value for EvaluationTimestamp and EvaluationDuration since the backup is not evaluating
+		}
+		for _, r := range group.GetRules() {
+			name := r.GetRecord()
+			isAlertingRule := false
+			if name == "" {
+				name = r.GetAlert()
+				isAlertingRule = true
+			}
+			if len(ruleNameSet) > 0 {
+				if _, OK := ruleNameSet[name]; !OK {
+					continue
+				}
+			}
+			lastError := ""
+
+			var ruleDesc *RuleStateDesc
+			query, err := parser.ParseExpr(r.GetExpr())
+			if err != nil {
+				return nil, errors.Errorf("failed to parse rule query '%v'", r.GetExpr())
+			}
+			if isAlertingRule {
+				if !returnAlerts {
+					continue
+				}
+				alerts := []*AlertStateDesc{} // backup rules are not evaluated so there will be no active alerts
+				ruleDesc = &RuleStateDesc{
+					Rule: &rulespb.RuleDesc{
+						Expr:          query.String(),
+						Alert:         name,
+						For:           r.GetFor(),
+						KeepFiringFor: r.GetKeepFiringFor(),
+						Labels:        r.Labels,
+						Annotations:   r.Annotations,
+					},
+					State:               promRules.StateInactive.String(), // backup rules are not evaluated so they are inactive
+					Health:              string(promRules.HealthUnknown),
+					LastError:           lastError,
+					Alerts:              alerts,
+					EvaluationTimestamp: time.Time{},
+					EvaluationDuration:  time.Duration(0),
+				}
+			} else {
+				if !returnRecording {
+					continue
+				}
+				ruleDesc = &RuleStateDesc{
+					Rule: &rulespb.RuleDesc{
+						Record: name,
+						Expr:   query.String(),
+						Labels: r.Labels,
+					},
+					Health:              string(promRules.HealthUnknown),
+					LastError:           lastError,
+					EvaluationTimestamp: time.Time{},
+					EvaluationDuration:  time.Duration(0),
+				}
 			}
 			groupDesc.ActiveRules = append(groupDesc.ActiveRules, ruleDesc)
 		}

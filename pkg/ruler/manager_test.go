@@ -257,7 +257,12 @@ func TestBackupRules(t *testing.T) {
 	dir := t.TempDir()
 	reg := prometheus.NewPedanticRegistry()
 	evalMetrics := NewRuleEvalMetrics(Config{RulePath: dir, EnableQueryStats: true}, reg)
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir, APIEnableRulesBackup: true}, factory, evalMetrics, reg, log.NewNopLogger())
+	waitDurations := []time.Duration{
+		1 * time.Millisecond,
+		1 * time.Millisecond,
+	}
+	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir, APIEnableRulesBackup: true}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user1 = "testUser"
@@ -285,21 +290,8 @@ func TestBackupRules(t *testing.T) {
 		},
 	}
 	m.BackUpRuleGroups(context.TODO(), userRules)
-	managerOptions := &promRules.ManagerOptions{}
-	g1 := promRules.NewGroup(promRules.GroupOptions{
-		Name:     userRules[user1][0].Name,
-		File:     userRules[user1][0].Namespace,
-		Interval: userRules[user1][0].Interval,
-		Opts:     managerOptions,
-	})
-	g2 := promRules.NewGroup(promRules.GroupOptions{
-		Name:     userRules[user2][0].Name,
-		File:     userRules[user2][0].Namespace,
-		Interval: userRules[user2][0].Interval,
-		Opts:     managerOptions,
-	})
-	requireGroupsEqual(t, m.GetBackupRules(user1), []*promRules.Group{g1})
-	requireGroupsEqual(t, m.GetBackupRules(user2), []*promRules.Group{g2})
+	require.Equal(t, userRules[user1], m.GetBackupRules(user1))
+	require.Equal(t, userRules[user2], m.GetBackupRules(user2))
 }
 
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {

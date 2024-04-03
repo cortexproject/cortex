@@ -2,52 +2,31 @@ package ruler
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"path/filepath"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/model/rulefmt"
-	"github.com/prometheus/prometheus/promql/parser"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
 
-// Implements GroupLoader interface but instead of reading from a file when Load is called, it returns the
-// rulefmt.RuleGroup it has stored
-type loader struct {
-	ruleGroups map[string][]rulefmt.RuleGroup
-}
-
-func (r *loader) Load(identifier string) (*rulefmt.RuleGroups, []error) {
-	return &rulefmt.RuleGroups{
-		Groups: r.ruleGroups[identifier],
-	}, nil
-}
-
-func (r *loader) Parse(query string) (parser.Expr, error) {
-	return parser.ParseExpr(query)
-}
-
-// rulesBackupManager is an in-memory store that holds []promRules.Group of multiple users. It only stores the Groups,
-// it doesn't evaluate them.
+// rulesBackupManager is an in-memory store that holds rulespb.RuleGroupList of multiple users. It only stores the
+// data, it DOESN'T evaluate.
 type rulesBackupManager struct {
-	inMemoryRuleGroupsBackup map[string][]*promRules.Group
+	inMemoryRuleGroupsBackup map[string]rulespb.RuleGroupList
 	cfg                      Config
 
 	logger log.Logger
 
-	backupRuleGroup            *prometheus.GaugeVec
-	lastBackupReloadSuccessful *prometheus.GaugeVec
+	backupRuleGroup *prometheus.GaugeVec
 }
 
 func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registerer) *rulesBackupManager {
 	return &rulesBackupManager{
-		inMemoryRuleGroupsBackup: make(map[string][]*promRules.Group),
+		inMemoryRuleGroupsBackup: make(map[string]rulespb.RuleGroupList),
 		cfg:                      cfg,
 		logger:                   logger,
 
@@ -56,85 +35,39 @@ func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registe
 			Name:      "ruler_backup_rule_group",
 			Help:      "Boolean set to 1 indicating the ruler stores the rule group as backup.",
 		}, []string{"user", "rule_group"}),
-		lastBackupReloadSuccessful: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "ruler_backup_last_reload_successful",
-			Help:      "Boolean set to 1 whenever the last configuration reload attempt was successful.",
-		}, []string{"user"}),
 	}
 }
 
-// setRuleGroups updates the map[string][]*promRules.Group that the rulesBackupManager stores in memory.
+// setRuleGroups updates the map[string]rulespb.RuleGroupList that the rulesBackupManager stores in memory.
 func (r *rulesBackupManager) setRuleGroups(_ context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
-	backupRuleGroups := make(map[string][]*promRules.Group)
-	for user, groups := range ruleGroups {
-		promGroups, err := r.ruleGroupListToPromGroups(user, groups)
-		if err != nil {
-			r.lastBackupReloadSuccessful.WithLabelValues(user).Set(0)
-			level.Error(r.logger).Log("msg", "unable to back up rules", "user", user, "err", err)
-			continue
-		}
-		backupRuleGroups[user] = promGroups
-		r.lastBackupReloadSuccessful.WithLabelValues(user).Set(1)
-	}
-	r.updateMetrics(backupRuleGroups)
-	r.inMemoryRuleGroupsBackup = backupRuleGroups
+	r.updateMetrics(ruleGroups)
+	r.inMemoryRuleGroupsBackup = ruleGroups
 }
 
-// ruleGroupListToPromGroups converts rulespb.RuleGroupList to []*promRules.Group by creating a single use
-// promRules.Manager and calling its LoadGroups method.
-func (r *rulesBackupManager) ruleGroupListToPromGroups(user string, ruleGroups rulespb.RuleGroupList) ([]*promRules.Group, error) {
-	rgs := ruleGroups.Formatted()
-
-	loader := &loader{
-		ruleGroups: rgs,
-	}
-	promManager := promRules.NewManager(&promRules.ManagerOptions{
-		ExternalURL: r.cfg.ExternalURL.URL,
-		GroupLoader: loader,
-	})
-
-	namespaces := make([]string, 0, len(rgs))
-	for k := range rgs {
-		namespaces = append(namespaces, k)
-	}
-	loadedGroups, errs := promManager.LoadGroups(r.cfg.EvaluationInterval, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil, namespaces...)
-	if errs != nil {
-		for _, e := range errs {
-			level.Error(r.logger).Log("msg", "loading groups to backup failed", "user", user, "namespaces", namespaces, "err", e)
-		}
-		return nil, errors.New("error loading rules to backup")
-	}
-
-	groups := make([]*promRules.Group, 0, len(loadedGroups))
-	for _, g := range loadedGroups {
-		groups = append(groups, g)
-	}
-	return groups, nil
-}
-
-// getRuleGroups returns the []*promRules.Group that rulesBackupManager stores for a given user
-func (r *rulesBackupManager) getRuleGroups(userID string) []*promRules.Group {
-	var result []*promRules.Group
+// getRuleGroups returns the rulespb.RuleGroupList that rulesBackupManager stores for a given user
+func (r *rulesBackupManager) getRuleGroups(userID string) rulespb.RuleGroupList {
+	var result rulespb.RuleGroupList
 	if groups, exists := r.inMemoryRuleGroupsBackup[userID]; exists {
 		result = groups
 	}
 	return result
 }
 
-func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string][]*promRules.Group) {
+// getRuleGroups updates the ruler_backup_rule_group metric by adding new groups that were backed up and removing
+// those that are removed from the backup.
+func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string]rulespb.RuleGroupList) {
 	for user, groups := range newBackupGroups {
-		keptGroups := make(map[string][]interface{})
+		keptGroups := make(map[string]struct{})
 		for _, g := range groups {
 			fullFileName := r.getFilePathForGroup(g, user)
-			key := promRules.GroupKey(fullFileName, g.Name())
+			key := promRules.GroupKey(fullFileName, g.GetName())
 			r.backupRuleGroup.WithLabelValues(user, key).Set(1)
-			keptGroups[key] = nil
+			keptGroups[key] = struct{}{}
 		}
 		oldGroups := r.inMemoryRuleGroupsBackup[user]
 		for _, g := range oldGroups {
 			fullFileName := r.getFilePathForGroup(g, user)
-			key := promRules.GroupKey(fullFileName, g.Name())
+			key := promRules.GroupKey(fullFileName, g.GetName())
 			if _, exists := keptGroups[key]; !exists {
 				r.backupRuleGroup.DeleteLabelValues(user, key)
 			}
@@ -147,17 +80,17 @@ func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string][]*promRul
 		}
 		for _, g := range groups {
 			fullFileName := r.getFilePathForGroup(g, user)
-			key := promRules.GroupKey(fullFileName, g.Name())
+			key := promRules.GroupKey(fullFileName, g.GetName())
 			r.backupRuleGroup.DeleteLabelValues(user, key)
 		}
-		r.lastBackupReloadSuccessful.DeleteLabelValues(user)
 	}
 }
 
 // getFilePathForGroup returns the supposed file path of the group if it was being evaluated.
-// This is based on how mapper.go generates file paths.
-func (r *rulesBackupManager) getFilePathForGroup(g *promRules.Group, user string) string {
+// This is based on how mapper.go generates file paths. This can be used to generate value similar to the one returned
+// by prometheus Group.File() method.
+func (r *rulesBackupManager) getFilePathForGroup(g *rulespb.RuleGroupDesc, user string) string {
 	dirPath := filepath.Join(r.cfg.RulePath, user)
-	encodedFileName := url.PathEscape(g.File())
+	encodedFileName := url.PathEscape(g.GetNamespace())
 	return filepath.Join(dirPath, encodedFileName)
 }

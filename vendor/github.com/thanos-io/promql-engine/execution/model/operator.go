@@ -5,6 +5,7 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -13,26 +14,24 @@ import (
 type OperatorTelemetry interface {
 	AddExecutionTimeTaken(time.Duration)
 	ExecutionTimeTaken() time.Duration
-	Name() string
+	fmt.Stringer
 }
 
-func NewTelemetry(name string, enabled bool) OperatorTelemetry {
+func NewTelemetry(operator fmt.Stringer, enabled bool) OperatorTelemetry {
 	if enabled {
-		return NewTrackedTelemetry(name)
+		return NewTrackedTelemetry(operator)
 	}
-	return NewNoopTelemetry(name)
+	return NewNoopTelemetry(operator)
 
 }
 
 type NoopTelemetry struct {
-	name string
+	fmt.Stringer
 }
 
-func NewNoopTelemetry(name string) *NoopTelemetry {
-	return &NoopTelemetry{name: name}
+func NewNoopTelemetry(operator fmt.Stringer) *NoopTelemetry {
+	return &NoopTelemetry{Stringer: operator}
 }
-
-func (tm *NoopTelemetry) Name() string { return tm.name }
 
 func (tm *NoopTelemetry) AddExecutionTimeTaken(t time.Duration) {}
 
@@ -43,10 +42,11 @@ func (tm *NoopTelemetry) ExecutionTimeTaken() time.Duration {
 type TrackedTelemetry struct {
 	name          string
 	ExecutionTime time.Duration
+	fmt.Stringer
 }
 
-func NewTrackedTelemetry(name string) *TrackedTelemetry {
-	return &TrackedTelemetry{name: name}
+func NewTrackedTelemetry(operator fmt.Stringer) *TrackedTelemetry {
+	return &TrackedTelemetry{Stringer: operator}
 }
 
 func (ti *TrackedTelemetry) Name() string {
@@ -78,5 +78,7 @@ type VectorOperator interface {
 	GetPool() *VectorPool
 
 	// Explain returns human-readable explanation of the current operator and optional nested operators.
-	Explain() (me string, next []VectorOperator)
+	Explain() (next []VectorOperator)
+
+	fmt.Stringer
 }

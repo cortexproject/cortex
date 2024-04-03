@@ -51,19 +51,25 @@ type coalesce struct {
 }
 
 func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, operators ...model.VectorOperator) model.VectorOperator {
-	return &coalesce{
-		OperatorTelemetry: model.NewTelemetry("[coalesce]", opts.EnableAnalysis),
-
+	oper := &coalesce{
 		pool:          pool,
 		sampleOffsets: make([]uint64, len(operators)),
 		operators:     operators,
 		inVectors:     make([][]model.StepVector, len(operators)),
 		batchSize:     batchSize,
 	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
-func (c *coalesce) Explain() (me string, next []model.VectorOperator) {
-	return "[coalesce]", c.operators
+func (c *coalesce) Explain() (next []model.VectorOperator) {
+	return c.operators
+}
+
+func (c *coalesce) String() string {
+	return "[coalesce]"
 }
 
 func (c *coalesce) GetPool() *model.VectorPool {

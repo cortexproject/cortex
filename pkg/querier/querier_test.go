@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/annotations"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -253,7 +252,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					MaxSamples: 1e6,
 					Timeout:    1 * time.Minute,
 				}
-				var queryEngine v1.QueryEngine
+				var queryEngine promql.QueryEngine
 				if thanosEngine {
 					queryEngine = engine.New(engine.Opts{
 						EngineOpts:        opts,
@@ -499,7 +498,7 @@ func TestQuerier(t *testing.T) {
 				for _, iterators := range []bool{false, true} {
 					iterators := iterators
 					t.Run(fmt.Sprintf("%s/%s/iterators=%t", query.query, encoding.name, iterators), func(t *testing.T) {
-						var queryEngine v1.QueryEngine
+						var queryEngine promql.QueryEngine
 						if thanosEngine {
 							queryEngine = engine.New(engine.Opts{
 								EngineOpts:        opts,
@@ -648,7 +647,7 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		for _, c := range testCases {
 			cfg.QueryIngestersWithin = c.queryIngestersWithin
 			t.Run(fmt.Sprintf("thanosEngine=%t,queryIngestersWithin=%v, test=%s", thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
-				var queryEngine v1.QueryEngine
+				var queryEngine promql.QueryEngine
 				if thanosEngine {
 					queryEngine = engine.New(engine.Opts{
 						EngineOpts:        opts,
@@ -1223,7 +1222,7 @@ func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *Moc
 	return result
 }
 
-func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine v1.QueryEngine, end model.Time, q query) *promql.Result {
+func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine promql.QueryEngine, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	ctx := user.InjectOrgID(context.Background(), "0")
 	query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, q.query, from, through, step)

@@ -28,10 +28,12 @@ type duplicateLabelCheckOperator struct {
 }
 
 func NewDuplicateLabelCheck(next model.VectorOperator, opts *query.Options) model.VectorOperator {
-	return &duplicateLabelCheckOperator{
-		OperatorTelemetry: model.NewTelemetry("[duplicateLabelCheck]", opts.EnableAnalysis),
-		next:              next,
+	oper := &duplicateLabelCheckOperator{
+		next: next,
 	}
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
 func (d *duplicateLabelCheckOperator) Next(ctx context.Context) ([]model.StepVector, error) {
@@ -94,8 +96,12 @@ func (d *duplicateLabelCheckOperator) GetPool() *model.VectorPool {
 	return d.next.GetPool()
 }
 
-func (d *duplicateLabelCheckOperator) Explain() (me string, next []model.VectorOperator) {
-	return d.next.Explain()
+func (d *duplicateLabelCheckOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{d.next}
+}
+
+func (d *duplicateLabelCheckOperator) String() string {
+	return "[duplicateLabelCheck]"
 }
 
 func (d *duplicateLabelCheckOperator) init(ctx context.Context) error {

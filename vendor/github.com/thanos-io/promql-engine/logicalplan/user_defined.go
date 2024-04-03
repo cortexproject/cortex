@@ -6,15 +6,13 @@ package logicalplan
 import (
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/query"
 )
 
 // UserDefinedExpr is an extension point which allows users to define their execution operators.
 type UserDefinedExpr interface {
-	parser.Expr
+	Node
 	MakeExecutionOperator(
 		vectors *model.VectorPool,
 		opts *query.Options,

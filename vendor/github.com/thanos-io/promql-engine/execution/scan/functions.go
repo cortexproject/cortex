@@ -105,6 +105,9 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return 0., nil, false
 		}
+		if f.Samples[0].V.H != nil {
+			return 0, f.Samples[len(f.Samples)-1].V.H.Copy(), true
+		}
 		return f.Samples[len(f.Samples)-1].V.F, nil, true
 	},
 	"present_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
@@ -258,6 +261,16 @@ func extrapolatedRate(samples []ringbuffer.Sample[Value], isCounter, isRate bool
 	sampledInterval := float64(samples[len(samples)-1].T-samples[0].T) / 1000
 	averageDurationBetweenSamples := sampledInterval / float64(len(samples)-1)
 
+	// If the first/last samples are close to the boundaries of the range,
+	// extrapolate the result. This is as we expect that another sample
+	// will exist given the spacing between samples we've seen thus far,
+	// with an allowance for noise.
+	extrapolationThreshold := averageDurationBetweenSamples * 1.1
+	extrapolateToInterval := sampledInterval
+
+	if durationToStart >= extrapolationThreshold {
+		durationToStart = averageDurationBetweenSamples / 2
+	}
 	if isCounter && resultValue > 0 && samples[0].V.F >= 0 {
 		// Counters cannot be negative. If we have any slope at
 		// all (i.e. resultValue went up), we can extrapolate
@@ -266,29 +279,19 @@ func extrapolatedRate(samples []ringbuffer.Sample[Value], isCounter, isRate bool
 		// take the zero point as the start of the series,
 		// thereby avoiding extrapolation to negative counter
 		// values.
+		// TODO(beorn7): Do this for histograms, too.
 		durationToZero := sampledInterval * (samples[0].V.F / resultValue)
 		if durationToZero < durationToStart {
 			durationToStart = durationToZero
 		}
 	}
+	extrapolateToInterval += durationToStart
 
-	// If the first/last Samples are close to the boundaries of the range,
-	// extrapolate the result. This is as we expect that another sample
-	// will exist given the spacing between Samples we've seen thus far,
-	// with an allowance for noise.
-	extrapolationThreshold := averageDurationBetweenSamples * 1.1
-	extrapolateToInterval := sampledInterval
+	if durationToEnd >= extrapolationThreshold {
+		durationToEnd = averageDurationBetweenSamples / 2
+	}
+	extrapolateToInterval += durationToEnd
 
-	if durationToStart < extrapolationThreshold {
-		extrapolateToInterval += durationToStart
-	} else {
-		extrapolateToInterval += averageDurationBetweenSamples / 2
-	}
-	if durationToEnd < extrapolationThreshold {
-		extrapolateToInterval += durationToEnd
-	} else {
-		extrapolateToInterval += averageDurationBetweenSamples / 2
-	}
 	factor := extrapolateToInterval / sampledInterval
 	if isRate {
 		factor /= float64(selectRange / 1000)

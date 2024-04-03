@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	collectorversion "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
 
@@ -46,7 +47,7 @@ func init() {
 	version.Version = Version
 	version.Branch = Branch
 	version.Revision = Revision
-	prometheus.MustRegister(version.NewCollector("cortex"))
+	prometheus.MustRegister(collectorversion.NewCollector("cortex"))
 	prometheus.MustRegister(configHash)
 }
 

@@ -65,8 +65,6 @@ func NewVectorSelector(
 	shard, numShards int,
 ) model.VectorOperator {
 	o := &vectorSelector{
-		OperatorTelemetry: model.NewTelemetry("[vectorSelector]", queryOpts.EnableAnalysis),
-
 		storage:    selector,
 		vectorPool: pool,
 
@@ -84,6 +82,8 @@ func NewVectorSelector(
 
 		selectTimestamp: selectTimestamp,
 	}
+	o.OperatorTelemetry = model.NewTelemetry(o, queryOpts.EnableAnalysis)
+
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
 	if o.step == 0 {
@@ -93,8 +93,12 @@ func NewVectorSelector(
 	return o
 }
 
-func (o *vectorSelector) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[vectorSelector] {%v} %v mod %v", o.storage.Matchers(), o.shard, o.numShards), nil
+func (o *vectorSelector) String() string {
+	return fmt.Sprintf("[vectorSelector] {%v} %v mod %v", o.storage.Matchers(), o.shard, o.numShards)
+}
+
+func (o *vectorSelector) Explain() (next []model.VectorOperator) {
+	return nil
 }
 
 func (o *vectorSelector) Series(ctx context.Context) ([]labels.Labels, error) {

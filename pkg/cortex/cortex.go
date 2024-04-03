@@ -14,8 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -303,7 +303,7 @@ type Cortex struct {
 	RuntimeConfig            *runtimeconfig.Manager
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
-	QuerierEngine            v1.QueryEngine
+	QuerierEngine            promql.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
 
 	Ruler        *ruler.Ruler

@@ -2,29 +2,28 @@
 //
 // Example:
 //
-//		package main
+//	package main
 //
-//		import (
-//			"time"
-//			tele "gopkg.in/telebot.v3"
-//		)
+//	import (
+//		"time"
+//		tele "gopkg.in/telebot.v3"
+//	)
 //
-//		func main() {
-//			b, err := tele.NewBot(tele.Settings{
-//				Token:  "...",
-//				Poller: &tele.LongPoller{Timeout: 10 * time.Second},
-//			})
-//			if err != nil {
-//				return
-//			}
-//
-//			b.Handle("/start", func(c tele.Context) error {
-//				return c.Send("Hello world!")
-//			})
-//
-//			b.Start()
+//	func main() {
+//		b, err := tele.NewBot(tele.Settings{
+//			Token:  "...",
+//			Poller: &tele.LongPoller{Timeout: 10 * time.Second},
+//		})
+//		if err != nil {
+//			return
 //		}
 //
+//		b.Handle("/start", func(c tele.Context) error {
+//			return c.Send("Hello world!")
+//		})
+//
+//		b.Start()
+//	}
 package telebot
 
 import "errors"
@@ -43,35 +42,43 @@ const DefaultApiURL = "https://api.telegram.org"
 //
 // For convenience, all Telebot-provided endpoints start with
 // an "alert" character \a.
-//
 const (
 	// Basic message handlers.
-	OnText              = "\atext"
-	OnEdited            = "\aedited"
-	OnPhoto             = "\aphoto"
-	OnAudio             = "\aaudio"
-	OnAnimation         = "\aanimation"
-	OnDocument          = "\adocument"
-	OnSticker           = "\asticker"
-	OnVideo             = "\avideo"
-	OnVoice             = "\avoice"
-	OnVideoNote         = "\avideo_note"
-	OnContact           = "\acontact"
-	OnLocation          = "\alocation"
-	OnVenue             = "\avenue"
-	OnDice              = "\adice"
-	OnInvoice           = "\ainvoice"
-	OnPayment           = "\apayment"
-	OnGame              = "\agame"
-	OnPoll              = "\apoll"
-	OnPollAnswer        = "\apoll_answer"
-	OnPinned            = "\apinned"
-	OnChannelPost       = "\achannel_post"
-	OnEditedChannelPost = "\aedited_channel_post"
+	OnText                 = "\atext"
+	OnEdited               = "\aedited"
+	OnPhoto                = "\aphoto"
+	OnAudio                = "\aaudio"
+	OnAnimation            = "\aanimation"
+	OnDocument             = "\adocument"
+	OnSticker              = "\asticker"
+	OnVideo                = "\avideo"
+	OnVoice                = "\avoice"
+	OnVideoNote            = "\avideo_note"
+	OnContact              = "\acontact"
+	OnLocation             = "\alocation"
+	OnVenue                = "\avenue"
+	OnDice                 = "\adice"
+	OnInvoice              = "\ainvoice"
+	OnPayment              = "\apayment"
+	OnGame                 = "\agame"
+	OnPoll                 = "\apoll"
+	OnPollAnswer           = "\apoll_answer"
+	OnPinned               = "\apinned"
+	OnChannelPost          = "\achannel_post"
+	OnEditedChannelPost    = "\aedited_channel_post"
+	OnTopicCreated         = "\atopic_created"
+	OnTopicReopened        = "\atopic_reopened"
+	OnTopicClosed          = "\atopic_closed"
+	OnTopicEdited          = "\atopic_edited"
+	OnGeneralTopicHidden   = "\ageneral_topic_hidden"
+	OnGeneralTopicUnhidden = "\ageneral_topic_unhidden"
+	OnWriteAccessAllowed   = "\awrite_access_allowed"
 
 	OnAddedToGroup      = "\aadded_to_group"
 	OnUserJoined        = "\auser_joined"
 	OnUserLeft          = "\auser_left"
+	OnUserShared        = "\auser_shared"
+	OnChatShared        = "\achat_shared"
 	OnNewGroupTitle     = "\anew_chat_title"
 	OnNewGroupPhoto     = "\anew_chat_photo"
 	OnGroupPhotoDeleted = "\achat_photo_deleted"
@@ -131,6 +138,13 @@ const (
 	ModeHTML       ParseMode = "HTML"
 )
 
-// M is a shortcut for map[string]interface{}. Use it for passing
-// arguments to the layout functions.
+// M is a shortcut for map[string]interface{}.
+// Useful for passing arguments to the layout functions.
 type M = map[string]interface{}
+
+// Flag returns a pointer to the given bool.
+// Useful for passing the three-state flags to a Bot API.
+// For example, see ReplyRecipient type.
+func Flag(b bool) *bool {
+	return &b
+}

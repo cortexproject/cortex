@@ -29,17 +29,22 @@ type concurrencyOperator struct {
 }
 
 func NewConcurrent(next model.VectorOperator, bufferSize int, opts *query.Options) model.VectorOperator {
-	return &concurrencyOperator{
-		OperatorTelemetry: model.NewTelemetry("[concurrent]", opts.EnableAnalysis),
-
+	oper := &concurrencyOperator{
 		next:       next,
 		buffer:     make(chan maybeStepVector, bufferSize),
 		bufferSize: bufferSize,
 	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	return oper
 }
 
-func (c *concurrencyOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[concurrent(buff=%v)]", c.bufferSize), []model.VectorOperator{c.next}
+func (c *concurrencyOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{c.next}
+}
+
+func (c *concurrencyOperator) String() string {
+	return fmt.Sprintf("[concurrent(buff=%v)]", c.bufferSize)
 }
 
 func (c *concurrencyOperator) Series(ctx context.Context) ([]labels.Labels, error) {

@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
@@ -159,7 +160,7 @@ func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
-	engine v1.QueryEngine,
+	engine promql.QueryEngine,
 	distributor Distributor,
 	reg prometheus.Registerer,
 	logger log.Logger,

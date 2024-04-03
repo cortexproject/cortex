@@ -10,7 +10,6 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/logicalplan"
@@ -35,20 +34,22 @@ type stepInvariantOperator struct {
 	model.OperatorTelemetry
 }
 
-func (u *stepInvariantOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[stepInvariant]", []model.VectorOperator{u.next}
+func (u *stepInvariantOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{u.next}
+}
+
+func (u *stepInvariantOperator) String() string {
+	return "[stepInvariant]"
 }
 
 func NewStepInvariantOperator(
 	pool *model.VectorPool,
 	next model.VectorOperator,
-	expr parser.Expr,
+	expr logicalplan.Node,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
 	// We set interval to be at least 1.
 	u := &stepInvariantOperator{
-		OperatorTelemetry: model.NewTelemetry("[stepInvariant]", opts.EnableAnalysis),
-
 		vectorPool:  pool,
 		next:        next,
 		currentStep: opts.Start.UnixMilli(),
@@ -58,13 +59,14 @@ func NewStepInvariantOperator(
 		stepsBatch:  opts.StepsBatch,
 		cacheResult: true,
 	}
+	u.OperatorTelemetry = model.NewTelemetry(u, opts.EnableAnalysis)
 	if u.step == 0 {
 		u.step = 1
 	}
 	// We do not duplicate results for range selectors since result is a matrix
 	// with their unique timestamps which does not depend on the step.
 	switch expr.(type) {
-	case *logicalplan.MatrixSelector, *parser.SubqueryExpr:
+	case *logicalplan.MatrixSelector, *logicalplan.Subquery:
 		u.cacheResult = false
 	}
 

@@ -25,15 +25,19 @@ type unaryNegation struct {
 
 func NewUnaryNegation(next model.VectorOperator, opts *query.Options) (model.VectorOperator, error) {
 	u := &unaryNegation{
-		next:              next,
-		OperatorTelemetry: model.NewTelemetry("[unaryNegation]", opts.EnableAnalysis),
+		next: next,
 	}
+	u.OperatorTelemetry = model.NewTelemetry(u, opts.EnableAnalysis)
 
 	return u, nil
 }
 
-func (u *unaryNegation) Explain() (me string, next []model.VectorOperator) {
-	return "[unaryNegation]", []model.VectorOperator{u.next}
+func (u *unaryNegation) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{u.next}
+}
+
+func (u *unaryNegation) String() string {
+	return "[unaryNegation]"
 }
 
 func (u *unaryNegation) Series(ctx context.Context) ([]labels.Labels, error) {

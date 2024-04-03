@@ -10,13 +10,16 @@ import (
 type User struct {
 	ID int64 `json:"id"`
 
-	FirstName    string `json:"first_name"`
-	LastName     string `json:"last_name"`
-	Username     string `json:"username"`
-	LanguageCode string `json:"language_code"`
-	IsBot        bool   `json:"is_bot"`
-	IsPremium    bool   `json:"is_premium"`
-	AddedToMenu  bool   `json:"added_to_attachment_menu"`
+	FirstName         string   `json:"first_name"`
+	LastName          string   `json:"last_name"`
+	IsForum           bool     `json:"is_forum"`
+	Username          string   `json:"username"`
+	LanguageCode      string   `json:"language_code"`
+	IsBot             bool     `json:"is_bot"`
+	IsPremium         bool     `json:"is_premium"`
+	AddedToMenu       bool     `json:"added_to_attachment_menu"`
+	Usernames         []string `json:"active_usernames"`
+	CustomEmojiStatus string   `json:"emoji_status_custom_emoji_id"`
 
 	// Returns only in getMe
 	CanJoinGroups   bool `json:"can_join_groups"`
@@ -44,20 +47,22 @@ type Chat struct {
 	Username  string `json:"username"`
 
 	// Returns only in getChat
-	Bio              string        `json:"bio,omitempty"`
-	Photo            *ChatPhoto    `json:"photo,omitempty"`
-	Description      string        `json:"description,omitempty"`
-	InviteLink       string        `json:"invite_link,omitempty"`
-	PinnedMessage    *Message      `json:"pinned_message,omitempty"`
-	Permissions      *Rights       `json:"permissions,omitempty"`
-	SlowMode         int           `json:"slow_mode_delay,omitempty"`
-	StickerSet       string        `json:"sticker_set_name,omitempty"`
-	CanSetStickerSet bool          `json:"can_set_sticker_set,omitempty"`
-	LinkedChatID     int64         `json:"linked_chat_id,omitempty"`
-	ChatLocation     *ChatLocation `json:"location,omitempty"`
-	Private          bool          `json:"has_private_forwards,omitempty"`
-	Protected        bool          `json:"has_protected_content,omitempty"`
-	NoVoiceAndVideo  bool          `json:"has_restricted_voice_and_video_messages"`
+	Bio                string        `json:"bio,omitempty"`
+	Photo              *ChatPhoto    `json:"photo,omitempty"`
+	Description        string        `json:"description,omitempty"`
+	InviteLink         string        `json:"invite_link,omitempty"`
+	PinnedMessage      *Message      `json:"pinned_message,omitempty"`
+	Permissions        *Rights       `json:"permissions,omitempty"`
+	SlowMode           int           `json:"slow_mode_delay,omitempty"`
+	StickerSet         string        `json:"sticker_set_name,omitempty"`
+	CanSetStickerSet   bool          `json:"can_set_sticker_set,omitempty"`
+	LinkedChatID       int64         `json:"linked_chat_id,omitempty"`
+	ChatLocation       *ChatLocation `json:"location,omitempty"`
+	Private            bool          `json:"has_private_forwards,omitempty"`
+	Protected          bool          `json:"has_protected_content,omitempty"`
+	NoVoiceAndVideo    bool          `json:"has_restricted_voice_and_video_messages"`
+	HiddenMembers      bool          `json:"has_hidden_members,omitempty"`
+	AggressiveAntiSpam bool          `json:"has_aggressive_anti_spam_enabled,omitempty"`
 }
 
 // Recipient returns chat ID (see Recipient interface).
@@ -101,6 +106,7 @@ type ChatMember struct {
 	Role      MemberStatus `json:"status"`
 	Title     string       `json:"custom_title"`
 	Anonymous bool         `json:"is_anonymous"`
+	Member    bool         `json:"is_member,omitempty"`
 
 	// Date when restrictions will be lifted for the user, unix time.
 	//
@@ -162,14 +168,13 @@ func (c *ChatMemberUpdate) Time() time.Time {
 //
 // Example:
 //
-//		group := tele.ChatID(-100756389456)
-//		b.Send(group, "Hello!")
+//	group := tele.ChatID(-100756389456)
+//	b.Send(group, "Hello!")
 //
-//		type Config struct {
-//			AdminGroup tele.ChatID `json:"admin_group"`
-//		}
-//		b.Send(conf.AdminGroup, "Hello!")
-//
+//	type Config struct {
+//		AdminGroup tele.ChatID `json:"admin_group"`
+//	}
+//	b.Send(conf.AdminGroup, "Hello!")
 type ChatID int64
 
 // Recipient returns chat ID (see Recipient interface).
@@ -184,6 +189,12 @@ type ChatJoinRequest struct {
 
 	// Sender is the user that sent the join request.
 	Sender *User `json:"from"`
+
+	// UserChatID is an ID of a private chat with the user
+	// who sent the join request. The bot can use this ID
+	// for 5 minutes to send messages until the join request
+	// is processed, assuming no other administrator contacted the user.
+	UserChatID int64 `json:"user_chat_id"`
 
 	// Unixtime, use ChatJoinRequest.Time() to get time.Time.
 	Unixtime int64 `json:"date"`
@@ -426,6 +437,9 @@ func (b *Bot) SetGroupPermissions(chat *Chat, perms Rights) error {
 	params := map[string]interface{}{
 		"chat_id":     chat.Recipient(),
 		"permissions": perms,
+	}
+	if perms.Independent {
+		params["use_independent_chat_permissions"] = true
 	}
 
 	_, err := b.Raw("setChatPermissions", params)

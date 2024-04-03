@@ -17,20 +17,11 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/extlabels"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 )
 
-const (
-	absentOperatorName        = "[absent]"
-	functionOperatorName      = "[function]"
-	histogramOperatorName     = "[histogram_quantile]"
-	relabelOperatorName       = "[relabel]"
-	scalarOperatorName        = "[scalar]"
-	timestampOperatorName     = "[timestamp]"
-	noArgFunctionOperatorName = "[noArgFunction]"
-)
-
-func NewFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+func NewFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	// Some functions need to be handled in special operators
 	switch funcExpr.Func.Name {
 	case "scalar":
@@ -53,7 +44,7 @@ func NewFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, 
 	return newInstantVectorFunctionOperator(funcExpr, nextOps, stepsBatch, opts)
 }
 
-func newNoArgsFunctionOperator(funcExpr *parser.Call, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+func newNoArgsFunctionOperator(funcExpr *logicalplan.FunctionCall, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	call, ok := noArgFuncs[funcExpr.Func.Name]
 	if !ok {
 		return nil, UnknownFunctionError(funcExpr.Func.Name)
@@ -66,16 +57,17 @@ func newNoArgsFunctionOperator(funcExpr *parser.Call, stepsBatch int, opts *quer
 	}
 
 	op := &noArgFunctionOperator{
-		OperatorTelemetry: model.NewTelemetry(noArgFunctionOperatorName, opts.EnableAnalysis),
-		currentStep:       opts.Start.UnixMilli(),
-		mint:              opts.Start.UnixMilli(),
-		maxt:              opts.End.UnixMilli(),
-		step:              interval,
-		stepsBatch:        stepsBatch,
-		funcExpr:          funcExpr,
-		call:              call,
-		vectorPool:        model.NewVectorPool(stepsBatch),
+		currentStep: opts.Start.UnixMilli(),
+		mint:        opts.Start.UnixMilli(),
+		maxt:        opts.End.UnixMilli(),
+		step:        interval,
+		stepsBatch:  stepsBatch,
+		funcExpr:    funcExpr,
+		call:        call,
+		vectorPool:  model.NewVectorPool(stepsBatch),
 	}
+	op.OperatorTelemetry = model.NewTelemetry(op, opts.EnableAnalysis)
+
 	switch funcExpr.Func.Name {
 	case "pi", "time":
 		op.sampleIDs = []uint64{0}
@@ -92,7 +84,7 @@ func newNoArgsFunctionOperator(funcExpr *parser.Call, stepsBatch int, opts *quer
 type functionOperator struct {
 	model.OperatorTelemetry
 
-	funcExpr *parser.Call
+	funcExpr *logicalplan.FunctionCall
 	series   []labels.Labels
 	once     sync.Once
 
@@ -103,7 +95,7 @@ type functionOperator struct {
 	scalarPoints [][]float64
 }
 
-func newInstantVectorFunctionOperator(funcExpr *parser.Call, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
+func newInstantVectorFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
 	call, ok := instantVectorFuncs[funcExpr.Func.Name]
 	if !ok {
 		return nil, UnknownFunctionError(funcExpr.Func.Name)
@@ -114,23 +106,23 @@ func newInstantVectorFunctionOperator(funcExpr *parser.Call, nextOps []model.Vec
 		scalarPoints[i] = make([]float64, len(nextOps)-1)
 	}
 	f := &functionOperator{
-		OperatorTelemetry: model.NewTelemetry(functionOperatorName, opts.EnableAnalysis),
-		nextOps:           nextOps,
-		call:              call,
-		funcExpr:          funcExpr,
-		vectorIndex:       0,
-		scalarPoints:      scalarPoints,
+		nextOps:      nextOps,
+		call:         call,
+		funcExpr:     funcExpr,
+		vectorIndex:  0,
+		scalarPoints: scalarPoints,
 	}
+	f.OperatorTelemetry = model.NewTelemetry(f, opts.EnableAnalysis)
 
 	for i := range funcExpr.Args {
-		if funcExpr.Args[i].Type() == parser.ValueTypeVector {
+		if funcExpr.Args[i].ReturnType() == parser.ValueTypeVector {
 			f.vectorIndex = i
 			break
 		}
 	}
 
 	// Check selector type.
-	switch funcExpr.Args[f.vectorIndex].Type() {
+	switch funcExpr.Args[f.vectorIndex].ReturnType() {
 	case parser.ValueTypeVector, parser.ValueTypeScalar:
 		return f, nil
 	default:
@@ -138,8 +130,12 @@ func newInstantVectorFunctionOperator(funcExpr *parser.Call, nextOps []model.Vec
 	}
 }
 
-func (o *functionOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("%s %v(%v)", functionOperatorName, o.funcExpr.Func.Name, o.funcExpr.Args), o.nextOps
+func (o *functionOperator) Explain() (next []model.VectorOperator) {
+	return o.nextOps
+}
+
+func (o *functionOperator) String() string {
+	return fmt.Sprintf("[function] %v(%v)", o.funcExpr.Func.Name, o.funcExpr.Args)
 }
 
 func (o *functionOperator) Series(ctx context.Context) ([]labels.Labels, error) {

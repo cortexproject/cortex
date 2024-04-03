@@ -9,6 +9,7 @@
 * [CHANGE] Ruler: Remove `cortex_ruler_write_requests_total`, `cortex_ruler_write_requests_failed_total`, `cortex_ruler_queries_total`, `cortex_ruler_queries_failed_total`, and `cortex_ruler_query_seconds_total` metrics for the tenant when the ruler deletes the manager for the tenant. #5772
 * [CHANGE] Main: Mark `mem-ballast-size-bytes` flag as deprecated. #5816
 * [CHANGE] Querier: Mark `-querier.ingester-streaming` flag as deprecated. Now query ingester streaming is always enabled. #5817
+* [CHANGE] AlertManager API: Removal of all api/v1/ endpoints following [2970](https://github.com/prometheus/alertmanager/pull/2970). [5841]
 * [FEATURE] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
 * [FEATURE] Query Frontend/Scheduler: Add query priority support. #5605
 * [FEATURE] Tracing: Add `kuberesolver` to resolve endpoints address with `kubernetes://` prefix as Kubernetes service. #5731

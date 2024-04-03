@@ -4079,10 +4079,6 @@ ruler_client:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
-# CLI flag: -ruler.alertmanager-use-v2
-[enable_alertmanager_v2: <boolean> | default = false]
-
 # Capacity of the queue for notifications to be sent to the Alertmanager.
 # CLI flag: -ruler.notification-queue-capacity
 [notification_queue_capacity: <int> | default = 10000]

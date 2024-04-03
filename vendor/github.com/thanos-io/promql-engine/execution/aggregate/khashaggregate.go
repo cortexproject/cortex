@@ -67,17 +67,20 @@ func NewKHashAggregate(
 	// https://github.com/prometheus/prometheus/blob/8ed39fdab1ead382a354e45ded999eb3610f8d5f/model/labels/labels.go#L162-L181
 	slices.Sort(labels)
 
-	return &kAggregate{
-		OperatorTelemetry: model.NewTelemetry("[kaggregate]", opts.EnableAnalysis),
-		next:              next,
-		vectorPool:        points,
-		by:                by,
-		aggregation:       aggregation,
-		labels:            labels,
-		paramOp:           paramOp,
-		compare:           compare,
-		params:            make([]float64, opts.StepsBatch),
-	}, nil
+	op := &kAggregate{
+		next:        next,
+		vectorPool:  points,
+		by:          by,
+		aggregation: aggregation,
+		labels:      labels,
+		paramOp:     paramOp,
+		compare:     compare,
+		params:      make([]float64, opts.StepsBatch),
+	}
+
+	op.OperatorTelemetry = model.NewTelemetry(op, opts.EnableAnalysis)
+
+	return op, nil
 }
 
 func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
@@ -155,11 +158,15 @@ func (a *kAggregate) GetPool() *model.VectorPool {
 	return a.vectorPool
 }
 
-func (a *kAggregate) Explain() (me string, next []model.VectorOperator) {
+func (a *kAggregate) String() string {
 	if a.by {
-		return fmt.Sprintf("[kaggregate] %v by (%v)", a.aggregation.String(), a.labels), []model.VectorOperator{a.paramOp, a.next}
+		return fmt.Sprintf("[kaggregate] %v by (%v)", a.aggregation.String(), a.labels)
 	}
-	return fmt.Sprintf("[kaggregate] %v without (%v)", a.aggregation.String(), a.labels), []model.VectorOperator{a.paramOp, a.next}
+	return fmt.Sprintf("[kaggregate] %v without (%v)", a.aggregation.String(), a.labels)
+}
+
+func (a *kAggregate) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{a.paramOp, a.next}
 }
 
 func (a *kAggregate) init(ctx context.Context) error {

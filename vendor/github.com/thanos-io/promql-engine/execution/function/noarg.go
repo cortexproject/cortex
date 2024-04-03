@@ -5,14 +5,12 @@ package function
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type noArgFunctionOperator struct {
@@ -23,15 +21,19 @@ type noArgFunctionOperator struct {
 	step        int64
 	currentStep int64
 	stepsBatch  int
-	funcExpr    *parser.Call
+	funcExpr    *logicalplan.FunctionCall
 	call        noArgFunctionCall
 	vectorPool  *model.VectorPool
 	series      []labels.Labels
 	sampleIDs   []uint64
 }
 
-func (o *noArgFunctionOperator) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("%s %s()", noArgFunctionOperatorName, o.funcExpr.Func.Name), []model.VectorOperator{}
+func (o *noArgFunctionOperator) Explain() (next []model.VectorOperator) {
+	return nil
+}
+
+func (o *noArgFunctionOperator) String() string {
+	return "[noArgFunction]"
 }
 
 func (o *noArgFunctionOperator) Series(_ context.Context) ([]labels.Labels, error) {

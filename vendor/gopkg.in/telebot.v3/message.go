@@ -10,6 +10,9 @@ import (
 type Message struct {
 	ID int `json:"message_id"`
 
+	// (Optional) Unique identifier of a message thread to which the message belongs; for supergroups only
+	ThreadID int `json:"message_thread_id"`
+
 	// For message sent to channels, Sender will be nil
 	Sender *User `json:"from"`
 
@@ -58,6 +61,9 @@ type Message struct {
 
 	// (Optional) Time of last edit in Unix.
 	LastEdit int64 `json:"edit_date"`
+
+	// (Optional) True, if the message is sent to a forum topic.
+	TopicMessage bool `json:"is_topic_message"`
 
 	// (Optional) Message can't be forwarded.
 	Protected bool `json:"has_protected_content,omitempty"`
@@ -223,6 +229,12 @@ type Message struct {
 	// Message is a service message about a successful payment.
 	Payment *Payment `json:"successful_payment"`
 
+	// For a service message, a user was shared with the bot.
+	UserShared *RecipientShared `json:"user_shared,omitempty"`
+
+	// For a service message, a chat was shared with the bot.
+	ChatShared *RecipientShared `json:"chat_shared,omitempty"`
+
 	// The domain name of the website on which the user has logged in.
 	ConnectedWebsite string `json:"connected_website,omitempty"`
 
@@ -250,6 +262,30 @@ type Message struct {
 
 	// Inline keyboard attached to the message.
 	ReplyMarkup *ReplyMarkup `json:"reply_markup,omitempty"`
+
+	// Service message: forum topic created
+	TopicCreated *Topic `json:"forum_topic_created,omitempty"`
+
+	// Service message: forum topic closed
+	TopicClosed *struct{} `json:"forum_topic_closed,omitempty"`
+
+	// Service message: forum topic reopened
+	TopicReopened *Topic `json:"forum_topic_reopened,omitempty"`
+
+	// Service message: forum topic deleted
+	TopicEdited *Topic `json:"forum_topic_edited,omitempty"`
+
+	// Service message: general forum topic hidden
+	GeneralTopicHidden *struct{} `json:"general_topic_hidden,omitempty"`
+
+	// Service message: general forum topic unhidden
+	GeneralTopicUnhidden *struct{} `json:"general_topic_unhidden,omitempty"`
+
+	// Service message: represents spoiler information about the message.
+	HasMediaSpoiler bool `json:"has_media_spoiler,omitempty"`
+
+	// Service message: the user allowed the bot added to the attachment menu to write messages
+	WriteAccessAllowed *WriteAccessAllowed `json:"write_access_allowed,omitempty"`
 }
 
 // MessageEntity object represents "special" parts of text messages,
@@ -365,7 +401,6 @@ func (m *Message) FromChannel() bool {
 // Service messages are automatically sent messages, which
 // typically occur on some global action. For instance, when
 // anyone leaves the chat or chat title changes.
-//
 func (m *Message) IsService() bool {
 	fact := false
 
@@ -386,7 +421,6 @@ func (m *Message) IsService() bool {
 //
 // It's safer than manually slicing Text because Telegram uses
 // UTF-16 indices whereas Go string are []byte.
-//
 func (m *Message) EntityText(e MessageEntity) string {
 	text := m.Text
 	if text == "" {

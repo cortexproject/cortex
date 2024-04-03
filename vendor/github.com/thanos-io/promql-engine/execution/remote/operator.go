@@ -30,14 +30,17 @@ type Execution struct {
 
 func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options, hints storage.SelectHints) *Execution {
 	storage := newStorageFromQuery(query, opts)
-	return &Execution{
-		storage:           storage,
-		query:             query,
-		opts:              opts,
-		queryRangeStart:   queryRangeStart,
-		vectorSelector:    promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
-		OperatorTelemetry: model.NewTelemetry("[remoteExec]", opts.EnableAnalysis),
+	oper := &Execution{
+		storage:         storage,
+		query:           query,
+		opts:            opts,
+		queryRangeStart: queryRangeStart,
+		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
 	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
 func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -45,6 +48,10 @@ func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
 	defer func() { e.AddExecutionTimeTaken(time.Since(start)) }()
 
 	return e.vectorSelector.Series(ctx)
+}
+
+func (e *Execution) String() string {
+	return fmt.Sprintf("[remoteExec] %s (%d, %d)", e.query, e.queryRangeStart.Unix(), e.opts.End.Unix())
 }
 
 func (e *Execution) Next(ctx context.Context) ([]model.StepVector, error) {
@@ -65,8 +72,8 @@ func (e *Execution) GetPool() *model.VectorPool {
 	return e.vectorSelector.GetPool()
 }
 
-func (e *Execution) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[remoteExec] %s (%d, %d)", e.query, e.queryRangeStart.Unix(), e.opts.End.Unix()), nil
+func (e *Execution) Explain() (next []model.VectorOperator) {
+	return nil
 }
 
 type storageAdapter struct {

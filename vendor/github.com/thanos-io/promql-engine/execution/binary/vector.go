@@ -67,9 +67,7 @@ func NewVectorOperator(
 	returnBool bool,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
-	return &vectorOperator{
-		OperatorTelemetry: model.NewTelemetry("[vectorBinary]", opts.EnableAnalysis),
-
+	oper := &vectorOperator{
 		pool:       pool,
 		lhs:        lhs,
 		rhs:        rhs,
@@ -77,14 +75,22 @@ func NewVectorOperator(
 		opType:     opType,
 		returnBool: returnBool,
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
-	}, nil
+	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper, nil
 }
 
-func (o *vectorOperator) Explain() (me string, next []model.VectorOperator) {
+func (o *vectorOperator) String() string {
 	if o.matching.On {
-		return fmt.Sprintf("[vectorBinary] %s - %v, on: %v, group: %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.MatchingLabels, o.matching.Include), []model.VectorOperator{o.lhs, o.rhs}
+		return fmt.Sprintf("[vectorBinary] %s - %v, on: %v, group: %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.MatchingLabels, o.matching.Include)
 	}
-	return fmt.Sprintf("[vectorBinary] %s - %v, ignoring: %v, group: %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.On, o.matching.Include), []model.VectorOperator{o.lhs, o.rhs}
+	return fmt.Sprintf("[vectorBinary] %s - %v, ignoring: %v, group: %v", parser.ItemTypeStr[o.opType], o.matching.Card.String(), o.matching.On, o.matching.Include)
+}
+
+func (o *vectorOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{o.lhs, o.rhs}
 }
 
 func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {

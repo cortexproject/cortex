@@ -136,7 +136,7 @@ func TestApiStatusCodes(t *testing.T) {
 	}
 }
 
-func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine v1.QueryEngine) *route.Router {
+func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryEngine) *route.Router {
 	api := v1.NewAPI(
 		engine,
 		q,

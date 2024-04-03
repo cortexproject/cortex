@@ -21,15 +21,21 @@ type scalarOperator struct {
 }
 
 func newScalarOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) *scalarOperator {
-	return &scalarOperator{
-		pool:              pool,
-		next:              next,
-		OperatorTelemetry: model.NewTelemetry(scalarOperatorName, opts.EnableAnalysis),
+	oper := &scalarOperator{
+		pool: pool,
+		next: next,
 	}
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	return oper
 }
 
-func (o *scalarOperator) Explain() (me string, next []model.VectorOperator) {
-	return scalarOperatorName, []model.VectorOperator{o.next}
+func (o *scalarOperator) String() string {
+	return "[scalar]"
+}
+
+func (o *scalarOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{o.next}
 }
 
 func (o *scalarOperator) Series(ctx context.Context) ([]labels.Labels, error) {

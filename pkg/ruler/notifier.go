@@ -117,15 +117,9 @@ func buildNotifierConfig(rulerConfig *Config) (*config.Config, error) {
 	if len(validURLs) == 0 {
 		return &config.Config{}, nil
 	}
-
-	apiVersion := config.AlertmanagerAPIVersionV1
-	if rulerConfig.AlertmanangerEnableV2API {
-		apiVersion = config.AlertmanagerAPIVersionV2
-	}
-
 	amConfigs := make([]*config.AlertmanagerConfig, 0, len(validURLs))
 	for _, url := range validURLs {
-		amConfigs = append(amConfigs, amConfigFromURL(rulerConfig, url, apiVersion))
+		amConfigs = append(amConfigs, amConfigFromURL(rulerConfig, url, config.AlertmanagerAPIVersionV2))
 	}
 
 	promConfig := &config.Config{

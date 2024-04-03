@@ -20,10 +20,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/prometheus/prometheus/util/stats"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
-
-	engstorage "github.com/thanos-io/promql-engine/storage"
-	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 
 	"github.com/thanos-io/promql-engine/execution"
 	"github.com/thanos-io/promql-engine/execution/function"
@@ -33,6 +29,8 @@ import (
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
+	engstorage "github.com/thanos-io/promql-engine/storage"
+	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 )
 
 type QueryType int
@@ -69,7 +67,7 @@ type Opts struct {
 	EnableXFunctions bool
 
 	// FallbackEngine
-	Engine v1.QueryEngine
+	Engine promql.QueryEngine
 
 	// EnableAnalysis enables query analysis.
 	EnableAnalysis bool
@@ -98,7 +96,7 @@ func (o Opts) getLogicalOptimizers() []logicalplan.Optimizer {
 // New creates a new query engine with the given options. The query engine will
 // use the storage passed in NewInstantQuery and NewRangeQuery for retrieving
 // data when executing queries.
-func New(opts Opts) *compatibilityEngine {
+func New(opts Opts) *Engine {
 	return NewWithScanners(opts, nil)
 }
 
@@ -106,7 +104,7 @@ func New(opts Opts) *compatibilityEngine {
 // When executing queries, the engine will create scanner operators using the storage.Scanners and will ignore the
 // Prometheus storage passed in NewInstantQuery and NewRangeQuery.
 // This method is useful when the data being queried does not easily fit into the Prometheus storage model.
-func NewWithScanners(opts Opts, scanners engstorage.Scanners) *compatibilityEngine {
+func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 	if opts.Logger == nil {
 		opts.Logger = log.NewNopLogger()
 	}
@@ -154,14 +152,14 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *compatibilityEngi
 		),
 	}
 
-	var engine v1.QueryEngine
+	var engine promql.QueryEngine
 	if opts.Engine == nil {
 		engine = promql.NewEngine(opts.EngineOpts)
 	} else {
 		engine = opts.Engine
 	}
 
-	return &compatibilityEngine{
+	return &Engine{
 		prom:      engine,
 		functions: functions,
 		scanners:  scanners,
@@ -189,8 +187,8 @@ var (
 	ErrStepsBatchTooLarge = errors.New("'StepsBatch' must be less than 64")
 )
 
-type compatibilityEngine struct {
-	prom      v1.QueryEngine
+type Engine struct {
+	prom      promql.QueryEngine
 	functions map[string]*parser.Function
 	scanners  engstorage.Scanners
 
@@ -208,11 +206,7 @@ type compatibilityEngine struct {
 	noStepSubqueryIntervalFn func(time.Duration) time.Duration
 }
 
-func (e *compatibilityEngine) SetQueryLogger(l promql.QueryLogger) {
-	e.prom.SetQueryLogger(l)
-}
-
-func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
 	expr, err := parser.NewParser(qs, parser.WithFunctions(e.functions)).ParseExpr()
 	if err != nil {
 		return nil, err
@@ -248,8 +242,8 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 	planOpts := logicalplan.PlanOptions{
 		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
 	}
-	lplan, warns := logicalplan.New(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
-	exec, err := execution.New(lplan.Expr(), e.storageScanners(q), qOpts)
+	lplan, warns := logicalplan.NewFromAST(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
+	exec, err := execution.New(lplan.Root(), e.storageScanners(q), qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewInstantQuery(ctx, q, opts, qs, ts)
@@ -262,7 +256,7 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 	return &compatibilityQuery{
 		Query:      &Query{exec: exec, opts: opts},
 		engine:     e,
-		expr:       expr,
+		plan:       lplan,
 		ts:         ts,
 		warns:      warns,
 		t:          InstantQuery,
@@ -270,7 +264,7 @@ func (e *compatibilityEngine) NewInstantQuery(ctx context.Context, q storage.Que
 	}, nil
 }
 
-func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
+func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
 	expr, err := parser.NewParser(qs, parser.WithFunctions(e.functions)).ParseExpr()
 	if err != nil {
 		return nil, err
@@ -280,34 +274,21 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 	if expr.Type() != parser.ValueTypeVector && expr.Type() != parser.ValueTypeScalar {
 		return nil, errors.Newf("invalid expression type %q for range query, must be Scalar or instant Vector", parser.DocumentedType(expr.Type()))
 	}
-
 	if opts == nil {
 		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
 	}
 	if opts.LookbackDelta() <= 0 {
 		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
 	}
-
-	qOpts := &query.Options{
-		Context:                  ctx,
-		Start:                    start,
-		End:                      end,
-		Step:                     step,
-		StepsBatch:               stepsBatch,
-		LookbackDelta:            opts.LookbackDelta(),
-		ExtLookbackDelta:         e.extLookbackDelta,
-		EnableAnalysis:           e.enableAnalysis,
-		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
-	}
+	qOpts := e.makeQueryOpts(ctx, start, end, step, opts)
 	if qOpts.StepsBatch > 64 {
 		return nil, ErrStepsBatchTooLarge
 	}
-
 	planOpts := logicalplan.PlanOptions{
 		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
 	}
-	lplan, warns := logicalplan.New(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
-	exec, err := execution.New(lplan.Expr(), e.storageScanners(q), qOpts)
+	lplan, warns := logicalplan.NewFromAST(expr, qOpts, planOpts).Optimize(e.logicalOptimizers)
+	exec, err := execution.New(lplan.Root(), e.storageScanners(q), qOpts)
 	if e.triggerFallback(err) {
 		e.metrics.queries.WithLabelValues("true").Inc()
 		return e.prom.NewRangeQuery(ctx, q, opts, qs, start, end, step)
@@ -320,13 +301,66 @@ func (e *compatibilityEngine) NewRangeQuery(ctx context.Context, q storage.Query
 	return &compatibilityQuery{
 		Query:  &Query{exec: exec, opts: opts},
 		engine: e,
-		expr:   expr,
+		plan:   lplan,
 		warns:  warns,
 		t:      RangeQuery,
 	}, nil
 }
 
-func (e *compatibilityEngine) storageScanners(queryable storage.Queryable) engstorage.Scanners {
+func (e *Engine) NewRangeQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, root logicalplan.Node, start, end time.Time, step time.Duration) (promql.Query, error) {
+	if opts == nil {
+		opts = promql.NewPrometheusQueryOpts(false, e.lookbackDelta)
+	}
+	if opts.LookbackDelta() <= 0 {
+		opts = promql.NewPrometheusQueryOpts(opts.EnablePerStepStats(), e.lookbackDelta)
+	}
+	qOpts := e.makeQueryOpts(ctx, start, end, step, opts)
+	if qOpts.StepsBatch > 64 {
+		return nil, ErrStepsBatchTooLarge
+	}
+	planOpts := logicalplan.PlanOptions{
+		DisableDuplicateLabelCheck: e.disableDuplicateLabelChecks,
+	}
+	lplan, warns := logicalplan.New(root, qOpts, planOpts).Optimize(e.logicalOptimizers)
+	exec, err := execution.New(lplan.Root(), e.storageScanners(q), qOpts)
+	if e.triggerFallback(err) {
+		e.metrics.queries.WithLabelValues("true").Inc()
+		return e.prom.NewRangeQuery(ctx, q, opts, lplan.Root().String(), start, end, step)
+	}
+	e.metrics.queries.WithLabelValues("false").Inc()
+	if err != nil {
+		return nil, err
+	}
+
+	return &compatibilityQuery{
+		Query:  &Query{exec: exec, opts: opts},
+		engine: e,
+		plan:   lplan,
+		warns:  warns,
+		t:      RangeQuery,
+	}, nil
+}
+
+func (e *Engine) NewInstantQueryFromPlan(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, plan logicalplan.Node, ts time.Time) (promql.Query, error) {
+	return e.NewRangeQueryFromPlan(ctx, q, opts, plan, ts, ts, 0)
+}
+
+func (e *Engine) makeQueryOpts(ctx context.Context, start time.Time, end time.Time, step time.Duration, opts promql.QueryOpts) *query.Options {
+	qOpts := &query.Options{
+		Context:                  ctx,
+		Start:                    start,
+		End:                      end,
+		Step:                     step,
+		StepsBatch:               stepsBatch,
+		LookbackDelta:            opts.LookbackDelta(),
+		ExtLookbackDelta:         e.extLookbackDelta,
+		EnableAnalysis:           e.enableAnalysis,
+		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
+	}
+	return qOpts
+}
+
+func (e *Engine) storageScanners(queryable storage.Queryable) engstorage.Scanners {
 	if e.scanners == nil {
 		return promstorage.NewPrometheusScanners(queryable)
 	}
@@ -353,8 +387,8 @@ func (q *Query) Analyze() *AnalyzeOutputNode {
 
 type compatibilityQuery struct {
 	*Query
-	engine *compatibilityEngine
-	expr   parser.Expr
+	engine *Engine
+	plan   logicalplan.Plan
 	ts     time.Time // Empty for range queries.
 	warns  annotations.Annotations
 
@@ -370,7 +404,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	}()
 
 	// Handle case with strings early on as this does not need us to process samples.
-	switch e := q.expr.(type) {
+	switch e := q.plan.Root().(type) {
 	case *logicalplan.StringLiteral:
 		return &promql.Result{Value: promql.String{V: e.Val, T: q.ts.UnixMilli()}}
 	}
@@ -378,7 +412,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 		Value:    promql.Vector{},
 		Warnings: q.warns,
 	}
-	defer recoverEngine(q.engine.logger, q.expr, &ret.Err)
+	defer recoverEngine(q.engine.logger, q.plan, &ret.Err)
 
 	q.engine.metrics.currentQueries.Inc()
 	defer q.engine.metrics.currentQueries.Dec()
@@ -459,7 +493,7 @@ loop:
 	}
 
 	var result parser.Value
-	switch q.expr.Type() {
+	switch q.plan.Root().ReturnType() {
 	case parser.ValueTypeMatrix:
 		result = promql.Matrix(series)
 	case parser.ValueTypeVector:
@@ -494,7 +528,7 @@ loop:
 		}
 		result = promql.Scalar{V: v, T: q.ts.UnixMilli()}
 	default:
-		panic(errors.Newf("new.Engine.exec: unexpected expression type %q", q.expr.Type()))
+		panic(errors.Newf("new.Engine.exec: unexpected expression type %q", q.plan.Root().Type()))
 	}
 
 	ret.Value = result
@@ -524,7 +558,7 @@ func (q *compatibilityQuery) Stats() *stats.Statistics {
 
 func (q *compatibilityQuery) Close() { q.Cancel() }
 
-func (q *compatibilityQuery) String() string { return q.expr.String() }
+func (q *compatibilityQuery) String() string { return q.plan.Root().String() }
 
 func (q *compatibilityQuery) Cancel() {
 	if q.cancel != nil {
@@ -533,7 +567,7 @@ func (q *compatibilityQuery) Cancel() {
 	}
 }
 
-func (e *compatibilityEngine) triggerFallback(err error) bool {
+func (e *Engine) triggerFallback(err error) bool {
 	if e.disableFallback {
 		return false
 	}
@@ -541,7 +575,7 @@ func (e *compatibilityEngine) triggerFallback(err error) bool {
 	return errors.Is(err, parse.ErrNotSupportedExpr) || errors.Is(err, parse.ErrNotImplemented)
 }
 
-func recoverEngine(logger log.Logger, expr parser.Expr, errp *error) {
+func recoverEngine(logger log.Logger, plan logicalplan.Plan, errp *error) {
 	e := recover()
 	if e == nil {
 		return
@@ -553,7 +587,7 @@ func recoverEngine(logger log.Logger, expr parser.Expr, errp *error) {
 		buf := make([]byte, 64<<10)
 		buf = buf[:runtime.Stack(buf, false)]
 
-		level.Error(logger).Log("msg", "runtime panic in engine", "expr", expr.String(), "err", e, "stacktrace", string(buf))
+		level.Error(logger).Log("msg", "runtime panic in engine", "expr", plan.Root().String(), "err", e, "stacktrace", string(buf))
 		*errp = errors.Wrap(err, "unexpected error")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"fmt"
+
 	"net/http"
 	"net/url"
 	"path"
@@ -21,6 +22,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
+	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
@@ -243,7 +245,14 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		}
 	}
 
-	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry)
+	// Lets not enable any AM experimental feature for now.
+	featureConfig, err := featurecontrol.NewFlags(am.logger, "")
+	if err != nil {
+		level.Error(am.logger).Log("msg", "error parsing the feature flag list", "err", err)
+		return nil, errors.Wrap(err, "error parsing the feature flag list")
+	}
+
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig)
 
 	am.wg.Add(1)
 	go func() {
@@ -390,7 +399,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		waitFunc,
 		am.inhibitor,
 		silence.NewSilencer(am.silences, am.marker, am.logger),
-		timeIntervals,
+		timeinterval.NewIntervener(timeIntervals),
 		am.nflog,
 		am.state,
 	)
@@ -495,7 +504,7 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 				return
 			}
 			n = wrapper(name, n)
-			integrations = append(integrations, notify.NewIntegration(n, rs, name, i))
+			integrations = append(integrations, notify.NewIntegration(n, rs, name, i, nc.Name))
 		}
 	)
 

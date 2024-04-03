@@ -3187,9 +3187,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0s]
 
-# Limit the query time range (end - start time). This limit is enforced in the
-# query-frontend (on the received query) and in the querier (on the query
-# possibly split by the query-frontend). 0 to disable.
+# Limit the query time range (end - start time of range query parameter and max
+# - min of data fetched time range). This limit is enforced in the
+# query-frontend and ruler (on the received query). 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 

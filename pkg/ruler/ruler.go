@@ -1080,7 +1080,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 
-	rulers, err := ring.GetReplicationSetForOperation(ListRuleRingOp)
+	rulers, failedZones, err := ring.GetReplicationSetForOperationWithNoQuorum(ListRuleRingOp)
 	if err != nil {
 		return nil, err
 	}
@@ -1095,7 +1095,6 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		merged   []*GroupStateDesc
 		errCount int
 	)
-	failedZones := make(map[string]struct{})
 
 	zoneByAddress := make(map[string]string)
 	if r.cfg.APIEnableRulesBackup {

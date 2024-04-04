@@ -41,6 +41,11 @@ func (r *RingMock) GetReplicationSetForOperation(op Operation) (ReplicationSet, 
 	return args.Get(0).(ReplicationSet), args.Error(1)
 }
 
+func (r *RingMock) GetReplicationSetForOperationWithNoQuorum(op Operation) (ReplicationSet, map[string]struct{}, error) {
+	args := r.Called(op)
+	return args.Get(0).(ReplicationSet), make(map[string]struct{}), args.Error(1)
+}
+
 func (r *RingMock) ReplicationFactor() int {
 	return 0
 }

@@ -959,11 +959,11 @@ func TestRing_GetInstanceDescsForOperation(t *testing.T) {
 	}, instanceDescs)
 }
 
-func TestRing_GetReplicationSetForOperation(t *testing.T) {
+func validateGetReplicationSetForOperation(t *testing.T, requireQuorum bool) {
 	now := time.Now()
 	g := NewRandomTokenGenerator()
 
-	tests := map[string]struct {
+	type testCase struct {
 		ringInstances           map[string]InstanceDesc
 		ringHeartbeatTimeout    time.Duration
 		ringReplicationFactor   int
@@ -973,7 +973,9 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 		expectedSetForWrite     []string
 		expectedErrForReporting error
 		expectedSetForReporting []string
-	}{
+	}
+
+	tests := map[string]testCase{
 		"should return error on empty ring": {
 			ringInstances:           nil,
 			ringHeartbeatTimeout:    time.Minute,
@@ -1038,7 +1040,10 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3", "127.0.0.4"},
 		},
-		"should fail on 2 unhealthy instances and RF=3": {
+	}
+
+	if requireQuorum {
+		tests["should fail on 2 unhealthy instances and RF=3"] = testCase{
 			ringInstances: map[string]InstanceDesc{
 				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-1", "", 128, true)},
 				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(NewDesc(), "instance-2", "", 128, true)},
@@ -1051,7 +1056,36 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 			expectedErrForRead:      ErrTooManyUnhealthyInstances,
 			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
 			expectedErrForReporting: ErrTooManyUnhealthyInstances,
-		},
+		}
+	} else {
+		tests["should pass on 2 unhealthy instances and RF=3"] = testCase{
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   3,
+			expectedSetForRead:      []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+			expectedSetForWrite:     []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+			expectedSetForReporting: []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+		}
+		tests["should fail on 3 unhealthy instances and RF=3"] = testCase{
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ACTIVE, Timestamp: now.Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-2": {Addr: "127.0.0.2", State: ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-3": {Addr: "127.0.0.3", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-4": {Addr: "127.0.0.4", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+				"instance-5": {Addr: "127.0.0.5", State: ACTIVE, Timestamp: now.Add(-2 * time.Minute).Unix(), Tokens: GenerateTokens(128, nil)},
+			},
+			ringHeartbeatTimeout:    time.Minute,
+			ringReplicationFactor:   3,
+			expectedErrForRead:      ErrTooManyUnhealthyInstances,
+			expectedErrForWrite:     ErrTooManyUnhealthyInstances,
+			expectedErrForReporting: ErrTooManyUnhealthyInstances,
+		}
 	}
 
 	for testName, testData := range tests {
@@ -1076,19 +1110,42 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 				KVClient:            &MockClient{},
 			}
 
-			set, err := ring.GetReplicationSetForOperation(Read)
+			var set ReplicationSet
+			var err error
+
+			if requireQuorum {
+				set, err = ring.GetReplicationSetForOperation(Read)
+			} else {
+				set, _, err = ring.GetReplicationSetForOperationWithNoQuorum(Read)
+			}
 			require.Equal(t, testData.expectedErrForRead, err)
 			assert.ElementsMatch(t, testData.expectedSetForRead, set.GetAddresses())
 
-			set, err = ring.GetReplicationSetForOperation(Write)
+			if requireQuorum {
+				set, err = ring.GetReplicationSetForOperation(Write)
+			} else {
+				set, _, err = ring.GetReplicationSetForOperationWithNoQuorum(Write)
+			}
 			require.Equal(t, testData.expectedErrForWrite, err)
 			assert.ElementsMatch(t, testData.expectedSetForWrite, set.GetAddresses())
 
-			set, err = ring.GetReplicationSetForOperation(Reporting)
+			if requireQuorum {
+				set, err = ring.GetReplicationSetForOperation(Reporting)
+			} else {
+				set, _, err = ring.GetReplicationSetForOperationWithNoQuorum(Reporting)
+			}
 			require.Equal(t, testData.expectedErrForReporting, err)
 			assert.ElementsMatch(t, testData.expectedSetForReporting, set.GetAddresses())
 		})
 	}
+}
+
+func TestRing_GetReplicationSetForOperation(t *testing.T) {
+	validateGetReplicationSetForOperation(t, true)
+}
+
+func TestRing_GetReplicationSetForOperationWithNoQuorum(t *testing.T) {
+	validateGetReplicationSetForOperation(t, false)
 }
 
 func TestRing_GetReplicationSetForOperation_WithZoneAwarenessEnabled(t *testing.T) {

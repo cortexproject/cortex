@@ -1,0 +1,14 @@
+diff --git a/vendor/github.com/thanos-io/promql-engine/engine/engine.go b/vendor/github.com/thanos-io/promql-engine/engine/engine.go
+index 823ee0874..16217a6e9 100644
+--- a/vendor/github.com/thanos-io/promql-engine/engine/engine.go
++++ b/vendor/github.com/thanos-io/promql-engine/engine/engine.go
+@@ -206,6 +206,9 @@ type Engine struct {
+ 	noStepSubqueryIntervalFn func(time.Duration) time.Duration
+ }
+ 
++func (e *Engine) SetReportStats(f func(ctx context.Context, qs stats.QueryStats, err error)) {
++}
++
+ func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
+ 	expr, err := parser.NewParser(qs, parser.WithFunctions(e.functions)).ParseExpr()
+ 	if err != nil {

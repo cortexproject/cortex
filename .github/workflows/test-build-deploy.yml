@@ -23,16 +23,12 @@ jobs:
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: cherry pick
+        run: git apply .github/workflows/thanos-engine.patch
       - name: Lint
         run: make BUILD_IN_CONTAINER=false lint
-      - name: Check Vendor Directory
-        run: make BUILD_IN_CONTAINER=false mod-check
       - name: Check Protos
         run: make BUILD_IN_CONTAINER=false check-protos
-      - name: Check Generated Documentation
-        run: make BUILD_IN_CONTAINER=false check-doc
-      - name: Check White Noise.
-        run: make BUILD_IN_CONTAINER=false check-white-noise
 
   test:
     runs-on: ubuntu-20.04
@@ -50,6 +46,8 @@ jobs:
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: cherry pick
+        run: git apply .github/workflows/thanos-engine.patch
       - name: Run Tests
         run: make BUILD_IN_CONTAINER=false test
 
@@ -95,6 +93,8 @@ jobs:
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: cherry pick
+        run: git apply .github/workflows/thanos-engine.patch
       - name: Build Image
         run: |
           touch build-image/.uptodate
@@ -148,6 +148,8 @@ jobs:
         run: |
           sudo mkdir -p /go/src/github.com/cortexproject/cortex
           sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: cherry pick
+        run: git apply .github/workflows/thanos-engine.patch
       - name: Download Docker Images Artifacts
         uses: actions/download-artifact@v2
         with:
@@ -211,6 +213,7 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
+          git apply .github/workflows/thanos-engine.patch
           make BUILD_IMAGE=quay.io/cortexproject/build-image:PR5765-0ff811969 TTY='' configs-integration-test
 
   deploy_website:

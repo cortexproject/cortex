@@ -1,28 +1,12 @@
 package querier
 
 import (
-	"math"
 	"sort"
-	"time"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
-
-func createAggrChunkWithSineSamples(minTime, maxTime time.Time, step time.Duration) storepb.AggrChunk {
-	var samples []promql.FPoint
-
-	minT := minTime.Unix() * 1000
-	maxT := maxTime.Unix() * 1000
-	stepMillis := step.Milliseconds()
-
-	for t := minT; t < maxT; t += stepMillis {
-		samples = append(samples, promql.FPoint{T: t, F: math.Sin(float64(t))})
-	}
-
-	return createAggrChunk(minT, maxT, samples...)
-}
 
 func createAggrChunkWithSamples(samples ...promql.FPoint) storepb.AggrChunk {
 	return createAggrChunk(samples[0].T, samples[len(samples)-1].T, samples...)

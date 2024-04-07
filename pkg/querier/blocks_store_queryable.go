@@ -23,8 +23,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/pool"
+	thanosquery "github.com/thanos-io/thanos/pkg/query"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -64,6 +66,7 @@ const (
 var (
 	errNoStoreGatewayAddress  = errors.New("no store-gateway address configured")
 	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from store-gateways for %s (limit: %d)"
+	defaultAggrs              = []storepb.Aggr{storepb.Aggr_COUNT, storepb.Aggr_SUM}
 )
 
 // BlocksStoreSet is the interface used to get the clients to query series on a set of blocks.
@@ -631,7 +634,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			seriesQueryStats := &hintspb.QueryStats{}
 			skipChunks := sp != nil && sp.Func == "series"
 
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs)
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs, defaultAggrs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -795,7 +798,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			// Store the result.
 			mtx.Lock()
-			seriesSets = append(seriesSets, &blockQuerierSeriesSet{series: mySeries})
+			// TODO: change other aggregations when downsampling is enabled.
+			seriesSets = append(seriesSets, thanosquery.NewPromSeriesSet(newStoreSeriesSet(mySeries), minT, maxT, defaultAggrs, nil))
 			warnings.Merge(myWarnings)
 			queriedBlocks = append(queriedBlocks, myQueriedBlocks...)
 			mtx.Unlock()
@@ -1018,7 +1022,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	return valueSets, warnings, queriedBlocks, nil, merr.Err()
 }
 
-func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID, aggrs []storepb.Aggr) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -1044,6 +1048,9 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shar
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
 		ShardInfo:               shardingInfo,
+		Aggregates:              aggrs,
+		// TODO: support more downsample levels when downsampling is supported.
+		MaxResolutionWindow: downsample.ResLevel0,
 	}, nil
 }
 

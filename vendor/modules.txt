@@ -945,6 +945,7 @@ github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
 # github.com/thanos-io/thanos v0.34.2-0.20240328185924-943401f726ed
 ## explicit; go 1.21
+github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
 github.com/thanos-io/thanos/pkg/block/metadata
@@ -954,6 +955,7 @@ github.com/thanos-io/thanos/pkg/clientconfig
 github.com/thanos-io/thanos/pkg/compact
 github.com/thanos-io/thanos/pkg/compact/downsample
 github.com/thanos-io/thanos/pkg/component
+github.com/thanos-io/thanos/pkg/dedup
 github.com/thanos-io/thanos/pkg/discovery/cache
 github.com/thanos-io/thanos/pkg/discovery/dns
 github.com/thanos-io/thanos/pkg/discovery/dns/godns
@@ -971,6 +973,7 @@ github.com/thanos-io/thanos/pkg/metadata/metadatapb
 github.com/thanos-io/thanos/pkg/model
 github.com/thanos-io/thanos/pkg/pool
 github.com/thanos-io/thanos/pkg/promclient
+github.com/thanos-io/thanos/pkg/query
 github.com/thanos-io/thanos/pkg/querysharding
 github.com/thanos-io/thanos/pkg/rules/rulespb
 github.com/thanos-io/thanos/pkg/runutil

@@ -63,6 +63,7 @@ func newResultSort(expr parser.Expr) resultSorter {
 	}
 	return noSortResultSort{}
 }
+
 func (s noSortResultSort) comparer(samples *promql.Vector) func(i, j int) bool {
 	return func(i, j int) bool { return i < j }
 }

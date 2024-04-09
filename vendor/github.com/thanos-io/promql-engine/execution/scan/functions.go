@@ -25,9 +25,12 @@ type FunctionArgs struct {
 	Samples          []ringbuffer.Sample[Value]
 	StepTime         int64
 	SelectRange      int64
-	ScalarPoints     []float64
 	Offset           int64
 	MetricAppearedTs *int64
+
+	// Only holt-winters uses two arguments, we fall back for that.
+	// quantile_over_time and predict_linear use one, so we only use one here.
+	ScalarPoint float64
 }
 
 type FunctionCall func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool)
@@ -124,7 +127,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		for i, sample := range f.Samples {
 			floats[i] = sample.V.F
 		}
-		return aggregate.Quantile(f.ScalarPoints[0], floats), nil, true
+		return aggregate.Quantile(f.ScalarPoint, floats), nil, true
 	},
 	"changes": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
 		if len(f.Samples) == 0 {
@@ -216,6 +219,13 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		}
 		v, h := extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
 		return v, h, true
+	},
+	"predict_linear": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool) {
+		if len(f.Samples) < 2 {
+			return 0., nil, false
+		}
+		v := predictLinear(f.Samples, f.ScalarPoint, f.StepTime)
+		return v, nil, true
 	},
 }
 
@@ -559,6 +569,11 @@ func deriv(points []ringbuffer.Sample[Value]) float64 {
 	// https://github.com/prometheus/prometheus/issues/2674
 	slope, _ := linearRegression(points, points[0].T)
 	return slope
+}
+
+func predictLinear(points []ringbuffer.Sample[Value], duration float64, stepTime int64) float64 {
+	slope, intercept := linearRegression(points, stepTime)
+	return slope*duration + intercept
 }
 
 func resets(points []ringbuffer.Sample[Value]) float64 {

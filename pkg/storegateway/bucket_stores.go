@@ -552,13 +552,25 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 		// BucketStore metrics are correctly updated.
 		fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
 
-		var err error
-		blockIdsFetcher := block.NewRecursiveLister(userLogger, fetcherBkt)
+		var (
+			err         error
+			blockLister block.Lister
+		)
+		switch tsdb.BlockDiscoveryStrategy(u.cfg.BucketStore.BlockDiscoveryStrategy) {
+		case tsdb.ConcurrentDiscovery:
+			blockLister = block.NewConcurrentLister(userLogger, userBkt)
+		case tsdb.RecursiveDiscovery:
+			blockLister = block.NewRecursiveLister(userLogger, userBkt)
+		case tsdb.BucketIndexDiscovery:
+			return nil, tsdb.ErrInvalidBucketIndexBlockDiscoveryStrategy
+		default:
+			return nil, tsdb.ErrBlockDiscoveryStrategy
+		}
 		fetcher, err = block.NewMetaFetcher(
 			userLogger,
 			u.cfg.BucketStore.MetaSyncConcurrency,
 			fetcherBkt,
-			blockIdsFetcher,
+			blockLister,
 			u.syncDirForUser(userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 			fetcherReg,
 			filters,

@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -48,6 +49,9 @@ var (
 	errInvalidStripeSize            = errors.New("invalid TSDB stripe size")
 	errInvalidOutOfOrderCapMax      = errors.New("invalid TSDB OOO chunks capacity (in samples)")
 	errEmptyBlockranges             = errors.New("empty block ranges for TSDB")
+
+	ErrInvalidBucketIndexBlockDiscoveryStrategy = errors.New("bucket index block discovery strategy can only be enabled when bucket index is enabled")
+	ErrBlockDiscoveryStrategy                   = errors.New("invalid block discovery strategy")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -252,6 +256,7 @@ type BucketStoreConfig struct {
 	IgnoreDeletionMarksDelay time.Duration       `yaml:"ignore_deletion_mark_delay"`
 	IgnoreBlocksWithin       time.Duration       `yaml:"ignore_blocks_within"`
 	BucketIndex              BucketIndexConfig   `yaml:"bucket_index"`
+	BlockDiscoveryStrategy   string              `yaml:"block_discovery_strategy"`
 
 	// Chunk pool.
 	MaxChunkPoolBytes           uint64 `yaml:"max_chunk_pool_bytes"`
@@ -315,6 +320,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Uint64Var(&cfg.EstimatedMaxChunkSizeBytes, "blocks-storage.bucket-store.estimated-max-chunk-size-bytes", store.EstimatedMaxChunkSize, "Estimated max chunk size in bytes. Setting a large value might result in over fetching data while a small value might result in data refetch. Default value is 16KiB.")
 	f.BoolVar(&cfg.LazyExpandedPostingsEnabled, "blocks-storage.bucket-store.lazy-expanded-postings-enabled", false, "If true, Store Gateway will estimate postings size and try to lazily expand postings if it downloads less data than expanding all postings.")
 	f.IntVar(&cfg.SeriesBatchSize, "blocks-storage.bucket-store.series-batch-size", store.SeriesBatchSize, "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.")
+	f.StringVar(&cfg.BlockDiscoveryStrategy, "blocks-storage.bucket-store.block-discovery-strategy", string(ConcurrentDiscovery), "One of "+strings.Join(supportedBlockDiscoveryStrategies, ", ")+". When set to concurrent, stores will concurrently issue one call per directory to discover active blocks in the bucket. The recursive strategy iterates through all objects in the bucket, recursively traversing into each directory. This avoids N+1 calls at the expense of having slower bucket iterations. bucket_index strategy can be used in Compactor only and utilizes the existing bucket index to fetch block IDs to sync. This avoids iterating the bucket but can be impacted by delays of cleaner creating bucket index.")
 }
 
 // Validate the config.
@@ -331,6 +337,9 @@ func (cfg *BucketStoreConfig) Validate() error {
 	if err != nil {
 		return errors.Wrap(err, "metadata-cache configuration")
 	}
+	if !util.StringsContain(supportedBlockDiscoveryStrategies, cfg.BlockDiscoveryStrategy) {
+		return ErrInvalidBucketIndexBlockDiscoveryStrategy
+	}
 	return nil
 }
 
@@ -346,4 +355,19 @@ func (cfg *BucketIndexConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 	f.DurationVar(&cfg.UpdateOnErrorInterval, prefix+"update-on-error-interval", time.Minute, "How frequently a bucket index, which previously failed to load, should be tried to load again. This option is used only by querier.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"idle-timeout", time.Hour, "How long a unused bucket index should be cached. Once this timeout expires, the unused bucket index is removed from the in-memory cache. This option is used only by querier.")
 	f.DurationVar(&cfg.MaxStalePeriod, prefix+"max-stale-period", time.Hour, "The maximum allowed age of a bucket index (last updated) before queries start failing because the bucket index is too old. The bucket index is periodically updated by the compactor, while this check is enforced in the querier (at query time).")
+}
+
+// BlockDiscoveryStrategy configures how to list block IDs from object storage.
+type BlockDiscoveryStrategy string
+
+const (
+	ConcurrentDiscovery  BlockDiscoveryStrategy = "concurrent"
+	RecursiveDiscovery   BlockDiscoveryStrategy = "recursive"
+	BucketIndexDiscovery BlockDiscoveryStrategy = "bucket_index"
+)
+
+var supportedBlockDiscoveryStrategies = []string{
+	string(ConcurrentDiscovery),
+	string(RecursiveDiscovery),
+	string(BucketIndexDiscovery),
 }

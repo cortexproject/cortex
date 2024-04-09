@@ -43,6 +43,8 @@ type BucketScanBlocksFinderConfig struct {
 	ConsistencyDelay         time.Duration
 	IgnoreDeletionMarksDelay time.Duration
 	IgnoreBlocksWithin       time.Duration
+
+	BlockDiscoveryStrategy string
 }
 
 // BucketScanBlocksFinder is a BlocksFinder implementation periodically scanning the bucket to discover blocks.
@@ -384,12 +386,25 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 		filters = append(filters, storegateway.NewIgnoreNonQueryableBlocksFilter(d.logger, d.cfg.IgnoreBlocksWithin))
 	}
 
-	blockIdsFetcher := block.NewRecursiveLister(userLogger, userBucket)
+	var (
+		err         error
+		blockLister block.Lister
+	)
+	switch cortex_tsdb.BlockDiscoveryStrategy(d.cfg.BlockDiscoveryStrategy) {
+	case cortex_tsdb.ConcurrentDiscovery:
+		blockLister = block.NewConcurrentLister(userLogger, userBucket)
+	case cortex_tsdb.RecursiveDiscovery:
+		blockLister = block.NewRecursiveLister(userLogger, userBucket)
+	case cortex_tsdb.BucketIndexDiscovery:
+		return nil, nil, nil, cortex_tsdb.ErrInvalidBucketIndexBlockDiscoveryStrategy
+	default:
+		return nil, nil, nil, cortex_tsdb.ErrBlockDiscoveryStrategy
+	}
 	f, err := block.NewMetaFetcher(
 		userLogger,
 		d.cfg.MetasConcurrency,
 		userBucket,
-		blockIdsFetcher,
+		blockLister,
 		// The fetcher stores cached metas in the "meta-syncer/" sub directory.
 		filepath.Join(d.cfg.CacheDir, userID),
 		userReg,

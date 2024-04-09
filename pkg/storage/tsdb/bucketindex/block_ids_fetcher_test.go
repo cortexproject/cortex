@@ -42,7 +42,7 @@ func TestBlockIDsFetcher_Fetch(t *testing.T) {
 		UpdatedAt:          now.Unix(),
 	}))
 
-	blockIdsFetcher := NewBlockIDsFetcher(logger, bkt, userID, nil)
+	blockIdsFetcher := NewBlockLister(logger, bkt, userID, nil)
 	ch := make(chan ulid.ULID)
 	var wg sync.WaitGroup
 	var blockIds []ulid.ULID
@@ -94,7 +94,7 @@ func TestBlockIDsFetcherFetcher_Fetch_NoBucketIndex(t *testing.T) {
 		require.NoError(t, json.NewEncoder(&buf).Encode(mark))
 		require.NoError(t, bkt.Upload(ctx, path.Join(userID, mark.ID.String(), metadata.DeletionMarkFilename), &buf))
 	}
-	blockIdsFetcher := NewBlockIDsFetcher(logger, bkt, userID, nil)
+	blockIdsFetcher := NewBlockLister(logger, bkt, userID, nil)
 	ch := make(chan ulid.ULID)
 	var wg sync.WaitGroup
 	var blockIds []ulid.ULID

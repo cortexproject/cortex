@@ -31,6 +31,7 @@
 * [ENHANCEMENT] Query: Added additional max query length check at Query Frontend and Ruler. Added `-querier.ignore-max-query-length` flag to disable max query length check at Querier. #5808
 * [ENHANCEMENT] Querier: Add context error check when converting Metrics to SeriesSet for GetSeries on distributorQuerier. #5827
 * [ENHANCEMENT] Ruler: Improve GetRules response time by refactoring mutexes and introducing a temporary rules cache in `ruler/manager.go`. #5805
+* [ENHANCEMENT] Querier: Add context error check when merging slices from ingesters for GetLabel operations. #5837
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
 * [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 * [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734

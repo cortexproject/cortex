@@ -28,6 +28,7 @@ import (
 	yaml "gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -333,7 +334,21 @@ func (c *Client) query(addr string) (*http.Response, []byte, error) {
 
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
-	res, err := c.httpClient.Do(req)
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 2 * time.Second,
+		MaxRetries: 10,
+	})
+	var (
+		res *http.Response
+	)
+	for retries.Ongoing() {
+		res, err = c.httpClient.Do(req)
+		if err == nil {
+			break
+		}
+		retries.Wait()
+	}
 	if err != nil {
 		return nil, nil, err
 	}

@@ -421,7 +421,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		matchers := ps.WalkSelectors()
 		matcherStrings := storepb.PromMatchersToString(matchers...)
 		minT := e2e.RandRange(rnd, startMs, endMs)
-		maxT := e2e.RandRange(rnd, minT+1, endMs)
+		maxT := e2e.RandRange(rnd, minT, endMs)
 
 		res1, err := c1.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
 		require.NoError(t, err)
@@ -430,7 +430,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 
 		// Try again with a different timestamp and let requests hit posting cache.
 		minT = e2e.RandRange(rnd, startMs, endMs)
-		maxT = e2e.RandRange(rnd, minT+1, endMs)
+		maxT = e2e.RandRange(rnd, minT, endMs)
 		newRes1, err := c1.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
 		require.NoError(t, err)
 		newRes2, err := c2.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
@@ -586,7 +586,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		matchers := ps.WalkSelectors()
 		matcherStrings := storepb.PromMatchersToString(matchers...)
 		minT := e2e.RandRange(rnd, startMs, endMs)
-		maxT := e2e.RandRange(rnd, minT+1, endMs)
+		maxT := e2e.RandRange(rnd, minT, endMs)
 
 		res1, err := c1.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
 		require.NoError(t, err)
@@ -595,7 +595,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 
 		// Try again with a different timestamp and let requests hit posting cache.
 		minT = e2e.RandRange(rnd, startMs, endMs)
-		maxT = e2e.RandRange(rnd, minT+1, endMs)
+		maxT = e2e.RandRange(rnd, minT, endMs)
 		newRes1, err := c1.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))
 		require.NoError(t, err)
 		newRes2, err := c2.Series([]string{matcherStrings}, time.UnixMilli(minT), time.UnixMilli(maxT))

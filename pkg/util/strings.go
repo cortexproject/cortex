@@ -7,6 +7,12 @@ import (
 	"github.com/bboreham/go-loser"
 )
 
+const (
+	// DefaultMergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
+	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
+	DefaultMergeSlicesParallelism = 8
+)
+
 // StringsContain returns true if the search value is within the list of input values.
 func StringsContain(values []string, search string) bool {
 	for _, v := range values {

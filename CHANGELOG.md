@@ -10,6 +10,7 @@
 * [CHANGE] Main: Mark `mem-ballast-size-bytes` flag as deprecated. #5816
 * [CHANGE] Querier: Mark `-querier.ingester-streaming` flag as deprecated. Now query ingester streaming is always enabled. #5817
 * [CHANGE] Compactor/Bucket Store: Added `-blocks-storage.bucket-store.block-discovery-strategy` to configure different block listing strategy. Reverted the current recursive block listing mechanism and use the strategy `Concurrent` as in 1.15. #5828
+* [CHANGE] Compactor: Don't halt compactor when overlapped source blocks detected. #5854
 * [FEATURE] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
 * [FEATURE] Query Frontend/Scheduler: Add query priority support. #5605
 * [FEATURE] Tracing: Add `kuberesolver` to resolve endpoints address with `kubernetes://` prefix as Kubernetes service. #5731

@@ -198,7 +198,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
-	f.BoolVar(&cfg.APIEnableRulesBackup, "experimental.ruler.api-enable-rules-backup", false, "EXPERIMENTAL: Enable rulers to store a copy of rules owned by other rulers with default state (state before any evaluation) and send this copy in list API requests as backup in case the ruler who owns the rule fails to send its rules. This allows the rules API to handle ruler outage by returning rules with default state. Ring replication-factor needs to be set to 3 or more for this to be useful.")
+	f.BoolVar(&cfg.APIEnableRulesBackup, "experimental.ruler.api-enable-rules-backup", false, "EXPERIMENTAL: Enable rulers to store a copy of rules owned by other rulers with default state (state before any evaluation) and send this copy in list API requests as backup in case the ruler who owns the rule fails to send its rules. This allows the rules API to handle ruler outage by returning rules with default state. Ring replication-factor needs to be set to 2 or more for this to be useful.")
 	f.BoolVar(&cfg.APIDeduplicateRules, "experimental.ruler.api-deduplicate-rules", false, "EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API response. If there are duplicate rules the rule with the latest evaluation timestamp will be kept.")
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
@@ -1102,7 +1102,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		ring = r.ring.ShuffleShard(userID, shardSize)
 	}
 
-	rulers, failedZones, err := ring.GetReplicationSetForOperationWithNoQuorum(ListRuleRingOp)
+	rulers, failedZones, err := GetReplicationSetForListRule(ring, &r.cfg.Ring)
 	if err != nil {
 		return nil, err
 	}

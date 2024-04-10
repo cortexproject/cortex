@@ -4268,7 +4268,7 @@ ring:
 # with default state (state before any evaluation) and send this copy in list
 # API requests as backup in case the ruler who owns the rule fails to send its
 # rules. This allows the rules API to handle ruler outage by returning rules
-# with default state. Ring replication-factor needs to be set to 3 or more for
+# with default state. Ring replication-factor needs to be set to 2 or more for
 # this to be useful.
 # CLI flag: -experimental.ruler.api-enable-rules-backup
 [api_enable_rules_backup: <boolean> | default = false]

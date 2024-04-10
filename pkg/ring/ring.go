@@ -50,6 +50,9 @@ type ReadRing interface {
 	// of unhealthy instances is greater than the tolerated max unavailable.
 	GetAllHealthy(op Operation) (ReplicationSet, error)
 
+	// GetAllInstanceDescs returns a slice of healthy and unhealthy InstanceDesc.
+	GetAllInstanceDescs(op Operation) ([]InstanceDesc, []InstanceDesc, error)
+
 	// GetInstanceDescsForOperation returns map of InstanceDesc with instance ID as the keys.
 	GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error)
 
@@ -58,13 +61,6 @@ type ReadRing interface {
 	// in the ring, but could contain the minimum set of instances required to execute
 	// the input operation.
 	GetReplicationSetForOperation(op Operation) (ReplicationSet, error)
-
-	// GetReplicationSetForOperationWithNoQuorum returns all instances where the input operation should be executed.
-	// The resulting ReplicationSet contains all healthy instances in the ring, but the computation for MaxErrors
-	// does not require quorum so only 1 replica is needed to complete the operation. For MaxUnavailableZones, it is
-	// not automatically reduced when there are unhealthy instances in a zone because healthy instances in the zone
-	// are still returned, but the information about zones with unhealthy instances is returned.
-	GetReplicationSetForOperationWithNoQuorum(op Operation) (ReplicationSet, map[string]struct{}, error)
 
 	ReplicationFactor() int
 
@@ -471,6 +467,28 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}, nil
 }
 
+// GetAllInstanceDescs implements ReadRing.
+func (r *Ring) GetAllInstanceDescs(op Operation) ([]InstanceDesc, []InstanceDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
+		return nil, nil, ErrEmptyRing
+	}
+	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
+	unhealthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	for _, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op, storageLastUpdate) {
+			healthyInstances = append(healthyInstances, instance)
+		} else {
+			unhealthyInstances = append(unhealthyInstances, instance)
+		}
+	}
+
+	return healthyInstances, unhealthyInstances, nil
+}
+
 // GetInstanceDescsForOperation implements ReadRing.
 func (r *Ring) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error) {
 	r.mtx.RLock()
@@ -491,12 +509,13 @@ func (r *Ring) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDe
 	return instanceDescs, nil
 }
 
-func (r *Ring) getReplicationSetForOperation(op Operation, requireQuorum bool) (ReplicationSet, map[string]struct{}, error) {
+// GetReplicationSetForOperation implements ReadRing.
+func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
 	if r.ringDesc == nil || len(r.ringTokens) == 0 {
-		return ReplicationSet{}, make(map[string]struct{}), ErrEmptyRing
+		return ReplicationSet{}, ErrEmptyRing
 	}
 
 	// Build the initial replication set, excluding unhealthy instances.
@@ -518,24 +537,18 @@ func (r *Ring) getReplicationSetForOperation(op Operation, requireQuorum bool) (
 	maxUnavailableZones := 0
 
 	if r.cfg.ZoneAwarenessEnabled {
+		// Given data is replicated to RF different zones, we can tolerate a number of
+		// RF/2 failing zones. However, we need to protect from the case the ring currently
+		// contains instances in a number of zones < RF.
 		numReplicatedZones := utilmath.Min(len(r.ringZones), r.cfg.ReplicationFactor)
-		if requireQuorum {
-			// Given data is replicated to RF different zones, we can tolerate a number of
-			// RF/2 failing zones. However, we need to protect from the case the ring currently
-			// contains instances in a number of zones < RF.
-			minSuccessZones := (numReplicatedZones / 2) + 1
-			maxUnavailableZones = minSuccessZones - 1
-		} else {
-			// Given that quorum is not required, we only need at least one of the zone to be healthy to succeed. But we
-			// also need to handle case when RF < number of zones.
-			maxUnavailableZones = numReplicatedZones - 1
-		}
+		minSuccessZones := (numReplicatedZones / 2) + 1
+		maxUnavailableZones = minSuccessZones - 1
 
 		if len(zoneFailures) > maxUnavailableZones {
-			return ReplicationSet{}, zoneFailures, ErrTooManyUnhealthyInstances
+			return ReplicationSet{}, ErrTooManyUnhealthyInstances
 		}
 
-		if requireQuorum && len(zoneFailures) > 0 {
+		if len(zoneFailures) > 0 {
 			// We remove all instances (even healthy ones) from zones with at least
 			// 1 failing instance. Due to how replication works when zone-awareness is
 			// enabled (data is replicated to RF different zones), there's no benefit in
@@ -549,11 +562,11 @@ func (r *Ring) getReplicationSetForOperation(op Operation, requireQuorum bool) (
 			}
 
 			healthyInstances = filteredInstances
-
-			// Since we removed all instances from zones containing at least 1 failing
-			// instance, we have to decrease the max unavailable zones accordingly.
-			maxUnavailableZones -= len(zoneFailures)
 		}
+
+		// Since we removed all instances from zones containing at least 1 failing
+		// instance, we have to decrease the max unavailable zones accordingly.
+		maxUnavailableZones -= len(zoneFailures)
 	} else {
 		// Calculate the number of required instances;
 		// ensure we always require at least RF-1 when RF=3.
@@ -562,15 +575,10 @@ func (r *Ring) getReplicationSetForOperation(op Operation, requireQuorum bool) (
 			numRequired = r.cfg.ReplicationFactor
 		}
 		// We can tolerate this many failures
-		if requireQuorum {
-			numRequired -= r.cfg.ReplicationFactor / 2
-		} else {
-			// if quorum is not required then 1 replica is enough to handle the request
-			numRequired -= r.cfg.ReplicationFactor - 1
-		}
+		numRequired -= r.cfg.ReplicationFactor / 2
 
 		if len(healthyInstances) < numRequired {
-			return ReplicationSet{}, zoneFailures, ErrTooManyUnhealthyInstances
+			return ReplicationSet{}, ErrTooManyUnhealthyInstances
 		}
 
 		maxErrors = len(healthyInstances) - numRequired
@@ -580,18 +588,7 @@ func (r *Ring) getReplicationSetForOperation(op Operation, requireQuorum bool) (
 		Instances:           healthyInstances,
 		MaxErrors:           maxErrors,
 		MaxUnavailableZones: maxUnavailableZones,
-	}, zoneFailures, nil
-}
-
-// GetReplicationSetForOperation implements ReadRing.
-func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
-	replicationSet, _, err := r.getReplicationSetForOperation(op, true)
-	return replicationSet, err
-}
-
-// GetReplicationSetForOperationWithNoQuorum implements ReadRing.
-func (r *Ring) GetReplicationSetForOperationWithNoQuorum(op Operation) (ReplicationSet, map[string]struct{}, error) {
-	return r.getReplicationSetForOperation(op, false)
+	}, nil
 }
 
 // countTokens returns the number of tokens and tokens within the range for each instance.

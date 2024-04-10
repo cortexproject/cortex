@@ -11,6 +11,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	utilmath "github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -120,4 +121,54 @@ func (cfg *RingConfig) ToRingConfig() ring.Config {
 	rc.ReplicationFactor = cfg.ReplicationFactor
 
 	return rc
+}
+
+// GetReplicationSetForListRule is similar to ring.GetReplicationSetForOperation but does NOT require quorum. Because
+// it does not require quorum it returns healthy instance in the AZ with failed instances unlike
+// GetReplicationSetForOperation. This is important for ruler because healthy instances in the AZ with failed
+// instance could be evaluating some rule groups.
+func GetReplicationSetForListRule(r ring.ReadRing, cfg *RingConfig) (ring.ReplicationSet, map[string]struct{}, error) {
+	healthy, unhealthy, err := r.GetAllInstanceDescs(ListRuleRingOp)
+	if err != nil {
+		return ring.ReplicationSet{}, make(map[string]struct{}), err
+	}
+	ringZones := make(map[string]struct{})
+	zoneFailures := make(map[string]struct{})
+	for _, instance := range healthy {
+		ringZones[instance.Zone] = struct{}{}
+	}
+	for _, instance := range unhealthy {
+		ringZones[instance.Zone] = struct{}{}
+		zoneFailures[instance.Zone] = struct{}{}
+	}
+	// Max errors and max unavailable zones are mutually exclusive. We initialise both
+	// to 0, and then we update them whether zone-awareness is enabled or not.
+	maxErrors := 0
+	maxUnavailableZones := 0
+	if cfg.ZoneAwarenessEnabled {
+		numReplicatedZones := utilmath.Min(len(ringZones), r.ReplicationFactor())
+		// Given that quorum is not required, we only need at least one of the zone to be healthy to succeed. But we
+		// also need to handle case when RF < number of zones.
+		maxUnavailableZones = numReplicatedZones - 1
+		if len(zoneFailures) > maxUnavailableZones {
+			return ring.ReplicationSet{}, zoneFailures, ring.ErrTooManyUnhealthyInstances
+		}
+	} else {
+		numRequired := len(healthy) + len(unhealthy)
+		if numRequired < r.ReplicationFactor() {
+			numRequired = r.ReplicationFactor()
+		}
+		// quorum is not required so 1 replica is enough to handle the request
+		numRequired -= r.ReplicationFactor() - 1
+		if len(healthy) < numRequired {
+			return ring.ReplicationSet{}, zoneFailures, ring.ErrTooManyUnhealthyInstances
+		}
+
+		maxErrors = len(healthy) - numRequired
+	}
+	return ring.ReplicationSet{
+		Instances:           healthy,
+		MaxErrors:           maxErrors,
+		MaxUnavailableZones: maxUnavailableZones,
+	}, zoneFailures, nil
 }

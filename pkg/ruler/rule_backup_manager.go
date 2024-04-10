@@ -53,7 +53,7 @@ func (r *rulesBackupManager) getRuleGroups(userID string) rulespb.RuleGroupList 
 	return result
 }
 
-// getRuleGroups updates the ruler_backup_rule_group metric by adding new groups that were backed up and removing
+// updateMetrics updates the ruler_backup_rule_group metric by adding new groups that were backed up and removing
 // those that are removed from the backup.
 func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string]rulespb.RuleGroupList) {
 	for user, groups := range newBackupGroups {

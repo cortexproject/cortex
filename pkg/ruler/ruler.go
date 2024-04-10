@@ -980,15 +980,41 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 	}
 
 	backupGroups := r.manager.GetBackupRules(userID)
+	backupGroupDescs, err := r.ruleGroupListToGroupStateDesc(userID, backupGroups, groupListFilter{
+		ruleNameSet,
+		ruleGroupNameSet,
+		fileSet,
+		returnAlerts,
+		returnRecording,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return append(groupDescs, backupGroupDescs...), nil
+}
+
+type groupListFilter struct {
+	ruleNameSet      map[string]struct{}
+	ruleGroupNameSet map[string]struct{}
+	fileSet          map[string]struct{}
+	returnAlerts     bool
+	returnRecording  bool
+}
+
+// ruleGroupListToGroupStateDesc converts rulespb.RuleGroupList to []*GroupStateDesc while accepting filters to control what goes to the
+// resulting []*GroupStateDesc
+func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulespb.RuleGroupList, filters groupListFilter) ([]*GroupStateDesc, error) {
+	groupDescs := make([]*GroupStateDesc, 0, len(backupGroups))
 	for _, group := range backupGroups {
-		if len(fileSet) > 0 {
-			if _, OK := fileSet[group.GetNamespace()]; !OK {
+		if len(filters.fileSet) > 0 {
+			if _, OK := filters.fileSet[group.GetNamespace()]; !OK {
 				continue
 			}
 		}
 
-		if len(ruleGroupNameSet) > 0 {
-			if _, OK := ruleGroupNameSet[group.GetName()]; !OK {
+		if len(filters.ruleGroupNameSet) > 0 {
+			if _, OK := filters.ruleGroupNameSet[group.GetName()]; !OK {
 				continue
 			}
 		}
@@ -1014,12 +1040,11 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 				name = r.GetAlert()
 				isAlertingRule = true
 			}
-			if len(ruleNameSet) > 0 {
-				if _, OK := ruleNameSet[name]; !OK {
+			if len(filters.ruleNameSet) > 0 {
+				if _, OK := filters.ruleNameSet[name]; !OK {
 					continue
 				}
 			}
-			lastError := ""
 
 			var ruleDesc *RuleStateDesc
 			query, err := parser.ParseExpr(r.GetExpr())
@@ -1027,7 +1052,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 				return nil, errors.Errorf("failed to parse rule query '%v'", r.GetExpr())
 			}
 			if isAlertingRule {
-				if !returnAlerts {
+				if !filters.returnAlerts {
 					continue
 				}
 				alerts := []*AlertStateDesc{} // backup rules are not evaluated so there will be no active alerts
@@ -1042,13 +1067,12 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 					},
 					State:               promRules.StateInactive.String(), // backup rules are not evaluated so they are inactive
 					Health:              string(promRules.HealthUnknown),
-					LastError:           lastError,
 					Alerts:              alerts,
 					EvaluationTimestamp: time.Time{},
 					EvaluationDuration:  time.Duration(0),
 				}
 			} else {
-				if !returnRecording {
+				if !filters.returnRecording {
 					continue
 				}
 				ruleDesc = &RuleStateDesc{
@@ -1058,7 +1082,6 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 						Labels: r.Labels,
 					},
 					Health:              string(promRules.HealthUnknown),
-					LastError:           lastError,
 					EvaluationTimestamp: time.Time{},
 					EvaluationDuration:  time.Duration(0),
 				}
@@ -1069,7 +1092,6 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 			groupDescs = append(groupDescs, groupDesc)
 		}
 	}
-
 	return groupDescs, nil
 }
 

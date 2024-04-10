@@ -28,7 +28,7 @@ type Execution struct {
 	model.OperatorTelemetry
 }
 
-func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options, hints storage.SelectHints) *Execution {
+func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options, _ storage.SelectHints) *Execution {
 	storage := newStorageFromQuery(query, opts)
 	oper := &Execution{
 		storage:         storage,
@@ -45,7 +45,10 @@ func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart ti
 
 func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
 	start := time.Now()
-	defer func() { e.AddExecutionTimeTaken(time.Since(start)) }()
+	defer func() {
+		e.AddExecutionTimeTaken(time.Since(start))
+		e.updateStats()
+	}()
 
 	return e.vectorSelector.Series(ctx)
 }
@@ -74,6 +77,14 @@ func (e *Execution) GetPool() *model.VectorPool {
 
 func (e *Execution) Explain() (next []model.VectorOperator) {
 	return nil
+}
+
+func (e *Execution) updateStats() {
+	existingStats := e.query.Stats()
+	if existingStats == nil || existingStats.Samples == nil {
+		return
+	}
+	e.IncrementSamplesAtStep(int(existingStats.Samples.TotalSamples), 0)
 }
 
 type storageAdapter struct {

@@ -66,10 +66,17 @@ func (p prometheusScanners) NewMatrixSelector(
 	}
 
 	arg := 0.0
-	if call.Func.Name == "quantile_over_time" {
+	switch call.Func.Name {
+	case "quantile_over_time":
 		unwrap, err := logicalplan.UnwrapFloat(call.Args[0])
 		if err != nil {
 			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "quantile_over_time with expression as first argument is not supported")
+		}
+		arg = unwrap
+	case "predict_linear":
+		unwrap, err := logicalplan.UnwrapFloat(call.Args[1])
+		if err != nil {
+			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "predict_linear with expression as second argument is not supported")
 		}
 		arg = unwrap
 	}

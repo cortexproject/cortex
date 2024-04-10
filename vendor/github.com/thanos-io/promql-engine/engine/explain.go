@@ -4,6 +4,8 @@
 package engine
 
 import (
+	"math"
+
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -27,6 +29,28 @@ type ExplainOutputNode struct {
 }
 
 var _ ExplainableQuery = &compatibilityQuery{}
+
+func (a *AnalyzeOutputNode) TotalSamples() int64 {
+	var total int64
+	for _, child := range a.Children {
+		total += child.TotalSamples()
+	}
+	if a.OperatorTelemetry.Samples() != nil {
+		total += a.OperatorTelemetry.Samples().TotalSamples
+	}
+	return total
+}
+
+func (a *AnalyzeOutputNode) PeakSamples() int64 {
+	var peak int64
+	for _, child := range a.Children {
+		peak = int64(math.Max(float64(peak), float64(child.PeakSamples())))
+	}
+	if a.OperatorTelemetry.Samples() != nil {
+		peak = int64(math.Max(float64(peak), float64(a.OperatorTelemetry.Samples().PeakSamples)))
+	}
+	return peak
+}
 
 func analyzeQuery(obsv model.ObservableVectorOperator) *AnalyzeOutputNode {
 	children := obsv.Explain()

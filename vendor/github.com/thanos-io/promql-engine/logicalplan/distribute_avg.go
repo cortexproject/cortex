@@ -17,8 +17,9 @@ type DistributeAvgOptimizer struct {
 }
 
 func (r DistributeAvgOptimizer) Optimize(plan Node, _ *query.Options) (Node, annotations.Annotations) {
+	var warns = annotations.New()
 	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
-		if !isDistributiveOrAverage(current, r.SkipBinaryPushdown) {
+		if !isDistributiveOrAverage(current, r.SkipBinaryPushdown, warns) {
 			return true
 		}
 		// If the current node is avg(), distribute the operation and
@@ -44,12 +45,12 @@ func (r DistributeAvgOptimizer) Optimize(plan Node, _ *query.Options) (Node, ann
 			}
 			return true
 		}
-		return !isDistributiveOrAverage(parent, r.SkipBinaryPushdown)
+		return !isDistributiveOrAverage(parent, r.SkipBinaryPushdown, warns)
 	})
 	return plan, nil
 }
 
-func isDistributiveOrAverage(expr *Node, skipBinaryPushdown bool) bool {
+func isDistributiveOrAverage(expr *Node, skipBinaryPushdown bool, warns *annotations.Annotations) bool {
 	if expr == nil {
 		return false
 	}
@@ -57,5 +58,5 @@ func isDistributiveOrAverage(expr *Node, skipBinaryPushdown bool) bool {
 	if aggr, ok := (*expr).(*Aggregation); ok {
 		isAvg = aggr.Op == parser.AVG
 	}
-	return isDistributive(expr, skipBinaryPushdown) || isAvg
+	return isDistributive(expr, skipBinaryPushdown, map[string]struct{}{}, warns) || isAvg
 }

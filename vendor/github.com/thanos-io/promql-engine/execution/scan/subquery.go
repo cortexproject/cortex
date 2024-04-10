@@ -6,14 +6,13 @@ package scan
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
@@ -23,7 +22,9 @@ import (
 type subqueryOperator struct {
 	model.OperatorTelemetry
 
-	next        model.VectorOperator
+	next       model.VectorOperator
+	nextScalar model.VectorOperator
+
 	pool        *model.VectorPool
 	call        FunctionCall
 	mint        int64
@@ -32,9 +33,8 @@ type subqueryOperator struct {
 	step        int64
 	stepsBatch  int
 
-	scalarArgs []float64
-	funcExpr   *logicalplan.FunctionCall
-	subQuery   *logicalplan.Subquery
+	funcExpr *logicalplan.FunctionCall
+	subQuery *logicalplan.Subquery
 
 	onceSeries sync.Once
 	series     []labels.Labels
@@ -44,7 +44,7 @@ type subqueryOperator struct {
 	buffers       []*ringbuffer.RingBuffer[Value]
 }
 
-func NewSubqueryOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
+func NewSubqueryOperator(pool *model.VectorPool, next, nextScalar model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
 	call, err := NewRangeVectorFunc(funcExpr.Func.Name)
 	if err != nil {
 		return nil, err
@@ -54,20 +54,11 @@ func NewSubqueryOperator(pool *model.VectorPool, next model.VectorOperator, opts
 		step = 1
 	}
 
-	arg := 0.0
-	if funcExpr.Func.Name == "quantile_over_time" {
-		unwrap, err := logicalplan.UnwrapFloat(funcExpr.Args[0])
-		if err != nil {
-			return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "quantile_over_time with expression as first argument is not supported")
-		}
-		arg = unwrap
-	}
-
 	oper := &subqueryOperator{
 		next:          next,
+		nextScalar:    nextScalar,
 		call:          call,
 		pool:          pool,
-		scalarArgs:    []float64{arg},
 		funcExpr:      funcExpr,
 		subQuery:      subQuery,
 		mint:          opts.Start.UnixMilli(),
@@ -105,6 +96,11 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		return nil, nil
 	}
 	if err := o.initSeries(ctx); err != nil {
+		return nil, err
+	}
+
+	scalarArgs, err := o.nextScalar.Next(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -150,13 +146,19 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 			o.next.GetPool().PutVectors(vectors)
 		}
 
+		scalarArg := math.NaN()
+		if len(scalarArgs) > 0 {
+			scalarArg = scalarArgs[i].Samples[0]
+		}
+
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
 			f, h, ok := o.call(FunctionArgs{
-				ScalarPoints: o.scalarArgs,
-				Samples:      rangeSamples.Samples(),
-				StepTime:     maxt,
-				SelectRange:  o.subQuery.Range.Milliseconds(),
+				ScalarPoint: scalarArg,
+				Samples:     rangeSamples.Samples(),
+				StepTime:    maxt + o.subQuery.Offset.Milliseconds(),
+				SelectRange: o.subQuery.Range.Milliseconds(),
+				Offset:      o.subQuery.Offset.Milliseconds(),
 			})
 			if ok {
 				if h != nil {

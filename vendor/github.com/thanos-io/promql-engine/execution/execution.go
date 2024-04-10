@@ -210,7 +210,26 @@ func newSubqueryFunction(e *logicalplan.FunctionCall, t *logicalplan.Subquery, s
 		outerOpts.Start = time.UnixMilli(*t.Timestamp)
 		outerOpts.End = time.UnixMilli(*t.Timestamp)
 	}
-	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, &outerOpts, e, t)
+
+	var scalarArg model.VectorOperator
+	switch e.Func.Name {
+	case "quantile_over_time":
+		// quantile_over_time(scalar, range-vector)
+		scalarArg, err = newOperator(e.Args[0], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
+	case "predict_linear":
+		// predict_linear(range-vector, scalar)
+		scalarArg, err = newOperator(e.Args[1], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		scalarArg = noop.NewOperator()
+	}
+
+	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, &outerOpts, e, t)
 }
 
 func newInstantVectorFunction(e *logicalplan.FunctionCall, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {

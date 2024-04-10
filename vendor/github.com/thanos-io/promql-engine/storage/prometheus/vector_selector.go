@@ -139,6 +139,7 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		ts += o.step
 	}
 
+	var currStepSamples uint64
 	// Reset the current timestamp.
 	ts = o.currentStep
 	fromSeries := o.currentSeries
@@ -148,6 +149,7 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			seriesTs = ts
 		)
 		for currStep := 0; currStep < o.numSteps && seriesTs <= o.maxt; currStep++ {
+			currStepSamples = 0
 			t, v, h, ok, err := selectPoint(series.samples, seriesTs, o.lookbackDelta, o.offset)
 			if err != nil {
 				return nil, err
@@ -161,8 +163,10 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 				} else {
 					vectors[currStep].AppendSample(o.vectorPool, series.signature, v)
 				}
+				currStepSamples++
 			}
 			seriesTs += o.step
+			o.IncrementSamplesAtStep(int(currStepSamples), currStep)
 		}
 	}
 	if o.currentSeries == int64(len(o.scanners)) {

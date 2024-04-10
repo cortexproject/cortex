@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -96,12 +97,14 @@ func BenchmarkMergeSlicesParallel(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				var r []string
+				var err error
 				for i := 0; i < b.N; i++ {
 					if p == usingMap {
 						r = sortUsingMap(input...)
 						require.NotEmpty(b, r)
 					} else {
-						r = MergeSlicesParallel(int(p), input...)
+						r, err = MergeSlicesParallel(context.Background(), int(p), input...)
+						require.NoError(b, err)
 						require.NotEmpty(b, r)
 					}
 				}

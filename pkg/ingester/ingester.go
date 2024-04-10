@@ -154,6 +154,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 }
 
+func (cfg *Config) Validate() error {
+	if err := cfg.LifecyclerConfig.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
 	if cfg.IgnoreSeriesLimitForMetricNames == "" {
 		return nil

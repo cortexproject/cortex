@@ -721,7 +721,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 			needTokens := i.cfg.NumTokens - len(ringTokens)
 
 			level.Info(i.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", i.RingName)
-			newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens)
+			newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, true)
 
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(ringTokens)
@@ -788,7 +788,11 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 			return ringDesc, true, nil
 		}
 
-		newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens)
+		newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, false)
+		if len(newTokens) != needTokens {
+			level.Warn(i.logger).Log("msg", "retrying generate tokens")
+			return ringDesc, true, errors.New("could not generate tokens")
+		}
 
 		myTokens = append(myTokens, newTokens...)
 		sort.Sort(myTokens)

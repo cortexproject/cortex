@@ -13,7 +13,7 @@ func (r *MultitenantAlertmanager) OnRingInstanceRegister(lc *ring.BasicLifecycle
 		tokens = instanceDesc.GetTokens()
 	}
 
-	newTokens := lc.GenerateTokens(&ringDesc, instanceID, instanceDesc.Zone, RingNumTokens-len(tokens))
+	newTokens := lc.GenerateTokens(&ringDesc, instanceID, instanceDesc.Zone, RingNumTokens-len(tokens), true)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

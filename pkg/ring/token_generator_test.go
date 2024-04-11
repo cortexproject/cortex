@@ -25,7 +25,7 @@ func TestGenerateTokens(t *testing.T) {
 
 	for name, tc := range testCase {
 		t.Run(name, func(t *testing.T) {
-			tokens := tc.tg.GenerateTokens(NewDesc(), "", "", 1000000)
+			tokens := tc.tg.GenerateTokens(NewDesc(), "", "", 1000000, true)
 
 			dups := make(map[uint32]int)
 
@@ -62,7 +62,7 @@ func TestGenerateTokens_IgnoresOldTokens(t *testing.T) {
 			for i := 0; i < 500; i++ {
 				id := strconv.Itoa(i)
 				zone := strconv.Itoa(i % 3)
-				tokens := tc.tg.GenerateTokens(d, id, zone, 500)
+				tokens := tc.tg.GenerateTokens(d, id, zone, 500, true)
 				d.AddIngester(id, id, zone, tokens, ACTIVE, time.Now())
 				for _, v := range tokens {
 					if dups[v] {
@@ -98,25 +98,36 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	require.Equal(t, mTokenGenerator.called, len(zones))
 
 	mTokenGenerator.called = 0
-	// Should fallback to random generator when more than 1 ingester does not have tokens
+	// Should fallback to random generator when more than 1 ingester does not have tokens and force flag is set
 	rindDesc.AddIngester("pendingIngester-1", "pendingIngester-1", zones[0], []uint32{}, PENDING, time.Now())
-	rindDesc.AddIngester("pendingIngester-2", "pendingIngester-2", zones[0], []uint32{}, PENDING, time.Now().Add(10*time.Minute))
-	minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1", zones[0], 512)
-	require.Equal(t, mTokenGenerator.called, 1)
-	// Should generate if this is the last ingester in the AZ with more than 1 ingester with no tokens
-	minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-2", zones[0], 512)
-	require.Equal(t, mTokenGenerator.called, 1)
-	// Should generate tokens on other AZs
-	rindDesc.AddIngester("pendingIngester-1-az-2", "pendingIngester-1-az-2", zones[0], []uint32{}, PENDING, time.Now())
-	minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1-az-2", zones[1], 512)
+	rindDesc.AddIngester("pendingIngester-2", "pendingIngester-2", zones[0], []uint32{}, PENDING, time.Now().Add(-10*time.Minute))
+	tokens := minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1", zones[0], 512, true)
+	require.Len(t, tokens, 512)
 	require.Equal(t, mTokenGenerator.called, 1)
 
+	// Should generate for the ingester with with the smaller registered
+	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-2", zones[0], 512, false)
+	require.Len(t, tokens, 512)
+	require.Equal(t, mTokenGenerator.called, 1)
+
+	// Should generate tokens on other AZs
+	rindDesc.AddIngester("pendingIngester-1-az-2", "pendingIngester-1-az-2", zones[0], []uint32{}, PENDING, time.Now())
+	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1-az-2", zones[1], 512, false)
+	require.Len(t, tokens, 512)
+	require.Equal(t, mTokenGenerator.called, 1)
+
+	// Should generate tokens only for the ingesters with the smaller registered time when multiples
+	// ingesters does not have tokens
+	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1", zones[0], 512, false)
+	require.Len(t, tokens, 0)
+	tokens = minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-2", zones[0], 512, false)
+	require.Len(t, tokens, 512)
 }
 
 func generateTokensForIngesters(t *testing.T, rindDesc *Desc, prefix string, zones []string, minimizeTokenGenerator *MinimizeSpreadTokenGenerator, dups map[uint32]bool) {
 	for _, zone := range zones {
 		id := fmt.Sprintf("%v-%v", prefix, zone)
-		tokens := minimizeTokenGenerator.GenerateTokens(rindDesc, id, zone, 512)
+		tokens := minimizeTokenGenerator.GenerateTokens(rindDesc, id, zone, 512, true)
 		for _, token := range tokens {
 			if dups[token] {
 				t.Fatal("GenerateTokens returned duplicated tokens")
@@ -136,9 +147,9 @@ type mockedTokenGenerator struct {
 	RandomTokenGenerator
 }
 
-func (m *mockedTokenGenerator) GenerateTokens(d *Desc, id, zone string, numTokens int) []uint32 {
+func (m *mockedTokenGenerator) GenerateTokens(d *Desc, id, zone string, numTokens int, force bool) []uint32 {
 	m.called++
-	return m.RandomTokenGenerator.GenerateTokens(d, id, zone, numTokens)
+	return m.RandomTokenGenerator.GenerateTokens(d, id, zone, numTokens, force)
 }
 
 func newMockedTokenGenerator(totalZones int) *mockedTokenGenerator {

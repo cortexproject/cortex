@@ -118,12 +118,12 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 		"instance already in the ring with ACTIVE state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.ACTIVE,
-			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens),
+			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens, true),
 		},
 		"instance already in the ring with LEAVING state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.LEAVING,
-			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens),
+			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens, true),
 		},
 	}
 
@@ -567,15 +567,15 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 		expectedNumTokens int
 	}{
 		"stored tokens are less than the configured ones": {
-			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens-10),
+			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens-10, true),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are equal to the configured ones": {
-			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens),
+			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens, true),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are more then the configured ones": {
-			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens+10),
+			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens+10, true),
 			expectedNumTokens: RingNumTokens + 10,
 		},
 	}
@@ -884,7 +884,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
 		tg := ring.NewRandomTokenGenerator()
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", RingNumTokens), ring.ACTIVE, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", RingNumTokens, true), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 

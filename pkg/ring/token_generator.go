@@ -23,7 +23,9 @@ var (
 type TokenGenerator interface {
 	// GenerateTokens make numTokens unique random tokens, none of which clash
 	// with takenTokens. Generated tokens are sorted.
-	GenerateTokens(ring *Desc, id, zone string, numTokens int) []uint32
+	// GenerateTokens can return any number of token between 0 and numTokens if force is set to false.
+	// If force is set to true, all tokens needs to be generated
+	GenerateTokens(ring *Desc, id, zone string, numTokens int, force bool) []uint32
 }
 
 type RandomTokenGenerator struct{}
@@ -32,7 +34,7 @@ func NewRandomTokenGenerator() TokenGenerator {
 	return &RandomTokenGenerator{}
 }
 
-func (g *RandomTokenGenerator) GenerateTokens(ring *Desc, _, _ string, numTokens int) []uint32 {
+func (g *RandomTokenGenerator) GenerateTokens(ring *Desc, _, _ string, numTokens int, _ bool) []uint32 {
 	if numTokens <= 0 {
 		return []uint32{}
 	}
@@ -77,7 +79,7 @@ func NewMinimizeSpreadTokenGenerator() TokenGenerator {
 // GenerateTokens try to place nearly generated tokens on the optimal position given the existing ingesters in the ring.
 // In order to do so, order all the existing ingester on the ring based on its ownership (by az), and start to create
 // new tokens in order to balance out the ownership amongst all ingesters.
-func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone string, numTokens int) []uint32 {
+func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone string, numTokens int, force bool) []uint32 {
 	if numTokens <= 0 {
 		return []uint32{}
 	}
@@ -100,8 +102,12 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 			if len(instance.Tokens) == 0 {
 				// If there is more than one instance with no tokens, lets only use
 				// MinimizeSpread token algorithm on the last one
-				if instance.RegisteredTimestamp > ring.Ingesters[id].RegisteredTimestamp {
-					return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens)
+				if instance.RegisteredTimestamp < ring.Ingesters[id].RegisteredTimestamp {
+					if force {
+						return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens, true)
+					} else {
+						return make([]uint32, 0)
+					}
 				}
 
 				continue
@@ -113,7 +119,7 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 
 	// If we don't have tokens to split, lets create the tokens randomly
 	if len(zonalTokens) == 0 {
-		return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens)
+		return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens, true)
 	}
 
 	// Populate the map tokensPerInstanceWithDistance with the tokens and total distance of each ingester.
@@ -150,7 +156,7 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 		// If we don't have ingesters to take ownership or if the ownership was already completed we should fallback to
 		// back fill the remaining tokens using the random algorithm
 		if len(*distancesHeap) == 0 || currentInstance.totalDistance > expectedOwnershipDistance {
-			r = append(r, g.innerGenerator.GenerateTokens(ring, id, zone, numTokens-len(r))...)
+			r = append(r, g.innerGenerator.GenerateTokens(ring, id, zone, numTokens-len(r), true)...)
 			break
 		}
 

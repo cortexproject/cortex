@@ -27,6 +27,10 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	yaml "gopkg.in/yaml.v3"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
+
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
@@ -127,6 +131,77 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	req.Header.Add("Content-Encoding", "snappy")
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+	return res, nil
+}
+
+func getNameAndAttributes(ts prompb.TimeSeries) (string, map[string]any) {
+	var metricName string
+	attributes := make(map[string]any)
+	for _, label := range ts.Labels {
+		if label.Name == model.MetricNameLabel {
+			metricName = label.Value
+		} else {
+			attributes[label.Name] = label.Value
+		}
+	}
+	return metricName, attributes
+}
+
+func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, samples []prompb.Sample) {
+	newMetric.SetEmptyGauge()
+	for _, sample := range samples {
+		datapoint := newMetric.Gauge().DataPoints().AppendEmpty()
+		datapoint.SetDoubleValue(sample.Value)
+		datapoint.SetTimestamp(pcommon.Timestamp(sample.Timestamp * time.Millisecond.Nanoseconds()))
+		err := datapoint.Attributes().FromRaw(attributes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+// Convert Timeseries to Metrics
+func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics {
+	metrics := pmetric.NewMetrics()
+	for _, ts := range timeseries {
+		metricName, attributes := getNameAndAttributes(ts)
+		newMetric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		newMetric.SetName(metricName)
+		//TODO Set description for new metric
+		//TODO Set unit for new metric
+		createDatapointsGauge(newMetric, attributes, ts.Samples)
+		//TODO(friedrichg): Add support for histograms
+	}
+	return metrics
+}
+
+// Push series to OTLP endpoint
+func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
+
+	data, err := pmetricotlp.NewExportRequestFromMetrics(convertTimeseriesToMetrics(timeseries)).MarshalProto()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/otlp/v1/metrics", c.distributorAddress), bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)

@@ -38,13 +38,13 @@ func WithLabelMatchers(matchers ...*labels.Matcher) MetricsOption {
 	}
 }
 
-// WithWaitMissingMetrics is an option to wait whenever an expected metric is missing. If this
+// WaitMissingMetrics is an option to wait whenever an expected metric is missing. If this
 // option is not enabled, will return error on missing metrics.
 func WaitMissingMetrics(opts *MetricsOptions) {
 	opts.WaitMissingMetrics = true
 }
 
-// SkipWaitMissingMetrics is an option to skip/ignore whenever an expected metric is missing.
+// SkipMissingMetrics is an option to skip/ignore whenever an expected metric is missing.
 func SkipMissingMetrics(opts *MetricsOptions) {
 	opts.SkipMissingMetrics = true
 }

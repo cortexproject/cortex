@@ -16,11 +16,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
@@ -462,30 +460,7 @@ func writeError(logger log.Logger, w http.ResponseWriter, err error, additionalH
 			headers.Set(k, value)
 		}
 	}
-	resp, ok := httpgrpc.HTTPResponseFromError(err)
-	if ok {
-		code := int(resp.Code)
-		var errTyp v1.ErrorType
-		switch resp.Code {
-		case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
-			errTyp = v1.ErrBadData
-		case StatusClientClosedRequest:
-			errTyp = v1.ErrCanceled
-		case http.StatusGatewayTimeout:
-			errTyp = v1.ErrTimeout
-		case http.StatusUnprocessableEntity:
-			errTyp = v1.ErrExec
-		case int32(codes.PermissionDenied):
-			// Convert gRPC status code to HTTP status code.
-			code = http.StatusUnprocessableEntity
-			errTyp = v1.ErrBadData
-		default:
-			errTyp = v1.ErrServer
-		}
-		util_api.RespondError(logger, w, errTyp, string(resp.Body), code)
-	} else {
-		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
-	}
+	util_api.RespondFromGRPCError(logger, w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.QueryStats) {
@@ -506,7 +481,7 @@ func statsValue(name string, d time.Duration) string {
 func getStatusCodeFromError(err error) int {
 	switch err {
 	case context.Canceled:
-		return StatusClientClosedRequest
+		return util_api.StatusClientClosedRequest
 	case context.DeadlineExceeded:
 		return http.StatusGatewayTimeout
 	default:

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -109,5 +110,8 @@ func TestBlockIDsFetcherFetcher_Fetch_NoBucketIndex(t *testing.T) {
 	require.NoError(t, err)
 	close(ch)
 	wg.Wait()
+	sort.Slice(blockIds, func(i, j int) bool {
+		return blockIds[i].Compare(blockIds[j]) < 0
+	})
 	require.Equal(t, []ulid.ULID{block1.ID, block2.ID, block3.ID}, blockIds)
 }

@@ -3,8 +3,6 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"github.com/weaveworks/common/httpgrpc"
-	"google.golang.org/grpc/codes"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +11,8 @@ import (
 	"github.com/go-kit/log"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
+	"google.golang.org/grpc/codes"
 )
 
 func TestRespondFromGRPCError(t *testing.T) {

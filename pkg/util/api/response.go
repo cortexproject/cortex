@@ -2,12 +2,13 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/codes"
-	"net/http"
 )
 
 const (

@@ -165,7 +165,10 @@ func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, 
 		datapoint := newMetric.Gauge().DataPoints().AppendEmpty()
 		datapoint.SetDoubleValue(sample.Value)
 		datapoint.SetTimestamp(pcommon.Timestamp(sample.Timestamp * time.Millisecond.Nanoseconds()))
-		datapoint.Attributes().FromRaw(attributes)
+		err := datapoint.Attributes().FromRaw(attributes)
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 

@@ -99,15 +99,16 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 
 	mTokenGenerator.called = 0
 	// Should fallback to random generator when more than 1 ingester does not have tokens
-	rindDesc.AddIngester("bb_noTokens", "noTokens", zones[0], []uint32{}, PENDING, time.Now())
-	rindDesc.AddIngester("dd_noTokens", "noTokens", zones[0], []uint32{}, PENDING, time.Now())
-	minimizeTokenGenerator.GenerateTokens(rindDesc, "cc_otherIngester", zones[0], 512)
+	rindDesc.AddIngester("pendingIngester-1", "pendingIngester-1", zones[0], []uint32{}, PENDING, time.Now())
+	rindDesc.AddIngester("pendingIngester-2", "pendingIngester-2", zones[0], []uint32{}, PENDING, time.Now().Add(10*time.Minute))
+	minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1", zones[0], 512)
 	require.Equal(t, mTokenGenerator.called, 1)
 	// Should generate if this is the last ingester in the AZ with more than 1 ingester with no tokens
-	minimizeTokenGenerator.GenerateTokens(rindDesc, "zz_otherIngester", zones[0], 512)
+	minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-2", zones[0], 512)
 	require.Equal(t, mTokenGenerator.called, 1)
 	// Should generate tokens on other AZs
-	minimizeTokenGenerator.GenerateTokens(rindDesc, "shouldGenerate", zones[1], 512)
+	rindDesc.AddIngester("pendingIngester-1-az-2", "pendingIngester-1-az-2", zones[0], []uint32{}, PENDING, time.Now())
+	minimizeTokenGenerator.GenerateTokens(rindDesc, "pendingIngester-1-az-2", zones[1], 512)
 	require.Equal(t, mTokenGenerator.called, 1)
 
 }
@@ -122,6 +123,7 @@ func generateTokensForIngesters(t *testing.T, rindDesc *Desc, prefix string, zon
 			}
 			dups[token] = true
 		}
+		require.Len(t, tokens, 512)
 		rindDesc.AddIngester(id, id, zone, tokens, ACTIVE, time.Now())
 	}
 }

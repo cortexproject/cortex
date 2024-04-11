@@ -93,23 +93,28 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 		}
 
 		// Only take in consideration tokens from instances in the same AZ
-		if instance.Zone == zone {
+		if i != id && instance.Zone == zone {
 			instanceTokens = append(instanceTokens, instance.Tokens)
 			tokensPerInstanceWithDistance[i] = &totalTokenPerInstance{id: i, zone: instance.Zone}
-		}
 
-		if len(instance.Tokens) == 0 {
-			if id < i {
-				// If there is more than one instance with no tokens, lets only one use
-				// MinimizeSpread token algorithm
-				return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens)
+			if len(instance.Tokens) == 0 {
+				// If there is more than one instance with no tokens, lets only use
+				// MinimizeSpread token algorithm on the last one
+				if instance.RegisteredTimestamp > ring.Ingesters[id].RegisteredTimestamp {
+					return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens)
+				}
+
+				continue
 			}
-
-			continue
 		}
 	}
 
 	zonalTokens := MergeTokens(instanceTokens)
+
+	// If we don't have tokens to split, lets create the tokens randomly
+	if len(zonalTokens) == 0 {
+		return g.innerGenerator.GenerateTokens(ring, id, zone, numTokens)
+	}
 
 	// Populate the map tokensPerInstanceWithDistance with the tokens and total distance of each ingester.
 	// This map will be later on used to create the heap in order to take tokens from the ingesters with most distance

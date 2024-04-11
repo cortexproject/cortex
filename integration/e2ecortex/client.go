@@ -27,11 +27,12 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
+
+	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 var ErrNotFound = errors.New("not found")

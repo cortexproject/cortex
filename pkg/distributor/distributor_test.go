@@ -1932,6 +1932,8 @@ func BenchmarkDistributor_Push(b *testing.B) {
 		},
 	}
 
+	tg := ring.NewRandomTokenGenerator()
+
 	for testName, testData := range tests {
 		b.Run(testName, func(b *testing.B) {
 
@@ -1942,7 +1944,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			err := kvStore.CAS(context.Background(), ingester.RingKey,
 				func(_ interface{}) (interface{}, bool, error) {
 					d := &ring.Desc{}
-					d.AddIngester("ingester-1", "127.0.0.1", "", ring.GenerateTokens(128, nil), ring.ACTIVE, time.Now())
+					d.AddIngester("ingester-1", "127.0.0.1", "", tg.GenerateTokens(d, "ingester-1", "", 128, true), ring.ACTIVE, time.Now())
 					return d, true, nil
 				},
 			)

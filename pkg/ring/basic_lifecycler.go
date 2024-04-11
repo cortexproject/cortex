@@ -5,6 +5,7 @@ import (
 	"fmt"
 	mathrand "math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -48,9 +49,10 @@ type BasicLifecyclerConfig struct {
 	// if zone awareness is unused.
 	Zone string
 
-	HeartbeatPeriod     time.Duration
-	TokensObservePeriod time.Duration
-	NumTokens           int
+	HeartbeatPeriod         time.Duration
+	TokensObservePeriod     time.Duration
+	NumTokens               int
+	TokensGeneratorStrategy string
 
 	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
 	// which means unregistering.
@@ -67,6 +69,7 @@ type BasicLifecyclerConfig struct {
 // responsibility to ChangeState().
 type BasicLifecycler struct {
 	*services.BasicService
+	TokenGenerator
 
 	cfg      BasicLifecyclerConfig
 	logger   log.Logger
@@ -88,15 +91,21 @@ type BasicLifecycler struct {
 
 // NewBasicLifecycler makes a new BasicLifecycler.
 func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
+	tg := NewRandomTokenGenerator()
+	if strings.EqualFold(cfg.TokensGeneratorStrategy, minimizeSpreadTokenStrategy) {
+		tg = NewMinimizeSpreadTokenGenerator()
+	}
+
 	l := &BasicLifecycler{
-		cfg:       cfg,
-		ringName:  ringName,
-		ringKey:   ringKey,
-		logger:    logger,
-		store:     store,
-		delegate:  delegate,
-		metrics:   NewBasicLifecyclerMetrics(ringName, reg),
-		actorChan: make(chan func()),
+		cfg:            cfg,
+		ringName:       ringName,
+		ringKey:        ringKey,
+		logger:         logger,
+		store:          store,
+		delegate:       delegate,
+		metrics:        NewBasicLifecyclerMetrics(ringName, reg),
+		actorChan:      make(chan func()),
+		TokenGenerator: tg,
 	}
 
 	l.metrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -350,7 +359,7 @@ func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 
 	err := l.updateInstance(ctx, func(r *Desc, i *InstanceDesc) bool {
 		// At this point, we should have the same tokens as we have registered before.
-		actualTokens, takenTokens := r.TokensFor(l.cfg.ID)
+		actualTokens, _ := r.TokensFor(l.cfg.ID)
 
 		if actualTokens.Equals(l.GetTokens()) {
 			// Tokens have been verified. No need to change them.
@@ -362,7 +371,7 @@ func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 		needTokens := l.cfg.NumTokens - len(actualTokens)
 
 		level.Info(l.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", l.ringName)
-		newTokens := GenerateTokens(needTokens, takenTokens)
+		newTokens := l.GenerateTokens(r, l.cfg.ID, l.cfg.Zone, needTokens, true)
 
 		actualTokens = append(actualTokens, newTokens...)
 		sort.Sort(actualTokens)

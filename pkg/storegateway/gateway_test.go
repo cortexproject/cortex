@@ -96,6 +96,7 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 	t.Parallel()
+	tg := ring.NewRandomTokenGenerator()
 	tests := map[string]struct {
 		initialExists bool
 		initialState  ring.InstanceState
@@ -117,12 +118,12 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 		"instance already in the ring with ACTIVE state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.ACTIVE,
-			initialTokens: ring.GenerateTokens(RingNumTokens, nil),
+			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens, true),
 		},
 		"instance already in the ring with LEAVING state and has all tokens": {
 			initialExists: true,
 			initialState:  ring.LEAVING,
-			initialTokens: ring.GenerateTokens(RingNumTokens, nil),
+			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens, true),
 		},
 	}
 
@@ -560,20 +561,21 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 
 func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 	t.Parallel()
+	tg := ring.NewRandomTokenGenerator()
 	tests := map[string]struct {
 		storedTokens      ring.Tokens
 		expectedNumTokens int
 	}{
 		"stored tokens are less than the configured ones": {
-			storedTokens:      ring.GenerateTokens(RingNumTokens-10, nil),
+			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens-10, true),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are equal to the configured ones": {
-			storedTokens:      ring.GenerateTokens(RingNumTokens, nil),
+			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens, true),
 			expectedNumTokens: RingNumTokens,
 		},
 		"stored tokens are more then the configured ones": {
-			storedTokens:      ring.GenerateTokens(RingNumTokens+10, nil),
+			storedTokens:      tg.GenerateTokens(ring.NewDesc(), "id", "zone", RingNumTokens+10, true),
 			expectedNumTokens: RingNumTokens + 10,
 		},
 	}
@@ -881,8 +883,8 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 	// Add an unhealthy instance to the ring.
 	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
-
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", ring.GenerateTokens(RingNumTokens, nil), ring.ACTIVE, time.Now())
+		tg := ring.NewRandomTokenGenerator()
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "1.1.1.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", RingNumTokens, true), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 

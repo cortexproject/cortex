@@ -224,6 +224,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
+	if err := c.Ingester.Validate(); err != nil {
+		return errors.Wrap(err, "invalid ingester config")
+	}
+
 	if err := c.Tracing.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tracing config")
 	}

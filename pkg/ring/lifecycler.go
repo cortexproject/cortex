@@ -6,7 +6,9 @@ import (
 	"fmt"
 	mathrand "math/rand"
 	"os"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,12 +23,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
+var (
+	errInvalidTokensGeneratorStrategy = errors.New("invalid token generator strategy")
+)
+
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring"`
 
 	// Config for the ingester lifecycle control
 	NumTokens                int           `yaml:"num_tokens"`
+	TokensGeneratorStrategy  string        `yaml:"tokens_generator_strategy" doc:"hidden"`
 	HeartbeatPeriod          time.Duration `yaml:"heartbeat_period"`
 	ObservePeriod            time.Duration `yaml:"observe_period"`
 	JoinAfter                time.Duration `yaml:"join_after"`
@@ -63,6 +70,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	}
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
+	f.StringVar(&cfg.TokensGeneratorStrategy, prefix+"tokens-generator-strategy", randomTokenStrategy, fmt.Sprintf("Algorithm used to generate new tokens. Supported Values: %s", strings.Join(supportedTokenStrategy, ",")))
 	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul. 0 = disabled.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
@@ -83,6 +91,14 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone where this instance is running.")
 	f.BoolVar(&cfg.UnregisterOnShutdown, prefix+"unregister-on-shutdown", true, "Unregister from the ring upon clean shutdown. It can be useful to disable for rolling restarts with consistent naming in conjunction with -distributor.extend-writes=false.")
 	f.BoolVar(&cfg.ReadinessCheckRingHealth, prefix+"readiness-check-ring-health", true, "When enabled the readiness probe succeeds only after all instances are ACTIVE and healthy in the ring, otherwise only the instance itself is checked. This option should be disabled if in your cluster multiple instances can be rolled out simultaneously, otherwise rolling updates may be slowed down.")
+}
+
+func (cfg *LifecyclerConfig) Validate() error {
+	if cfg.TokensGeneratorStrategy != "" && !slices.Contains(supportedTokenStrategy, strings.ToLower(cfg.TokensGeneratorStrategy)) {
+		return errInvalidTokensGeneratorStrategy
+	}
+
+	return nil
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -129,6 +145,8 @@ type Lifecycler struct {
 
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
+
+	tg TokenGenerator
 }
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
@@ -168,6 +186,12 @@ func NewLifecycler(
 		flushTransferer = NewNoopFlushTransferer()
 	}
 
+	tg := NewRandomTokenGenerator()
+
+	if strings.EqualFold(cfg.TokensGeneratorStrategy, minimizeSpreadTokenStrategy) {
+		tg = NewMinimizeSpreadTokenGenerator()
+	}
+
 	l := &Lifecycler{
 		cfg:                  cfg,
 		flushTransferer:      flushTransferer,
@@ -185,6 +209,7 @@ func NewLifecycler(
 		state:                PENDING,
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),
 		logger:               logger,
+		tg:                   tg,
 	}
 
 	l.lifecyclerMetrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -689,14 +714,14 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 		}
 
 		// At this point, we should have the same tokens as we have registered before
-		ringTokens, takenTokens := ringDesc.TokensFor(i.ID)
+		ringTokens, _ := ringDesc.TokensFor(i.ID)
 
 		if !i.compareTokens(ringTokens) {
 			// uh, oh... our tokens are not our anymore. Let's try new ones.
 			needTokens := i.cfg.NumTokens - len(ringTokens)
 
 			level.Info(i.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", i.RingName)
-			newTokens := GenerateTokens(needTokens, takenTokens)
+			newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, true)
 
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(ringTokens)
@@ -754,7 +779,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		// Need to make sure we didn't change the num of tokens configured
-		myTokens, takenTokens := ringDesc.TokensFor(i.ID)
+		myTokens, _ := ringDesc.TokensFor(i.ID)
 		needTokens := i.cfg.NumTokens - len(myTokens)
 
 		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
@@ -763,7 +788,11 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 			return ringDesc, true, nil
 		}
 
-		newTokens := GenerateTokens(needTokens, takenTokens)
+		newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, false)
+		if len(newTokens) != needTokens {
+			level.Warn(i.logger).Log("msg", "retrying generate tokens")
+			return ringDesc, true, errors.New("could not generate tokens")
+		}
 
 		myTokens = append(myTokens, newTokens...)
 		sort.Sort(myTokens)

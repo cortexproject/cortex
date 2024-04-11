@@ -3,7 +3,6 @@ package ring
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"sort"
 	"strings"
@@ -14,39 +13,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
-
-// GenerateTokens make numTokens unique random tokens, none of which clash
-// with takenTokens. Generated tokens are sorted.
-func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
-	if numTokens <= 0 {
-		return []uint32{}
-	}
-
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	used := make(map[uint32]bool, len(takenTokens))
-	for _, v := range takenTokens {
-		used[v] = true
-	}
-
-	tokens := make([]uint32, 0, numTokens)
-	for i := 0; i < numTokens; {
-		candidate := r.Uint32()
-		if used[candidate] {
-			continue
-		}
-		used[candidate] = true
-		tokens = append(tokens, candidate)
-		i++
-	}
-
-	// Ensure returned tokens are sorted.
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
-
-	return tokens
-}
 
 // GetInstanceAddr returns the address to use to register the instance
 // in the ring.

@@ -987,6 +987,7 @@ func TestRing_GetAllInstanceDescs(t *testing.T) {
 	require.EqualValues(t, []InstanceDesc{
 		{Addr: "127.0.0.1", Tokens: []uint32{1}, State: ACTIVE, Timestamp: now},
 	}, healthyInstanceDescs)
+	sort.Slice(unhealthyInstanceDescs, func(i, j int) bool { return unhealthyInstanceDescs[i].Addr < unhealthyInstanceDescs[j].Addr })
 	require.EqualValues(t, []InstanceDesc{
 		{Addr: "127.0.0.2", Tokens: []uint32{2}, State: LEAVING, Timestamp: now},
 		{Addr: "127.0.0.3", Tokens: []uint32{3}, State: ACTIVE, Timestamp: twoMinutesAgo},

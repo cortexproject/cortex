@@ -235,7 +235,7 @@ func (cfg *TSDBConfig) BlocksDir(userID string) string {
 	return filepath.Join(cfg.Dir, userID)
 }
 
-// IsShippingEnabled returns whether blocks shipping is enabled.
+// IsBlocksShippingEnabled returns whether blocks shipping is enabled.
 func (cfg *TSDBConfig) IsBlocksShippingEnabled() bool {
 	return cfg.ShipInterval > 0
 }

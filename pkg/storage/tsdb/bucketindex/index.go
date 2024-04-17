@@ -209,7 +209,7 @@ func (m *BlockDeletionMark) GetDeletionTime() time.Time {
 	return time.Unix(m.DeletionTime, 0)
 }
 
-// ThanosMeta returns the Thanos deletion mark.
+// ThanosDeletionMark returns the Thanos deletion mark.
 func (m *BlockDeletionMark) ThanosDeletionMark() *metadata.DeletionMark {
 	return &metadata.DeletionMark{
 		ID:           m.ID,

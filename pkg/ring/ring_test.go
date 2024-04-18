@@ -2964,8 +2964,8 @@ func TestUpdateMetrics(t *testing.T) {
 
 	ringDesc := Desc{
 		Ingesters: map[string]InstanceDesc{
-			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
-			"B": {Addr: "127.0.0.2", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
+			"A": {Addr: "127.0.0.1", Zone: "us-west-2a", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+			"B": {Addr: "127.0.0.2", Zone: "us-west-2b", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
 		},
 	}
 	ring.updateRingState(&ringDesc)
@@ -2982,6 +2982,18 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
 		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_members_by_zone Number of members in the ring by zone
+		# TYPE ring_members_by_zone gauge
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2b"} 1
+		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2b"} 0
+		ring_members_by_zone{name="test",state="LEAVING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="LEAVING",zone="us-west-2b"} 0
+		ring_members_by_zone{name="test",state="PENDING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="PENDING",zone="us-west-2b"} 0
+		ring_members_by_zone{name="test",state="Unhealthy",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="Unhealthy",zone="us-west-2b"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3016,8 +3028,8 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 
 	ringDesc := Desc{
 		Ingesters: map[string]InstanceDesc{
-			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
-			"B": {Addr: "127.0.0.2", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
+			"A": {Addr: "127.0.0.1", Zone: "us-west-2a", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+			"B": {Addr: "127.0.0.2", Zone: "us-west-2b", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
 		},
 	}
 	ring.updateRingState(&ringDesc)
@@ -3034,6 +3046,18 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
 		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_members_by_zone Number of members in the ring by zone
+		# TYPE ring_members_by_zone gauge
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2b"} 1
+		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2b"} 0
+		ring_members_by_zone{name="test",state="LEAVING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="LEAVING",zone="us-west-2b"} 0
+		ring_members_by_zone{name="test",state="PENDING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="PENDING",zone="us-west-2b"} 0
+		ring_members_by_zone{name="test",state="Unhealthy",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="Unhealthy",zone="us-west-2b"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3053,7 +3077,7 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 
 	ringDescNew := Desc{
 		Ingesters: map[string]InstanceDesc{
-			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+			"A": {Addr: "127.0.0.1", Zone: "us-west-2a", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
 		},
 	}
 	ring.updateRingState(&ringDescNew)
@@ -3069,6 +3093,13 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_members{name="test",state="LEAVING"} 0
 		ring_members{name="test",state="PENDING"} 0
 		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_members_by_zone Number of members in the ring by zone
+		# TYPE ring_members_by_zone gauge
+		ring_members_by_zone{name="test",state="ACTIVE",zone="us-west-2a"} 1
+		ring_members_by_zone{name="test",state="JOINING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="LEAVING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="PENDING",zone="us-west-2a"} 0
+		ring_members_by_zone{name="test",state="Unhealthy",zone="us-west-2a"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 22

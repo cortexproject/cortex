@@ -31,7 +31,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -80,15 +79,6 @@ type query struct {
 }
 
 var (
-	testcases = []struct {
-		name string
-		f    chunkIteratorFunc
-	}{
-		{"matrixes", mergeChunks},
-		{"iterators", iterators.NewChunkMergeIterator},
-		{"batches", batch.NewChunkMergeIterator},
-	}
-
 	encodings = []struct {
 		name string
 		e    promchunk.Encoding
@@ -512,7 +502,7 @@ func TestQuerier(t *testing.T) {
 						cfg.ActiveQueryTrackerDir = ""
 
 						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
-						distributor := mockDistibutorFor(t, chunkStore, through)
+						distributor := mockDistibutorFor(t, chunkStore.chunks)
 
 						overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 						require.NoError(t, err)
@@ -535,8 +525,8 @@ func TestQuerierMetric(t *testing.T) {
 	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 	require.NoError(t, err)
 
-	chunkStore, through := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
-	distributor := mockDistibutorFor(t, chunkStore, through)
+	chunkStore, _ := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
+	distributor := mockDistibutorFor(t, chunkStore.chunks)
 
 	queryables := []QueryableWithFilter{}
 	r := prometheus.NewRegistry()
@@ -1207,9 +1197,9 @@ func TestValidateMaxQueryLength(t *testing.T) {
 
 // mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
 // so we can test everything is dedupe correctly.
-func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *MockDistributor {
+func mockDistibutorFor(t *testing.T, cks []chunk.Chunk) *MockDistributor {
 	//parallel testing causes data race
-	chunks, err := chunkcompat.ToChunks(cs.chunks)
+	chunks, err := chunkcompat.ToChunks(cks)
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{

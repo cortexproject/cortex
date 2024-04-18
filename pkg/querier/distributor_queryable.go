@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -168,12 +169,11 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 			return storage.ErrSeriesSet(err)
 		}
 
-		serieses = append(serieses, &chunkSeries{
-			labels:            ls,
-			chunks:            chunks,
-			chunkIteratorFunc: q.chunkIterFn,
-			mint:              minT,
-			maxt:              maxT,
+		serieses = append(serieses, &storage.SeriesEntry{
+			Lset: ls,
+			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
+				return q.chunkIterFn(chunks, model.Time(minT), model.Time(maxT))
+			},
 		})
 	}
 

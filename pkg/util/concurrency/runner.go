@@ -6,7 +6,6 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
@@ -30,7 +29,7 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 	errsMx := sync.Mutex{}
 
 	wg := sync.WaitGroup{}
-	for ix := 0; ix < math.Min(concurrency, len(userIDs)); ix++ {
+	for ix := 0; ix < min(concurrency, len(userIDs)); ix++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -76,7 +75,7 @@ func ForEach(ctx context.Context, jobs []interface{}, concurrency int, jobFunc f
 
 	// Start workers to process jobs.
 	g, ctx := errgroup.WithContext(ctx)
-	for ix := 0; ix < math.Min(concurrency, len(jobs)); ix++ {
+	for ix := 0; ix < min(concurrency, len(jobs)); ix++ {
 		g.Go(func() error {
 			for job := range ch {
 				if err := ctx.Err(); err != nil {

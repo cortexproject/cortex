@@ -13,7 +13,6 @@ option (gogoproto.unmarshaler_all) = true;
 
 service Ingester {
   rpc Push(cortexpb.WriteRequest) returns (cortexpb.WriteResponse) {};
-  rpc Query(QueryRequest) returns (QueryResponse) {};
   rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
   rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {};
 

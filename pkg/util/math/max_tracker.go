@@ -21,10 +21,5 @@ func (m *MaxTracker) Tick() {
 func (m *MaxTracker) Load() int64 {
 	c := m.current.Load()
 	o := m.old.Load()
-
-	if c > o {
-		return c
-	}
-
-	return o
+	return max(c, o)
 }

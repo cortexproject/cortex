@@ -49,7 +49,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -2135,7 +2134,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 
 	for ts := startTimestamp; ts < startTimestamp+(step*int64(numSamplesPerSeries)); ts += step {
 		for o := 0; o < numSeries; o += maxBatchSize {
-			batchSize := util_math.Min(maxBatchSize, numSeries-o)
+			batchSize := min(maxBatchSize, numSeries-o)
 
 			// Generate metrics and samples (1 for each series).
 			metrics := make([]labels.Labels, 0, batchSize)

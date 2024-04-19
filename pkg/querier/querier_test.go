@@ -485,33 +485,29 @@ func TestQuerier(t *testing.T) {
 	for _, thanosEngine := range []bool{false, true} {
 		for _, query := range queries {
 			for _, encoding := range encodings {
-				for _, iterators := range []bool{false, true} {
-					iterators := iterators
-					t.Run(fmt.Sprintf("%s/%s/iterators=%t", query.query, encoding.name, iterators), func(t *testing.T) {
-						var queryEngine promql.QueryEngine
-						if thanosEngine {
-							queryEngine = engine.New(engine.Opts{
-								EngineOpts:        opts,
-								LogicalOptimizers: logicalplan.AllOptimizers,
-							})
-						} else {
-							queryEngine = promql.NewEngine(opts)
-						}
-						cfg.Iterators = iterators
-						// Disable active query tracker to avoid mmap error.
-						cfg.ActiveQueryTrackerDir = ""
+				t.Run(fmt.Sprintf("%s/%s", query.query, encoding.name), func(t *testing.T) {
+					var queryEngine promql.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
+						})
+					} else {
+						queryEngine = promql.NewEngine(opts)
+					}
+					// Disable active query tracker to avoid mmap error.
+					cfg.ActiveQueryTrackerDir = ""
 
-						chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
-						distributor := mockDistibutorFor(t, chunkStore.chunks)
+					chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
+					distributor := mockDistibutorFor(t, chunkStore.chunks)
 
-						overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-						require.NoError(t, err)
+					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+					require.NoError(t, err)
 
-						queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
-						queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
-						testRangeQuery(t, queryable, queryEngine, through, query)
-					})
-				}
+					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					testRangeQuery(t, queryable, queryEngine, through, query)
+				})
 			}
 		}
 	}

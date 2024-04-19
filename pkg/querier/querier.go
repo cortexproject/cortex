@@ -43,8 +43,6 @@ import (
 type Config struct {
 	MaxConcurrent             int           `yaml:"max_concurrent"`
 	Timeout                   time.Duration `yaml:"timeout"`
-	Iterators                 bool          `yaml:"iterators"`
-	BatchIterators            bool          `yaml:"batch_iterators"`
 	IngesterStreaming         bool          `yaml:"ingester_streaming" doc:"hidden"`
 	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
 	MaxSamples                int           `yaml:"max_samples"`
@@ -109,8 +107,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
-	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")

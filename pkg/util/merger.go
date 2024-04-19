@@ -24,19 +24,3 @@ func MergeSampleSets(a, b []model.SamplePair) []model.SamplePair {
 	result = append(result, b[j:]...)
 	return result
 }
-
-// MergeNSampleSets merges and dedupes n sets of already sorted sample pairs.
-func MergeNSampleSets(sampleSets ...[]model.SamplePair) []model.SamplePair {
-	l := len(sampleSets)
-	switch l {
-	case 0:
-		return []model.SamplePair{}
-	case 1:
-		return sampleSets[0]
-	}
-
-	n := l / 2
-	left := MergeNSampleSets(sampleSets[:n]...)
-	right := MergeNSampleSets(sampleSets[n:]...)
-	return MergeSampleSets(left, right)
-}

@@ -11,7 +11,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	utilmath "github.com/cortexproject/cortex/pkg/util/math"
 )
 
 const (
@@ -146,7 +145,7 @@ func GetReplicationSetForListRule(r ring.ReadRing, cfg *RingConfig) (ring.Replic
 	maxErrors := 0
 	maxUnavailableZones := 0
 	if cfg.ZoneAwarenessEnabled {
-		numReplicatedZones := utilmath.Min(len(ringZones), r.ReplicationFactor())
+		numReplicatedZones := min(len(ringZones), r.ReplicationFactor())
 		// Given that quorum is not required, we only need at least one of the zone to be healthy to succeed. But we
 		// also need to handle case when RF < number of zones.
 		maxUnavailableZones = numReplicatedZones - 1

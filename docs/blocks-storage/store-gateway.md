@@ -397,6 +397,12 @@ blocks_storage:
     # CLI flag: -blocks-storage.s3.bucket-lookup-type
     [bucket_lookup_type: <string> | default = "auto"]
 
+    # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+    # algorithm to verify the provided digest. If false, use CRC32C algorithm
+    # instead.
+    # CLI flag: -blocks-storage.s3.send-content-md5
+    [send_content_md5: <boolean> | default = true]
+
     # The s3_sse_config configures the S3 server-side encryption.
     # The CLI flags prefix for this block config is: blocks-storage
     [sse: <s3_sse_config>]

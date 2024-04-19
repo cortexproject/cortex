@@ -595,3 +595,41 @@ func TestRuleEvalMetricsDeletePerUserMetrics(t *testing.T) {
 		require.Contains(t, mfm[name].String(), "value:\"fake2\"")
 	}
 }
+
+func TestRuleGroupMetrics(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	m := NewRuleGroupMetrics(reg, util.NewAllowedTenants(nil, []string{"fake3"}))
+	m.UpdateRuleGroupsInStore(map[string]int{
+		"fake1": 10,
+		"fake2": 20,
+		"fake3": 30,
+	})
+	gm, err := reg.Gather()
+	require.NoError(t, err)
+	mfm, err := util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(mfm["cortex_ruler_rule_groups_in_store"].Metric))
+	requireMetricEqual(t, mfm["cortex_ruler_rule_groups_in_store"].Metric[0], map[string]string{
+		"user": "fake1",
+	}, float64(10))
+	requireMetricEqual(t, mfm["cortex_ruler_rule_groups_in_store"].Metric[1], map[string]string{
+		"user": "fake2",
+	}, float64(20))
+	m.UpdateRuleGroupsInStore(map[string]int{
+		"fake2": 30,
+	})
+	gm, err = reg.Gather()
+	require.NoError(t, err)
+	mfm, err = util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(mfm["cortex_ruler_rule_groups_in_store"].Metric))
+	requireMetricEqual(t, mfm["cortex_ruler_rule_groups_in_store"].Metric[0], map[string]string{
+		"user": "fake2",
+	}, float64(30))
+	m.UpdateRuleGroupsInStore(make(map[string]int))
+	gm, err = reg.Gather()
+	require.NoError(t, err)
+	mfm, err = util.NewMetricFamilyMap(gm)
+	require.NoError(t, err)
+	require.Nil(t, mfm["cortex_ruler_rule_groups_in_store"])
+}

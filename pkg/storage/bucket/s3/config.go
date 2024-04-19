@@ -66,6 +66,7 @@ type Config struct {
 	Insecure         bool           `yaml:"insecure"`
 	SignatureVersion string         `yaml:"signature_version"`
 	BucketLookupType string         `yaml:"bucket_lookup_type"`
+	SendContentMd5   bool           `yaml:"send_content_md5"`
 
 	SSE  SSEConfig  `yaml:"sse"`
 	HTTP HTTPConfig `yaml:"http"`
@@ -86,6 +87,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "If enabled, use http:// for the S3 endpoint instead of https://. This could be useful in local dev/test environments while using an S3-compatible backend storage, like Minio.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
 	f.StringVar(&cfg.BucketLookupType, prefix+"s3.bucket-lookup-type", BucketAutoLookup, fmt.Sprintf("The s3 bucket lookup style. Supported values are: %s.", strings.Join(supportedBucketLookupTypes, ", ")))
+	f.BoolVar(&cfg.SendContentMd5, prefix+"s3.send-content-md5", true, "If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum algorithm to verify the provided digest. If false, use CRC32C algorithm instead.")
 	cfg.SSE.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 	cfg.HTTP.RegisterFlagsWithPrefix(prefix, f)
 }

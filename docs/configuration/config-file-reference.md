@@ -559,6 +559,12 @@ s3:
   # CLI flag: -alertmanager-storage.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -alertmanager-storage.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: alertmanager-storage
   [sse: <s3_sse_config>]
@@ -831,6 +837,12 @@ s3:
   # path.
   # CLI flag: -blocks-storage.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
+
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -blocks-storage.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
 
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: blocks-storage
@@ -4326,6 +4338,12 @@ s3:
   # CLI flag: -ruler-storage.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -ruler-storage.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: ruler-storage
   [sse: <s3_sse_config>]
@@ -4606,6 +4624,12 @@ s3:
   # path.
   # CLI flag: -runtime-config.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
+
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -runtime-config.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
 
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: runtime-config

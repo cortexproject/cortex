@@ -27,7 +27,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
@@ -102,6 +101,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "querier.at-modifier-enabled", "This flag is no longer functional; at-modifier is always enabled now.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.ingester-streaming", "Deprecated: Use streaming RPCs to query ingester. QueryStream is always enabled and the flag is not effective anymore.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.iterators", "Deprecated: Use iterators to execute query. This flag is no longer functional; Batch iterator is always enabled instead.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.batch-iterators", "Deprecated: Use batch iterators to execute query. This flag is no longer functional; Batch iterator is always enabled now.", util_log.Logger)
 
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
@@ -152,13 +155,8 @@ func (cfg *Config) GetStoreGatewayAddresses() []string {
 	return strings.Split(cfg.StoreGatewayAddresses, ",")
 }
 
-func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
-	if cfg.BatchIterators {
-		return batch.NewChunkMergeIterator
-	} else if cfg.Iterators {
-		return iterators.NewChunkMergeIterator
-	}
-	return mergeChunks
+func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
+	return batch.NewChunkMergeIterator
 }
 
 // New builds a queryable and promql engine.

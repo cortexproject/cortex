@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"testing"
 	"time"
 
@@ -190,7 +191,7 @@ func TestIngesterStreaming(t *testing.T) {
 		nil)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks, 0, true)
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0, true)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -268,7 +269,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		nil)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks, 0, true)
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0, true)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 

@@ -44,6 +44,9 @@ type DefaultMultiTenantManager struct {
 	notifiers                 map[string]*rulerNotifier
 	notifiersDiscoveryMetrics map[string]discovery.DiscovererMetrics
 
+	// rules backup
+	rulesBackupManager *rulesBackupManager
+
 	managersTotal                 prometheus.Gauge
 	lastReloadSuccessful          *prometheus.GaugeVec
 	lastReloadSuccessfulTimestamp *prometheus.GaugeVec
@@ -79,7 +82,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		os.Exit(1)
 	}
 
-	return &DefaultMultiTenantManager{
+	m := &DefaultMultiTenantManager{
 		cfg:                       cfg,
 		notifierCfg:               ncfg,
 		managerFactory:            managerFactory,
@@ -112,7 +115,11 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		}, []string{"user"}),
 		registry: reg,
 		logger:   logger,
-	}, nil
+	}
+	if cfg.APIEnableRulesBackup {
+		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
+	}
+	return m, nil
 }
 
 func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
@@ -161,8 +168,14 @@ func (r *DefaultMultiTenantManager) deleteRuleCache(user string) {
 	delete(r.ruleCache, user)
 }
 
+func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+	if r.rulesBackupManager != nil {
+		r.rulesBackupManager.setRuleGroups(ctx, ruleGroups)
+	}
+}
+
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
-// the users Prometheus Rules Manager.
+// users Prometheus Rules Manager.
 func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
@@ -331,6 +344,13 @@ func (r *DefaultMultiTenantManager) GetRules(userID string) []*promRules.Group {
 		groups = mngr.RuleGroups()
 	}
 	return groups
+}
+
+func (r *DefaultMultiTenantManager) GetBackupRules(userID string) rulespb.RuleGroupList {
+	if r.rulesBackupManager != nil {
+		return r.rulesBackupManager.getRuleGroups(userID)
+	}
+	return nil
 }
 
 func (r *DefaultMultiTenantManager) Stop() {

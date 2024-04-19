@@ -253,6 +253,47 @@ func TestSyncRuleGroupsCleanUpPerUserMetrics(t *testing.T) {
 	require.NotContains(t, mfm["cortex_ruler_config_last_reload_successful"].String(), "value:\""+user+"\"")
 }
 
+func TestBackupRules(t *testing.T) {
+	dir := t.TempDir()
+	reg := prometheus.NewPedanticRegistry()
+	evalMetrics := NewRuleEvalMetrics(Config{RulePath: dir, EnableQueryStats: true}, reg)
+	waitDurations := []time.Duration{
+		1 * time.Millisecond,
+		1 * time.Millisecond,
+	}
+	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir, APIEnableRulesBackup: true}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	const user1 = "testUser"
+	const user2 = "testUser2"
+
+	require.Equal(t, 0, len(m.GetBackupRules(user1)))
+	require.Equal(t, 0, len(m.GetBackupRules(user2)))
+
+	userRules := map[string]rulespb.RuleGroupList{
+		user1: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group1",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user1,
+			},
+		},
+		user2: {
+			&rulespb.RuleGroupDesc{
+				Name:      "group2",
+				Namespace: "ns",
+				Interval:  1 * time.Minute,
+				User:      user1,
+			},
+		},
+	}
+	m.BackUpRuleGroups(context.TODO(), userRules)
+	require.Equal(t, userRules[user1], m.GetBackupRules(user1))
+	require.Equal(t, userRules[user2], m.GetBackupRules(user2))
+}
+
 func getManager(m *DefaultMultiTenantManager, user string) RulesManager {
 	m.userManagerMtx.RLock()
 	defer m.userManagerMtx.RUnlock()

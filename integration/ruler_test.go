@@ -395,6 +395,14 @@ func TestRulerSharding(t *testing.T) {
 }
 
 func TestRulerAPISharding(t *testing.T) {
+	testRulerAPIWithSharding(t, false)
+}
+
+func TestRulerAPIShardingWithAPIRulesBackupEnabled(t *testing.T) {
+	testRulerAPIWithSharding(t, true)
+}
+
+func testRulerAPIWithSharding(t *testing.T, enableAPIRulesBackup bool) {
 	const numRulesGroups = 100
 
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -444,24 +452,30 @@ func TestRulerAPISharding(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(consul, minio))
 
 	// Configure the ruler.
+	overrides := map[string]string{
+		// Since we're not going to run any rule, we don't need the
+		// store-gateway to be configured to a valid address.
+		"-querier.store-gateway-addresses": "localhost:12345",
+		// Enable the bucket index so we can skip the initial bucket scan.
+		"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+	}
+	if enableAPIRulesBackup {
+		overrides["-ruler.ring.replication-factor"] = "3"
+		overrides["-experimental.ruler.api-enable-rules-backup"] = "true"
+	}
 	rulerFlags := mergeFlags(
 		BlocksStorageFlags(),
 		RulerFlags(),
 		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
-		map[string]string{
-			// Since we're not going to run any rule, we don't need the
-			// store-gateway to be configured to a valid address.
-			"-querier.store-gateway-addresses": "localhost:12345",
-			// Enable the bucket index so we can skip the initial bucket scan.
-			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-		},
+		overrides,
 	)
 
 	// Start rulers.
 	ruler1 := e2ecortex.NewRuler("ruler-1", consul.NetworkHTTPEndpoint(), rulerFlags, "")
 	ruler2 := e2ecortex.NewRuler("ruler-2", consul.NetworkHTTPEndpoint(), rulerFlags, "")
-	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2)
-	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2))
+	ruler3 := e2ecortex.NewRuler("ruler-3", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+	rulers := e2ecortex.NewCompositeCortexService(ruler1, ruler2, ruler3)
+	require.NoError(t, s.StartAndWaitReady(ruler1, ruler2, ruler3))
 
 	// Upload rule groups to one of the rulers.
 	c, err := e2ecortex.NewClient("", "", "", ruler1.HTTPEndpoint(), "user-1")
@@ -542,6 +556,10 @@ func TestRulerAPISharding(t *testing.T) {
 		},
 	}
 	// For each test case, fetch the rules with configured filters, and ensure the results match.
+	if enableAPIRulesBackup {
+		err := ruler2.Kill() // if api-enable-rules-backup is enabled the APIs should be able to handle a ruler going down
+		require.NoError(t, err)
+	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			actualGroups, err := c.GetPrometheusRules(tc.filter)

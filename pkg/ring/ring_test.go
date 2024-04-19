@@ -959,6 +959,41 @@ func TestRing_GetInstanceDescsForOperation(t *testing.T) {
 	}, instanceDescs)
 }
 
+func TestRing_GetAllInstanceDescs(t *testing.T) {
+	now := time.Now().Unix()
+	twoMinutesAgo := time.Now().Add(-2 * time.Minute).Unix()
+
+	ringDesc := &Desc{Ingesters: map[string]InstanceDesc{
+		"instance-1": {Addr: "127.0.0.1", Tokens: []uint32{1}, State: ACTIVE, Timestamp: now},
+		"instance-2": {Addr: "127.0.0.2", Tokens: []uint32{2}, State: LEAVING, Timestamp: now},          // not healthy state
+		"instance-3": {Addr: "127.0.0.3", Tokens: []uint32{3}, State: ACTIVE, Timestamp: twoMinutesAgo}, // heartbeat timed out
+	}}
+
+	ring := Ring{
+		cfg:                 Config{HeartbeatTimeout: time.Minute},
+		ringDesc:            ringDesc,
+		ringTokens:          ringDesc.GetTokens(),
+		ringTokensByZone:    ringDesc.getTokensByZone(),
+		ringInstanceByToken: ringDesc.getTokensInfo(),
+		ringZones:           getZones(ringDesc.getTokensByZone()),
+		strategy:            NewDefaultReplicationStrategy(),
+		KVClient:            &MockClient{},
+	}
+
+	testOp := NewOp([]InstanceState{ACTIVE}, nil)
+
+	healthyInstanceDescs, unhealthyInstanceDescs, err := ring.GetAllInstanceDescs(testOp)
+	require.NoError(t, err)
+	require.EqualValues(t, []InstanceDesc{
+		{Addr: "127.0.0.1", Tokens: []uint32{1}, State: ACTIVE, Timestamp: now},
+	}, healthyInstanceDescs)
+	sort.Slice(unhealthyInstanceDescs, func(i, j int) bool { return unhealthyInstanceDescs[i].Addr < unhealthyInstanceDescs[j].Addr })
+	require.EqualValues(t, []InstanceDesc{
+		{Addr: "127.0.0.2", Tokens: []uint32{2}, State: LEAVING, Timestamp: now},
+		{Addr: "127.0.0.3", Tokens: []uint32{3}, State: ACTIVE, Timestamp: twoMinutesAgo},
+	}, unhealthyInstanceDescs)
+}
+
 func TestRing_GetReplicationSetForOperation(t *testing.T) {
 	now := time.Now()
 	g := NewRandomTokenGenerator()

@@ -36,6 +36,11 @@ func (r *RingMock) GetInstanceDescsForOperation(op Operation) (map[string]Instan
 	return args.Get(0).(map[string]InstanceDesc), args.Error(1)
 }
 
+func (r *RingMock) GetAllInstanceDescs(op Operation) ([]InstanceDesc, []InstanceDesc, error) {
+	args := r.Called(op)
+	return args.Get(0).([]InstanceDesc), make([]InstanceDesc, 0), args.Error(1)
+}
+
 func (r *RingMock) GetReplicationSetForOperation(op Operation) (ReplicationSet, error) {
 	args := r.Called(op)
 	return args.Get(0).(ReplicationSet), args.Error(1)

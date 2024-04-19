@@ -2,13 +2,10 @@ package ruler
 
 import (
 	"context"
-	"net/url"
-	"path/filepath"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
@@ -21,7 +18,8 @@ type rulesBackupManager struct {
 
 	logger log.Logger
 
-	backupRuleGroup *prometheus.GaugeVec
+	backupRules      *prometheus.GaugeVec
+	backupRuleGroups *prometheus.GaugeVec
 }
 
 func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registerer) *rulesBackupManager {
@@ -30,11 +28,16 @@ func newRulesBackupManager(cfg Config, logger log.Logger, reg prometheus.Registe
 		cfg:                      cfg,
 		logger:                   logger,
 
-		backupRuleGroup: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+		backupRules: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: "cortex",
-			Name:      "ruler_backup_rule_group",
-			Help:      "Boolean set to 1 indicating the ruler stores the rule group as backup.",
-		}, []string{"user", "rule_group"}),
+			Name:      "ruler_backup_rules",
+			Help:      "The number of rules stored as backup.",
+		}, []string{"user"}),
+		backupRuleGroups: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: "cortex",
+			Name:      "ruler_backup_rule_groups",
+			Help:      "The number of rule groups stored as backup.",
+		}, []string{"user"}),
 	}
 }
 
@@ -53,44 +56,22 @@ func (r *rulesBackupManager) getRuleGroups(userID string) rulespb.RuleGroupList 
 	return result
 }
 
-// updateMetrics updates the ruler_backup_rule_group metric by adding new groups that were backed up and removing
-// those that are removed from the backup.
+// updateMetrics updates the ruler_backup_rules metric by updating the number of rules that were backed up and removing
+// the users whose rules are no longer backed up
 func (r *rulesBackupManager) updateMetrics(newBackupGroups map[string]rulespb.RuleGroupList) {
 	for user, groups := range newBackupGroups {
-		keptGroups := make(map[string]struct{})
+		totalRules := 0
 		for _, g := range groups {
-			fullFileName := r.getFilePathForGroup(g, user)
-			key := promRules.GroupKey(fullFileName, g.GetName())
-			r.backupRuleGroup.WithLabelValues(user, key).Set(1)
-			keptGroups[key] = struct{}{}
+			totalRules += len(g.Rules)
 		}
-		oldGroups := r.inMemoryRuleGroupsBackup[user]
-		for _, g := range oldGroups {
-			fullFileName := r.getFilePathForGroup(g, user)
-			key := promRules.GroupKey(fullFileName, g.GetName())
-			if _, exists := keptGroups[key]; !exists {
-				r.backupRuleGroup.DeleteLabelValues(user, key)
-			}
-		}
+		r.backupRules.WithLabelValues(user).Set(float64(totalRules))
+		r.backupRuleGroups.WithLabelValues(user).Set(float64(len(groups)))
 	}
 
-	for user, groups := range r.inMemoryRuleGroupsBackup {
-		if _, exists := newBackupGroups[user]; exists {
-			continue
-		}
-		for _, g := range groups {
-			fullFileName := r.getFilePathForGroup(g, user)
-			key := promRules.GroupKey(fullFileName, g.GetName())
-			r.backupRuleGroup.DeleteLabelValues(user, key)
+	for user := range r.inMemoryRuleGroupsBackup {
+		if _, exists := newBackupGroups[user]; !exists {
+			r.backupRules.DeleteLabelValues(user)
+			r.backupRuleGroups.DeleteLabelValues(user)
 		}
 	}
-}
-
-// getFilePathForGroup returns the supposed file path of the group if it was being evaluated.
-// This is based on how mapper.go generates file paths. This can be used to generate value similar to the one returned
-// by prometheus Group.File() method.
-func (r *rulesBackupManager) getFilePathForGroup(g *rulespb.RuleGroupDesc, user string) string {
-	dirPath := filepath.Join(r.cfg.RulePath, user)
-	encodedFileName := url.PathEscape(g.GetNamespace())
-	return filepath.Join(dirPath, encodedFileName)
 }

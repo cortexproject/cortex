@@ -247,10 +247,23 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 func newTestRuler(t *testing.T, rulerConfig Config, store rulestore.RuleStore, querierTestConfig *querier.TestConfig) *Ruler {
 	ruler, _ := buildRuler(t, rulerConfig, querierTestConfig, store, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
+	rgs, err := store.ListAllRuleGroups(context.Background())
+	require.NoError(t, err)
 
-	// Ensure all rules are loaded before usage
-	ruler.syncRules(context.Background(), rulerSyncReasonInitial)
-
+	// Wait to ensure syncRules has finished and all rules are loaded before usage
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		loaded := true
+		for tenantId := range rgs {
+			if len(ruler.manager.GetRules(tenantId)) == 0 {
+				loaded = false
+			}
+		}
+		if time.Now().After(deadline) || loaded {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	return ruler
 }
 

@@ -5,6 +5,7 @@
 ## 1.16.1 2024-04-23
 
 * [ENHANCEMENT] Upgraded Docker base images to `alpine:3.18`. #5684
+* [ENHANCEMENT] Upgrade to go 1.21.9 #5879
 
 ## 1.16.0 2023-11-20
 

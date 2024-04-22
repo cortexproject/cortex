@@ -122,7 +122,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= update-go-1.21.3-e38685e50
+LATEST_BUILD_IMAGE_TAG ?= upgrade-go-to-1.21.9-b37062f16
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden

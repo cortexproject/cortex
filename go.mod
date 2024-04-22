@@ -61,7 +61,7 @@ require (
 	go.etcd.io/etcd/client/v3 v3.5.12
 	go.opentelemetry.io/contrib/propagators/aws v1.22.0
 	go.opentelemetry.io/otel v1.25.0
-	go.opentelemetry.io/otel/bridge/opentracing v1.22.0
+	go.opentelemetry.io/otel/bridge/opentracing v1.25.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.24.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.24.0
 	go.opentelemetry.io/otel/sdk v1.25.0

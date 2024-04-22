@@ -27,7 +27,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
@@ -44,8 +43,6 @@ import (
 type Config struct {
 	MaxConcurrent             int           `yaml:"max_concurrent"`
 	Timeout                   time.Duration `yaml:"timeout"`
-	Iterators                 bool          `yaml:"iterators"`
-	BatchIterators            bool          `yaml:"batch_iterators"`
 	IngesterStreaming         bool          `yaml:"ingester_streaming" doc:"hidden"`
 	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
 	MaxSamples                int           `yaml:"max_samples"`
@@ -102,12 +99,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "querier.at-modifier-enabled", "This flag is no longer functional; at-modifier is always enabled now.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.ingester-streaming", "Deprecated: Use streaming RPCs to query ingester. QueryStream is always enabled and the flag is not effective anymore.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.iterators", "Deprecated: Use iterators to execute query. This flag is no longer functional; Batch iterator is always enabled instead.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.batch-iterators", "Deprecated: Use batch iterators to execute query. This flag is no longer functional; Batch iterator is always enabled now.", util_log.Logger)
 
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
-	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
 	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
@@ -152,13 +151,8 @@ func (cfg *Config) GetStoreGatewayAddresses() []string {
 	return strings.Split(cfg.StoreGatewayAddresses, ",")
 }
 
-func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
-	if cfg.BatchIterators {
-		return batch.NewChunkMergeIterator
-	} else if cfg.Iterators {
-		return iterators.NewChunkMergeIterator
-	}
-	return mergeChunks
+func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
+	return batch.NewChunkMergeIterator
 }
 
 // New builds a queryable and promql engine.

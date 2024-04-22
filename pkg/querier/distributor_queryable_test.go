@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -190,7 +191,7 @@ func TestIngesterStreaming(t *testing.T) {
 		nil)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks, 0, true)
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0, true)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -268,7 +269,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		nil)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, mergeChunks, 0, true)
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0, true)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 

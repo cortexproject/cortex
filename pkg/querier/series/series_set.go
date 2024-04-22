@@ -128,32 +128,6 @@ func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
-// NewErrIterator instantiates an errIterator
-func NewErrIterator(err error) chunkenc.Iterator {
-	return iterators.NewCompatibleChunksIterator(errIterator{err})
-}
-
-// errIterator implements chunkenc.Iterator, just returning an error.
-type errIterator struct {
-	err error
-}
-
-func (errIterator) Seek(int64) bool {
-	return false
-}
-
-func (errIterator) Next() bool {
-	return false
-}
-
-func (errIterator) At() (t int64, v float64) {
-	return 0, 0
-}
-
-func (e errIterator) Err() error {
-	return e.err
-}
-
 // MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
 // Series will be sorted by labels if sortSeries is set.
 func MatrixToSeriesSet(sortSeries bool, m model.Matrix) storage.SeriesSet {
@@ -175,8 +149,7 @@ func MetricsToSeriesSet(ctx context.Context, sortSeries bool, ms []metric.Metric
 			return storage.ErrSeriesSet(ctx.Err())
 		}
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(m.Metric),
-			samples: nil,
+			labels: metricToLabels(m.Metric),
 		})
 	}
 	return NewConcreteSeriesSet(sortSeries, series)

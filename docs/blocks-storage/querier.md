@@ -104,16 +104,6 @@ querier:
   # CLI flag: -querier.timeout
   [timeout: <duration> | default = 2m]
 
-  # Use iterators to execute query, as opposed to fully materialising the series
-  # in memory.
-  # CLI flag: -querier.iterators
-  [iterators: <boolean> | default = false]
-
-  # Use batch iterators to execute query, as opposed to fully materialising the
-  # series in memory.  Takes precedent over the -querier.iterators flag.
-  # CLI flag: -querier.batch-iterators
-  [batch_iterators: <boolean> | default = true]
-
   # Use streaming RPCs for metadata APIs from ingester.
   # CLI flag: -querier.ingester-metadata-streaming
   [ingester_metadata_streaming: <boolean> | default = false]

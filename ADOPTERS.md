@@ -15,6 +15,7 @@ This is the list of organisations that are using Cortex in **production environm
 * [Northflank](https://northflank.com/)
 * [Opstrace](https://opstrace.com/)
 * [PITS Globale Datenrettungsdienste](https://www.pitsdatenrettung.de/)
+* [Planetary Quantum](https://www.planetary-quantum.com)
 * [Platform9](https://platform9.com/)
 * [REWE Digital](https://rewe-digital.com/)
 * [SysEleven](https://www.syseleven.de/)

@@ -55,6 +55,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 	analysis, err := s.analyzer.Analyze(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("msg", "error analyzing query", "q", r.GetQuery(), "err", err)
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
 	stats.AddExtraFields(
@@ -63,7 +64,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 		"shard_by.sharding_labels", analysis.ShardingLabels(),
 	)
 
-	if err != nil || !analysis.IsShardable() {
+	if !analysis.IsShardable() {
 		return s.next.Do(ctx, r)
 	}
 

@@ -142,7 +142,7 @@ func NewQueryTripperware(
 				tenantIDs, err := tenant.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
-					return nil, err
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 				}
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
@@ -161,8 +161,7 @@ func NewQueryTripperware(
 
 					expr, err := parser.ParseExpr(query)
 					if err != nil {
-						// If query is invalid, no need to go through tripperwares for further splitting.
-						return next.RoundTrip(r)
+						return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 					}
 
 					reqStats := stats.FromContext(r.Context())

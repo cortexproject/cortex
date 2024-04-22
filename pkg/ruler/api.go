@@ -25,19 +25,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
 // This is required because the prometheus api implementation does not allow us to return errors
 // on rule lookups, which might fail in Cortex's case.
-
-type response struct {
-	Status    string       `json:"status"`
-	Data      interface{}  `json:"data"`
-	ErrorType v1.ErrorType `json:"errorType"`
-	Error     string       `json:"error"`
-}
 
 // AlertDiscovery has info for all active alerts.
 type AlertDiscovery struct {
@@ -103,46 +97,6 @@ type recordingRule struct {
 	EvaluationTime float64       `json:"evaluationTime"`
 }
 
-func respondError(logger log.Logger, w http.ResponseWriter, msg string) {
-	b, err := json.Marshal(&response{
-		Status:    "error",
-		ErrorType: v1.ErrServer,
-		Error:     msg,
-		Data:      nil,
-	})
-
-	if err != nil {
-		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusInternalServerError)
-	if n, err := w.Write(b); err != nil {
-		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
-	}
-}
-
-func respondBadRequest(logger log.Logger, w http.ResponseWriter, msg string) {
-	b, err := json.Marshal(&response{
-		Status:    "error",
-		ErrorType: v1.ErrBadData,
-		Error:     msg,
-		Data:      nil,
-	})
-
-	if err != nil {
-		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusBadRequest)
-	if n, err := w.Write(b); err != nil {
-		level.Error(logger).Log("msg", "error writing response", "bytesWritten", n, "err", err)
-	}
-}
-
 // API is used to handle HTTP requests for the ruler service
 type API struct {
 	ruler *Ruler
@@ -165,19 +119,19 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found")
+		util_api.RespondError(logger, w, v1.ErrBadData, "no valid org id found", http.StatusBadRequest)
 		return
 	}
 
 	if err := req.ParseForm(); err != nil {
 		level.Error(logger).Log("msg", "error parsing form/query params", "err", err)
-		respondBadRequest(logger, w, "error parsing form/query params")
+		util_api.RespondError(logger, w, v1.ErrBadData, "error parsing form/query params", http.StatusBadRequest)
 		return
 	}
 
 	typ := strings.ToLower(req.URL.Query().Get("type"))
 	if typ != "" && typ != alertingRuleFilter && typ != recordingRuleFilter {
-		respondBadRequest(logger, w, fmt.Sprintf("unsupported rule type %q", typ))
+		util_api.RespondError(logger, w, v1.ErrBadData, fmt.Sprintf("unsupported rule type %q", typ), http.StatusBadRequest)
 		return
 	}
 
@@ -192,7 +146,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -264,13 +218,13 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 		return groups[i].File < groups[j].File
 	})
 
-	b, err := json.Marshal(&response{
+	b, err := json.Marshal(&util_api.Response{
 		Status: "success",
 		Data:   &RuleDiscovery{RuleGroups: groups},
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
+		util_api.RespondError(logger, w, v1.ErrServer, "unable to marshal the requested data", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -285,7 +239,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	userID, err := tenant.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
-		respondError(logger, w, "no valid org id found")
+		util_api.RespondError(logger, w, v1.ErrBadData, "no valid org id found", http.StatusBadRequest)
 		return
 	}
 
@@ -296,7 +250,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	rgs, err := a.ruler.GetRules(req.Context(), rulesRequest)
 
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -322,13 +276,13 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	b, err := json.Marshal(&response{
+	b, err := json.Marshal(&util_api.Response{
 		Status: "success",
 		Data:   &AlertDiscovery{Alerts: alerts},
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
+		util_api.RespondError(logger, w, v1.ErrServer, "unable to marshal the requested data", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -365,12 +319,12 @@ func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger
 }
 
 func respondAccepted(w http.ResponseWriter, logger log.Logger) {
-	b, err := json.Marshal(&response{
+	b, err := json.Marshal(&util_api.Response{
 		Status: "success",
 	})
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshaling json response", "err", err)
-		respondError(logger, w, "unable to marshal the requested data")
+		util_api.RespondError(logger, w, v1.ErrServer, "unable to marshal the requested data", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -447,7 +401,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 
 	userID, namespace, _, err := parseRequest(req, false, false)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrBadData, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -480,7 +434,7 @@ func (a *API) GetRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrBadData, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -502,7 +456,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrBadData, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -584,7 +538,7 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 
 	userID, namespace, _, err := parseRequest(req, true, false)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrBadData, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -594,7 +548,7 @@ func (a *API) DeleteNamespace(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -606,7 +560,7 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	userID, namespace, groupName, err := parseRequest(req, true, true)
 	if err != nil {
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrBadData, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -616,7 +570,7 @@ func (a *API) DeleteRuleGroup(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		respondError(logger, w, err.Error())
+		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

@@ -31,6 +31,7 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 		name           string
 		expression     string
 		shardingLabels []string
+		expectedErr    bool
 	}
 
 	nonShardable := []queries{
@@ -66,8 +67,9 @@ func TestQueryShardQuery(t *testing.T, instantQueryCodec Codec, shardedPrometheu
 http_requests_total`,
 		},
 		{
-			name:       "problematic query",
-			expression: `sum(a by(lanel)`,
+			name:        "problematic query",
+			expression:  `sum(a by(lanel)`,
+			expectedErr: true,
 		},
 		{
 			name:       "aggregate by expression with label_replace, sharding label is dynamic",
@@ -289,6 +291,7 @@ http_requests_total`,
 		responses      []string
 		response       string
 		shardingLabels []string
+		expectedErr    bool
 	}
 	tests := []testCase{
 		{
@@ -339,7 +342,8 @@ http_requests_total`,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 			},
-			response: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			response:    `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
+			expectedErr: query.expectedErr,
 		})
 		tests = append(tests, testCase{
 			name:        fmt.Sprintf("non shardable query_range: %s", query.name),
@@ -350,7 +354,8 @@ http_requests_total`,
 			responses: []string{
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
 			},
-			response: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
+			response:    `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
+			expectedErr: query.expectedErr,
 		})
 	}
 
@@ -366,7 +371,8 @@ http_requests_total`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 				`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]}],"stats":{"samples":{"totalQueryableSamples":10,"totalQueryableSamplesPerStep":[[1,10]]}}}}`,
 			},
-			response: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
+			response:    `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[2,"2"]},{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}],"stats":{"samples":{"totalQueryableSamples":20,"totalQueryableSamplesPerStep":[[1,20]]}}}}`,
+			expectedErr: query.expectedErr,
 		})
 		tests = append(tests, testCase{
 			name:           fmt.Sprintf("shardable query_range: %s", query.name),
@@ -379,7 +385,8 @@ http_requests_total`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"a"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
 				`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"metric","__job__":"b"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":6,"totalQueryableSamplesPerStep":[[1,1],[2,2],[3,3]]}}}}`,
 			},
-			response: `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]},{"metric":{"__job__":"b","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":12,"totalQueryableSamplesPerStep":[[1,2],[2,4],[3,6]]}}}}`,
+			response:    `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__job__":"a","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]},{"metric":{"__job__":"b","__name__":"metric"},"values":[[1,"1"],[2,"2"],[3,"3"]]}],"stats":{"samples":{"totalQueryableSamples":12,"totalQueryableSamplesPerStep":[[1,2],[2,4],[3,6]]}}}}`,
+			expectedErr: query.expectedErr,
 		})
 	}
 
@@ -448,16 +455,19 @@ http_requests_total`,
 
 			req, err := http.NewRequest("GET", tt.path, http.NoBody)
 			req = req.WithContext(ctx)
-
 			require.NoError(t, err)
+
 			resp, err := roundtripper.RoundTrip(req)
+			if tt.expectedErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, resp)
 
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-
-			contents, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			require.Equal(t, tt.response, string(contents))
+				contents, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Equal(t, tt.response, string(contents))
+			}
 		})
 	}
 }

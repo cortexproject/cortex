@@ -47,12 +47,7 @@ func (s splitByInterval) Do(ctx context.Context, r tripperware.Request) (tripper
 	// to line up the boundaries with step.
 	reqs, err := splitQuery(r, s.interval(r))
 	if err != nil {
-		// If the query itself is bad, we don't return error but send the query
-		// to querier to return the expected error message. This is not very efficient
-		// but should be okay for now.
-		// TODO(yeya24): query frontend can reuse the Prometheus API handler and return
-		// expected error message locally without passing it to the querier through network.
-		return s.next.Do(ctx, r)
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	s.splitByCounter.Add(float64(len(reqs)))
 

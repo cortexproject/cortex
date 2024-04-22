@@ -19,13 +19,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -239,8 +239,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
+	logger := util_log.WithContext(r.Context(), f.log)
 	if err != nil {
-		writeError(w, err, hs)
+		writeError(logger, w, err, hs)
 		return
 	}
 
@@ -252,7 +253,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// log copy response body error so that we will know even though success response code returned
 	bytesCopied, err := io.Copy(w, resp.Body)
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
+		level.Error(logger).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
 }
 
@@ -441,7 +442,7 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 	return fields
 }
 
-func writeError(w http.ResponseWriter, err error, additionalHeaders http.Header) {
+func writeError(logger log.Logger, w http.ResponseWriter, err error, additionalHeaders http.Header) {
 	switch err {
 	case context.Canceled:
 		err = errCanceled
@@ -453,21 +454,13 @@ func writeError(w http.ResponseWriter, err error, additionalHeaders http.Header)
 		}
 	}
 
-	resp, ok := httpgrpc.HTTPResponseFromError(err)
-	if ok {
-		for k, values := range additionalHeaders {
-			resp.Headers = append(resp.Headers, &httpgrpc.Header{Key: k, Values: values})
+	headers := w.Header()
+	for k, values := range additionalHeaders {
+		for _, value := range values {
+			headers.Set(k, value)
 		}
-		_ = server.WriteResponse(w, resp)
-	} else {
-		headers := w.Header()
-		for k, values := range additionalHeaders {
-			for _, value := range values {
-				headers.Set(k, value)
-			}
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	util_api.RespondFromGRPCError(logger, w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.QueryStats) {
@@ -488,7 +481,7 @@ func statsValue(name string, d time.Duration) string {
 func getStatusCodeFromError(err error) int {
 	switch err {
 	case context.Canceled:
-		return StatusClientClosedRequest
+		return util_api.StatusClientClosedRequest
 	case context.DeadlineExceeded:
 		return http.StatusGatewayTimeout
 	default:

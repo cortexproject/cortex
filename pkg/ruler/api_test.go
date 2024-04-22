@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -36,14 +37,14 @@ func TestRuler_rules(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
-	responseJSON := response{}
+	responseJSON := util_api.Response{}
 	err := json.Unmarshal(body, &responseJSON)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
-	expectedResponse, _ := json.Marshal(response{
+	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
 			RuleGroups: []*RuleGroup{
@@ -92,14 +93,14 @@ func TestRuler_rules_special_characters(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
-	responseJSON := response{}
+	responseJSON := util_api.Response{}
 	err := json.Unmarshal(body, &responseJSON)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
-	expectedResponse, _ := json.Marshal(response{
+	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
 			RuleGroups: []*RuleGroup{
@@ -146,14 +147,14 @@ func TestRuler_rules_limit(t *testing.T) {
 	resp := w.Result()
 	body, _ := io.ReadAll(resp.Body)
 	// Check status code and status response
-	responseJSON := response{}
+	responseJSON := util_api.Response{}
 	err := json.Unmarshal(body, &responseJSON)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, responseJSON.Status, "success")
 
 	// Testing the running rules for user1 in the mock store
-	expectedResponse, _ := json.Marshal(response{
+	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &RuleDiscovery{
 			RuleGroups: []*RuleGroup{
@@ -201,7 +202,7 @@ func TestRuler_alerts(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 
 	// Check status code and status response
-	responseJSON := response{}
+	responseJSON := util_api.Response{}
 	err := json.Unmarshal(body, &responseJSON)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -209,7 +210,7 @@ func TestRuler_alerts(t *testing.T) {
 
 	// Currently there is not an easy way to mock firing alerts. The empty
 	// response case is tested instead.
-	expectedResponse, _ := json.Marshal(response{
+	expectedResponse, _ := json.Marshal(util_api.Response{
 		Status: "success",
 		Data: &AlertDiscovery{
 			Alerts: []*Alert{},

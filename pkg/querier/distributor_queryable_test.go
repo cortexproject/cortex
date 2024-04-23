@@ -16,7 +16,6 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
@@ -160,10 +159,10 @@ func TestIngesterStreaming(t *testing.T) {
 
 	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
-	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
+	promChunk := chunkenc.NewXORChunk()
+	appender, err := promChunk.Appender()
 	require.NoError(t, err)
-	_, err = promChunk.Add(model.ZeroSamplePair)
-	require.NoError(t, err)
+	appender.Append(int64(model.ZeroSamplePair.Timestamp), float64(model.ZeroSamplePair.Value))
 
 	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{
 		chunk.NewChunk(nil, promChunk, model.Earliest, model.Earliest),
@@ -341,18 +340,16 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
 	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
-	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
+	chk := chunkenc.NewXORChunk()
+	appender, err := chk.Appender()
 	require.NoError(t, err)
 
 	for _, s := range samples {
-		c, err := promChunk.Add(model.SamplePair{Value: model.SampleValue(s.Value), Timestamp: model.Time(s.TimestampMs)})
-		require.NoError(t, err)
-		require.Nil(t, c)
+		appender.Append(s.TimestampMs, s.Value)
 	}
 
-	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{
-		chunk.NewChunk(nil, promChunk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs)),
-	})
+	c := chunk.NewChunk(nil, chk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs))
+	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{c})
 	require.NoError(t, err)
 
 	return clientChunks

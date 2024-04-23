@@ -2317,11 +2317,11 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 
 		for _, ts := range resp.Chunkseries {
 			for _, c := range ts.Chunks {
-				ch, err := encoding.NewForEncoding(encoding.Encoding(c.Encoding))
+				enc := encoding.Encoding(c.Encoding).PromChunkEncoding()
+				require.True(t, enc != chunkenc.EncNone)
+				chk, err := chunkenc.FromData(enc, c.Data)
 				require.NoError(t, err)
-				require.NoError(t, ch.UnmarshalFromBuf(c.Data))
-
-				totalSamples += ch.Len()
+				totalSamples += chk.NumSamples()
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 package batch
 
 import (
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // batchStream deals with iteratoring through multiple, non-overlapping batches,

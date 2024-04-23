@@ -1,7 +1,6 @@
 package cache_test
 
 import (
-	"bytes"
 	"context"
 	"math/rand"
 	"strconv"
@@ -10,45 +9,30 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
-	prom_chunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 )
 
-func fillCache(t *testing.T, cache cache.Cache) ([]string, []prom_chunk.Chunk) {
+func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunkenc.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
 	keys := []string{}
 	bufs := [][]byte{}
-	chunks := []prom_chunk.Chunk{}
+	chunks := []chunkenc.Chunk{}
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
+		promChunk := chunkenc.NewXORChunk()
+		appender, err := promChunk.Appender()
 		require.NoError(t, err)
-		nc, err := promChunk.Add(model.SamplePair{
-			Timestamp: ts,
-			Value:     model.SampleValue(i),
-		})
-		require.NoError(t, err)
-		require.Nil(t, nc)
+		appender.Append(int64(ts), float64(i))
 
-		buf := bytes.NewBuffer(nil)
-		err = promChunk.Marshal(buf)
+		cleanChunk, err := chunkenc.FromData(promChunk.Encoding(), promChunk.Bytes())
 		require.NoError(t, err)
-
-		// In order to be able to compare the expected chunk (this one) with the
-		// actual one (the one that will be fetched from the cache) we need to
-		// cleanup the chunk to avoid any internal references mismatch (ie. appender
-		// pointer).
-		cleanChunk, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
-		require.NoError(t, err)
-		err = cleanChunk.UnmarshalFromBuf(buf.Bytes())
-		require.NoError(t, err)
-
 		keys = append(keys, strconv.Itoa(i))
-		bufs = append(bufs, buf.Bytes())
+		bufs = append(bufs, promChunk.Bytes())
 		chunks = append(chunks, cleanChunk)
 	}
 
@@ -56,7 +40,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []prom_chunk.Chunk) {
 	return keys, chunks
 }
 
-func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []prom_chunk.Chunk) {
+func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []chunkenc.Chunk) {
 	for i := 0; i < 100; i++ {
 		index := rand.Intn(len(keys))
 		key := keys[index]
@@ -66,26 +50,22 @@ func testCacheSingle(t *testing.T, cache cache.Cache, keys []string, chunks []pr
 		require.Len(t, bufs, 1)
 		require.Len(t, missingKeys, 0)
 
-		c, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
-		require.NoError(t, err)
-		err = c.UnmarshalFromBuf(bufs[0])
+		c, err := chunkenc.FromData(chunkenc.EncXOR, bufs[0])
 		require.NoError(t, err)
 		require.Equal(t, chunks[index], c)
 	}
 }
 
-func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []prom_chunk.Chunk) {
+func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []chunkenc.Chunk) {
 	// test getting them all
 	found, bufs, missingKeys := cache.Fetch(context.Background(), keys)
 	require.Len(t, found, len(keys))
 	require.Len(t, bufs, len(keys))
 	require.Len(t, missingKeys, 0)
 
-	result := []prom_chunk.Chunk{}
+	result := []chunkenc.Chunk{}
 	for i := range found {
-		c, err := prom_chunk.NewForEncoding(prom_chunk.PrometheusXorChunk)
-		require.NoError(t, err)
-		err = c.UnmarshalFromBuf(bufs[i])
+		c, err := chunkenc.FromData(chunkenc.EncXOR, bufs[i])
 		require.NoError(t, err)
 		result = append(result, c)
 	}

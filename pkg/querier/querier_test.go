@@ -734,6 +734,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			queryEngine := promql.NewEngine(opts)
 
+			chunkStore := &emptyChunkStore{}
 			distributor := &MockDistributor{}
 			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
@@ -741,7 +742,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "0")
-			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, nil))}
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 			require.NoError(t, err)
@@ -832,9 +833,10 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 
+			chunkStore := &emptyChunkStore{}
 			distributor := &emptyDistributor{}
 
-			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, nil))}
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 
 			queryEngine := promql.NewEngine(opts)
@@ -968,7 +970,8 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 				overrides, err := validation.NewOverrides(limits, nil)
 				require.NoError(t, err)
 
-				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, nil))}
+				chunkStore := &emptyChunkStore{}
+				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
 
 				t.Run("query range", func(t *testing.T) {
 					if testData.query == "" {

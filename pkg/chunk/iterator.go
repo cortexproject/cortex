@@ -18,10 +18,6 @@ type Iterator interface {
 	// if either the chunk contains no value at or after the provided time,
 	// or an error has occurred.
 	FindAtOrAfter(model.Time) bool
-	// Returns the last value scanned (by the scan method) or found (by one
-	// of the find... methods). It returns model.ZeroSamplePair before any of
-	// those methods were called.
-	Value() model.SamplePair
 	// Returns a batch of the provisded size; NB not idempotent!  Should only be called
 	// once per Scan.
 	Batch(size int) Batch

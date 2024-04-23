@@ -130,10 +130,6 @@ func (i *mockIterator) FindAtOrAfter(model.Time) bool {
 	return true
 }
 
-func (i *mockIterator) Value() model.SamplePair {
-	return model.SamplePair{}
-}
-
 func (i *mockIterator) Batch(size int) chunk.Batch {
 	batch := chunk.Batch{
 		Length: chunk.BatchSize,

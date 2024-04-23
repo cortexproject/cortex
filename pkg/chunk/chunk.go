@@ -56,14 +56,6 @@ func (p *prometheusChunkIterator) FindAtOrAfter(time model.Time) bool {
 	return p.it.Seek(int64(time)) != chunkenc.ValNone
 }
 
-func (p *prometheusChunkIterator) Value() model.SamplePair {
-	ts, val := p.it.At()
-	return model.SamplePair{
-		Timestamp: model.Time(ts),
-		Value:     model.SampleValue(val),
-	}
-}
-
 func (p *prometheusChunkIterator) Batch(size int) Batch {
 	var batch Batch
 	j := 0
@@ -89,6 +81,5 @@ type errorIterator string
 
 func (e errorIterator) Scan() bool                         { return false }
 func (e errorIterator) FindAtOrAfter(time model.Time) bool { return false }
-func (e errorIterator) Value() model.SamplePair            { panic("no values") }
 func (e errorIterator) Batch(size int) Batch               { panic("no values") }
 func (e errorIterator) Err() error                         { return errors.New(string(e)) }

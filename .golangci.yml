@@ -19,12 +19,18 @@ linters-settings:
     exclude: ./.errcheck-exclude
   goimports:
     local-prefixes: "github.com/cortexproject/cortex"
+  revive:
+    severity: error # We only want critical issues.
 
   depguard:
-    list-type: blacklist
-    include-go-root: true
-    packages-with-error-message:
-      - github.com/go-kit/kit/log: "Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
+    rules:
+      main:
+        list-mode: lax
+        files:
+          - $all
+        deny:
+          - pkg: "github.com/go-kit/kit/log"
+            desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
 
 run:
   timeout: 5m

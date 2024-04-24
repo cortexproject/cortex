@@ -1210,7 +1210,7 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
 
 	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
-	require.NoError(t, s.StartAndWaitReady(queryFrontend))
+	require.NoError(t, s.Start(queryFrontend))
 
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),

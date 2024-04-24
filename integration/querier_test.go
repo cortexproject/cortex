@@ -1,10 +1,12 @@
+//go:build integration_querier
+// +build integration_querier
+
 package integration
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
@@ -1244,7 +1247,6 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 		}
 		retries.Wait()
 	}
-
 	require.NoError(t, err)
 	require.Equal(t, 422, res.StatusCode)
 	var response api.Response

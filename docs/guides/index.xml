@@ -60,9 +60,9 @@ killing them is a last resort and should not be left to a machine.&lt;/p></descr
 but it can also build its own KV store on top of memberlist library using a gossip algorithm.&lt;/p>
 &lt;p>This short guide shows how to start Cortex in &lt;a href="/docs/architecture/">single-binary mode&lt;/a> with memberlist-based ring.
 To reduce number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/">blocks storage&lt;/a> with no shipping to external stores.
-Storage engine and external storage configuration are not dependant on the ring configuration.&lt;/p>
+Storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p>
 &lt;h2 id="single-binary-two-cortex-instances">Single-binary, two Cortex instances&lt;/h2>
-&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as a two instances of Cortex on local computer.
+&lt;p>For simplicity and to get started, we&amp;rsquo;ll run it as two instances of Cortex on local computer.
 We will use prepared configuration files (&lt;a href="../../configuration/single-process-config-blocks-gossip-1.yaml">file 1&lt;/a>, &lt;a href="../../configuration/single-process-config-blocks-gossip-2.yaml">file 2&lt;/a>), with no external
 dependencies.&lt;/p>
 &lt;p>Build Cortex first:&lt;/p>
@@ -526,7 +526,7 @@ openssl x509 -req -in client.csr -CA root.crt -CAkey root.key -CAcreateserial -o
 openssl x509 -req -in server.csr -CA root.crt -CAkey root.key -CAcreateserial -out server.crt -days 100000 -sha256
 &lt;/code>&lt;/pre>&lt;p>Note that the above script generates certificates that are valid for 100000 days.
 This can be changed by adjusting the &lt;code>-days&lt;/code> option in the above commands.
-It is recommended that the certs be replaced atleast once every 2 years.&lt;/p>
+It is recommended that the certs be replaced at least once every 2 years.&lt;/p>
 &lt;p>The above script generates keys &lt;code>client.key, server.key&lt;/code> and certs
 &lt;code>client.crt, server.crt&lt;/code> for both the client and server. The CA cert is
 generated as &lt;code>root.crt&lt;/code>.&lt;/p>

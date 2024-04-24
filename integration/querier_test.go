@@ -6,14 +6,13 @@ package integration
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/api"
-	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -26,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/api"
 )
 
 func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {

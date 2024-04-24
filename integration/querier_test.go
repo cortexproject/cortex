@@ -1,11 +1,10 @@
-//go:build integration_querier
-// +build integration_querier
-
 package integration
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1208,13 +1207,12 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
 
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
-	require.NoError(t, s.StartAndWaitReady(querier))
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+
+	require.NoError(t, s.StartAndWaitReady(querier, queryFrontend))
 	// Wait until the distributor and querier has updated the ring.
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-
-	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
-	require.NoError(t, s.Start(queryFrontend))
 
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
@@ -1231,8 +1229,22 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	// We expect request to hit max samples limit.
-	res, body, err := c.QueryRaw(`sum({job="test"})`, series1Timestamp)
+	retries := backoff.New(context.Background(), backoff.Config{
+		MinBackoff: 5 * time.Second,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 5,
+	})
+
+	var body []byte
+	for retries.Ongoing() {
+		// We expect request to hit max samples limit.
+		res, body, err = c.QueryRaw(`sum({job="test"})`, series1Timestamp)
+		if err == nil {
+			break
+		}
+		retries.Wait()
+	}
+
 	require.NoError(t, err)
 	require.Equal(t, 422, res.StatusCode)
 	var response api.Response

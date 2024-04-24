@@ -4,7 +4,10 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/api"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1176,4 +1179,69 @@ func prompbLabelsToModelMetric(pbLabels []prompb.Label) model.Metric {
 	}
 
 	return metric
+}
+
+func TestQuerierMaxSamplesLimit(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		"-querier.max-samples":                     "1",
+	})
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components for the write path.
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+	// Wait until the distributor and querier has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push some series to Cortex.
+	series1Timestamp := time.Now()
+	series1, _ := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "job", Value: "test"})
+	series2, _ := generateSeries("series_2", series1Timestamp, prompb.Label{Name: "job", Value: "test"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// We expect request to hit max samples limit.
+	res, body, err = c.QueryRaw(`sum({job="test"})`, series1Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, 422, res.StatusCode)
+	var response api.Response
+	err = json.Unmarshal(body, &response)
+	require.NoError(t, err)
+	// Make sure that the returned response is in Prometheus error format.
+	require.Equal(t, response, api.Response{
+		Status:    "error",
+		ErrorType: v1.ErrExec,
+		Error:     "query processing would load too many samples into memory in query execution",
+	})
 }

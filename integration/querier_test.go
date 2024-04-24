@@ -1232,7 +1232,7 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 	require.Equal(t, 200, res.StatusCode)
 
 	// We expect request to hit max samples limit.
-	res, body, err = c.QueryRaw(`sum({job="test"})`, series1Timestamp)
+	res, body, err := c.QueryRaw(`sum({job="test"})`, series1Timestamp)
 	require.NoError(t, err)
 	require.Equal(t, 422, res.StatusCode)
 	var response api.Response

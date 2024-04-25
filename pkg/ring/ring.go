@@ -682,7 +682,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 	r.reportedOwners = make(map[string]struct{})
 	numTokens, ownedRange := r.countTokens()
 	for id, totalOwned := range ownedRange {
-		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32))
+		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32+1))
 		r.numTokensGaugeVec.WithLabelValues(id).Set(float64(numTokens[id]))
 		delete(prevOwners, id)
 		r.reportedOwners[id] = struct{}{}

@@ -175,12 +175,12 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		if r.cfg.ZoneAwarenessEnabled {
 			numTokens, ownedByAz := r.countTokensByAz()
-			ownership = (float64(ownedByAz[id]) / float64(math.MaxUint32)) * 100
+			ownership = (float64(ownedByAz[id]) / float64(math.MaxUint32+1)) * 100
 			expectedOwnership := 1 / float64(len(numTokens[ing.Zone])) * 100
 			deltaOwnership = (1 - expectedOwnership/ownership) * 100
 		} else {
 			_, owned := r.countTokens()
-			ownership = (float64(owned[id]) / float64(math.MaxUint32)) * 100
+			ownership = (float64(owned[id]) / float64(math.MaxUint32+1)) * 100
 			expectedOwnership := 1 / float64(len(owned)) * 100
 			deltaOwnership = (1 - expectedOwnership/ownership) * 100
 		}

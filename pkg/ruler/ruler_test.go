@@ -349,7 +349,7 @@ func TestGetRules(t *testing.T) {
 		rulerStateMap              map[string]ring.InstanceState
 		rulerAZMap                 map[string]string
 		expectedError              error
-		enableAPIRulesBackup       bool
+		replicationFactor          int
 		enableZoneAwareReplication bool
 	}
 
@@ -541,7 +541,7 @@ func TestGetRules(t *testing.T) {
 				"user2": 9,
 				"user3": 3,
 			},
-			enableAPIRulesBackup:    true,
+			replicationFactor:       3,
 			expectedClientCallCount: len(expectedRules),
 		},
 		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter": {
@@ -633,11 +633,11 @@ func TestGetRules(t *testing.T) {
 			expectedClientCallCount: 0,
 		},
 		"Shuffle Sharding and ShardSize = 3 with API Rules backup enabled": {
-			sharding:             true,
-			shuffleShardSize:     3,
-			shardingStrategy:     util.ShardingStrategyShuffle,
-			rulerStateMap:        rulerStateMapAllActive,
-			enableAPIRulesBackup: true,
+			sharding:          true,
+			shuffleShardSize:  3,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			rulerStateMap:     rulerStateMapAllActive,
+			replicationFactor: 3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -649,11 +649,11 @@ func TestGetRules(t *testing.T) {
 			expectedClientCallCount: 3,
 		},
 		"Shuffle Sharding and ShardSize = 3 with API Rules backup enabled and one ruler is in Pending state": {
-			sharding:             true,
-			shuffleShardSize:     3,
-			shardingStrategy:     util.ShardingStrategyShuffle,
-			rulerStateMap:        rulerStateMapOnePending,
-			enableAPIRulesBackup: true,
+			sharding:          true,
+			shuffleShardSize:  3,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			rulerStateMap:     rulerStateMapOnePending,
+			replicationFactor: 3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -665,11 +665,11 @@ func TestGetRules(t *testing.T) {
 			expectedClientCallCount: 2, // one of the ruler is pending, so we don't expect that ruler to be called
 		},
 		"Shuffle Sharding and ShardSize = 3 with API Rules backup enabled and two ruler is in Pending state": {
-			sharding:             true,
-			shuffleShardSize:     3,
-			shardingStrategy:     util.ShardingStrategyShuffle,
-			rulerStateMap:        rulerStateMapTwoPending,
-			enableAPIRulesBackup: true,
+			sharding:          true,
+			shuffleShardSize:  3,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			rulerStateMap:     rulerStateMapTwoPending,
+			replicationFactor: 3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -682,7 +682,7 @@ func TestGetRules(t *testing.T) {
 			enableZoneAwareReplication: true,
 			rulerStateMap:              rulerStateMapAllActive,
 			rulerAZMap:                 rulerAZEvenSpread,
-			enableAPIRulesBackup:       true,
+			replicationFactor:          3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -700,7 +700,7 @@ func TestGetRules(t *testing.T) {
 			enableZoneAwareReplication: true,
 			rulerStateMap:              rulerStateMapOnePending,
 			rulerAZMap:                 rulerAZEvenSpread,
-			enableAPIRulesBackup:       true,
+			replicationFactor:          3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -718,7 +718,7 @@ func TestGetRules(t *testing.T) {
 			enableZoneAwareReplication: true,
 			rulerStateMap:              rulerStateMapTwoPending,
 			rulerAZMap:                 rulerAZEvenSpread,
-			enableAPIRulesBackup:       true,
+			replicationFactor:          3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,
 			},
@@ -741,7 +741,6 @@ func TestGetRules(t *testing.T) {
 
 				cfg.ShardingStrategy = tc.shardingStrategy
 				cfg.EnableSharding = tc.sharding
-				cfg.APIEnableRulesBackup = tc.enableAPIRulesBackup
 
 				cfg.Ring = RingConfig{
 					InstanceID:   id,
@@ -751,8 +750,8 @@ func TestGetRules(t *testing.T) {
 					},
 					ReplicationFactor: 1,
 				}
-				if tc.enableAPIRulesBackup {
-					cfg.Ring.ReplicationFactor = 3
+				if tc.replicationFactor > 0 {
+					cfg.Ring.ReplicationFactor = tc.replicationFactor
 					cfg.Ring.ZoneAwarenessEnabled = tc.enableZoneAwareReplication
 				}
 				if tc.enableZoneAwareReplication {
@@ -877,7 +876,7 @@ func TestGetRules(t *testing.T) {
 				numberOfRulers := len(rulerAddrMap)
 				require.Equal(t, totalConfiguredRules*numberOfRulers, totalLoadedRules)
 			}
-			if tc.enableAPIRulesBackup && tc.sharding && tc.expectedError == nil {
+			if tc.replicationFactor > 1 && tc.sharding && tc.expectedError == nil {
 				// all rules should be backed up
 				require.Equal(t, totalConfiguredRules, len(ruleBackupCount))
 				var hasUnhealthyRuler bool
@@ -896,7 +895,7 @@ func TestGetRules(t *testing.T) {
 					}
 				}
 			} else {
-				// If APIEnableRulesBackup is disabled, rulers should not back up any rules
+				// If rules backup is disabled, rulers should not back up any rules
 				require.Equal(t, 0, len(ruleBackupCount))
 			}
 		})
@@ -983,7 +982,6 @@ func TestGetRulesFromBackup(t *testing.T) {
 
 		cfg.ShardingStrategy = util.ShardingStrategyShuffle
 		cfg.EnableSharding = true
-		cfg.APIEnableRulesBackup = true
 		cfg.EvaluationInterval = 5 * time.Minute
 
 		cfg.Ring = RingConfig{
@@ -1141,16 +1139,15 @@ func TestSharding(t *testing.T) {
 	type expectedRulesMap map[string]map[string]rulespb.RuleGroupList
 
 	type testCase struct {
-		sharding             bool
-		shardingStrategy     string
-		enableAPIRulesBackup bool
-		replicationFactor    int
-		shuffleShardSize     int
-		setupRing            func(*ring.Desc)
-		enabledUsers         []string
-		disabledUsers        []string
-		expectedRules        expectedRulesMap
-		expectedBackupRules  expectedRulesMap
+		sharding            bool
+		shardingStrategy    string
+		replicationFactor   int
+		shuffleShardSize    int
+		setupRing           func(*ring.Desc)
+		enabledUsers        []string
+		disabledUsers       []string
+		expectedRules       expectedRulesMap
+		expectedBackupRules expectedRulesMap
 	}
 
 	const (
@@ -1524,12 +1521,11 @@ func TestSharding(t *testing.T) {
 		},
 
 		"shuffle sharding, three rulers, shard size 2, enable api backup": {
-			sharding:             true,
-			replicationFactor:    2,
-			shardingStrategy:     util.ShardingStrategyShuffle,
-			enableAPIRulesBackup: true,
-			shuffleShardSize:     2,
-			enabledUsers:         []string{user1},
+			sharding:          true,
+			replicationFactor: 2,
+			shardingStrategy:  util.ShardingStrategyShuffle,
+			shuffleShardSize:  2,
+			enabledUsers:      []string{user1},
 
 			setupRing: func(desc *ring.Desc) {
 				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Token + 1}), ring.ACTIVE, time.Now())
@@ -1566,9 +1562,8 @@ func TestSharding(t *testing.T) {
 			setupRuler := func(id string, host string, port int, forceRing *ring.Ring) *Ruler {
 				store := newMockRuleStore(allRules, nil)
 				cfg := Config{
-					EnableSharding:       tc.sharding,
-					APIEnableRulesBackup: tc.enableAPIRulesBackup,
-					ShardingStrategy:     tc.shardingStrategy,
+					EnableSharding:   tc.sharding,
+					ShardingStrategy: tc.shardingStrategy,
 					Ring: RingConfig{
 						InstanceID:   id,
 						InstanceAddr: host,
@@ -1657,7 +1652,7 @@ func TestSharding(t *testing.T) {
 
 			require.Equal(t, tc.expectedRules, expected)
 
-			if !tc.enableAPIRulesBackup {
+			if tc.replicationFactor <= 1 {
 				require.Equal(t, 0, len(expectedBackup[ruler1]))
 				require.Equal(t, 0, len(expectedBackup[ruler2]))
 				require.Equal(t, 0, len(expectedBackup[ruler3]))

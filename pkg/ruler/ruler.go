@@ -130,9 +130,8 @@ type Config struct {
 	Ring             RingConfig    `yaml:"ring"`
 	FlushCheckPeriod time.Duration `yaml:"flush_period"`
 
-	EnableAPI            bool `yaml:"enable_api"`
-	APIEnableRulesBackup bool `yaml:"api_enable_rules_backup"`
-	APIDeduplicateRules  bool `yaml:"api_deduplicate_rules"`
+	EnableAPI           bool `yaml:"enable_api"`
+	APIDeduplicateRules bool `yaml:"api_deduplicate_rules"`
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
@@ -200,7 +199,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "file path to store temporary rule files for the prometheus rule managers")
 	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler api")
-	f.BoolVar(&cfg.APIEnableRulesBackup, "experimental.ruler.api-enable-rules-backup", false, "EXPERIMENTAL: Enable rulers to store a copy of rules owned by other rulers with default state (state before any evaluation) and send this copy in list API requests as backup in case the ruler who owns the rule fails to send its rules. This allows the rules API to handle ruler outage by returning rules with default state. Ring replication-factor needs to be set to 2 or more for this to be useful.")
 	f.BoolVar(&cfg.APIDeduplicateRules, "experimental.ruler.api-deduplicate-rules", false, "EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API response. If there are duplicate rules the rule with the latest evaluation timestamp will be kept.")
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than grace period.`)
@@ -215,6 +213,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	cfg.RingCheckPeriod = 5 * time.Second
+}
+
+func (cfg *Config) RulesBackupEnabled() bool {
+	// If the replication factor is greater the  1, only the first replica is responsible for evaluating the rule,
+	// the rest of the replica will store the rule groups as backup only for API HA.
+	return cfg.Ring.ReplicationFactor > 1
 }
 
 // MultiTenantManager is the interface of interaction with a Manager that is tenant aware.
@@ -581,7 +585,7 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, loadedConfigs)
 
-	if r.cfg.APIEnableRulesBackup {
+	if r.cfg.RulesBackupEnabled() {
 		r.manager.BackUpRuleGroups(ctx, backupConfigs)
 	}
 }
@@ -604,7 +608,7 @@ func (r *Ruler) loadRuleGroups(ctx context.Context) (map[string]rulespb.RuleGrou
 	if err != nil {
 		level.Warn(r.logger).Log("msg", "failed to load some rules owned by this ruler", "count", len(ownedConfigs)-len(loadedOwnedConfigs), "err", err)
 	}
-	if r.cfg.APIEnableRulesBackup {
+	if r.cfg.RulesBackupEnabled() {
 		loadedBackupConfigs, err := r.store.LoadRuleGroups(ctx, backupConfigs)
 		if err != nil {
 			level.Warn(r.logger).Log("msg", "failed to load some rules backed up by this ruler", "count", len(backupConfigs)-len(loadedBackupConfigs), "err", err)
@@ -685,7 +689,7 @@ func (r *Ruler) listRulesShardingDefault(ctx context.Context) (map[string]rulesp
 		if len(owned) > 0 {
 			ownedConfigs[userID] = owned
 		}
-		if r.cfg.APIEnableRulesBackup {
+		if r.cfg.RulesBackupEnabled() {
 			backup := filterBackupRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), r.ring, r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 			if len(backup) > 0 {
 				backedUpConfigs[userID] = backup
@@ -748,7 +752,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 
 				filterOwned := filterRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				var filterBackup []*rulespb.RuleGroupDesc
-				if r.cfg.APIEnableRulesBackup {
+				if r.cfg.RulesBackupEnabled() {
 					filterBackup = filterBackupRuleGroups(userID, groups, r.limits.DisabledRuleGroups(userID), userRings[userID], r.lifecycler.GetInstanceAddr(), r.logger, r.ringCheckErrors)
 				}
 				if len(filterOwned) == 0 && len(filterBackup) == 0 {
@@ -1121,7 +1125,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 	)
 
 	zoneByAddress := make(map[string]string)
-	if r.cfg.APIEnableRulesBackup {
+	if r.cfg.RulesBackupEnabled() {
 		for _, ruler := range rulers.Instances {
 			zoneByAddress[ruler.Addr] = ruler.Zone
 		}
@@ -1146,9 +1150,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		if err != nil {
 			level.Error(r.logger).Log("msg", "unable to retrieve rules from ruler", "addr", addr, "err", err)
 			r.rulerGetRulesFailures.WithLabelValues(addr).Inc()
-			// If APIEnableRulesBackup is enabled and there are enough rulers replicating the rules, we should
+			// If rules backup is enabled and there are enough rulers replicating the rules, we should
 			// be able to handle failures.
-			if r.cfg.APIEnableRulesBackup && len(jobs) >= r.cfg.Ring.ReplicationFactor {
+			if r.cfg.RulesBackupEnabled() && len(jobs) >= r.cfg.Ring.ReplicationFactor {
 				mtx.Lock()
 				failedZones[zoneByAddress[addr]] = struct{}{}
 				errCount += 1
@@ -1168,7 +1172,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		return nil
 	})
 
-	if err == nil && (r.cfg.APIEnableRulesBackup || r.cfg.APIDeduplicateRules) {
+	if err == nil && (r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules) {
 		merged = mergeGroupStateDesc(merged)
 	}
 
@@ -1183,7 +1187,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	groupDescs, err := r.getLocalRules(userID, *in, r.cfg.APIEnableRulesBackup)
+	groupDescs, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
 	if err != nil {
 		return nil, err
 	}

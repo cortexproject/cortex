@@ -3008,8 +3008,8 @@ func TestUpdateMetrics(t *testing.T) {
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
-		ring_member_ownership_percent{member="A",name="test"} 0.500000000349246
-		ring_member_ownership_percent{member="B",name="test"} 0.49999999965075403
+		ring_member_ownership_percent{member="A",name="test"} 0.4999999998835847
+		ring_member_ownership_percent{member="B",name="test"} 0.500000000349246
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE"} 2

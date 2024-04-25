@@ -32,6 +32,7 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.14.0        | 2022-11-15                                 | Alan Protasio (@alanprot)                   |
 | v1.15.0        | 2023-03-27                                 | Ben Ye (@yeya24)                            |
 | v1.16.0        | 2023-11-05                                 | Ben Ye (@yeya24)                            |
+| v1.17.0        | 2024-04-25                                 | Ben Ye (@yeya24)                            |
 
 ## Release shepherd responsibilities
 

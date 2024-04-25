@@ -2833,6 +2833,11 @@ lifecycler:
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]
 
+  # EXPERIMENTAL: Algorithm used to generate new ring tokens. Supported Values:
+  # random,minimize-spread
+  # CLI flag: -ingester.tokens-generator-strategy
+  [tokens_generator_strategy: <string> | default = "random"]
+
   # Period at which to heartbeat to consul. 0 = disabled.
   # CLI flag: -ingester.heartbeat-period
   [heartbeat_period: <duration> | default = 5s]

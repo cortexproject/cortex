@@ -33,7 +33,7 @@ type LifecyclerConfig struct {
 
 	// Config for the ingester lifecycle control
 	NumTokens                int           `yaml:"num_tokens"`
-	TokensGeneratorStrategy  string        `yaml:"tokens_generator_strategy" doc:"hidden"`
+	TokensGeneratorStrategy  string        `yaml:"tokens_generator_strategy"`
 	HeartbeatPeriod          time.Duration `yaml:"heartbeat_period"`
 	ObservePeriod            time.Duration `yaml:"observe_period"`
 	JoinAfter                time.Duration `yaml:"join_after"`
@@ -70,7 +70,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	}
 
 	f.IntVar(&cfg.NumTokens, prefix+"num-tokens", 128, "Number of tokens for each ingester.")
-	f.StringVar(&cfg.TokensGeneratorStrategy, prefix+"tokens-generator-strategy", randomTokenStrategy, fmt.Sprintf("Algorithm used to generate new tokens. Supported Values: %s", strings.Join(supportedTokenStrategy, ",")))
+	f.StringVar(&cfg.TokensGeneratorStrategy, prefix+"tokens-generator-strategy", randomTokenStrategy, fmt.Sprintf("EXPERIMENTAL: Algorithm used to generate new ring tokens. Supported Values: %s", strings.Join(supportedTokenStrategy, ",")))
 	f.DurationVar(&cfg.HeartbeatPeriod, prefix+"heartbeat-period", 5*time.Second, "Period at which to heartbeat to consul. 0 = disabled.")
 	f.DurationVar(&cfg.JoinAfter, prefix+"join-after", 0*time.Second, "Period to wait for a claim from another member; will join automatically after this.")
 	f.DurationVar(&cfg.ObservePeriod, prefix+"observe-period", 0*time.Second, "Observe tokens after generating to resolve collisions. Useful when using gossiping ring.")
@@ -176,9 +176,6 @@ func NewLifecycler(
 	}
 
 	zone := cfg.Zone
-	if zone != "" {
-		level.Warn(logger).Log("msg", "experimental feature in use", "feature", "Zone aware replication")
-	}
 
 	// We do allow a nil FlushTransferer, but to keep the ring logic easier we assume
 	// it's always set, so we use a noop FlushTransferer

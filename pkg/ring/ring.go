@@ -590,22 +590,42 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}, nil
 }
 
+func (r *Ring) countTokensByAz() (map[string]map[string]uint32, map[string]int64) {
+	numTokens := map[string]map[string]uint32{}
+	owned := map[string]int64{}
+
+	for zone, zonalTokens := range r.ringDesc.getTokensByZone() {
+		numTokens[zone] = map[string]uint32{}
+		for i := 1; i <= len(zonalTokens); i++ {
+			index := i % len(zonalTokens)
+			diff := tokenDistance(zonalTokens[i-1], zonalTokens[index])
+			info := r.ringInstanceByToken[zonalTokens[index]]
+			owned[info.InstanceID] = owned[info.InstanceID] + diff
+			numTokens[zone][info.InstanceID] = numTokens[zone][info.InstanceID] + 1
+		}
+	}
+
+	// Set to 0 the number of owned tokens by instances which don't have tokens yet.
+	for id, info := range r.ringDesc.Ingesters {
+		if _, ok := owned[id]; !ok {
+			owned[id] = 0
+			numTokens[info.Zone][id] = 0
+		}
+	}
+
+	return numTokens, owned
+}
+
 // countTokens returns the number of tokens and tokens within the range for each instance.
 // The ring read lock must be already taken when calling this function.
-func (r *Ring) countTokens() (map[string]uint32, map[string]uint32) {
-	owned := map[string]uint32{}
+func (r *Ring) countTokens() (map[string]uint32, map[string]int64) {
+	owned := map[string]int64{}
 	numTokens := map[string]uint32{}
-	for i, token := range r.ringTokens {
-		var diff uint32
+	for i := 1; i <= len(r.ringTokens); i++ { // Compute how many tokens are within the range.
+		index := i % len(r.ringTokens)
+		diff := tokenDistance(r.ringTokens[i-1], r.ringTokens[index])
 
-		// Compute how many tokens are within the range.
-		if i+1 == len(r.ringTokens) {
-			diff = (math.MaxUint32 - token) + r.ringTokens[0]
-		} else {
-			diff = r.ringTokens[i+1] - token
-		}
-
-		info := r.ringInstanceByToken[token]
+		info := r.ringInstanceByToken[r.ringTokens[index]]
 		numTokens[info.InstanceID] = numTokens[info.InstanceID] + 1
 		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
@@ -662,7 +682,7 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 	r.reportedOwners = make(map[string]struct{})
 	numTokens, ownedRange := r.countTokens()
 	for id, totalOwned := range ownedRange {
-		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32))
+		r.memberOwnershipGaugeVec.WithLabelValues(id).Set(float64(totalOwned) / float64(math.MaxUint32+1))
 		r.numTokensGaugeVec.WithLabelValues(id).Set(float64(numTokens[id]))
 		delete(prevOwners, id)
 		r.reportedOwners[id] = struct{}{}

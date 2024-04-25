@@ -38,6 +38,7 @@ const pageContent = `
 						<th>Last Heartbeat</th>
 						<th>Tokens</th>
 						<th>Ownership</th>
+						<th>Ownership Diff From Expected</th>
 						<th>Actions</th>
 					</tr>
 				</thead>
@@ -56,6 +57,7 @@ const pageContent = `
 						<td>{{ .HeartbeatTimestamp }}</td>
 						<td>{{ .NumTokens }}</td>
 						<td>{{ .Ownership }}%</td>
+						<td>{{ .DiffOwnership }}%</td>
 						<td><button name="forget" value="{{ .ID }}" type="submit">Forget</button></td>
 					</tr>
 					{{ end }}
@@ -114,6 +116,7 @@ type ingesterDesc struct {
 	Tokens              []uint32 `json:"tokens"`
 	NumTokens           int      `json:"-"`
 	Ownership           float64  `json:"-"`
+	DiffOwnership       float64  `json:"-"`
 }
 
 type httpResponse struct {
@@ -153,7 +156,6 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
 	var ingesters []ingesterDesc
-	_, owned := r.countTokens()
 	for _, id := range ingesterIDs {
 		ing := r.ringDesc.Ingesters[id]
 		heartbeatTimestamp := time.Unix(ing.Timestamp, 0)
@@ -168,6 +170,21 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			registeredTimestamp = ing.GetRegisteredAt().String()
 		}
 
+		var ownership float64
+		var deltaOwnership float64
+
+		if r.cfg.ZoneAwarenessEnabled {
+			numTokens, ownedByAz := r.countTokensByAz()
+			ownership = (float64(ownedByAz[id]) / float64(math.MaxUint32+1)) * 100
+			expectedOwnership := 1 / float64(len(numTokens[ing.Zone])) * 100
+			deltaOwnership = (1 - expectedOwnership/ownership) * 100
+		} else {
+			_, owned := r.countTokens()
+			ownership = (float64(owned[id]) / float64(math.MaxUint32+1)) * 100
+			expectedOwnership := 1 / float64(len(owned)) * 100
+			deltaOwnership = (1 - expectedOwnership/ownership) * 100
+		}
+
 		ingesters = append(ingesters, ingesterDesc{
 			ID:                  id,
 			State:               state,
@@ -177,7 +194,8 @@ func (r *Ring) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			Tokens:              ing.Tokens,
 			Zone:                ing.Zone,
 			NumTokens:           len(ing.Tokens),
-			Ownership:           (float64(owned[id]) / float64(math.MaxUint32)) * 100,
+			Ownership:           ownership,
+			DiffOwnership:       deltaOwnership,
 		})
 	}
 

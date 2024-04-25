@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -221,4 +222,52 @@ func (m *ManagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfGaugesPerUser(out, m.NotificationQueueLength, "prometheus_notifications_queue_length")
 	data.SendSumOfGaugesPerUser(out, m.NotificationQueueCapacity, "prometheus_notifications_queue_capacity")
 	data.SendSumOfGaugesPerUser(out, m.AlertmanagersDiscovered, "prometheus_notifications_alertmanagers_discovered")
+}
+
+type RuleEvalMetrics struct {
+	TotalWritesVec    *prometheus.CounterVec
+	FailedWritesVec   *prometheus.CounterVec
+	TotalQueriesVec   *prometheus.CounterVec
+	FailedQueriesVec  *prometheus.CounterVec
+	RulerQuerySeconds *prometheus.CounterVec
+}
+
+func NewRuleEvalMetrics(cfg Config, reg prometheus.Registerer) *RuleEvalMetrics {
+	m := &RuleEvalMetrics{
+		TotalWritesVec: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_write_requests_total",
+			Help: "Number of write requests to ingesters.",
+		}, []string{"user"}),
+		FailedWritesVec: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_write_requests_failed_total",
+			Help: "Number of failed write requests to ingesters.",
+		}, []string{"user"}),
+		TotalQueriesVec: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_queries_total",
+			Help: "Number of queries executed by ruler.",
+		}, []string{"user"}),
+		FailedQueriesVec: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_queries_failed_total",
+			Help: "Number of failed queries by ruler.",
+		}, []string{"user"}),
+	}
+	if cfg.EnableQueryStats {
+		m.RulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_query_seconds_total",
+			Help: "Total amount of wall clock time spent processing queries by the ruler.",
+		}, []string{"user"})
+	}
+
+	return m
+}
+
+func (m *RuleEvalMetrics) deletePerUserMetrics(userID string) {
+	m.TotalWritesVec.DeleteLabelValues(userID)
+	m.FailedWritesVec.DeleteLabelValues(userID)
+	m.TotalQueriesVec.DeleteLabelValues(userID)
+	m.FailedQueriesVec.DeleteLabelValues(userID)
+
+	if m.RulerQuerySeconds != nil {
+		m.RulerQuerySeconds.DeleteLabelValues(userID)
+	}
 }

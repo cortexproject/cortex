@@ -116,7 +116,7 @@ func TestAllFunctionality(t *testing.T) {
 			listenerLog:          []string{"starting", "failed: Starting: start failed"},
 		},
 
-		"start is canceled via context and returns cancelation error": {
+		"start is canceled via context and returns cancellation error": {
 			cancelAfterStartAsync: true,
 			startReturnContextErr: true,
 			awaitRunningError:     []error{invalidServiceStateWithFailureError(Failed, Running, context.Canceled)},
@@ -152,7 +152,7 @@ func TestAllFunctionality(t *testing.T) {
 			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: runFn failed"},
 		},
 
-		"runFn returns error from context cancelation": {
+		"runFn returns error from context cancellation": {
 			runReturnContextErr:     true,
 			cancelAfterAwaitRunning: true,
 			awaitTerminatedError:    invalidServiceStateWithFailureError(Failed, Terminated, context.Canceled), // service will get into Failed state, since run failed

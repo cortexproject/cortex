@@ -1,4 +1,4 @@
-// Package fakeauth provides middlewares thats injects a fake userID, so the rest of the code
+// Package fakeauth provides middlewares that injects a fake userID, so the rest of the code
 // can continue to be multitenant.
 package fakeauth
 

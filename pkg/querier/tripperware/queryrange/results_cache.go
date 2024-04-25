@@ -38,14 +38,7 @@ import (
 var (
 	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
 	noStoreValue = "no-store"
-
-	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
-	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
-
-type CacheGenNumberLoader interface {
-	GetResultsCacheGenNumber(tenantIDs []string) string
-}
 
 // ResultsCacheConfig is the config for the results cache.
 type ResultsCacheConfig struct {
@@ -161,7 +154,6 @@ type resultsCache struct {
 	extractor                  Extractor
 	minCacheExtent             int64 // discard any cache extent smaller than this
 	merger                     tripperware.Merger
-	cacheGenNumberLoader       CacheGenNumberLoader
 	shouldCache                ShouldCacheFn
 	cacheQueryableSamplesStats bool
 }
@@ -179,7 +171,6 @@ func NewResultsCacheMiddleware(
 	limits tripperware.Limits,
 	merger tripperware.Merger,
 	extractor Extractor,
-	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
 	reg prometheus.Registerer,
 ) (tripperware.Middleware, cache.Cache, error) {
@@ -189,10 +180,6 @@ func NewResultsCacheMiddleware(
 	}
 	if cfg.Compression == "snappy" {
 		c = cache.NewSnappy(c, logger)
-	}
-
-	if cacheGenNumberLoader != nil {
-		c = cache.NewCacheGenNumMiddleware(c)
 	}
 
 	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
@@ -206,7 +193,6 @@ func NewResultsCacheMiddleware(
 			extractor:                  extractor,
 			minCacheExtent:             (5 * time.Minute).Milliseconds(),
 			splitter:                   splitter,
-			cacheGenNumberLoader:       cacheGenNumberLoader,
 			shouldCache:                shouldCache,
 			cacheQueryableSamplesStats: cfg.CacheQueryableSamplesStats,
 		}
@@ -230,10 +216,6 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 	if s.shouldCache != nil && !s.shouldCache(r) {
 		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", "should not cache", "start", r.GetStart(), "spanID", jaegerSpanID(ctx))
 		return s.next.Do(ctx, r)
-	}
-
-	if s.cacheGenNumberLoader != nil {
-		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	var (
@@ -283,30 +265,12 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.R
 	if !s.isAtModifierCachable(ctx, req, maxCacheTime) {
 		return false
 	}
-
-	if s.cacheGenNumberLoader == nil {
-		return true
-	}
-
-	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
-	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
-
-	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+	if !s.isOffsetCachable(ctx, req) {
 		return false
-	}
-
-	for _, gen := range genNumbersFromResp {
-		if gen != genNumberFromCtx {
-			level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
-			return false
-		}
 	}
 
 	return true
 }
-
-var errAtModifierAfterEnd = errors.New("at modifier after end")
 
 // isAtModifierCachable returns true if the @ modifier result
 // is safe to cache.
@@ -317,6 +281,7 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	//      below maxCacheTime. In such cases if any tenant is intentionally
 	//      playing with old data, we could cache empty result if we look
 	//      beyond query end.
+	var errAtModifierAfterEnd = errors.New("at modifier after end")
 	query := r.GetQuery()
 	if !strings.Contains(query, "@") {
 		return true
@@ -324,7 +289,7 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	expr, err := parser.ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
-		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering @ modifier as not cachable", "query", query, "err", err)
+		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering @ modifier as not cacheable", "query", query, "err", err)
 		return false
 	}
 
@@ -356,6 +321,46 @@ func (s resultsCache) isAtModifierCachable(ctx context.Context, r tripperware.Re
 	})
 
 	return atModCachable
+}
+
+// isOffsetCachable returns true if the offset is positive, result is safe to cache.
+// and false when offset is negative, result is not cached.
+func (s resultsCache) isOffsetCachable(ctx context.Context, r tripperware.Request) bool {
+	var errNegativeOffset = errors.New("negative offset")
+	query := r.GetQuery()
+	if !strings.Contains(query, "offset") {
+		return true
+	}
+	expr, err := parser.ParseExpr(query)
+	if err != nil {
+		level.Warn(util_log.WithContext(ctx, s.logger)).Log("msg", "failed to parse query, considering offset as not cacheable", "query", query, "err", err)
+		return false
+	}
+
+	offsetCachable := true
+	parser.Inspect(expr, func(n parser.Node, _ []parser.Node) error {
+		switch e := n.(type) {
+		case *parser.VectorSelector:
+			if e.OriginalOffset < 0 {
+				offsetCachable = false
+				return errNegativeOffset
+			}
+		case *parser.MatrixSelector:
+			offset := e.VectorSelector.(*parser.VectorSelector).OriginalOffset
+			if offset < 0 {
+				offsetCachable = false
+				return errNegativeOffset
+			}
+		case *parser.SubqueryExpr:
+			if e.OriginalOffset < 0 {
+				offsetCachable = false
+				return errNegativeOffset
+			}
+		}
+		return nil
+	})
+
+	return offsetCachable
 }
 
 func getHeaderValuesWithName(r tripperware.Response, headerName string) (headerValues []string) {

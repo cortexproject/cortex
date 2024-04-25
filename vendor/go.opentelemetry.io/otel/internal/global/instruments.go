@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package global // import "go.opentelemetry.io/otel/internal/global"
 
@@ -34,11 +23,13 @@ type afCounter struct {
 	name string
 	opts []metric.Float64ObservableCounterOption
 
-	delegate atomic.Value //metric.Float64ObservableCounter
+	delegate atomic.Value // metric.Float64ObservableCounter
 }
 
-var _ unwrapper = (*afCounter)(nil)
-var _ metric.Float64ObservableCounter = (*afCounter)(nil)
+var (
+	_ unwrapper                       = (*afCounter)(nil)
+	_ metric.Float64ObservableCounter = (*afCounter)(nil)
+)
 
 func (i *afCounter) setDelegate(m metric.Meter) {
 	ctr, err := m.Float64ObservableCounter(i.name, i.opts...)
@@ -63,11 +54,13 @@ type afUpDownCounter struct {
 	name string
 	opts []metric.Float64ObservableUpDownCounterOption
 
-	delegate atomic.Value //metric.Float64ObservableUpDownCounter
+	delegate atomic.Value // metric.Float64ObservableUpDownCounter
 }
 
-var _ unwrapper = (*afUpDownCounter)(nil)
-var _ metric.Float64ObservableUpDownCounter = (*afUpDownCounter)(nil)
+var (
+	_ unwrapper                             = (*afUpDownCounter)(nil)
+	_ metric.Float64ObservableUpDownCounter = (*afUpDownCounter)(nil)
+)
 
 func (i *afUpDownCounter) setDelegate(m metric.Meter) {
 	ctr, err := m.Float64ObservableUpDownCounter(i.name, i.opts...)
@@ -92,11 +85,13 @@ type afGauge struct {
 	name string
 	opts []metric.Float64ObservableGaugeOption
 
-	delegate atomic.Value //metric.Float64ObservableGauge
+	delegate atomic.Value // metric.Float64ObservableGauge
 }
 
-var _ unwrapper = (*afGauge)(nil)
-var _ metric.Float64ObservableGauge = (*afGauge)(nil)
+var (
+	_ unwrapper                     = (*afGauge)(nil)
+	_ metric.Float64ObservableGauge = (*afGauge)(nil)
+)
 
 func (i *afGauge) setDelegate(m metric.Meter) {
 	ctr, err := m.Float64ObservableGauge(i.name, i.opts...)
@@ -121,11 +116,13 @@ type aiCounter struct {
 	name string
 	opts []metric.Int64ObservableCounterOption
 
-	delegate atomic.Value //metric.Int64ObservableCounter
+	delegate atomic.Value // metric.Int64ObservableCounter
 }
 
-var _ unwrapper = (*aiCounter)(nil)
-var _ metric.Int64ObservableCounter = (*aiCounter)(nil)
+var (
+	_ unwrapper                     = (*aiCounter)(nil)
+	_ metric.Int64ObservableCounter = (*aiCounter)(nil)
+)
 
 func (i *aiCounter) setDelegate(m metric.Meter) {
 	ctr, err := m.Int64ObservableCounter(i.name, i.opts...)
@@ -150,11 +147,13 @@ type aiUpDownCounter struct {
 	name string
 	opts []metric.Int64ObservableUpDownCounterOption
 
-	delegate atomic.Value //metric.Int64ObservableUpDownCounter
+	delegate atomic.Value // metric.Int64ObservableUpDownCounter
 }
 
-var _ unwrapper = (*aiUpDownCounter)(nil)
-var _ metric.Int64ObservableUpDownCounter = (*aiUpDownCounter)(nil)
+var (
+	_ unwrapper                           = (*aiUpDownCounter)(nil)
+	_ metric.Int64ObservableUpDownCounter = (*aiUpDownCounter)(nil)
+)
 
 func (i *aiUpDownCounter) setDelegate(m metric.Meter) {
 	ctr, err := m.Int64ObservableUpDownCounter(i.name, i.opts...)
@@ -179,11 +178,13 @@ type aiGauge struct {
 	name string
 	opts []metric.Int64ObservableGaugeOption
 
-	delegate atomic.Value //metric.Int64ObservableGauge
+	delegate atomic.Value // metric.Int64ObservableGauge
 }
 
-var _ unwrapper = (*aiGauge)(nil)
-var _ metric.Int64ObservableGauge = (*aiGauge)(nil)
+var (
+	_ unwrapper                   = (*aiGauge)(nil)
+	_ metric.Int64ObservableGauge = (*aiGauge)(nil)
+)
 
 func (i *aiGauge) setDelegate(m metric.Meter) {
 	ctr, err := m.Int64ObservableGauge(i.name, i.opts...)
@@ -208,7 +209,7 @@ type sfCounter struct {
 	name string
 	opts []metric.Float64CounterOption
 
-	delegate atomic.Value //metric.Float64Counter
+	delegate atomic.Value // metric.Float64Counter
 }
 
 var _ metric.Float64Counter = (*sfCounter)(nil)
@@ -234,7 +235,7 @@ type sfUpDownCounter struct {
 	name string
 	opts []metric.Float64UpDownCounterOption
 
-	delegate atomic.Value //metric.Float64UpDownCounter
+	delegate atomic.Value // metric.Float64UpDownCounter
 }
 
 var _ metric.Float64UpDownCounter = (*sfUpDownCounter)(nil)
@@ -260,7 +261,7 @@ type sfHistogram struct {
 	name string
 	opts []metric.Float64HistogramOption
 
-	delegate atomic.Value //metric.Float64Histogram
+	delegate atomic.Value // metric.Float64Histogram
 }
 
 var _ metric.Float64Histogram = (*sfHistogram)(nil)
@@ -286,7 +287,7 @@ type siCounter struct {
 	name string
 	opts []metric.Int64CounterOption
 
-	delegate atomic.Value //metric.Int64Counter
+	delegate atomic.Value // metric.Int64Counter
 }
 
 var _ metric.Int64Counter = (*siCounter)(nil)
@@ -312,7 +313,7 @@ type siUpDownCounter struct {
 	name string
 	opts []metric.Int64UpDownCounterOption
 
-	delegate atomic.Value //metric.Int64UpDownCounter
+	delegate atomic.Value // metric.Int64UpDownCounter
 }
 
 var _ metric.Int64UpDownCounter = (*siUpDownCounter)(nil)
@@ -338,7 +339,7 @@ type siHistogram struct {
 	name string
 	opts []metric.Int64HistogramOption
 
-	delegate atomic.Value //metric.Int64Histogram
+	delegate atomic.Value // metric.Int64Histogram
 }
 
 var _ metric.Int64Histogram = (*siHistogram)(nil)

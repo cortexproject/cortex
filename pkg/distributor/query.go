@@ -23,33 +23,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-// Query multiple ingesters and returns a Matrix of samples.
-func (d *Distributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	var matrix model.Matrix
-	err := instrument.CollectedRequest(ctx, "Distributor.Query", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		req, err := ingester_client.ToQueryRequest(from, to, matchers)
-		if err != nil {
-			return err
-		}
-
-		replicationSet, err := d.GetIngestersForQuery(ctx, matchers...)
-		if err != nil {
-			return err
-		}
-
-		matrix, err = d.queryIngesters(ctx, replicationSet, req)
-		if err != nil {
-			return err
-		}
-
-		if s := opentracing.SpanFromContext(ctx); s != nil {
-			s.LogKV("series", len(matrix))
-		}
-		return nil
-	})
-	return matrix, err
-}
-
 func (d *Distributor) QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*ingester_client.ExemplarQueryResponse, error) {
 	var result *ingester_client.ExemplarQueryResponse
 	err := instrument.CollectedRequest(ctx, "Distributor.QueryExemplars", d.queryDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -157,52 +130,6 @@ func (d *Distributor) GetIngestersForMetadata(ctx context.Context) (ring.Replica
 	return d.ingestersRing.GetReplicationSetForOperation(ring.Read)
 }
 
-// queryIngesters queries the ingesters via the older, sample-based API.
-func (d *Distributor) queryIngesters(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.QueryRequest) (model.Matrix, error) {
-	// Fetch samples from multiple ingesters in parallel, using the replicationSet
-	// to deal with consistency.
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
-		client, err := d.ingesterPool.GetClientFor(ing.Addr)
-		if err != nil {
-			return nil, err
-		}
-
-		resp, err := client.(ingester_client.IngesterClient).Query(ctx, req)
-		d.ingesterQueries.WithLabelValues(ing.Addr).Inc()
-		if err != nil {
-			d.ingesterQueryFailures.WithLabelValues(ing.Addr).Inc()
-			return nil, err
-		}
-
-		return ingester_client.FromQueryResponse(resp), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Merge the results into a single matrix.
-	fpToSampleStream := map[model.Fingerprint]*model.SampleStream{}
-	for _, result := range results {
-		for _, ss := range result.(model.Matrix) {
-			fp := ss.Metric.Fingerprint()
-			mss, ok := fpToSampleStream[fp]
-			if !ok {
-				mss = &model.SampleStream{
-					Metric: ss.Metric,
-				}
-				fpToSampleStream[fp] = mss
-			}
-			mss.Values = util.MergeSampleSets(mss.Values, ss.Values)
-		}
-	}
-	result := model.Matrix{}
-	for _, ss := range fpToSampleStream {
-		result = append(result, ss)
-	}
-
-	return result, nil
-}
-
 // mergeExemplarSets merges and dedupes two sets of already sorted exemplar pairs.
 // Both a and b should be lists of exemplars from the same series.
 // Defined here instead of pkg/util to avoid a import cycle.
@@ -232,7 +159,7 @@ func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
 func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.ExemplarQueryResponse, error) {
 	// Fetch exemplars from multiple ingesters in parallel, using the replicationSet
 	// to deal with consistency.
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -293,7 +220,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	)
 
 	// Fetch samples from multiple ingesters
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -398,10 +325,17 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 		resp.Timeseries = append(resp.Timeseries, series)
 	}
 
+	respSize := resp.Size()
+	chksSize := resp.ChunksSize()
+	chksCount := resp.ChunksCount()
+	span.SetTag("fetched_series", len(resp.Chunkseries)+len(resp.Timeseries))
+	span.SetTag("fetched_chunks", chksCount)
+	span.SetTag("fetched_data_bytes", respSize)
+	span.SetTag("fetched_chunks_bytes", chksSize)
 	reqStats.AddFetchedSeries(uint64(len(resp.Chunkseries) + len(resp.Timeseries)))
-	reqStats.AddFetchedChunkBytes(uint64(resp.ChunksSize()))
-	reqStats.AddFetchedDataBytes(uint64(resp.Size()))
-	reqStats.AddFetchedChunks(uint64(resp.ChunksCount()))
+	reqStats.AddFetchedChunkBytes(uint64(chksSize))
+	reqStats.AddFetchedDataBytes(uint64(respSize))
+	reqStats.AddFetchedChunks(uint64(chksCount))
 	reqStats.AddFetchedSamples(uint64(resp.SamplesCount()))
 
 	return resp, nil

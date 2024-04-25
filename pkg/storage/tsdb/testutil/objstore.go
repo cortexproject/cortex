@@ -19,7 +19,7 @@ import (
 
 var ErrKeyAccessDeniedError = errors.New("test key access denied")
 
-func PrepareFilesystemBucket(t testing.TB) (objstore.Bucket, string) {
+func PrepareFilesystemBucket(t testing.TB) (objstore.InstrumentedBucket, string) {
 	storageDir, err := os.MkdirTemp(os.TempDir(), "bucket")
 	require.NoError(t, err)
 

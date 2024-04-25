@@ -5,7 +5,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"path"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -18,7 +17,7 @@ import (
 
 func TestDeleteTenant(t *testing.T) {
 	bkt := objstore.NewInMemBucket()
-	api := newTenantDeletionAPI(bkt, nil, log.NewNopLogger())
+	api := newTenantDeletionAPI(objstore.WithNoopInstr(bkt), nil, log.NewNopLogger())
 
 	{
 		resp := httptest.NewRecorder()
@@ -35,8 +34,9 @@ func TestDeleteTenant(t *testing.T) {
 		api.DeleteTenant(resp, req.WithContext(ctx))
 
 		require.Equal(t, http.StatusOK, resp.Code)
-		objs := bkt.Objects()
-		require.NotNil(t, objs[path.Join("fake", tsdb.TenantDeletionMarkPath)])
+		exists, err := tsdb.TenantDeletionMarkExists(ctx, bkt, "fake")
+		require.NoError(t, err)
+		require.True(t, exists)
 	}
 }
 
@@ -80,7 +80,7 @@ func TestDeleteTenantStatus(t *testing.T) {
 				require.NoError(t, bkt.Upload(context.Background(), objName, bytes.NewReader(data)))
 			}
 
-			api := newTenantDeletionAPI(bkt, nil, log.NewNopLogger())
+			api := newTenantDeletionAPI(objstore.WithNoopInstr(bkt), nil, log.NewNopLogger())
 
 			res, err := api.isBlocksForUserDeleted(context.Background(), username)
 			require.NoError(t, err)

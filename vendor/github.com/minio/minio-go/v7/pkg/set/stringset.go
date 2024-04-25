@@ -149,22 +149,19 @@ func (set StringSet) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON - parses JSON data and creates new set with it.
-// If 'data' contains JSON string array, the set contains each string.
-// If 'data' contains JSON string, the set contains the string as one element.
-// If 'data' contains Other JSON types, JSON parse error is returned.
 func (set *StringSet) UnmarshalJSON(data []byte) error {
-	sl := []string{}
+	sl := []interface{}{}
 	var err error
 	if err = json.Unmarshal(data, &sl); err == nil {
 		*set = make(StringSet)
 		for _, s := range sl {
-			set.Add(s)
+			set.Add(fmt.Sprintf("%v", s))
 		}
 	} else {
-		var s string
+		var s interface{}
 		if err = json.Unmarshal(data, &s); err == nil {
 			*set = make(StringSet)
-			set.Add(s)
+			set.Add(fmt.Sprintf("%v", s))
 		}
 	}
 

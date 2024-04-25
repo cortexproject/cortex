@@ -21,28 +21,17 @@ var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by GitHub Actions too (see .github/workflows/test-build-deploy.yml).
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
-		"quay.io/cortexproject/cortex:v1.6.0":  preCortex110Flags,
-		"quay.io/cortexproject/cortex:v1.7.0":  preCortex110Flags,
-		"quay.io/cortexproject/cortex:v1.8.0":  preCortex110Flags,
-		"quay.io/cortexproject/cortex:v1.9.0":  preCortex110Flags,
-		"quay.io/cortexproject/cortex:v1.10.0": nil,
-		"quay.io/cortexproject/cortex:v1.11.1": nil,
 		"quay.io/cortexproject/cortex:v1.13.1": nil,
 		"quay.io/cortexproject/cortex:v1.13.2": nil,
 		"quay.io/cortexproject/cortex:v1.14.0": nil,
 		"quay.io/cortexproject/cortex:v1.14.1": nil,
 		"quay.io/cortexproject/cortex:v1.15.0": nil,
 		"quay.io/cortexproject/cortex:v1.15.1": nil,
+		"quay.io/cortexproject/cortex:v1.15.2": nil,
+		"quay.io/cortexproject/cortex:v1.15.3": nil,
+		"quay.io/cortexproject/cortex:v1.16.0": nil,
 	}
 )
-
-func preCortex110Flags(flags map[string]string) map[string]string {
-	return e2e.MergeFlagsWithoutRemovingEmpty(flags, map[string]string{
-		// Store-gateway "wait ring stability" has been introduced in 1.10.0
-		"-store-gateway.sharding-ring.wait-stability-min-duration": "",
-		"-store-gateway.sharding-ring.wait-stability-max-duration": "",
-	})
-}
 
 func TestBackwardCompatibilityWithBlocksStorage(t *testing.T) {
 	for previousImage, flagsFn := range previousVersionImages {

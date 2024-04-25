@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,14 +14,18 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/codes"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -31,19 +36,135 @@ func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestWriteError(t *testing.T) {
 	for _, test := range []struct {
-		status int
-		err    error
+		status            int
+		err               error
+		additionalHeaders http.Header
+		expectedErrResp   util_api.Response
 	}{
-		{http.StatusInternalServerError, errors.New("unknown")},
-		{http.StatusGatewayTimeout, context.DeadlineExceeded},
-		{StatusClientClosedRequest, context.Canceled},
-		{http.StatusBadRequest, httpgrpc.Errorf(http.StatusBadRequest, "")},
-		{http.StatusRequestEntityTooLarge, errors.New("http: request body too large")},
+		{
+			http.StatusInternalServerError,
+			errors.New("unknown"),
+			http.Header{"User-Agent": []string{"Golang"}},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrServer,
+				Error:     "unknown",
+			},
+		},
+		{
+			http.StatusInternalServerError,
+			errors.New("unknown"),
+			nil,
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrServer,
+				Error:     "unknown",
+			},
+		},
+		{
+			http.StatusGatewayTimeout,
+			context.DeadlineExceeded,
+			nil,
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrTimeout,
+				Error:     "",
+			},
+		},
+		{
+			StatusClientClosedRequest,
+			context.Canceled,
+			nil,
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrCanceled,
+				Error:     "",
+			},
+		},
+		{
+			StatusClientClosedRequest,
+			context.Canceled,
+			http.Header{"User-Agent": []string{"Golang"}},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrCanceled,
+				Error:     "",
+			},
+		},
+		{
+			StatusClientClosedRequest,
+			context.Canceled,
+			http.Header{"User-Agent": []string{"Golang"}, "Content-Type": []string{"application/json"}},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrCanceled,
+				Error:     "",
+			},
+		},
+		{http.StatusBadRequest,
+			httpgrpc.Errorf(http.StatusBadRequest, ""),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrBadData,
+				Error:     "",
+			},
+		},
+		{
+			http.StatusRequestEntityTooLarge,
+			errors.New("http: request body too large"),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrBadData,
+				Error:     "http: request body too large",
+			},
+		},
+		{
+			http.StatusUnprocessableEntity,
+			httpgrpc.Errorf(http.StatusUnprocessableEntity, "limit hit"),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrExec,
+				Error:     "limit hit",
+			},
+		},
+		{
+			http.StatusUnprocessableEntity,
+			httpgrpc.Errorf(int(codes.PermissionDenied), "permission denied"),
+			http.Header{},
+			util_api.Response{
+				Status:    "error",
+				ErrorType: v1.ErrBadData,
+				Error:     "permission denied",
+			},
+		},
 	} {
 		t.Run(test.err.Error(), func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeError(w, test.err)
+			writeError(util_log.Logger, w, test.err, test.additionalHeaders)
 			require.Equal(t, test.status, w.Result().StatusCode)
+			expectedAdditionalHeaders := test.additionalHeaders
+			if expectedAdditionalHeaders != nil {
+				for key, value := range w.Header() {
+					if values, ok := expectedAdditionalHeaders[key]; ok {
+						require.Equal(t, values, value)
+					}
+				}
+			}
+			data, err := io.ReadAll(w.Result().Body)
+			require.NoError(t, err)
+			var res util_api.Response
+			err = json.Unmarshal(data, &res)
+			require.NoError(t, err)
+			resp, ok := httpgrpc.HTTPResponseFromError(test.err)
+			if ok {
+				require.Equal(t, string(resp.Body), res.Error)
+			} else {
+				require.Equal(t, test.err.Error(), res.Error)
+
+			}
 		})
 	}
 }
@@ -289,34 +410,76 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	outputBuf := bytes.NewBuffer(nil)
 	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
 	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, http.DefaultTransport, logger, nil)
-
 	userID := "fake"
-	queryString := url.Values(map[string][]string{"query": {"up"}})
-	req, err := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
-	require.NoError(t, err)
-	req.Header = http.Header{
-		"User-Agent": []string{"Grafana"},
+	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
+	resp := &http.Response{ContentLength: 1000}
+	responseTime := time.Second
+	statusCode := http.StatusOK
+
+	type testCase struct {
+		queryString url.Values
+		queryStats  *querier_stats.QueryStats
+		header      http.Header
+		responseErr error
+		expectedLog string
 	}
-	resp := &http.Response{
-		ContentLength: 1000,
-	}
-	stats := &querier_stats.QueryStats{
-		Stats: querier_stats.Stats{
-			WallTime:            3 * time.Second,
-			FetchedSeriesCount:  100,
-			FetchedChunksCount:  200,
-			FetchedSamplesCount: 300,
-			FetchedChunkBytes:   1024,
-			FetchedDataBytes:    2048,
+
+	tests := map[string]testCase{
+		"should not include query and header details if empty": {
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000`,
+		},
+		"should include query length and string at the end": {
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 param_query=up`,
+		},
+		"should include query stats": {
+			queryStats: &querier_stats.QueryStats{
+				Stats: querier_stats.Stats{
+					WallTime:             3 * time.Second,
+					QueryStorageWallTime: 100 * time.Minute,
+					FetchedSeriesCount:   100,
+					FetchedChunksCount:   200,
+					FetchedSamplesCount:  300,
+					FetchedChunkBytes:    1024,
+					FetchedDataBytes:     2048,
+					SplitQueries:         10,
+				},
+			},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 query_storage_wall_time_seconds=6000`,
+		},
+		"should include user agent": {
+			header:      http.Header{"User-Agent": []string{"Grafana"}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 user_agent=Grafana`,
+		},
+		"should include response error": {
+			responseErr: errors.New("foo_err"),
+			expectedLog: `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 error=foo_err`,
+		},
+		"should include query priority": {
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			queryStats: &querier_stats.QueryStats{
+				Priority:         99,
+				PriorityAssigned: true,
+			},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 priority=99 param_query=up`,
+		},
+		"should include data fetch min and max time": {
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			queryStats: &querier_stats.QueryStats{
+				DataSelectMaxTime: 1704153600000,
+				DataSelectMinTime: 1704067200000,
+			},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
 		},
 	}
-	responseErr := errors.New("foo_err")
-	handler.reportQueryStats(req, userID, queryString, time.Second, stats, responseErr, http.StatusOK, resp)
 
-	data, err := io.ReadAll(outputBuf)
-	require.NoError(t, err)
-
-	expectedLog := `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 status_code=200 response_size=1000 query_length=2 user_agent=Grafana error=foo_err param_query=up
-`
-	require.Equal(t, expectedLog, string(data))
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req.Header = testData.header
+			handler.reportQueryStats(req, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
+			data, err := io.ReadAll(outputBuf)
+			require.NoError(t, err)
+			require.Equal(t, testData.expectedLog+"\n", string(data))
+		})
+	}
 }

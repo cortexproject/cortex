@@ -18,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/annotations"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -31,9 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -82,15 +79,6 @@ type query struct {
 }
 
 var (
-	testcases = []struct {
-		name string
-		f    chunkIteratorFunc
-	}{
-		{"matrixes", mergeChunks},
-		{"iterators", iterators.NewChunkMergeIterator},
-		{"batches", batch.NewChunkMergeIterator},
-	}
-
 	encodings = []struct {
 		name string
 		e    promchunk.Encoding
@@ -182,11 +170,6 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}
 
 	db, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
-	samplePairs := []model.SamplePair{}
-
-	for _, s := range samples {
-		samplePairs = append(samplePairs, model.SamplePair{Timestamp: model.Time(s.TimestampMs), Value: model.SampleValue(s.Value)})
-	}
 
 	distributor := &MockDistributor{}
 
@@ -209,21 +192,8 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		},
 	}
 
-	unorderedResponseMatrix := model.Matrix{
-		{
-			Metric: util.LabelsToMetric(cortexpb.FromLabelAdaptersToLabels(unorderedResponse.Timeseries[0].Labels)),
-			Values: samplePairs,
-		},
-		{
-			Metric: util.LabelsToMetric(cortexpb.FromLabelAdaptersToLabels(unorderedResponse.Timeseries[1].Labels)),
-			Values: samplePairs,
-		},
-	}
-
 	distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-	distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(unorderedResponseMatrix, nil)
-	distributorQueryableStreaming := newDistributorQueryable(distributor, true, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
-	distributorQueryable := newDistributorQueryable(distributor, false, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
 
 	tCases := []struct {
 		name                 string
@@ -233,19 +203,19 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}{
 		{
 			name:                 "should sort if querying 2 queryables",
-			distributorQueryable: distributorQueryableStreaming,
+			distributorQueryable: distributorQueryable,
 			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               true,
 		},
 		{
 			name:                 "should not sort if querying only ingesters",
-			distributorQueryable: distributorQueryableStreaming,
+			distributorQueryable: distributorQueryable,
 			storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
 			sorted:               false,
 		},
 		{
 			name:                 "should not sort if querying only stores",
-			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryableStreaming, start.Add(-1*time.Hour)),
+			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryable, start.Add(-1*time.Hour)),
 			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               false,
 		},
@@ -255,36 +225,24 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
 			sorted:               true,
 		},
-		{
-			name:                 "should not sort if querying only ingesters with streaming off",
-			distributorQueryable: distributorQueryable,
-			storeQueriables:      []QueryableWithFilter{UseBeforeTimestampQueryable(db, start.Add(-1*time.Hour))},
-			sorted:               false,
-		},
-		{
-			name:                 "should not sort if querying only stores with streaming off",
-			distributorQueryable: UseBeforeTimestampQueryable(distributorQueryable, start.Add(-1*time.Hour)),
-			storeQueriables:      []QueryableWithFilter{UseAlwaysQueryable(db)},
-			sorted:               false,
-		},
 	}
 
 	for _, tc := range tCases {
 		for _, thanosEngine := range []bool{false, true} {
 			thanosEngine := thanosEngine
-			t.Run(tc.name+fmt.Sprintf(", thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
+			t.Run(tc.name+fmt.Sprintf("thanos engine: %s", strconv.FormatBool(thanosEngine)), func(t *testing.T) {
 				wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 				var wQueriables []QueryableWithFilter
-				for _, queriable := range tc.storeQueriables {
-					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
+				for _, queryable := range tc.storeQueriables {
+					wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 				}
-				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides, purger.NewNoopTombstonesLoader())
+				queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
 				opts := promql.EngineOpts{
 					Logger:     log.NewNopLogger(),
 					MaxSamples: 1e6,
 					Timeout:    1 * time.Minute,
 				}
-				var queryEngine v1.QueryEngine
+				var queryEngine promql.QueryEngine
 				if thanosEngine {
 					queryEngine = engine.New(engine.Opts{
 						EngineOpts:        opts,
@@ -408,7 +366,7 @@ func TestLimits(t *testing.T) {
 		response: &streamResponse,
 	}
 
-	distributorQueryableStreaming := newDistributorQueryable(distributor, true, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
+	distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
 
 	tCases := []struct {
 		name                 string
@@ -481,13 +439,13 @@ func TestLimits(t *testing.T) {
 		t.Run(tc.name+fmt.Sprintf(", Test: %d", i), func(t *testing.T) {
 			wDistributorQueriable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: tc.distributorQueryable}
 			var wQueriables []QueryableWithFilter
-			for _, queriable := range tc.storeQueriables {
-				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queriable})
+			for _, queryable := range tc.storeQueriables {
+				wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 			}
 			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 			require.NoError(t, err)
 
-			queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides, purger.NewNoopTombstonesLoader())
+			queryable := NewQueryable(wDistributorQueriable, wQueriables, batch.NewChunkMergeIterator, cfg, overrides)
 			opts := promql.EngineOpts{
 				Logger:     log.NewNopLogger(),
 				MaxSamples: 1e6,
@@ -527,36 +485,29 @@ func TestQuerier(t *testing.T) {
 	for _, thanosEngine := range []bool{false, true} {
 		for _, query := range queries {
 			for _, encoding := range encodings {
-				for _, streaming := range []bool{false, true} {
-					for _, iterators := range []bool{false, true} {
-						iterators := iterators
-						t.Run(fmt.Sprintf("%s/%s/streaming=%t/iterators=%t", query.query, encoding.name, streaming, iterators), func(t *testing.T) {
-							var queryEngine v1.QueryEngine
-							if thanosEngine {
-								queryEngine = engine.New(engine.Opts{
-									EngineOpts:        opts,
-									LogicalOptimizers: logicalplan.AllOptimizers,
-								})
-							} else {
-								queryEngine = promql.NewEngine(opts)
-							}
-							cfg.IngesterStreaming = streaming
-							cfg.Iterators = iterators
-							// Disable active query tracker to avoid mmap error.
-							cfg.ActiveQueryTrackerDir = ""
-
-							chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
-							distributor := mockDistibutorFor(t, chunkStore, through)
-
-							overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-							require.NoError(t, err)
-
-							queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
-							queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-							testRangeQuery(t, queryable, queryEngine, through, query)
+				t.Run(fmt.Sprintf("%s/%s", query.query, encoding.name), func(t *testing.T) {
+					var queryEngine promql.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
 						})
+					} else {
+						queryEngine = promql.NewEngine(opts)
 					}
-				}
+					// Disable active query tracker to avoid mmap error.
+					cfg.ActiveQueryTrackerDir = ""
+
+					chunkStore, through := makeMockChunkStore(t, chunks, encoding.e)
+					distributor := mockDistibutorFor(t, chunkStore.chunks)
+
+					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+					require.NoError(t, err)
+
+					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+					testRangeQuery(t, queryable, queryEngine, through, query)
+				})
 			}
 		}
 	}
@@ -570,13 +521,13 @@ func TestQuerierMetric(t *testing.T) {
 	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 	require.NoError(t, err)
 
-	chunkStore, through := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
-	distributor := mockDistibutorFor(t, chunkStore, through)
+	chunkStore, _ := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
+	distributor := mockDistibutorFor(t, chunkStore.chunks)
 
 	queryables := []QueryableWithFilter{}
 	r := prometheus.NewRegistry()
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, r)
-	New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), reg, log.NewNopLogger())
+	New(cfg, overrides, distributor, queryables, reg, log.NewNopLogger())
 	assert.NoError(t, promutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_max_concurrent_queries The maximum number of concurrent queries.
 		# TYPE cortex_max_concurrent_queries gauge
@@ -678,51 +629,48 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	cfg := Config{}
 	// Disable active query tracker to avoid mmap error.
 	cfg.ActiveQueryTrackerDir = ""
-	for _, ingesterStreaming := range []bool{true, false} {
-		for _, thanosEngine := range []bool{true, false} {
-			cfg.IngesterStreaming = ingesterStreaming
-			for _, c := range testCases {
-				cfg.QueryIngestersWithin = c.queryIngestersWithin
-				t.Run(fmt.Sprintf("IngesterStreaming=%t,thanosEngine=%t,queryIngestersWithin=%v, test=%s", cfg.IngesterStreaming, thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
-					var queryEngine v1.QueryEngine
-					if thanosEngine {
-						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
-						})
+	for _, thanosEngine := range []bool{true, false} {
+		for _, c := range testCases {
+			cfg.QueryIngestersWithin = c.queryIngestersWithin
+			t.Run(fmt.Sprintf("thanosEngine=%t,queryIngestersWithin=%v, test=%s", thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
+				var queryEngine promql.QueryEngine
+				if thanosEngine {
+					queryEngine = engine.New(engine.Opts{
+						EngineOpts:        opts,
+						LogicalOptimizers: logicalplan.AllOptimizers,
+					})
+				} else {
+					queryEngine = promql.NewEngine(opts)
+				}
+
+				chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
+				distributor := &errDistributor{}
+
+				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+				require.NoError(t, err)
+
+				ctx := user.InjectOrgID(context.Background(), "0")
+				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, nil, log.NewNopLogger())
+				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
+				require.NoError(t, err)
+
+				r := query.Exec(ctx)
+				_, err = r.Matrix()
+
+				if c.hitIngester {
+					// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
+					// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
+					require.Error(t, err)
+					if !thanosEngine {
+						require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
 					} else {
-						queryEngine = promql.NewEngine(opts)
+						require.Equal(t, errDistributorError.Error(), err.Error())
 					}
-
-					chunkStore, _ := makeMockChunkStore(t, 24, encodings[0].e)
-					distributor := &errDistributor{}
-
-					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+				} else {
+					// If the ingester was hit, there would have been an error from errDistributor.
 					require.NoError(t, err)
-
-					ctx := user.InjectOrgID(context.Background(), "0")
-					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
-					require.NoError(t, err)
-
-					r := query.Exec(ctx)
-					_, err = r.Matrix()
-
-					if c.hitIngester {
-						// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
-						// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
-						require.Error(t, err)
-						if !thanosEngine {
-							require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
-						} else {
-							require.Equal(t, errDistributorError.Error(), err.Error())
-						}
-					} else {
-						// If the ingester was hit, there would have been an error from errDistributor.
-						require.NoError(t, err)
-					}
-				})
-			}
+				}
+			})
 		}
 	}
 }
@@ -782,46 +730,42 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 	// Disable active query tracker to avoid mmap error.
 	cfg.ActiveQueryTrackerDir = ""
 
-	for _, ingesterStreaming := range []bool{true, false} {
-		cfg.IngesterStreaming = ingesterStreaming
-		for name, c := range tests {
-			cfg.MaxQueryIntoFuture = c.maxQueryIntoFuture
-			t.Run(fmt.Sprintf("%s (ingester streaming enabled = %t)", name, cfg.IngesterStreaming), func(t *testing.T) {
-				queryEngine := promql.NewEngine(opts)
+	for name, c := range tests {
+		cfg.MaxQueryIntoFuture = c.maxQueryIntoFuture
+		t.Run(name, func(t *testing.T) {
+			queryEngine := promql.NewEngine(opts)
 
-				// We don't need to query any data for this test, so an empty store is fine.
-				chunkStore := &emptyChunkStore{}
-				distributor := &MockDistributor{}
-				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
-				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+			// We don't need to query any data for this test, so an empty store is fine.
+			chunkStore := &emptyChunkStore{}
+			distributor := &MockDistributor{}
+			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-				require.NoError(t, err)
+			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			require.NoError(t, err)
 
-				ctx := user.InjectOrgID(context.Background(), "0")
-				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
-				queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
-				require.NoError(t, err)
+			ctx := user.InjectOrgID(context.Background(), "0")
+			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
+			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
+			require.NoError(t, err)
 
-				r := query.Exec(ctx)
-				require.Nil(t, r.Err)
+			r := query.Exec(ctx)
+			require.Nil(t, r.Err)
 
-				_, err = r.Matrix()
-				require.Nil(t, err)
+			_, err = r.Matrix()
+			require.Nil(t, err)
 
-				if !c.expectedSkipped {
-					// Assert on the time range of the actual executed query (5s delta).
-					delta := float64(5000)
-					require.Len(t, distributor.Calls, 1)
-					assert.InDelta(t, util.TimeToMillis(c.expectedStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
-					assert.InDelta(t, util.TimeToMillis(c.expectedEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
-				} else {
-					// Ensure no query has been executed (because skipped).
-					assert.Len(t, distributor.Calls, 0)
-				}
-			})
-		}
+			if !c.expectedSkipped {
+				// Assert on the time range of the actual executed query (5s delta).
+				delta := float64(5000)
+				require.Len(t, distributor.Calls, 1)
+				assert.InDelta(t, util.TimeToMillis(c.expectedStartTime), int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), delta)
+				assert.InDelta(t, util.TimeToMillis(c.expectedEndTime), int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), delta)
+			} else {
+				// Ensure no query has been executed (because skipped).
+				assert.Len(t, distributor.Calls, 0)
+			}
+		})
 	}
 }
 
@@ -834,6 +778,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 		queryStartTime time.Time
 		queryEndTime   time.Time
 		expected       error
+
+		// If enabled, skip max query length check at Querier.
+		ignoreMaxQueryLength bool
 	}{
 		"should allow query on short time range and rate time window close to the limit": {
 			query:          "rate(foo[29d])",
@@ -859,6 +806,13 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			queryEndTime:   time.Now(),
 			expected:       errors.New("expanding series: the query time range exceeds the limit (query length: 721h1m0s, limit: 720h0m0s)"),
 		},
+		"max query length check ignored, invalid query is still allowed": {
+			query:                "rate(foo[1m])",
+			queryStartTime:       time.Now().Add(-maxQueryLength).Add(-time.Hour),
+			queryEndTime:         time.Now(),
+			expected:             nil,
+			ignoreMaxQueryLength: true,
+		},
 	}
 
 	opts := promql.EngineOpts{
@@ -874,6 +828,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			flagext.DefaultValues(&cfg)
 			// Disable active query tracker to avoid mmap error.
 			cfg.ActiveQueryTrackerDir = ""
+			cfg.IgnoreMaxQueryLength = testData.ignoreMaxQueryLength
 
 			limits := DefaultLimitsConfig()
 			limits.MaxQueryLength = model.Duration(maxQueryLength)
@@ -885,7 +840,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			distributor := &emptyDistributor{}
 
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 
 			queryEngine := promql.NewEngine(opts)
 			ctx := user.InjectOrgID(context.Background(), "test")
@@ -1009,7 +964,6 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 
 				var cfg Config
 				flagext.DefaultValues(&cfg)
-				cfg.IngesterStreaming = ingesterStreaming
 				cfg.IngesterMetadataStreaming = ingesterStreaming
 				// Disable active query tracker to avoid mmap error.
 				cfg.ActiveQueryTrackerDir = ""
@@ -1028,10 +982,9 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 						return
 					}
 					distributor := &MockDistributor{}
-					distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 					distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					require.NoError(t, err)
 
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
@@ -1060,7 +1013,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1101,7 +1054,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1129,7 +1082,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, matchers).Return([]metric.Metric{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1156,7 +1109,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 					distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
+					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1240,25 +1193,22 @@ func TestValidateMaxQueryLength(t *testing.T) {
 
 // mockDistibutorFor duplicates the chunks in the mockChunkStore into the mockDistributor
 // so we can test everything is dedupe correctly.
-func mockDistibutorFor(t *testing.T, cs mockChunkStore, through model.Time) *MockDistributor {
+func mockDistibutorFor(t *testing.T, cks []chunk.Chunk) *MockDistributor {
 	//parallel testing causes data race
-	chunks, err := chunkcompat.ToChunks(cs.chunks)
+	chunks, err := chunkcompat.ToChunks(cks)
 	require.NoError(t, err)
 
 	tsc := client.TimeSeriesChunk{
 		Labels: []cortexpb.LabelAdapter{{Name: model.MetricNameLabel, Value: "foo"}},
 		Chunks: chunks,
 	}
-	matrix, err := chunk.ChunksToMatrix(context.Background(), cs.chunks, 0, through)
-	require.NoError(t, err)
 
 	result := &MockDistributor{}
-	result.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(matrix, nil)
 	result.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{Chunkseries: []client.TimeSeriesChunk{tsc}}, nil)
 	return result
 }
 
-func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine v1.QueryEngine, end model.Time, q query) *promql.Result {
+func testRangeQuery(t testing.TB, queryable storage.Queryable, queryEngine promql.QueryEngine, end model.Time, q query) *promql.Result {
 	from, through, step := time.Unix(0, 0), end.Time(), q.step
 	ctx := user.InjectOrgID(context.Background(), "0")
 	query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, q.query, from, through, step)
@@ -1286,9 +1236,6 @@ type errDistributor struct{}
 
 var errDistributorError = fmt.Errorf("errDistributorError")
 
-func (m *errDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	return nil, errDistributorError
-}
 func (m *errDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return nil, errDistributorError
 }
@@ -1337,10 +1284,6 @@ func (c *emptyChunkStore) IsCalled() bool {
 }
 
 type emptyDistributor struct{}
-
-func (d *emptyDistributor) Query(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (model.Matrix, error) {
-	return nil, nil
-}
 
 func (d *emptyDistributor) QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error) {
 	return &client.QueryStreamResponse{}, nil
@@ -1494,42 +1437,39 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	// Disable active query tracker to avoid mmap error.
 	cfg.ActiveQueryTrackerDir = ""
 
-	for _, ingesterStreaming := range []bool{true, false} {
-		cfg.IngesterStreaming = ingesterStreaming
-		for _, c := range testCases {
-			cfg.QueryIngestersWithin = c.queryIngestersWithin
-			cfg.QueryStoreAfter = c.queryStoreAfter
-			t.Run(fmt.Sprintf("IngesterStreaming=%t,test=%s", cfg.IngesterStreaming, c.name), func(t *testing.T) {
-				//parallel testing causes data race
-				chunkStore := &emptyChunkStore{}
-				distributor := &errDistributor{}
+	for _, c := range testCases {
+		cfg.QueryIngestersWithin = c.queryIngestersWithin
+		cfg.QueryStoreAfter = c.queryStoreAfter
+		t.Run(c.name, func(t *testing.T) {
+			//parallel testing causes data race
+			chunkStore := &emptyChunkStore{}
+			distributor := &errDistributor{}
 
-				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			require.NoError(t, err)
+
+			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, nil, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), "0")
+			query, err := engine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
+			require.NoError(t, err)
+
+			r := query.Exec(ctx)
+			_, err = r.Matrix()
+
+			if c.hitIngester {
+				// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
+				// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
+				require.Error(t, err)
+				require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
+			} else {
+				// If the ingester was hit, there would have been an error from errDistributor.
 				require.NoError(t, err)
+			}
 
-				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, purger.NewNoopTombstonesLoader(), nil, log.NewNopLogger())
-				ctx := user.InjectOrgID(context.Background(), "0")
-				query, err := engine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
-				require.NoError(t, err)
-
-				r := query.Exec(ctx)
-				_, err = r.Matrix()
-
-				if c.hitIngester {
-					// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
-					// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
-					require.Error(t, err)
-					require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
-				} else {
-					// If the ingester was hit, there would have been an error from errDistributor.
-					require.NoError(t, err)
-				}
-
-				// Verify if the test did/did not hit the LTS
-				time.Sleep(30 * time.Millisecond) // NOTE: Since this is a lazy querier there is a race condition between the response and chunk store being called
-				require.Equal(t, c.hitLTS, chunkStore.IsCalled())
-			})
-		}
+			// Verify if the test did/did not hit the LTS
+			time.Sleep(30 * time.Millisecond) // NOTE: Since this is a lazy querier there is a race condition between the response and chunk store being called
+			require.Equal(t, c.hitLTS, chunkStore.IsCalled())
+		})
 	}
 }
 

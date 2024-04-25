@@ -5,35 +5,29 @@ package aggregate
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
-	"gonum.org/v1/gonum/floats"
-
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 )
 
-type vectorAccumulator func([]float64, []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool)
-
 type vectorTable struct {
-	timestamp   int64
-	histValue   *histogram.FloatHistogram
-	value       float64
-	hasValue    bool
+	ts          int64
 	accumulator vectorAccumulator
 }
 
 func newVectorizedTables(stepsBatch int, a parser.ItemType) ([]aggregateTable, error) {
 	tables := make([]aggregateTable, stepsBatch)
 	for i := 0; i < len(tables); i++ {
-		accumulator, err := newVectorAccumulator(a)
+		acc, err := newVectorAccumulator(a)
 		if err != nil {
 			return nil, err
 		}
-		tables[i] = newVectorizedTable(accumulator)
+		tables[i] = newVectorizedTable(acc)
 	}
 
 	return tables, nil
@@ -41,99 +35,75 @@ func newVectorizedTables(stepsBatch int, a parser.ItemType) ([]aggregateTable, e
 
 func newVectorizedTable(a vectorAccumulator) *vectorTable {
 	return &vectorTable{
+		ts:          math.MinInt64,
 		accumulator: a,
 	}
 }
 
-func (t *vectorTable) aggregate(_ float64, vector model.StepVector) {
-	t.timestamp = vector.T
+func (t *vectorTable) timestamp() int64 {
+	return t.ts
+}
 
-	if len(vector.SampleIDs) == 0 && len(vector.Histograms) == 0 {
-		t.hasValue = false
-		return
-	}
-	t.hasValue = true
-
-	var ok bool
-	t.value, t.histValue, ok = t.accumulator(vector.Samples, vector.Histograms)
-	if !ok {
-		t.hasValue = false
-	}
+func (t *vectorTable) aggregate(vector model.StepVector) {
+	t.ts = vector.T
+	t.accumulator.AddVector(vector.Samples, vector.Histograms)
 }
 
 func (t *vectorTable) toVector(pool *model.VectorPool) model.StepVector {
-	result := pool.GetStepVector(t.timestamp)
-	if !t.hasValue {
+	result := pool.GetStepVector(t.ts)
+	if !t.accumulator.HasValue() {
 		return result
 	}
-	if t.histValue == nil {
-		result.AppendSample(pool, 0, t.value)
+	v, h := t.accumulator.Value()
+	if h == nil {
+		result.AppendSample(pool, 0, v)
 	} else {
-		result.AppendHistogram(pool, 0, t.histValue)
+		result.AppendHistogram(pool, 0, h)
 	}
 	return result
 }
 
-func (t *vectorTable) size() int {
-	return 1
+func (t *vectorTable) reset(p float64) {
+	t.ts = math.MinInt64
+	t.accumulator.Reset(p)
 }
 
 func newVectorAccumulator(expr parser.ItemType) (vectorAccumulator, error) {
 	t := parser.ItemTypeStr[expr]
 	switch t {
 	case "sum":
-		return func(float64s []float64, histograms []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
-			// Summing up mixed types is not defined.
-			if len(float64s) != 0 && len(histograms) != 0 {
-				return 0, nil, false
-			}
-			if len(float64s) > 0 {
-				return floats.Sum(float64s), nil, true
-			}
-			return 0, histogramSum(histograms), true
-		}, nil
+		return newSumAcc(), nil
 	case "max":
-		return func(float64s []float64, hs []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
-			if len(float64s) > 0 {
-				return floats.Max(float64s), nil, true
-			}
-			return 0, nil, false
-		}, nil
+		return newMaxAcc(), nil
 	case "min":
-		return func(float64s []float64, hs []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
-			if len(float64s) > 0 {
-				return floats.Min(float64s), nil, true
-			}
-			return 0, nil, false
-		}, nil
+		return newMinAcc(), nil
 	case "count":
-		return func(in []float64, hs []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
-			return float64(len(in)) + float64(len(hs)), nil, true
-		}, nil
+		return newCountAcc(), nil
 	case "avg":
-		return func(float64s []float64, histograms []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
-			if len(float64s) > 0 {
-				floats.Scale(1/float64(len(float64s)), float64s)
-				return floats.Sum(float64s), nil, true
-			}
-			return 0, nil, false
-		}, nil
+		return newAvgAcc(), nil
 	case "group":
-		return func(float64s []float64, histograms []*histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool) {
-			return 1, nil, true
-		}, nil
+		return newGroupAcc(), nil
 	}
 	msg := fmt.Sprintf("unknown aggregation function %s", t)
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }
 
-func histogramSum(histograms []*histogram.FloatHistogram) *histogram.FloatHistogram {
-	if len(histograms) == 1 {
+func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) *histogram.FloatHistogram {
+	if len(histograms) == 0 {
+		return current
+	}
+	if current == nil && len(histograms) == 1 {
 		return histograms[0].Copy()
 	}
+	var histSum *histogram.FloatHistogram
+	if current != nil {
+		histSum = current.Copy()
+	} else {
+		histSum = histograms[0].Copy()
+		histograms = histograms[1:]
+	}
 
-	histSum := histograms[0].Copy()
-	for i := 1; i < len(histograms); i++ {
+	for i := 0; i < len(histograms); i++ {
 		if histograms[i].Schema >= histSum.Schema {
 			histSum = histSum.Add(histograms[i])
 		} else {

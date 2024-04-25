@@ -8,14 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
@@ -132,7 +130,7 @@ func (resp *PrometheusInstantQueryResponse) HTTPHeaders() map[string][]string {
 func (c instantQueryCodec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (tripperware.Request, error) {
 	result := PrometheusRequest{Headers: map[string][]string{}}
 	var err error
-	result.Time, err = parseTimeParam(r, "time", c.now().Unix())
+	result.Time, err = util.ParseTimeParam(r, "time", c.now().Unix())
 	if err != nil {
 		return nil, decorateWithParamName(err, "time")
 	}
@@ -629,16 +627,4 @@ func (s *PrometheusInstantQueryData) MarshalJSON() ([]byte, error) {
 	default:
 		return s.Result.GetRawBytes(), nil
 	}
-}
-
-func parseTimeParam(r *http.Request, paramName string, defaultValue int64) (int64, error) {
-	val := r.FormValue(paramName)
-	if val == "" {
-		val = strconv.FormatInt(defaultValue, 10)
-	}
-	result, err := util.ParseTime(val)
-	if err != nil {
-		return 0, errors.Wrapf(err, "Invalid time value for '%s'", paramName)
-	}
-	return result, nil
 }

@@ -6,7 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
-	"sigs.k8s.io/yaml"
+	"gopkg.in/yaml.v3"
 )
 
 type Backend struct {

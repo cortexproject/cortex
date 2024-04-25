@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -26,12 +26,10 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
-	"github.com/cortexproject/cortex/pkg/querier/series"
 	seriesset "github.com/cortexproject/cortex/pkg/querier/series"
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -45,9 +43,7 @@ import (
 type Config struct {
 	MaxConcurrent             int           `yaml:"max_concurrent"`
 	Timeout                   time.Duration `yaml:"timeout"`
-	Iterators                 bool          `yaml:"iterators"`
-	BatchIterators            bool          `yaml:"batch_iterators"`
-	IngesterStreaming         bool          `yaml:"ingester_streaming"`
+	IngesterStreaming         bool          `yaml:"ingester_streaming" doc:"hidden"`
 	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
 	MaxSamples                int           `yaml:"max_samples"`
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
@@ -77,14 +73,18 @@ type Config struct {
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
 
 	// Blocks storage only.
-	StoreGatewayAddresses string       `yaml:"store_gateway_addresses"`
-	StoreGatewayClient    ClientConfig `yaml:"store_gateway_client"`
+	StoreGatewayAddresses         string       `yaml:"store_gateway_addresses"`
+	StoreGatewayClient            ClientConfig `yaml:"store_gateway_client"`
+	StoreGatewayQueryStatsEnabled bool         `yaml:"store_gateway_query_stats"`
 
 	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
 
 	// Experimental. Use https://github.com/thanos-io/promql-engine rather than
 	// the Prometheus query engine.
 	ThanosEngine bool `yaml:"thanos_engine"`
+
+	// Ignore max query length check at Querier.
+	IgnoreMaxQueryLength bool `yaml:"ignore_max_query_length"`
 }
 
 var (
@@ -97,13 +97,16 @@ var (
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.at-modifier-enabled", "This flag is no longer functional; at-modifier is always enabled now.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.ingester-streaming", "Deprecated: Use streaming RPCs to query ingester. QueryStream is always enabled and the flag is not effective anymore.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.iterators", "Deprecated: Use iterators to execute query. This flag is no longer functional; Batch iterator is always enabled instead.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.batch-iterators", "Deprecated: Use batch iterators to execute query. This flag is no longer functional; Batch iterator is always enabled now.", util_log.Logger)
 
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	f.BoolVar(&cfg.Iterators, "querier.iterators", false, "Use iterators to execute query, as opposed to fully materialising the series in memory.")
-	f.BoolVar(&cfg.BatchIterators, "querier.batch-iterators", true, "Use batch iterators to execute query, as opposed to fully materialising the series in memory.  Takes precedent over the -querier.iterators flag.")
-	f.BoolVar(&cfg.IngesterStreaming, "querier.ingester-streaming", true, "Use streaming RPCs to query ingester.")
 	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
@@ -114,15 +117,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
+	f.BoolVar(&cfg.StoreGatewayQueryStatsEnabled, "querier.store-gateway-query-stats-enabled", true, "If enabled, store gateway query stats will be logged using `info` log level.")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
 	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-io/promql-engine rather than the Prometheus promql engine.")
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
+	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 }
 
 // Validate the config
 func (cfg *Config) Validate() error {
-	// Ensure the config wont create a situation where no queriers are returned.
+	// Ensure the config won't create a situation where no queriers are returned.
 	if cfg.QueryIngestersWithin != 0 && cfg.QueryStoreAfter != 0 {
 		if cfg.QueryStoreAfter >= cfg.QueryIngestersWithin {
 			return errBadLookbackConfigs
@@ -146,20 +151,15 @@ func (cfg *Config) GetStoreGatewayAddresses() []string {
 	return strings.Split(cfg.StoreGatewayAddresses, ",")
 }
 
-func getChunksIteratorFunction(cfg Config) chunkIteratorFunc {
-	if cfg.BatchIterators {
-		return batch.NewChunkMergeIterator
-	} else if cfg.Iterators {
-		return iterators.NewChunkMergeIterator
-	}
-	return mergeChunks
+func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
+	return batch.NewChunkMergeIterator
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, tombstonesLoader purger.TombstonesLoader, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, v1.QueryEngine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, promql.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterStreaming, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {
@@ -168,7 +168,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			QueryStoreAfter:     cfg.QueryStoreAfter,
 		}
 	}
-	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits, tombstonesLoader)
+	queryable := NewQueryable(distributorQueryable, ns, iteratorFunc, cfg, limits)
 	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(mint int64, maxt int64) (storage.Querier, error) {
@@ -187,7 +187,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
-	var queryEngine v1.QueryEngine
+	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
 		Logger:               logger,
 		Reg:                  reg,
@@ -214,7 +214,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 }
 
 // NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a
-// Queryable with a ChunkQueryable stub, that errors once it get's called.
+// Queryable with a ChunkQueryable stub, that errors once it gets called.
 func NewSampleAndChunkQueryable(q storage.Queryable) storage.SampleAndChunkQueryable {
 	return &sampleAndChunkQueryable{q}
 }
@@ -252,20 +252,20 @@ type limiterHolder struct {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides, tombstonesLoader purger.TombstonesLoader) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, chunkIterFn chunkIteratorFunc, cfg Config, limits *validation.Overrides) storage.Queryable {
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
-			now:                 time.Now(),
-			mint:                mint,
-			maxt:                maxt,
-			chunkIterFn:         chunkIterFn,
-			tombstonesLoader:    tombstonesLoader,
-			limits:              limits,
-			maxQueryIntoFuture:  cfg.MaxQueryIntoFuture,
-			queryStoreForLabels: cfg.QueryStoreForLabels,
-			distributor:         distributor,
-			stores:              stores,
-			limiterHolder:       &limiterHolder{},
+			now:                  time.Now(),
+			mint:                 mint,
+			maxt:                 maxt,
+			chunkIterFn:          chunkIterFn,
+			limits:               limits,
+			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
+			queryStoreForLabels:  cfg.QueryStoreForLabels,
+			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
+			distributor:          distributor,
+			stores:               stores,
+			limiterHolder:        &limiterHolder{},
 		}
 
 		return q, nil
@@ -277,19 +277,21 @@ type querier struct {
 	now         time.Time
 	mint, maxt  int64
 
-	tombstonesLoader    purger.TombstonesLoader
 	limits              *validation.Overrides
 	maxQueryIntoFuture  time.Duration
 	queryStoreForLabels bool
 	distributor         QueryableWithFilter
 	stores              []QueryableWithFilter
 	limiterHolder       *limiterHolder
+
+	ignoreMaxQueryLength bool
 }
 
-func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int64, int64, storage.Querier, []storage.Querier, error) {
+func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_stats.QueryStats, string, int64, int64, storage.Querier, []storage.Querier, error) {
+	stats := querier_stats.FromContext(ctx)
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return ctx, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
 
 	q.limiterHolder.limiterInitializer.Do(func() {
@@ -300,12 +302,12 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int
 
 	mint, maxt, err := validateQueryTimeRange(ctx, userID, q.mint, q.maxt, q.limits, q.maxQueryIntoFuture)
 	if err != nil {
-		return ctx, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
 
 	dqr, err := q.distributor.Querier(mint, maxt)
 	if err != nil {
-		return ctx, userID, 0, 0, nil, nil, err
+		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
 	metadataQuerier := dqr
 
@@ -321,23 +323,27 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, string, int
 
 		cqr, err := s.Querier(mint, maxt)
 		if err != nil {
-			return ctx, userID, 0, 0, nil, nil, err
+			return ctx, stats, userID, 0, 0, nil, nil, err
 		}
 
 		queriers = append(queriers, cqr)
 	}
-	return ctx, userID, mint, maxt, metadataQuerier, queriers, nil
+	return ctx, stats, userID, mint, maxt, metadataQuerier, queriers, nil
 }
 
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
-	ctx, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return storage.EmptySeriesSet()
 	} else if err != nil {
 		return storage.ErrSeriesSet(err)
 	}
+	startT := time.Now()
+	defer func() {
+		stats.AddQueryStorageWallTime(time.Since(startT))
+	}()
 
 	log, ctx := spanlogger.New(ctx, "querier.Select")
 	defer log.Span.Finish()
@@ -393,24 +399,15 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// Validate query time range. This validation should be done only for instant / range queries and
 	// NOT for metadata queries (series, labels) because the query-frontend doesn't support splitting
 	// of such queries.
-	if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
-		limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
-		return storage.ErrSeriesSet(limitErr)
-	}
-
-	tombstones, err := q.tombstonesLoader.GetPendingTombstonesForInterval(userID, startTime, endTime)
-	if err != nil {
-		return storage.ErrSeriesSet(err)
+	if !q.ignoreMaxQueryLength {
+		if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
+			limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
+			return storage.ErrSeriesSet(limitErr)
+		}
 	}
 
 	if len(queriers) == 1 {
-		seriesSet := queriers[0].Select(ctx, sortSeries, sp, matchers...)
-
-		if tombstones.Len() != 0 {
-			seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
-		}
-
-		return seriesSet
+		return queriers[0].Select(ctx, sortSeries, sp, matchers...)
 	}
 
 	sets := make(chan storage.SeriesSet, len(queriers))
@@ -431,25 +428,22 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	// we have all the sets from different sources (chunk from store, chunks from ingesters,
-	// time series from store and time series from ingesters).
-	// mergeSeriesSets will return sorted set.
-	seriesSet := q.mergeSeriesSets(result)
-
-	if tombstones.Len() != 0 {
-		seriesSet = series.NewDeletedSeriesSet(seriesSet, tombstones, model.Interval{Start: startTime, End: endTime})
-	}
-	return seriesSet
+	return storage.NewMergeSeriesSet(result, storage.ChainedSeriesMerge)
 }
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
+	startT := time.Now()
+	defer func() {
+		stats.AddQueryStorageWallTime(time.Since(startT))
+	}()
+
 	if !q.queryStoreForLabels {
 		return metadataQuerier.LabelValues(ctx, name, matchers...)
 	}
@@ -493,12 +487,16 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 }
 
 func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
 		return nil, nil, err
 	}
+	startT := time.Now()
+	defer func() {
+		stats.AddQueryStorageWallTime(time.Since(startT))
+	}()
 
 	if !q.queryStoreForLabels {
 		return metadataQuerier.LabelNames(ctx, matchers...)
@@ -543,74 +541,6 @@ func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([
 }
 
 func (querier) Close() error {
-	return nil
-}
-
-func (q querier) mergeSeriesSets(sets []storage.SeriesSet) storage.SeriesSet {
-	// Here we deal with sets that are based on chunks and build single set from them.
-	// Remaining sets are merged with chunks-based one using storage.NewMergeSeriesSet
-
-	otherSets := []storage.SeriesSet(nil)
-	chunks := []chunk.Chunk(nil)
-
-	for _, set := range sets {
-		nonChunkSeries := []storage.Series(nil)
-
-		// SeriesSet may have some series backed up by chunks, and some not.
-		for set.Next() {
-			s := set.At()
-
-			if sc, ok := s.(SeriesWithChunks); ok {
-				chunks = append(chunks, sc.Chunks()...)
-			} else {
-				nonChunkSeries = append(nonChunkSeries, s)
-			}
-		}
-
-		if err := set.Err(); err != nil {
-			otherSets = append(otherSets, storage.ErrSeriesSet(err))
-		} else if len(nonChunkSeries) > 0 {
-			otherSets = append(otherSets, &sliceSeriesSet{series: nonChunkSeries, ix: -1})
-		}
-	}
-
-	if len(chunks) == 0 {
-		return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
-	}
-
-	// partitionChunks returns set with sorted series, so it can be used by NewMergeSeriesSet
-	chunksSet := partitionChunks(chunks, q.mint, q.maxt, q.chunkIterFn)
-
-	if len(otherSets) == 0 {
-		return chunksSet
-	}
-
-	otherSets = append(otherSets, chunksSet)
-	return storage.NewMergeSeriesSet(otherSets, storage.ChainedSeriesMerge)
-}
-
-type sliceSeriesSet struct {
-	series []storage.Series
-	ix     int
-}
-
-func (s *sliceSeriesSet) Next() bool {
-	s.ix++
-	return s.ix < len(s.series)
-}
-
-func (s *sliceSeriesSet) At() storage.Series {
-	if s.ix < 0 || s.ix >= len(s.series) {
-		return nil
-	}
-	return s.series[s.ix]
-}
-
-func (s *sliceSeriesSet) Err() error {
-	return nil
-}
-
-func (s *sliceSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 
@@ -720,12 +650,11 @@ func partitionChunks(chunks []chunk.Chunk, mint, maxt int64, iteratorFunc chunkI
 
 	series := make([]storage.Series, 0, len(chunksBySeries))
 	for i := range chunksBySeries {
-		series = append(series, &chunkSeries{
-			labels:            chunksBySeries[i][0].Metric,
-			chunks:            chunksBySeries[i],
-			chunkIteratorFunc: iteratorFunc,
-			mint:              mint,
-			maxt:              maxt,
+		series = append(series, &storage.SeriesEntry{
+			Lset: chunksBySeries[i][0].Metric,
+			SampleIteratorFn: func(_ chunkenc.Iterator) chunkenc.Iterator {
+				return iteratorFunc(chunksBySeries[i], model.Time(mint), model.Time(maxt))
+			},
 		})
 	}
 

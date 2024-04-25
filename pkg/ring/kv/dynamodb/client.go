@@ -189,7 +189,12 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 		}
 
 		if len(putRequests) > 0 || len(deleteRequests) > 0 {
-			return c.kv.Batch(ctx, putRequests, deleteRequests)
+			err = c.kv.Batch(ctx, putRequests, deleteRequests)
+			if err != nil {
+				return err
+			}
+			c.updateStaleData(key, r, time.Now().UTC())
+			return nil
 		}
 
 		if len(putRequests) == 0 && len(deleteRequests) == 0 {
@@ -200,8 +205,9 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (ou
 
 		return nil
 	}
-
-	return fmt.Errorf("failed to CAS %s", key)
+	err := fmt.Errorf("failed to CAS %s", key)
+	level.Error(c.logger).Log("msg", "failed to CAS after retries", "key", key)
+	return err
 }
 
 func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
@@ -215,6 +221,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 			level.Error(c.logger).Log("msg", "error WatchKey", "key", key, "err", err)
 
 			if bo.NumRetries() >= 10 {
+				level.Error(c.logger).Log("msg", "failed to WatchKey after retries", "key", key, "err", err)
 				if staleData := c.getStaleData(key); staleData != nil {
 					if !f(staleData) {
 						return

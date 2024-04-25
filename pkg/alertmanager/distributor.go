@@ -78,20 +78,11 @@ func (d *Distributor) isUnaryDeletePath(p string) bool {
 }
 
 func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
-	if strings.HasSuffix(p, "/v1/alerts") {
-		return true, merger.V1Alerts{}
-	}
 	if strings.HasSuffix(p, "/v2/alerts") {
 		return true, merger.V2Alerts{}
 	}
 	if strings.HasSuffix(p, "/v2/alerts/groups") {
 		return true, merger.V2AlertGroups{}
-	}
-	if strings.HasSuffix(p, "/v1/silences") {
-		return true, merger.V1Silences{}
-	}
-	if strings.HasSuffix(path.Dir(p), "/v1/silence") {
-		return true, merger.V1SilenceID{}
 	}
 	if strings.HasSuffix(p, "/v2/silences") {
 		return true, merger.V2Silences{}
@@ -247,14 +238,14 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 	// we forward the request to only only of the alertmanagers.
 
 	var instances []ring.InstanceDesc
-	if req.GetMethod() == "GET" {
+	if req.GetMethod() == "GET" || req.GetMethod() == "DELETE" {
 		instances = replicationSet.Instances
 		// Randomize the list of instances to not always query the same one.
 		rand.Shuffle(len(instances), func(i, j int) {
 			instances[i], instances[j] = instances[j], instances[i]
 		})
 	} else {
-		//Picking 1 instance at Random for Non-Get Unary Read requests, as shuffling through large number of instances might increase complexity
+		//Picking 1 instance at Random for Non-Get and Non-Delete Unary Read requests, as shuffling through large number of instances might increase complexity
 		randN := rand.Intn(len(replicationSet.Instances))
 		instances = replicationSet.Instances[randN : randN+1]
 	}

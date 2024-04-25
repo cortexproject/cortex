@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package metric // import "go.opentelemetry.io/otel/metric"
 
@@ -147,8 +136,9 @@ type Float64Histogram interface {
 // Float64HistogramConfig contains options for synchronous counter instruments
 // that record int64 values.
 type Float64HistogramConfig struct {
-	description string
-	unit        string
+	description              string
+	unit                     string
+	explicitBucketBoundaries []float64
 }
 
 // NewFloat64HistogramConfig returns a new [Float64HistogramConfig] with all
@@ -169,6 +159,11 @@ func (c Float64HistogramConfig) Description() string {
 // Unit returns the configured unit.
 func (c Float64HistogramConfig) Unit() string {
 	return c.unit
+}
+
+// ExplicitBucketBoundaries returns the configured explicit bucket boundaries.
+func (c Float64HistogramConfig) ExplicitBucketBoundaries() []float64 {
+	return c.explicitBucketBoundaries
 }
 
 // Float64HistogramOption applies options to a [Float64HistogramConfig]. See

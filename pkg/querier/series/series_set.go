@@ -17,6 +17,7 @@
 package series
 
 import (
+	"context"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
@@ -128,32 +128,6 @@ func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
-// NewErrIterator instantiates an errIterator
-func NewErrIterator(err error) chunkenc.Iterator {
-	return iterators.NewCompatibleChunksIterator(errIterator{err})
-}
-
-// errIterator implements chunkenc.Iterator, just returning an error.
-type errIterator struct {
-	err error
-}
-
-func (errIterator) Seek(int64) bool {
-	return false
-}
-
-func (errIterator) Next() bool {
-	return false
-}
-
-func (errIterator) At() (t int64, v float64) {
-	return 0, 0
-}
-
-func (e errIterator) Err() error {
-	return e.err
-}
-
 // MatrixToSeriesSet creates a storage.SeriesSet from a model.Matrix
 // Series will be sorted by labels if sortSeries is set.
 func MatrixToSeriesSet(sortSeries bool, m model.Matrix) storage.SeriesSet {
@@ -168,12 +142,14 @@ func MatrixToSeriesSet(sortSeries bool, m model.Matrix) storage.SeriesSet {
 }
 
 // MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
-func MetricsToSeriesSet(sortSeries bool, ms []metric.Metric) storage.SeriesSet {
+func MetricsToSeriesSet(ctx context.Context, sortSeries bool, ms []metric.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
+		if ctx.Err() != nil {
+			return storage.ErrSeriesSet(ctx.Err())
+		}
 		series = append(series, &ConcreteSeries{
-			labels:  metricToLabels(m.Metric),
-			samples: nil,
+			labels: metricToLabels(m.Metric),
 		})
 	}
 	return NewConcreteSeriesSet(sortSeries, series)
@@ -198,167 +174,6 @@ type byLabels []storage.Series
 func (b byLabels) Len() int           { return len(b) }
 func (b byLabels) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 func (b byLabels) Less(i, j int) bool { return labels.Compare(b[i].Labels(), b[j].Labels()) < 0 }
-
-type DeletedSeriesSet struct {
-	seriesSet     storage.SeriesSet
-	tombstones    purger.TombstonesSet
-	queryInterval model.Interval
-}
-
-func NewDeletedSeriesSet(seriesSet storage.SeriesSet, tombstones purger.TombstonesSet, queryInterval model.Interval) storage.SeriesSet {
-	return &DeletedSeriesSet{
-		seriesSet:     seriesSet,
-		tombstones:    tombstones,
-		queryInterval: queryInterval,
-	}
-}
-
-func (d DeletedSeriesSet) Next() bool {
-	return d.seriesSet.Next()
-}
-
-func (d DeletedSeriesSet) At() storage.Series {
-	series := d.seriesSet.At()
-	deletedIntervals := d.tombstones.GetDeletedIntervals(series.Labels(), d.queryInterval.Start, d.queryInterval.End)
-
-	// series is deleted for whole query range so return empty series
-	if len(deletedIntervals) == 1 && deletedIntervals[0] == d.queryInterval {
-		return NewEmptySeries(series.Labels())
-	}
-
-	return NewDeletedSeries(series, deletedIntervals)
-}
-
-func (d DeletedSeriesSet) Err() error {
-	return d.seriesSet.Err()
-}
-
-func (d DeletedSeriesSet) Warnings() annotations.Annotations {
-	return nil
-}
-
-type DeletedSeries struct {
-	series           storage.Series
-	deletedIntervals []model.Interval
-}
-
-func NewDeletedSeries(series storage.Series, deletedIntervals []model.Interval) storage.Series {
-	return &DeletedSeries{
-		series:           series,
-		deletedIntervals: deletedIntervals,
-	}
-}
-
-func (d DeletedSeries) Labels() labels.Labels {
-	return d.series.Labels()
-}
-
-func (d DeletedSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
-	return NewDeletedSeriesIterator(d.series.Iterator(it), d.deletedIntervals)
-}
-
-type DeletedSeriesIterator struct {
-	itr              chunkenc.Iterator
-	deletedIntervals []model.Interval
-}
-
-func NewDeletedSeriesIterator(itr chunkenc.Iterator, deletedIntervals []model.Interval) chunkenc.Iterator {
-	return iterators.NewCompatibleChunksIterator(&DeletedSeriesIterator{
-		itr:              itr,
-		deletedIntervals: deletedIntervals,
-	})
-}
-
-func (d DeletedSeriesIterator) Seek(t int64) bool {
-	if found := d.itr.Seek(t); found == chunkenc.ValNone {
-		return false
-	}
-
-	seekedTs, _ := d.itr.At()
-	if d.isDeleted(seekedTs) {
-		// point we have seeked into is deleted, Next() should find a new non-deleted sample which is after t and seekedTs
-		return d.Next()
-	}
-
-	return true
-}
-
-func (d DeletedSeriesIterator) At() (t int64, v float64) {
-	return d.itr.At()
-}
-
-func (d DeletedSeriesIterator) Next() bool {
-	for d.itr.Next() != chunkenc.ValNone {
-		ts, _ := d.itr.At()
-
-		if d.isDeleted(ts) {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-func (d DeletedSeriesIterator) Err() error {
-	return d.itr.Err()
-}
-
-// isDeleted removes intervals which are past ts while checking for whether ts happens to be in one of the deleted intervals
-func (d *DeletedSeriesIterator) isDeleted(ts int64) bool {
-	mts := model.Time(ts)
-
-	for _, interval := range d.deletedIntervals {
-		if mts > interval.End {
-			d.deletedIntervals = d.deletedIntervals[1:]
-			continue
-		} else if mts < interval.Start {
-			return false
-		}
-
-		return true
-	}
-
-	return false
-}
-
-type emptySeries struct {
-	labels labels.Labels
-}
-
-func NewEmptySeries(labels labels.Labels) storage.Series {
-	return emptySeries{labels}
-}
-
-func (e emptySeries) Labels() labels.Labels {
-	return e.labels
-}
-
-func (emptySeries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
-	return NewEmptySeriesIterator()
-}
-
-type emptySeriesIterator struct {
-}
-
-func NewEmptySeriesIterator() chunkenc.Iterator {
-	return iterators.NewCompatibleChunksIterator(emptySeriesIterator{})
-}
-
-func (emptySeriesIterator) Seek(t int64) bool {
-	return false
-}
-
-func (emptySeriesIterator) At() (t int64, v float64) {
-	return 0, 0
-}
-
-func (emptySeriesIterator) Next() bool {
-	return false
-}
-
-func (emptySeriesIterator) Err() error {
-	return nil
-}
 
 type seriesSetWithWarnings struct {
 	wrapped  storage.SeriesSet

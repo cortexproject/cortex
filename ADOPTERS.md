@@ -2,7 +2,9 @@
 
 This is the list of organisations that are using Cortex in **production environments** to power their metrics and monitoring systems. Please send PRs to add or remove organisations.
 
+* [Adobe](https://www.adobe.com)
 * [Amazon Web Services (AWS)](https://aws.amazon.com/prometheus)
+* [Apple](https://www.apple.com)
 * [Aspen Mesh](https://aspenmesh.io/)
 * [Buoyant](https://buoyant.io/)
 * [DigitalOcean](https://www.digitalocean.com/)
@@ -10,12 +12,11 @@ This is the list of organisations that are using Cortex in **production environm
 * [Etsy](https://www.etsy.com/)
 * [EverQuote](https://everquote.com/)
 * [GoJek](https://www.gojek.io/)
-* [GrafanaLabs](https://grafana.com/)
 * [MayaData](https://mayadata.io/)
 * [Northflank](https://northflank.com/)
 * [Opstrace](https://opstrace.com/)
 * [PITS Globale Datenrettungsdienste](https://www.pitsdatenrettung.de/)
+* [Planetary Quantum](https://www.planetary-quantum.com)
 * [Platform9](https://platform9.com/)
 * [REWE Digital](https://rewe-digital.com/)
 * [SysEleven](https://www.syseleven.de/)
-* [Weaveworks](https://www.weave.works/)

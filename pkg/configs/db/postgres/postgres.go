@@ -16,8 +16,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import the postgres migrations driver
 	_ "github.com/golang-migrate/migrate/v4/source/file"       // Import the postgres migrations driver
-	"github.com/lib/pq"
-	_ "github.com/lib/pq" // Import the postgres sql driver
+	"github.com/lib/pq"                                        // Import the postgres sql driver
 	"github.com/pkg/errors"
 )
 

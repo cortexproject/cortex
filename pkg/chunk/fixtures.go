@@ -3,12 +3,8 @@ package chunk
 // Chunk functions used only in tests
 
 import (
-	"context"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // BenchmarkLabels is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
@@ -30,32 +26,4 @@ var BenchmarkLabels = labels.Labels{
 	{Name: "name", Value: "k8s_some-name_some-other-name-5j8s8_kube-system_6e91c467-e4c5-11e7-ace3-0a97ed59c75e_0"},
 	{Name: "namespace", Value: "kube-system"},
 	{Name: "pod_name", Value: "some-other-name-5j8s8"},
-}
-
-// ChunksToMatrix converts a set of chunks to a model.Matrix.
-func ChunksToMatrix(ctx context.Context, chunks []Chunk, from, through model.Time) (model.Matrix, error) {
-	// Group chunks by series, sort and dedupe samples.
-	metrics := map[model.Fingerprint]model.Metric{}
-	samplesBySeries := map[model.Fingerprint][][]model.SamplePair{}
-	for _, c := range chunks {
-		ss, err := c.Samples(from, through)
-		if err != nil {
-			return nil, err
-		}
-
-		metric := util.LabelsToMetric(c.Metric)
-		fingerprint := metric.Fingerprint()
-		metrics[fingerprint] = metric
-		samplesBySeries[fingerprint] = append(samplesBySeries[fingerprint], ss)
-	}
-
-	matrix := make(model.Matrix, 0, len(samplesBySeries))
-	for fp, ss := range samplesBySeries {
-		matrix = append(matrix, &model.SampleStream{
-			Metric: metrics[fp],
-			Values: util.MergeNSampleSets(ss...),
-		})
-	}
-
-	return matrix, nil
 }

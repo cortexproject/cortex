@@ -57,10 +57,10 @@ func TestRoundTrip(t *testing.T) {
 		mockLimits{},
 		nil,
 		nil,
-		nil,
 		qa,
 		PrometheusCodec,
 		ShardedPrometheusCodec,
+		5*time.Minute,
 	)
 	require.NoError(t, err)
 
@@ -74,6 +74,7 @@ func TestRoundTrip(t *testing.T) {
 		nil,
 		qa,
 		time.Minute,
+		0,
 		0,
 	)
 

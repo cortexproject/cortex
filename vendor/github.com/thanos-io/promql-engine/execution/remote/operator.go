@@ -11,12 +11,12 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/storage"
 
 	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/scan"
-	engstore "github.com/thanos-io/promql-engine/execution/storage"
 	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/query"
+	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
 )
 
 type Execution struct {
@@ -28,35 +28,40 @@ type Execution struct {
 	model.OperatorTelemetry
 }
 
-func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options) *Execution {
+func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart time.Time, opts *query.Options, _ storage.SelectHints) *Execution {
 	storage := newStorageFromQuery(query, opts)
-	e := &Execution{
+	oper := &Execution{
 		storage:         storage,
 		query:           query,
 		opts:            opts,
 		queryRangeStart: queryRangeStart,
-		vectorSelector:  scan.NewVectorSelector(pool, storage, opts, 0, 0, 1),
+		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
 	}
-	e.OperatorTelemetry = &model.NoopTelemetry{}
-	if opts.EnableAnalysis {
-		e.OperatorTelemetry = &model.TrackedTelemetry{}
-	}
-	return e
-}
 
-func (e *Execution) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	e.SetName("[*remoteExec]")
-	return e, nil
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
 func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() {
+		e.AddExecutionTimeTaken(time.Since(start))
+		e.updateStats()
+	}()
+
 	return e.vectorSelector.Series(ctx)
+}
+
+func (e *Execution) String() string {
+	return fmt.Sprintf("[remoteExec] %s (%d, %d)", e.query, e.queryRangeStart.Unix(), e.opts.End.Unix())
 }
 
 func (e *Execution) Next(ctx context.Context) ([]model.StepVector, error) {
 	start := time.Now()
+	defer func() { e.AddExecutionTimeTaken(time.Since(start)) }()
+
 	next, err := e.vectorSelector.Next(ctx)
-	e.AddExecutionTimeTaken(time.Since(start))
 	if next == nil {
 		// Closing the storage prematurely can lead to results from the query
 		// engine to be recycled. Because of this, we close the storage only
@@ -70,8 +75,16 @@ func (e *Execution) GetPool() *model.VectorPool {
 	return e.vectorSelector.GetPool()
 }
 
-func (e *Execution) Explain() (me string, next []model.VectorOperator) {
-	return fmt.Sprintf("[*remoteExec] %s (%d, %d)", e.query, e.opts.Start.Unix(), e.opts.End.Unix()), nil
+func (e *Execution) Explain() (next []model.VectorOperator) {
+	return nil
+}
+
+func (e *Execution) updateStats() {
+	existingStats := e.query.Stats()
+	if existingStats == nil || existingStats.Samples == nil {
+		return
+	}
+	e.IncrementSamplesAtStep(int(existingStats.Samples.TotalSamples), 0)
 }
 
 type storageAdapter struct {
@@ -80,7 +93,7 @@ type storageAdapter struct {
 
 	once   sync.Once
 	err    error
-	series []engstore.SignedSeries
+	series []promstorage.SignedSeries
 }
 
 func newStorageFromQuery(query promql.Query, opts *query.Options) *storageAdapter {
@@ -92,7 +105,7 @@ func newStorageFromQuery(query promql.Query, opts *query.Options) *storageAdapte
 
 func (s *storageAdapter) Matchers() []*labels.Matcher { return nil }
 
-func (s *storageAdapter) GetSeries(ctx context.Context, _, _ int) ([]engstore.SignedSeries, error) {
+func (s *storageAdapter) GetSeries(ctx context.Context, _, _ int) ([]promstorage.SignedSeries, error) {
 	s.once.Do(func() { s.executeQuery(ctx) })
 	if s.err != nil {
 		return nil, s.err
@@ -108,18 +121,17 @@ func (s *storageAdapter) executeQuery(ctx context.Context) {
 		s.err = result.Err
 		return
 	}
-
 	switch val := result.Value.(type) {
 	case promql.Matrix:
-		s.series = make([]engstore.SignedSeries, len(val))
+		s.series = make([]promstorage.SignedSeries, len(val))
 		for i, series := range val {
-			s.series[i] = engstore.SignedSeries{
+			s.series[i] = promstorage.SignedSeries{
 				Signature: uint64(i),
 				Series:    promql.NewStorageSeries(series),
 			}
 		}
 	case promql.Vector:
-		s.series = make([]engstore.SignedSeries, len(val))
+		s.series = make([]promstorage.SignedSeries, len(val))
 		for i, sample := range val {
 			series := promql.Series{Metric: sample.Metric}
 			if sample.H == nil {
@@ -127,7 +139,7 @@ func (s *storageAdapter) executeQuery(ctx context.Context) {
 			} else {
 				series.Histograms = []promql.HPoint{{T: sample.T, H: sample.H}}
 			}
-			s.series[i] = engstore.SignedSeries{
+			s.series[i] = promstorage.SignedSeries{
 				Signature: uint64(i),
 				Series:    promql.NewStorageSeries(series),
 			}

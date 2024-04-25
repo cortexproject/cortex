@@ -21,6 +21,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
+	//lint:ignore faillint scheduler needs to retrieve priority from the context
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/tenant"
@@ -105,12 +107,12 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	s.queueLength = promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_queue_length",
 		Help: "Number of queries in the queue.",
-	}, []string{"user"})
+	}, []string{"user", "priority", "type"})
 
 	s.discardedRequests = promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_query_scheduler_discarded_requests_total",
 		Help: "Total number of query requests discarded.",
-	}, []string{"user"})
+	}, []string{"user", "priority"})
 
 	s.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests, s.limits, registerer)
 
@@ -163,6 +165,15 @@ type schedulerRequest struct {
 
 	// This is only used for testing.
 	parentSpanContext opentracing.SpanContext
+}
+
+func (s schedulerRequest) Priority() int64 {
+	priority, ok := stats.FromContext(s.ctx).LoadPriority()
+	if !ok {
+		return 0
+	}
+
+	return priority
 }
 
 // FrontendLoop handles connection from frontend.
@@ -514,8 +525,12 @@ func (s *Scheduler) stopping(_ error) error {
 }
 
 func (s *Scheduler) cleanupMetricsForInactiveUser(user string) {
-	s.queueLength.DeleteLabelValues(user)
-	s.discardedRequests.DeleteLabelValues(user)
+	s.queueLength.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
+	s.discardedRequests.DeletePartialMatch(prometheus.Labels{
+		"user": user,
+	})
 }
 
 func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {

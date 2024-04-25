@@ -11,9 +11,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/oklog/ulid"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"github.com/thanos-io/thanos/pkg/runutil"
+
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func RunCommandAndGetOutput(name string, args ...string) ([]byte, error) {
@@ -201,4 +210,86 @@ func GetTempDirectory() (string, error) {
 	}
 
 	return absDir, nil
+}
+
+func RandRange(rnd *rand.Rand, min, max int64) int64 {
+	return rnd.Int63n(max-min) + min
+}
+
+func CreateBlock(
+	ctx context.Context,
+	rnd *rand.Rand,
+	dir string,
+	series []labels.Labels,
+	numSamples int,
+	mint, maxt int64,
+	scrapeInterval int64,
+	seriesSize int64,
+) (id ulid.ULID, err error) {
+	headOpts := tsdb.DefaultHeadOptions()
+	headOpts.ChunkDirRoot = filepath.Join(dir, "chunks")
+	headOpts.ChunkRange = 10000000000
+	h, err := tsdb.NewHead(nil, nil, nil, nil, headOpts, nil)
+	if err != nil {
+		return id, errors.Wrap(err, "create head block")
+	}
+	defer func() {
+		runutil.CloseWithErrCapture(&err, h, "TSDB Head")
+		if e := os.RemoveAll(headOpts.ChunkDirRoot); e != nil {
+			err = errors.Wrap(e, "delete chunks dir")
+		}
+	}()
+
+	app := h.Appender(ctx)
+	for i := 0; i < len(series); i++ {
+
+		var ref storage.SeriesRef
+		start := RandRange(rnd, mint, maxt)
+		for j := 0; j < numSamples; j++ {
+			ref, err = app.Append(ref, series[i], start, float64(i+j))
+			if err != nil {
+				if rerr := app.Rollback(); rerr != nil {
+					err = errors.Wrapf(err, "rollback failed: %v", rerr)
+				}
+				return id, errors.Wrap(err, "add sample")
+			}
+			start += scrapeInterval
+			if start > maxt {
+				break
+			}
+		}
+	}
+	if err := app.Commit(); err != nil {
+		return id, errors.Wrap(err, "commit")
+	}
+
+	c, err := tsdb.NewLeveledCompactor(ctx, nil, log.NewNopLogger(), []int64{maxt - mint}, nil, nil)
+	if err != nil {
+		return id, errors.Wrap(err, "create compactor")
+	}
+
+	id, err = c.Write(dir, h, mint, maxt, nil)
+	if err != nil {
+		return id, errors.Wrap(err, "write block")
+	}
+
+	if id.Compare(ulid.ULID{}) == 0 {
+		return id, errors.Errorf("nothing to write, asked for %d samples", numSamples)
+	}
+
+	blockDir := filepath.Join(dir, id.String())
+	logger := log.NewNopLogger()
+
+	if _, err = metadata.InjectThanos(logger, blockDir, metadata.Thanos{
+		Labels: map[string]string{
+			cortex_tsdb.IngesterIDExternalLabel: "ingester-0",
+		},
+		Downsample: metadata.ThanosDownsample{Resolution: 0},
+		Source:     metadata.TestSource,
+		IndexStats: metadata.IndexStats{SeriesMaxSize: seriesSize},
+	}, nil); err != nil {
+		return id, errors.Wrap(err, "finalize block")
+	}
+
+	return id, nil
 }

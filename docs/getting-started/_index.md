@@ -62,7 +62,11 @@ In this case, you will need to use the IP address of your host machine.
 You can usually get it by running `hostname -I | awk '{print $1}'` in your terminal.
 For example, if the IP is `192.168.1.100`, use `http://192.168.1.100:9009/prometheus`.
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus).
+**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus) and run the command below to stop Grafana:
+
+```sh
+$ docker stop grafana
+```
 
 ## Horizontally scale out
 
@@ -75,7 +79,7 @@ Next we're going to show how you can run a scale out Cortex cluster using Docker
 ```sh
 $ make ./cmd/cortex/.uptodate
 $ docker network create cortex
-$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
+$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 hashicorp/consul
 ```
 
 Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note the Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
@@ -138,7 +142,7 @@ First, create a network and run a new Consul and Grafana:
 
 ```sh
 $ docker network create cortex
-$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 consul
+$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 hashicorp/consul
 $ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
 ```
 

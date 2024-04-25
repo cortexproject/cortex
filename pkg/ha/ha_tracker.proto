@@ -11,7 +11,7 @@ message ReplicaDesc {
     string replica = 1;
     int64 received_at = 2;
 
-    // Unix timestamp in millseconds when this entry was marked for deletion.
+    // Unix timestamp in milliseconds when this entry was marked for deletion.
     // Reason for doing marking first, and delete later, is to make sure that distributors
     // watching the prefix will receive notification on "marking" -- at which point they can
     // already remove entry from memory. Actual deletion from KV store does *not* trigger

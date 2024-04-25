@@ -2,14 +2,13 @@ package cortexpb
 
 import (
 	"encoding/json"
-	stdlibjson "encoding/json"
 	"math"
 	"testing"
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/textparse"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +20,7 @@ func TestJsoniterMarshalForSample(t *testing.T) {
 }
 
 func TestStdlibJsonMarshalForSample(t *testing.T) {
-	testMarshalling(t, stdlibjson.Marshal, "json: error calling MarshalJSON for type cortexpb.Sample: test sample")
+	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type cortexpb.Sample: test sample")
 }
 
 func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
@@ -76,22 +75,22 @@ func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 	tc := []struct {
 		desc     string
 		input    MetricMetadata_MetricType
-		expected textparse.MetricType
+		expected model.MetricType
 	}{
 		{
 			desc:     "with a single-word metric",
 			input:    COUNTER,
-			expected: textparse.MetricTypeCounter,
+			expected: model.MetricTypeCounter,
 		},
 		{
 			desc:     "with a two-word metric",
 			input:    STATESET,
-			expected: textparse.MetricTypeStateset,
+			expected: model.MetricTypeStateset,
 		},
 		{
 			desc:     "with an unknown metric",
 			input:    MetricMetadata_MetricType(100),
-			expected: textparse.MetricTypeUnknown,
+			expected: model.MetricTypeUnknown,
 		},
 	}
 

@@ -11,22 +11,24 @@ import (
 	"time"
 
 	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/query"
-	"github.com/thanos-io/promql-engine/worker"
 )
 
 type aggregate struct {
+	model.OperatorTelemetry
+
 	next    model.VectorOperator
 	paramOp model.VectorOperator
 	// params holds the aggregate parameter for each step.
-	params []float64
+	params    []float64
+	lastBatch []model.StepVector
 
 	vectorPool *model.VectorPool
 
@@ -34,13 +36,10 @@ type aggregate struct {
 	labels      []string
 	aggregation parser.ItemType
 
-	once           sync.Once
-	tables         []aggregateTable
-	series         []labels.Labels
-	newAccumulator newAccumulatorFunc
-	stepsBatch     int
-	workers        worker.Group
-	model.OperatorTelemetry
+	once       sync.Once
+	tables     []aggregateTable
+	series     []labels.Labels
+	stepsBatch int
 }
 
 func NewHashAggregate(
@@ -52,8 +51,8 @@ func NewHashAggregate(
 	labels []string,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
-	newAccumulator, err := makeAccumulatorFunc(aggregation)
-	if err != nil {
+	// Verify that the aggregation is supported.
+	if _, err := newScalarAccumulator(aggregation); err != nil {
 		return nil, err
 	}
 
@@ -61,47 +60,42 @@ func NewHashAggregate(
 	// https://github.com/prometheus/prometheus/blob/8ed39fdab1ead382a354e45ded999eb3610f8d5f/model/labels/labels.go#L162-L181
 	slices.Sort(labels)
 	a := &aggregate{
-		next:           next,
-		paramOp:        paramOp,
-		params:         make([]float64, opts.StepsBatch),
-		vectorPool:     points,
-		by:             by,
-		aggregation:    aggregation,
-		labels:         labels,
-		stepsBatch:     opts.StepsBatch,
-		newAccumulator: newAccumulator,
+
+		next:        next,
+		paramOp:     paramOp,
+		params:      make([]float64, opts.StepsBatch),
+		vectorPool:  points,
+		by:          by,
+		aggregation: aggregation,
+		labels:      labels,
+		stepsBatch:  opts.StepsBatch,
 	}
-	a.workers = worker.NewGroup(opts.StepsBatch, a.workerTask)
-	a.OperatorTelemetry = &model.TrackedTelemetry{}
+
+	a.OperatorTelemetry = model.NewTelemetry(a, opts.EnableAnalysis)
 
 	return a, nil
 }
 
-func (a *aggregate) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	a.SetName("[*aggregate]")
-	var ops []model.ObservableVectorOperator
-	if obsnextParamOp, ok := a.paramOp.(model.ObservableVectorOperator); ok {
-		ops = append(ops, obsnextParamOp)
+func (a *aggregate) String() string {
+	if a.by {
+		return fmt.Sprintf("[aggregate] %v by (%v)", a.aggregation.String(), a.labels)
 	}
-	if obsnext, ok := a.next.(model.ObservableVectorOperator); ok {
-		ops = append(ops, obsnext)
-	}
-	return a, ops
+	return fmt.Sprintf("[aggregate] %v without (%v)", a.aggregation.String(), a.labels)
 }
 
-func (a *aggregate) Explain() (me string, next []model.VectorOperator) {
+func (a *aggregate) Explain() (next []model.VectorOperator) {
 	var ops []model.VectorOperator
+	ops = append(ops, a.next)
 	if a.paramOp != nil {
 		ops = append(ops, a.paramOp)
 	}
-	ops = append(ops, a.next)
-	if a.by {
-		return fmt.Sprintf("[*aggregate] %v by (%v)", a.aggregation.String(), a.labels), ops
-	}
-	return fmt.Sprintf("[*aggregate] %v without (%v)", a.aggregation.String(), a.labels), ops
+	return ops
 }
 
 func (a *aggregate) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	a.once.Do(func() { err = a.initializeTables(ctx) })
 	if err != nil {
@@ -116,21 +110,16 @@ func (a *aggregate) GetPool() *model.VectorPool {
 }
 
 func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { a.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
-	start := time.Now()
-	in, err := a.next.Next(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if in == nil {
-		return nil, nil
-	}
-	defer a.next.GetPool().PutVectors(in)
 
+	var err error
 	a.once.Do(func() { err = a.initializeTables(ctx) })
 	if err != nil {
 		return nil, err
@@ -151,23 +140,51 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		a.paramOp.GetPool().PutVectors(args)
 	}
 
-	result := a.vectorPool.GetVectorBatch()
-	for i, vector := range in {
-		if err = a.workers[i].Send(a.params[i], vector); err != nil {
-			return nil, err
-		}
+	for i, p := range a.params {
+		a.tables[i].reset(p)
 	}
-
-	for i, vector := range in {
-		output, err := a.workers[i].GetOutput()
+	if a.lastBatch != nil {
+		a.aggregate(a.lastBatch)
+		a.lastBatch = nil
+	}
+	for {
+		next, err := a.next.Next(ctx)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, output)
+		if next == nil {
+			break
+		}
+		// Keep aggregating samples as long as timestamps of batches are equal.
+		currentTs := a.tables[0].timestamp()
+		if currentTs == math.MinInt64 || next[0].T == currentTs {
+			a.aggregate(next)
+			continue
+		}
+		a.lastBatch = next
+		break
+	}
+
+	if a.tables[0].timestamp() == math.MinInt64 {
+		return nil, nil
+	}
+
+	result := a.vectorPool.GetVectorBatch()
+	for i := range a.tables {
+		if a.tables[i].timestamp() == math.MinInt64 {
+			break
+		}
+		result = append(result, a.tables[i].toVector(a.vectorPool))
+	}
+	return result, nil
+}
+
+func (a *aggregate) aggregate(in []model.StepVector) {
+	for i, vector := range in {
+		a.tables[i].aggregate(vector)
 		a.next.GetPool().PutStepVector(vector)
 	}
-	a.AddExecutionTimeTaken(time.Since(start))
-	return result, nil
+	a.next.GetPool().PutVectors(in)
 }
 
 func (a *aggregate) initializeTables(ctx context.Context) error {
@@ -188,15 +205,8 @@ func (a *aggregate) initializeTables(ctx context.Context) error {
 	a.tables = tables
 	a.series = series
 	a.vectorPool.SetStepSize(len(a.series))
-	a.workers.Start(ctx)
 
 	return nil
-}
-
-func (a *aggregate) workerTask(workerID int, arg float64, vector model.StepVector) model.StepVector {
-	table := a.tables[workerID]
-	table.aggregate(arg, vector)
-	return table.toVector(a.vectorPool)
 }
 
 func (a *aggregate) initializeVectorizedTables(ctx context.Context) ([]aggregateTable, []labels.Labels, error) {
@@ -234,7 +244,7 @@ func (a *aggregate) initializeScalarTables(ctx context.Context) ([]aggregateTabl
 		labelsMap[lblName] = struct{}{}
 	}
 	for i := 0; i < len(series); i++ {
-		hash, _, lbls := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
+		hash, lbls := hashMetric(builder, series[i], !a.by, a.labels, labelsMap, hashingBuf)
 		output, ok := outputMap[hash]
 		if !ok {
 			output = &model.Series{
@@ -247,7 +257,10 @@ func (a *aggregate) initializeScalarTables(ctx context.Context) ([]aggregateTabl
 
 		inputCache[i] = output.ID
 	}
-	tables := newScalarTables(a.stepsBatch, inputCache, outputCache, a.newAccumulator)
+	tables, err := newScalarTables(a.stepsBatch, inputCache, outputCache, a.aggregation)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	series = make([]labels.Labels, len(outputCache))
 	for i := 0; i < len(outputCache); i++ {

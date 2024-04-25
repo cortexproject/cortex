@@ -58,7 +58,7 @@ func mergeV2Silences(in v2_models.GettableSilences) (v2_models.GettableSilences,
 		result = append(result, silence)
 	}
 
-	// Re-use Alertmanager sorting for silences.
+	// Reuse Alertmanager sorting for silences.
 	v2.SortSilences(result)
 
 	return result, nil

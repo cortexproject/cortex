@@ -12,6 +12,24 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 )
 
+const (
+	// expiretimeReplyNoExpiration is return value for EXPIRETIME and PEXPIRETIME if the key exists but has no associated expiration time
+	expiretimeReplyNoExpiration = -1
+	// expiretimeReplyMissingKey is return value for EXPIRETIME and PEXPIRETIME if the key does not exist
+	expiretimeReplyMissingKey = -2
+)
+
+func inSeconds(t time.Time) int {
+	return int(t.Unix())
+}
+
+func inMilliSeconds(t time.Time) int {
+	// Time.UnixMilli() was added in go 1.17
+	// return int(t.UnixNano() / 1000000) is limited to dates between year 1678 and 2262
+	// by using following calculation we extend this time without too much complexity
+	return int(t.Unix())*1000 + t.Nanosecond()/1000000
+}
+
 // commandsGeneric handles EXPIRE, TTL, PERSIST, &c.
 func commandsGeneric(m *Miniredis) {
 	m.srv.Register("COPY", m.cmdCopy)
@@ -20,6 +38,8 @@ func commandsGeneric(m *Miniredis) {
 	m.srv.Register("EXISTS", m.cmdExists)
 	m.srv.Register("EXPIRE", makeCmdExpire(m, false, time.Second))
 	m.srv.Register("EXPIREAT", makeCmdExpire(m, true, time.Second))
+	m.srv.Register("EXPIRETIME", m.makeCmdExpireTime(inSeconds))
+	m.srv.Register("PEXPIRETIME", m.makeCmdExpireTime(inMilliSeconds))
 	m.srv.Register("KEYS", m.cmdKeys)
 	// MIGRATE
 	m.srv.Register("MOVE", m.cmdMove)
@@ -138,9 +158,50 @@ func makeCmdExpire(m *Miniredis, unix bool, d time.Duration) func(*server.Peer, 
 				return
 			}
 			db.ttl[opts.key] = newTTL
-			db.keyVersion[opts.key]++
+			db.incr(opts.key)
 			db.checkTTL(opts.key)
 			c.WriteInt(1)
+		})
+	}
+}
+
+// makeCmdExpireTime creates server command function that returns the absolute Unix timestamp (since January 1, 1970)
+// at which the given key will expire, in unit selected by time result strategy (e.g. seconds, milliseconds).
+// For more information see redis documentation for [expiretime] and [pexpiretime].
+//
+// [expiretime]: https://redis.io/commands/expiretime/
+// [pexpiretime]: https://redis.io/commands/pexpiretime/
+func (m *Miniredis) makeCmdExpireTime(timeResultStrategy func(time.Time) int) server.Cmd {
+	return func(c *server.Peer, cmd string, args []string) {
+		if len(args) != 1 {
+			setDirty(c)
+			c.WriteError(errWrongNumber(cmd))
+			return
+		}
+
+		if !m.handleAuth(c) {
+			return
+		}
+		if m.checkPubsub(c, cmd) {
+			return
+		}
+
+		key := args[0]
+		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+			db := m.db(ctx.selectedDB)
+
+			if _, ok := db.keys[key]; !ok {
+				c.WriteInt(expiretimeReplyMissingKey)
+				return
+			}
+
+			ttl, ok := db.ttl[key]
+			if !ok {
+				c.WriteInt(expiretimeReplyNoExpiration)
+				return
+			}
+
+			c.WriteInt(timeResultStrategy(m.effectiveNow().Add(ttl)))
 		})
 	}
 }
@@ -274,7 +335,7 @@ func (m *Miniredis) cmdPersist(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		delete(db.ttl, key)
-		db.keyVersion[key]++
+		db.incr(key)
 		c.WriteInt(1)
 	})
 }
@@ -552,6 +613,7 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 
 	var opts struct {
 		cursor    int
+		count     int
 		withMatch bool
 		match     string
 		withType  bool
@@ -566,17 +628,23 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 	// MATCH, COUNT and TYPE options
 	for len(args) > 0 {
 		if strings.ToLower(args[0]) == "count" {
-			// we do nothing with count
 			if len(args) < 2 {
 				setDirty(c)
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			if _, err := strconv.Atoi(args[1]); err != nil {
+			count, err := strconv.Atoi(args[1])
+			if err != nil || count < 0 {
 				setDirty(c)
 				c.WriteError(msgInvalidInt)
 				return
 			}
+			if count == 0 {
+				setDirty(c)
+				c.WriteError(msgSyntaxError)
+				return
+			}
+			opts.count = count
 			args = args[2:]
 			continue
 		}
@@ -608,15 +676,6 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 		// We return _all_ (matched) keys every time.
-
-		if opts.cursor != 0 {
-			// Invalid cursor.
-			c.WriteLen(2)
-			c.WriteBulk("0") // no next cursor
-			c.WriteLen(0)    // no elements
-			return
-		}
-
 		var keys []string
 
 		if opts.withType {
@@ -627,17 +686,37 @@ func (m *Miniredis) cmdScan(c *server.Peer, cmd string, args []string) {
 					keys = append(keys, k)
 				}
 			}
-			sort.Strings(keys) // To make things deterministic.
 		} else {
 			keys = db.allKeys()
 		}
+
+		sort.Strings(keys) // To make things deterministic.
 
 		if opts.withMatch {
 			keys, _ = matchKeys(keys, opts.match)
 		}
 
+		low := opts.cursor
+		high := low + opts.count
+		// validate high is correct
+		if high > len(keys) || high == 0 {
+			high = len(keys)
+		}
+		if opts.cursor > high {
+			// invalid cursor
+			c.WriteLen(2)
+			c.WriteBulk("0") // no next cursor
+			c.WriteLen(0)    // no elements
+			return
+		}
+		cursorValue := low + opts.count
+		if cursorValue >= len(keys) {
+			cursorValue = 0 // no next cursor
+		}
+		keys = keys[low:high]
+
 		c.WriteLen(2)
-		c.WriteBulk("0") // no next cursor
+		c.WriteBulk(fmt.Sprintf("%d", cursorValue))
 		c.WriteLen(len(keys))
 		for _, k := range keys {
 			c.WriteBulk(k)

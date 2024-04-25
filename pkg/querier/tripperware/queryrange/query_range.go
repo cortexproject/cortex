@@ -135,12 +135,8 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Reques
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
-	// we need to pass on all the headers for results cache gen numbers.
-	var resultsCacheGenNumberHeaderValues []string
-
 	for _, res := range responses {
 		promResponses = append(promResponses, res.(*PrometheusResponse))
-		resultsCacheGenNumberHeaderValues = append(resultsCacheGenNumberHeaderValues, getHeaderValuesWithName(res, ResultsCacheGenNumberHeaderName)...)
 	}
 
 	// Merge the responses.
@@ -157,13 +153,6 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Reques
 			Result:     sampleStreams,
 			Stats:      statsMerge(c.sharded, promResponses),
 		},
-	}
-
-	if len(resultsCacheGenNumberHeaderValues) != 0 {
-		response.Headers = []*tripperware.PrometheusResponseHeader{{
-			Name:   ResultsCacheGenNumberHeaderName,
-			Values: resultsCacheGenNumberHeaderValues,
-		}}
 	}
 
 	return &response, nil

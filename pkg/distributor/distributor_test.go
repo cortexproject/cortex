@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net/http"
 	"sort"
 	"strconv"
@@ -46,7 +47,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -76,14 +76,14 @@ func TestConfig_Validate(t *testing.T) {
 			initLimits: func(_ *validation.Limits) {},
 			expected:   errInvalidShardingStrategy,
 		},
-		"should fail if the default shard size is 0 on when sharding strategy = shuffle-sharding": {
+		"should pass sharding strategy when IngestionTenantShardSize = 0": {
 			initConfig: func(cfg *Config) {
 				cfg.ShardingStrategy = "shuffle-sharding"
 			},
 			initLimits: func(limits *validation.Limits) {
 				limits.IngestionTenantShardSize = 0
 			},
-			expected: errInvalidTenantShardSize,
+			expected: nil,
 		},
 		"should pass if the default shard size > 0 on when sharding strategy = shuffle-sharding": {
 			initConfig: func(cfg *Config) {
@@ -93,6 +93,15 @@ func TestConfig_Validate(t *testing.T) {
 				limits.IngestionTenantShardSize = 3
 			},
 			expected: nil,
+		},
+		"should fail because the ingestionTenantShardSize is a non-positive number": {
+			initConfig: func(cfg *Config) {
+				cfg.ShardingStrategy = "shuffle-sharding"
+			},
+			initLimits: func(limits *validation.Limits) {
+				limits.IngestionTenantShardSize = -1
+			},
+			expected: errInvalidTenantShardSize,
 		},
 	}
 
@@ -341,7 +350,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
 		cortex_distributor_latest_seen_sample_timestamp_seconds{user="userA"} 1111
 
-		# HELP cortex_distributor_metadata_in_total The total number of metadata the have come in to the distributor, including rejected.
+		# HELP cortex_distributor_metadata_in_total The total number of metadata that have come in to the distributor, including rejected.
 		# TYPE cortex_distributor_metadata_in_total counter
 		cortex_distributor_metadata_in_total{user="userA"} 5
 
@@ -902,7 +911,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 					// shard by all labels are enabled.
 					var expectedIngesters int
 					if shuffleShardEnabled {
-						expectedIngesters = util_math.Min(shuffleShardSize, numIngesters)
+						expectedIngesters = min(shuffleShardSize, numIngesters)
 					} else if shardByAllLabels {
 						expectedIngesters = numIngesters
 					} else {
@@ -1009,11 +1018,7 @@ func TestDistributor_PushQuery(t *testing.T) {
 			assert.Equal(t, &cortexpb.WriteResponse{}, writeResponse)
 			assert.Nil(t, err)
 
-			response, err := ds[0].Query(ctx, 0, 10, tc.matchers...)
-			sort.Sort(response)
-			assert.Equal(t, tc.expectedResponse, response)
-			assert.Equal(t, tc.expectedError, err)
-
+			var response model.Matrix
 			series, err := ds[0].QueryStream(ctx, 0, 10, tc.matchers...)
 			assert.Equal(t, tc.expectedError, err)
 
@@ -1030,7 +1035,6 @@ func TestDistributor_PushQuery(t *testing.T) {
 			// if all other ones are successful, so we're good either has been queried X or X-1
 			// ingesters.
 			if tc.expectedError == nil {
-				assert.Contains(t, []int{tc.expectedIngesters, tc.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "Query"))
 				assert.Contains(t, []int{tc.expectedIngesters, tc.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "QueryStream"))
 			}
 		})
@@ -1645,6 +1649,66 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 	}
 }
 
+func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	testCases := []struct {
+		numIngesters            int
+		lblValuesPerIngester    int
+		lblValuesDuplicateRatio float64
+	}{
+		{
+			numIngesters:            16,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.67, // Final Result will have 33% of the total size - replication factor of 3 and no duplicates
+		},
+		{
+			numIngesters:            16,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.98,
+		},
+		{
+			numIngesters:            150,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.67, // Final Result will have 33% of the total size - replication factor of 3 and no duplicates
+		},
+		{
+			numIngesters:            150,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.98,
+		},
+		{
+			numIngesters:            500,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.67, // Final Result will have 33% of the total size - replication factor of 3 and no duplicates
+		},
+		{
+			numIngesters:            500,
+			lblValuesPerIngester:    1000,
+			lblValuesDuplicateRatio: 0.98,
+		},
+	}
+
+	for _, tc := range testCases {
+		name := fmt.Sprintf("numIngesters%v,lblValuesPerIngester%v,lblValuesDuplicateRatio%v", tc.numIngesters, tc.lblValuesPerIngester, tc.lblValuesDuplicateRatio)
+		ds, _, _, _ := prepare(b, prepConfig{
+			numIngesters:            tc.numIngesters,
+			happyIngesters:          tc.numIngesters,
+			numDistributors:         1,
+			lblValuesPerIngester:    tc.lblValuesPerIngester,
+			lblValuesDuplicateRatio: tc.lblValuesDuplicateRatio,
+		})
+		b.Run(name, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__")
+				require.NoError(b, err)
+			}
+		})
+	}
+}
+
 func BenchmarkDistributor_Push(b *testing.B) {
 	const (
 		numSeriesPerRequest = 1000
@@ -1867,6 +1931,8 @@ func BenchmarkDistributor_Push(b *testing.B) {
 		},
 	}
 
+	tg := ring.NewRandomTokenGenerator()
+
 	for testName, testData := range tests {
 		b.Run(testName, func(b *testing.B) {
 
@@ -1877,7 +1943,7 @@ func BenchmarkDistributor_Push(b *testing.B) {
 			err := kvStore.CAS(context.Background(), ingester.RingKey,
 				func(_ interface{}) (interface{}, bool, error) {
 					d := &ring.Desc{}
-					d.AddIngester("ingester-1", "127.0.0.1", "", ring.GenerateTokens(128, nil), ring.ACTIVE, time.Now())
+					d.AddIngester("ingester-1", "127.0.0.1", "", tg.GenerateTokens(d, "ingester-1", "", 128, true), ring.ACTIVE, time.Now())
 					return d, true, nil
 				},
 			)
@@ -1933,7 +1999,6 @@ func BenchmarkDistributor_Push(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				_, err := distributor.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
-
 				if testData.expectedErr == "" && err != nil {
 					b.Fatalf("no error expected but got %v", err)
 				}
@@ -1969,10 +2034,7 @@ func TestSlowQueries(t *testing.T) {
 					shardByAllLabels: shardByAllLabels,
 				})
 
-				_, err := ds[0].Query(ctx, 0, 10, nameMatcher)
-				assert.Equal(t, expectedErr, err)
-
-				_, err = ds[0].QueryStream(ctx, 0, 10, nameMatcher)
+				_, err := ds[0].QueryStream(ctx, 0, 10, nameMatcher)
 				assert.Equal(t, expectedErr, err)
 			})
 		}
@@ -2383,6 +2445,8 @@ type prepConfig struct {
 	shardByAllLabels             bool
 	shuffleShardEnabled          bool
 	shuffleShardSize             int
+	lblValuesPerIngester         int
+	lblValuesDuplicateRatio      float64
 	limits                       *validation.Limits
 	numDistributors              int
 	skipLabelNameValidation      bool
@@ -2391,15 +2455,26 @@ type prepConfig struct {
 	replicationFactor            int
 	enableTracker                bool
 	errFail                      error
+	tokens                       [][]uint32
+}
+
+type prepState struct {
+	unusedStrings, usedStrings []string
 }
 
 func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []*prometheus.Registry, *ring.Ring) {
+	// Strings to be used for get labels values/Names
+	var unusedStrings []string
+	if cfg.lblValuesPerIngester > 0 {
+		unusedStrings = make([]string, min(len(util.RandomStrings), cfg.numIngesters*cfg.lblValuesPerIngester))
+		copy(unusedStrings, util.RandomStrings)
+	}
+	s := &prepState{
+		unusedStrings: unusedStrings,
+	}
 	ingesters := []*mockIngester{}
 	for i := 0; i < cfg.happyIngesters; i++ {
-		ingesters = append(ingesters, &mockIngester{
-			happy:      *atomic.NewBool(true),
-			queryDelay: cfg.queryDelay,
-		})
+		ingesters = append(ingesters, newMockIngester(i, s, cfg))
 	}
 	for i := cfg.happyIngesters; i < cfg.numIngesters; i++ {
 		miError := errFail
@@ -2417,6 +2492,12 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 	ingesterDescs := map[string]ring.InstanceDesc{}
 	ingestersByAddr := map[string]*mockIngester{}
 	for i := range ingesters {
+		var tokens []uint32
+		if len(cfg.tokens) > i {
+			tokens = cfg.tokens[i]
+		} else {
+			tokens = []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)}
+		}
 		addr := fmt.Sprintf("%d", i)
 		ingesterDescs[addr] = ring.InstanceDesc{
 			Addr:                addr,
@@ -2424,7 +2505,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			State:               ring.ACTIVE,
 			Timestamp:           time.Now().Unix(),
 			RegisteredTimestamp: time.Now().Add(-2 * time.Hour).Unix(),
-			Tokens:              []uint32{uint32((math.MaxUint32 / cfg.numIngesters) * i)},
+			Tokens:              tokens,
 		}
 		ingestersByAddr[addr] = ingesters[i]
 	}
@@ -2663,6 +2744,33 @@ type mockIngester struct {
 	metadata   map[uint32]map[cortexpb.MetricMetadata]struct{}
 	queryDelay time.Duration
 	calls      map[string]int
+	lblsValues []string
+}
+
+func newMockIngester(id int, ps *prepState, cfg prepConfig) *mockIngester {
+	lblsValues := make([]string, 0, cfg.lblValuesPerIngester)
+	usedStrings := make([]string, len(ps.usedStrings))
+	copy(usedStrings, ps.usedStrings)
+
+	for i := 0; i < cfg.lblValuesPerIngester; i++ {
+		var s string
+		if i < int(float64(cfg.lblValuesPerIngester)*cfg.lblValuesDuplicateRatio) && id > 0 {
+			index := rand.Int() % len(usedStrings)
+			s = usedStrings[index]
+			usedStrings = append(usedStrings[:index], usedStrings[index+1:]...)
+		} else {
+			s = ps.unusedStrings[0]
+			ps.usedStrings = append(ps.usedStrings, s)
+			ps.unusedStrings = ps.unusedStrings[1:]
+		}
+		lblsValues = append(lblsValues, s)
+	}
+	sort.Strings(lblsValues)
+	return &mockIngester{
+		happy:      *atomic.NewBool(true),
+		queryDelay: cfg.queryDelay,
+		lblsValues: lblsValues,
+	}
 }
 
 func (i *mockIngester) series() map[uint32]*cortexpb.PreallocTimeseries {
@@ -2687,6 +2795,12 @@ func (i *mockIngester) Check(ctx context.Context, in *grpc_health_v1.HealthCheck
 
 func (i *mockIngester) Close() error {
 	return nil
+}
+
+func (i *mockIngester) LabelValues(_ context.Context, _ *client.LabelValuesRequest, _ ...grpc.CallOption) (*client.LabelValuesResponse, error) {
+	return &client.LabelValuesResponse{
+		LabelValues: i.lblsValues,
+	}, nil
 }
 
 func (i *mockIngester) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -3299,6 +3413,86 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 					assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
 				}
 			}
+		})
+	}
+}
+
+func TestDistributor_Push_EmptyLabel(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "pushEmptyLabel")
+	type testcase struct {
+		name           string
+		inputSeries    []labels.Labels
+		expectedSeries labels.Labels
+	}
+
+	cases := []testcase{
+		{
+			name: "with empty label",
+			inputSeries: []labels.Labels{
+				{ //Token 1106054332 without filtering
+					{Name: "__name__", Value: "foo"},
+					{Name: "empty", Value: ""},
+				},
+				{ //Token 3827924124 without filtering
+					{Name: "__name__", Value: "foo"},
+					{Name: "changHash", Value: ""},
+				},
+			},
+			expectedSeries: labels.Labels{
+				//Token 1797290973
+				{Name: "__name__", Value: "foo"},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var err error
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+
+			token := [][]uint32{
+				{1},
+				{2},
+				{3},
+				{1106054333},
+				{5},
+				{6},
+				{7},
+				{8},
+				{9},
+				{3827924125},
+			}
+
+			ds, ingesters, _, _ := prepare(t, prepConfig{
+				numIngesters:      10,
+				happyIngesters:    10,
+				numDistributors:   1,
+				shardByAllLabels:  true,
+				limits:            &limits,
+				replicationFactor: 1,
+				shuffleShardSize:  10,
+				tokens:            token,
+			})
+
+			// Push the series to the distributor
+			req := mockWriteRequest(tc.inputSeries, 1, 1)
+			_, err = ds[0].Push(ctx, req)
+			require.NoError(t, err)
+
+			// Since each test pushes only 1 series, we do expect the ingester
+			// to have received exactly 1 series
+			ingesterWithSeries := 0
+			for i := range ingesters {
+				timeseries := ingesters[i].series()
+				if len(timeseries) > 0 {
+					ingesterWithSeries++
+				}
+			}
+			assert.Equal(t, 1, ingesterWithSeries)
 		})
 	}
 }

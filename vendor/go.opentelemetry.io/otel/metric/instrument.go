@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package metric // import "go.opentelemetry.io/otel/metric"
 
@@ -37,6 +26,12 @@ type InstrumentOption interface {
 	Float64ObservableCounterOption
 	Float64ObservableUpDownCounterOption
 	Float64ObservableGaugeOption
+}
+
+// HistogramOption applies options to histogram instruments.
+type HistogramOption interface {
+	Int64HistogramOption
+	Float64HistogramOption
 }
 
 type descOpt string
@@ -170,6 +165,23 @@ func (o unitOpt) applyInt64ObservableGauge(c Int64ObservableGaugeConfig) Int64Ob
 //
 // The unit u should be defined using the appropriate [UCUM](https://ucum.org) case-sensitive code.
 func WithUnit(u string) InstrumentOption { return unitOpt(u) }
+
+// WithExplicitBucketBoundaries sets the instrument explicit bucket boundaries.
+//
+// This option is considered "advisory", and may be ignored by API implementations.
+func WithExplicitBucketBoundaries(bounds ...float64) HistogramOption { return bucketOpt(bounds) }
+
+type bucketOpt []float64
+
+func (o bucketOpt) applyFloat64Histogram(c Float64HistogramConfig) Float64HistogramConfig {
+	c.explicitBucketBoundaries = o
+	return c
+}
+
+func (o bucketOpt) applyInt64Histogram(c Int64HistogramConfig) Int64HistogramConfig {
+	c.explicitBucketBoundaries = o
+	return c
+}
 
 // AddOption applies options to an addition measurement. See
 // [MeasurementOption] for other options that can be used as an AddOption.

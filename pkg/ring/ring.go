@@ -21,7 +21,6 @@ import (
 	shardUtil "github.com/cortexproject/cortex/pkg/ring/shard"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	utilmath "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -49,6 +48,9 @@ type ReadRing interface {
 	// This function doesn't check if the quorum is honored, so doesn't fail if the number
 	// of unhealthy instances is greater than the tolerated max unavailable.
 	GetAllHealthy(op Operation) (ReplicationSet, error)
+
+	// GetAllInstanceDescs returns a slice of healthy and unhealthy InstanceDesc.
+	GetAllInstanceDescs(op Operation) ([]InstanceDesc, []InstanceDesc, error)
 
 	// GetInstanceDescsForOperation returns map of InstanceDesc with instance ID as the keys.
 	GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error)
@@ -464,6 +466,28 @@ func (r *Ring) GetAllHealthy(op Operation) (ReplicationSet, error) {
 	}, nil
 }
 
+// GetAllInstanceDescs implements ReadRing.
+func (r *Ring) GetAllInstanceDescs(op Operation) ([]InstanceDesc, []InstanceDesc, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	if r.ringDesc == nil || len(r.ringDesc.Ingesters) == 0 {
+		return nil, nil, ErrEmptyRing
+	}
+	healthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
+	unhealthyInstances := make([]InstanceDesc, 0, len(r.ringDesc.Ingesters))
+	storageLastUpdate := r.KVClient.LastUpdateTime(r.key)
+	for _, instance := range r.ringDesc.Ingesters {
+		if r.IsHealthy(&instance, op, storageLastUpdate) {
+			healthyInstances = append(healthyInstances, instance)
+		} else {
+			unhealthyInstances = append(unhealthyInstances, instance)
+		}
+	}
+
+	return healthyInstances, unhealthyInstances, nil
+}
+
 // GetInstanceDescsForOperation implements ReadRing.
 func (r *Ring) GetInstanceDescsForOperation(op Operation) (map[string]InstanceDesc, error) {
 	r.mtx.RLock()
@@ -515,7 +539,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 		// Given data is replicated to RF different zones, we can tolerate a number of
 		// RF/2 failing zones. However, we need to protect from the case the ring currently
 		// contains instances in a number of zones < RF.
-		numReplicatedZones := utilmath.Min(len(r.ringZones), r.cfg.ReplicationFactor)
+		numReplicatedZones := min(len(r.ringZones), r.cfg.ReplicationFactor)
 		minSuccessZones := (numReplicatedZones / 2) + 1
 		maxUnavailableZones = minSuccessZones - 1
 
@@ -930,7 +954,7 @@ func NewOp(healthyStates []InstanceState, shouldExtendReplicaSet func(s Instance
 	}
 
 	if shouldExtendReplicaSet != nil {
-		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEAVING, LEFT} {
+		for _, s := range []InstanceState{ACTIVE, LEAVING, PENDING, JOINING, LEFT} {
 			if shouldExtendReplicaSet(s) {
 				op |= (0x10000 << s)
 			}

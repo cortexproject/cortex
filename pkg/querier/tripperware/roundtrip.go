@@ -27,14 +27,15 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -104,6 +105,7 @@ func NewQueryTripperware(
 	queryAnalyzer querysharding.Analyzer,
 	defaultSubQueryInterval time.Duration,
 	maxSubQuerySteps int64,
+	lookbackDelta time.Duration,
 ) Tripperware {
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -140,35 +142,42 @@ func NewQueryTripperware(
 				tenantIDs, err := tenant.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
-					return nil, err
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 				}
+				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
-				activeUsers.UpdateUserTimestamp(userStr, time.Now())
+				activeUsers.UpdateUserTimestamp(userStr, now)
 				queriesPerTenant.WithLabelValues(op, userStr).Inc()
 
-				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
+				if isQuery || isQueryRange {
 					query := r.FormValue("query")
-					// Check subquery step size.
-					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
-						return nil, err
+
+					if maxSubQuerySteps > 0 {
+						// Check subquery step size.
+						if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
+							return nil, err
+						}
+					}
+
+					expr, err := parser.ParseExpr(query)
+					if err != nil {
+						return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					}
+
+					reqStats := stats.FromContext(r.Context())
+					minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
+					reqStats.SetDataSelectMaxTime(maxTime)
+					reqStats.SetDataSelectMinTime(minTime)
+
+					if limits != nil && limits.QueryPriority(userStr).Enabled {
+						priority := GetPriority(query, minTime, maxTime, now, limits.QueryPriority(userStr))
+						reqStats.SetPriority(priority)
 					}
 				}
 
 				if isQueryRange {
 					return queryrange.RoundTrip(r)
 				} else if isQuery {
-					// If the given query is not shardable, use downstream roundtripper.
-					query := r.FormValue("query")
-
-					// If vertical sharding is not enabled for the tenant, use downstream roundtripper.
-					numShards := validation.SmallestPositiveIntPerTenant(tenantIDs, limits.QueryVerticalShardSize)
-					if numShards <= 1 {
-						return next.RoundTrip(r)
-					}
-					analysis, err := queryAnalyzer.Analyze(query)
-					if err != nil || !analysis.IsShardable() {
-						return next.RoundTrip(r)
-					}
 					return instantQuery.RoundTrip(r)
 				}
 				return next.RoundTrip(r)

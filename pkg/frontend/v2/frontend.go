@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -64,10 +65,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Frontend struct {
 	services.Service
 
-	cfg Config
-	log log.Logger
-
-	retry *transport.Retry
+	cfg    Config
+	log    log.Logger
+	limits scheduler.Limits
+	retry  *transport.Retry
 
 	lastQueryID atomic.Uint64
 
@@ -112,7 +113,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
+func NewFrontend(cfg Config, limits scheduler.Limits, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -122,6 +123,7 @@ func NewFrontend(cfg Config, log log.Logger, reg prometheus.Registerer, retry *t
 
 	f := &Frontend{
 		cfg:              cfg,
+		limits:           limits,
 		log:              log,
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,

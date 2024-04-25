@@ -14,13 +14,21 @@ import (
 
 var (
 	errObjectDoesNotExist  = errors.New("object does not exist")
-	errKeyPermissionDenied = errors.New("object key permission denied")
+	ErrKeyPermissionDenied = errors.New("object key permission denied")
 )
 
 // ClientMock mocks objstore.Bucket
 type ClientMock struct {
 	mock.Mock
 	uploaded sync.Map
+}
+
+func (m *ClientMock) WithExpectedErrs(objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	return m
+}
+
+func (m *ClientMock) ReaderWithExpectedErrs(objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	return m
 }
 
 // Upload mocks objstore.Bucket.Upload()
@@ -123,7 +131,7 @@ func (m *ClientMock) MockGet(name, content string, err error) {
 	}
 }
 
-// MockGetRequireUpload is a convenient method to mock Get() return resulst after upload,
+// MockGetRequireUpload is a convenient method to mock Get() return results after upload,
 // otherwise return errObjectDoesNotExist
 func (m *ClientMock) MockGetRequireUpload(name, content string, err error) {
 	m.uploaded.Store(name, false)
@@ -180,7 +188,7 @@ func (m *ClientMock) IsObjNotFoundErr(err error) bool {
 
 // IsAccessDeniedErr mocks objstore.Bucket.IsAccessDeniedErr()
 func (m *ClientMock) IsAccessDeniedErr(err error) bool {
-	return err == errKeyPermissionDenied
+	return err == ErrKeyPermissionDenied
 }
 
 // ObjectSize mocks objstore.Bucket.Attributes()

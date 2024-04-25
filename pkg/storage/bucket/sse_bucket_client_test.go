@@ -111,7 +111,7 @@ func Test_shouldWrapSSeErrors(t *testing.T) {
 
 	bkt := &ClientMock{}
 
-	bkt.MockGet("Test", "someContent", errKeyPermissionDenied)
+	bkt.MockGet("Test", "someContent", ErrKeyPermissionDenied)
 
 	sseBkt := NewSSEBucketClient("user-1", bkt, cfgProvider)
 

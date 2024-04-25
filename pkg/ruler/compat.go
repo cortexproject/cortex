@@ -3,12 +3,12 @@ package ruler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,15 +16,16 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -69,6 +70,11 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 		TimestampMs: t,
 		Value:       v,
 	})
+	return 0, nil
+}
+
+func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
+	// AppendCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
 }
 
@@ -141,6 +147,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
 	EvaluationDelay(userID string) time.Duration
+	MaxQueryLength(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
@@ -150,8 +157,24 @@ type RulesLimits interface {
 // EngineQueryFunc returns a new engine query function by passing an altered timestamp.
 // Modified from Prometheus rules.EngineQueryFunc
 // https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
-func EngineQueryFunc(engine v1.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
+func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		// Enforce the max query length.
+		maxQueryLength := overrides.MaxQueryLength(userID)
+		if maxQueryLength > 0 {
+			expr, err := parser.ParseExpr(qs)
+			// If failed to parse expression, skip checking select range.
+			// Fail the query in the engine.
+			if err == nil {
+				// Enforce query length across all selectors in the query.
+				min, max := promql.FindMinMaxTime(&parser.EvalStmt{Expr: expr, Start: util.TimeFromMillis(0), End: util.TimeFromMillis(0), LookbackDelta: lookbackDelta})
+				diff := util.TimeFromMillis(max).Sub(util.TimeFromMillis(min))
+				if diff > maxQueryLength {
+					return nil, validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, diff, maxQueryLength))
+				}
+			}
+		}
+
 		evaluationDelay := overrides.EvaluationDelay(userID)
 		q, err := engine.NewInstantQuery(ctx, q, nil, qs, t.Add(-evaluationDelay))
 		if err != nil {
@@ -241,6 +264,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 				"query", qs,
 				"cortex_ruler_query_seconds_total", querySeconds,
 				"query_wall_time_seconds", queryStats.WallTime,
+				"query_storage_wall_time_seconds", queryStats.QueryStorageWallTime,
 				"fetched_series_count", queryStats.FetchedSeriesCount,
 				"fetched_chunks_count", queryStats.FetchedChunksCount,
 				"fetched_samples_count", queryStats.FetchedSamplesCount,
@@ -256,7 +280,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 	}
 }
 
-// This interface mimicks rules.Manager API. Interface is used to simplify tests.
+// This interface mimics rules.Manager API. Interface is used to simplify tests.
 type RulesManager interface {
 	// Starts rules manager. Blocks until Stop is called.
 	Run()
@@ -274,32 +298,7 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine v1.QueryEngine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
-	totalWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_total",
-		Help: "Number of write requests to ingesters.",
-	}, []string{"user"})
-	failedWritesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_failed_total",
-		Help: "Number of failed write requests to ingesters.",
-	}, []string{"user"})
-
-	totalQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_total",
-		Help: "Number of queries executed by ruler.",
-	}, []string{"user"})
-	failedQueriesVec := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_failed_total",
-		Help: "Number of failed queries by ruler.",
-	}, []string{"user"})
-	var rulerQuerySeconds *prometheus.CounterVec
-	if cfg.EnableQueryStats {
-		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_query_seconds_total",
-			Help: "Total amount of wall clock time spent processing queries by the ruler.",
-		}, []string{"user"})
-	}
-
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine promql.QueryEngine, overrides RulesLimits, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer) ManagerFactory {
 	// Wrap errors returned by Queryable to our wrapper, so that we can distinguish between those errors
 	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
 	// Errors from PromQL are always "user" errors.
@@ -307,30 +306,32 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager {
 		var queryTime prometheus.Counter
-		if rulerQuerySeconds != nil {
-			queryTime = rulerQuerySeconds.WithLabelValues(userID)
+		if evalMetrics.RulerQuerySeconds != nil {
+			queryTime = evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
 		}
 
-		failedQueries := failedQueriesVec.WithLabelValues(userID)
-		totalQueries := totalQueriesVec.WithLabelValues(userID)
-		totalWrites := totalWritesVec.WithLabelValues(userID)
-		failedWrites := failedWritesVec.WithLabelValues(userID)
+		failedQueries := evalMetrics.FailedQueriesVec.WithLabelValues(userID)
+		totalQueries := evalMetrics.TotalQueriesVec.WithLabelValues(userID)
+		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
+		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
 
-		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID)
+		engineQueryFunc := EngineQueryFunc(engine, q, overrides, userID, cfg.LookbackDelta)
 		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
-			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
-			Context:         user.InjectOrgID(ctx, userID),
-			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
-			Logger:          log.With(logger, "user", userID),
-			Registerer:      reg,
-			OutageTolerance: cfg.OutageTolerance,
-			ForGracePeriod:  cfg.ForGracePeriod,
-			ResendDelay:     cfg.ResendDelay,
+			Appendable:             NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
+			Queryable:              q,
+			QueryFunc:              RecordAndReportRuleQueryMetrics(metricsQueryFunc, queryTime, logger),
+			Context:                user.InjectOrgID(ctx, userID),
+			ExternalURL:            cfg.ExternalURL.URL,
+			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			Logger:                 log.With(logger, "user", userID),
+			Registerer:             reg,
+			OutageTolerance:        cfg.OutageTolerance,
+			ForGracePeriod:         cfg.ForGracePeriod,
+			ResendDelay:            cfg.ResendDelay,
+			ConcurrentEvalsEnabled: cfg.ConcurrentEvalsEnabled,
+			MaxConcurrentEvals:     cfg.MaxConcurrentEvals,
 		})
 	}
 }

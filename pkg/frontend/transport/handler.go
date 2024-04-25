@@ -19,13 +19,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/httpgrpc/server"
 	"google.golang.org/grpc/status"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -234,25 +234,26 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.reportQueryStats(r, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
+	hs := w.Header()
+	if f.cfg.QueryStatsEnabled {
+		writeServiceTimingHeader(queryResponseTime, hs, stats)
+	}
+
+	logger := util_log.WithContext(r.Context(), f.log)
 	if err != nil {
-		writeError(w, err)
+		writeError(logger, w, err, hs)
 		return
 	}
 
-	hs := w.Header()
 	for h, vs := range resp.Header {
 		hs[h] = vs
-	}
-
-	if f.cfg.QueryStatsEnabled {
-		writeServiceTimingHeader(queryResponseTime, hs, stats)
 	}
 
 	w.WriteHeader(resp.StatusCode)
 	// log copy response body error so that we will know even though success response code returned
 	bytesCopied, err := io.Copy(w, resp.Body)
 	if err != nil && !errors.Is(err, syscall.EPIPE) {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
+		level.Error(logger).Log("msg", "write response body error", "bytesCopied", bytesCopied, "err", err)
 	}
 }
 
@@ -289,11 +290,15 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 
 func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString url.Values, queryResponseTime time.Duration, stats *querier_stats.QueryStats, error error, statusCode int, resp *http.Response) {
 	wallTime := stats.LoadWallTime()
+	queryStorageWallTime := stats.LoadQueryStorageWallTime()
 	numSeries := stats.LoadFetchedSeries()
 	numChunks := stats.LoadFetchedChunks()
 	numSamples := stats.LoadFetchedSamples()
 	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
+	splitQueries := stats.LoadSplitQueries()
+	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
+	dataSelectMinTime := stats.LoadDataSelectMinTime()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(userID).Add(wallTime.Seconds())
@@ -324,6 +329,7 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		"fetched_samples_count", numSamples,
 		"fetched_chunks_bytes", numChunkBytes,
 		"fetched_data_bytes", numDataBytes,
+		"split_queries", splitQueries,
 		"status_code", statusCode,
 		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)
@@ -337,11 +343,25 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		logMessage = append(logMessage, "content_encoding", encoding)
 	}
 
+	if dataSelectMaxTime > 0 {
+		logMessage = append(logMessage, "data_select_max_time", util.FormatMillisToSeconds(dataSelectMaxTime))
+	}
+	if dataSelectMinTime > 0 {
+		logMessage = append(logMessage, "data_select_min_time", util.FormatMillisToSeconds(dataSelectMinTime))
+	}
 	if query := queryString.Get("query"); len(query) > 0 {
 		logMessage = append(logMessage, "query_length", len(query))
 	}
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
+	}
+	if priority, ok := stats.LoadPriority(); ok {
+		logMessage = append(logMessage, "priority", priority)
+	}
+	if sws := queryStorageWallTime.Seconds(); sws > 0 {
+		// Only include query storage wall time field if set. This value can be 0
+		// for query APIs that don't call `Querier` interface.
+		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
 	}
 
 	if error != nil {
@@ -422,7 +442,7 @@ func formatQueryString(queryString url.Values) (fields []interface{}) {
 	return fields
 }
 
-func writeError(w http.ResponseWriter, err error) {
+func writeError(logger log.Logger, w http.ResponseWriter, err error, additionalHeaders http.Header) {
 	switch err {
 	case context.Canceled:
 		err = errCanceled
@@ -433,7 +453,14 @@ func writeError(w http.ResponseWriter, err error) {
 			err = errRequestEntityTooLarge
 		}
 	}
-	server.WriteError(w, err)
+
+	headers := w.Header()
+	for k, values := range additionalHeaders {
+		for _, value := range values {
+			headers.Set(k, value)
+		}
+	}
+	util_api.RespondFromGRPCError(logger, w, err)
 }
 
 func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Header, stats *querier_stats.QueryStats) {
@@ -454,7 +481,7 @@ func statsValue(name string, d time.Duration) string {
 func getStatusCodeFromError(err error) int {
 	switch err {
 	case context.Canceled:
-		return StatusClientClosedRequest
+		return util_api.StatusClientClosedRequest
 	case context.DeadlineExceeded:
 		return http.StatusGatewayTimeout
 	default:

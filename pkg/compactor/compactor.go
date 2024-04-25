@@ -22,6 +22,10 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/compact"
 	"github.com/thanos-io/thanos/pkg/compact/downsample"
+	"github.com/thanos-io/thanos/pkg/errutil"
+	"github.com/thanos-io/thanos/pkg/extprom"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -209,6 +213,7 @@ type Config struct {
 	BlockVisitMarkerFileUpdateInterval time.Duration `yaml:"block_visit_marker_file_update_interval"`
 
 	AcceptMalformedIndex bool `yaml:"accept_malformed_index"`
+	CachingBucketEnabled bool `yaml:"caching_bucket_enabled"`
 }
 
 // RegisterFlags registers the Compactor flags.
@@ -247,6 +252,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BlockVisitMarkerFileUpdateInterval, "compactor.block-visit-marker-file-update-interval", 1*time.Minute, "How frequently block visit marker file should be updated duration compaction.")
 
 	f.BoolVar(&cfg.AcceptMalformedIndex, "compactor.accept-malformed-index", false, "When enabled, index verification will ignore out of order label names.")
+	f.BoolVar(&cfg.CachingBucketEnabled, "compactor.caching-bucket-enabled", false, "When enabled, caching bucket will be used for compactor, except cleaner service, which serves as the source of truth for block status")
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
@@ -296,7 +302,7 @@ type Compactor struct {
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
 	// Useful for injecting mock objects from tests.
-	bucketClientFactory    func(ctx context.Context) (objstore.Bucket, error)
+	bucketClientFactory    func(ctx context.Context) (objstore.InstrumentedBucket, error)
 	blocksGrouperFactory   BlocksGrouperFactory
 	blocksCompactorFactory BlocksCompactorFactory
 
@@ -312,7 +318,7 @@ type Compactor struct {
 	blocksPlannerFactory PlannerFactory
 
 	// Client used to run operations on the bucket storing blocks.
-	bucketClient objstore.Bucket
+	bucketClient objstore.InstrumentedBucket
 
 	// Ring used for sharding compactions.
 	ringLifecycler         *ring.Lifecycler
@@ -321,6 +327,7 @@ type Compactor struct {
 	ringSubservicesWatcher *services.FailureWatcher
 
 	// Metrics.
+	CompactorStartDurationSeconds  prometheus.Gauge
 	compactionRunsStarted          prometheus.Counter
 	compactionRunsInterrupted      prometheus.Counter
 	compactionRunsCompleted        prometheus.Counter
@@ -344,7 +351,7 @@ type Compactor struct {
 
 // NewCompactor makes a new Compactor.
 func NewCompactor(compactorCfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Compactor, error) {
-	bucketClientFactory := func(ctx context.Context) (objstore.Bucket, error) {
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 		return bucket.NewClient(ctx, storageCfg.Bucket, "compactor", logger, registerer)
 	}
 
@@ -379,7 +386,7 @@ func newCompactor(
 	storageCfg cortex_tsdb.BlocksStorageConfig,
 	logger log.Logger,
 	registerer prometheus.Registerer,
-	bucketClientFactory func(ctx context.Context) (objstore.Bucket, error),
+	bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error),
 	blocksGrouperFactory BlocksGrouperFactory,
 	blocksCompactorFactory BlocksCompactorFactory,
 	limits *validation.Overrides,
@@ -403,6 +410,10 @@ func newCompactor(
 		blocksCompactorFactory: blocksCompactorFactory,
 		allowedTenants:         util.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
+		CompactorStartDurationSeconds: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_compactor_start_duration_seconds",
+			Help: "Time in seconds spent by compactor running start function",
+		}),
 		compactionRunsStarted: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_compactor_runs_started_total",
 			Help: "Total number of compaction runs started.",
@@ -485,6 +496,12 @@ func newCompactor(
 
 // Start the compactor.
 func (c *Compactor) starting(ctx context.Context) error {
+	begin := time.Now()
+	defer func() {
+		c.CompactorStartDurationSeconds.Set(time.Since(begin).Seconds())
+		level.Info(c.logger).Log("msg", "compactor started", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
+	}()
+
 	var err error
 
 	// Create bucket client.
@@ -577,10 +594,26 @@ func (c *Compactor) starting(ctx context.Context) error {
 		return errors.Wrap(err, "failed to start the blocks cleaner")
 	}
 
+	if c.compactorCfg.CachingBucketEnabled {
+		matchers := cortex_tsdb.NewMatchers()
+		// Do not cache tenant deletion marker and block deletion marker for compactor
+		matchers.SetMetaFileMatcher(func(name string) bool {
+			return strings.HasSuffix(name, "/"+metadata.MetaFilename)
+		})
+		c.bucketClient, err = cortex_tsdb.CreateCachingBucket(cortex_tsdb.ChunksCacheConfig{}, c.storageCfg.BucketStore.MetadataCache, matchers, c.bucketClient, c.logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+		if err != nil {
+			return errors.Wrap(err, "create caching bucket")
+		}
+	}
 	return nil
 }
 
 func (c *Compactor) stopping(_ error) error {
+	begin := time.Now()
+	defer func() {
+		level.Info(c.logger).Log("msg", "compactor stopped", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
+	}()
+
 	ctx := context.Background()
 
 	services.StopAndAwaitTerminated(ctx, c.blocksCleaner) //nolint:errcheck
@@ -759,6 +792,10 @@ func (c *Compactor) compactUserWithRetries(ctx context.Context, userID string) e
 		if lastErr == nil {
 			return nil
 		}
+		if c.isCausedByPermissionDenied(lastErr) {
+			level.Warn(c.logger).Log("msg", "skipping compactUser due to PermissionDenied", "user", userID, "err", lastErr)
+			return nil
+		}
 
 		retries.Wait()
 	}
@@ -790,10 +827,26 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	// out of order chunks or index file too big.
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
+	var blockLister block.Lister
+	switch cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy) {
+	case cortex_tsdb.ConcurrentDiscovery:
+		blockLister = block.NewConcurrentLister(ulogger, bucket)
+	case cortex_tsdb.RecursiveDiscovery:
+		blockLister = block.NewRecursiveLister(ulogger, bucket)
+	case cortex_tsdb.BucketIndexDiscovery:
+		if !c.storageCfg.BucketStore.BucketIndex.Enabled {
+			return cortex_tsdb.ErrInvalidBucketIndexBlockDiscoveryStrategy
+		}
+		blockLister = bucketindex.NewBlockLister(ulogger, c.bucketClient, userID, c.limits)
+	default:
+		return cortex_tsdb.ErrBlockDiscoveryStrategy
+	}
+
 	fetcher, err := block.NewMetaFetcher(
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
 		bucket,
+		blockLister,
 		c.metaSyncDirForUser(userID),
 		reg,
 		// List of filters to apply (order matters).
@@ -981,4 +1034,31 @@ func (c *Compactor) listTenantsWithMetaSyncDirectories() map[string]struct{} {
 	}
 
 	return result
+}
+
+func (c *Compactor) isCausedByPermissionDenied(err error) bool {
+	cause := errors.Cause(err)
+	if compact.IsRetryError(cause) || compact.IsHaltError(cause) {
+		cause = errors.Unwrap(cause)
+	}
+	if multiErr, ok := cause.(errutil.NonNilMultiRootError); ok {
+		for _, err := range multiErr {
+			if c.isPermissionDeniedErr(err) {
+				return true
+			}
+		}
+		return false
+	}
+	return c.isPermissionDeniedErr(cause)
+}
+
+func (c *Compactor) isPermissionDeniedErr(err error) bool {
+	if c.bucketClient.IsAccessDeniedErr(err) {
+		return true
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+	return s.Code() == codes.PermissionDenied
 }

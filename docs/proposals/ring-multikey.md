@@ -112,7 +112,7 @@ type MultiKey interface {
 ```
 
 * SplitById - responsible to split the codec in multiple keys and interface.
-* JoinIds - responsible to receive multiple keys and interface creating the codec objec
+* JoinIds - responsible to receive multiple keys and interface creating the codec object
 * GetChildFactory - Allow the kv store to know how to serialize and deserialize the interface returned by “SplitById”.
   The interface returned by SplitById need to be a proto.Message
 * FindDifference - optimization used to know what need to be updated or deleted from a codec. This avoids updating all keys every

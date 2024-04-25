@@ -152,6 +152,15 @@ var instantVectorFuncs = map[string]functionCall{
 	"year": func(f float64, h *histogram.FloatHistogram, vargs ...float64) (float64, bool) {
 		return year(dateFromSampleValue(f)), true
 	},
+	// hack we only have sort functions as argument for "timestamp" possibly so they dont actually
+	// need to sort anything. This is only for compatibility to prometheus as this sort of query does
+	// not make too much sense.
+	"sort": simpleFunc(func(v float64) float64 {
+		return v
+	}),
+	"sort_desc": simpleFunc(func(v float64) float64 {
+		return v
+	}),
 }
 
 type noArgFunctionCall func(t int64) float64

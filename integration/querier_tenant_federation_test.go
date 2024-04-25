@@ -164,7 +164,6 @@ func runQuerierTenantFederationTest(t *testing.T, cfg querierTenantFederationCon
 	require.NoError(t, queueComponent.WaitSumMetricsWithOptions(e2e.Equals(0), []string{queueMetricName}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "user", strings.Join(tenantIDs, "|")))))
 
-	// TODO: check cache invalidation on tombstone cache gen increase
 	// TODO: check fairness in queryfrontend
 }
 

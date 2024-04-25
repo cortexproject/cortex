@@ -10,15 +10,16 @@ import (
 )
 
 type MemcachedClientConfig struct {
-	Addresses              string        `yaml:"addresses"`
-	Timeout                time.Duration `yaml:"timeout"`
-	MaxIdleConnections     int           `yaml:"max_idle_connections"`
-	MaxAsyncConcurrency    int           `yaml:"max_async_concurrency"`
-	MaxAsyncBufferSize     int           `yaml:"max_async_buffer_size"`
-	MaxGetMultiConcurrency int           `yaml:"max_get_multi_concurrency"`
-	MaxGetMultiBatchSize   int           `yaml:"max_get_multi_batch_size"`
-	MaxItemSize            int           `yaml:"max_item_size"`
-	AutoDiscovery          bool          `yaml:"auto_discovery"`
+	Addresses              string               `yaml:"addresses"`
+	Timeout                time.Duration        `yaml:"timeout"`
+	MaxIdleConnections     int                  `yaml:"max_idle_connections"`
+	MaxAsyncConcurrency    int                  `yaml:"max_async_concurrency"`
+	MaxAsyncBufferSize     int                  `yaml:"max_async_buffer_size"`
+	MaxGetMultiConcurrency int                  `yaml:"max_get_multi_concurrency"`
+	MaxGetMultiBatchSize   int                  `yaml:"max_get_multi_batch_size"`
+	MaxItemSize            int                  `yaml:"max_item_size"`
+	AutoDiscovery          bool                 `yaml:"auto_discovery"`
+	SetAsyncCircuitBreaker CircuitBreakerConfig `yaml:"set_async_circuit_breaker_config"`
 }
 
 func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -31,6 +32,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefi
 	f.IntVar(&cfg.MaxGetMultiBatchSize, prefix+"max-get-multi-batch-size", 0, "The maximum number of keys a single underlying get operation should run. If more keys are specified, internally keys are split into multiple batches and fetched concurrently, honoring the max concurrency. If set to 0, the max batch size is unlimited.")
 	f.IntVar(&cfg.MaxItemSize, prefix+"max-item-size", 1024*1024, "The maximum size of an item stored in memcached. Bigger items are not stored. If set to 0, no maximum size is enforced.")
 	f.BoolVar(&cfg.AutoDiscovery, prefix+"auto-discovery", false, "Use memcached auto-discovery mechanism provided by some cloud provider like GCP and AWS")
+	cfg.SetAsyncCircuitBreaker.RegisterFlagsWithPrefix(f, prefix+"set-async.")
 }
 
 func (cfg *MemcachedClientConfig) GetAddresses() []string {
@@ -62,5 +64,13 @@ func (cfg MemcachedClientConfig) ToMemcachedClientConfig() cacheutil.MemcachedCl
 		MaxItemSize:               model.Bytes(cfg.MaxItemSize),
 		DNSProviderUpdateInterval: 30 * time.Second,
 		AutoDiscovery:             cfg.AutoDiscovery,
+		SetAsyncCircuitBreaker: cacheutil.CircuitBreakerConfig{
+			Enabled:             cfg.SetAsyncCircuitBreaker.Enabled,
+			HalfOpenMaxRequests: uint32(cfg.SetAsyncCircuitBreaker.HalfOpenMaxRequests),
+			OpenDuration:        cfg.SetAsyncCircuitBreaker.OpenDuration,
+			MinRequests:         uint32(cfg.SetAsyncCircuitBreaker.MinRequests),
+			ConsecutiveFailures: uint32(cfg.SetAsyncCircuitBreaker.ConsecutiveFailures),
+			FailurePercent:      cfg.SetAsyncCircuitBreaker.FailurePercent,
+		},
 	}
 }

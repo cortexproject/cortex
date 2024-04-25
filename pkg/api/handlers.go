@@ -19,12 +19,12 @@ import (
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
 
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -160,9 +160,8 @@ func NewQuerierHandler(
 	cfg Config,
 	queryable storage.SampleAndChunkQueryable,
 	exemplarQueryable storage.ExemplarQueryable,
-	engine v1.QueryEngine,
+	engine promql.QueryEngine,
 	distributor Distributor,
-	tombstonesLoader purger.TombstonesLoader,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) http.Handler {
@@ -242,9 +241,7 @@ func NewQuerierHandler(
 		ResponseBodySize: sentMessageSize,
 		InflightRequests: inflightRequests,
 	}
-	cacheGenHeaderMiddleware := getHTTPCacheGenNumberHeaderSetterMiddleware(tombstonesLoader)
-	middlewares := middleware.Merge(inst, cacheGenHeaderMiddleware)
-	router.Use(middlewares.Wrap)
+	router.Use(inst.Wrap)
 
 	// Define the prefixes for all routes
 	prefix := path.Join(cfg.ServerPrefix, cfg.PrometheusHTTPPrefix)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	open_api_models "github.com/prometheus/alertmanager/api/v2/models"
 	alertConfig "github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/types"
 	promapi "github.com/prometheus/client_golang/api"
@@ -26,7 +27,12 @@ import (
 	"github.com/prometheus/prometheus/storage/remote"
 	yaml "gopkg.in/yaml.v3"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
+	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
+
 	"github.com/cortexproject/cortex/pkg/ruler"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -88,6 +94,25 @@ func NewClient(
 	return c, nil
 }
 
+// NewPromQueryClient makes a new client but used for Prometheus Query only.
+func NewPromQueryClient(address string) (*Client, error) {
+	// Create querier API client
+	querierAPIClient, err := promapi.NewClient(promapi.Config{
+		Address: "http://" + address,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Client{
+		timeout:       5 * time.Second,
+		httpClient:    &http.Client{},
+		querierClient: promv1.NewAPI(querierAPIClient),
+	}
+
+	return c, nil
+}
+
 // Push the input timeseries to the remote endpoint
 func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	// Create write request
@@ -106,6 +131,77 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 	req.Header.Add("Content-Encoding", "snappy")
 	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("X-Prometheus-Remote-Write-Version", "0.1.0")
+	req.Header.Set("X-Scope-OrgID", c.orgID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+	return res, nil
+}
+
+func getNameAndAttributes(ts prompb.TimeSeries) (string, map[string]any) {
+	var metricName string
+	attributes := make(map[string]any)
+	for _, label := range ts.Labels {
+		if label.Name == model.MetricNameLabel {
+			metricName = label.Value
+		} else {
+			attributes[label.Name] = label.Value
+		}
+	}
+	return metricName, attributes
+}
+
+func createDatapointsGauge(newMetric pmetric.Metric, attributes map[string]any, samples []prompb.Sample) {
+	newMetric.SetEmptyGauge()
+	for _, sample := range samples {
+		datapoint := newMetric.Gauge().DataPoints().AppendEmpty()
+		datapoint.SetDoubleValue(sample.Value)
+		datapoint.SetTimestamp(pcommon.Timestamp(sample.Timestamp * time.Millisecond.Nanoseconds()))
+		err := datapoint.Attributes().FromRaw(attributes)
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+// Convert Timeseries to Metrics
+func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics {
+	metrics := pmetric.NewMetrics()
+	for _, ts := range timeseries {
+		metricName, attributes := getNameAndAttributes(ts)
+		newMetric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
+		newMetric.SetName(metricName)
+		//TODO Set description for new metric
+		//TODO Set unit for new metric
+		createDatapointsGauge(newMetric, attributes, ts.Samples)
+		//TODO(friedrichg): Add support for histograms
+	}
+	return metrics
+}
+
+// Push series to OTLP endpoint
+func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
+
+	data, err := pmetricotlp.NewExportRequestFromMetrics(convertTimeseriesToMetrics(timeseries)).MarshalProto()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/otlp/v1/metrics", c.distributorAddress), bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-protobuf")
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
@@ -313,7 +409,21 @@ func (c *Client) query(addr string) (*http.Response, []byte, error) {
 
 	req.Header.Set("X-Scope-OrgID", c.orgID)
 
-	res, err := c.httpClient.Do(req)
+	retries := backoff.New(ctx, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 2 * time.Second,
+		MaxRetries: 10,
+	})
+	var (
+		res *http.Response
+	)
+	for retries.Ongoing() {
+		res, err = c.httpClient.Do(req)
+		if err == nil {
+			break
+		}
+		retries.Wait()
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -595,7 +705,7 @@ func (c *Client) getRawPage(ctx context.Context, url string) ([]byte, error) {
 
 // GetAlertmanagerConfig gets the status of an alertmanager instance
 func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config, error) {
-	u := c.alertmanagerClient.URL("/api/prom/api/v1/status", nil)
+	u := c.alertmanagerClient.URL("/api/prom/api/v2/status", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -615,16 +725,17 @@ func (c *Client) GetAlertmanagerConfig(ctx context.Context) (*alertConfig.Config
 		return nil, fmt.Errorf("getting config failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
-	var ss *ServerStatus
-	err = json.Unmarshal(body, &ss)
+	cfg := &open_api_models.AlertmanagerStatus{}
+	err = yaml.Unmarshal(body, cfg)
+
 	if err != nil {
 		return nil, err
 	}
 
-	cfg := &alertConfig.Config{}
-	err = yaml.Unmarshal([]byte(ss.Data.ConfigYaml), cfg)
+	original := &alertConfig.Config{}
+	err = yaml.Unmarshal([]byte(*cfg.Config.Original), original)
 
-	return cfg, err
+	return original, err
 }
 
 // SetAlertmanagerConfig gets the status of an alertmanager instance
@@ -686,7 +797,7 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 
 // SendAlertToAlermanager sends alerts to the Alertmanager API
 func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert) error {
-	u := c.alertmanagerClient.URL("/api/prom/api/v1/alerts", nil)
+	u := c.alertmanagerClient.URL("/api/prom/api/v2/alerts", nil)
 
 	data, err := json.Marshal([]types.Alert{{Alert: *alert}})
 	if err != nil {
@@ -697,7 +808,7 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	if err != nil {
 		return fmt.Errorf("error creating request: %v", err)
 	}
-
+	req.Header.Set("Content-Type", "application/json")
 	resp, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
 		return err
@@ -708,44 +819,6 @@ func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert)
 	}
 
 	return nil
-}
-
-func (c *Client) GetAlertsV1(ctx context.Context) ([]model.Alert, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/alerts", nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	resp, body, err := c.alertmanagerClient.Do(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
-	}
-
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("getting alerts failed with status %d and error %v", resp.StatusCode, string(body))
-	}
-
-	type response struct {
-		Status string        `json:"status"`
-		Data   []model.Alert `json:"data"`
-	}
-
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
-		return nil, err
-	}
-
-	if decoded.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data, nil
 }
 
 func (c *Client) GetAlertsV2(ctx context.Context) ([]model.Alert, error) {
@@ -812,7 +885,7 @@ func (c *Client) GetAlertGroups(ctx context.Context) ([]AlertGroup, error) {
 
 // CreateSilence creates a new silence and returns the unique identifier of the silence.
 func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (string, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
+	u := c.alertmanagerClient.URL("api/prom/api/v2/silences", nil)
 
 	data, err := json.Marshal(silence)
 	if err != nil {
@@ -824,6 +897,8 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (stri
 		return "", fmt.Errorf("error creating request: %v", err)
 	}
 
+	req.Header.Set("Content-Type", "application/json")
+
 	resp, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
 		return "", err
@@ -834,60 +909,14 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (stri
 	}
 
 	type response struct {
-		Status string `json:"status"`
-		Data   struct {
-			SilenceID string `json:"silenceID"`
-		} `json:"data"`
+		SilenceID string `json:"silenceID"`
 	}
 
 	decoded := &response{}
 	if err := json.Unmarshal(body, decoded); err != nil {
 		return "", err
 	}
-
-	if decoded.Status != "success" {
-		return "", fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data.SilenceID, nil
-}
-
-func (c *Client) GetSilencesV1(ctx context.Context) ([]types.Silence, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/silences", nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
-	}
-
-	resp, body, err := c.alertmanagerClient.Do(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
-	}
-
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("getting silences failed with status %d and error %v", resp.StatusCode, string(body))
-	}
-
-	type response struct {
-		Status string          `json:"status"`
-		Data   []types.Silence `json:"data"`
-	}
-
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
-		return nil, err
-	}
-
-	if decoded.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data, nil
+	return decoded.SilenceID, nil
 }
 
 func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
@@ -917,44 +946,6 @@ func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
 	}
 
 	return decoded, nil
-}
-
-func (c *Client) GetSilenceV1(ctx context.Context, id string) (types.Silence, error) {
-	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v1/silence/%s", url.PathEscape(id)), nil)
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return types.Silence{}, fmt.Errorf("error creating request: %v", err)
-	}
-
-	resp, body, err := c.alertmanagerClient.Do(ctx, req)
-	if err != nil {
-		return types.Silence{}, err
-	}
-
-	if resp.StatusCode == http.StatusNotFound {
-		return types.Silence{}, ErrNotFound
-	}
-
-	if resp.StatusCode/100 != 2 {
-		return types.Silence{}, fmt.Errorf("getting silence failed with status %d and error %v", resp.StatusCode, string(body))
-	}
-
-	type response struct {
-		Status string        `json:"status"`
-		Data   types.Silence `json:"data"`
-	}
-
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
-		return types.Silence{}, err
-	}
-
-	if decoded.Status != "success" {
-		return types.Silence{}, fmt.Errorf("unexpected response status '%s'", decoded.Status)
-	}
-
-	return decoded.Data, nil
 }
 
 func (c *Client) GetSilenceV2(ctx context.Context, id string) (types.Silence, error) {
@@ -987,7 +978,7 @@ func (c *Client) GetSilenceV2(ctx context.Context, id string) (types.Silence, er
 }
 
 func (c *Client) DeleteSilence(ctx context.Context, id string) error {
-	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v1/silence/%s", url.PathEscape(id)), nil)
+	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v2/silence/%s", url.PathEscape(id)), nil)
 
 	req, err := http.NewRequest(http.MethodDelete, u.String(), nil)
 	if err != nil {
@@ -1011,7 +1002,7 @@ func (c *Client) DeleteSilence(ctx context.Context, id string) error {
 }
 
 func (c *Client) GetReceivers(ctx context.Context) ([]string, error) {
-	u := c.alertmanagerClient.URL("api/prom/api/v1/receivers", nil)
+	u := c.alertmanagerClient.URL("api/prom/api/v2/receivers", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
@@ -1031,21 +1022,21 @@ func (c *Client) GetReceivers(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("getting receivers failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
+	r := []string{}
 	type response struct {
-		Status string   `json:"status"`
-		Data   []string `json:"data"`
+		Name string `json:"name"`
 	}
 
-	decoded := &response{}
-	if err := json.Unmarshal(body, decoded); err != nil {
+	decoded := []response{}
+	if err := json.Unmarshal(body, &decoded); err != nil {
 		return nil, err
 	}
 
-	if decoded.Status != "success" {
-		return nil, fmt.Errorf("unexpected response status '%s'", decoded.Status)
+	for _, d := range decoded {
+		r = append(r, d.Name)
 	}
 
-	return decoded.Data, nil
+	return r, nil
 }
 
 func (c *Client) PostRequest(url string, body io.Reader) (*http.Response, error) {

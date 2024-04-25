@@ -211,7 +211,7 @@ func TestFrontendMetricsCleanup(t *testing.T) {
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 				# HELP cortex_query_frontend_queue_length Number of queries in the queue.
 				# TYPE cortex_query_frontend_queue_length gauge
-				cortex_query_frontend_queue_length{user="1"} 0
+				cortex_query_frontend_queue_length{priority="0",type="fifo",user="1"} 0
 			`), "cortex_query_frontend_queue_length"))
 
 			fr.cleanupInactiveUserMetrics("1")

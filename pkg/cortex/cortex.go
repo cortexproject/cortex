@@ -14,8 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
-	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -38,7 +38,6 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -225,6 +224,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
+	if err := c.Ingester.Validate(); err != nil {
+		return errors.Wrap(err, "invalid ingester config")
+	}
+
 	if err := c.Tracing.Validate(); err != nil {
 		return errors.Wrap(err, "invalid tracing config")
 	}
@@ -302,10 +305,9 @@ type Cortex struct {
 	Flusher                  *flusher.Flusher
 	Frontend                 *frontendv1.Frontend
 	RuntimeConfig            *runtimeconfig.Manager
-	TombstonesLoader         purger.TombstonesLoader
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
-	QuerierEngine            v1.QueryEngine
+	QuerierEngine            promql.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
 
 	Ruler        *ruler.Ruler

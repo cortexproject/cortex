@@ -279,6 +279,10 @@ func (c *SNS) ConfirmSubscriptionRequest(input *ConfirmSubscriptionInput) (req *
 //     exceeds the limit. To add more filter polices, submit an Amazon SNS Limit
 //     Increase case in the Amazon Web Services Support Center.
 //
+//   - ErrCodeReplayLimitExceededException "ReplayLimitExceeded"
+//     Indicates that the request parameter has exceeded the maximum number of concurrent
+//     message replays.
+//
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sns-2010-03-31/ConfirmSubscription
 func (c *SNS) ConfirmSubscription(input *ConfirmSubscriptionInput) (*ConfirmSubscriptionOutput, error) {
 	req, out := c.ConfirmSubscriptionRequest(input)
@@ -364,8 +368,15 @@ func (c *SNS) CreatePlatformApplicationRequest(input *CreatePlatformApplicationI
 //   - For APNS and APNS_SANDBOX using token credentials, PlatformPrincipal
 //     is signing key ID and PlatformCredential is signing key.
 //
-//   - For GCM (Firebase Cloud Messaging), there is no PlatformPrincipal and
-//     the PlatformCredential is API key.
+//   - For GCM (Firebase Cloud Messaging) using key credentials, there is no
+//     PlatformPrincipal. The PlatformCredential is API key.
+//
+//   - For GCM (Firebase Cloud Messaging) using token credentials, there is
+//     no PlatformPrincipal. The PlatformCredential is a JSON formatted private
+//     key file. When using the Amazon Web Services CLI, the file must be in
+//     string format and special characters must be ignored. To format the file
+//     correctly, Amazon SNS recommends using the following command: SERVICE_JSON=`jq
+//     @json <<< cat service.json`.
 //
 //   - For MPNS, PlatformPrincipal is TLS certificate and PlatformCredential
 //     is private key.
@@ -1084,6 +1095,9 @@ func (c *SNS) DeleteTopicRequest(input *DeleteTopicInput) (req *request.Request,
 //
 //   - ErrCodeInvalidParameterException "InvalidParameter"
 //     Indicates that a request parameter does not comply with the associated constraints.
+//
+//   - ErrCodeInvalidStateException "InvalidState"
+//     Indicates that the specified state is not a valid state for an event source.
 //
 //   - ErrCodeInternalErrorException "InternalError"
 //     Indicates an internal service error.
@@ -3272,13 +3286,13 @@ func (c *SNS) PublishRequest(input *PublishInput) (req *request.Request, output 
 //     Indicates that the user has been denied access to the requested resource.
 //
 //   - ErrCodeKMSDisabledException "KMSDisabled"
-//     The request was rejected because the specified customer master key (CMK)
+//     The request was rejected because the specified Amazon Web Services KMS key
 //     isn't enabled.
 //
 //   - ErrCodeKMSInvalidStateException "KMSInvalidState"
 //     The request was rejected because the state of the specified resource isn't
-//     valid for this request. For more information, see How Key State Affects Use
-//     of a Customer Master Key (https://docs.aws.amazon.com/kms/latest/developerguide/key-state.html)
+//     valid for this request. For more information, see Key states of Amazon Web
+//     Services KMS keys (https://docs.aws.amazon.com/kms/latest/developerguide/key-state.html)
 //     in the Key Management Service Developer Guide.
 //
 //   - ErrCodeKMSNotFoundException "KMSNotFound"
@@ -3444,13 +3458,13 @@ func (c *SNS) PublishBatchRequest(input *PublishBatchInput) (req *request.Reques
 //     The batch request contains more entries than permissible.
 //
 //   - ErrCodeKMSDisabledException "KMSDisabled"
-//     The request was rejected because the specified customer master key (CMK)
+//     The request was rejected because the specified Amazon Web Services KMS key
 //     isn't enabled.
 //
 //   - ErrCodeKMSInvalidStateException "KMSInvalidState"
 //     The request was rejected because the state of the specified resource isn't
-//     valid for this request. For more information, see How Key State Affects Use
-//     of a Customer Master Key (https://docs.aws.amazon.com/kms/latest/developerguide/key-state.html)
+//     valid for this request. For more information, see Key states of Amazon Web
+//     Services KMS keys (https://docs.aws.amazon.com/kms/latest/developerguide/key-state.html)
 //     in the Key Management Service Developer Guide.
 //
 //   - ErrCodeKMSNotFoundException "KMSNotFound"
@@ -4032,6 +4046,10 @@ func (c *SNS) SetSubscriptionAttributesRequest(input *SetSubscriptionAttributesI
 //     exceeds the limit. To add more filter polices, submit an Amazon SNS Limit
 //     Increase case in the Amazon Web Services Support Center.
 //
+//   - ErrCodeReplayLimitExceededException "ReplayLimitExceeded"
+//     Indicates that the request parameter has exceeded the maximum number of concurrent
+//     message replays.
+//
 //   - ErrCodeInternalErrorException "InternalError"
 //     Indicates an internal service error.
 //
@@ -4209,7 +4227,7 @@ func (c *SNS) SubscribeRequest(input *SubscribeInput) (req *request.Request, out
 // to confirm the subscription.
 //
 // You call the ConfirmSubscription action with the token from the subscription
-// response. Confirmation tokens are valid for three days.
+// response. Confirmation tokens are valid for two days.
 //
 // This action is throttled at 100 transactions per second (TPS).
 //
@@ -4229,6 +4247,10 @@ func (c *SNS) SubscribeRequest(input *SubscribeInput) (req *request.Request, out
 //     Indicates that the number of filter polices in your Amazon Web Services account
 //     exceeds the limit. To add more filter polices, submit an Amazon SNS Limit
 //     Increase case in the Amazon Web Services Support Center.
+//
+//   - ErrCodeReplayLimitExceededException "ReplayLimitExceeded"
+//     Indicates that the request parameter has exceeded the maximum number of concurrent
+//     message replays.
 //
 //   - ErrCodeInvalidParameterException "InvalidParameter"
 //     Indicates that a request parameter does not comply with the associated constraints.
@@ -4890,8 +4912,12 @@ type CheckIfPhoneNumberIsOptedOutInput struct {
 
 	// The phone number for which you want to check the opt out status.
 	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CheckIfPhoneNumberIsOptedOutInput's
+	// String and GoString methods.
+	//
 	// PhoneNumber is a required field
-	PhoneNumber *string `locationName:"phoneNumber" type:"string" required:"true"`
+	PhoneNumber *string `locationName:"phoneNumber" type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -5313,8 +5339,12 @@ type CreateSMSSandboxPhoneNumberInput struct {
 	// this phone number to the list of verified phone numbers that you can send
 	// SMS messages to.
 	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateSMSSandboxPhoneNumberInput's
+	// String and GoString methods.
+	//
 	// PhoneNumber is a required field
-	PhoneNumber *string `type:"string" required:"true"`
+	PhoneNumber *string `type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -5423,7 +5453,13 @@ type CreateTopicInput struct {
 	//
 	// The following attributes apply only to FIFO topics (https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html):
 	//
-	//    * FifoTopic – When this is set to true, a FIFO topic is created.
+	//    * ArchivePolicy – Adds or updates an inline policy document to archive
+	//    messages stored in the specified Amazon SNS topic.
+	//
+	//    * BeginningArchiveTime – The earliest starting point at which a message
+	//    in the topic’s archive can be replayed from. This point in time is based
+	//    on the configured message retention period set by the topic’s message
+	//    archiving policy.
 	//
 	//    * ContentBasedDeduplication – Enables content-based deduplication for
 	//    FIFO topics. By default, ContentBasedDeduplication is set to false. If
@@ -5703,8 +5739,12 @@ type DeleteSMSSandboxPhoneNumberInput struct {
 
 	// The destination phone number to delete.
 	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by DeleteSMSSandboxPhoneNumberInput's
+	// String and GoString methods.
+	//
 	// PhoneNumber is a required field
-	PhoneNumber *string `type:"string" required:"true"`
+	PhoneNumber *string `type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -6109,6 +6149,11 @@ type GetPlatformApplicationAttributesOutput struct {
 	//
 	//    * ApplePlatformBundleID – The app identifier used to configure token-based
 	//    authentication.
+	//
+	//    * AuthenticationMethod – Returns the credential type used when sending
+	//    push notifications from application to APNS/APNS_Sandbox, or application
+	//    to GCM. APNS – Returns the token or certificate. GCM – Returns the
+	//    token or key.
 	//
 	//    * EventEndpointCreated – Topic ARN to which EndpointCreated event notifications
 	//    should be sent.
@@ -7397,8 +7442,12 @@ type OptInPhoneNumberInput struct {
 
 	// The phone number to opt in. Use E.164 format.
 	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by OptInPhoneNumberInput's
+	// String and GoString methods.
+	//
 	// PhoneNumber is a required field
-	PhoneNumber *string `locationName:"phoneNumber" type:"string" required:"true"`
+	PhoneNumber *string `locationName:"phoneNumber" type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.
@@ -7475,7 +7524,11 @@ type PhoneNumberInformation struct {
 	NumberCapabilities []*string `type:"list" enum:"NumberCapability"`
 
 	// The phone number.
-	PhoneNumber *string `type:"string"`
+	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by PhoneNumberInformation's
+	// String and GoString methods.
+	PhoneNumber *string `type:"string" sensitive:"true"`
 
 	// The list of supported routes.
 	RouteType *string `type:"string" enum:"RouteType"`
@@ -8036,7 +8089,11 @@ type PublishInput struct {
 	//
 	// If you don't specify a value for the PhoneNumber parameter, you must specify
 	// a value for the TargetArn or TopicArn parameters.
-	PhoneNumber *string `type:"string"`
+	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by PublishInput's
+	// String and GoString methods.
+	PhoneNumber *string `type:"string" sensitive:"true"`
 
 	// Optional parameter to be used as the "Subject" line when the message is delivered
 	// to email endpoints. This field will also be included, if present, in the
@@ -8387,7 +8444,11 @@ type SMSSandboxPhoneNumber struct {
 	_ struct{} `type:"structure"`
 
 	// The destination phone number.
-	PhoneNumber *string `type:"string"`
+	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by SMSSandboxPhoneNumber's
+	// String and GoString methods.
+	PhoneNumber *string `type:"string" sensitive:"true"`
 
 	// The destination phone number's verification status.
 	Status *string `type:"string" enum:"SMSSandboxPhoneNumberVerificationStatus"`
@@ -8530,7 +8591,13 @@ type SetPlatformApplicationAttributesInput struct {
 	//    service. For ADM, PlatformCredentialis client secret. For Apple Services
 	//    using certificate credentials, PlatformCredential is private key. For
 	//    Apple Services using token credentials, PlatformCredential is signing
-	//    key. For GCM (Firebase Cloud Messaging), PlatformCredential is API key.
+	//    key. For GCM (Firebase Cloud Messaging) using key credentials, there is
+	//    no PlatformPrincipal. The PlatformCredential is API key. For GCM (Firebase
+	//    Cloud Messaging) using token credentials, there is no PlatformPrincipal.
+	//    The PlatformCredential is a JSON formatted private key file. When using
+	//    the Amazon Web Services CLI, the file must be in string format and special
+	//    characters must be ignored. To format the file correctly, Amazon SNS recommends
+	//    using the following command: SERVICE_JSON=`jq @json <<< cat service.json`.
 	//
 	//    * PlatformPrincipal – The principal received from the notification service.
 	//    For ADM, PlatformPrincipalis client id. For Apple Services using certificate
@@ -9154,6 +9221,19 @@ type SubscribeInput struct {
 	//    more information, see Fanout to Kinesis Data Firehose delivery streams
 	//    (https://docs.aws.amazon.com/sns/latest/dg/sns-firehose-as-subscriber.html)
 	//    in the Amazon SNS Developer Guide.
+	//
+	// The following attributes apply only to FIFO topics (https://docs.aws.amazon.com/sns/latest/dg/sns-fifo-topics.html):
+	//
+	//    * ReplayPolicy – Adds or updates an inline policy document for a subscription
+	//    to replay messages stored in the specified Amazon SNS topic.
+	//
+	//    * ReplayStatus – Retrieves the status of the subscription message replay,
+	//    which can be one of the following: Completed – The replay has successfully
+	//    redelivered all messages, and is now delivering newly published messages.
+	//    If an ending point was specified in the ReplayPolicy then the subscription
+	//    will no longer receive newly published messages. In progress – The replay
+	//    is currently replaying the selected messages. Failed – The replay was
+	//    unable to complete. Pending – The default state while the replay initiates.
 	Attributes map[string]*string `type:"map"`
 
 	// The endpoint that you want to receive notifications. Endpoints vary by protocol:
@@ -9751,8 +9831,12 @@ type VerifySMSSandboxPhoneNumberInput struct {
 
 	// The destination phone number to verify.
 	//
+	// PhoneNumber is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by VerifySMSSandboxPhoneNumberInput's
+	// String and GoString methods.
+	//
 	// PhoneNumber is a required field
-	PhoneNumber *string `type:"string" required:"true"`
+	PhoneNumber *string `type:"string" required:"true" sensitive:"true"`
 }
 
 // String returns the string representation.

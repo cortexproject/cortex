@@ -120,6 +120,7 @@ func TestReplicationSet_Do(t *testing.T) {
 		cancelContextDelay  time.Duration
 		want                []interface{}
 		expectedError       error
+		zoneResultsQuorum   bool
 	}{
 		{
 			name: "max errors = 0, no errors no delay",
@@ -211,6 +212,16 @@ func TestReplicationSet_Do(t *testing.T) {
 			maxUnavailableZones: 2,
 			want:                []interface{}{1, 1, 1, 1, 1, 1},
 		},
+		{
+			name:      "max unavailable zones = 1, zoneResultsQuorum = true, should contain 4 results (2 from zone1, 2 from zone2)",
+			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
+				return 1, nil
+			},
+			maxUnavailableZones: 1,
+			want:                []interface{}{1, 1, 1, 1},
+			zoneResultsQuorum:   true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -231,7 +242,7 @@ func TestReplicationSet_Do(t *testing.T) {
 					cancel()
 				})
 			}
-			got, err := r.Do(ctx, tt.delay, tt.f)
+			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.f)
 			if tt.expectedError != nil {
 				assert.Equal(t, tt.expectedError, err)
 			} else {

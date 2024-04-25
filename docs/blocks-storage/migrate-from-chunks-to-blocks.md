@@ -104,7 +104,7 @@ Where parameters are:
 
 After starting new pod in `ingester-new` statefulset, script then triggers `/shutdown` endpoint on the old ingester. When the flushing on the old ingester is complete, scale down of statefulset continues, and process repeats.
 
-_The script supports both migration from chunks to blocks, and viceversa (eg. rollback)._
+_The script supports both migration from chunks to blocks, and vice versa (eg. rollback)._
 
 ### Known issues
 

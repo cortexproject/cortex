@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -9,7 +10,7 @@ import (
 
 // IsCanceled checks whether an error comes from an operation being canceled
 func IsCanceled(err error) bool {
-	if err == context.Canceled {
+	if errors.Is(err, context.Canceled) {
 		return true
 	}
 	s, ok := status.FromError(err)

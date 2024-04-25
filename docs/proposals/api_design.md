@@ -71,7 +71,7 @@ Cortex will utilize path based versioning similar to both Prometheus and Alertma
 
 The new API endpoints and the current http prefix endpoints can be maintained concurrently. The flag to configure these endpoints will be maintained as `http.prefix`. This will allow us to roll out the new API without disrupting the current routing schema. The original http prefix endpoints can maintained indefinitely or be phased out over time. Deprecation warnings can be added to the current API either when initialized or utilized. This can be accomplished by injecting a middleware that logs a warning whenever a legacy API endpoint is used.
 
-In cases where Cortex is run as a single binary, the Alertmanager module will only be accesible using the new API.
+In cases where Cortex is run as a single binary, the Alertmanager module will only be accessible using the new API.
 
 ### Implementation
 

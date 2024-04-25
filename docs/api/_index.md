@@ -26,6 +26,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Pprof](#pprof) | _All services_ || `GET /debug/pprof` |
 | [Fgprof](#fgprof) | _All services_ || `GET /debug/fgprof` |
 | [Remote write](#remote-write) | Distributor || `POST /api/v1/push` |
+| [OTLP receiver](#otlp-receiver) | Distributor || `POST /api/v1/otlp/v1/metrics` |
 | [Tenants stats](#tenants-stats) | Distributor || `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor || `GET /distributor/ha_tracker` |
 | [Flush blocks](#flush-blocks) | Ingester || `GET,POST /ingester/flush` |

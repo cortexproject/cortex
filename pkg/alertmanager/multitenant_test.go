@@ -529,7 +529,7 @@ receivers:
 				require.NoError(t, err)
 
 				// Push an alert.
-				req := httptest.NewRequest(http.MethodPost, cfg.ExternalURL.String()+"/api/v1/alerts", bytes.NewReader(alertsPayload))
+				req := httptest.NewRequest(http.MethodPost, cfg.ExternalURL.String()+"/api/v2/alerts", bytes.NewReader(alertsPayload))
 				req.Header.Set("content-type", "application/json")
 				reqCtx := user.InjectOrgID(req.Context(), userID)
 				{
@@ -979,7 +979,7 @@ receivers:
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
 	// Request when no user configuration is present.
-	req := httptest.NewRequest("GET", externalURL.String()+"/api/v1/status", nil)
+	req := httptest.NewRequest("GET", externalURL.String()+"/api/v2/status", nil)
 	w := httptest.NewRecorder()
 
 	am.ServeHTTP(w, req.WithContext(user.InjectOrgID(req.Context(), "user1")))
@@ -1015,6 +1015,7 @@ receivers:
 }
 
 func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
+	tg := ring.NewRandomTokenGenerator()
 	tc := []struct {
 		name          string
 		existing      bool
@@ -1041,7 +1042,7 @@ func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 			name:          "with an instance already in the ring with ACTIVE state and all tokens",
 			existing:      true,
 			initialState:  ring.ACTIVE,
-			initialTokens: ring.GenerateTokens(128, nil),
+			initialTokens: tg.GenerateTokens(ring.NewDesc(), "id1", "", 128, true),
 		},
 		{
 			name:          "with an instance already in the ring with LEAVING state and all tokens",
@@ -1520,9 +1521,10 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
 	defer services.StopAndAwaitTerminated(ctx, am) //nolint:errcheck
 
+	tg := ring.NewRandomTokenGenerator()
 	require.NoError(t, ringStore.CAS(ctx, RingKey, func(in interface{}) (interface{}, bool, error) {
 		ringDesc := ring.GetOrCreateRingDesc(in)
-		instance := ringDesc.AddIngester(unhealthyInstanceID, "127.0.0.1", "", ring.GenerateTokens(RingNumTokens, nil), ring.ACTIVE, time.Now())
+		instance := ringDesc.AddIngester(unhealthyInstanceID, "127.0.0.1", "", tg.GenerateTokens(ringDesc, unhealthyInstanceID, "", RingNumTokens, true), ring.ACTIVE, time.Now())
 		instance.Timestamp = time.Now().Add(-(ringAutoForgetUnhealthyPeriods + 1) * heartbeatTimeout).Unix()
 		ringDesc.Ingesters[unhealthyInstanceID] = instance
 

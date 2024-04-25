@@ -133,30 +133,56 @@ func TestStats_AddFetchedSamples(t *testing.T) {
 	})
 }
 
+func TestStats_StorageWallTime(t *testing.T) {
+	t.Run("add and load query storage wall time", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddQueryStorageWallTime(time.Second)
+		stats.AddQueryStorageWallTime(time.Second)
+
+		assert.Equal(t, 2*time.Second, stats.LoadQueryStorageWallTime())
+	})
+
+	t.Run("add and load query storage wall time nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.AddQueryStorageWallTime(time.Second)
+
+		assert.Equal(t, time.Duration(0), stats.LoadQueryStorageWallTime())
+	})
+}
+
 func TestStats_Merge(t *testing.T) {
 	t.Parallel()
 	t.Run("merge two stats objects", func(t *testing.T) {
 		stats1 := &QueryStats{}
 		stats1.AddWallTime(time.Millisecond)
+		stats1.AddQueryStorageWallTime(2 * time.Second)
 		stats1.AddFetchedSeries(50)
 		stats1.AddFetchedChunkBytes(42)
 		stats1.AddFetchedDataBytes(100)
+		stats1.AddFetchedChunks(105)
+		stats1.AddFetchedSamples(109)
 		stats1.AddExtraFields("a", "b")
 		stats1.AddExtraFields("a", "b")
 
 		stats2 := &QueryStats{}
 		stats2.AddWallTime(time.Second)
+		stats2.AddQueryStorageWallTime(3 * time.Second)
 		stats2.AddFetchedSeries(60)
 		stats2.AddFetchedChunkBytes(100)
 		stats2.AddFetchedDataBytes(101)
+		stats2.AddFetchedChunks(102)
+		stats2.AddFetchedSamples(103)
 		stats2.AddExtraFields("c", "d")
 
 		stats1.Merge(stats2)
 
 		assert.Equal(t, 1001*time.Millisecond, stats1.LoadWallTime())
+		assert.Equal(t, 5*time.Second, stats1.LoadQueryStorageWallTime())
 		assert.Equal(t, uint64(110), stats1.LoadFetchedSeries())
 		assert.Equal(t, uint64(142), stats1.LoadFetchedChunkBytes())
 		assert.Equal(t, uint64(201), stats1.LoadFetchedDataBytes())
+		assert.Equal(t, uint64(207), stats1.LoadFetchedChunks())
+		assert.Equal(t, uint64(212), stats1.LoadFetchedSamples())
 		checkExtraFields(t, []interface{}{"a", "b", "c", "d"}, stats1.LoadExtraFields())
 	})
 
@@ -167,6 +193,7 @@ func TestStats_Merge(t *testing.T) {
 		stats1.Merge(stats2)
 
 		assert.Equal(t, time.Duration(0), stats1.LoadWallTime())
+		assert.Equal(t, time.Duration(0), stats1.LoadQueryStorageWallTime())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedSeries())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedChunkBytes())
 		assert.Equal(t, uint64(0), stats1.LoadFetchedDataBytes())

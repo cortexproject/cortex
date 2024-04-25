@@ -49,7 +49,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -2135,7 +2134,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 
 	for ts := startTimestamp; ts < startTimestamp+(step*int64(numSamplesPerSeries)); ts += step {
 		for o := 0; o < numSeries; o += maxBatchSize {
-			batchSize := util_math.Min(maxBatchSize, numSeries-o)
+			batchSize := min(maxBatchSize, numSeries-o)
 
 			// Generate metrics and samples (1 for each series).
 			metrics := make([]labels.Labels, 0, batchSize)
@@ -2731,7 +2730,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db := i.getTSDB(userID)
@@ -2763,7 +2762,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	bucket := objstore.NewInMemBucket()
 
 	// Write tenant deletion mark.
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), bucket, userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
 
 	i.TSDBState.bucket = bucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -2821,7 +2820,7 @@ func TestIngester_sholdUpdateCacheShippedBlocks(t *testing.T) {
 	require.Equal(t, len(db.getCachedShippedBlocks()), 0)
 	shippedBlock, _ := ulid.Parse("01D78XZ44G0000000000000000")
 
-	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.db.Dir(), &shipper.Meta{
+	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.shipperMetadataFilePath, &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{shippedBlock},
 	}))
@@ -2858,7 +2857,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 
 	// Mock the shipper meta (no blocks).
 	db := i.getTSDB(userID)
-	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.db.Dir(), &shipper.Meta{
+	require.NoError(t, shipper.WriteMetaFile(log.NewNopLogger(), db.shipperMetadataFilePath, &shipper.Meta{
 		Version: shipper.MetaVersion1,
 	}))
 
@@ -3788,7 +3787,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	`, oldBlocks[0].Meta().ULID.Time()/1000)), "cortex_ingester_oldest_unshipped_block_timestamp_seconds"))
 
 	// Saying that we have shipped the second block, so only that should get deleted.
-	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
+	require.Nil(t, shipper.WriteMetaFile(nil, db.shipperMetadataFilePath, &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID},
 	}))
@@ -3816,7 +3815,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	`, newBlocks[0].Meta().ULID.Time()/1000)), "cortex_ingester_oldest_unshipped_block_timestamp_seconds"))
 
 	// Shipping 2 more blocks, hence all the blocks from first round.
-	require.Nil(t, shipper.WriteMetaFile(nil, db.db.Dir(), &shipper.Meta{
+	require.Nil(t, shipper.WriteMetaFile(nil, db.shipperMetadataFilePath, &shipper.Meta{
 		Version:  shipper.MetaVersion1,
 		Uploaded: []ulid.ULID{oldBlocks[1].Meta().ULID, newBlocks[0].Meta().ULID, newBlocks[1].Meta().ULID},
 	}))

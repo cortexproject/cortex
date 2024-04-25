@@ -56,6 +56,30 @@ jobs:
       - name: Run Tests
         run: make BUILD_IN_CONTAINER=false test
 
+  security:
+    name: CodeQL
+    runs-on: ubuntu-20.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  
   build:
     runs-on: ubuntu-20.04
     container:
@@ -146,18 +170,15 @@ jobs:
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.6.0
-            docker pull quay.io/cortexproject/cortex:v1.7.0
-            docker pull quay.io/cortexproject/cortex:v1.8.0
-            docker pull quay.io/cortexproject/cortex:v1.9.0
-            docker pull quay.io/cortexproject/cortex:v1.10.0
-            docker pull quay.io/cortexproject/cortex:v1.11.1
             docker pull quay.io/cortexproject/cortex:v1.13.1
             docker pull quay.io/cortexproject/cortex:v1.13.2
             docker pull quay.io/cortexproject/cortex:v1.14.0
             docker pull quay.io/cortexproject/cortex:v1.14.1
             docker pull quay.io/cortexproject/cortex:v1.15.0
             docker pull quay.io/cortexproject/cortex:v1.15.1
+            docker pull quay.io/cortexproject/cortex:v1.15.2
+            docker pull quay.io/cortexproject/cortex:v1.15.3
+            docker pull quay.io/cortexproject/cortex:v1.16.0
           fi
           docker pull memcached:1.6.1
           docker pull redis:7.0.4-alpine

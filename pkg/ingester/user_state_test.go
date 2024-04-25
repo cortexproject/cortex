@@ -75,7 +75,7 @@ func TestMetricCounter(t *testing.T) {
 			overrides, err := validation.NewOverrides(limits, nil)
 			require.NoError(t, err)
 
-			// We're testing code that's not dependant on sharding strategy, replication factor, etc. To simplify the test,
+			// We're testing code that's not dependent on sharding strategy, replication factor, etc. To simplify the test,
 			// we use local limit only.
 			limiter := NewLimiter(overrides, nil, util.ShardingStrategyDefault, true, 3, false, "")
 			mc := newMetricCounter(limiter, ignored)

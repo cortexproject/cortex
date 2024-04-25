@@ -18,6 +18,7 @@ import (
 var defaultConfig = Config{
 	SignatureVersion: SignatureVersionV4,
 	BucketLookupType: BucketAutoLookup,
+	SendContentMd5:   true,
 	HTTP: HTTPConfig{
 		Config: bucket_http.Config{
 			IdleConnTimeout:       90 * time.Second,
@@ -78,6 +79,7 @@ http:
 				Insecure:         true,
 				SignatureVersion: "test-signature-version",
 				BucketLookupType: BucketVirtualHostLookup,
+				SendContentMd5:   true,
 				SSE: SSEConfig{
 					Type:                 "test-type",
 					KMSKeyID:             "test-kms-key-id",

@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package trace // import "go.opentelemetry.io/otel/sdk/trace"
 
@@ -20,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	rt "runtime/trace"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -30,8 +20,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/internal"
 	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/embedded"
 )
 
 // ReadOnlySpan allows reading information from the data structure underlying a
@@ -108,6 +99,8 @@ type ReadWriteSpan interface {
 // recordingSpan is an implementation of the OpenTelemetry Span API
 // representing the individual component of a trace that is sampled.
 type recordingSpan struct {
+	embedded.Span
+
 	// mu protects the contents of this span.
 	mu sync.Mutex
 
@@ -158,8 +151,10 @@ type recordingSpan struct {
 	tracer *tracer
 }
 
-var _ ReadWriteSpan = (*recordingSpan)(nil)
-var _ runtimeTracer = (*recordingSpan)(nil)
+var (
+	_ ReadWriteSpan = (*recordingSpan)(nil)
+	_ runtimeTracer = (*recordingSpan)(nil)
+)
 
 // SpanContext returns the SpanContext of this span.
 func (s *recordingSpan) SpanContext() trace.SpanContext {
@@ -237,6 +232,7 @@ func (s *recordingSpan) SetAttributes(attributes ...attribute.KeyValue) {
 
 	// Otherwise, add without deduplication. When attributes are read they
 	// will be deduplicated, optimizing the operation.
+	s.attributes = slices.Grow(s.attributes, len(s.attributes)+len(attributes))
 	for _, a := range attributes {
 		if !a.Valid() {
 			// Drop all invalid attributes.
@@ -272,6 +268,8 @@ func (s *recordingSpan) addOverCapAttrs(limit int, attrs []attribute.KeyValue) {
 
 	// Now that s.attributes is deduplicated, adding unique attributes up to
 	// the capacity of s will not over allocate s.attributes.
+	sum := len(attrs) + len(s.attributes)
+	s.attributes = slices.Grow(s.attributes, min(sum, limit))
 	for _, a := range attrs {
 		if !a.Valid() {
 			// Drop all invalid attributes.
@@ -631,7 +629,7 @@ func (s *recordingSpan) Resource() *resource.Resource {
 	return s.tracer.provider.resource
 }
 
-func (s *recordingSpan) addLink(link trace.Link) {
+func (s *recordingSpan) AddLink(link trace.Link) {
 	if !s.IsRecording() || !link.SpanContext.IsValid() {
 		return
 	}
@@ -772,6 +770,8 @@ func (s *recordingSpan) runtimeTrace(ctx context.Context) context.Context {
 // that wraps a SpanContext. It performs no operations other than to return
 // the wrapped SpanContext or TracerProvider that created it.
 type nonRecordingSpan struct {
+	embedded.Span
+
 	// tracer is the SDK tracer that created this span.
 	tracer *tracer
 	sc     trace.SpanContext
@@ -802,6 +802,9 @@ func (nonRecordingSpan) RecordError(error, ...trace.EventOption) {}
 
 // AddEvent does nothing.
 func (nonRecordingSpan) AddEvent(string, ...trace.EventOption) {}
+
+// AddLink does nothing.
+func (nonRecordingSpan) AddLink(trace.Link) {}
 
 // SetName does nothing.
 func (nonRecordingSpan) SetName(string) {}

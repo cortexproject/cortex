@@ -89,3 +89,7 @@ func (c *S3Client) Delete(prefix string) error {
 		return c.writer.Delete(context.Background(), entry)
 	})
 }
+
+func (c *S3Client) GetBucket() objstore.Bucket {
+	return c.writer
+}

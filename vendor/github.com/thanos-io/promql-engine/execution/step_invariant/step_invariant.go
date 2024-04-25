@@ -11,9 +11,8 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 )
 
@@ -35,55 +34,49 @@ type stepInvariantOperator struct {
 	model.OperatorTelemetry
 }
 
-func (u *stepInvariantOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	u.SetName("[*stepInvariantOperator]")
-	next := make([]model.ObservableVectorOperator, 0, 1)
-	if obsnext, ok := u.next.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
-	}
-	return u, next
+func (u *stepInvariantOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{u.next}
 }
 
-func (u *stepInvariantOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[*stepInvariantOperator]", []model.VectorOperator{u.next}
+func (u *stepInvariantOperator) String() string {
+	return "[stepInvariant]"
 }
 
 func NewStepInvariantOperator(
 	pool *model.VectorPool,
 	next model.VectorOperator,
-	expr parser.Expr,
+	expr logicalplan.Node,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
-	interval := opts.Step.Milliseconds()
 	// We set interval to be at least 1.
-	if interval == 0 {
-		interval = 1
-	}
 	u := &stepInvariantOperator{
 		vectorPool:  pool,
 		next:        next,
 		currentStep: opts.Start.UnixMilli(),
 		mint:        opts.Start.UnixMilli(),
 		maxt:        opts.End.UnixMilli(),
-		step:        interval,
+		step:        opts.Step.Milliseconds(),
 		stepsBatch:  opts.StepsBatch,
 		cacheResult: true,
+	}
+	u.OperatorTelemetry = model.NewTelemetry(u, opts.EnableAnalysis)
+	if u.step == 0 {
+		u.step = 1
 	}
 	// We do not duplicate results for range selectors since result is a matrix
 	// with their unique timestamps which does not depend on the step.
 	switch expr.(type) {
-	case *parser.MatrixSelector, *parser.SubqueryExpr:
+	case *logicalplan.MatrixSelector, *logicalplan.Subquery:
 		u.cacheResult = false
-	}
-	u.OperatorTelemetry = &model.NoopTelemetry{}
-	if opts.EnableAnalysis {
-		u.OperatorTelemetry = &model.TrackedTelemetry{}
 	}
 
 	return u, nil
 }
 
 func (u *stepInvariantOperator) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { u.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	u.seriesOnce.Do(func() {
 		u.series, err = u.next.Series(ctx)
@@ -100,15 +93,17 @@ func (u *stepInvariantOperator) GetPool() *model.VectorPool {
 }
 
 func (u *stepInvariantOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	if u.currentStep > u.maxt {
-		return nil, nil
-	}
 	start := time.Now()
+	defer func() { u.AddExecutionTimeTaken(time.Since(start)) }()
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+	}
+
+	if u.currentStep > u.maxt {
+		return nil, nil
 	}
 
 	if !u.cacheResult {
@@ -127,7 +122,6 @@ func (u *stepInvariantOperator) Next(ctx context.Context) ([]model.StepVector, e
 		result = append(result, outVector)
 		u.currentStep += u.step
 	}
-	u.AddExecutionTimeTaken(time.Since(start))
 
 	return result, nil
 }

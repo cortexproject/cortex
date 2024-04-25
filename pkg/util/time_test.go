@@ -1,10 +1,14 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
+	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,5 +133,58 @@ func TestNewDisableableTicker_Disabled(t *testing.T) {
 		t.Error("ticker should not have ticked when disabled")
 	default:
 		break
+	}
+}
+
+func TestFindMinMaxTime(t *testing.T) {
+	now := time.Now()
+
+	type testCase struct {
+		query           string
+		lookbackDelta   time.Duration
+		queryStartTime  time.Time
+		queryEndTime    time.Time
+		expectedMinTime time.Time
+		expectedMaxTime time.Time
+	}
+
+	tests := map[string]testCase{
+		"should consider min and max of the query param": {
+			query:           "up",
+			queryStartTime:  now.Add(-1 * time.Hour),
+			queryEndTime:    now,
+			expectedMinTime: now.Add(-1 * time.Hour),
+			expectedMaxTime: now,
+		},
+		"should consider min and max of inner queries": {
+			query:           "go_gc_duration_seconds_count[2h] offset 30m + go_gc_duration_seconds_count[3h] offset 1h",
+			queryStartTime:  now.Add(-1 * time.Hour),
+			queryEndTime:    now,
+			expectedMinTime: now.Add(-5 * time.Hour),
+			expectedMaxTime: now.Add(-30 * time.Minute),
+		},
+		"should consider lookback delta": {
+			query:           "up",
+			lookbackDelta:   1 * time.Hour,
+			queryStartTime:  now.Add(-1 * time.Hour),
+			queryEndTime:    now,
+			expectedMinTime: now.Add(-2 * time.Hour),
+			expectedMaxTime: now,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			expr, _ := parser.ParseExpr(testData.query)
+
+			url := "/query_range?query=" + testData.query +
+				"&start=" + strconv.FormatInt(testData.queryStartTime.Truncate(time.Minute).Unix(), 10) +
+				"&end=" + strconv.FormatInt(testData.queryEndTime.Truncate(time.Minute).Unix(), 10)
+			req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
+
+			minTime, maxTime := FindMinMaxTime(req, expr, testData.lookbackDelta, now)
+			assert.Equal(t, testData.expectedMinTime.Truncate(time.Minute).UnixMilli(), minTime)
+			assert.Equal(t, testData.expectedMaxTime.Truncate(time.Minute).UnixMilli(), maxTime)
+		})
 	}
 }

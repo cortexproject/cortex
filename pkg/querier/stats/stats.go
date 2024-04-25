@@ -16,7 +16,11 @@ var ctxKey = contextKey(0)
 
 type QueryStats struct {
 	Stats
-	m sync.Mutex
+	PriorityAssigned  bool
+	Priority          int64
+	DataSelectMaxTime int64
+	DataSelectMinTime int64
+	m                 sync.Mutex
 }
 
 // ContextWithEmptyStats returns a context with empty stats.
@@ -180,6 +184,92 @@ func (s *QueryStats) LoadFetchedChunks() uint64 {
 	return atomic.LoadUint64(&s.FetchedChunksCount)
 }
 
+// AddQueryStorageWallTime adds some time to the counter.
+func (s *QueryStats) AddQueryStorageWallTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddInt64((*int64)(&s.QueryStorageWallTime), int64(t))
+}
+
+// LoadQueryStorageWallTime returns current query storage wall time.
+func (s *QueryStats) LoadQueryStorageWallTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+
+	return time.Duration(atomic.LoadInt64((*int64)(&s.QueryStorageWallTime)))
+}
+
+func (s *QueryStats) AddSplitQueries(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.SplitQueries, count)
+}
+
+func (s *QueryStats) LoadSplitQueries() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.SplitQueries)
+}
+
+func (s *QueryStats) SetPriority(priority int64) {
+	if s == nil {
+		return
+	}
+
+	if !s.PriorityAssigned {
+		s.PriorityAssigned = true
+	}
+
+	atomic.StoreInt64(&s.Priority, priority)
+}
+
+func (s *QueryStats) LoadPriority() (int64, bool) {
+	if s == nil {
+		return 0, false
+	}
+
+	return atomic.LoadInt64(&s.Priority), s.PriorityAssigned
+}
+
+func (s *QueryStats) SetDataSelectMaxTime(dataSelectMaxTime int64) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.DataSelectMaxTime, dataSelectMaxTime)
+}
+
+func (s *QueryStats) LoadDataSelectMaxTime() int64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadInt64(&s.DataSelectMaxTime)
+}
+
+func (s *QueryStats) SetDataSelectMinTime(dataSelectMinTime int64) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.DataSelectMinTime, dataSelectMinTime)
+}
+
+func (s *QueryStats) LoadDataSelectMinTime() int64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadInt64(&s.DataSelectMinTime)
+}
+
 // Merge the provided Stats into this one.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil {
@@ -187,6 +277,7 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	}
 
 	s.AddWallTime(other.LoadWallTime())
+	s.AddQueryStorageWallTime(other.LoadQueryStorageWallTime())
 	s.AddFetchedSeries(other.LoadFetchedSeries())
 	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 	s.AddFetchedDataBytes(other.LoadFetchedDataBytes())

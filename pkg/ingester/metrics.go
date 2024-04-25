@@ -46,9 +46,17 @@ type ingesterMetrics struct {
 	ingestionRate           prometheus.GaugeFunc
 	maxInflightPushRequests prometheus.GaugeFunc
 	inflightRequests        prometheus.GaugeFunc
+	inflightQueryRequests   prometheus.GaugeFunc
 }
 
-func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSDB bool, activeSeriesEnabled bool, instanceLimitsFn func() *InstanceLimits, ingestionRate *util_math.EwmaRate, inflightRequests *atomic.Int64) *ingesterMetrics {
+func newIngesterMetrics(r prometheus.Registerer,
+	createMetricsConflictingWithTSDB bool,
+	activeSeriesEnabled bool,
+	instanceLimitsFn func() *InstanceLimits,
+	ingestionRate *util_math.EwmaRate,
+	inflightPushRequests *atomic.Int64,
+	maxInflightQueryRequests *util_math.MaxTracker,
+) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
 		instanceLimitsHelp = "Instance limits used by this ingester." // Must be same for all registrations.
@@ -187,8 +195,18 @@ func newIngesterMetrics(r prometheus.Registerer, createMetricsConflictingWithTSD
 			Name: "cortex_ingester_inflight_push_requests",
 			Help: "Current number of inflight push requests in ingester.",
 		}, func() float64 {
-			if inflightRequests != nil {
-				return float64(inflightRequests.Load())
+			if inflightPushRequests != nil {
+				return float64(inflightPushRequests.Load())
+			}
+			return 0
+		}),
+
+		inflightQueryRequests: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "cortex_ingester_max_inflight_query_requests",
+			Help: "Max number of inflight query requests in ingester.",
+		}, func() float64 {
+			if maxInflightQueryRequests != nil {
+				return float64(maxInflightQueryRequests.Load())
 			}
 			return 0
 		}),
@@ -267,6 +285,7 @@ type tsdbMetrics struct {
 	tsdbSnapshotReplayErrorTotal       *prometheus.Desc
 	tsdbOOOHistogram                   *prometheus.Desc
 	tsdbMmapChunksTotal                *prometheus.Desc
+	tsdbDataTotalReplayDuration        *prometheus.Desc
 
 	tsdbExemplarsTotal          *prometheus.Desc
 	tsdbExemplarsInStorage      *prometheus.Desc
@@ -394,6 +413,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_chunk_write_queue_operations_total",
 			"Number of currently tsdb chunk write queues.",
 			[]string{"user", "operation"}, nil),
+		tsdbDataTotalReplayDuration: prometheus.NewDesc(
+			"cortex_ingester_tsdb_data_replay_duration_seconds",
+			"Time taken to replay the tsdb data on disk.",
+			[]string{"user"}, nil),
 		tsdbLoadedBlocks: prometheus.NewDesc(
 			"cortex_ingester_tsdb_blocks_loaded",
 			"Number of currently loaded data blocks",
@@ -516,6 +539,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbChunksRemovedTotal
 	out <- sm.tsdbMmapChunkCorruptionTotal
 	out <- sm.tsdbChunkwriteQueueOperationsTotal
+	out <- sm.tsdbDataTotalReplayDuration
 	out <- sm.tsdbLoadedBlocks
 	out <- sm.tsdbSymbolTableSize
 	out <- sm.tsdbReloads
@@ -571,6 +595,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUser(out, sm.tsdbChunksRemovedTotal, "prometheus_tsdb_head_chunks_removed_total")
 	data.SendSumOfCounters(out, sm.tsdbMmapChunkCorruptionTotal, "prometheus_tsdb_mmap_chunk_corruptions_total")
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbChunkwriteQueueOperationsTotal, "prometheus_tsdb_chunk_write_queue_operations_total", "operation")
+	data.SendSumOfGaugesPerUser(out, sm.tsdbDataTotalReplayDuration, "prometheus_tsdb_data_replay_duration_seconds")
 	data.SendSumOfGauges(out, sm.tsdbLoadedBlocks, "prometheus_tsdb_blocks_loaded")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbSymbolTableSize, "prometheus_tsdb_symbol_table_size_bytes")
 	data.SendSumOfCounters(out, sm.tsdbReloads, "prometheus_tsdb_reloads_total")

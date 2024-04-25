@@ -87,8 +87,9 @@ type BucketStores struct {
 var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
-func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.Bucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
-	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, bucketClient, logger, reg)
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
+	matchers := tsdb.NewMatchers()
+	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, matchers, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create caching bucket")
 	}
@@ -545,17 +546,31 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 			filters)
 	} else {
 		// Wrap the bucket reader to skip iterating the bucket at all if the user doesn't
-		// belong to the store-gateway shard. We need to run the BucketStore synching anyway
+		// belong to the store-gateway shard. We need to run the BucketStore syncing anyway
 		// in order to unload previous tenants in case of a resharding leading to tenants
 		// moving out from the store-gateway shard and also make sure both MetaFetcher and
 		// BucketStore metrics are correctly updated.
 		fetcherBkt := NewShardingBucketReaderAdapter(userID, u.shardingStrategy, userBkt)
 
-		var err error
+		var (
+			err         error
+			blockLister block.Lister
+		)
+		switch tsdb.BlockDiscoveryStrategy(u.cfg.BucketStore.BlockDiscoveryStrategy) {
+		case tsdb.ConcurrentDiscovery:
+			blockLister = block.NewConcurrentLister(userLogger, userBkt)
+		case tsdb.RecursiveDiscovery:
+			blockLister = block.NewRecursiveLister(userLogger, userBkt)
+		case tsdb.BucketIndexDiscovery:
+			return nil, tsdb.ErrInvalidBucketIndexBlockDiscoveryStrategy
+		default:
+			return nil, tsdb.ErrBlockDiscoveryStrategy
+		}
 		fetcher, err = block.NewMetaFetcher(
 			userLogger,
 			u.cfg.BucketStore.MetaSyncConcurrency,
 			fetcherBkt,
+			blockLister,
 			u.syncDirForUser(userID), // The fetcher stores cached metas in the "meta-syncer/" sub directory
 			fetcherReg,
 			filters,

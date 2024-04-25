@@ -6,8 +6,6 @@ package query
 import (
 	"context"
 	"time"
-
-	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type Options struct {
@@ -19,7 +17,6 @@ type Options struct {
 	LookbackDelta            time.Duration
 	ExtLookbackDelta         time.Duration
 	NoStepSubqueryIntervalFn func(time.Duration) time.Duration
-	EnableSubqueries         bool
 	EnableAnalysis           bool
 }
 
@@ -46,23 +43,23 @@ func (o *Options) WithEndTime(end time.Time) *Options {
 	return &result
 }
 
-func NestedOptionsForSubquery(opts *Options, t *parser.SubqueryExpr) *Options {
+func NestedOptionsForSubquery(opts *Options, step, queryRange, offset time.Duration) *Options {
 	nOpts := &Options{
 		Context:                  opts.Context,
-		End:                      opts.End.Add(-t.Offset),
+		End:                      opts.End.Add(-offset),
 		LookbackDelta:            opts.LookbackDelta,
 		StepsBatch:               opts.StepsBatch,
 		ExtLookbackDelta:         opts.ExtLookbackDelta,
 		NoStepSubqueryIntervalFn: opts.NoStepSubqueryIntervalFn,
-		EnableSubqueries:         opts.EnableSubqueries,
+		EnableAnalysis:           opts.EnableAnalysis,
 	}
-	if t.Step != 0 {
-		nOpts.Step = t.Step
+	if step != 0 {
+		nOpts.Step = step
 	} else {
-		nOpts.Step = opts.NoStepSubqueryIntervalFn(t.Range)
+		nOpts.Step = opts.NoStepSubqueryIntervalFn(queryRange)
 	}
-	nOpts.Start = time.UnixMilli(nOpts.Step.Milliseconds() * (opts.Start.Add(-t.Offset-t.Range).UnixMilli() / nOpts.Step.Milliseconds()))
-	if nOpts.Start.Before(opts.Start.Add(-t.Offset - t.Range)) {
+	nOpts.Start = time.UnixMilli(nOpts.Step.Milliseconds() * (opts.Start.Add(-offset-queryRange).UnixMilli() / nOpts.Step.Milliseconds()))
+	if nOpts.Start.Before(opts.Start.Add(-offset - queryRange)) {
 		nOpts.Start = nOpts.Start.Add(nOpts.Step)
 	}
 	return nOpts

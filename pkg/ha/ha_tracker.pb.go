@@ -28,7 +28,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 type ReplicaDesc struct {
 	Replica    string `protobuf:"bytes,1,opt,name=replica,proto3" json:"replica,omitempty"`
 	ReceivedAt int64  `protobuf:"varint,2,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
-	// Unix timestamp in millseconds when this entry was marked for deletion.
+	// Unix timestamp in milliseconds when this entry was marked for deletion.
 	// Reason for doing marking first, and delete later, is to make sure that distributors
 	// watching the prefix will receive notification on "marking" -- at which point they can
 	// already remove entry from memory. Actual deletion from KV store does *not* trigger

@@ -5,41 +5,41 @@ package function
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
 type noArgFunctionOperator struct {
+	model.OperatorTelemetry
+
 	mint        int64
 	maxt        int64
 	step        int64
 	currentStep int64
 	stepsBatch  int
-	funcExpr    *parser.Call
+	funcExpr    *logicalplan.FunctionCall
 	call        noArgFunctionCall
 	vectorPool  *model.VectorPool
 	series      []labels.Labels
 	sampleIDs   []uint64
-	model.OperatorTelemetry
 }
 
-func (o *noArgFunctionOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*noArgFunctionOperator]")
-	return o, []model.ObservableVectorOperator{}
+func (o *noArgFunctionOperator) Explain() (next []model.VectorOperator) {
+	return nil
 }
 
-func (o *noArgFunctionOperator) Explain() (me string, next []model.VectorOperator) {
-
-	return fmt.Sprintf("[*noArgFunctionOperator] %v()", o.funcExpr.Func.Name), []model.VectorOperator{}
+func (o *noArgFunctionOperator) String() string {
+	return "[noArgFunction]"
 }
 
 func (o *noArgFunctionOperator) Series(_ context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	return o.series, nil
 }
 
@@ -47,11 +47,20 @@ func (o *noArgFunctionOperator) GetPool() *model.VectorPool {
 	return o.vectorPool
 }
 
-func (o *noArgFunctionOperator) Next(_ context.Context) ([]model.StepVector, error) {
+func (o *noArgFunctionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	if o.currentStep > o.maxt {
 		return nil, nil
 	}
-	start := time.Now()
+
 	ret := o.vectorPool.GetVectorBatch()
 	for i := 0; i < o.stepsBatch && o.currentStep <= o.maxt; i++ {
 		sv := o.vectorPool.GetStepVector(o.currentStep)
@@ -60,7 +69,6 @@ func (o *noArgFunctionOperator) Next(_ context.Context) ([]model.StepVector, err
 		ret = append(ret, sv)
 		o.currentStep += o.step
 	}
-	o.AddExecutionTimeTaken(time.Since(start))
 
 	return ret, nil
 }

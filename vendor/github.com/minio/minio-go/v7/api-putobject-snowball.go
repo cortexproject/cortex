@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -69,6 +70,14 @@ type SnowballObject struct {
 	// Content of the object.
 	// Exactly 'Size' number of bytes must be provided.
 	Content io.Reader
+
+	// VersionID of the object; if empty, a new versionID will be generated
+	VersionID string
+
+	// Headers contains more options for this object upload, the same as you
+	// would include in a regular PutObject operation, such as user metadata
+	// and content-disposition, expires, ..
+	Headers http.Header
 
 	// Close will be called when an object has finished processing.
 	// Note that if PutObjectsSnowball returns because of an error,
@@ -179,6 +188,14 @@ objectLoop:
 			}
 			if header.ModTime.IsZero() {
 				header.ModTime = time.Now().UTC()
+			}
+
+			header.PAXRecords = make(map[string]string)
+			if obj.VersionID != "" {
+				header.PAXRecords["minio.versionId"] = obj.VersionID
+			}
+			for k, vals := range obj.Headers {
+				header.PAXRecords["minio.metadata."+k] = strings.Join(vals, ",")
 			}
 
 			if err := t.WriteHeader(&header); err != nil {

@@ -1,6 +1,52 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645
+* [CHANGE] Store Gateway: Add a new fastcache based inmemory index cache. #5619
+* [CHANGE] Index Cache: Multi level cache backfilling operation becomes async. Added `-blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency` and `-blocks-storage.bucket-store.index-cache.multilevel.max-async-buffer-size` configs and metric `cortex_store_multilevel_index_cache_backfill_dropped_items_total` for number of dropped items. #5661
+* [CHANGE] Ingester: Disable uploading compacted blocks and overlapping compaction in ingester. #5735
+* [CHANGE] Distributor: Count the number of rate-limited samples in `distributor_samples_in_total`. #5714
+* [CHANGE] Ruler: Remove `cortex_ruler_write_requests_total`, `cortex_ruler_write_requests_failed_total`, `cortex_ruler_queries_total`, `cortex_ruler_queries_failed_total`, and `cortex_ruler_query_seconds_total` metrics for the tenant when the ruler deletes the manager for the tenant. #5772
+* [CHANGE] Main: Mark `mem-ballast-size-bytes` flag as deprecated. #5816
+* [CHANGE] Querier: Mark `-querier.ingester-streaming` flag as deprecated. Now query ingester streaming is always enabled. #5817
+* [CHANGE] Compactor/Bucket Store: Added `-blocks-storage.bucket-store.block-discovery-strategy` to configure different block listing strategy. Reverted the current recursive block listing mechanism and use the strategy `Concurrent` as in 1.15. #5828
+* [CHANGE] Compactor: Don't halt compactor when overlapped source blocks detected. #5854
+* [CHANGE] S3 Bucket Client: Expose `-blocks-storage.s3.send-content-md5` flag and set default checksum algorithm to MD5. #5870
+* [CHANGE] Querier: Mark `querier.iterators` and `querier.batch-iterators` flags as deprecated. Now querier always use batch iterators. #5868
+* [FEATURE] OTLP ingestion experimental. #5813
+* [FEATURE] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
+* [FEATURE] Query Frontend/Scheduler: Add query priority support. #5605
+* [FEATURE] Tracing: Add `kuberesolver` to resolve endpoints address with `kubernetes://` prefix as Kubernetes service. #5731
+* [FEATURE] Tracing: Add `tracing.otel.round-robin` flag to use `round_robin` gRPC client side LB policy for sending OTLP traces. #5731
+* [FEATURE] Ruler: Add `ruler.concurrent-evals-enabled` flag to enable concurrent evaluation within a single rule group for independent rules. Maximum concurrency can be configured via `ruler.max-concurrent-evals`. #5766
+* [FEATURE] Distributor Queryable: Experimental: Add config `zone_results_quorum_metadata`. When querying ingesters using metadata APIs such as label names and values, only results from quorum number of zones will be included and merged. #5779
+* [FEATURE] Storage Cache Clients: Add config `set_async_circuit_breaker_config` to utilize the circuit breaker pattern for dynamically thresholding asynchronous set operations. Implemented in both memcached and redis cache clients. #5789
+* [FEATURE] Ruler: Add experimental `experimental.ruler.api-deduplicate-rules` flag to remove duplicate rule groups from the Prometheus compatible rules API endpoint. Add experimental `ruler.ring.replication-factor` and `ruler.ring.zone-awareness-enabled` flags to configure rule group replication, but only the first ruler in the replicaset evaluates the rule group, the rest will just hold a copy as backup. Add experimental `experimental.ruler.api-enable-rules-backup` flag to configure rulers to send the rule group backups stored in the replicaset to handle events when a ruler is down during an API request to list rules. #5782
+* [ENHANCEMENT] Store Gateway: Added `-store-gateway.enabled-tenants` and `-store-gateway.disabled-tenants` to explicitly enable or disable store-gateway for specific tenants. #5638
+* [ENHANCEMENT] Compactor: Add new compactor metric `cortex_compactor_start_duration_seconds`. #5683
+* [ENHANCEMENT] Upgraded Docker base images to `alpine:3.18`. #5684
+* [ENHANCEMENT] Index Cache: Multi level cache adds config `max_backfill_items` to cap max items to backfill per async operation. #5686
+* [ENHANCEMENT] Query Frontend: Log number of split queries in `query stats` log. #5703
+* [ENHANCEMENT] Logging: Added new options for logging HTTP request headers: `-server.log-request-headers` enables logging HTTP request headers, `-server.log-request-headers-exclude-list` allows users to specify headers which should not be logged. #5744
+* [ENHANCEMENT] Query Frontend/Scheduler: Time check in query priority now considers overall data select time window (including range selectors, modifiers and lookback delta). #5758
+* [ENHANCEMENT] Querier: Added `querier.store-gateway-query-stats-enabled` to enable or disable store gateway query stats log. #5749
+* [ENHANCEMENT] Upgrade to go 1.21.9 #5765 #5879
+* [ENHANCEMENT] AlertManager: Retrying AlertManager Delete Silence on error #5794
+* [ENHANCEMENT] Ingester: Add new ingester metric `cortex_ingester_max_inflight_query_requests`. #5798
+* [ENHANCEMENT] Query: Added `query_storage_wall_time` to Query Frontend and Ruler query stats log for wall time spent on fetching data from storage. Query evaluation is not included. #5799
+* [ENHANCEMENT] Query: Added additional max query length check at Query Frontend and Ruler. Added `-querier.ignore-max-query-length` flag to disable max query length check at Querier. #5808
+* [ENHANCEMENT] Querier: Add context error check when converting Metrics to SeriesSet for GetSeries on distributorQuerier. #5827
+* [ENHANCEMENT] Ruler: Improve GetRules response time by refactoring mutexes and introducing a temporary rules cache in `ruler/manager.go`. #5805
+* [ENHANCEMENT] Querier: Add context error check when merging slices from ingesters for GetLabel operations. #5837
+* [ENHANCEMENT] Ring: Add experimental `-ingester.tokens-generator-strategy=minimize-spread` flag to enable the new minimize spread token generator strategy. #5855
+* [ENHANCEMENT] Query Frontend: Ensure error response returned by Query Frontend follows Prometheus API error response format. #5811
+* [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
+* [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
+* [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734
+* [BUGFIX] Distributor: Shuffle-Sharding with IngestionTenantShardSize == 0, default sharding strategy should be used #5189
+* [BUGFIX] Cortex: Fix GRPC stream clients not honoring overrides for call options. #5797
+* [BUGFIX] Ring DDB: Fix lifecycle for ring counting unhealthy pods as healthy. #5838
+* [BUGFIX] Ring DDB: Fix region assignment. #5842
 
 ## 1.16.1 2024-04-23
 
@@ -89,6 +135,7 @@
 * [ENHANCEMENT] Ingester: Added new ingester TSDB metrics `cortex_ingester_tsdb_head_samples_appended_total`, `cortex_ingester_tsdb_head_out_of_order_samples_appended_total`, `cortex_ingester_tsdb_snapshot_replay_error_total`, `cortex_ingester_tsdb_sample_ooo_delta` and `cortex_ingester_tsdb_mmap_chunks_total`. #5624
 * [ENHANCEMENT] Query Frontend: Handle context error before decoding and merging responses. #5499
 * [ENHANCEMENT] Store-Gateway and AlertManager: Add a `wait_instance_time_out` to context to avoid waiting forever. #5581
+* [ENHANCEMENT] Blocks storage: Move the tenant deletion mark from `<tenantID>/markers/tenant-deletion-mark.json` to  `__markers__/<tenantID>/tenant-deletion-mark.json`. #5676
 * [BUGFIX] Compactor: Fix possible division by zero during compactor config validation. #5535
 * [BUGFIX] Ruler: Validate if rule group can be safely converted back to rule group yaml from protobuf message #5265
 * [BUGFIX] Querier: Convert gRPC `ResourceExhausted` status code from store gateway to 422 limit error. #5286
@@ -282,7 +329,7 @@
 * [FEATURE] Compactor: Add `-compactor.skip-blocks-with-out-of-order-chunks-enabled` configuration to mark blocks containing index with out-of-order chunks for no compact instead of halting the compaction. #4707
 * [FEATURE] Querier/Query-Frontend: Add `-querier.per-step-stats-enabled` and `-frontend.cache-queryable-samples-stats` configurations to enable query sample statistics. #4708
 * [FEATURE] Add shuffle sharding for the compactor #4433
-* [FEATURE] Querier: Use streaming for ingester metdata APIs. #4725
+* [FEATURE] Querier: Use streaming for ingester metadata APIs. #4725
 * [ENHANCEMENT] Update Go version to 1.17.8. #4602 #4604 #4658
 * [ENHANCEMENT] Keep track of discarded samples due to bad relabel configuration in `cortex_discarded_samples_total`. #4503
 * [ENHANCEMENT] Ruler: Add `-ruler.disable-rule-group-label` to disable the `rule_group` label on exported metrics. #4571
@@ -421,7 +468,7 @@
   * `memberlist_client_kv_store_value_tombstones`
   * `memberlist_client_kv_store_value_tombstones_removed_total`
   * `memberlist_client_messages_to_broadcast_dropped_total`
-* [ENHANCEMENT] Alertmanager: Added `-alertmanager.max-dispatcher-aggregation-groups` option to control max number of active dispatcher groups in Alertmanager (per tenant, also overrideable). When the limit is reached, Dispatcher produces log message and increases `cortex_alertmanager_dispatcher_aggregation_group_limit_reached_total` metric. #4254
+* [ENHANCEMENT] Alertmanager: Added `-alertmanager.max-dispatcher-aggregation-groups` option to control max number of active dispatcher groups in Alertmanager (per tenant, also overridable). When the limit is reached, Dispatcher produces log message and increases `cortex_alertmanager_dispatcher_aggregation_group_limit_reached_total` metric. #4254
 * [ENHANCEMENT] Alertmanager: Added `-alertmanager.max-alerts-count` and `-alertmanager.max-alerts-size-bytes` to control max number of alerts and total size of alerts that a single user can have in Alertmanager's memory. Adding more alerts will fail with a log message and incrementing `cortex_alertmanager_alerts_insert_limited_total` metric (per-user). These limits can be overrided by using per-tenant overrides. Current values are tracked in `cortex_alertmanager_alerts_limiter_current_alerts` and `cortex_alertmanager_alerts_limiter_current_alerts_size_bytes` metrics. #4253
 * [ENHANCEMENT] Store-gateway: added `-store-gateway.sharding-ring.wait-stability-min-duration` and `-store-gateway.sharding-ring.wait-stability-max-duration` support to store-gateway, to wait for ring stability at startup. #4271
 * [ENHANCEMENT] Ruler: added `rule_group` label to metrics `cortex_prometheus_rule_group_iterations_total` and `cortex_prometheus_rule_group_iterations_missed_total`. #4121
@@ -508,7 +555,7 @@
 * [ENHANCEMENT] Alertmanager: validate configured `-alertmanager.web.external-url` and fail if ends with `/`. #4081
 * [ENHANCEMENT] Alertmanager: added `-alertmanager.receivers-firewall.block.cidr-networks` and `-alertmanager.receivers-firewall.block.private-addresses` to block specific network addresses in HTTP-based Alertmanager receiver integrations. #4085
 * [ENHANCEMENT] Allow configuration of Cassandra's host selection policy. #4069
-* [ENHANCEMENT] Store-gateway: retry synching blocks if a per-tenant sync fails. #3975 #4088
+* [ENHANCEMENT] Store-gateway: retry syncing blocks if a per-tenant sync fails. #3975 #4088
 * [ENHANCEMENT] Add metric `cortex_tcp_connections` exposing the current number of accepted TCP connections. #4099
 * [ENHANCEMENT] Querier: Allow federated queries to run concurrently. #4065
 * [ENHANCEMENT] Label Values API call now supports `match[]` parameter when querying blocks on storage (assuming `-querier.query-store-for-labels-enabled` is enabled). #4133
@@ -585,7 +632,7 @@
   * Prevent compaction loop in TSDB on data gap.
 * [ENHANCEMENT] Query-Frontend now returns server side performance metrics using `Server-Timing` header when query stats is enabled. #3685
 * [ENHANCEMENT] Runtime Config: Add a `mode` query parameter for the runtime config endpoint. `/runtime_config?mode=diff` now shows the YAML runtime configuration with all values that differ from the defaults. #3700
-* [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests berfore/after they are pushed. #3755
+* [ENHANCEMENT] Distributor: Enable downstream projects to wrap distributor push function and access the deserialized write requests before/after they are pushed. #3755
 * [ENHANCEMENT] Add flag `-<prefix>.tls-server-name` to require a specific server name instead of the hostname on the certificate. #3156
 * [ENHANCEMENT] Alertmanager: Remove a tenant's alertmanager instead of pausing it as we determine it is no longer needed. #3722
 * [ENHANCEMENT] Blocks storage: added more configuration options to S3 client. #3775
@@ -873,7 +920,7 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [ENHANCEMENT] Chunks GCS object storage client uses the `fields` selector to limit the payload size when listing objects in the bucket. #3218 #3292
 * [ENHANCEMENT] Added shuffle sharding support to ruler. Added new metric `cortex_ruler_sync_rules_total`. #3235
 * [ENHANCEMENT] Return an explicit error when the store-gateway is explicitly requested without a blocks storage engine. #3287
-* [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules synching performances when ruler sharding is enabled. #3269
+* [ENHANCEMENT] Ruler: only load rules that belong to the ruler. Improves rules syncing performances when ruler sharding is enabled. #3269
 * [ENHANCEMENT] Added `-<prefix>.redis.tls-insecure-skip-verify` flag. #3298
 * [ENHANCEMENT] Added `cortex_alertmanager_config_last_reload_successful_seconds` metric to show timestamp of last successful AM config reload. #3289
 * [ENHANCEMENT] Blocks storage: reduced number of bucket listing operations to list block content (applies to newly created blocks only). #3363
@@ -1431,7 +1478,7 @@ This is the first major release of Cortex. We made a lot of **breaking changes**
   * `-flusher.concurrent-flushes` for number of concurrent flushes.
   * `-flusher.flush-op-timeout` is duration after which a flush should timeout.
 * [FEATURE] Ingesters can now have an optional availability zone set, to ensure metric replication is distributed across zones. This is set via the `-ingester.availability-zone` flag or the `availability_zone` field in the config file. #2317
-* [ENHANCEMENT] Better re-use of connections to DynamoDB and S3. #2268
+* [ENHANCEMENT] Better reuse of connections to DynamoDB and S3. #2268
 * [ENHANCEMENT] Reduce number of goroutines used while executing a single index query. #2280
 * [ENHANCEMENT] Experimental TSDB: Add support for local `filesystem` backend. #2245
 * [ENHANCEMENT] Experimental TSDB: Added memcached support for the TSDB index cache. #2290
@@ -2221,7 +2268,7 @@ migrate  -path <absolute_path_to_cortex>/cmd/cortex/migrations -database postgre
 
 ## 0.4.0 / 2019-12-02
 
-* [CHANGE] The frontend component has been refactored to be easier to re-use. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
+* [CHANGE] The frontend component has been refactored to be easier to reuse. When upgrading the frontend, cache entries will be discarded and re-created with the new protobuf schema. #1734
 * [CHANGE] Removed direct DB/API access from the ruler. `-ruler.configs.url` has been now deprecated. #1579
 * [CHANGE] Removed `Delta` encoding. Any old chunks with `Delta` encoding cannot be read anymore. If `ingester.chunk-encoding` is set to `Delta` the ingester will fail to start. #1706
 * [CHANGE] Setting `-ingester.max-transfer-retries` to 0 now disables hand-over when ingester is shutting down. Previously, zero meant infinite number of attempts. #1771

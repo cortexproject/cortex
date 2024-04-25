@@ -2,10 +2,12 @@ package tsdb
 
 import (
 	"flag"
+
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/thanos-io/thanos/pkg/cacheutil"
+	"github.com/thanos-io/thanos/pkg/model"
 
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
@@ -36,6 +38,9 @@ type RedisClientConfig struct {
 	// instead of fetching data each time.
 	// See https://redis.io/docs/manual/client-side-caching/ for info.
 	CacheSize int `yaml:"cache_size"`
+
+	// SetAsyncCircuitBreaker configures the circuit breaker for SetAsync operations.
+	SetAsyncCircuitBreaker CircuitBreakerConfig `yaml:"set_async_circuit_breaker_config"`
 }
 
 func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
@@ -56,6 +61,7 @@ func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 	f.IntVar(&cfg.CacheSize, prefix+"cache-size", 0, "If not zero then client-side caching is enabled. Client-side caching is when data is stored in memory instead of fetching data each time. See https://redis.io/docs/manual/client-side-caching/ for more info.")
 	f.BoolVar(&cfg.TLSEnabled, prefix+"tls-enabled", false, "Whether to enable tls for redis connection.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix, f)
+	cfg.SetAsyncCircuitBreaker.RegisterFlagsWithPrefix(f, prefix+"set-async.")
 }
 
 // Validate the config.
@@ -96,6 +102,15 @@ func (cfg *RedisClientConfig) ToRedisClientConfig() cacheutil.RedisClientConfig 
 			CertFile:           cfg.TLS.CertPath,
 			ServerName:         cfg.TLS.ServerName,
 			InsecureSkipVerify: cfg.TLS.InsecureSkipVerify,
+		},
+		CacheSize: model.Bytes(cfg.CacheSize),
+		SetAsyncCircuitBreaker: cacheutil.CircuitBreakerConfig{
+			Enabled:             cfg.SetAsyncCircuitBreaker.Enabled,
+			HalfOpenMaxRequests: uint32(cfg.SetAsyncCircuitBreaker.HalfOpenMaxRequests),
+			OpenDuration:        cfg.SetAsyncCircuitBreaker.OpenDuration,
+			MinRequests:         uint32(cfg.SetAsyncCircuitBreaker.MinRequests),
+			ConsecutiveFailures: uint32(cfg.SetAsyncCircuitBreaker.ConsecutiveFailures),
+			FailurePercent:      cfg.SetAsyncCircuitBreaker.FailurePercent,
 		},
 	}
 }

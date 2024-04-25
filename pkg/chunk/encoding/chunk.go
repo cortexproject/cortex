@@ -38,7 +38,7 @@ type Chunk interface {
 	// The returned Chunk is nil if the sample got appended to the same chunk.
 	Add(sample model.SamplePair) (Chunk, error)
 	// NewIterator returns an iterator for the chunks.
-	// The iterator passed as argument is for re-use. Depending on implementation,
+	// The iterator passed as argument is for reuse. Depending on implementation,
 	// the iterator can be re-used or a new iterator can be allocated.
 	NewIterator(Iterator) Iterator
 	Marshal(io.Writer) error

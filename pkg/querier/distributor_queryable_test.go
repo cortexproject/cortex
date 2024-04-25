@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
+	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -28,46 +29,6 @@ import (
 const (
 	mint, maxt = 0, 10
 )
-
-func TestDistributorQuerier(t *testing.T) {
-	t.Parallel()
-
-	d := &MockDistributor{}
-	d.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		model.Matrix{
-			// Matrixes are unsorted, so this tests that the labels get sorted.
-			&model.SampleStream{
-				Metric: model.Metric{
-					"foo": "bar",
-				},
-			},
-			&model.SampleStream{
-				Metric: model.Metric{
-					"bar": "baz",
-				},
-			},
-		},
-		nil)
-
-	queryable := newDistributorQueryable(d, false, false, nil, 0, false)
-	querier, err := queryable.Querier(mint, maxt)
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
-	require.NoError(t, seriesSet.Err())
-
-	require.True(t, seriesSet.Next())
-	series := seriesSet.At()
-	require.Equal(t, labels.Labels{{Name: "bar", Value: "baz"}}, series.Labels())
-
-	require.True(t, seriesSet.Next())
-	series = seriesSet.At()
-	require.Equal(t, labels.Labels{{Name: "foo", Value: "bar"}}, series.Labels())
-
-	require.False(t, seriesSet.Next())
-	require.NoError(t, seriesSet.Err())
-}
 
 func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) {
 
@@ -129,20 +90,19 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 		},
 	}
 
-	for _, streamingEnabled := range []bool{false, true} {
+	for _, streamingMetadataEnabled := range []bool{false, true} {
 		for testName, testData := range tests {
 			testData := testData
-			t.Run(fmt.Sprintf("%s (streaming enabled: %t)", testName, streamingEnabled), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s (streaming metadata enabled: %t)", testName, streamingMetadataEnabled), func(t *testing.T) {
 				t.Parallel()
 
 				distributor := &MockDistributor{}
-				distributor.On("Query", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(model.Matrix{}, nil)
 				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]metric.Metric{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
-				queryable := newDistributorQueryable(distributor, streamingEnabled, streamingEnabled, nil, testData.queryIngestersWithin, testData.queryStoreForLabels)
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, nil, testData.queryIngestersWithin, testData.queryStoreForLabels)
 				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
@@ -181,7 +141,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	t.Parallel()
 
 	d := &MockDistributor{}
-	dq := newDistributorQueryable(d, false, false, nil, 1*time.Hour, true)
+	dq := newDistributorQueryable(d, false, nil, 1*time.Hour, true)
 
 	now := time.Now()
 
@@ -198,7 +158,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 func TestIngesterStreaming(t *testing.T) {
 	t.Parallel()
 
-	// We need to make sure that there is atleast one chunk present,
+	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
 	require.NoError(t, err)
@@ -231,7 +191,7 @@ func TestIngesterStreaming(t *testing.T) {
 		nil)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, true, mergeChunks, 0, true)
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0, true)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -309,7 +269,7 @@ func TestIngesterStreamingMixedResults(t *testing.T) {
 		nil)
 
 	ctx := user.InjectOrgID(context.Background(), "0")
-	queryable := newDistributorQueryable(d, true, true, mergeChunks, 0, true)
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, 0, true)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -365,7 +325,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 			d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), someMatchers).
 				Return(metrics, nil)
 
-			queryable := newDistributorQueryable(d, false, streamingEnabled, nil, 0, true)
+			queryable := newDistributorQueryable(d, streamingEnabled, nil, 0, true)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -379,7 +339,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 }
 
 func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
-	// We need to make sure that there is atleast one chunk present,
+	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
 	promChunk, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
 	require.NoError(t, err)

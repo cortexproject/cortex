@@ -76,15 +76,15 @@ func Middlewares(
 	limits tripperware.Limits,
 	cacheExtractor Extractor,
 	registerer prometheus.Registerer,
-	cacheGenNumberLoader CacheGenNumberLoader,
 	queryAnalyzer querysharding.Analyzer,
 	prometheusCodec tripperware.Codec,
 	shardedPrometheusCodec tripperware.Codec,
+	lookbackDelta time.Duration,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
 
-	queryRangeMiddleware := []tripperware.Middleware{NewLimitsMiddleware(limits)}
+	queryRangeMiddleware := []tripperware.Middleware{NewLimitsMiddleware(limits, lookbackDelta)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}
@@ -101,7 +101,7 @@ func Middlewares(
 			}
 			return false
 		}
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, cacheGenNumberLoader, shouldCache, registerer)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}

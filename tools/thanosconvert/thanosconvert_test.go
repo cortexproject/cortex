@@ -45,8 +45,10 @@ func TestThanosBlockConverter(t *testing.T) {
 		assertions func(*testing.T, *bucket.ClientMock, Results, error)
 	}{
 		{
-			name:       "empty bucket is a noop",
-			bucketData: fakeBucket{},
+			name: "empty bucket is a noop",
+			bucketData: fakeBucket{
+				"__markers__": map[string]metadata.Meta{},
+			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
 				bkt.AssertNotCalled(t, "Get", mock.Anything, mock.Anything)
 				bkt.AssertNotCalled(t, "Upload", mock.Anything, mock.Anything, mock.Anything)
@@ -54,8 +56,11 @@ func TestThanosBlockConverter(t *testing.T) {
 			},
 		},
 		{
-			name:       "user with no blocks is a noop",
-			bucketData: fakeBucket{"user1": map[string]metadata.Meta{}},
+			name: "user with no blocks is a noop",
+			bucketData: fakeBucket{
+				"user1":       map[string]metadata.Meta{},
+				"__markers__": map[string]metadata.Meta{},
+			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
 				bkt.AssertNotCalled(t, "Get", mock.Anything, mock.Anything)
 				bkt.AssertNotCalled(t, "Upload", mock.Anything, mock.Anything, mock.Anything)
@@ -80,6 +85,7 @@ func TestThanosBlockConverter(t *testing.T) {
 				"user3": map[string]metadata.Meta{
 					block1: cortexMeta("user3"),
 				},
+				"__markers__": map[string]metadata.Meta{},
 			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
 				bkt.AssertNotCalled(t, "Upload", mock.Anything, mock.Anything, mock.Anything)
@@ -114,6 +120,7 @@ func TestThanosBlockConverter(t *testing.T) {
 				"user3": map[string]metadata.Meta{
 					block1: thanosMeta(),
 				},
+				"__markers__": map[string]metadata.Meta{},
 			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
 				assert.Len(t, results, 3, "expected users in results")
@@ -149,6 +156,7 @@ func TestThanosBlockConverter(t *testing.T) {
 					blockWithUploadFailure: thanosMeta(),
 					blockWithMalformedMeta: thanosMeta(),
 				},
+				"__markers__": map[string]metadata.Meta{},
 			},
 			assertions: func(t *testing.T, bkt *bucket.ClientMock, results Results, err error) {
 				assert.Len(t, results["user1"].FailedBlocks, 1)

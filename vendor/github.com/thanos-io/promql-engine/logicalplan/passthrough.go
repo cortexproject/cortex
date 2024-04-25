@@ -5,8 +5,7 @@ package logicalplan
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/query"
@@ -43,26 +42,26 @@ func matchingEngineTime(e api.RemoteEngine, opts *query.Options) bool {
 	return !(opts.Start.UnixMilli() > e.MaxT() || opts.End.UnixMilli() < e.MinT())
 }
 
-func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) parser.Expr {
+func (m PassthroughOptimizer) Optimize(plan Node, opts *query.Options) (Node, annotations.Annotations) {
 	engines := m.Endpoints.Engines()
 	if len(engines) == 1 {
 		if !matchingEngineTime(engines[0], opts) {
-			return plan
+			return plan, nil
 		}
 		return RemoteExecution{
 			Engine:          engines[0],
-			Query:           plan.String(),
+			Query:           plan.Clone(),
 			QueryRangeStart: opts.Start,
-		}
+		}, nil
 	}
 
 	if len(engines) == 0 {
-		return plan
+		return plan, nil
 	}
 
 	matchingLabelsEngines := make([]api.RemoteEngine, 0, len(engines))
-	TraverseBottomUp(nil, &plan, func(parent, current *parser.Expr) (stop bool) {
-		if vs, ok := (*current).(*parser.VectorSelector); ok {
+	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
+		if vs, ok := (*current).(*VectorSelector); ok {
 			for _, e := range engines {
 				if !labelSetsMatch(vs.LabelMatchers, e.LabelSets()...) {
 					continue
@@ -77,10 +76,10 @@ func (m PassthroughOptimizer) Optimize(plan parser.Expr, opts *query.Options) pa
 	if len(matchingLabelsEngines) == 1 && matchingEngineTime(matchingLabelsEngines[0], opts) {
 		return RemoteExecution{
 			Engine:          matchingLabelsEngines[0],
-			Query:           plan.String(),
+			Query:           plan.Clone(),
 			QueryRangeStart: opts.Start,
-		}
+		}, nil
 	}
 
-	return plan
+	return plan, nil
 }

@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -19,14 +21,18 @@ import (
 type limitsMiddleware struct {
 	tripperware.Limits
 	next tripperware.Handler
+
+	lookbackDelta time.Duration
 }
 
 // NewLimitsMiddleware creates a new Middleware that enforces query limits.
-func NewLimitsMiddleware(l tripperware.Limits) tripperware.Middleware {
+func NewLimitsMiddleware(l tripperware.Limits, lookbackDelta time.Duration) tripperware.Middleware {
 	return tripperware.MiddlewareFunc(func(next tripperware.Handler) tripperware.Handler {
 		return limitsMiddleware{
 			next:   next,
 			Limits: l,
+
+			lookbackDelta: lookbackDelta,
 		}
 	})
 }
@@ -69,10 +75,23 @@ func (l limitsMiddleware) Do(ctx context.Context, r tripperware.Request) (trippe
 	}
 
 	// Enforce the max query length.
-	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength); maxQueryLength > 0 {
+	maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.MaxQueryLength)
+	if maxQueryLength > 0 {
 		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLength)
+		}
+
+		expr, err := parser.ParseExpr(r.GetQuery())
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		// Enforce query length across all selectors in the query.
+		min, max := promql.FindMinMaxTime(&parser.EvalStmt{Expr: expr, Start: util.TimeFromMillis(0), End: util.TimeFromMillis(0), LookbackDelta: l.lookbackDelta})
+		diff := util.TimeFromMillis(max).Sub(util.TimeFromMillis(min))
+		if diff > maxQueryLength {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, diff, maxQueryLength)
 		}
 	}
 

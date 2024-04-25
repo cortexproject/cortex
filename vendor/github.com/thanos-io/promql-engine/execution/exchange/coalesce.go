@@ -5,6 +5,7 @@ package exchange
 
 import (
 	"context"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -33,48 +34,42 @@ func (c errorChan) getError() error {
 // coalesce guarantees that samples from different input vectors will be added to the output in the same order
 // as the input vectors themselves are provided in NewCoalesce.
 type coalesce struct {
+	model.OperatorTelemetry
+
 	once   sync.Once
 	series []labels.Labels
 
 	pool      *model.VectorPool
 	wg        sync.WaitGroup
 	operators []model.VectorOperator
+	batchSize int64
 
 	// inVectors is an internal per-step cache for references to input vectors.
 	inVectors [][]model.StepVector
 	// sampleOffsets holds per-operator offsets needed to map an input sample ID to an output sample ID.
 	sampleOffsets []uint64
-	model.OperatorTelemetry
 }
 
-func NewCoalesce(pool *model.VectorPool, opts *query.Options, operators ...model.VectorOperator) model.VectorOperator {
-	c := &coalesce{
+func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, operators ...model.VectorOperator) model.VectorOperator {
+	oper := &coalesce{
 		pool:          pool,
 		sampleOffsets: make([]uint64, len(operators)),
 		operators:     operators,
 		inVectors:     make([][]model.StepVector, len(operators)),
+		batchSize:     batchSize,
 	}
-	c.OperatorTelemetry = &model.NoopTelemetry{}
-	if opts.EnableAnalysis {
-		c.OperatorTelemetry = &model.TrackedTelemetry{}
-	}
-	return c
+
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
-func (c *coalesce) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	c.SetName("[*coalesce]")
-	obsOperators := make([]model.ObservableVectorOperator, 0, len(c.operators))
-	for _, operator := range c.operators {
-		if obsOperator, ok := operator.(model.ObservableVectorOperator); ok {
-			obsOperators = append(obsOperators, obsOperator)
-		}
-	}
-	return c, obsOperators
+func (c *coalesce) Explain() (next []model.VectorOperator) {
+	return c.operators
 }
 
-func (c *coalesce) Explain() (me string, next []model.VectorOperator) {
-
-	return "[*coalesce]", c.operators
+func (c *coalesce) String() string {
+	return "[coalesce]"
 }
 
 func (c *coalesce) GetPool() *model.VectorPool {
@@ -82,6 +77,9 @@ func (c *coalesce) GetPool() *model.VectorPool {
 }
 
 func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
+
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
@@ -91,20 +89,30 @@ func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
-	start := time.Now()
+
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
 		return nil, err
 	}
 
+	var mu sync.Mutex
+	var minTs int64 = math.MaxInt64
 	var errChan = make(errorChan, len(c.operators))
 	for idx, o := range c.operators {
+		// We already have a batch from the previous iteration.
+		if c.inVectors[idx] != nil {
+			continue
+		}
+
 		c.wg.Add(1)
 		go func(opIdx int, o model.VectorOperator) {
 			defer c.wg.Done()
@@ -125,6 +133,15 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 				}
 			}
 			c.inVectors[opIdx] = in
+			if in == nil {
+				return
+			}
+
+			mu.Lock()
+			if minTs > in[0].T {
+				minTs = in[0].T
+			}
+			mu.Unlock()
 		}(idx, o)
 	}
 	c.wg.Wait()
@@ -136,6 +153,10 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 
 	var out []model.StepVector = nil
 	for opIdx, vectors := range c.inVectors {
+		if len(vectors) == 0 || vectors[0].T != minTs {
+			continue
+		}
+
 		if len(vectors) > 0 && out == nil {
 			out = c.pool.GetVectorBatch()
 			for i := 0; i < len(vectors); i++ {
@@ -151,7 +172,6 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 		c.inVectors[opIdx] = nil
 		c.operators[opIdx].GetPool().PutVectors(vectors)
 	}
-	c.AddExecutionTimeTaken(time.Since(start))
 
 	if out == nil {
 		return nil, nil
@@ -204,6 +224,9 @@ func (c *coalesce) loadSeries(ctx context.Context) error {
 		c.series = append(c.series, series...)
 	}
 
-	c.pool.SetStepSize(len(c.series))
+	if c.batchSize == 0 || c.batchSize > int64(len(c.series)) {
+		c.batchSize = int64(len(c.series))
+	}
+	c.pool.SetStepSize(int(c.batchSize))
 	return nil
 }

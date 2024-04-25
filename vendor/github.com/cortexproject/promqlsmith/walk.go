@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -88,9 +89,6 @@ func (s *PromQLSmith) walkAggregateParam(op parser.ItemType) parser.Expr {
 // or function that returns matrix.
 func (s *PromQLSmith) walkBinaryExpr(valueTypes ...parser.ValueType) parser.Expr {
 	valueTypes = keepValueTypes(valueTypes, vectorAndScalarValueTypes)
-	if len(valueTypes) == 0 {
-		valueTypes = vectorAndScalarValueTypes
-	}
 	expr := &parser.BinaryExpr{
 		Op: s.walkBinaryOp(!slices.Contains(valueTypes, parser.ValueTypeVector)),
 		VectorMatching: &parser.VectorMatching{
@@ -244,6 +242,7 @@ func (s *PromQLSmith) walkCall(valueTypes ...parser.ValueType) parser.Expr {
 			}
 		}
 	}
+	sort.Slice(funcs, func(i, j int) bool { return strings.Compare(funcs[i].Name, funcs[j].Name) < 0 })
 	expr.Func = funcs[s.rnd.Intn(len(funcs))]
 	s.walkFuncArgs(expr)
 	return expr
@@ -329,6 +328,129 @@ func (s *PromQLSmith) walkLabelMatchers() []*labels.Matcher {
 			matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, metricName))
 		}
 	}
+	matchers = append(matchers, s.enforceMatchers...)
+
+	return matchers
+}
+
+// walkSelectors is similar to walkLabelMatchers, but used for generating various
+// types of matchers more than simple equal matcher.
+func (s *PromQLSmith) walkSelectors() []*labels.Matcher {
+	if len(s.seriesSet) == 0 {
+		return nil
+	}
+	orders := s.rnd.Perm(len(s.labelNames))
+	items := randRange((len(s.labelNames)+1)/2, len(s.labelNames))
+	matchers := make([]*labels.Matcher, 0, items)
+
+	var (
+		value  string
+		repeat bool
+	)
+	for i := 0; i < items; {
+		res := s.rnd.Intn(4)
+		name := s.labelNames[orders[i]]
+		matchType := labels.MatchType(res)
+		switch matchType {
+		case labels.MatchEqual:
+			val := s.rnd.Float64()
+			if val > 0.95 {
+				value = ""
+			} else if val > 0.9 {
+				value = "not_exist_value"
+			} else if val > 0.8 {
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
+			} else {
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx]
+			}
+		case labels.MatchNotEqual:
+			switch s.rnd.Intn(4) {
+			case 0:
+				value = ""
+			case 1:
+				value = "not_exist_value"
+			case 2:
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
+			default:
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx]
+			}
+		case labels.MatchRegexp:
+			val := s.rnd.Float64()
+			if val > 0.95 {
+				value = ""
+			} else if val > 0.9 {
+				value = "not_exist_value"
+			} else if val > 0.85 {
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
+			} else if val > 0.8 {
+				value = ".*"
+			} else if val > 0.7 {
+				value = ".+"
+			} else if val > 0.5 {
+				// Prefix
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx][:len(s.labelValues[name][idx])/2] + ".*"
+			} else {
+				valueOrders := s.rnd.Perm(len(s.labelValues[name]))
+				valueItems := s.rnd.Intn(len(s.labelValues[name]))
+				var sb strings.Builder
+				for j := 0; j < valueItems; j++ {
+					sb.WriteString(s.labelValues[name][valueOrders[j]])
+					if j < valueItems-1 {
+						sb.WriteString("|")
+					}
+				}
+				// Randomly attach a non-existent value.
+				if s.rnd.Intn(2) == 1 {
+					sb.WriteString("|not_exist_value")
+				}
+			}
+		case labels.MatchNotRegexp:
+			val := s.rnd.Float64()
+			if val > 0.8 {
+				value = ""
+			} else if val > 0.7 {
+				value = "not_exist_value"
+			} else if val > 0.6 {
+				// TODO: randomize the non existent value using random UTF8 runes.
+				value = "."
+			} else if val > 0.4 {
+				// Prefix
+				idx := s.rnd.Intn(len(s.labelValues[name]))
+				value = s.labelValues[name][idx][:len(s.labelValues[name][idx])/2] + ".*"
+			} else {
+				valueOrders := s.rnd.Perm(len(s.labelValues[name]))
+				valueItems := s.rnd.Intn(len(s.labelValues[name]))
+				var sb strings.Builder
+				for j := 0; j < valueItems; j++ {
+					sb.WriteString(s.labelValues[name][valueOrders[j]])
+					if j < valueItems-1 {
+						sb.WriteString("|")
+					}
+				}
+				// Randomly attach a non-existent value.
+				if s.rnd.Intn(2) == 1 {
+					sb.WriteString("|not_exist_value")
+				}
+			}
+		default:
+			panic("unsupported label matcher type")
+		}
+		matchers = append(matchers, labels.MustNewMatcher(matchType, name, value))
+
+		if !repeat && s.rnd.Intn(3) == 0 {
+			repeat = true
+		} else {
+			i++
+		}
+	}
+	matchers = append(matchers, s.enforceMatchers...)
+
 	return matchers
 }
 
@@ -383,6 +505,7 @@ func exprsFromValueTypes(valueTypes []parser.ValueType) []ExprType {
 	for expr := range set {
 		res = append(res, expr)
 	}
+	sort.Slice(res, func(i, j int) bool { return res[i] < res[j] })
 	return res
 }
 
@@ -396,7 +519,11 @@ func wrapParenExpr(expr parser.Expr) parser.Expr {
 
 // keepValueTypes picks value types that we should keep from the input.
 // input shouldn't contain duplicate value types.
+// If no input value types are provided, use value types to keep as result.
 func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.ValueType {
+	if len(input) == 0 {
+		return keep
+	}
 	out := make([]parser.ValueType, 0, len(keep))
 	s := make(map[parser.ValueType]struct{})
 	for _, vt := range keep {
@@ -407,6 +534,7 @@ func keepValueTypes(input []parser.ValueType, keep []parser.ValueType) []parser.
 			out = append(out, vt)
 		}
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 
@@ -509,6 +637,9 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		for _, v := range m {
 			output = append(output, v)
 		}
+		sort.Slice(output, func(i, j int) bool {
+			return labels.Compare(output[i], output[j]) < 0
+		})
 		return output, false
 	case *parser.SubqueryExpr:
 		return getOutputSeries(node.Expr)
@@ -531,4 +662,8 @@ func getOutputSeries(expr parser.Expr) ([]labels.Labels, bool) {
 		return nil, false
 	}
 	return lbls, stop
+}
+
+func randRange(min, max int) int {
+	return rand.Intn(max-min) + min
 }

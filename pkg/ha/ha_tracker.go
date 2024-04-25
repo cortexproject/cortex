@@ -380,7 +380,7 @@ func (c *HATracker) cleanupOldReplicas(ctx context.Context, deadline time.Time) 
 }
 
 // CheckReplica checks the cluster and replica against the backing KVStore and local cache in the
-// tracker c to see if we should accept the incomming sample. It will return an error if the sample
+// tracker c to see if we should accept the incoming sample. It will return an error if the sample
 // should not be accepted. Note that internally this function does checks against the stored values
 // and may modify the stored data, for example to failover between replicas after a certain period of time.
 // ReplicasNotMatchError is returned (from checkKVStore) if we shouldn't store this sample but are

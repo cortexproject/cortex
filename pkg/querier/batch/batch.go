@@ -3,7 +3,6 @@ package batch
 import (
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 
 	"github.com/prometheus/common/model"
@@ -48,7 +47,7 @@ type iterator interface {
 
 	// Batch returns the current batch.  Must only be called after Seek or Next
 	// have returned true.
-	Batch() promchunk.Batch
+	Batch() encoding.Batch
 
 	Err() error
 }
@@ -74,7 +73,7 @@ func NewGenericChunkMergeIterator(chunks []GenericChunk) chunkenc.Iterator {
 // call to Next; on calls to Seek, resets batch size to 1.
 type iteratorAdapter struct {
 	batchSize  int
-	curr       promchunk.Batch
+	curr       encoding.Batch
 	underlying iterator
 }
 
@@ -130,8 +129,8 @@ func (a *iteratorAdapter) Next() bool {
 	for a.curr.Index >= a.curr.Length && a.underlying.Next(a.batchSize) {
 		a.curr = a.underlying.Batch()
 		a.batchSize = a.batchSize * 2
-		if a.batchSize > promchunk.BatchSize {
-			a.batchSize = promchunk.BatchSize
+		if a.batchSize > encoding.BatchSize {
+			a.batchSize = encoding.BatchSize
 		}
 	}
 	return a.curr.Index < a.curr.Length

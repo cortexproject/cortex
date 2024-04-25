@@ -83,6 +83,9 @@ const (
 
 	// Period at which to attempt purging metadata from memory.
 	metadataPurgePeriod = 5 * time.Minute
+
+	// Period at which we should reset the max inflight query requests counter.
+	maxInflightRequestResetPeriod = 1 * time.Minute
 )
 
 var (
@@ -151,6 +154,14 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 }
 
+func (cfg *Config) Validate() error {
+	if err := cfg.LifecyclerConfig.Validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
 	if cfg.IgnoreSeriesLimitForMetricNames == "" {
 		return nil
@@ -200,6 +211,9 @@ type Ingester struct {
 	// Rate of pushed samples. Only used by V2-ingester to limit global samples push rate.
 	ingestionRate        *util_math.EwmaRate
 	inflightPushRequests atomic.Int64
+
+	inflightQueryRequests    atomic.Int64
+	maxInflightQueryRequests util_math.MaxTracker
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -256,7 +270,8 @@ type userTSDB struct {
 	lastUpdate atomic.Int64
 
 	// Thanos shipper used to ship blocks to the storage.
-	shipper Shipper
+	shipper                 Shipper
+	shipperMetadataFilePath string
 
 	// When deletion marker is found for the tenant (checked before shipping),
 	// shipping stops and TSDB is closed before reaching idle timeout time (if enabled).
@@ -433,9 +448,9 @@ func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
 	return result
 }
 
-// updateCachedShipperBlocks reads the shipper meta file and updates the cached shipped blocks.
+// updateCachedShippedBlocks reads the shipper meta file and updates the cached shipped blocks.
 func (u *userTSDB) updateCachedShippedBlocks() error {
-	shipperMeta, err := shipper.ReadMetaFile(u.db.Dir())
+	shipperMeta, err := shipper.ReadMetaFile(u.shipperMetadataFilePath)
 	if os.IsNotExist(err) || os.IsNotExist(errors.Cause(err)) {
 		// If the meta file doesn't exist it means the shipper hasn't run yet.
 		shipperMeta = &shipper.Meta{}
@@ -606,7 +621,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 	}
 }
 
-// NewV2 returns a new Ingester that uses Cortex block storage instead of chunks storage.
+// New returns a new Ingester that uses Cortex block storage instead of chunks storage.
 func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	defaultInstanceLimits = &cfg.DefaultLimits
 	if cfg.ingesterClientFactory == nil {
@@ -626,7 +641,13 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		logger:        logger,
 		ingestionRate: util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 	}
-	i.metrics = newIngesterMetrics(registerer, false, cfg.ActiveSeriesMetricsEnabled, i.getInstanceLimits, i.ingestionRate, &i.inflightPushRequests)
+	i.metrics = newIngesterMetrics(registerer,
+		false,
+		cfg.ActiveSeriesMetricsEnabled,
+		i.getInstanceLimits,
+		i.ingestionRate,
+		&i.inflightPushRequests,
+		&i.maxInflightQueryRequests)
 
 	// Replace specific metrics which we can't directly track but we need to read
 	// them from the underlying system (ie. TSDB).
@@ -678,7 +699,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 //   - Does not start the lifecycler.
 //
 // this is a special version of ingester used by Flusher. This ingester is not ingesting anything, its only purpose is to react
-// on Flush method and flush all openened TSDBs when called.
+// on Flush method and flush all opened TSDBs when called.
 func NewForFlusher(cfg Config, limits *validation.Overrides, registerer prometheus.Registerer, logger log.Logger) (*Ingester, error) {
 	bucketClient, err := bucket.NewClient(context.Background(), cfg.BlocksStorageConfig.Bucket, "ingester", logger, registerer)
 	if err != nil {
@@ -691,7 +712,14 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		TSDBState: newTSDBState(bucketClient, registerer),
 		logger:    logger,
 	}
-	i.metrics = newIngesterMetrics(registerer, false, false, i.getInstanceLimits, nil, &i.inflightPushRequests)
+	i.metrics = newIngesterMetrics(registerer,
+		false,
+		false,
+		i.getInstanceLimits,
+		nil,
+		&i.inflightPushRequests,
+		&i.maxInflightQueryRequests,
+	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
 
@@ -814,6 +842,9 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
 
+	maxInflightRequestResetTicker := time.NewTicker(maxInflightRequestResetPeriod)
+	defer maxInflightRequestResetTicker.Stop()
+
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -830,6 +861,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries()
+		case <-maxInflightRequestResetTicker.C:
+			i.maxInflightQueryRequests.Tick()
 		case <-userTSDBConfigTicker.C:
 			i.updateUserTSDBConfigs()
 		case <-ctx.Done():
@@ -1249,6 +1282,9 @@ func (i *Ingester) Query(ctx context.Context, req *client.QueryRequest) (*client
 		return nil, err
 	}
 
+	c := i.trackInflightQueryRequest()
+	defer c()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1321,6 +1357,9 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
+	c := i.trackInflightQueryRequest()
+	defer c()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1369,6 +1408,8 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
@@ -1376,6 +1417,8 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 
 // LabelValuesStream returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelsValuesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1450,6 +1493,8 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelNamesCommon(ctx, req)
 	defer cleanup()
 	return resp, err
@@ -1457,6 +1502,8 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 
 // LabelNamesStream return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
+	c := i.trackInflightQueryRequest()
+	defer c()
 	resp, cleanup, err := i.labelNamesCommon(stream.Context(), req)
 	defer cleanup()
 
@@ -1740,6 +1787,9 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 		return err
 	}
 
+	c := i.trackInflightQueryRequest()
+	defer c()
+
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
@@ -1769,7 +1819,8 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	numSamples := 0
 	numSeries := 0
-	numSeries, numSamples, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	totalDataBytes := 0
+	numSeries, numSamples, totalDataBytes, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -1777,22 +1828,32 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 
 	i.metrics.queriedSeries.Observe(float64(numSeries))
 	i.metrics.queriedSamples.Observe(float64(numSamples))
-	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples)
+	level.Debug(spanlog).Log("series", numSeries, "samples", numSamples, "data_bytes", totalDataBytes)
+	spanlog.SetTag("series", numSeries)
+	spanlog.SetTag("samples", numSamples)
+	spanlog.SetTag("data_bytes", totalDataBytes)
 	return nil
 }
 
+func (i *Ingester) trackInflightQueryRequest() func() {
+	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
+	return func() {
+		i.inflightQueryRequests.Dec()
+	}
+}
+
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 	defer q.Close()
 
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, nil, matchers...)
 	if ss.Err() != nil {
-		return 0, 0, ss.Err()
+		return 0, 0, 0, ss.Err()
 	}
 
 	chunkSeries := make([]client.TimeSeriesChunk, 0, queryStreamBatchSize)
@@ -1818,7 +1879,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			// It is not guaranteed that chunk returned by iterator is populated.
 			// For now just return error. We could also try to figure out how to read the chunk.
 			if meta.Chunk == nil {
-				return 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
+				return 0, 0, 0, errors.Errorf("unfilled chunk returned from TSDB chunk querier")
 			}
 
 			ch := client.Chunk{
@@ -1831,7 +1892,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			case chunkenc.EncXOR:
 				ch.Encoding = int32(encoding.PrometheusXorChunk)
 			default:
-				return 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
+				return 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
 			}
 
 			ts.Chunks = append(ts.Chunks, ch)
@@ -1839,6 +1900,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		}
 		numSeries++
 		tsSize := ts.Size()
+		totalBatchSizeBytes += tsSize
 
 		if (batchSizeBytes > 0 && batchSizeBytes+tsSize > queryStreamBatchMessageSize) || len(chunkSeries) >= queryStreamBatchSize {
 			// Adding this series to the batch would make it too big,
@@ -1847,7 +1909,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 				Chunkseries: chunkSeries,
 			})
 			if err != nil {
-				return 0, 0, err
+				return 0, 0, 0, err
 			}
 
 			batchSizeBytes = 0
@@ -1860,7 +1922,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
 	// Final flush any existing metrics
@@ -1869,11 +1931,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			Chunkseries: chunkSeries,
 		})
 		if err != nil {
-			return 0, 0, err
+			return 0, 0, 0, err
 		}
 	}
 
-	return numSeries, numSamples, nil
+	return numSeries, numSamples, totalBatchSizeBytes, nil
 }
 
 func (i *Ingester) getTSDB(userID string) *userTSDB {
@@ -1992,6 +2054,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		EnableMemorySnapshotOnShutdown: i.cfg.BlocksStorageConfig.TSDB.MemorySnapshotOnShutdown,
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
+		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -2044,13 +2107,15 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			func() bool {
-				// Allow uploading compacted blocks. It is fine since compacted
-				//  blocks should only happen when OOO is enabled in ingester.
-				return true
+				// There is no need to upload compacted blocks since OOO blocks
+				// won't be compacted due to overlap.
+				return false
 			},
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,
+			"",
 		)
+		userDB.shipperMetadataFilePath = filepath.Join(userDB.db.Dir(), filepath.Clean(shipper.DefaultMetaFilename))
 
 		// Initialise the shipper blocks cache.
 		if err := userDB.updateCachedShippedBlocks(); err != nil {
@@ -2446,7 +2511,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 		return tsdbNotActive
 	}
 
-	// If TSDB is fully closed, we will set state to 'closed', which will prevent this defered closing -> active transition.
+	// If TSDB is fully closed, we will set state to 'closed', which will prevent this deferred closing -> active transition.
 	defer userDB.casState(closing, active)
 
 	// Make sure we don't ignore any possible inflight pushes.

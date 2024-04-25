@@ -49,7 +49,7 @@ var (
 
 	// Validation errors.
 	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
+	errInvalidTenantShardSize  = errors.New("invalid tenant shard size. The value must be greater than or equal to 0")
 
 	// Distributor instance limits errors.
 	errTooManyInflightPushRequests    = errors.New("too many inflight push requests in distributor")
@@ -64,6 +64,10 @@ const (
 	typeMetadata = "metadata"
 
 	instanceIngestionRateTickInterval = time.Second
+
+	// mergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
+	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
+	mergeSlicesParallelism = 8
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -145,6 +149,11 @@ type Config struct {
 	// This config is dynamically injected because defined in the querier config.
 	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
 
+	// ZoneResultsQuorumMetadata enables zone results quorum when querying ingester replication set
+	// with metadata APIs (labels names and values for now). When zone awareness is enabled, only results
+	// from quorum number of zones will be included to reduce data merged and improve performance.
+	ZoneResultsQuorumMetadata bool `yaml:"zone_results_quorum_metadata" doc:"hidden"`
+
 	// Limits for distributor
 	InstanceLimits InstanceLimits `yaml:"instance_limits"`
 }
@@ -167,6 +176,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
+	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
@@ -178,7 +188,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidShardingStrategy
 	}
 
-	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize <= 0 {
+	if cfg.ShardingStrategy == util.ShardingStrategyShuffle && limits.IngestionTenantShardSize < 0 {
 		return errInvalidTenantShardSize
 	}
 
@@ -287,7 +297,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		incomingMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_metadata_in_total",
-			Help:      "The total number of metadata the have come in to the distributor, including rejected.",
+			Help:      "The total number of metadata that have come in to the distributor, including rejected.",
 		}, []string{"user"}),
 		nonHASamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -466,8 +476,10 @@ func shardByUser(userID string) uint32 {
 func shardByAllLabels(userID string, labels []cortexpb.LabelAdapter) uint32 {
 	h := shardByUser(userID)
 	for _, label := range labels {
-		h = ingester_client.HashAdd32(h, label.Name)
-		h = ingester_client.HashAdd32(h, label.Value)
+		if len(label.Value) > 0 {
+			h = ingester_client.HashAdd32(h, label.Name)
+			h = ingester_client.HashAdd32(h, label.Value)
+		}
 	}
 	return h
 }
@@ -538,7 +550,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		for _, e := range ts.Exemplars {
 			if err := validation.ValidateExemplar(userID, ts.Labels, e); err != nil {
 				// An exemplar validation error prevents ingesting samples
-				// in the same series object. However because the current Prometheus
+				// in the same series object. However, because the current Prometheus
 				// remote write implementation only populates one or the other,
 				// there never will be any.
 				return emptyPreallocSeries, err
@@ -547,11 +559,21 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		}
 	}
 
+	var histograms []cortexpb.Histogram
+	if len(ts.Histograms) > 0 {
+		// Only alloc when data present
+		histograms = make([]cortexpb.Histogram, 0, len(ts.Histograms))
+		// TODO(yeya24): we need to have validations for native histograms
+		// at some point. Skip validations for now.
+		histograms = append(histograms, ts.Histograms...)
+	}
+
 	return cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
-				Labels:    ts.Labels,
-				Samples:   samples,
-				Exemplars: exemplars,
+				Labels:     ts.Labels,
+				Samples:    samples,
+				Exemplars:  exemplars,
+				Histograms: histograms,
 			},
 		},
 		nil
@@ -571,6 +593,21 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	inflight := d.inflightPushRequests.Inc()
 	defer d.inflightPushRequests.Dec()
 
+	now := time.Now()
+	d.activeUsers.UpdateUserTimestamp(userID, now)
+
+	numSamples := 0
+	numExemplars := 0
+	for _, ts := range req.Timeseries {
+		numSamples += len(ts.Samples) + len(ts.Histograms)
+		numExemplars += len(ts.Exemplars)
+	}
+	// Count the total samples, exemplars in, prior to validation or deduplication, for comparison with other metrics.
+	d.incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
+	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
+	// Count the total number of metadata in.
+	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
+
 	if d.cfg.InstanceLimits.MaxInflightPushRequests > 0 && inflight > int64(d.cfg.InstanceLimits.MaxInflightPushRequests) {
 		return nil, errTooManyInflightPushRequests
 	}
@@ -581,23 +618,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		}
 	}
 
-	now := time.Now()
-	d.activeUsers.UpdateUserTimestamp(userID, now)
-
 	removeReplica := false
-
-	numSamples := 0
-	numExemplars := 0
-	for _, ts := range req.Timeseries {
-		numSamples += len(ts.Samples)
-		numExemplars += len(ts.Exemplars)
-	}
-	// Count the total samples in, prior to validation or deduplication, for comparison with other metrics.
-	d.incomingSamples.WithLabelValues(userID).Add(float64(numSamples))
-	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
-	// Count the total number of metadata in.
-	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
-
 	// Cache user limit with overrides so we spend less CPU doing locking. See issue #4904
 	limits := d.limits.GetOverridesForUser(userID)
 
@@ -770,8 +791,9 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	for _, ts := range req.Timeseries {
 		// Use timestamp of latest sample in the series. If samples for series are not ordered, metric for user may be wrong.
 		if len(ts.Samples) > 0 {
-			latestSampleTimestampMs = util_math.Max64(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
+			latestSampleTimestampMs = max(latestSampleTimestampMs, ts.Samples[len(ts.Samples)-1].TimestampMs)
 		}
+		// TODO(yeya24): use timestamp of the latest native histogram in the series as well.
 
 		if mrc := limits.MetricRelabelConfigs; len(mrc) > 0 {
 			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
@@ -836,6 +858,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 
 		seriesKeys = append(seriesKeys, key)
 		validatedTimeseries = append(validatedTimeseries, validatedSeries)
+		// TODO(yeya24): add histogram samples as well when supported.
 		validatedSamples += len(ts.Samples)
 		validatedExemplars += len(ts.Exemplars)
 	}
@@ -911,8 +934,8 @@ func getErrorStatus(err error) string {
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.
-func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, ingester_client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, zoneResultsQuorum bool, f func(context.Context, ingester_client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
+	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, zoneResultsQuorum, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -946,29 +969,22 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
 	defer span.Finish()
-	valueSet := map[string]struct{}{}
-	for _, resp := range resps {
-		for _, v := range resp.([]string) {
-			valueSet[v] = struct{}{}
-		}
+	values := make([][]string, len(resps))
+	for i, resp := range resps {
+		values[i] = resp.([]string)
 	}
-
-	values := make([]string, 0, len(valueSet))
-	for v := range valueSet {
-		values = append(values, v)
+	r, err := util.MergeSlicesParallel(ctx, mergeSlicesParallelism, values...)
+	if err != nil {
+		return nil, err
 	}
-
-	// We need the values returned to be sorted.
-	sort.Strings(values)
-	span.SetTag("result_length", len(values))
-
-	return values, nil
+	span.SetTag("result_length", len(r))
+	return r, nil
 }
 
 // LabelValuesForLabelName returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.LabelValues(ctx, req)
 			if err != nil {
 				return nil, err
@@ -981,7 +997,7 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 // LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.LabelValuesStream(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1026,27 +1042,22 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 
 	span, _ = opentracing.StartSpanFromContext(ctx, "response_merge")
 	defer span.Finish()
-	valueSet := map[string]struct{}{}
-	for _, resp := range resps {
-		for _, v := range resp.([]string) {
-			valueSet[v] = struct{}{}
-		}
+	values := make([][]string, len(resps))
+	for i, resp := range resps {
+		values[i] = resp.([]string)
 	}
-
-	values := make([]string, 0, len(valueSet))
-	for v := range valueSet {
-		values = append(values, v)
+	r, err := util.MergeSlicesParallel(ctx, mergeSlicesParallelism, values...)
+	if err != nil {
+		return nil, err
 	}
+	span.SetTag("result_length", len(r))
 
-	sort.Strings(values)
-	span.SetTag("result_length", len(values))
-
-	return values, nil
+	return r, nil
 }
 
 func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time) ([]string, error) {
 	return d.LabelNamesCommon(ctx, from, to, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.LabelNamesStream(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1072,7 +1083,7 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time)
 // LabelNames returns all the label names.
 func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
 	return d.LabelNamesCommon(ctx, from, to, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.LabelNames(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1085,7 +1096,7 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]st
 // MetricsForLabelMatchers gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
-		_, err := d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		_, err := d.ForReplicationSet(ctx, rs, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			resp, err := client.MetricsForLabelMatchers(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1114,7 +1125,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
 	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
-		_, err := d.ForReplicationSet(ctx, rs, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		_, err := d.ForReplicationSet(ctx, rs, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 			stream, err := client.MetricsForLabelMatchersStream(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1192,7 +1203,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetad
 
 	req := &ingester_client.MetricsMetadataRequest{}
 	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.MetricsMetadata(ctx, req)
 	})
 	if err != nil {
@@ -1234,7 +1245,7 @@ func (d *Distributor) UserStats(ctx context.Context) (*UserStats, error) {
 	replicationSet.MaxErrors = 0
 
 	req := &ingester_client.UserStatsRequest{}
-	resps, err := d.ForReplicationSet(ctx, replicationSet, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {

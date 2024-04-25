@@ -23,8 +23,10 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/compact/downsample"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/pool"
+	thanosquery "github.com/thanos-io/thanos/pkg/query"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -47,7 +49,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
-	"github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -64,6 +65,7 @@ const (
 var (
 	errNoStoreGatewayAddress  = errors.New("no store-gateway address configured")
 	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from store-gateways for %s (limit: %d)"
+	defaultAggrs              = []storepb.Aggr{storepb.Aggr_COUNT, storepb.Aggr_SUM}
 )
 
 // BlocksStoreSet is the interface used to get the clients to query series on a set of blocks.
@@ -138,6 +140,8 @@ type BlocksStoreQueryable struct {
 	metrics         *blocksStoreQueryableMetrics
 	limits          BlocksStoreLimits
 
+	storeGatewayQueryStatsEnabled bool
+
 	// Subservices manager.
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
@@ -149,6 +153,7 @@ func NewBlocksStoreQueryable(
 	consistency *BlocksConsistencyChecker,
 	limits BlocksStoreLimits,
 	queryStoreAfter time.Duration,
+	storeGatewayQueryStatsEnabled bool,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*BlocksStoreQueryable, error) {
@@ -158,15 +163,16 @@ func NewBlocksStoreQueryable(
 	}
 
 	q := &BlocksStoreQueryable{
-		stores:             stores,
-		finder:             finder,
-		consistency:        consistency,
-		queryStoreAfter:    queryStoreAfter,
-		logger:             logger,
-		subservices:        manager,
-		subservicesWatcher: services.NewFailureWatcher(),
-		metrics:            newBlocksStoreQueryableMetrics(reg),
-		limits:             limits,
+		stores:                        stores,
+		finder:                        finder,
+		consistency:                   consistency,
+		queryStoreAfter:               queryStoreAfter,
+		logger:                        logger,
+		subservices:                   manager,
+		subservicesWatcher:            services.NewFailureWatcher(),
+		metrics:                       newBlocksStoreQueryableMetrics(reg),
+		limits:                        limits,
+		storeGatewayQueryStatsEnabled: storeGatewayQueryStatsEnabled,
 	}
 
 	q.Service = services.NewBasicService(q.starting, q.running, q.stopping)
@@ -183,7 +189,8 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 	}
 
 	// Blocks finder doesn't use chunks, but we pass config for consistency.
-	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+	matchers := cortex_tsdb.NewMatchers()
+	cachingBucket, err := cortex_tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, matchers, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create caching bucket")
 	}
@@ -211,6 +218,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			CacheDir:                 storageCfg.BucketStore.SyncDir,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
+			BlockDiscoveryStrategy:   storageCfg.BucketStore.BlockDiscoveryStrategy,
 		}, bucketClient, limits, logger, reg)
 	}
 
@@ -255,7 +263,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 		reg,
 	)
 
-	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg.QueryStoreAfter, logger, reg)
+	return NewBlocksStoreQueryable(stores, finder, consistency, limits, querierCfg.QueryStoreAfter, querierCfg.StoreGatewayQueryStatsEnabled, logger, reg)
 }
 
 func (q *BlocksStoreQueryable) starting(ctx context.Context) error {
@@ -290,15 +298,16 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 	}
 
 	return &blocksStoreQuerier{
-		minT:            mint,
-		maxT:            maxt,
-		finder:          q.finder,
-		stores:          q.stores,
-		metrics:         q.metrics,
-		limits:          q.limits,
-		consistency:     q.consistency,
-		logger:          q.logger,
-		queryStoreAfter: q.queryStoreAfter,
+		minT:                          mint,
+		maxT:                          maxt,
+		finder:                        q.finder,
+		stores:                        q.stores,
+		metrics:                       q.metrics,
+		limits:                        q.limits,
+		consistency:                   q.consistency,
+		logger:                        q.logger,
+		queryStoreAfter:               q.queryStoreAfter,
+		storeGatewayQueryStatsEnabled: q.storeGatewayQueryStatsEnabled,
 	}, nil
 }
 
@@ -314,6 +323,10 @@ type blocksStoreQuerier struct {
 	// If set, the querier manipulates the max time to not be greater than
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
 	queryStoreAfter time.Duration
+
+	// If enabled, query stats of store gateway requests will be logged
+	// using `info` level.
+	storeGatewayQueryStatsEnabled bool
 }
 
 // Select implements storage.Querier interface.
@@ -471,7 +484,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	if q.queryStoreAfter > 0 {
 		now := time.Now()
 		origMaxT := maxT
-		maxT = math.Min64(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+		maxT = min(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
 
 		if origMaxT != maxT {
 			level.Debug(logger).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)
@@ -621,7 +634,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			seriesQueryStats := &hintspb.QueryStats{}
 			skipChunks := sp != nil && sp.Func == "series"
 
-			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs)
+			req, err := createSeriesRequest(minT, maxT, convertedMatchers, shardingInfo, skipChunks, blockIDs, defaultAggrs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -752,7 +765,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			// Use number of blocks queried to check whether we should log the query
 			// or not. It might be logging too much but good to understand per request
 			// performance.
-			if seriesQueryStats.BlocksQueried > 0 {
+			if q.storeGatewayQueryStatsEnabled && seriesQueryStats.BlocksQueried > 0 {
 				level.Info(spanLog).Log("msg", "store gateway series request stats",
 					"instance", c.RemoteAddress(),
 					"queryable_chunk_bytes_fetched", chunkBytes,
@@ -785,7 +798,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			// Store the result.
 			mtx.Lock()
-			seriesSets = append(seriesSets, &blockQuerierSeriesSet{series: mySeries})
+			// TODO: change other aggregations when downsampling is enabled.
+			seriesSets = append(seriesSets, thanosquery.NewPromSeriesSet(newStoreSeriesSet(mySeries), minT, maxT, defaultAggrs, nil))
 			warnings.Merge(myWarnings)
 			queriedBlocks = append(queriedBlocks, myQueriedBlocks...)
 			mtx.Unlock()
@@ -1008,7 +1022,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	return valueSets, warnings, queriedBlocks, nil, merr.Err()
 }
 
-func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID, aggrs []storepb.Aggr) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -1034,6 +1048,9 @@ func createSeriesRequest(minT, maxT int64, matchers []storepb.LabelMatcher, shar
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
 		ShardInfo:               shardingInfo,
+		Aggregates:              aggrs,
+		// TODO: support more downsample levels when downsampling is supported.
+		MaxResolutionWindow: downsample.ResLevel0,
 	}, nil
 }
 

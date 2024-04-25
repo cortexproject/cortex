@@ -10,49 +10,66 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/prometheus/prometheus/promql/parser"
-
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 type absentOperator struct {
+	model.OperatorTelemetry
+
 	once     sync.Once
-	funcExpr *parser.Call
+	funcExpr *logicalplan.FunctionCall
 	series   []labels.Labels
 	pool     *model.VectorPool
 	next     model.VectorOperator
-	model.OperatorTelemetry
 }
 
-func (o *absentOperator) Analyze() (model.OperatorTelemetry, []model.ObservableVectorOperator) {
-	o.SetName("[*absentOperator]")
-	next := make([]model.ObservableVectorOperator, 0, 1)
-	if obsnext, ok := o.next.(model.ObservableVectorOperator); ok {
-		next = append(next, obsnext)
+func newAbsentOperator(
+	funcExpr *logicalplan.FunctionCall,
+	pool *model.VectorPool,
+	next model.VectorOperator,
+	opts *query.Options,
+) *absentOperator {
+	oper := &absentOperator{
+		funcExpr: funcExpr,
+		pool:     pool,
+		next:     next,
 	}
-	return o, next
+	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+
+	return oper
 }
 
-func (o *absentOperator) Explain() (me string, next []model.VectorOperator) {
-	return "[*absentOperator]", []model.VectorOperator{}
+func (o *absentOperator) String() string {
+	return "[absent]"
+}
+
+func (o *absentOperator) Explain() (next []model.VectorOperator) {
+	return []model.VectorOperator{o.next}
 }
 
 func (o *absentOperator) Series(_ context.Context) ([]labels.Labels, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	o.loadSeries()
 	return o.series, nil
 }
 
 func (o *absentOperator) loadSeries() {
+	// we need to put the filtered labels back for absent to compute its series properly
 	o.once.Do(func() {
 		o.pool.SetStepSize(1)
 
 		// https://github.com/prometheus/prometheus/blob/main/promql/functions.go#L1385
 		var lm []*labels.Matcher
 		switch n := o.funcExpr.Args[0].(type) {
-		case *parser.VectorSelector:
-			lm = n.LabelMatchers
-		case *parser.MatrixSelector:
-			lm = n.VectorSelector.(*parser.VectorSelector).LabelMatchers
+		case *logicalplan.VectorSelector:
+			lm = append(n.LabelMatchers, n.Filters...)
+		case *logicalplan.MatrixSelector:
+			v := n.VectorSelector
+			lm = append(v.LabelMatchers, v.Filters...)
 		default:
 			o.series = []labels.Labels{labels.EmptyLabels()}
 			return
@@ -80,13 +97,16 @@ func (o *absentOperator) GetPool() *model.VectorPool {
 }
 
 func (o *absentOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+	start := time.Now()
+	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
+
 	o.loadSeries()
-	start := time.Now()
 
 	vectors, err := o.next.Next(ctx)
 	if err != nil {
@@ -106,6 +126,5 @@ func (o *absentOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 		o.next.GetPool().PutStepVector(vectors[i])
 	}
 	o.next.GetPool().PutVectors(vectors)
-	o.AddExecutionTimeTaken(time.Since(start))
 	return result, nil
 }

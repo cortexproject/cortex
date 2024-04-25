@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -13,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
@@ -23,21 +26,26 @@ import (
 )
 
 type DefaultMultiTenantManager struct {
-	cfg            Config
-	notifierCfg    *config.Config
-	managerFactory ManagerFactory
+	cfg             Config
+	notifierCfg     *config.Config
+	managerFactory  ManagerFactory
+	ruleEvalMetrics *RuleEvalMetrics
 
 	mapper *mapper
 
 	// Structs for holding per-user Prometheus rules Managers
 	// and a corresponding metrics struct
-	userManagerMtx     sync.Mutex
+	userManagerMtx     sync.RWMutex
 	userManagers       map[string]RulesManager
 	userManagerMetrics *ManagerMetrics
 
 	// Per-user notifiers with separate queues.
-	notifiersMtx sync.Mutex
-	notifiers    map[string]*rulerNotifier
+	notifiersMtx              sync.Mutex
+	notifiers                 map[string]*rulerNotifier
+	notifiersDiscoveryMetrics map[string]discovery.DiscovererMetrics
+
+	// rules backup
+	rulesBackupManager *rulesBackupManager
 
 	managersTotal                 prometheus.Gauge
 	lastReloadSuccessful          *prometheus.GaugeVec
@@ -45,9 +53,13 @@ type DefaultMultiTenantManager struct {
 	configUpdatesTotal            *prometheus.CounterVec
 	registry                      prometheus.Registerer
 	logger                        log.Logger
+
+	ruleCache    map[string][]*promRules.Group
+	ruleCacheMtx sync.RWMutex
+	syncRuleMtx  sync.Mutex
 }
 
-func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
 	ncfg, err := buildNotifierConfig(&cfg)
 	if err != nil {
 		return nil, err
@@ -58,14 +70,29 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		reg.MustRegister(userManagerMetrics)
 	}
 
-	return &DefaultMultiTenantManager{
-		cfg:                cfg,
-		notifierCfg:        ncfg,
-		managerFactory:     managerFactory,
-		notifiers:          map[string]*rulerNotifier{},
-		mapper:             newMapper(cfg.RulePath, logger),
-		userManagers:       map[string]RulesManager{},
-		userManagerMetrics: userManagerMetrics,
+	discoveryMetricRegister := reg
+	if discoveryMetricRegister == nil {
+		discoveryMetricRegister = prometheus.DefaultRegisterer
+	}
+
+	notifiersDiscoveryMetrics, err := discovery.CreateAndRegisterSDMetrics(discoveryMetricRegister)
+
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to register service discovery metrics", "err", err)
+		os.Exit(1)
+	}
+
+	m := &DefaultMultiTenantManager{
+		cfg:                       cfg,
+		notifierCfg:               ncfg,
+		managerFactory:            managerFactory,
+		ruleEvalMetrics:           evalMetrics,
+		notifiers:                 map[string]*rulerNotifier{},
+		notifiersDiscoveryMetrics: notifiersDiscoveryMetrics,
+		mapper:                    newMapper(cfg.RulePath, logger),
+		userManagers:              map[string]RulesManager{},
+		userManagerMetrics:        userManagerMetrics,
+		ruleCache:                 map[string][]*promRules.Group{},
 		managersTotal: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Namespace: "cortex",
 			Name:      "ruler_managers_total",
@@ -88,18 +115,24 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, reg
 		}, []string{"user"}),
 		registry: reg,
 		logger:   logger,
-	}, nil
+	}
+	if cfg.APIEnableRulesBackup {
+		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
+	}
+	return m, nil
 }
 
 func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
-	// A lock is taken to ensure if this function is called concurrently, then each call
-	// returns after the call map files and check for updates
-	r.userManagerMtx.Lock()
-	defer r.userManagerMtx.Unlock()
+	// this is a safety lock to ensure this method is executed sequentially
+	r.syncRuleMtx.Lock()
+	defer r.syncRuleMtx.Unlock()
 
 	for userID, ruleGroup := range ruleGroups {
 		r.syncRulesToManager(ctx, userID, ruleGroup)
 	}
+
+	r.userManagerMtx.Lock()
+	defer r.userManagerMtx.Unlock()
 
 	// Check for deleted users and remove them
 	for userID, mngr := range r.userManagers {
@@ -113,6 +146,9 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
+			if r.ruleEvalMetrics != nil {
+				r.ruleEvalMetrics.deletePerUserMetrics(userID)
+			}
 			level.Info(r.logger).Log("msg", "deleted rule manager and local rule files", "user", userID)
 		}
 	}
@@ -120,8 +156,26 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 	r.managersTotal.Set(float64(len(r.userManagers)))
 }
 
+func (r *DefaultMultiTenantManager) updateRuleCache(user string, rules []*promRules.Group) {
+	r.ruleCacheMtx.Lock()
+	defer r.ruleCacheMtx.Unlock()
+	r.ruleCache[user] = rules
+}
+
+func (r *DefaultMultiTenantManager) deleteRuleCache(user string) {
+	r.ruleCacheMtx.Lock()
+	defer r.ruleCacheMtx.Unlock()
+	delete(r.ruleCache, user)
+}
+
+func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
+	if r.rulesBackupManager != nil {
+		r.rulesBackupManager.setRuleGroups(ctx, ruleGroups)
+	}
+}
+
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
-// the users Prometheus Rules Manager.
+// users Prometheus Rules Manager.
 func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
@@ -132,24 +186,25 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 
-	manager, exists := r.userManagers[user]
-	if !exists || update {
+	existing := true
+	manager := r.getRulesManager(user, ctx)
+	if manager == nil {
+		existing = false
+		manager = r.createRulesManager(user, ctx)
+	}
+
+	if manager == nil {
+		return
+	}
+
+	if !existing || update {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
-		if !exists {
-			level.Debug(r.logger).Log("msg", "creating rule manager for user", "user", user)
-			manager, err = r.newManager(ctx, user)
-			if err != nil {
-				r.lastReloadSuccessful.WithLabelValues(user).Set(0)
-				level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
-				return
-			}
-			// manager.Run() starts running the manager and blocks until Stop() is called.
-			// Hence run it as another goroutine.
-			go manager.Run()
-			r.userManagers[user] = manager
+		if update && existing {
+			r.updateRuleCache(user, manager.RuleGroups())
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), nil)
+		err = manager.Update(r.cfg.EvaluationInterval, files, r.cfg.ExternalLabels, r.cfg.ExternalURL.String(), ruleGroupIterationFunc)
+		r.deleteRuleCache(user)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
 			level.Error(r.logger).Log("msg", "unable to update rule manager", "user", user, "err", err)
@@ -159,6 +214,45 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		r.lastReloadSuccessful.WithLabelValues(user).Set(1)
 		r.lastReloadSuccessfulTimestamp.WithLabelValues(user).SetToCurrentTime()
 	}
+}
+
+func (r *DefaultMultiTenantManager) getRulesManager(user string, ctx context.Context) RulesManager {
+	r.userManagerMtx.RLock()
+	defer r.userManagerMtx.RUnlock()
+	return r.userManagers[user]
+}
+
+func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.Context) RulesManager {
+	r.userManagerMtx.Lock()
+	defer r.userManagerMtx.Unlock()
+
+	manager, err := r.newManager(ctx, user)
+	if err != nil {
+		r.lastReloadSuccessful.WithLabelValues(user).Set(0)
+		level.Error(r.logger).Log("msg", "unable to create rule manager", "user", user, "err", err)
+		return nil
+	}
+	// manager.Run() starts running the manager and blocks until Stop() is called.
+	// Hence run it as another goroutine.
+	go manager.Run()
+	r.userManagers[user] = manager
+	return manager
+}
+
+func ruleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+	logMessage := []interface{}{
+		"msg", "evaluating rule group",
+		"component", "ruler",
+		"rule_group", g.Name(),
+		"namespace", g.File(),
+		"num_rules", len(g.Rules()),
+		"num_alert_rules", len(g.AlertingRules()),
+		"eval_interval", g.Interval(),
+		"eval_time", evalTimestamp,
+	}
+
+	level.Info(g.Logger()).Log(logMessage...)
+	promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
 }
 
 // newManager creates a prometheus rule manager wrapped with a user id
@@ -217,7 +311,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
 			return ctxhttp.Do(ctx, client, req)
 		},
-	}, log.With(r.logger, "user", userID))
+	}, log.With(r.logger, "user", userID), userManagerRegistry, r.notifiersDiscoveryMetrics)
 
 	n.run()
 
@@ -230,14 +324,33 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 	return n.notifier, nil
 }
 
+func (r *DefaultMultiTenantManager) getCachedRules(userID string) ([]*promRules.Group, bool) {
+	r.ruleCacheMtx.RLock()
+	defer r.ruleCacheMtx.RUnlock()
+	groups, exists := r.ruleCache[userID]
+	return groups, exists
+}
+
 func (r *DefaultMultiTenantManager) GetRules(userID string) []*promRules.Group {
 	var groups []*promRules.Group
-	r.userManagerMtx.Lock()
-	if mngr, exists := r.userManagers[userID]; exists {
+	groups, cached := r.getCachedRules(userID)
+	if cached {
+		return groups
+	}
+	r.userManagerMtx.RLock()
+	mngr, exists := r.userManagers[userID]
+	r.userManagerMtx.RUnlock()
+	if exists {
 		groups = mngr.RuleGroups()
 	}
-	r.userManagerMtx.Unlock()
 	return groups
+}
+
+func (r *DefaultMultiTenantManager) GetBackupRules(userID string) rulespb.RuleGroupList {
+	if r.rulesBackupManager != nil {
+		return r.rulesBackupManager.getRuleGroups(userID)
+	}
+	return nil
 }
 
 func (r *DefaultMultiTenantManager) Stop() {

@@ -112,3 +112,4 @@ Currently experimental features are:
   - `-ruler.ring.final-sleep` (duration) CLI flag
   - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
+- OTLP Receiver

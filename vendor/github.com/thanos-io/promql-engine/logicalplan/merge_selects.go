@@ -5,8 +5,7 @@ package logicalplan
 
 import (
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/query"
 )
@@ -22,49 +21,51 @@ import (
 // and apply an additional filter for {c="d"}.
 type MergeSelectsOptimizer struct{}
 
-func (m MergeSelectsOptimizer) Optimize(expr parser.Expr, _ *query.Options) parser.Expr {
+func (m MergeSelectsOptimizer) Optimize(plan Node, _ *query.Options) (Node, annotations.Annotations) {
 	heap := make(matcherHeap)
-	extractSelectors(heap, expr)
-	replaceMatchers(heap, &expr)
+	extractSelectors(heap, plan)
+	replaceMatchers(heap, &plan)
 
-	return expr
+	return plan, nil
 }
 
-func extractSelectors(selectors matcherHeap, expr parser.Expr) {
-	parser.Inspect(expr, func(node parser.Node, nodes []parser.Node) error {
-		e, ok := node.(*parser.VectorSelector)
+func extractSelectors(selectors matcherHeap, expr Node) {
+	Traverse(&expr, func(node *Node) {
+		e, ok := (*node).(*VectorSelector)
 		if !ok {
-			return nil
+			return
 		}
 		for _, l := range e.LabelMatchers {
 			if l.Name == labels.MetricName {
 				selectors.add(l.Value, e.LabelMatchers)
 			}
 		}
-		return nil
 	})
 }
 
-func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
-	traverse(expr, func(node *parser.Expr) {
-		e, ok := (*node).(*parser.VectorSelector)
-		if !ok {
+func replaceMatchers(selectors matcherHeap, expr *Node) {
+	Traverse(expr, func(node *Node) {
+		var matchers []*labels.Matcher
+		switch e := (*node).(type) {
+		case *VectorSelector:
+			matchers = e.LabelMatchers
+		default:
 			return
 		}
 
-		for _, l := range e.LabelMatchers {
+		for _, l := range matchers {
 			if l.Name != labels.MetricName {
 				continue
 			}
-			replacement, found := selectors.findReplacement(l.Value, e.LabelMatchers)
+			replacement, found := selectors.findReplacement(l.Value, matchers)
 			if !found {
 				continue
 			}
 
 			// Make a copy of the original selectors to avoid modifying them while
 			// trimming filters.
-			filters := make([]*labels.Matcher, len(e.LabelMatchers))
-			copy(filters, e.LabelMatchers)
+			filters := make([]*labels.Matcher, len(matchers))
+			copy(filters, matchers)
 
 			// All replacements are done on metrics name only,
 			// so we can drop the explicit metric name selector.
@@ -78,11 +79,13 @@ func replaceMatchers(selectors matcherHeap, expr *parser.Expr) {
 					}
 				}
 			}
-			e.LabelMatchers = replacement
-			*node = &FilteredSelector{
-				Filters:        filters,
-				VectorSelector: e,
+
+			switch e := (*node).(type) {
+			case *VectorSelector:
+				e.LabelMatchers = replacement
+				e.Filters = filters
 			}
+
 			return
 		}
 	})

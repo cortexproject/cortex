@@ -6,9 +6,11 @@ import (
 	"errors"
 	"flag"
 	"math"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"golang.org/x/time/rate"
@@ -17,6 +19,8 @@ import (
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
+var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
+var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 
 // Supported values for enum limits
 const (
@@ -45,6 +49,29 @@ type DisabledRuleGroup struct {
 }
 
 type DisabledRuleGroups []DisabledRuleGroup
+
+type QueryPriority struct {
+	Enabled         bool          `yaml:"enabled" json:"enabled"`
+	DefaultPriority int64         `yaml:"default_priority" json:"default_priority"`
+	Priorities      []PriorityDef `yaml:"priorities" json:"priorities" doc:"nocli|description=List of priority definitions."`
+}
+
+type PriorityDef struct {
+	Priority         int64            `yaml:"priority" json:"priority" doc:"nocli|description=Priority level. Must be a unique value.|default=0"`
+	ReservedQueriers float64          `yaml:"reserved_queriers" json:"reserved_queriers" doc:"nocli|description=Number of reserved queriers to handle priorities higher or equal to the priority level. Value between 0 and 1 will be used as a percentage.|default=0"`
+	QueryAttributes  []QueryAttribute `yaml:"query_attributes" json:"query_attributes" doc:"nocli|description=List of query attributes to assign the priority."`
+}
+
+type QueryAttribute struct {
+	Regex         string     `yaml:"regex" json:"regex" doc:"nocli|description=Regex that the query string should match. If not set, it won't be checked."`
+	TimeWindow    TimeWindow `yaml:"time_window" json:"time_window" doc:"nocli|description=Overall data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If not set, it won't be checked."`
+	CompiledRegex *regexp.Regexp
+}
+
+type TimeWindow struct {
+	Start model.Duration `yaml:"start" json:"start" doc:"nocli|description=Start of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
+	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
+}
 
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
@@ -101,7 +128,10 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
 
 	// Query Frontend / Scheduler enforced limits.
-	MaxOutstandingPerTenant int `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	MaxOutstandingPerTenant    int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
+	QueryPriority              QueryPriority `yaml:"query_priority" json:"query_priority" doc:"nocli|description=Configuration for query priority."`
+	queryPriorityRegexHash     uint64
+	queryPriorityCompiledRegex map[string]*regexp.Regexp
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
@@ -179,13 +209,15 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable")
 	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "Deprecated (use max-fetched-data-bytes-per-query instead): The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
 	f.IntVar(&l.MaxFetchedDataBytesPerQuery, "querier.max-fetched-data-bytes-per-query", 0, "The maximum combined size of all data that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler for `query`, `query_range` and `series` APIs. 0 to disable.")
-	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time). This limit is enforced in the query-frontend (on the received query) and in the querier (on the query possibly split by the query-frontend). 0 to disable.")
+	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time of range query parameter and max - min of data fetched time range). This limit is enforced in the query-frontend and ruler (on the received query). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
+	f.BoolVar(&l.QueryPriority.Enabled, "frontend.query-priority.enabled", false, "Whether queries are assigned with priorities.")
+	f.Int64Var(&l.QueryPriority.DefaultPriority, "frontend.query-priority.default-priority", 0, "Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
 
@@ -237,14 +269,22 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
 
-	// During startup we wont have a default value so we don't want to overwrite them
+	// During startup we won't have a default value so we don't want to overwrite them
 	if defaultLimits != nil {
 		*l = *defaultLimits
 		// Make copy of default limits. Otherwise unmarshalling would modify map in default limits.
 		l.copyNotificationIntegrationLimits(defaultLimits.NotificationRateLimitPerIntegration)
 	}
 	type plain Limits
-	return unmarshal((*plain)(l))
+	if err := unmarshal((*plain)(l)); err != nil {
+		return err
+	}
+
+	if err := l.compileQueryPriorityRegex(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -262,7 +302,15 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 
-	return dec.Decode((*plain)(l))
+	if err := dec.Decode((*plain)(l)); err != nil {
+		return err
+	}
+
+	if err := l.compileQueryPriorityRegex(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
@@ -270,6 +318,61 @@ func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimi
 	for k, v := range defaults {
 		l.NotificationRateLimitPerIntegration[k] = v
 	}
+}
+
+func (l *Limits) hasQueryPriorityRegexChanged() bool {
+	var newHash uint64
+
+	var seps = []byte{'\xff'}
+	h := xxhash.New()
+	for _, priority := range l.QueryPriority.Priorities {
+		for _, attribute := range priority.QueryAttributes {
+			_, _ = h.WriteString(attribute.Regex)
+			_, _ = h.Write(seps)
+		}
+	}
+	newHash = h.Sum64()
+
+	if newHash != l.queryPriorityRegexHash {
+		l.queryPriorityRegexHash = newHash
+		return true
+	}
+	return false
+}
+
+func (l *Limits) compileQueryPriorityRegex() error {
+	if l.QueryPriority.Enabled {
+		hasQueryPriorityRegexChanged := l.hasQueryPriorityRegexChanged()
+		prioritySet := map[int64]struct{}{}
+		newQueryPriorityCompiledRegex := map[string]*regexp.Regexp{}
+
+		for i, priority := range l.QueryPriority.Priorities {
+			// Check for duplicate priority entry
+			if _, exists := prioritySet[priority.Priority]; exists {
+				return errDuplicateQueryPriorities
+			}
+			prioritySet[priority.Priority] = struct{}{}
+
+			for j, attribute := range priority.QueryAttributes {
+				if hasQueryPriorityRegexChanged {
+					compiledRegex, err := regexp.Compile(attribute.Regex)
+					if err != nil {
+						return errors.Join(errCompilingQueryPriorityRegex, err)
+					}
+					newQueryPriorityCompiledRegex[attribute.Regex] = compiledRegex
+					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = compiledRegex
+				} else {
+					l.QueryPriority.Priorities[i].QueryAttributes[j].CompiledRegex = l.queryPriorityCompiledRegex[attribute.Regex]
+				}
+			}
+		}
+
+		if hasQueryPriorityRegexChanged {
+			l.queryPriorityCompiledRegex = newQueryPriorityCompiledRegex
+		}
+	}
+
+	return nil
 }
 
 // When we load YAML from disk, we want the various per-customer limits
@@ -490,6 +593,11 @@ func (o *Overrides) MaxQueryParallelism(userID string) int {
 // of outstanding requests per tenant per request queue.
 func (o *Overrides) MaxOutstandingPerTenant(userID string) int {
 	return o.GetOverridesForUser(userID).MaxOutstandingPerTenant
+}
+
+// QueryPriority returns the query priority config for the tenant, including different priorities and their attributes
+func (o *Overrides) QueryPriority(userID string) QueryPriority {
+	return o.GetOverridesForUser(userID).QueryPriority
 }
 
 // EnforceMetricName whether to enforce the presence of a metric name.
@@ -725,7 +833,7 @@ func SmallestPositiveIntPerTenant(tenantIDs []string, f func(string) int) int {
 
 // SmallestPositiveNonZeroFloat64PerTenant is returning the minimal positive and
 // non-zero value of the supplied limit function for all given tenants. In many
-// limits a value of 0 means unlimted so the method will return 0 only if all
+// limits a value of 0 means unlimited so the method will return 0 only if all
 // inputs have a limit of 0 or an empty tenant list is given.
 func SmallestPositiveNonZeroFloat64PerTenant(tenantIDs []string, f func(string) float64) float64 {
 	var result *float64
@@ -743,7 +851,7 @@ func SmallestPositiveNonZeroFloat64PerTenant(tenantIDs []string, f func(string) 
 
 // SmallestPositiveNonZeroDurationPerTenant is returning the minimal positive
 // and non-zero value of the supplied limit function for all given tenants. In
-// many limits a value of 0 means unlimted so the method will return 0 only if
+// many limits a value of 0 means unlimited so the method will return 0 only if
 // all inputs have a limit of 0 or an empty tenant list is given.
 func SmallestPositiveNonZeroDurationPerTenant(tenantIDs []string, f func(string) time.Duration) time.Duration {
 	var result *time.Duration

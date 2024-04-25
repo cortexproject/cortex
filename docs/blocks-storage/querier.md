@@ -104,20 +104,6 @@ querier:
   # CLI flag: -querier.timeout
   [timeout: <duration> | default = 2m]
 
-  # Use iterators to execute query, as opposed to fully materialising the series
-  # in memory.
-  # CLI flag: -querier.iterators
-  [iterators: <boolean> | default = false]
-
-  # Use batch iterators to execute query, as opposed to fully materialising the
-  # series in memory.  Takes precedent over the -querier.iterators flag.
-  # CLI flag: -querier.batch-iterators
-  [batch_iterators: <boolean> | default = true]
-
-  # Use streaming RPCs to query ingester.
-  # CLI flag: -querier.ingester-streaming
-  [ingester_streaming: <boolean> | default = true]
-
   # Use streaming RPCs for metadata APIs from ingester.
   # CLI flag: -querier.ingester-metadata-streaming
   [ingester_metadata_streaming: <boolean> | default = false]
@@ -214,6 +200,10 @@ querier:
     # CLI flag: -querier.store-gateway-client.grpc-compression
     [grpc_compression: <string> | default = ""]
 
+  # If enabled, store gateway query stats will be logged using `info` log level.
+  # CLI flag: -querier.store-gateway-query-stats-enabled
+  [store_gateway_query_stats: <boolean> | default = true]
+
   # When distributor's sharding strategy is shuffle-sharding and this setting is
   # > 0, queriers fetch in-memory series from the minimum set of required
   # ingesters, selecting only ingesters which may have received series since
@@ -229,6 +219,12 @@ querier:
   # engine.
   # CLI flag: -querier.thanos-engine
   [thanos_engine: <boolean> | default = false]
+
+  # If enabled, ignore max query length check at Querier select method. Users
+  # can choose to ignore it since the validation can be done before Querier
+  # evaluation like at Query Frontend or Ruler.
+  # CLI flag: -querier.ignore-max-query-length
+  [ignore_max_query_length: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`
@@ -281,6 +277,12 @@ blocks_storage:
     # path.
     # CLI flag: -blocks-storage.s3.bucket-lookup-type
     [bucket_lookup_type: <string> | default = "auto"]
+
+    # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+    # algorithm to verify the provided digest. If false, use CRC32C algorithm
+    # instead.
+    # CLI flag: -blocks-storage.s3.send-content-md5
+    [send_content_md5: <boolean> | default = true]
 
     # The s3_sse_config configures the S3 server-side encryption.
     # The CLI flags prefix for this block config is: blocks-storage
@@ -344,6 +346,13 @@ blocks_storage:
     # CLI flag: -blocks-storage.azure.account-key
     [account_key: <string> | default = ""]
 
+    # The values of `account-name` and `endpoint-suffix` values will not be
+    # ignored if `connection-string` is set. Use this method over `account-key`
+    # if you need to authenticate via a SAS token or if you use the Azurite
+    # emulator.
+    # CLI flag: -blocks-storage.azure.connection-string
+    [connection_string: <string> | default = ""]
+
     # Azure storage container name
     # CLI flag: -blocks-storage.azure.container-name
     [container_name: <string> | default = ""]
@@ -357,12 +366,14 @@ blocks_storage:
     # CLI flag: -blocks-storage.azure.max-retries
     [max_retries: <int> | default = 20]
 
-    # Azure storage MSI resource. Either this or account key must be set.
+    # Deprecated: Azure storage MSI resource. It will be set automatically by
+    # Azure SDK.
     # CLI flag: -blocks-storage.azure.msi-resource
     [msi_resource: <string> | default = ""]
 
     # Azure storage MSI resource managed identity client Id. If not supplied
-    # system assigned identity is used
+    # default Azure credential will be used. Set it to empty if you need to
+    # authenticate via Azure Workload Identity.
     # CLI flag: -blocks-storage.azure.user-assigned-id
     [user_assigned_id: <string> | default = ""]
 
@@ -509,11 +520,11 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
     [max_inflight_requests: <int> | default = 0]
 
-    # Maximum number of concurrent tenants synching blocks.
+    # Maximum number of concurrent tenants syncing blocks.
     # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
     [tenant_sync_concurrency: <int> | default = 10]
 
-    # Maximum number of concurrent blocks synching per tenant.
+    # Maximum number of concurrent blocks syncing per tenant.
     # CLI flag: -blocks-storage.bucket-store.block-sync-concurrency
     [block_sync_concurrency: <int> | default = 20]
 
@@ -592,6 +603,35 @@ blocks_storage:
         # like GCP and AWS
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
+
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
 
         # Selectively cache index item types. Supported values are Postings,
         # ExpandedPostings and Series
@@ -694,10 +734,54 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
         [cache_size: <int> | default = 0]
 
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
+
         # Selectively cache index item types. Supported values are Postings,
         # ExpandedPostings and Series
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
         [enabled_items: <list of string> | default = []]
+
+      multilevel:
+        # The maximum number of concurrent asynchronous operations can occur
+        # when backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency
+        [max_async_concurrency: <int> | default = 50]
+
+        # The maximum number of enqueued asynchronous operations allowed when
+        # backfilling cache items.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-buffer-size
+        [max_async_buffer_size: <int> | default = 10000]
+
+        # The maximum number of items to backfill per asynchronous operation.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-backfill-items
+        [max_backfill_items: <int> | default = 10000]
 
     chunks_cache:
       # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -750,6 +834,35 @@ blocks_storage:
         # like GCP and AWS
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
+
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
 
       redis:
         # Comma separated list of redis addresses. Supported prefixes are: dns+
@@ -847,6 +960,35 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.cache-size
         [cache_size: <int> | default = 0]
 
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
+
       # Size of each subrange that bucket object is split into for better
       # caching.
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
@@ -917,6 +1059,35 @@ blocks_storage:
         # like GCP and AWS
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
         [auto_discovery: <boolean> | default = false]
+
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
 
       redis:
         # Comma separated list of redis addresses. Supported prefixes are: dns+
@@ -1014,6 +1185,35 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.cache-size
         [cache_size: <int> | default = 0]
 
+        set_async_circuit_breaker_config:
+          # If true, enable circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.enabled
+          [enabled: <boolean> | default = false]
+
+          # Maximum number of requests allowed to pass through when the circuit
+          # breaker is half-open. If set to 0, by default it allows 1 request.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.half-open-max-requests
+          [half_open_max_requests: <int> | default = 10]
+
+          # Period of the open state after which the state of the circuit
+          # breaker becomes half-open. If set to 0, by default open duration is
+          # 60 seconds.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.open-duration
+          [open_duration: <duration> | default = 5s]
+
+          # Minimal requests to trigger the circuit breaker.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.min-requests
+          [min_requests: <int> | default = 50]
+
+          # Consecutive failures to determine if the circuit breaker should
+          # open.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.consecutive-failures
+          [consecutive_failures: <int> | default = 5]
+
+          # Failure percentage to determine if the circuit breaker should open.
+          # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.failure-percent
+          [failure_percent: <float> | default = 0.05]
+
       # How long to cache list of tenants in the bucket.
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
       [tenants_list_ttl: <duration> | default = 15m]
@@ -1109,6 +1309,17 @@ blocks_storage:
       # the querier (at query time).
       # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
       [max_stale_period: <duration> | default = 1h]
+
+    # One of concurrent, recursive, bucket_index. When set to concurrent, stores
+    # will concurrently issue one call per directory to discover active blocks
+    # in the bucket. The recursive strategy iterates through all objects in the
+    # bucket, recursively traversing into each directory. This avoids N+1 calls
+    # at the expense of having slower bucket iterations. bucket_index strategy
+    # can be used in Compactor only and utilizes the existing bucket index to
+    # fetch block IDs to sync. This avoids iterating the bucket but can be
+    # impacted by delays of cleaner creating bucket index.
+    # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
+    [block_discovery_strategy: <string> | default = "concurrent"]
 
     # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
     # The pool is shared across all tenants. 0 to disable the limit.

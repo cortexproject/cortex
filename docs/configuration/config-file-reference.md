@@ -559,6 +559,12 @@ s3:
   # CLI flag: -alertmanager-storage.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -alertmanager-storage.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: alertmanager-storage
   [sse: <s3_sse_config>]
@@ -621,6 +627,12 @@ azure:
   # CLI flag: -alertmanager-storage.azure.account-key
   [account_key: <string> | default = ""]
 
+  # The values of `account-name` and `endpoint-suffix` values will not be
+  # ignored if `connection-string` is set. Use this method over `account-key` if
+  # you need to authenticate via a SAS token or if you use the Azurite emulator.
+  # CLI flag: -alertmanager-storage.azure.connection-string
+  [connection_string: <string> | default = ""]
+
   # Azure storage container name
   # CLI flag: -alertmanager-storage.azure.container-name
   [container_name: <string> | default = ""]
@@ -634,12 +646,14 @@ azure:
   # CLI flag: -alertmanager-storage.azure.max-retries
   [max_retries: <int> | default = 20]
 
-  # Azure storage MSI resource. Either this or account key must be set.
+  # Deprecated: Azure storage MSI resource. It will be set automatically by
+  # Azure SDK.
   # CLI flag: -alertmanager-storage.azure.msi-resource
   [msi_resource: <string> | default = ""]
 
   # Azure storage MSI resource managed identity client Id. If not supplied
-  # system assigned identity is used
+  # default Azure credential will be used. Set it to empty if you need to
+  # authenticate via Azure Workload Identity.
   # CLI flag: -alertmanager-storage.azure.user-assigned-id
   [user_assigned_id: <string> | default = ""]
 
@@ -824,6 +838,12 @@ s3:
   # CLI flag: -blocks-storage.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -blocks-storage.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: blocks-storage
   [sse: <s3_sse_config>]
@@ -886,6 +906,12 @@ azure:
   # CLI flag: -blocks-storage.azure.account-key
   [account_key: <string> | default = ""]
 
+  # The values of `account-name` and `endpoint-suffix` values will not be
+  # ignored if `connection-string` is set. Use this method over `account-key` if
+  # you need to authenticate via a SAS token or if you use the Azurite emulator.
+  # CLI flag: -blocks-storage.azure.connection-string
+  [connection_string: <string> | default = ""]
+
   # Azure storage container name
   # CLI flag: -blocks-storage.azure.container-name
   [container_name: <string> | default = ""]
@@ -899,12 +925,14 @@ azure:
   # CLI flag: -blocks-storage.azure.max-retries
   [max_retries: <int> | default = 20]
 
-  # Azure storage MSI resource. Either this or account key must be set.
+  # Deprecated: Azure storage MSI resource. It will be set automatically by
+  # Azure SDK.
   # CLI flag: -blocks-storage.azure.msi-resource
   [msi_resource: <string> | default = ""]
 
   # Azure storage MSI resource managed identity client Id. If not supplied
-  # system assigned identity is used
+  # default Azure credential will be used. Set it to empty if you need to
+  # authenticate via Azure Workload Identity.
   # CLI flag: -blocks-storage.azure.user-assigned-id
   [user_assigned_id: <string> | default = ""]
 
@@ -1051,11 +1079,11 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
   [max_inflight_requests: <int> | default = 0]
 
-  # Maximum number of concurrent tenants synching blocks.
+  # Maximum number of concurrent tenants syncing blocks.
   # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
   [tenant_sync_concurrency: <int> | default = 10]
 
-  # Maximum number of concurrent blocks synching per tenant.
+  # Maximum number of concurrent blocks syncing per tenant.
   # CLI flag: -blocks-storage.bucket-store.block-sync-concurrency
   [block_sync_concurrency: <int> | default = 20]
 
@@ -1134,6 +1162,34 @@ bucket_store:
       # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
 
       # Selectively cache index item types. Supported values are Postings,
       # ExpandedPostings and Series
@@ -1236,10 +1292,53 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.cache-size
       [cache_size: <int> | default = 0]
 
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
       # Selectively cache index item types. Supported values are Postings,
       # ExpandedPostings and Series
       # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
       [enabled_items: <list of string> | default = []]
+
+    multilevel:
+      # The maximum number of concurrent asynchronous operations can occur when
+      # backfilling cache items.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-concurrency
+      [max_async_concurrency: <int> | default = 50]
+
+      # The maximum number of enqueued asynchronous operations allowed when
+      # backfilling cache items.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of items to backfill per asynchronous operation.
+      # CLI flag: -blocks-storage.bucket-store.index-cache.multilevel.max-backfill-items
+      [max_backfill_items: <int> | default = 10000]
 
   chunks_cache:
     # Backend for chunks cache, if not empty. Supported values: memcached.
@@ -1292,6 +1391,34 @@ bucket_store:
       # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.memcached.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
 
     redis:
       # Comma separated list of redis addresses. Supported prefixes are: dns+
@@ -1389,6 +1516,34 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.cache-size
       [cache_size: <int> | default = 0]
 
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.chunks-cache.redis.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
     # Size of each subrange that bucket object is split into for better caching.
     # CLI flag: -blocks-storage.bucket-store.chunks-cache.subrange-size
     [subrange_size: <int> | default = 16000]
@@ -1458,6 +1613,34 @@ bucket_store:
       # like GCP and AWS
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.auto-discovery
       [auto_discovery: <boolean> | default = false]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.memcached.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
 
     redis:
       # Comma separated list of redis addresses. Supported prefixes are: dns+
@@ -1555,6 +1738,34 @@ bucket_store:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.cache-size
       [cache_size: <int> | default = 0]
 
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.metadata-cache.redis.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
     # How long to cache list of tenants in the bucket.
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.tenants-list-ttl
     [tenants_list_ttl: <duration> | default = 15m]
@@ -1650,6 +1861,17 @@ bucket_store:
     # querier (at query time).
     # CLI flag: -blocks-storage.bucket-store.bucket-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
+
+  # One of concurrent, recursive, bucket_index. When set to concurrent, stores
+  # will concurrently issue one call per directory to discover active blocks in
+  # the bucket. The recursive strategy iterates through all objects in the
+  # bucket, recursively traversing into each directory. This avoids N+1 calls at
+  # the expense of having slower bucket iterations. bucket_index strategy can be
+  # used in Compactor only and utilizes the existing bucket index to fetch block
+  # IDs to sync. This avoids iterating the bucket but can be impacted by delays
+  # of cleaner creating bucket index.
+  # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
+  [block_discovery_strategy: <string> | default = "concurrent"]
 
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
   # The pool is shared across all tenants. 0 to disable the limit.
@@ -1990,6 +2212,11 @@ sharding_ring:
 # When enabled, index verification will ignore out of order label names.
 # CLI flag: -compactor.accept-malformed-index
 [accept_malformed_index: <boolean> | default = false]
+
+# When enabled, caching bucket will be used for compactor, except cleaner
+# service, which serves as the source of truth for block status
+# CLI flag: -compactor.caching-bucket-enabled
+[caching_bucket_enabled: <boolean> | default = false]
 ```
 
 ### `configs_config`
@@ -2983,9 +3210,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -querier.max-query-lookback
 [max_query_lookback: <duration> | default = 0s]
 
-# Limit the query time range (end - start time). This limit is enforced in the
-# query-frontend (on the received query) and in the querier (on the query
-# possibly split by the query-frontend). 0 to disable.
+# Limit the query time range (end - start time of range query parameter and max
+# - min of data fetched time range). This limit is enforced in the
+# query-frontend and ruler (on the received query). 0 to disable.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 0s]
 
@@ -3013,6 +3240,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
+
+# Configuration for query priority.
+query_priority:
+  # Whether queries are assigned with priorities.
+  # CLI flag: -frontend.query-priority.enabled
+  [enabled: <boolean> | default = false]
+
+  # Priority assigned to all queries by default. Must be a unique value. Use
+  # this as a baseline to make certain queries higher/lower priority.
+  # CLI flag: -frontend.query-priority.default-priority
+  [default_priority: <int> | default = 0]
+
+  # List of priority definitions.
+  [priorities: <list of PriorityDef> | default = []]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
@@ -3368,20 +3609,6 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.timeout
 [timeout: <duration> | default = 2m]
 
-# Use iterators to execute query, as opposed to fully materialising the series
-# in memory.
-# CLI flag: -querier.iterators
-[iterators: <boolean> | default = false]
-
-# Use batch iterators to execute query, as opposed to fully materialising the
-# series in memory.  Takes precedent over the -querier.iterators flag.
-# CLI flag: -querier.batch-iterators
-[batch_iterators: <boolean> | default = true]
-
-# Use streaming RPCs to query ingester.
-# CLI flag: -querier.ingester-streaming
-[ingester_streaming: <boolean> | default = true]
-
 # Use streaming RPCs for metadata APIs from ingester.
 # CLI flag: -querier.ingester-metadata-streaming
 [ingester_metadata_streaming: <boolean> | default = false]
@@ -3477,6 +3704,10 @@ store_gateway_client:
   # CLI flag: -querier.store-gateway-client.grpc-compression
   [grpc_compression: <string> | default = ""]
 
+# If enabled, store gateway query stats will be logged using `info` log level.
+# CLI flag: -querier.store-gateway-query-stats-enabled
+[store_gateway_query_stats: <boolean> | default = true]
+
 # When distributor's sharding strategy is shuffle-sharding and this setting is >
 # 0, queriers fetch in-memory series from the minimum set of required ingesters,
 # selecting only ingesters which may have received series since 'now - lookback
@@ -3492,6 +3723,12 @@ store_gateway_client:
 # engine.
 # CLI flag: -querier.thanos-engine
 [thanos_engine: <boolean> | default = false]
+
+# If enabled, ignore max query length check at Querier select method. Users can
+# choose to ignore it since the validation can be done before Querier evaluation
+# like at Query Frontend or Ruler.
+# CLI flag: -querier.ignore-max-query-length
+[ignore_max_query_length: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -3855,10 +4092,6 @@ ruler_client:
 # CLI flag: -ruler.alertmanager-refresh-interval
 [alertmanager_refresh_interval: <duration> | default = 1m]
 
-# If enabled requests to Alertmanager will utilize the V2 API.
-# CLI flag: -ruler.alertmanager-use-v2
-[enable_alertmanager_v2: <boolean> | default = false]
-
 # Capacity of the queue for notifications to be sent to the Alertmanager.
 # CLI flag: -ruler.notification-queue-capacity
 [notification_queue_capacity: <int> | default = 10000]
@@ -3913,6 +4146,16 @@ alertmanager_client:
 # Minimum amount of time to wait before resending an alert to Alertmanager.
 # CLI flag: -ruler.resend-delay
 [resend_delay: <duration> | default = 1m]
+
+# If enabled, rules from a single rule group can be evaluated concurrently if
+# there is no dependency between each other. Max concurrency for each rule group
+# is controlled via ruler.max-concurrent-evals flag.
+# CLI flag: -ruler.concurrent-evals-enabled
+[concurrent_evals_enabled: <boolean> | default = false]
+
+# Max concurrency for a single rule group to evaluate independent rules.
+# CLI flag: -ruler.max-concurrent-evals
+[max_concurrent_evals: <int> | default = 1]
 
 # Distribute rule evaluation using ring backend
 # CLI flag: -ruler.enable-sharding
@@ -3992,6 +4235,16 @@ ring:
   # CLI flag: -ruler.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
+  # EXPERIMENTAL: The replication factor to use when loading rule groups for API
+  # HA.
+  # CLI flag: -ruler.ring.replication-factor
+  [replication_factor: <int> | default = 1]
+
+  # EXPERIMENTAL: True to enable zone-awareness and load rule groups across
+  # different availability zones for API HA.
+  # CLI flag: -ruler.ring.zone-awareness-enabled
+  [zone_awareness_enabled: <boolean> | default = false]
+
   # Name of network interface to read address from.
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]
@@ -4012,6 +4265,21 @@ ring:
 # Enable the ruler api
 # CLI flag: -experimental.ruler.enable-api
 [enable_api: <boolean> | default = false]
+
+# EXPERIMENTAL: Enable rulers to store a copy of rules owned by other rulers
+# with default state (state before any evaluation) and send this copy in list
+# API requests as backup in case the ruler who owns the rule fails to send its
+# rules. This allows the rules API to handle ruler outage by returning rules
+# with default state. Ring replication-factor needs to be set to 2 or more for
+# this to be useful.
+# CLI flag: -experimental.ruler.api-enable-rules-backup
+[api_enable_rules_backup: <boolean> | default = false]
+
+# EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API
+# response. If there are duplicate rules the rule with the latest evaluation
+# timestamp will be kept.
+# CLI flag: -experimental.ruler.api-deduplicate-rules
+[api_deduplicate_rules: <boolean> | default = false]
 
 # Comma separated list of tenants whose rules this ruler can evaluate. If
 # specified, only these tenants will be handled by ruler, otherwise this ruler
@@ -4085,6 +4353,12 @@ s3:
   # CLI flag: -ruler-storage.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -ruler-storage.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: ruler-storage
   [sse: <s3_sse_config>]
@@ -4147,6 +4421,12 @@ azure:
   # CLI flag: -ruler-storage.azure.account-key
   [account_key: <string> | default = ""]
 
+  # The values of `account-name` and `endpoint-suffix` values will not be
+  # ignored if `connection-string` is set. Use this method over `account-key` if
+  # you need to authenticate via a SAS token or if you use the Azurite emulator.
+  # CLI flag: -ruler-storage.azure.connection-string
+  [connection_string: <string> | default = ""]
+
   # Azure storage container name
   # CLI flag: -ruler-storage.azure.container-name
   [container_name: <string> | default = ""]
@@ -4160,12 +4440,14 @@ azure:
   # CLI flag: -ruler-storage.azure.max-retries
   [max_retries: <int> | default = 20]
 
-  # Azure storage MSI resource. Either this or account key must be set.
+  # Deprecated: Azure storage MSI resource. It will be set automatically by
+  # Azure SDK.
   # CLI flag: -ruler-storage.azure.msi-resource
   [msi_resource: <string> | default = ""]
 
   # Azure storage MSI resource managed identity client Id. If not supplied
-  # system assigned identity is used
+  # default Azure credential will be used. Set it to empty if you need to
+  # authenticate via Azure Workload Identity.
   # CLI flag: -ruler-storage.azure.user-assigned-id
   [user_assigned_id: <string> | default = ""]
 
@@ -4358,6 +4640,12 @@ s3:
   # CLI flag: -runtime-config.s3.bucket-lookup-type
   [bucket_lookup_type: <string> | default = "auto"]
 
+  # If true, attach MD5 checksum when upload objects and S3 uses MD5 checksum
+  # algorithm to verify the provided digest. If false, use CRC32C algorithm
+  # instead.
+  # CLI flag: -runtime-config.s3.send-content-md5
+  [send_content_md5: <boolean> | default = true]
+
   # The s3_sse_config configures the S3 server-side encryption.
   # The CLI flags prefix for this block config is: runtime-config
   [sse: <s3_sse_config>]
@@ -4420,6 +4708,12 @@ azure:
   # CLI flag: -runtime-config.azure.account-key
   [account_key: <string> | default = ""]
 
+  # The values of `account-name` and `endpoint-suffix` values will not be
+  # ignored if `connection-string` is set. Use this method over `account-key` if
+  # you need to authenticate via a SAS token or if you use the Azurite emulator.
+  # CLI flag: -runtime-config.azure.connection-string
+  [connection_string: <string> | default = ""]
+
   # Azure storage container name
   # CLI flag: -runtime-config.azure.container-name
   [container_name: <string> | default = ""]
@@ -4433,12 +4727,14 @@ azure:
   # CLI flag: -runtime-config.azure.max-retries
   [max_retries: <int> | default = 20]
 
-  # Azure storage MSI resource. Either this or account key must be set.
+  # Deprecated: Azure storage MSI resource. It will be set automatically by
+  # Azure SDK.
   # CLI flag: -runtime-config.azure.msi-resource
   [msi_resource: <string> | default = ""]
 
   # Azure storage MSI resource managed identity client Id. If not supplied
-  # system assigned identity is used
+  # default Azure credential will be used. Set it to empty if you need to
+  # authenticate via Azure Workload Identity.
   # CLI flag: -runtime-config.azure.user-assigned-id
   [user_assigned_id: <string> | default = ""]
 
@@ -4764,9 +5060,19 @@ grpc_tls_config:
 # CLI flag: -server.log-source-ips-regex
 [log_source_ips_regex: <string> | default = ""]
 
-# Optionally log requests at info level instead of debug level.
+# Optionally log request headers.
+# CLI flag: -server.log-request-headers
+[log_request_headers: <boolean> | default = false]
+
+# Optionally log requests at info level instead of debug level. Applies to
+# request headers as well if server.log-request-headers is enabled.
 # CLI flag: -server.log-request-at-info-level-enabled
 [log_request_at_info_level_enabled: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from loggin. Only used if
+# server.log-request-headers is true.
+# CLI flag: -server.log-request-headers-exclude-list
+[log_request_exclude_headers_list: <string> | default = ""]
 
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
@@ -4917,6 +5223,19 @@ sharding_ring:
 # The sharding strategy to use. Supported values are: default, shuffle-sharding.
 # CLI flag: -store-gateway.sharding-strategy
 [sharding_strategy: <string> | default = "default"]
+
+# Comma separated list of tenants whose store metrics this storegateway can
+# process. If specified, only these tenants will be handled by storegateway,
+# otherwise this storegateway will be enabled for all the tenants in the
+# store-gateway cluster.
+# CLI flag: -store-gateway.enabled-tenants
+[enabled_tenants: <string> | default = ""]
+
+# Comma separated list of tenants whose store metrics this storegateway cannot
+# process. If specified, a storegateway that would normally pick the specified
+# tenant(s) for processing will ignore them instead.
+# CLI flag: -store-gateway.disabled-tenants
+[disabled_tenants: <string> | default = ""]
 ```
 
 ### `tracing_config`
@@ -4944,6 +5263,12 @@ otel:
   # everything is traced.
   # CLI flag: -tracing.otel.sample-ratio
   [sample_ratio: <float> | default = 0.001]
+
+  # If enabled, use round_robin gRPC load balancing policy. By default, use
+  # pick_first policy. For more details, please refer to
+  # https://github.com/grpc/grpc/blob/master/doc/load-balancing.md#load-balancing-policies.
+  # CLI flag: -tracing.otel.round-robin
+  [round_robin: <boolean> | default = false]
 
   # Enable TLS in the GRPC client. This flag needs to be enabled when any other
   # TLS flag is set. If set to false, insecure connection to gRPC server will be
@@ -4974,6 +5299,41 @@ otel:
     # Skip validating server certificate.
     # CLI flag: -tracing.otel.tls.tls-insecure-skip-verify
     [tls_insecure_skip_verify: <boolean> | default = false]
+```
+
+### `PriorityDef`
+
+```yaml
+# Priority level. Must be a unique value.
+[priority: <int> | default = 0]
+
+# Number of reserved queriers to handle priorities higher or equal to the
+# priority level. Value between 0 and 1 will be used as a percentage.
+[reserved_queriers: <float> | default = 0]
+
+# List of query attributes to assign the priority.
+[query_attributes: <list of QueryAttribute> | default = []]
+```
+
+### `QueryAttribute`
+
+```yaml
+# Regex that the query string should match. If not set, it won't be checked.
+[regex: <string> | default = ""]
+
+# Overall data select time window (including range selectors, modifiers and
+# lookback delta) that the query should be within. If not set, it won't be
+# checked.
+time_window:
+  # Start of the data select time window (including range selectors, modifiers
+  # and lookback delta) that the query should be within. If set to 0, it won't
+  # be checked.
+  [start: <int> | default = 0]
+
+  # End of the data select time window (including range selectors, modifiers and
+  # lookback delta) that the query should be within. If set to 0, it won't be
+  # checked.
+  [end: <int> | default = 0]
 ```
 
 ### `DisabledRuleGroup`

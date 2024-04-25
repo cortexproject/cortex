@@ -13,18 +13,16 @@ type PriorityQueue struct {
 	cond        *sync.Cond
 	closing     bool
 	closed      bool
-	hit         map[string]struct{}
 	queue       queue
 	lengthGauge prometheus.Gauge
 }
 
-// Op is an operation on the priority queue.
-type Op interface {
-	Key() string
+// PriorityOp is an operation on the priority queue.
+type PriorityOp interface {
 	Priority() int64 // The larger the number the higher the priority.
 }
 
-type queue []Op
+type queue []PriorityOp
 
 func (q queue) Len() int           { return len(q) }
 func (q queue) Less(i, j int) bool { return q[i].Priority() > q[j].Priority() }
@@ -33,7 +31,7 @@ func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
 func (q *queue) Push(x interface{}) {
-	*q = append(*q, x.(Op))
+	*q = append(*q, x.(PriorityOp))
 }
 
 func (q *queue) Pop() interface{} {
@@ -47,7 +45,6 @@ func (q *queue) Pop() interface{} {
 // NewPriorityQueue makes a new priority queue.
 func NewPriorityQueue(lengthGauge prometheus.Gauge) *PriorityQueue {
 	pq := &PriorityQueue{
-		hit:         map[string]struct{}{},
 		lengthGauge: lengthGauge,
 	}
 	pq.cond = sync.NewCond(&pq.lock)
@@ -67,7 +64,11 @@ func (pq *PriorityQueue) Length() int {
 func (pq *PriorityQueue) Close() {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
-	pq.closing = true
+	if len(pq.queue) > 0 {
+		pq.closing = true
+	} else {
+		pq.closed = true
+	}
 	pq.cond.Broadcast()
 }
 
@@ -77,37 +78,28 @@ func (pq *PriorityQueue) DiscardAndClose() {
 	defer pq.lock.Unlock()
 	pq.closed = true
 	pq.queue = nil
-	pq.hit = map[string]struct{}{}
 	pq.cond.Broadcast()
 }
 
-// Enqueue adds an operation to the queue in priority order. Returns
-// true if added; false if the operation was already on the queue.
-func (pq *PriorityQueue) Enqueue(op Op) bool {
+// Enqueue adds an operation to the queue in priority order.
+func (pq *PriorityQueue) Enqueue(op PriorityOp) {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
-	if pq.closed {
+	if pq.closing || pq.closed {
 		panic("enqueue on closed queue")
 	}
 
-	_, enqueued := pq.hit[op.Key()]
-	if enqueued {
-		return false
-	}
-
-	pq.hit[op.Key()] = struct{}{}
 	heap.Push(&pq.queue, op)
 	pq.cond.Broadcast()
 	if pq.lengthGauge != nil {
 		pq.lengthGauge.Inc()
 	}
-	return true
 }
 
-// Dequeue will return the op with the highest priority; block if queue is
+// Dequeue will remove and return the op with the highest priority; block if queue is
 // empty; returns nil if queue is closed.
-func (pq *PriorityQueue) Dequeue() Op {
+func (pq *PriorityQueue) Dequeue() PriorityOp {
 	pq.lock.Lock()
 	defer pq.lock.Unlock()
 
@@ -120,10 +112,15 @@ func (pq *PriorityQueue) Dequeue() Op {
 		return nil
 	}
 
-	op := heap.Pop(&pq.queue).(Op)
-	delete(pq.hit, op.Key())
+	op := heap.Pop(&pq.queue).(PriorityOp)
 	if pq.lengthGauge != nil {
 		pq.lengthGauge.Dec()
 	}
+	return op
+}
+
+// Peek will return the op with the highest priority without removing it from the queue
+func (pq *PriorityQueue) Peek() PriorityOp {
+	op := pq.queue[0]
 	return op
 }

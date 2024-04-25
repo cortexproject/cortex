@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/textparse"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -158,26 +157,26 @@ func (s byLabel) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // MetricMetadataMetricTypeToMetricType converts a metric type from our internal client
 // to a Prometheus one.
-func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) textparse.MetricType {
+func MetricMetadataMetricTypeToMetricType(mt MetricMetadata_MetricType) model.MetricType {
 	switch mt {
 	case UNKNOWN:
-		return textparse.MetricTypeUnknown
+		return model.MetricTypeUnknown
 	case COUNTER:
-		return textparse.MetricTypeCounter
+		return model.MetricTypeCounter
 	case GAUGE:
-		return textparse.MetricTypeGauge
+		return model.MetricTypeGauge
 	case HISTOGRAM:
-		return textparse.MetricTypeHistogram
+		return model.MetricTypeHistogram
 	case GAUGEHISTOGRAM:
-		return textparse.MetricTypeGaugeHistogram
+		return model.MetricTypeGaugeHistogram
 	case SUMMARY:
-		return textparse.MetricTypeSummary
+		return model.MetricTypeSummary
 	case INFO:
-		return textparse.MetricTypeInfo
+		return model.MetricTypeInfo
 	case STATESET:
-		return textparse.MetricTypeStateset
+		return model.MetricTypeStateset
 	default:
-		return textparse.MetricTypeUnknown
+		return model.MetricTypeUnknown
 	}
 }
 

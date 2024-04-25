@@ -10,10 +10,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestQueues(t *testing.T) {
-	uq := newUserQueues(0, 0, MockLimits{})
+	uq := newUserQueues(0, 0, MockLimits{}, nil)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -68,7 +70,7 @@ func TestQueues(t *testing.T) {
 }
 
 func TestQueuesWithQueriers(t *testing.T) {
-	uq := newUserQueues(0, 0, MockLimits{})
+	uq := newUserQueues(0, 0, MockLimits{}, nil)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -145,7 +147,7 @@ func TestQueuesConsistency(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			uq := newUserQueues(0, testData.forgetDelay, MockLimits{})
+			uq := newUserQueues(0, testData.forgetDelay, MockLimits{}, nil)
 			assert.NotNil(t, uq)
 			assert.NoError(t, isConsistent(uq))
 
@@ -194,7 +196,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetDelay, MockLimits{})
+	uq := newUserQueues(0, forgetDelay, MockLimits{}, nil)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -286,7 +288,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	)
 
 	now := time.Now()
-	uq := newUserQueues(0, forgetDelay, MockLimits{})
+	uq := newUserQueues(0, forgetDelay, MockLimits{}, nil)
 	assert.NotNil(t, uq)
 	assert.NoError(t, isConsistent(uq))
 
@@ -351,6 +353,110 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleQuerierReconnectingBeforeForget
 	}
 }
 
+func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
+	limits := MockLimits{
+		MaxOutstanding: 3,
+	}
+	q := newUserQueues(0, 0, limits, nil)
+	q.addQuerierConnection("q-1")
+	q.addQuerierConnection("q-2")
+	q.addQuerierConnection("q-3")
+	q.addQuerierConnection("q-4")
+	q.addQuerierConnection("q-5")
+
+	queue := q.getOrAddQueue("userID", 2)
+	queue.enqueueRequest(MockRequest{})
+
+	assert.NotNil(t, q.userQueues["userID"])
+	assert.Equal(t, 3, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 2, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 2, len(q.userQueues["userID"].queriers))
+	assert.Subset(t, getKeys(q.queriers), getKeys(q.userQueues["userID"].queriers))
+	assert.IsType(t, &FIFORequestQueue{}, queue)
+	assert.Equal(t, 1, queue.length())
+
+	limits.MaxOutstanding = 10
+	q.limits = limits
+	queue = q.getOrAddQueue("userID", 0)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 0, q.userQueues["userID"].maxQueriers)
+	assert.Nil(t, q.userQueues["userID"].queriers)
+	assert.IsType(t, &FIFORequestQueue{}, queue)
+	assert.Equal(t, 1, queue.length())
+
+	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
+		{
+			Priority:         1,
+			ReservedQueriers: 2,
+		},
+	}}
+	q.limits = limits
+	queue = q.getOrAddQueue("userID", 3)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.Equal(t, 2, len(q.userQueues["userID"].reservedQueriers))
+	assert.IsType(t, &PriorityRequestQueue{}, queue)
+	assert.Equal(t, 1, queue.length())
+	assert.ElementsMatch(t, []int64{1, 1}, q.userQueues["userID"].priorityList)
+	assert.True(t, q.userQueues["userID"].priorityEnabled)
+	assert.Subset(t, getKeys(q.queriers), getKeys(q.userQueues["userID"].queriers))
+	assert.Subset(t, getKeys(q.userQueues["userID"].queriers), getKeys(q.userQueues["userID"].reservedQueriers))
+
+	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
+		{
+			Priority:         1,
+			ReservedQueriers: 0.5,
+		},
+	}}
+	q.limits = limits
+	_ = q.getOrAddQueue("userID", 3)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.Equal(t, 2, len(q.userQueues["userID"].reservedQueriers))
+	assert.ElementsMatch(t, []int64{1, 1}, q.userQueues["userID"].priorityList)
+
+	limits.QueryPriorityVal = validation.QueryPriority{Enabled: true, Priorities: []validation.PriorityDef{
+		{
+			Priority:         1,
+			ReservedQueriers: 10,
+		},
+	}}
+	q.limits = limits
+	_ = q.getOrAddQueue("userID", 3)
+
+	assert.Equal(t, 10, q.userQueues["userID"].maxOutstanding)
+	assert.Equal(t, 3, q.userQueues["userID"].maxQueriers)
+	assert.Equal(t, 5, len(q.queriers))
+	assert.Equal(t, 3, len(q.userQueues["userID"].queriers))
+	assert.Equal(t, 0, len(q.userQueues["userID"].reservedQueriers))
+	assert.ElementsMatch(t, []int64{}, q.userQueues["userID"].priorityList)
+
+	limits.QueryPriorityVal.Enabled = false
+	q.limits = limits
+	queue = q.getOrAddQueue("userID", 3)
+	assert.IsType(t, &FIFORequestQueue{}, queue)
+
+	// check the queriers and reservedQueriers map are consistent
+	for i := 0; i < 100; i++ {
+		queriers := q.userQueues["userID"].queriers
+		reservedQueriers := q.userQueues["userID"].reservedQueriers
+		q.userQueues["userID"].maxQueriers = 0          // reset to trigger querier assignment
+		q.userQueues["userID"].priorityList = []int64{} // reset to trigger reserved querier assignment
+		_ = q.getOrAddQueue("userID", 3)
+
+		assert.Equal(t, queriers, q.userQueues["userID"].queriers)
+		assert.Equal(t, reservedQueriers, q.userQueues["userID"].reservedQueriers)
+	}
+}
+
 func generateTenant(r *rand.Rand) string {
 	return fmt.Sprint("tenant-", r.Int()%5)
 }
@@ -359,7 +465,7 @@ func generateQuerier(r *rand.Rand) string {
 	return fmt.Sprint("querier-", r.Int()%5)
 }
 
-func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan Request {
+func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) userRequestQueue {
 	q := uq.getOrAddQueue(tenant, maxQueriers)
 	assert.NotNil(t, q)
 	assert.NoError(t, isConsistent(uq))
@@ -367,8 +473,8 @@ func getOrAdd(t *testing.T, uq *queues, tenant string, maxQueriers int) chan Req
 	return q
 }
 
-func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...chan Request) int {
-	var n chan Request
+func confirmOrderForQuerier(t *testing.T, uq *queues, querier string, lastUserIndex int, qs ...userRequestQueue) int {
+	var n userRequestQueue
 	for _, q := range qs {
 		n, _, lastUserIndex = uq.getNextQueueForQuerier(lastUserIndex, querier)
 		assert.Equal(t, q, n)
@@ -437,11 +543,35 @@ func getUsersByQuerier(queues *queues, querierID string) []string {
 	return userIDs
 }
 
+func getKeys(x interface{}) []string {
+	var keys []string
+
+	switch i := x.(type) {
+	case map[string]struct{}:
+		for k := range i {
+			keys = append(keys, k)
+		}
+	case map[string]*querier:
+		for k := range i {
+			keys = append(keys, k)
+		}
+	case map[string]int64:
+		for k := range i {
+			keys = append(keys, k)
+		}
+	}
+
+	return keys
+}
+
 func TestShuffleQueriers(t *testing.T) {
 	allQueriers := []string{"a", "b", "c", "d", "e"}
 
-	require.Nil(t, shuffleQueriersForUser(12345, 10, allQueriers, nil))
-	require.Nil(t, shuffleQueriersForUser(12345, len(allQueriers), allQueriers, nil))
+	queriers := shuffleQueriersForUser(12345, 10, allQueriers, nil)
+	require.Nil(t, queriers)
+
+	queriers = shuffleQueriersForUser(12345, len(allQueriers), allQueriers, nil)
+	require.Nil(t, queriers)
 
 	r1 := shuffleQueriersForUser(12345, 3, allQueriers, nil)
 	require.Equal(t, 3, len(r1))
@@ -483,4 +613,37 @@ func TestShuffleQueriersCorrectness(t *testing.T) {
 			require.True(t, ix < len(allSortedQueriers) && allSortedQueriers[ix] == q, "selected querier is not between all queriers")
 		}
 	}
+}
+
+func TestHasPriorityListChanged(t *testing.T) {
+	require.True(t, hasPriorityListChanged([]int64{1, 2}, []int64{1, 3}))
+	require.False(t, hasPriorityListChanged([]int64{1, 2}, []int64{1, 2}))
+	require.True(t, hasPriorityListChanged([]int64{1, 2}, []int64{1}))
+	require.False(t, hasPriorityListChanged([]int64{}, []int64{}))
+}
+
+func TestGetPriorityList(t *testing.T) {
+	queryPriority := validation.QueryPriority{
+		Enabled: true,
+		Priorities: []validation.PriorityDef{
+			{
+				Priority:         1,
+				ReservedQueriers: 2,
+			},
+			{
+				Priority:         2,
+				ReservedQueriers: 3,
+			},
+		},
+	}
+
+	assert.EqualValues(t, []int64{1, 1, 2, 2, 2}, getPriorityList(queryPriority, 10))
+	assert.EqualValues(t, []int64{}, getPriorityList(queryPriority, 1))
+
+	queryPriority.Priorities[0].ReservedQueriers = 0.4
+	queryPriority.Priorities[1].ReservedQueriers = 0.6
+	assert.EqualValues(t, []int64{1, 1, 1, 1, 2, 2, 2, 2, 2, 2}, getPriorityList(queryPriority, 10))
+
+	queryPriority.Enabled = false
+	assert.Nil(t, getPriorityList(queryPriority, 10))
 }

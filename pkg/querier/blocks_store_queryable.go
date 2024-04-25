@@ -756,6 +756,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			reqStats.AddFetchedSamples(numSamples)
 			reqStats.AddFetchedChunkBytes(uint64(chunkBytes))
 			reqStats.AddFetchedDataBytes(uint64(dataBytes))
+			reqStats.AddStoreGatewayTouchedPostings(uint64(seriesQueryStats.PostingsTouched))
+			reqStats.AddStoreGatewayTouchedPostingBytes(uint64(seriesQueryStats.PostingsTouchedSizeSum))
 
 			level.Debug(spanLog).Log("msg", "received series from store-gateway",
 				"instance", c.RemoteAddress(),

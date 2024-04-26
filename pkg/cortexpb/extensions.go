@@ -21,9 +21,8 @@ var signerPool = sync.Pool{
 }
 
 type signer struct {
-	h         *xxhash.Digest
-	b         []byte
-	optimized bool
+	h *xxhash.Digest
+	b []byte
 }
 
 func newSigner() *signer {
@@ -38,18 +37,15 @@ func newSigner() *signer {
 func (s *signer) Reset() {
 	s.h.Reset()
 	s.b = s.b[:0]
-	s.optimized = true
 }
 
 func (s *signer) WriteString(val string) {
 	switch {
-	case !s.optimized:
-		_, _ = s.h.WriteString(val)
 	case len(s.b)+len(val) > cap(s.b):
 		// If labels val does not fit in the []byte we fall back to not allocate the whole entry.
 		_, _ = s.h.Write(s.b)
-		_, _ = s.h.WriteString(val)
-		s.optimized = false
+		s.b = s.b[:0]
+		s.b = append(s.b, val...)
 	default:
 		// Use xxhash.Sum64(b) for fast path as it's faster.
 		s.b = append(s.b, val...)
@@ -57,10 +53,7 @@ func (s *signer) WriteString(val string) {
 }
 
 func (s *signer) Sum64() uint64 {
-	if s.optimized {
-		return xxhash.Sum64(s.b)
-	}
-
+	_, _ = s.h.Write(s.b)
 	return s.h.Sum64()
 }
 

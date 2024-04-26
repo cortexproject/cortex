@@ -5,6 +5,7 @@
 * [CHANGE] Ruler: Remove `experimental.ruler.api-enable-rules-backup` flag and use `ruler.ring.replication-factor` to check if rules backup is enabled
 
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
+* [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5904
 
 ## 1.17.0 in progress
 

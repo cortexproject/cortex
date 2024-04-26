@@ -4,7 +4,6 @@ This is the list of organisations that are using Cortex in **production environm
 
 * [Adobe](https://www.adobe.com)
 * [Amazon Web Services (AWS)](https://aws.amazon.com/prometheus)
-* [Apple](https://www.apple.com)
 * [Aspen Mesh](https://aspenmesh.io/)
 * [Buoyant](https://buoyant.io/)
 * [DigitalOcean](https://www.digitalocean.com/)

@@ -270,6 +270,38 @@ func (s *QueryStats) LoadDataSelectMinTime() int64 {
 	return atomic.LoadInt64(&s.DataSelectMinTime)
 }
 
+func (s *QueryStats) AddStoreGatewayTouchedPostings(count uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.StoreGatewayTouchedPostingsCount, count)
+}
+
+func (s *QueryStats) LoadStoreGatewayTouchedPostings() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.StoreGatewayTouchedPostingsCount)
+}
+
+func (s *QueryStats) AddStoreGatewayTouchedPostingBytes(bytes uint64) {
+	if s == nil {
+		return
+	}
+
+	atomic.AddUint64(&s.StoreGatewayTouchedPostingBytes, bytes)
+}
+
+func (s *QueryStats) LoadStoreGatewayTouchedPostingBytes() uint64 {
+	if s == nil {
+		return 0
+	}
+
+	return atomic.LoadUint64(&s.StoreGatewayTouchedPostingBytes)
+}
+
 // Merge the provided Stats into this one.
 func (s *QueryStats) Merge(other *QueryStats) {
 	if s == nil || other == nil {
@@ -283,6 +315,8 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddFetchedDataBytes(other.LoadFetchedDataBytes())
 	s.AddFetchedSamples(other.LoadFetchedSamples())
 	s.AddFetchedChunks(other.LoadFetchedChunks())
+	s.AddStoreGatewayTouchedPostings(other.LoadStoreGatewayTouchedPostings())
+	s.AddStoreGatewayTouchedPostingBytes(other.LoadStoreGatewayTouchedPostingBytes())
 	s.AddExtraFields(other.LoadExtraFields()...)
 }
 

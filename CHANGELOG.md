@@ -4,6 +4,8 @@
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5904
 * [CHANGE] Ruler: Remove `experimental.ruler.api-enable-rules-backup` flag and use `ruler.ring.replication-factor` to check if rules backup is enabled
 
+* [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
+
 ## 1.17.0 in progress
 
 * [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645

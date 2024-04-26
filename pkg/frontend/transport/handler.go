@@ -296,6 +296,8 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 	numSamples := stats.LoadFetchedSamples()
 	numChunkBytes := stats.LoadFetchedChunkBytes()
 	numDataBytes := stats.LoadFetchedDataBytes()
+	numStoreGatewayTouchedPostings := stats.LoadStoreGatewayTouchedPostings()
+	numStoreGatewayTouchedPostingBytes := stats.LoadStoreGatewayTouchedPostingBytes()
 	splitQueries := stats.LoadSplitQueries()
 	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
 	dataSelectMinTime := stats.LoadDataSelectMinTime()
@@ -333,6 +335,11 @@ func (f *Handler) reportQueryStats(r *http.Request, userID string, queryString u
 		"status_code", statusCode,
 		"response_size", contentLength,
 	}, stats.LoadExtraFields()...)
+
+	if numStoreGatewayTouchedPostings > 0 {
+		logMessage = append(logMessage, "store_gateway_touched_postings_count", numStoreGatewayTouchedPostings)
+		logMessage = append(logMessage, "store_gateway_touched_posting_bytes", numStoreGatewayTouchedPostingBytes)
+	}
 
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {

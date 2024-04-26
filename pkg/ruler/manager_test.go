@@ -262,7 +262,9 @@ func TestBackupRules(t *testing.T) {
 		1 * time.Millisecond,
 	}
 	ruleManagerFactory := RuleManagerFactory(nil, waitDurations)
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir, APIEnableRulesBackup: true}, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
+	config := Config{RulePath: dir}
+	config.Ring.ReplicationFactor = 3
+	m, err := NewDefaultMultiTenantManager(config, ruleManagerFactory, evalMetrics, reg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	const user1 = "testUser"

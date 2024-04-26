@@ -473,6 +473,11 @@ func TestGetRules(t *testing.T) {
 		"ruler2": "b",
 		"ruler3": "c",
 	}
+	rulerAZSingleZone := map[string]string{
+		"ruler1": "a",
+		"ruler2": "a",
+		"ruler3": "a",
+	}
 
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
@@ -700,6 +705,24 @@ func TestGetRules(t *testing.T) {
 			enableZoneAwareReplication: true,
 			rulerStateMap:              rulerStateMapOnePending,
 			rulerAZMap:                 rulerAZEvenSpread,
+			replicationFactor:          3,
+			rulesRequest: RulesRequest{
+				Type: recordingRuleFilter,
+			},
+			expectedCount: map[string]int{
+				"user1": 3,
+				"user2": 5,
+				"user3": 1,
+			},
+			expectedClientCallCount: 2, // one of the ruler is pending, so we don't expect that ruler to be called
+		},
+		"Shuffle Sharding and ShardSize = 3 and AZ replication with API Rules backup enabled and one ruler in pending state and rulers are in same az": {
+			sharding:                   true,
+			shuffleShardSize:           3,
+			shardingStrategy:           util.ShardingStrategyShuffle,
+			enableZoneAwareReplication: true,
+			rulerStateMap:              rulerStateMapOnePending,
+			rulerAZMap:                 rulerAZSingleZone,
 			replicationFactor:          3,
 			rulesRequest: RulesRequest{
 				Type: recordingRuleFilter,

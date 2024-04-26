@@ -5,12 +5,9 @@ import (
 	"strings"
 )
 
-var (
-	randomChar    = "0123456789abcdef"
-	RandomStrings = []string{}
-)
-
-func init() {
+func GenerateRandomStrings() []string {
+	randomChar := "0123456789abcdef"
+	randomStrings := make([]string, 0, 1000000)
 	sb := strings.Builder{}
 	for i := 0; i < 1000000; i++ {
 		sb.Reset()
@@ -18,6 +15,7 @@ func init() {
 		for j := 0; j < 14; j++ {
 			sb.WriteByte(randomChar[rand.Int()%len(randomChar)])
 		}
-		RandomStrings = append(RandomStrings, sb.String())
+		randomStrings = append(randomStrings, sb.String())
 	}
+	return randomStrings
 }

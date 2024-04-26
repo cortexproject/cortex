@@ -48,6 +48,7 @@ func BenchmarkMergeSlicesParallel(b *testing.B) {
 		},
 	}
 
+	randomStrings := GenerateRandomStrings()
 	type ParallelismType int
 
 	const (
@@ -58,9 +59,9 @@ func BenchmarkMergeSlicesParallel(b *testing.B) {
 
 	for _, tc := range testCases {
 		input := make([][]string, tc.inputSize)
-		unusedStrings := make([]string, min(len(RandomStrings), tc.inputSize*tc.stringsPerInput))
+		unusedStrings := make([]string, min(len(randomStrings), tc.inputSize*tc.stringsPerInput))
 		usedStrings := make([]string, 0, len(unusedStrings))
-		copy(unusedStrings, RandomStrings)
+		copy(unusedStrings, randomStrings)
 
 		for i := 0; i < tc.inputSize; i++ {
 			stringsToBeReused := make([]string, len(usedStrings))

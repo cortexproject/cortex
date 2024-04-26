@@ -402,7 +402,7 @@ func TestRulerAPIShardingWithAPIRulesBackupEnabled(t *testing.T) {
 	testRulerAPIWithSharding(t, true)
 }
 
-func testRulerAPIWithSharding(t *testing.T, enableAPIRulesBackup bool) {
+func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	const numRulesGroups = 100
 
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -459,9 +459,8 @@ func testRulerAPIWithSharding(t *testing.T, enableAPIRulesBackup bool) {
 		// Enable the bucket index so we can skip the initial bucket scan.
 		"-blocks-storage.bucket-store.bucket-index.enabled": "true",
 	}
-	if enableAPIRulesBackup {
+	if enableRulesBackup {
 		overrides["-ruler.ring.replication-factor"] = "3"
-		overrides["-experimental.ruler.api-enable-rules-backup"] = "true"
 	}
 	rulerFlags := mergeFlags(
 		BlocksStorageFlags(),
@@ -556,8 +555,8 @@ func testRulerAPIWithSharding(t *testing.T, enableAPIRulesBackup bool) {
 		},
 	}
 	// For each test case, fetch the rules with configured filters, and ensure the results match.
-	if enableAPIRulesBackup {
-		err := ruler2.Kill() // if api-enable-rules-backup is enabled the APIs should be able to handle a ruler going down
+	if enableRulesBackup {
+		err := ruler2.Kill() // if rules backup is enabled the APIs should be able to handle a ruler going down
 		require.NoError(t, err)
 	}
 	for name, tc := range testCases {

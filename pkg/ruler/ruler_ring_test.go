@@ -180,6 +180,23 @@ func TestGetReplicationSetForListRule(t *testing.T) {
 				"z2": {},
 			},
 		},
+		"should succeed on 1 unhealthy instances in RF=3 zone replication enabled but only 1 zone": {
+			ringInstances: map[string]ring.InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", State: ring.ACTIVE, Timestamp: now.Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-1", "z1", 128, true), Zone: "z1"},
+				"instance-2": {Addr: "127.0.0.2", State: ring.ACTIVE, Timestamp: now.Add(-10 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-2", "z1", 128, true), Zone: "z1"},
+				"instance-3": {Addr: "127.0.0.3", State: ring.ACTIVE, Timestamp: now.Add(-20 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-3", "z1", 128, true), Zone: "z1"},
+				"instance-4": {Addr: "127.0.0.4", State: ring.PENDING, Timestamp: now.Add(-30 * time.Second).Unix(), Tokens: g.GenerateTokens(ring.NewDesc(), "instance-4", "z1", 128, true), Zone: "z1"},
+			},
+			ringHeartbeatTimeout:  time.Minute,
+			ringReplicationFactor: 3,
+			expectedSet:           []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"},
+			enableAZReplication:   true,
+			expectedFailedZones: map[string]struct{}{
+				"z1": {},
+			},
+			expectedMaxUnavailableZones: 0,
+			expectedMaxError:            1,
+		},
 	}
 
 	for testName, testData := range tests {

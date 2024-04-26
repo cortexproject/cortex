@@ -4271,15 +4271,6 @@ ring:
 # CLI flag: -experimental.ruler.enable-api
 [enable_api: <boolean> | default = false]
 
-# EXPERIMENTAL: Enable rulers to store a copy of rules owned by other rulers
-# with default state (state before any evaluation) and send this copy in list
-# API requests as backup in case the ruler who owns the rule fails to send its
-# rules. This allows the rules API to handle ruler outage by returning rules
-# with default state. Ring replication-factor needs to be set to 2 or more for
-# this to be useful.
-# CLI flag: -experimental.ruler.api-enable-rules-backup
-[api_enable_rules_backup: <boolean> | default = false]
-
 # EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API
 # response. If there are duplicate rules the rule with the latest evaluation
 # timestamp will be kept.

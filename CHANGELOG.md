@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5904
 
 ## 1.17.0 in progress
 
@@ -49,7 +50,6 @@
 * [BUGFIX] Cortex: Fix GRPC stream clients not honoring overrides for call options. #5797
 * [BUGFIX] Ring DDB: Fix lifecycle for ring counting unhealthy pods as healthy. #5838
 * [BUGFIX] Ring DDB: Fix region assignment. #5842
-* [CHANGE] Upgrade Dockerfile Node version from 14x to 18x.
 
 ## 1.16.1 2024-04-23
 

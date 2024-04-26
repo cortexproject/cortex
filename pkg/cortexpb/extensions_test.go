@@ -10,6 +10,32 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+func BenchmarkSignRequest(b *testing.B) {
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, "user-1")
+
+	tests := []struct {
+		size int
+	}{
+		{size: 10},
+		{size: 100},
+		{size: 1000},
+		{size: 10000},
+	}
+
+	for _, tc := range tests {
+		b.Run(fmt.Sprintf("WriteRequestSize: %v", tc.size), func(b *testing.B) {
+			wr := createWriteRequest(tc.size, true, "family1", "help1", "unit")
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_, err := wr.Sign(ctx)
+				require.NoError(b, err)
+			}
+		})
+	}
+}
+
 func TestWriteRequest_Sign(t *testing.T) {
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "user-1")

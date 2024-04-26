@@ -2,6 +2,7 @@
 
 ## master / unreleased
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5904
+* [CHANGE] Ruler: Remove `experimental.ruler.api-enable-rules-backup` flag and use `ruler.ring.replication-factor` to check if rules backup is enabled
 
 ## 1.17.0 in progress
 

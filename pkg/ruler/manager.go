@@ -116,7 +116,7 @@ func NewDefaultMultiTenantManager(cfg Config, managerFactory ManagerFactory, eva
 		registry: reg,
 		logger:   logger,
 	}
-	if cfg.APIEnableRulesBackup {
+	if cfg.RulesBackupEnabled() {
 		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
 	}
 	return m, nil

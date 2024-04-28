@@ -144,7 +144,10 @@ func GetReplicationSetForListRule(r ring.ReadRing, cfg *RingConfig) (ring.Replic
 	// to 0, and then we update them whether zone-awareness is enabled or not.
 	maxErrors := 0
 	maxUnavailableZones := 0
-	if cfg.ZoneAwarenessEnabled {
+	// Because ring's Get method returns a number of ruler equal to the replication factor even if there is only 1 zone
+	// and ZoneAwarenessEnabled, we can consider that ZoneAwarenessEnabled is disabled if there is only 1 zone since
+	// rules are still replicated to rulers in the same zone.
+	if cfg.ZoneAwarenessEnabled && len(ringZones) > 1 {
 		numReplicatedZones := min(len(ringZones), r.ReplicationFactor())
 		// Given that quorum is not required, we only need at least one of the zone to be healthy to succeed. But we
 		// also need to handle case when RF < number of zones.

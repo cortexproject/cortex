@@ -57,6 +57,14 @@ var (
 	emptyResponse = &cortexpb.WriteResponse{}
 )
 
+var (
+	randomStrings = []string{}
+)
+
+func init() {
+	randomStrings = util.GenerateRandomStrings()
+}
+
 func TestConfig_Validate(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
@@ -2466,8 +2474,8 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 	// Strings to be used for get labels values/Names
 	var unusedStrings []string
 	if cfg.lblValuesPerIngester > 0 {
-		unusedStrings = make([]string, min(len(util.RandomStrings), cfg.numIngesters*cfg.lblValuesPerIngester))
-		copy(unusedStrings, util.RandomStrings)
+		unusedStrings = make([]string, min(len(randomStrings), cfg.numIngesters*cfg.lblValuesPerIngester))
+		copy(unusedStrings, randomStrings)
 	}
 	s := &prepState{
 		unusedStrings: unusedStrings,

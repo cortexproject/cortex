@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.17.0 in progress
+## 1.17.0 2024-04-30
 
 * [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645
 * [CHANGE] Store Gateway: Add a new fastcache based inmemory index cache. #5619

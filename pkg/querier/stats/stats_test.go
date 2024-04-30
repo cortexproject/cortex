@@ -133,6 +133,42 @@ func TestStats_AddFetchedSamples(t *testing.T) {
 	})
 }
 
+func TestStats_AddStoreGatewayTouchedPostings(t *testing.T) {
+	t.Parallel()
+	t.Run("add and load touched postings", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddStoreGatewayTouchedPostings(4096)
+		stats.AddStoreGatewayTouchedPostings(4096)
+
+		assert.Equal(t, uint64(8192), stats.LoadStoreGatewayTouchedPostings())
+	})
+
+	t.Run("add and load touched postings nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.AddStoreGatewayTouchedPostings(4096)
+
+		assert.Equal(t, uint64(0), stats.LoadStoreGatewayTouchedPostings())
+	})
+}
+
+func TestStats_AddStoreGatewayTouchedPostingBytes(t *testing.T) {
+	t.Parallel()
+	t.Run("add and load touched postings bytes", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		stats.AddStoreGatewayTouchedPostingBytes(4096)
+		stats.AddStoreGatewayTouchedPostingBytes(4096)
+
+		assert.Equal(t, uint64(8192), stats.LoadStoreGatewayTouchedPostingBytes())
+	})
+
+	t.Run("add and load touched posting bytes nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.AddStoreGatewayTouchedPostingBytes(4096)
+
+		assert.Equal(t, uint64(0), stats.LoadStoreGatewayTouchedPostingBytes())
+	})
+}
+
 func TestStats_StorageWallTime(t *testing.T) {
 	t.Run("add and load query storage wall time", func(t *testing.T) {
 		stats, _ := ContextWithEmptyStats(context.Background())
@@ -159,6 +195,8 @@ func TestStats_Merge(t *testing.T) {
 		stats1.AddFetchedSeries(50)
 		stats1.AddFetchedChunkBytes(42)
 		stats1.AddFetchedDataBytes(100)
+		stats1.AddStoreGatewayTouchedPostings(200)
+		stats1.AddStoreGatewayTouchedPostingBytes(300)
 		stats1.AddFetchedChunks(105)
 		stats1.AddFetchedSamples(109)
 		stats1.AddExtraFields("a", "b")
@@ -170,6 +208,8 @@ func TestStats_Merge(t *testing.T) {
 		stats2.AddFetchedSeries(60)
 		stats2.AddFetchedChunkBytes(100)
 		stats2.AddFetchedDataBytes(101)
+		stats1.AddStoreGatewayTouchedPostings(201)
+		stats1.AddStoreGatewayTouchedPostingBytes(301)
 		stats2.AddFetchedChunks(102)
 		stats2.AddFetchedSamples(103)
 		stats2.AddExtraFields("c", "d")
@@ -183,6 +223,8 @@ func TestStats_Merge(t *testing.T) {
 		assert.Equal(t, uint64(201), stats1.LoadFetchedDataBytes())
 		assert.Equal(t, uint64(207), stats1.LoadFetchedChunks())
 		assert.Equal(t, uint64(212), stats1.LoadFetchedSamples())
+		assert.Equal(t, uint64(401), stats1.LoadStoreGatewayTouchedPostings())
+		assert.Equal(t, uint64(601), stats1.LoadStoreGatewayTouchedPostingBytes())
 		checkExtraFields(t, []interface{}{"a", "b", "c", "d"}, stats1.LoadExtraFields())
 	})
 

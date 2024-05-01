@@ -55,7 +55,7 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 		return nil, err
 	}
 	return &closableHealthAndIngesterClient{
-		IngesterClient: NewIngesterClient(conn),
+		IngesterClient: NewIngesterClient(conn, cfg.MaxInflightPushRequests),
 		HealthClient:   grpc_health_v1.NewHealthClient(conn),
 		conn:           conn,
 	}, nil
@@ -67,12 +67,14 @@ func (c *closableHealthAndIngesterClient) Close() error {
 
 // Config is the configuration struct for the ingester client
 type Config struct {
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config"`
+	MaxInflightPushRequests int64             `yaml:"max_inflight_push_requests"`
 }
 
 // RegisterFlags registers configuration settings used by the ingester client config.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
+	f.Int64Var(&cfg.MaxInflightPushRequests, "ingester.client.max-inflight-push-requests", 0, "Max inflight push requests that this ingester client can handle. This limit is per-ingester-client. Additional requests will be rejected. 0 = unlimited.")
 }
 
 func (cfg *Config) Validate(log log.Logger) error {

@@ -118,6 +118,7 @@ type Distributor struct {
 	ingesterQueryFailures            *prometheus.CounterVec
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+	inflightPushRequestsCount        prometheus.Gauge
 }
 
 // Config contains the configuration required to
@@ -344,6 +345,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
+		inflightPushRequestsCount: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_distributor_inflight_push_requests",
+			Help: "Current number of inflight push requests in distributor.",
+		}),
 	}
 
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -357,12 +362,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
 	}).Set(cfg.InstanceLimits.MaxIngestionRate)
 
-	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_distributor_inflight_push_requests",
-		Help: "Current number of inflight push requests in distributor.",
-	}, func() float64 {
-		return float64(d.inflightPushRequests.Load())
-	})
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_distributor_ingestion_rate_samples_per_second",
 		Help: "Current ingestion rate in samples/sec that distributor is using to limit access.",
@@ -591,7 +590,11 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	// We will report *this* request in the error too.
 	inflight := d.inflightPushRequests.Inc()
-	defer d.inflightPushRequests.Dec()
+	d.inflightPushRequestsCount.Inc()
+	defer func() {
+		d.inflightPushRequestsCount.Dec()
+		d.inflightPushRequests.Dec()
+	}()
 
 	now := time.Now()
 	d.activeUsers.UpdateUserTimestamp(userID, now)

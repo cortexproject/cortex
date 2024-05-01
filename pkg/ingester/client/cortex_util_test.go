@@ -134,7 +134,7 @@ func TestStreamingSends(t *testing.T) {
 				require.NoError(t, server.Serve(listen))
 			}()
 
-			client := NewIngesterClient(conn)
+			client := NewIngesterClient(conn, 0)
 			err = testData.clientRecv(clientCtx, client)
 			assert.Equal(t, true, grpcutil.IsGRPCContextCanceled(err))
 

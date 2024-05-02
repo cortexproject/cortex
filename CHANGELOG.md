@@ -1057,7 +1057,6 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [BUGFIX] Fixed panic in flusher job, when error writing chunks to the store would cause "idle" chunks to be flushed, which triggered panic. #3140
 * [BUGFIX] Index page no longer shows links that are not valid for running Cortex instance. #3133
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
-* [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configuring the S3 URL with an `@` but without username and password doesn't enable the AWS static credentials anymore. #3170
 * [BUGFIX] Limit errors on ranged queries (`api/v1/query_range`) no longer return a status code `500` but `422` instead. #3167
 * [BUGFIX] Handle hash-collisions in the query path. Before this fix, Cortex could occasionally mix up two different series in a query, leading to invalid results, when `-querier.ingester-streaming` was used. #3192

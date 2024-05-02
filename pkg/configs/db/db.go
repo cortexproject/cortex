@@ -71,7 +71,7 @@ func New(cfg Config) (DB, error) {
 	}
 
 	if len(cfg.PasswordFile) != 0 {
-		updatedURL, err := setUserPassword(u, cfg.PasswordFile)
+		updatedURL, err := setPassword(u, cfg.PasswordFile)
 		if err != nil {
 			return nil, err
 		}
@@ -93,12 +93,12 @@ func New(cfg Config) (DB, error) {
 	return traced{timed{d}}, nil
 }
 
-func setUserPassword(u *url.URL, passwordFilePath string) (*url.URL, error) {
+func setPassword(u *url.URL, passwordFile string) (*url.URL, error) {
 	if u.User == nil {
 		return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
 	}
 
-	passwordBytes, err := os.ReadFile(passwordFilePath)
+	passwordBytes, err := os.ReadFile(passwordFile)
 	if err != nil {
 		return nil, fmt.Errorf("could not read database password file: %v", err)
 	}

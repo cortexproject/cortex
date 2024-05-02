@@ -39,7 +39,7 @@ func TestSetUserPassword(t *testing.T) {
 		u, err := url.Parse(tc.url)
 		assert.Nil(t, err, err)
 
-		uNew, err := setUserPassword(u, passwordFile.Name())
+		uNew, err := setPassword(u, passwordFile.Name())
 		assert.Nil(t, err, err)
 
 		assert.NotNil(t, uNew.User, "User should not be nil")

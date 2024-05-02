@@ -30,7 +30,7 @@ func TestSetUserPassword(t *testing.T) {
 	defer os.Remove(passwordFile.Name())
 	defer passwordFile.Close()
 
-	_, err = passwordFile.WriteString("  password     ")
+	_, err = passwordFile.WriteString("\n\tpassword\n\n\t")
 	if err != nil {
 		t.Fatalf("error while writing to the password file: %v", err)
 	}

@@ -6,18 +6,14 @@
 package client
 
 import (
-	atomic "go.uber.org/atomic"
 	bytes "bytes"
 	context "context"
 	encoding_binary "encoding/binary"
-	errors "github.com/pkg/errors"
 	fmt "fmt"
 	cortexpb "github.com/cortexproject/cortex/pkg/cortexpb"
 	github_com_cortexproject_cortex_pkg_cortexpb "github.com/cortexproject/cortex/pkg/cortexpb"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
-	promauto "github.com/prometheus/client_golang/prometheus/promauto"
-	prometheus "github.com/prometheus/client_golang/prometheus"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -2754,38 +2750,17 @@ type IngesterClient interface {
 	MetricsMetadata(ctx context.Context, in *MetricsMetadataRequest, opts ...grpc.CallOption) (*MetricsMetadataResponse, error)
 }
 
-var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
-var inflightRequestCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
-	Namespace: "cortex",
-	Name:      "ingester_client_request_count",
-	Help:      "Number of Ingester client requests.",
-}, []string{"ingester"})
-
 type ingesterClient struct {
 	cc *grpc.ClientConn
-	maxInflightPushRequests int64
-	inflightRequests    atomic.Int64
-	inflightRequestCount prometheus.Gauge
 }
 
-func NewIngesterClient(cc *grpc.ClientConn, maxInflightPushRequests int64) IngesterClient {
-	return &ingesterClient{
-		cc: cc,
-		maxInflightPushRequests: maxInflightPushRequests,
-		inflightRequestCount: inflightRequestCount.WithLabelValues(cc.Target()),
-	}
+func NewIngesterClient(cc *grpc.ClientConn) IngesterClient {
+	return &ingesterClient{cc}
 }
 
 func (c *ingesterClient) Push(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
-	currentInflight := c.inflightRequests.Inc()
-	defer c.inflightRequests.Dec()
-	if c.maxInflightPushRequests > 0 && currentInflight > c.maxInflightPushRequests {
-		return nil, errTooManyInflightPushRequests
-	}
 	out := new(cortexpb.WriteResponse)
-	c.inflightRequestCount.Inc()
 	err := c.cc.Invoke(ctx, "/cortex.Ingester/Push", in, out, opts...)
-	c.inflightRequestCount.Dec()
 	if err != nil {
 		return nil, err
 	}

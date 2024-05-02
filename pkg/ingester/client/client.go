@@ -8,8 +8,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -20,6 +22,13 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 	Help:      "Time spent doing Ingester requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 6),
 }, []string{"operation", "status_code"})
+var inflightRequestCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: "cortex",
+	Name:      "ingester_client_request_count",
+	Help:      "Number of Ingester client requests.",
+}, []string{"ingester"})
+
+var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
 
 // HealthAndIngesterClient is the union of IngesterClient and grpc_health_v1.HealthClient.
 type HealthAndIngesterClient interface {
@@ -32,16 +41,40 @@ type HealthAndIngesterClient interface {
 type closableHealthAndIngesterClient struct {
 	IngesterClient
 	grpc_health_v1.HealthClient
-	conn *grpc.ClientConn
+	conn                    *grpc.ClientConn
+	maxInflightPushRequests int64
+	inflightRequests        atomic.Int64
+	inflightRequestCount    prometheus.Gauge
 }
 
 func (c *closableHealthAndIngesterClient) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
-	out := new(cortexpb.WriteResponse)
-	err := c.conn.Invoke(ctx, "/cortex.Ingester/Push", in, out, opts...)
-	if err != nil {
-		return nil, err
+	return c.handlePushRequest(func() (*cortexpb.WriteResponse, error) {
+		out := new(cortexpb.WriteResponse)
+		err := c.conn.Invoke(ctx, "/cortex.Ingester/Push", in, out, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
+	})
+}
+
+func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb.WriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
+	return c.handlePushRequest(func() (*cortexpb.WriteResponse, error) {
+		return c.IngesterClient.Push(ctx, in, opts...)
+	})
+}
+
+func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*cortexpb.WriteResponse, error)) (*cortexpb.WriteResponse, error) {
+	currentInflight := c.inflightRequests.Inc()
+	c.inflightRequestCount.Inc()
+	defer func() {
+		c.inflightRequestCount.Dec()
+		c.inflightRequests.Dec()
+	}()
+	if c.maxInflightPushRequests > 0 && currentInflight > c.maxInflightPushRequests {
+		return nil, errTooManyInflightPushRequests
 	}
-	return out, nil
+	return mainFunc()
 }
 
 // MakeIngesterClient makes a new IngesterClient
@@ -55,9 +88,11 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 		return nil, err
 	}
 	return &closableHealthAndIngesterClient{
-		IngesterClient: NewIngesterClient(conn, cfg.MaxInflightPushRequests),
-		HealthClient:   grpc_health_v1.NewHealthClient(conn),
-		conn:           conn,
+		IngesterClient:          NewIngesterClient(conn),
+		HealthClient:            grpc_health_v1.NewHealthClient(conn),
+		conn:                    conn,
+		maxInflightPushRequests: cfg.MaxInflightPushRequests,
+		inflightRequestCount:    inflightRequestCount.WithLabelValues(addr),
 	}, nil
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	promqlparser "github.com/prometheus/prometheus/promql/parser"
+	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
@@ -260,8 +261,12 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 	}
 
 	promResponses := make([]*PrometheusInstantQueryResponse, 0, len(responses))
+	warnings := make([][]string, 0, len(responses))
 	for _, resp := range responses {
 		promResponses = append(promResponses, resp.(*PrometheusInstantQueryResponse))
+		if w := resp.(*PrometheusInstantQueryResponse).Warnings; w != nil {
+			warnings = append(warnings, w)
+		}
 	}
 
 	var data PrometheusInstantQueryData
@@ -303,8 +308,9 @@ func (instantQueryCodec) MergeResponse(ctx context.Context, req tripperware.Requ
 	}
 
 	res := &PrometheusInstantQueryResponse{
-		Status: queryrange.StatusSuccess,
-		Data:   data,
+		Status:   queryrange.StatusSuccess,
+		Data:     data,
+		Warnings: strutil.MergeUnsortedSlices(warnings...),
 	}
 	return res, nil
 }

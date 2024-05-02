@@ -43,11 +43,11 @@ func TestSetUserPassword(t *testing.T) {
 		assert.Nil(t, err, err)
 
 		assert.NotNil(t, uNew.User, "User should not be nil")
-		assert.NotEqual(t, uNew.User.Username(), tc.user, fmt.Errorf("Username does not match; Actual value: %v, Expected value: %v", uNew.User.Username(), tc.user))
+		assert.Equal(t, uNew.User.Username(), tc.user, fmt.Errorf("Username does not match; Actual value: %v, Expected value: %v", uNew.User.Username(), tc.user))
 
 		password, isSet := uNew.User.Password()
 
 		assert.True(t, isSet, "password is not set")
-		assert.NotEqual(t, password, tc.password, fmt.Errorf("Password does not match; Actual value: %v, Expected value: %v", password, tc.password))
+		assert.Equal(t, password, tc.password, fmt.Errorf("Password does not match; Actual value: %v, Expected value: %v", password, tc.password))
 	})
 }

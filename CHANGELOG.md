@@ -4,6 +4,7 @@
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
 * [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
+* [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 
 ## 1.17.0 2024-04-30
 
@@ -1055,6 +1056,7 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [BUGFIX] Purger: fixed deadlock when reloading of tombstones failed. #3182
 * [BUGFIX] Fixed panic in flusher job, when error writing chunks to the store would cause "idle" chunks to be flushed, which triggered panic. #3140
 * [BUGFIX] Index page no longer shows links that are not valid for running Cortex instance. #3133
+* [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configs: prevent validation of templates to fail when using template functions. #3157
 * [BUGFIX] Configuring the S3 URL with an `@` but without username and password doesn't enable the AWS static credentials anymore. #3170
 * [BUGFIX] Limit errors on ranged queries (`api/v1/query_range`) no longer return a status code `500` but `422` instead. #3167

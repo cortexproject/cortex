@@ -306,6 +306,15 @@ func TestMergeResponse(t *testing.T) {
 			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
 		},
 		{
+			name: "merge with warnings.",
+			req:  &PrometheusRequest{Query: "topk(10, up) by(job)"},
+			resps: []string{
+				`{"status":"success","warnings":["warning1","warning2"],"data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]}]}}`,
+				`{"status":"success","warnings":["warning1","warning3"],"data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]}}`,
+			},
+			expectedResp: `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"__name__":"up","job":"foo"},"value":[1,"1"]},{"metric":{"__name__":"up","job":"bar"},"value":[1,"2"]}]},"warnings":["warning1","warning2","warning3"]}`,
+		},
+		{
 			name: "merge two responses with stats",
 			req:  defaultReq,
 			resps: []string{

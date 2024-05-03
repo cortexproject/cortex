@@ -19,6 +19,7 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
+	"github.com/thanos-io/thanos/pkg/strutil"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -135,8 +136,12 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Reques
 	}
 
 	promResponses := make([]*PrometheusResponse, 0, len(responses))
+	warnings := make([][]string, 0, len(responses))
 	for _, res := range responses {
 		promResponses = append(promResponses, res.(*PrometheusResponse))
+		if w := res.(*PrometheusResponse).Warnings; w != nil {
+			warnings = append(warnings, w)
+		}
 	}
 
 	// Merge the responses.
@@ -153,6 +158,7 @@ func (c prometheusCodec) MergeResponse(ctx context.Context, _ tripperware.Reques
 			Result:     sampleStreams,
 			Stats:      statsMerge(c.sharded, promResponses),
 		},
+		Warnings: strutil.MergeUnsortedSlices(warnings...),
 	}
 
 	return &response, nil

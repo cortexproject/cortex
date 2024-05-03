@@ -1,13 +1,13 @@
 # Changelog
 
 ## master / unreleased
-* [CHANGE] Ruler: Remove `experimental.ruler.api-enable-rules-backup` flag and use `ruler.ring.replication-factor` to check if rules backup is enabled
-
 * [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
+* [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
+* [ENHANCEMENT] Ingester: Allowing to configure `-blocks-storage.tsdb.head-compaction-interval` flag up to 30 min and add a jitter on the first head compaction. #5919
 * [ENHANCEMENT] Distributor: Added `max_inflight_push_requests` config to ingester client to protect distributor from OOMKilled. #5917
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
 
-## 1.17.0 in progress
+## 1.17.0 2024-04-30
 
 * [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645
 * [CHANGE] Store Gateway: Add a new fastcache based inmemory index cache. #5619
@@ -21,37 +21,41 @@
 * [CHANGE] Compactor: Don't halt compactor when overlapped source blocks detected. #5854
 * [CHANGE] S3 Bucket Client: Expose `-blocks-storage.s3.send-content-md5` flag and set default checksum algorithm to MD5. #5870
 * [CHANGE] Querier: Mark `querier.iterators` and `querier.batch-iterators` flags as deprecated. Now querier always use batch iterators. #5868
-* [FEATURE] OTLP ingestion experimental. #5813
-* [FEATURE] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
+* [CHANGE] Query Frontend: Error response returned by Query Frontend now follows Prometheus API error response format. #5811
+* [FEATURE] Experimental: OTLP ingestion. #5813
 * [FEATURE] Query Frontend/Scheduler: Add query priority support. #5605
-* [FEATURE] Tracing: Add `kuberesolver` to resolve endpoints address with `kubernetes://` prefix as Kubernetes service. #5731
+* [FEATURE] Tracing: Use `kuberesolver` to resolve OTLP endpoints address with `kubernetes://` prefix as Kubernetes service. #5731
 * [FEATURE] Tracing: Add `tracing.otel.round-robin` flag to use `round_robin` gRPC client side LB policy for sending OTLP traces. #5731
 * [FEATURE] Ruler: Add `ruler.concurrent-evals-enabled` flag to enable concurrent evaluation within a single rule group for independent rules. Maximum concurrency can be configured via `ruler.max-concurrent-evals`. #5766
 * [FEATURE] Distributor Queryable: Experimental: Add config `zone_results_quorum_metadata`. When querying ingesters using metadata APIs such as label names and values, only results from quorum number of zones will be included and merged. #5779
 * [FEATURE] Storage Cache Clients: Add config `set_async_circuit_breaker_config` to utilize the circuit breaker pattern for dynamically thresholding asynchronous set operations. Implemented in both memcached and redis cache clients. #5789
-* [FEATURE] Ruler: Add experimental `experimental.ruler.api-deduplicate-rules` flag to remove duplicate rule groups from the Prometheus compatible rules API endpoint. Add experimental `ruler.ring.replication-factor` and `ruler.ring.zone-awareness-enabled` flags to configure rule group replication, but only the first ruler in the replicaset evaluates the rule group, the rest will just hold a copy as backup. Add experimental `experimental.ruler.api-enable-rules-backup` flag to configure rulers to send the rule group backups stored in the replicaset to handle events when a ruler is down during an API request to list rules. #5782
+* [FEATURE] Ruler: Add experimental `experimental.ruler.api-deduplicate-rules` flag to remove duplicate rule groups from the Prometheus compatible rules API endpoint. Add experimental `ruler.ring.replication-factor` and `ruler.ring.zone-awareness-enabled` flags to configure rule group replication, but only the first ruler in the replicaset evaluates the rule group, the rest will be used as backup to handle events when a ruler is down during an API request to list rules. #5782 #5901
+* [FEATURE] Ring: Add experimental `-ingester.tokens-generator-strategy=minimize-spread` flag to enable the new minimize spread token generator strategy. #5855
+* [FEATURE] Ring Status Page: Add `Ownership Diff From Expected` column in the ring table to indicate the extent to which the ownership of a specific ingester differs from the expected ownership. #5889
+* [ENHANCEMENT] Ingester: Add per-tenant new metric `cortex_ingester_tsdb_data_replay_duration_seconds`. #5477
 * [ENHANCEMENT] Store Gateway: Added `-store-gateway.enabled-tenants` and `-store-gateway.disabled-tenants` to explicitly enable or disable store-gateway for specific tenants. #5638
+* [ENHANCEMENT] Query Frontend: Write service timing header in response even though there is an error. #5653
 * [ENHANCEMENT] Compactor: Add new compactor metric `cortex_compactor_start_duration_seconds`. #5683
 * [ENHANCEMENT] Index Cache: Multi level cache adds config `max_backfill_items` to cap max items to backfill per async operation. #5686
 * [ENHANCEMENT] Query Frontend: Log number of split queries in `query stats` log. #5703
+* [ENHANCEMENT] Compactor: Skip compaction retry when encountering a permission denied error. #5727
 * [ENHANCEMENT] Logging: Added new options for logging HTTP request headers: `-server.log-request-headers` enables logging HTTP request headers, `-server.log-request-headers-exclude-list` allows users to specify headers which should not be logged. #5744
 * [ENHANCEMENT] Query Frontend/Scheduler: Time check in query priority now considers overall data select time window (including range selectors, modifiers and lookback delta). #5758
 * [ENHANCEMENT] Querier: Added `querier.store-gateway-query-stats-enabled` to enable or disable store gateway query stats log. #5749
-* [ENHANCEMENT] AlertManager: Retrying AlertManager Delete Silence on error #5794
+* [ENHANCEMENT] Querier: Improve labels APIs latency by merging slices using K-way merge and more than 1 core. #5785
+* [ENHANCEMENT] AlertManager: Retrying AlertManager Delete Silence on error. #5794
 * [ENHANCEMENT] Ingester: Add new ingester metric `cortex_ingester_max_inflight_query_requests`. #5798
 * [ENHANCEMENT] Query: Added `query_storage_wall_time` to Query Frontend and Ruler query stats log for wall time spent on fetching data from storage. Query evaluation is not included. #5799
 * [ENHANCEMENT] Query: Added additional max query length check at Query Frontend and Ruler. Added `-querier.ignore-max-query-length` flag to disable max query length check at Querier. #5808
 * [ENHANCEMENT] Querier: Add context error check when converting Metrics to SeriesSet for GetSeries on distributorQuerier. #5827
-* [ENHANCEMENT] Ruler: Improve GetRules response time by refactoring mutexes and introducing a temporary rules cache in `ruler/manager.go`. #5805
+* [ENHANCEMENT] Ruler: Improve GetRules response time by reducing lock contention and introducing a temporary rules cache in `ruler/manager.go`. #5805
 * [ENHANCEMENT] Querier: Add context error check when merging slices from ingesters for GetLabel operations. #5837
-* [ENHANCEMENT] Ring: Add experimental `-ingester.tokens-generator-strategy=minimize-spread` flag to enable the new minimize spread token generator strategy. #5855
-* [ENHANCEMENT] Query Frontend: Ensure error response returned by Query Frontend follows Prometheus API error response format. #5811
-* [ENHANCEMENT] Ring Status Page: Add `Ownership Diff From Expected` column in the ring table to indicate the extent to which the ownership of a specific ingester differs from the expected ownership. #5889
 * [BUGFIX] Distributor: Do not use label with empty values for sharding #5717
 * [BUGFIX] Query Frontend: queries with negative offset should check whether it is cacheable or not. #5719
 * [BUGFIX] Redis Cache: pass `cache_size` config correctly. #5734
-* [BUGFIX] Distributor: Shuffle-Sharding with IngestionTenantShardSize == 0, default sharding strategy should be used #5189
+* [BUGFIX] Distributor: Shuffle-Sharding with `ingestion_tenant_shard_size` set to 0, default sharding strategy should be used. #5189
 * [BUGFIX] Cortex: Fix GRPC stream clients not honoring overrides for call options. #5797
+* [BUGFIX] Ruler: Fix support for `keep_firing_for` field in alert rules. #5823
 * [BUGFIX] Ring DDB: Fix lifecycle for ring counting unhealthy pods as healthy. #5838
 * [BUGFIX] Ring DDB: Fix region assignment. #5842
 

@@ -91,7 +91,9 @@ func TestRequest(t *testing.T) {
 func TestResponse(t *testing.T) {
 	t.Parallel()
 	r := *parsedResponse
+	rWithWarnings := *parsedResponseWithWarnings
 	r.Headers = respHeaders
+	rWithWarnings.Headers = respHeaders
 	for i, tc := range []struct {
 		body                  string
 		expected              *PrometheusResponse
@@ -101,6 +103,10 @@ func TestResponse(t *testing.T) {
 		{
 			body:     responseBody,
 			expected: &r,
+		},
+		{
+			body:     responseBodyWithWarnings,
+			expected: &rWithWarnings,
 		},
 		{
 			body:                  responseBody,
@@ -384,6 +390,28 @@ func TestMergeAPIResponses(t *testing.T) {
 								{Value: 3, TimestampMs: 3000},
 								{Value: 4, TimestampMs: 4000},
 								{Value: 5, TimestampMs: 5000},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Merge response with warnings.",
+			input: []tripperware.Response{
+				mustParse(t, `{"status":"success","warnings":["warning1","warning2"],"data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"]]}]}}`),
+				mustParse(t, `{"status":"success","warnings":["warning1","warning3"],"data":{"resultType":"matrix","result":[{"metric":{"a":"b","c":"d"},"values":[[1,"1"]]}]}}`),
+			},
+			expected: &PrometheusResponse{
+				Status:   StatusSuccess,
+				Warnings: []string{"warning1", "warning2", "warning3"},
+				Data: PrometheusData{
+					ResultType: matrix,
+					Result: []tripperware.SampleStream{
+						{
+							Labels: []cortexpb.LabelAdapter{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+							Samples: []cortexpb.Sample{
+								{Value: 1, TimestampMs: 1000},
 							},
 						},
 					},

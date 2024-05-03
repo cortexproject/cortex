@@ -70,6 +70,7 @@ const (
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
 	compactionIdleTimeoutJitter = 0.25
+	initialHeadCompactionJitter = 0.5
 
 	instanceIngestionRateTickInterval = time.Second
 
@@ -2404,13 +2405,20 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 }
 
 func (i *Ingester) compactionLoop(ctx context.Context) error {
-	ticker := time.NewTicker(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval)
+	// Apply a jitter on the first head compaction
+	firstHeadCompaction := true
+	ticker := time.NewTicker(util.DurationWithPositiveJitter(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval, initialHeadCompactionJitter))
 	defer ticker.Stop()
 
 	for ctx.Err() == nil {
 		select {
 		case <-ticker.C:
 			i.compactBlocks(ctx, false, nil)
+			// Reset the ticker to run the configured interval on the first head compaction
+			if firstHeadCompaction {
+				ticker.Reset(i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval)
+				firstHeadCompaction = false
+			}
 
 		case req := <-i.TSDBState.forceCompactTrigger:
 			i.compactBlocks(ctx, true, req.users)

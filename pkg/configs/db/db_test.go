@@ -52,7 +52,7 @@ func TestSetPassword(t *testing.T) {
 			uNew, err := setPassword(u, passwordFile.Name())
 			if tc.isError {
 				assert.Error(t, err)
-				assert.Equal(t, tc.expected, err)
+				assert.Equal(t, tc.expected, err.Error())
 			} else {
 				assert.NoError(t, err)
 				uExp, _ := url.Parse(tc.expected)

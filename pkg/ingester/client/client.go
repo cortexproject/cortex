@@ -30,6 +30,12 @@ var inflightRequestCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
 
 var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
 
+// ClosableClientConn is grpc.ClientConnInterface with Close function
+type ClosableClientConn interface {
+	grpc.ClientConnInterface
+	Close() error
+}
+
 // HealthAndIngesterClient is the union of IngesterClient and grpc_health_v1.HealthClient.
 type HealthAndIngesterClient interface {
 	IngesterClient
@@ -41,7 +47,7 @@ type HealthAndIngesterClient interface {
 type closableHealthAndIngesterClient struct {
 	IngesterClient
 	grpc_health_v1.HealthClient
-	conn                    *grpc.ClientConn
+	conn                    ClosableClientConn
 	maxInflightPushRequests int64
 	inflightRequests        atomic.Int64
 	inflightRequestCount    prometheus.Gauge

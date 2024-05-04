@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"net/url"
 	"os"
 	"testing"
@@ -9,45 +8,56 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSetUserPassword(t *testing.T) {
+func TestSetPassword(t *testing.T) {
 
-	tc := struct {
-		testName string
-		url      string
-		user     string
-		password string
+	testCases := []struct {
+		testName    string
+		url         string
+		passwordStr string
+		isError     bool
+		expected    string
 	}{
-		testName: "T1",
-		url:      "http://user@host.com",
-		user:     "user",
-		password: "password",
+		{
+			testName:    "Test1",
+			url:         "scheme://user@host.com",
+			passwordStr: "\n\tpassword\n\n\t",
+			isError:     false,
+			expected:    "scheme://user:password@host.com",
+		},
+		{
+			testName:    "Test2",
+			url:         "scheme://@host.com",
+			passwordStr: "\n\tpassword\n\n\t",
+			isError:     true,
+			expected:    "--database.password-file requires username in --database.uri",
+		},
 	}
 
-	passwordFile, err := os.CreateTemp("", "passwordFile")
-	if err != nil {
-		t.Fatalf("error while creating the password file: %v", err)
+	for _, tc := range testCases {
+		passwordFile, err := os.CreateTemp("", "passwordFile")
+		if err != nil {
+			t.Fatalf("error while creating the password file: %v", err)
+		}
+
+		defer os.Remove(passwordFile.Name())
+		defer passwordFile.Close()
+
+		_, err = passwordFile.WriteString(tc.passwordStr)
+		if err != nil {
+			t.Fatalf("error while writing to the password file: %v", err)
+		}
+
+		t.Run(tc.testName, func(t *testing.T) {
+			u, _ := url.Parse(tc.url)
+			uNew, err := setPassword(u, passwordFile.Name())
+			if tc.isError {
+				assert.Error(t, err)
+				assert.Equal(t, tc.expected, err)
+			} else {
+				assert.NoError(t, err)
+				uExp, _ := url.Parse(tc.expected)
+				assert.Equal(t, uNew, uExp)
+			}
+		})
 	}
-	defer os.Remove(passwordFile.Name())
-	defer passwordFile.Close()
-
-	_, err = passwordFile.WriteString("\n\tpassword\n\n\t")
-	if err != nil {
-		t.Fatalf("error while writing to the password file: %v", err)
-	}
-
-	t.Run(tc.testName, func(t *testing.T) {
-		u, err := url.Parse(tc.url)
-		assert.Nil(t, err, err)
-
-		uNew, err := setPassword(u, passwordFile.Name())
-		assert.Nil(t, err, err)
-
-		assert.NotNil(t, uNew.User, "User should not be nil")
-		assert.Equal(t, uNew.User.Username(), tc.user, fmt.Errorf("Username does not match; Actual value: %v, Expected value: %v", uNew.User.Username(), tc.user))
-
-		password, isSet := uNew.User.Password()
-
-		assert.True(t, isSet, "password is not set")
-		assert.Equal(t, password, tc.password, fmt.Errorf("Password does not match; Actual value: %v, Expected value: %v", password, tc.password))
-	})
 }

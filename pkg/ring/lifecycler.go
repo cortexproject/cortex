@@ -142,6 +142,7 @@ type Lifecycler struct {
 	countersLock          sync.RWMutex
 	healthyInstancesCount int
 	zonesCount            int
+	zones                 []string
 
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
@@ -424,6 +425,15 @@ func (i *Lifecycler) ZonesCount() int {
 	defer i.countersLock.RUnlock()
 
 	return i.zonesCount
+}
+
+// Zones returns the zones for which there's at least 1 instance registered
+// in the ring.
+func (i *Lifecycler) Zones() []string {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.zones
 }
 
 // Join trigger the instance to join the ring, if autoJoinOnStartup is set to false.
@@ -865,13 +875,13 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 
 func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	healthyInstancesCount := 0
-	zones := map[string]struct{}{}
+	zonesMap := map[string]struct{}{}
 
 	if ringDesc != nil {
 		lastUpdated := i.KVStore.LastUpdateTime(i.RingKey)
 
 		for _, ingester := range ringDesc.Ingesters {
-			zones[ingester.Zone] = struct{}{}
+			zonesMap[ingester.Zone] = struct{}{}
 
 			// Count the number of healthy instances for Write operation.
 			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, lastUpdated) {
@@ -880,10 +890,18 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 		}
 	}
 
+	zones := make([]string, 0, len(zonesMap))
+	for z := range zonesMap {
+		zones = append(zones, z)
+	}
+
+	slices.Sort(zones)
+
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
 	i.zonesCount = len(zones)
+	i.zones = zones
 	i.countersLock.Unlock()
 }
 

@@ -188,3 +188,56 @@ func TestFindMinMaxTime(t *testing.T) {
 		})
 	}
 }
+
+func TestSlottedTicker(t *testing.T) {
+	testCases := map[string]struct {
+		totalSlotsSlice []int
+		indexSlotSlice  []int
+		expectedShifts  []int
+	}{
+		"Get first slot": {
+			totalSlotsSlice: []int{10},
+			indexSlotSlice:  []int{0},
+			expectedShifts:  []int{0},
+		},
+		"Get 5th slot": {
+			totalSlotsSlice: []int{10},
+			indexSlotSlice:  []int{5},
+			expectedShifts:  []int{50},
+		},
+		"Change slot info": {
+			totalSlotsSlice: []int{10, 10, 10, 10, 20},
+			indexSlotSlice:  []int{5},
+			expectedShifts:  []int{50, 50, 50, 50, 25},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			d := time.Millisecond * 100
+			infoFunc := func() (int, int) {
+				return tc.indexSlotSlice[0], tc.totalSlotsSlice[0]
+			}
+			ticker := NewSlottedTicker(infoFunc, d)
+			for i := 0; i < 15; i++ {
+				tTime := <-ticker.C
+				slot := tTime.UnixMilli() % d.Milliseconds()
+				// We can have some milliseconds error
+				slotDiff := slot - int64(tc.expectedShifts[0])
+				_, totalSlots := infoFunc()
+				slotSize := time.Duration(d.Milliseconds()/int64(totalSlots)) * time.Millisecond
+				require.LessOrEqual(t, slotDiff, (slotSize + time.Millisecond*10).Milliseconds())
+				if len(tc.indexSlotSlice) > 1 {
+					tc.indexSlotSlice = tc.indexSlotSlice[1:]
+				}
+				if len(tc.totalSlotsSlice) > 1 {
+					tc.totalSlotsSlice = tc.totalSlotsSlice[1:]
+				}
+				if len(tc.expectedShifts) > 1 {
+					tc.expectedShifts = tc.expectedShifts[1:]
+				}
+			}
+			ticker.Stop()
+		})
+	}
+}

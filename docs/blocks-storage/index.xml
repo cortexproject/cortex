@@ -3329,15 +3329,6 @@ During the migration, this flag needs to be set to 0, to make queriers always co
 As chunks ingesters shut down, they flush chunks to the storage. They are then replaced with new ingesters configured
 to use blocks. Queriers cannot fetch recent chunks from ingesters directly (as blocks ingester don&amp;rsquo;t reload chunks),
 and need to use storage instead.&lt;/p>
-&lt;h3 id="query-frontend">Query-frontend&lt;/h3>
-&lt;p>Query-frontend needs to be reconfigured as follow:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-querier.parallelise-shardable-queries=false&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;h4 id="-querierparallelise-shardable-queriesfalse">&lt;code>-querier.parallelise-shardable-queries=false&lt;/code>&lt;/h4>
-&lt;p>Query frontend has an option &lt;code>-querier.parallelise-shardable-queries&lt;/code> to split some incoming queries into multiple queries based on sharding factor used in v11 schema of chunk storage.
-As the description implies, it only works when using chunks storage.
-During and after the migration to blocks (and also after possible rollback), this option needs to be disabled otherwise query-frontend will generate queries that cannot be satisfied by blocks storage.&lt;/p>
 &lt;h3 id="compactor-and-store-gateway">Compactor and Store-gateway&lt;/h3>
 &lt;p>&lt;a href="/docs/blocks-storage/compactor/">Compactor&lt;/a> and &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> services should be deployed and successfully up and running before migrating ingesters.&lt;/p>
 &lt;h3 id="ingester--blocks">Ingester – blocks&lt;/h3>

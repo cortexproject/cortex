@@ -7575,21 +7575,7 @@ See note on &lt;code>-querier.max-concurrent&lt;/code>&lt;/p>
 &lt;/li>
 &lt;/ul>
 &lt;h2 id="querier-and-ruler">Querier and Ruler&lt;/h2>
-&lt;p>The ingester query API was improved over time, but defaults to the old behaviour for backwards-compatibility. For best results both of these next two flags should be set to &lt;code>true&lt;/code>:&lt;/p>
 &lt;ul>
-&lt;li>
-&lt;p>&lt;code>-querier.batch-iterators&lt;/code>&lt;/p>
-&lt;p>This uses iterators to execute query, as opposed to fully materialising the series in memory, and fetches multiple results per loop.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>-querier.ingester-streaming&lt;/code>&lt;/p>
-&lt;p>Use streaming RPCs to query ingester, to reduce memory pressure in the ingester.&lt;/p>
-&lt;/li>
-&lt;li>
-&lt;p>&lt;code>-querier.iterators&lt;/code>&lt;/p>
-&lt;p>This is similar to &lt;code>-querier.batch-iterators&lt;/code> but less efficient.
-If both &lt;code>iterators&lt;/code> and &lt;code>batch-iterators&lt;/code> are &lt;code>true&lt;/code>, &lt;code>batch-iterators&lt;/code> will take precedence.&lt;/p>
-&lt;/li>
 &lt;li>
 &lt;p>&lt;code>-promql.lookback-delta&lt;/code>&lt;/p>
 &lt;p>Time since the last sample after which a time series is considered stale and ignored by expression evaluations.&lt;/p>
@@ -7597,27 +7583,6 @@ If both &lt;code>iterators&lt;/code> and &lt;code>batch-iterators&lt;/code> are 
 &lt;/ul>
 &lt;h2 id="query-frontend">Query Frontend&lt;/h2>
 &lt;ul>
-&lt;li>
-&lt;p>&lt;code>-querier.parallelise-shardable-queries&lt;/code>&lt;/p>
-&lt;p>If set to true, will cause the query frontend to mutate incoming queries when possible by turning &lt;code>sum&lt;/code> operations into sharded &lt;code>sum&lt;/code> operations. This requires a shard-compatible schema (v10+). An abridged example:
-&lt;code>sum by (foo) (rate(bar{baz=”blip”}[1m]))&lt;/code> -&amp;gt;&lt;/p>
-&lt;pre tabindex="0">&lt;code>sum by (foo) (
-sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”0of16”}[1m])) or
-sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”1of16”}[1m])) or
-...
-sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
-)
-&lt;/code>&lt;/pre>&lt;p>When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the &lt;code>-schema-config-file&lt;/code> CLI flag). This is the same schema config the queriers consume.
-It&amp;rsquo;s also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>querier.max-outstanding-requests-per-tenant&lt;/code>&lt;/li>
-&lt;li>&lt;code>querier.max-query-parallelism&lt;/code>&lt;/li>
-&lt;li>&lt;code>querier.max-concurrent&lt;/code>&lt;/li>
-&lt;li>&lt;code>server.grpc-max-concurrent-streams&lt;/code> (for both query-frontends and queriers)&lt;/li>
-&lt;/ul>
-&lt;p>Furthermore, both querier and query-frontend components require the &lt;code>querier.query-ingesters-within&lt;/code> parameter to know when to start sharding requests (ingester queries are not sharded).&lt;/p>
-&lt;p>Instrumentation (traces) also scale with the number of sharded queries and it&amp;rsquo;s suggested to account for increased throughput there as well (for instance via &lt;code>JAEGER_REPORTER_MAX_QUEUE_SIZE&lt;/code>).&lt;/p>
-&lt;/li>
 &lt;li>
 &lt;p>&lt;code>-querier.align-querier-with-step&lt;/code>&lt;/p>
 &lt;p>If set to true, will cause the query frontend to mutate incoming queries and align their start and end parameters to the step parameter of the query. This improves the cacheability of the query results.&lt;/p>
@@ -11988,15 +11953,6 @@ During the migration, this flag needs to be set to 0, to make queriers always co
 As chunks ingesters shut down, they flush chunks to the storage. They are then replaced with new ingesters configured
 to use blocks. Queriers cannot fetch recent chunks from ingesters directly (as blocks ingester don&amp;rsquo;t reload chunks),
 and need to use storage instead.&lt;/p>
-&lt;h3 id="query-frontend">Query-frontend&lt;/h3>
-&lt;p>Query-frontend needs to be reconfigured as follow:&lt;/p>
-&lt;ul>
-&lt;li>&lt;code>-querier.parallelise-shardable-queries=false&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;h4 id="-querierparallelise-shardable-queriesfalse">&lt;code>-querier.parallelise-shardable-queries=false&lt;/code>&lt;/h4>
-&lt;p>Query frontend has an option &lt;code>-querier.parallelise-shardable-queries&lt;/code> to split some incoming queries into multiple queries based on sharding factor used in v11 schema of chunk storage.
-As the description implies, it only works when using chunks storage.
-During and after the migration to blocks (and also after possible rollback), this option needs to be disabled otherwise query-frontend will generate queries that cannot be satisfied by blocks storage.&lt;/p>
 &lt;h3 id="compactor-and-store-gateway">Compactor and Store-gateway&lt;/h3>
 &lt;p>&lt;a href="/docs/blocks-storage/compactor/">Compactor&lt;/a> and &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> services should be deployed and successfully up and running before migrating ingesters.&lt;/p>
 &lt;h3 id="ingester--blocks">Ingester – blocks&lt;/h3>
@@ -12296,7 +12252,6 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;/ul>
 &lt;/li>
 &lt;li>Memcached client DNS-based service discovery.&lt;/li>
-&lt;li>Delete series APIs.&lt;/li>
 &lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
 &lt;li>gRPC Store.&lt;/li>
 &lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
@@ -12319,12 +12274,6 @@ Builders are CPU intensive (decoding and merging chunks), and require fast disk 
 &lt;li>Querier: tenant federation&lt;/li>
 &lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
 &lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
-&lt;li>Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed on next release:
-&lt;ul>
-&lt;li>&lt;code>-ingester.stream-chunks-when-using-blocks&lt;/code> CLI flag&lt;/li>
-&lt;li>&lt;code>-ingester_stream_chunks_when_using_blocks&lt;/code> (boolean) field in runtime config file&lt;/li>
-&lt;/ul>
-&lt;/li>
 &lt;li>Instance limits in ingester and distributor&lt;/li>
 &lt;li>Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (&lt;code>-blocks-storage.tsdb.max-exemplars&lt;/code>)&lt;/li>
 &lt;li>Querier limits:

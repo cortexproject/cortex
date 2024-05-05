@@ -53,50 +53,11 @@ The next three options only apply when the querier is used together with the Que
 
 ## Querier and Ruler
 
-The ingester query API was improved over time, but defaults to the old behaviour for backwards-compatibility. For best results both of these next two flags should be set to `true`:
-
-- `-querier.batch-iterators`
-
-   This uses iterators to execute query, as opposed to fully materialising the series in memory, and fetches multiple results per loop.
-
-- `-querier.ingester-streaming`
-
-   Use streaming RPCs to query ingester, to reduce memory pressure in the ingester.
-
-- `-querier.iterators`
-
-   This is similar to `-querier.batch-iterators` but less efficient.
-   If both `iterators` and `batch-iterators` are `true`, `batch-iterators` will take precedence.
-
 - `-promql.lookback-delta`
 
    Time since the last sample after which a time series is considered stale and ignored by expression evaluations.
 
 ## Query Frontend
-
-- `-querier.parallelise-shardable-queries`
-
-   If set to true, will cause the query frontend to mutate incoming queries when possible by turning `sum` operations into sharded `sum` operations. This requires a shard-compatible schema (v10+). An abridged example:
-   `sum by (foo) (rate(bar{baz=”blip”}[1m]))` ->
-   ```
-   sum by (foo) (
-    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”0of16”}[1m])) or
-    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”1of16”}[1m])) or
-    ...
-    sum by (foo) (rate(bar{baz=”blip”,__cortex_shard__=”15of16”}[1m]))
-   )
-   ```
-   When enabled, the query-frontend requires a schema config to determine how/when to shard queries, either from a file or from flags (i.e. by the `-schema-config-file` CLI flag). This is the same schema config the queriers consume.
-   It's also advised to increase downstream concurrency controls as well to account for more queries of smaller sizes:
-
-   - `querier.max-outstanding-requests-per-tenant`
-   - `querier.max-query-parallelism`
-   - `querier.max-concurrent`
-   - `server.grpc-max-concurrent-streams` (for both query-frontends and queriers)
-
-   Furthermore, both querier and query-frontend components require the `querier.query-ingesters-within` parameter to know when to start sharding requests (ingester queries are not sharded).
-
-   Instrumentation (traces) also scale with the number of sharded queries and it's suggested to account for increased throughput there as well (for instance via `JAEGER_REPORTER_MAX_QUEUE_SIZE`).
 
 - `-querier.align-querier-with-step`
 

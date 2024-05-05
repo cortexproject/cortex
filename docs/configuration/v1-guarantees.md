@@ -45,7 +45,6 @@ Currently experimental features are:
   - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - Memcached client DNS-based service discovery.
-- Delete series APIs.
 - In-memory (FIFO) and Redis cache.
 - gRPC Store.
 - TLS configuration in gRPC and HTTP clients.
@@ -65,9 +64,6 @@ Currently experimental features are:
 - Querier: tenant federation
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
-- Flags for configuring whether blocks-ingester streams samples or chunks are temporary, and will be removed on next release:
-  - `-ingester.stream-chunks-when-using-blocks` CLI flag
-  - `-ingester_stream_chunks_when_using_blocks` (boolean) field in runtime config file
 - Instance limits in ingester and distributor
 - Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (`-blocks-storage.tsdb.max-exemplars`)
 - Querier limits:

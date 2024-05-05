@@ -26,7 +26,7 @@ func TestSetPassword(t *testing.T) {
 		},
 		{
 			testName:    "Test2",
-			url:         "scheme://@host.com",
+			url:         "scheme://host.com",
 			passwordStr: "\n\tpassword\n\n\t",
 			isError:     true,
 			expected:    "--database.password-file requires username in --database.uri",

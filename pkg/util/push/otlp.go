@@ -37,7 +37,8 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 			return
 		}
 
-		tsMap, err := prometheusremotewrite.FromMetrics(convertToMetricsAttributes(req.Metrics()), prometheusremotewrite.Settings{DisableTargetInfo: true})
+		promConverter := prometheusremotewrite.NewPrometheusConverter()
+		err = promConverter.FromMetrics(convertToMetricsAttributes(req.Metrics()), prometheusremotewrite.Settings{DisableTargetInfo: true})
 		if err != nil {
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -51,7 +52,7 @@ func OTLPHandler(sourceIPs *middleware.SourceIPExtractor, push Func) http.Handle
 		}
 
 		tsList := []cortexpb.PreallocTimeseries(nil)
-		for _, v := range tsMap {
+		for _, v := range promConverter.TimeSeries() {
 			tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
 				Labels:    makeLabels(v.Labels),
 				Samples:   makeSamples(v.Samples),

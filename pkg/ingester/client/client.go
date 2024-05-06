@@ -22,10 +22,10 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 	Help:      "Time spent doing Ingester requests.",
 	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 6),
 }, []string{"operation", "status_code"})
-var inflightRequestCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+var ingesterClientInflightPushRequests = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: "cortex",
-	Name:      "ingester_client_request_count",
-	Help:      "Number of Ingester client requests.",
+	Name:      "ingester_client_inflight_push_requests",
+	Help:      "Number of Ingester client push requests.",
 }, []string{"ingester"})
 
 var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
@@ -50,7 +50,7 @@ type closableHealthAndIngesterClient struct {
 	conn                    ClosableClientConn
 	maxInflightPushRequests int64
 	inflightRequests        atomic.Int64
-	inflightRequestCount    prometheus.Gauge
+	inflightPushRequests    prometheus.Gauge
 }
 
 func (c *closableHealthAndIngesterClient) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -72,9 +72,9 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 
 func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*cortexpb.WriteResponse, error)) (*cortexpb.WriteResponse, error) {
 	currentInflight := c.inflightRequests.Inc()
-	c.inflightRequestCount.Inc()
+	c.inflightPushRequests.Inc()
 	defer func() {
-		c.inflightRequestCount.Dec()
+		c.inflightPushRequests.Dec()
 		c.inflightRequests.Dec()
 	}()
 	if c.maxInflightPushRequests > 0 && currentInflight > c.maxInflightPushRequests {
@@ -98,7 +98,7 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 		HealthClient:            grpc_health_v1.NewHealthClient(conn),
 		conn:                    conn,
 		maxInflightPushRequests: cfg.MaxInflightPushRequests,
-		inflightRequestCount:    inflightRequestCount.WithLabelValues(addr),
+		inflightPushRequests:    ingesterClientInflightPushRequests.WithLabelValues(addr),
 	}, nil
 }
 

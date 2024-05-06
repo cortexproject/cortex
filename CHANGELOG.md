@@ -5,6 +5,7 @@
 * [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
 * [ENHANCEMENT] Ingester: Allowing to configure `-blocks-storage.tsdb.head-compaction-interval` flag up to 30 min and add a jitter on the first head compaction. #5919
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
+* [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 
 ## 1.17.0 2024-04-30
 

@@ -216,6 +216,6 @@ func (t *SlottedTicker) nextInterval() time.Duration {
 	for slot.Before(time.Now()) {
 		slot = slot.Add(t.d)
 	}
-	i := slot.Sub(time.Now())
+	i := time.Until(slot)
 	return i + PositiveJitter(slotSize, 1)
 }

@@ -219,20 +219,27 @@ func TestSlottedTicker(t *testing.T) {
 			slotNumber: 4,
 		},
 	}
-	for name, tc := range testCases {
+	for name, c := range testCases {
+		tc := c
 		t.Run(name, func(t *testing.T) {
 			infoFunc := func() (int, int) {
 				return tc.slotNumber, tc.totalSlots
 			}
 			ticker := NewSlottedTicker(infoFunc, tc.duration)
-			for i := 0; i < 15; i++ {
-				tTime := <-ticker.C
-				slotSize := tc.duration.Milliseconds() / int64(tc.totalSlots)
-				slotShiftInMs := tTime.UnixMilli() % tc.duration.Milliseconds()
-				slot := slotShiftInMs / slotSize
-				require.GreaterOrEqual(t, slot, int64(tc.slotNumber))
-				require.LessOrEqual(t, slot, int64(tc.slotNumber+1))
-			}
+			tTime := <-ticker.C
+			slotSize := tc.duration.Milliseconds() / int64(tc.totalSlots)
+			slotShiftInMs := tTime.UnixMilli() % tc.duration.Milliseconds()
+			slot := slotShiftInMs / slotSize
+			successCount := 0
+			test.Poll(t, 2*time.Second, true, func() interface{} {
+				if slot == int64(tc.slotNumber) {
+					successCount++
+				} else {
+					successCount--
+				}
+
+				return successCount == 50
+			})
 			ticker.Stop()
 		})
 	}

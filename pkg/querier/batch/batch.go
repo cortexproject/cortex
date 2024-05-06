@@ -1,12 +1,11 @@
 package batch
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
 // GenericChunk is a generic chunk used by the batch iterator, in order to make the batch
@@ -15,10 +14,10 @@ type GenericChunk struct {
 	MinTime int64
 	MaxTime int64
 
-	iterator func(reuse encoding.Iterator) encoding.Iterator
+	iterator func(reuse chunk.Iterator) chunk.Iterator
 }
 
-func NewGenericChunk(minTime, maxTime int64, iterator func(reuse encoding.Iterator) encoding.Iterator) GenericChunk {
+func NewGenericChunk(minTime, maxTime int64, iterator func(reuse chunk.Iterator) chunk.Iterator) GenericChunk {
 	return GenericChunk{
 		MinTime:  minTime,
 		MaxTime:  maxTime,
@@ -26,7 +25,7 @@ func NewGenericChunk(minTime, maxTime int64, iterator func(reuse encoding.Iterat
 	}
 }
 
-func (c GenericChunk) Iterator(reuse encoding.Iterator) encoding.Iterator {
+func (c GenericChunk) Iterator(reuse chunk.Iterator) chunk.Iterator {
 	return c.iterator(reuse)
 }
 
@@ -47,7 +46,7 @@ type iterator interface {
 
 	// Batch returns the current batch.  Must only be called after Seek or Next
 	// have returned true.
-	Batch() encoding.Batch
+	Batch() chunk.Batch
 
 	Err() error
 }
@@ -56,7 +55,8 @@ type iterator interface {
 func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	converted := make([]GenericChunk, len(chunks))
 	for i, c := range chunks {
-		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.Data.NewIterator)
+		c := c
+		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.NewIterator)
 	}
 
 	return NewGenericChunkMergeIterator(converted)
@@ -73,7 +73,7 @@ func NewGenericChunkMergeIterator(chunks []GenericChunk) chunkenc.Iterator {
 // call to Next; on calls to Seek, resets batch size to 1.
 type iteratorAdapter struct {
 	batchSize  int
-	curr       encoding.Batch
+	curr       chunk.Batch
 	underlying iterator
 }
 
@@ -129,8 +129,8 @@ func (a *iteratorAdapter) Next() bool {
 	for a.curr.Index >= a.curr.Length && a.underlying.Next(a.batchSize) {
 		a.curr = a.underlying.Batch()
 		a.batchSize = a.batchSize * 2
-		if a.batchSize > encoding.BatchSize {
-			a.batchSize = encoding.BatchSize
+		if a.batchSize > chunk.BatchSize {
+			a.batchSize = chunk.BatchSize
 		}
 	}
 	return a.curr.Index < a.curr.Length

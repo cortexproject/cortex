@@ -2,15 +2,14 @@ package encoding
 
 import (
 	"fmt"
+
+	"github.com/pkg/errors"
+
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
 // Encoding defines which encoding we are using, delta, doubledelta, or varbit
 type Encoding byte
-
-var (
-	// DefaultEncoding exported for use in unit tests elsewhere
-	DefaultEncoding = PrometheusXorChunk
-)
 
 // String implements flag.Value.
 func (e Encoding) String() string {
@@ -20,6 +19,13 @@ func (e Encoding) String() string {
 	return fmt.Sprintf("%d", e)
 }
 
+func (e Encoding) PromChunkEncoding() chunkenc.Encoding {
+	if known, found := encodings[e]; found {
+		return known.Encoding
+	}
+	return chunkenc.EncNone
+}
+
 const (
 	// PrometheusXorChunk is a wrapper around Prometheus XOR-encoded chunk.
 	// 4 is the magic value for backwards-compatibility with previous iota-based constants.
@@ -27,25 +33,21 @@ const (
 )
 
 type encoding struct {
-	Name string
-	New  func() Chunk
+	Name     string
+	Encoding chunkenc.Encoding
 }
 
 var encodings = map[Encoding]encoding{
 	PrometheusXorChunk: {
-		Name: "PrometheusXorChunk",
-		New: func() Chunk {
-			return newPrometheusXorChunk()
-		},
+		Name:     "PrometheusXorChunk",
+		Encoding: chunkenc.EncXOR,
 	},
 }
 
-// NewForEncoding allows configuring what chunk type you want
-func NewForEncoding(encoding Encoding) (Chunk, error) {
-	enc, ok := encodings[encoding]
-	if !ok {
-		return nil, fmt.Errorf("unknown chunk encoding: %v", encoding)
+func FromPromChunkEncoding(enc chunkenc.Encoding) (Encoding, error) {
+	switch enc {
+	case chunkenc.EncXOR:
+		return PrometheusXorChunk, nil
 	}
-
-	return enc.New(), nil
+	return Encoding(0), errors.Errorf("unknown Prometheus chunk encoding: %v", enc)
 }

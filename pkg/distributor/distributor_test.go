@@ -1,7 +1,6 @@
 package distributor
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -23,6 +22,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -32,7 +32,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
 
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -2920,35 +2920,26 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 			continue
 		}
 
-		c, err := encoding.NewForEncoding(encoding.PrometheusXorChunk)
+		c := chunkenc.NewXORChunk()
+		appender, err := c.Appender()
 		if err != nil {
 			return nil, err
 		}
-		chunks := []encoding.Chunk{c}
+		chunks := []chunkenc.Chunk{c}
 		for _, sample := range ts.Samples {
-			newChunk, err := c.Add(model.SamplePair{
-				Timestamp: model.Time(sample.TimestampMs),
-				Value:     model.SampleValue(sample.Value),
-			})
-			if err != nil {
-				panic(err)
-			}
-			if newChunk != nil {
-				c = newChunk
-				chunks = append(chunks, newChunk)
-			}
+			appender.Append(sample.TimestampMs, sample.Value)
 		}
 
 		wireChunks := []client.Chunk{}
 		for _, c := range chunks {
-			var buf bytes.Buffer
+			e, err := promchunk.FromPromChunkEncoding(c.Encoding())
+			if err != nil {
+				return nil, err
+			}
 			chunk := client.Chunk{
-				Encoding: int32(c.Encoding()),
+				Encoding: int32(e),
+				Data:     c.Bytes(),
 			}
-			if err := c.Marshal(&buf); err != nil {
-				panic(err)
-			}
-			chunk.Data = buf.Bytes()
 			wireChunks = append(wireChunks, chunk)
 		}
 

@@ -48,16 +48,12 @@ func mkChunk(t require.TestingT, step time.Duration, from model.Time, points int
 	metric := labels.Labels{
 		{Name: model.MetricNameLabel, Value: "foo"},
 	}
-	pc, err := promchunk.NewForEncoding(enc)
+	pc := chunkenc.NewXORChunk()
+	appender, err := pc.Appender()
 	require.NoError(t, err)
 	ts := from
 	for i := 0; i < points; i++ {
-		npc, err := pc.Add(model.SamplePair{
-			Timestamp: ts,
-			Value:     model.SampleValue(float64(ts)),
-		})
-		require.NoError(t, err)
-		require.Nil(t, npc)
+		appender.Append(int64(ts), float64(ts))
 		ts = ts.Add(step)
 	}
 	ts = ts.Add(-step) // undo the add that we did just before exiting the loop
@@ -66,7 +62,7 @@ func mkChunk(t require.TestingT, step time.Duration, from model.Time, points int
 
 func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) GenericChunk {
 	ck := mkChunk(t, step, from, points, enc)
-	return NewGenericChunk(int64(ck.From), int64(ck.Through), ck.Data.NewIterator)
+	return NewGenericChunk(int64(ck.From), int64(ck.Through), ck.NewIterator)
 }
 
 func testIter(t require.TestingT, points int, iter chunkenc.Iterator) {
@@ -107,17 +103,17 @@ func TestSeek(t *testing.T) {
 	var it mockIterator
 	c := chunkIterator{
 		chunk: GenericChunk{
-			MaxTime: promchunk.BatchSize,
+			MaxTime: chunk.BatchSize,
 		},
 		it: &it,
 	}
 
-	for i := 0; i < promchunk.BatchSize-1; i++ {
+	for i := 0; i < chunk.BatchSize-1; i++ {
 		require.True(t, c.Seek(int64(i), 1))
 	}
 	require.Equal(t, 1, it.seeks)
 
-	require.True(t, c.Seek(int64(promchunk.BatchSize), 1))
+	require.True(t, c.Seek(int64(chunk.BatchSize), 1))
 	require.Equal(t, 2, it.seeks)
 }
 
@@ -134,15 +130,11 @@ func (i *mockIterator) FindAtOrAfter(model.Time) bool {
 	return true
 }
 
-func (i *mockIterator) Value() model.SamplePair {
-	return model.SamplePair{}
-}
-
-func (i *mockIterator) Batch(size int) promchunk.Batch {
-	batch := promchunk.Batch{
-		Length: promchunk.BatchSize,
+func (i *mockIterator) Batch(size int) chunk.Batch {
+	batch := chunk.Batch{
+		Length: chunk.BatchSize,
 	}
-	for i := 0; i < promchunk.BatchSize; i++ {
+	for i := 0; i < chunk.BatchSize; i++ {
 		batch.Timestamps[i] = int64(i)
 	}
 	return batch

@@ -1,7 +1,7 @@
 package batch
 
 import (
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type nonOverlappingIterator struct {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
 
 func TestStream(t *testing.T) {

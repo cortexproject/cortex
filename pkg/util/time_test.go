@@ -3,6 +3,8 @@ package util
 import (
 	"bytes"
 	"fmt"
+	"github.com/cortexproject/cortex/pkg/util/test"
+	"go.uber.org/atomic"
 	"net/http"
 	"strconv"
 	"testing"
@@ -191,53 +193,68 @@ func TestFindMinMaxTime(t *testing.T) {
 
 func TestSlottedTicker(t *testing.T) {
 	testCases := map[string]struct {
-		totalSlotsSlice []int
-		indexSlotSlice  []int
-		expectedShifts  []int
+		duration   time.Duration
+		totalSlots int
+		slotNumber int
 	}{
+		"No Slots should spread across all the interval": {
+			duration:   100 * time.Millisecond,
+			totalSlots: 1,
+			slotNumber: 0,
+		},
 		"Get first slot": {
-			totalSlotsSlice: []int{10},
-			indexSlotSlice:  []int{0},
-			expectedShifts:  []int{0},
+			duration:   100 * time.Millisecond,
+			totalSlots: 5,
+			slotNumber: 0,
 		},
-		"Get 5th slot": {
-			totalSlotsSlice: []int{10},
-			indexSlotSlice:  []int{5},
-			expectedShifts:  []int{50},
+		"Get 3th slot": {
+			duration:   100 * time.Millisecond,
+			totalSlots: 5,
+			slotNumber: 3,
 		},
-		"Change slot info": {
-			totalSlotsSlice: []int{10, 10, 10, 10, 20},
-			indexSlotSlice:  []int{5},
-			expectedShifts:  []int{50, 50, 50, 50, 25},
+		"Get last slot": {
+			duration:   100 * time.Millisecond,
+			totalSlots: 5,
+			slotNumber: 4,
 		},
 	}
-
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			d := time.Millisecond * 100
 			infoFunc := func() (int, int) {
-				return tc.indexSlotSlice[0], tc.totalSlotsSlice[0]
+				return tc.slotNumber, tc.totalSlots
 			}
-			ticker := NewSlottedTicker(infoFunc, d)
+			ticker := NewSlottedTicker(infoFunc, tc.duration)
 			for i := 0; i < 15; i++ {
 				tTime := <-ticker.C
-				slot := tTime.UnixMilli() % d.Milliseconds()
-				// We can have some milliseconds error
-				slotDiff := slot - int64(tc.expectedShifts[0])
-				_, totalSlots := infoFunc()
-				slotSize := time.Duration(d.Milliseconds()/int64(totalSlots)) * time.Millisecond
-				require.LessOrEqual(t, slotDiff, (slotSize + time.Millisecond*10).Milliseconds())
-				if len(tc.indexSlotSlice) > 1 {
-					tc.indexSlotSlice = tc.indexSlotSlice[1:]
-				}
-				if len(tc.totalSlotsSlice) > 1 {
-					tc.totalSlotsSlice = tc.totalSlotsSlice[1:]
-				}
-				if len(tc.expectedShifts) > 1 {
-					tc.expectedShifts = tc.expectedShifts[1:]
-				}
+				slotSize := tc.duration.Milliseconds() / int64(tc.totalSlots)
+				slotShiftInMs := tTime.UnixMilli() % tc.duration.Milliseconds()
+				slot := slotShiftInMs / slotSize
+				require.GreaterOrEqual(t, slot, int64(tc.slotNumber))
+				require.LessOrEqual(t, slot, int64(tc.slotNumber+1))
 			}
 			ticker.Stop()
 		})
 	}
+
+	t.Run("Change slot size", func(t *testing.T) {
+		slotSize := atomic.NewInt32(10)
+		d := 100 * time.Millisecond
+		infoFunc := func() (int, int) {
+			return 2, int(slotSize.Load())
+		}
+
+		ticker := NewSlottedTicker(infoFunc, d)
+
+		test.Poll(t, 2*time.Second, true, func() interface{} {
+			tTime := <-ticker.C
+			slotShiftInMs := tTime.UnixMilli() % d.Milliseconds()
+			return slotShiftInMs >= 20 && slotShiftInMs <= 30
+		})
+		slotSize.Store(5)
+		test.Poll(t, 2*time.Second, true, func() interface{} {
+			tTime := <-ticker.C
+			slotShiftInMs := tTime.UnixMilli() % d.Milliseconds()
+			return slotShiftInMs >= 40 && slotShiftInMs <= 60
+		})
+	})
 }

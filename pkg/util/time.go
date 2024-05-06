@@ -174,9 +174,9 @@ func NewSlottedTicker(sf SlotInfoFunc, d time.Duration) *SlottedTicker {
 		sf:          sf,
 		shouldReset: true,
 	}
-	st.ticker = time.NewTicker(st.nextInterval())
+	slitIndex, totalSlots := sf()
 	go func() {
-		slitIndex, totalSlots := sf()
+		st.ticker = time.NewTicker(st.nextInterval())
 		for ctx.Err() == nil {
 			select {
 			case t := <-st.ticker.C:
@@ -207,16 +207,15 @@ func (t *SlottedTicker) Stop() {
 	t.done()
 }
 
-func (s *SlottedTicker) nextInterval() time.Duration {
-	now := time.Now()
-	slot := time.UnixMilli((now.UnixMilli() / s.d.Milliseconds()) * s.d.Milliseconds())
-	slitIndex, totalSlots := s.sf()
-	slotSize := time.Duration(s.d.Milliseconds()/int64(totalSlots)) * time.Millisecond
-	offset := time.Millisecond * time.Duration(int64(float64(slitIndex)/float64(totalSlots)*float64(s.d.Milliseconds())))
+func (t *SlottedTicker) nextInterval() time.Duration {
+	slot := time.UnixMilli((time.Now().UnixMilli() / t.d.Milliseconds()) * t.d.Milliseconds())
+	slitIndex, totalSlots := t.sf()
+	slotSize := t.d / time.Duration(totalSlots)
+	offset := time.Duration((float64(slitIndex) / float64(totalSlots)) * float64(t.d))
 	slot = slot.Add(offset)
-	for slot.Before(now) {
-		slot = slot.Add(s.d)
+	for slot.Before(time.Now()) {
+		slot = slot.Add(t.d)
 	}
-	i := slot.Sub(now)
+	i := slot.Sub(time.Now())
 	return i + PositiveJitter(slotSize, 1)
 }

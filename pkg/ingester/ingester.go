@@ -2409,7 +2409,9 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 	infoFunc := func() (int, int) {
 		if i.cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled {
 			zones := i.lifecycler.Zones()
-			return slices.Index(zones, i.lifecycler.Zone), len(zones)
+			if len(zones) != 0 {
+				return slices.Index(zones, i.lifecycler.Zone), len(zones)
+			}
 		}
 
 		// Lets create the slot based on the hash id

@@ -175,8 +175,8 @@ func NewSlottedTicker(sf SlotInfoFunc, d time.Duration) *SlottedTicker {
 		shouldReset: true,
 	}
 	slitIndex, totalSlots := sf()
+	st.ticker = time.NewTicker(st.nextInterval())
 	go func() {
-		st.ticker = time.NewTicker(st.nextInterval())
 		for ctx.Err() == nil {
 			select {
 			case t := <-st.ticker.C:
@@ -216,6 +216,6 @@ func (t *SlottedTicker) nextInterval() time.Duration {
 	for slot.Before(time.Now()) {
 		slot = slot.Add(t.d)
 	}
-	i := slot.Sub(time.Now())
+	i := time.Until(slot)
 	return i + PositiveJitter(slotSize, 1)
 }

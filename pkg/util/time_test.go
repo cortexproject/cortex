@@ -3,8 +3,6 @@ package util
 import (
 	"bytes"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/util/test"
-	"go.uber.org/atomic"
 	"net/http"
 	"strconv"
 	"testing"
@@ -13,6 +11,9 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestTimeFromMillis(t *testing.T) {

@@ -105,7 +105,7 @@ func createTestIngesterClient(maxInflightPushRequests int64, currentInflightRequ
 		IngesterClient:          &mockIngester{},
 		conn:                    &mockClientConn{},
 		maxInflightPushRequests: maxInflightPushRequests,
-		inflightPushRequests:    prometheus.NewGauge(prometheus.GaugeOpts{}),
+		inflightPushRequests:    prometheus.NewGaugeVec(prometheus.GaugeOpts{}, nil),
 	}
 	client.inflightRequests.Add(currentInflightRequests)
 	return client

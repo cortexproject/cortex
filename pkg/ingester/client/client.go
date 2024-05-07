@@ -48,9 +48,10 @@ type closableHealthAndIngesterClient struct {
 	IngesterClient
 	grpc_health_v1.HealthClient
 	conn                    ClosableClientConn
+	addr                    string
 	maxInflightPushRequests int64
 	inflightRequests        atomic.Int64
-	inflightPushRequests    prometheus.Gauge
+	inflightPushRequests    *prometheus.GaugeVec
 }
 
 func (c *closableHealthAndIngesterClient) PushPreAlloc(ctx context.Context, in *cortexpb.PreallocWriteRequest, opts ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
@@ -72,9 +73,9 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 
 func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*cortexpb.WriteResponse, error)) (*cortexpb.WriteResponse, error) {
 	currentInflight := c.inflightRequests.Inc()
-	c.inflightPushRequests.Inc()
+	c.inflightPushRequests.WithLabelValues(c.addr).Inc()
 	defer func() {
-		c.inflightPushRequests.Dec()
+		c.inflightPushRequests.WithLabelValues(c.addr).Dec()
 		c.inflightRequests.Dec()
 	}()
 	if c.maxInflightPushRequests > 0 && currentInflight > c.maxInflightPushRequests {
@@ -97,12 +98,14 @@ func MakeIngesterClient(addr string, cfg Config) (HealthAndIngesterClient, error
 		IngesterClient:          NewIngesterClient(conn),
 		HealthClient:            grpc_health_v1.NewHealthClient(conn),
 		conn:                    conn,
+		addr:                    addr,
 		maxInflightPushRequests: cfg.MaxInflightPushRequests,
-		inflightPushRequests:    ingesterClientInflightPushRequests.WithLabelValues(addr),
+		inflightPushRequests:    ingesterClientInflightPushRequests,
 	}, nil
 }
 
 func (c *closableHealthAndIngesterClient) Close() error {
+	c.inflightPushRequests.DeleteLabelValues(c.addr)
 	return c.conn.Close()
 }
 

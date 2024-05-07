@@ -3026,6 +3026,11 @@ grpc_client_config:
   # Skip validating server certificate.
   # CLI flag: -ingester.client.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
+
+# Max inflight push requests that this ingester client can handle. This limit is
+# per-ingester-client. Additional requests will be rejected. 0 = unlimited.
+# CLI flag: -ingester.client.max-inflight-push-requests
+[max_inflight_push_requests: <int> | default = 0]
 ```
 
 ### `limits_config`

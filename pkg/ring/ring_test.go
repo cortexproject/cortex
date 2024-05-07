@@ -3073,10 +3073,11 @@ func TestUpdateMetrics(t *testing.T) {
 
 func TestUpdateMetricsWithRemoval(t *testing.T) {
 	cfg := Config{
-		KVStore:              kv.Config{},
-		HeartbeatTimeout:     0, // get healthy stats
-		ReplicationFactor:    3,
-		ZoneAwarenessEnabled: true,
+		KVStore:                kv.Config{},
+		HeartbeatTimeout:       0, // get healthy stats
+		ReplicationFactor:      3,
+		ZoneAwarenessEnabled:   true,
+		DetailedMetricsEnabled: true,
 	}
 
 	registry := prometheus.NewRegistry()

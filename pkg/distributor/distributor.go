@@ -65,6 +65,8 @@ const (
 
 	instanceIngestionRateTickInterval = time.Second
 
+	clearStaleIngesterMetricsInterval = time.Minute
+
 	// mergeSlicesParallelism is a constant of how much go routines we should use to merge slices, and
 	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
 	mergeSlicesParallelism = 8
@@ -398,6 +400,9 @@ func (d *Distributor) running(ctx context.Context) error {
 	ingestionRateTicker := time.NewTicker(instanceIngestionRateTickInterval)
 	defer ingestionRateTicker.Stop()
 
+	staleIngesterMetricTicker := time.NewTicker(clearStaleIngesterMetricsInterval)
+	defer staleIngesterMetricTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -405,6 +410,9 @@ func (d *Distributor) running(ctx context.Context) error {
 
 		case <-ingestionRateTicker.C:
 			d.ingestionRate.Tick()
+
+		case <-staleIngesterMetricTicker.C:
+			d.cleanStaleIngesterMetrics()
 
 		case err := <-d.subservicesWatcher.Chan():
 			return errors.Wrap(err, "distributor subservice failed")
@@ -699,6 +707,41 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	return &cortexpb.WriteResponse{}, firstPartialErr
+}
+
+func (d *Distributor) cleanStaleIngesterMetrics() {
+	healthy, unhealthy, err := d.ingestersRing.GetAllInstanceDescs(ring.WriteNoExtend)
+	if err != nil {
+		level.Warn(d.log).Log("msg", "error cleaning metrics: GetAllInstanceDescs", "err", err)
+		return
+	}
+
+	ipsMap := map[string]struct{}{}
+
+	for _, ing := range append(healthy, unhealthy...) {
+		ipsMap[ing.Addr] = struct{}{}
+	}
+
+	ingesterMetrics := []*prometheus.CounterVec{d.ingesterAppends, d.ingesterAppendFailures, d.ingesterQueries, d.ingesterQueryFailures}
+
+	for _, m := range ingesterMetrics {
+		metrics, err := util.GetLabels(m, make(map[string]string))
+
+		if err != nil {
+			level.Warn(d.log).Log("msg", "error cleaning metrics: GetLabels", "err", err)
+			return
+		}
+
+		for _, lbls := range metrics {
+			if _, ok := ipsMap[lbls.Get("ingester")]; !ok {
+				err := util.DeleteMatchingLabels(m, map[string]string{"ingester": lbls.Get("ingester")})
+				if err != nil {
+					level.Warn(d.log).Log("msg", "error cleaning metrics: DeleteMatchingLabels", "err", err)
+					return
+				}
+			}
+		}
+	}
 }
 
 func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, subRing ring.ReadRing, keys []uint32, initialMetadataIndex int, validatedMetadata []*cortexpb.MetricMetadata, validatedTimeseries []cortexpb.PreallocTimeseries, userID string) error {

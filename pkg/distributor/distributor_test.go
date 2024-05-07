@@ -318,8 +318,10 @@ func TestDistributor_Push(t *testing.T) {
 
 func TestDistributor_MetricsCleanup(t *testing.T) {
 	t.Parallel()
-	dists, _, regs, _ := prepare(t, prepConfig{
+	dists, _, regs, r := prepare(t, prepConfig{
 		numDistributors: 1,
+		numIngesters:    2,
+		happyIngesters:  2,
 	})
 	d := dists[0]
 	reg := regs[0]
@@ -334,6 +336,10 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		"cortex_distributor_metadata_in_total",
 		"cortex_distributor_non_ha_samples_received_total",
 		"cortex_distributor_latest_seen_sample_timestamp_seconds",
+		"cortex_distributor_ingester_append_failures_total",
+		"cortex_distributor_ingester_appends_total",
+		"cortex_distributor_ingester_query_failures_total",
+		"cortex_distributor_ingester_queries_total",
 	}
 
 	d.receivedSamples.WithLabelValues("userA").Add(5)
@@ -348,6 +354,16 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.nonHASamples.WithLabelValues("userA").Add(5)
 	d.dedupedSamples.WithLabelValues("userA", "cluster1").Inc() // We cannot clean this metric
 	d.latestSeenSampleTimestampPerUser.WithLabelValues("userA").Set(1111)
+
+	h, _, _ := r.GetAllInstanceDescs(ring.WriteNoExtend)
+	d.ingesterAppends.WithLabelValues(h[0].Addr, typeMetadata).Inc()
+	d.ingesterAppendFailures.WithLabelValues(h[0].Addr, typeMetadata, "2xx").Inc()
+	d.ingesterAppends.WithLabelValues(h[1].Addr, typeMetadata).Inc()
+	d.ingesterAppendFailures.WithLabelValues(h[1].Addr, typeMetadata, "2xx").Inc()
+	d.ingesterQueries.WithLabelValues(h[0].Addr).Inc()
+	d.ingesterQueries.WithLabelValues(h[1].Addr).Inc()
+	d.ingesterQueryFailures.WithLabelValues(h[0].Addr).Inc()
+	d.ingesterQueryFailures.WithLabelValues(h[1].Addr).Inc()
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
@@ -388,9 +404,40 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
 		# TYPE cortex_distributor_exemplars_in_total counter
 		cortex_distributor_exemplars_in_total{user="userA"} 5
+		
+		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
+		# TYPE cortex_distributor_ingester_append_failures_total counter
+		cortex_distributor_ingester_append_failures_total{ingester="0",status="2xx",type="metadata"} 1
+		cortex_distributor_ingester_append_failures_total{ingester="1",status="2xx",type="metadata"} 1
+		# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
+		# TYPE cortex_distributor_ingester_appends_total counter
+		cortex_distributor_ingester_appends_total{ingester="0",type="metadata"} 1
+		cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
+		# HELP cortex_distributor_ingester_queries_total The total number of queries sent to ingesters.
+		# TYPE cortex_distributor_ingester_queries_total counter
+		cortex_distributor_ingester_queries_total{ingester="0"} 1
+		cortex_distributor_ingester_queries_total{ingester="1"} 1
+		# HELP cortex_distributor_ingester_query_failures_total The total number of failed queries sent to ingesters.
+		# TYPE cortex_distributor_ingester_query_failures_total counter
+		cortex_distributor_ingester_query_failures_total{ingester="0"} 1
+		cortex_distributor_ingester_query_failures_total{ingester="1"} 1
 		`), metrics...))
 
 	d.cleanupInactiveUser("userA")
+
+	err := r.KVClient.CAS(context.Background(), ingester.RingKey, func(in interface{}) (interface{}, bool, error) {
+		r := in.(*ring.Desc)
+		delete(r.Ingesters, "0")
+		return in, true, nil
+	})
+
+	test.Poll(t, time.Second, true, func() interface{} {
+		ings, _, _ := r.GetAllInstanceDescs(ring.Write)
+		return len(ings) == 1
+	})
+
+	require.NoError(t, err)
+	d.cleanStaleIngesterMetrics()
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_deduped_samples_total The total number of deduplicated samples.
@@ -422,6 +469,19 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
 		# TYPE cortex_distributor_exemplars_in_total counter
+
+		# HELP cortex_distributor_ingester_append_failures_total The total number of failed batch appends sent to ingesters.
+		# TYPE cortex_distributor_ingester_append_failures_total counter
+		cortex_distributor_ingester_append_failures_total{ingester="1",status="2xx",type="metadata"} 1
+		# HELP cortex_distributor_ingester_appends_total The total number of batch appends sent to ingesters.
+		# TYPE cortex_distributor_ingester_appends_total counter
+		cortex_distributor_ingester_appends_total{ingester="1",type="metadata"} 1
+		# HELP cortex_distributor_ingester_queries_total The total number of queries sent to ingesters.
+		# TYPE cortex_distributor_ingester_queries_total counter
+		cortex_distributor_ingester_queries_total{ingester="1"} 1
+		# HELP cortex_distributor_ingester_query_failures_total The total number of failed queries sent to ingesters.
+		# TYPE cortex_distributor_ingester_query_failures_total counter
+		cortex_distributor_ingester_query_failures_total{ingester="1"} 1
 		`), metrics...))
 }
 

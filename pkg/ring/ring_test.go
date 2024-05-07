@@ -2984,28 +2984,13 @@ func userToken(user, zone string, skip int) uint32 {
 }
 
 func TestUpdateMetrics(t *testing.T) {
-	cfg := Config{
-		KVStore:              kv.Config{},
-		HeartbeatTimeout:     0, // get healthy stats
-		ReplicationFactor:    3,
-		ZoneAwarenessEnabled: true,
-	}
-
-	registry := prometheus.NewRegistry()
-
-	// create the ring to set up metrics, but do not start
-	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
-	require.NoError(t, err)
-
-	ringDesc := Desc{
-		Ingesters: map[string]InstanceDesc{
-			"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
-			"B": {Addr: "127.0.0.2", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
-		},
-	}
-	ring.updateRingState(&ringDesc)
-
-	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+	testCase := []struct {
+		DetailedMetricsEnabled bool
+		Expected               string
+	}{
+		{
+			DetailedMetricsEnabled: true,
+			Expected: `
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
@@ -3031,16 +3016,68 @@ func TestUpdateMetrics(t *testing.T) {
 		# HELP ring_tokens_total Number of tokens in the ring
 		# TYPE ring_tokens_total gauge
 		ring_tokens_total{name="test"} 4
-	`))
-	assert.NoError(t, err)
+	`,
+		},
+		{
+			DetailedMetricsEnabled: false,
+			Expected: `
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE"} 2
+		ring_members{name="test",state="JOINING"} 0
+		ring_members{name="test",state="LEAVING"} 0
+		ring_members{name="test",state="PENDING"} 0
+		ring_members{name="test",state="Unhealthy"} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 4
+	`,
+		},
+	}
+
+	for _, tc := range testCase {
+		t.Run(fmt.Sprintf("DetailedMetricsEnabled=%v", tc.DetailedMetricsEnabled), func(t *testing.T) {
+			cfg := Config{
+				KVStore:                kv.Config{},
+				HeartbeatTimeout:       0, // get healthy stats
+				ReplicationFactor:      3,
+				ZoneAwarenessEnabled:   true,
+				DetailedMetricsEnabled: tc.DetailedMetricsEnabled,
+			}
+			registry := prometheus.NewRegistry()
+
+			// create the ring to set up metrics, but do not start
+			ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+			require.NoError(t, err)
+
+			ringDesc := Desc{
+				Ingesters: map[string]InstanceDesc{
+					"A": {Addr: "127.0.0.1", Timestamp: 22, Tokens: []uint32{math.MaxUint32 / 4, (math.MaxUint32 / 4) * 3}},
+					"B": {Addr: "127.0.0.2", Timestamp: 11, Tokens: []uint32{(math.MaxUint32 / 4) * 2, math.MaxUint32}},
+				},
+			}
+			ring.updateRingState(&ringDesc)
+
+			err = testutil.GatherAndCompare(registry, bytes.NewBufferString(tc.Expected))
+			assert.NoError(t, err)
+		})
+	}
 }
 
 func TestUpdateMetricsWithRemoval(t *testing.T) {
 	cfg := Config{
-		KVStore:              kv.Config{},
-		HeartbeatTimeout:     0, // get healthy stats
-		ReplicationFactor:    3,
-		ZoneAwarenessEnabled: true,
+		KVStore:                kv.Config{},
+		HeartbeatTimeout:       0, // get healthy stats
+		ReplicationFactor:      3,
+		ZoneAwarenessEnabled:   true,
+		DetailedMetricsEnabled: true,
 	}
 
 	registry := prometheus.NewRegistry()

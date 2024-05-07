@@ -2830,6 +2830,13 @@ lifecycler:
     # CLI flag: -distributor.excluded-zones
     [excluded_zones: <string> | default = ""]
 
+    # Set to true to enable ring detailed metrics. These metrics provide
+    # detailed information, such as token count and ownership per tenant.
+    # Disabling them can significantly decrease the number of metrics emitted by
+    # the distributors.
+    # CLI flag: -ring.detailed-metrics-enabled
+    [detailed_metrics_enabled: <boolean> | default = true]
+
   # Number of tokens for each ingester.
   # CLI flag: -ingester.num-tokens
   [num_tokens: <int> | default = 128]

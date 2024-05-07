@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"math"
 	"math/rand"
 	"net/http"
@@ -95,6 +96,19 @@ func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.
 	return input + time.Duration(jitter)
 }
 
+// PositiveJitter returns random duration from "0" to "input*variance" interval.
+func PositiveJitter(input time.Duration, variancePerc float64) time.Duration {
+	// No duration? No jitter.
+	if input == 0 {
+		return 0
+	}
+
+	variance := int64(float64(input) * variancePerc)
+	jitter := rand.Int63n(variance)
+
+	return time.Duration(jitter)
+}
+
 // NewDisableableTicker essentially wraps NewTicker but allows the ticker to be disabled by passing
 // zero duration as the interval. Returns a function for stopping the ticker, and the ticker channel.
 func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
@@ -135,4 +149,78 @@ func FindMinMaxTime(r *http.Request, expr parser.Expr, lookbackDelta time.Durati
 	}
 
 	return promql.FindMinMaxTime(es)
+}
+
+// SlotInfoFunc returns the slot number and the total number of slots
+type SlotInfoFunc func() (int, int)
+
+type SlottedTicker struct {
+	C <-chan time.Time // The channel on which the ticks are delivered.
+
+	done        func()
+	d           time.Duration
+	shouldReset bool
+	ticker      *time.Ticker
+	sf          SlotInfoFunc
+}
+
+func NewSlottedTicker(sf SlotInfoFunc, d time.Duration) *SlottedTicker {
+	c := make(chan time.Time, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	st := &SlottedTicker{
+		C:           c,
+		done:        cancel,
+		d:           d,
+		sf:          sf,
+		shouldReset: true,
+	}
+	slitIndex, totalSlots := sf()
+	st.ticker = time.NewTicker(st.nextInterval())
+	go func() {
+		for ctx.Err() == nil {
+			select {
+			case t := <-st.ticker.C:
+				if i, s := sf(); i != slitIndex || s != totalSlots {
+					slitIndex, totalSlots = i, s
+					st.ticker.Reset(st.nextInterval())
+					st.shouldReset = true
+					continue
+				}
+
+				c <- t
+				if st.shouldReset {
+					st.ticker.Reset(st.d)
+				}
+
+				st.shouldReset = false
+			case <-ctx.Done():
+				return
+			}
+		}
+		close(c)
+	}()
+	return st
+}
+
+func (t *SlottedTicker) Stop() {
+	t.ticker.Stop()
+	t.done()
+}
+
+func (t *SlottedTicker) nextInterval() time.Duration {
+	slitIndex, totalSlots := t.sf()
+
+	// Discover what time the last iteration started
+	lastStartTime := time.UnixMilli((time.Now().UnixMilli() / t.d.Milliseconds()) * t.d.Milliseconds())
+	slotSize := t.d / time.Duration(totalSlots)
+	offset := time.Duration((float64(slitIndex) / float64(totalSlots)) * float64(t.d))
+	// Lets offset the time of the iteration
+	lastStartTime = lastStartTime.Add(offset)
+
+	// Keep adding the ticker duration until we pass time.now
+	for lastStartTime.Before(time.Now()) {
+		lastStartTime = lastStartTime.Add(t.d)
+	}
+
+	return time.Until(lastStartTime) + PositiveJitter(slotSize, 1)
 }

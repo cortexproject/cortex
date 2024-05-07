@@ -71,7 +71,6 @@ const (
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
 	compactionIdleTimeoutJitter = 0.25
-	initialHeadCompactionJitter = 0.5
 
 	instanceIngestionRateTickInterval = time.Second
 

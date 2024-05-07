@@ -96,7 +96,7 @@ func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.
 	return input + time.Duration(jitter)
 }
 
-// PositiveJitter returns random duration from "input" to "input*variance" interval.
+// PositiveJitter returns random duration from "0" to "input*variance" interval.
 func PositiveJitter(input time.Duration, variancePerc float64) time.Duration {
 	// No duration? No jitter.
 	if input == 0 {
@@ -208,14 +208,19 @@ func (t *SlottedTicker) Stop() {
 }
 
 func (t *SlottedTicker) nextInterval() time.Duration {
-	slot := time.UnixMilli((time.Now().UnixMilli() / t.d.Milliseconds()) * t.d.Milliseconds())
 	slitIndex, totalSlots := t.sf()
+
+	// Discover what time the last iteration started
+	lastStartTime := time.UnixMilli((time.Now().UnixMilli() / t.d.Milliseconds()) * t.d.Milliseconds())
 	slotSize := t.d / time.Duration(totalSlots)
 	offset := time.Duration((float64(slitIndex) / float64(totalSlots)) * float64(t.d))
-	slot = slot.Add(offset)
-	for slot.Before(time.Now()) {
-		slot = slot.Add(t.d)
+	// Lets offset the time of the iteration
+	lastStartTime = lastStartTime.Add(offset)
+
+	// Keep adding the ticker duration until we pass time.now
+	for lastStartTime.Before(time.Now()) {
+		lastStartTime = lastStartTime.Add(t.d)
 	}
-	i := time.Until(slot)
-	return i + PositiveJitter(slotSize, 1)
+
+	return time.Until(lastStartTime) + PositiveJitter(slotSize, 1)
 }

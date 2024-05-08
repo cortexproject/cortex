@@ -160,6 +160,9 @@ prefix these flags with `distributor.ha-tracker.`
    The trusted CA file path.
 - `etcd.tls-insecure-skip-verify`
    Skip validating server certificate.
+- `etcd.ping-without-stream-allowd'`
+   Enable/Disable  PermitWithoutStream  parameter
+
 
 #### memberlist
 

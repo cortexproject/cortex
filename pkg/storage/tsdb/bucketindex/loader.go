@@ -15,6 +15,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -93,7 +94,7 @@ func NewLoader(cfg LoaderConfig, bucketClient objstore.Bucket, cfgProvider bucke
 // index if available, or load it from the bucket otherwise.
 func (l *Loader) GetIndex(ctx context.Context, userID string) (*Index, Status, error) {
 	if ctx.Err() != nil {
-		level.Warn(l.logger).Log("msg", "received context error when attempting to load bucket index", "err", ctx.Err())
+		level.Warn(util_log.WithContext(ctx, l.logger)).Log("msg", "received context error when attempting to load bucket index", "err", ctx.Err())
 		return nil, UnknownStatus, ctx.Err()
 	}
 

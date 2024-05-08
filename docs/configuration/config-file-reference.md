@@ -2606,6 +2606,10 @@ The `etcd_config` configures the etcd client. The supported CLI flags `<prefix>`
 # Etcd password.
 # CLI flag: -<prefix>.etcd.password
 [password: <string> | default = ""]
+
+# Send Keepalive pings with no streams.
+# CLI flag: -<prefix>.etcd.ping-without-stream-allowed
+[ping-without-stream-allowed: <boolean> | default = true]
 ```
 
 ### `fifo_cache_config`

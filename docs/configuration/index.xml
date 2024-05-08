@@ -2536,6 +2536,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Etcd password.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.etcd.password&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[password&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># Send Keepalive pings with no streams.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -&amp;lt;prefix&amp;gt;.etcd.ping-without-stream-allowed&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">&lt;/span>&lt;span style="color:#204a87;font-weight:bold">[ping-without-stream-allowed&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;boolean&amp;gt; | default = true]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="fifo_cache_config">&lt;code>fifo_cache_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>fifo_cache_config&lt;/code> configures the local in-memory cache.&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5324,6 +5328,8 @@ The TLS private key file path.&lt;/li>
 The trusted CA file path.&lt;/li>
 &lt;li>&lt;code>etcd.tls-insecure-skip-verify&lt;/code>
 Skip validating server certificate.&lt;/li>
+&lt;li>&lt;code>etcd.ping-without-stream-allowd'&lt;/code>
+Enable/Disable PermitWithoutStream parameter&lt;/li>
 &lt;/ul>
 &lt;h4 id="memberlist">memberlist&lt;/h4>
 &lt;p>Warning: memberlist KV works only for the &lt;a href="/docs/architecture/#the-hash-ring">hash ring&lt;/a>, not for the HA Tracker, because propagation of changes is too slow for HA Tracker purposes.&lt;/p>

@@ -20,7 +20,7 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 	Namespace: "cortex",
 	Name:      "ingester_client_request_duration_seconds",
 	Help:      "Time spent doing Ingester requests.",
-	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 6),
+	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 7),
 }, []string{"operation", "status_code"})
 var ingesterClientInflightPushRequests = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: "cortex",

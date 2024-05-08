@@ -7,7 +7,7 @@
 * [ENHANCEMENT] Distributor: Added `max_inflight_push_requests` config to ingester client to protect distributor from OOMKilled. #5917
 * [ENHANCEMENT] Distributor/Querier: Clean stale per-ingester metrics after ingester restarts. #5930
 * [ENHANCEMENT] Distributor/Ring: Allow disabling detailed ring metrics by ring member. #5931
-* [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5897
+* [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 

@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: {{ .Values.deployment.kind }}
+metadata:
+  name: {{ include "garage.fullname" . }}
+  labels:
+    {{- include "garage.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "garage.selectorLabels" . | nindent 6 }}
+  {{- if eq .Values.deployment.kind "StatefulSet" }}
+  replicas: {{ .Values.deployment.replicaCount }}
+  serviceName: {{ include "garage.fullname" . }}
+  {{- end }}
+  template:
+    metadata:
+
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "garage.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "garage.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        # Copies garage.toml from configmap to temporary etc volume and replaces RPC secret placeholder
+        - name: {{ .Chart.Name }}-init
+          image: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag }}"
+          imagePullPolicy: {{ .Values.initImage.pullPolicy }}
+          command: ["sh", "-c", "sed \"s/__RPC_SECRET_REPLACE__/$RPC_SECRET/\" /mnt/garage.toml > /mnt/etc/garage.toml"]
+          env:
+            - name: RPC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "garage.rpcSecretName" . }}
+                  key: rpcSecret
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: configmap
+              mountPath: /mnt/garage.toml
+              subPath: garage.toml
+            - name: etc
+              mountPath: /mnt/etc
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 3900
+              name: s3-api
+            - containerPort: 3902
+              name: web-api
+            - containerPort: 3903
+              name: admin
+          volumeMounts:
+            - name: meta
+              mountPath: /mnt/meta
+            - name: data
+              mountPath: /mnt/data
+            - name: etc
+              mountPath: /etc/garage.toml
+              subPath: garage.toml
+          # TODO
+          # livenessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 3900
+          # readinessProbe:
+          #   httpGet:
+          #     path: /
+          #     port: 3900
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: configmap
+          configMap:
+            name: {{ include "garage.fullname" . }}-config
+        - name: etc
+          emptyDir: {}
+        {{- if .Values.persistence.enabled }}
+        {{- if eq .Values.deployment.kind "DaemonSet" }}
+        - name: meta
+          hostPath:
+            path: {{ .Values.persistence.meta.hostPath }}
+            type: DirectoryOrCreate
+        - name: data
+          hostPath:
+            path: {{ .Values.persistence.data.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- else }}
+        - name: meta
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if and .Values.persistence.enabled (eq .Values.deployment.kind "StatefulSet") }}
+  volumeClaimTemplates:
+  - metadata:
+      name: meta
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+    {{- if hasKey .Values.persistence.meta "storageClass" }}
+      storageClassName: {{ .Values.persistence.meta.storageClass | quote }}
+    {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.meta.size | quote }}
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+    {{- if hasKey .Values.persistence.data "storageClass" }}
+      storageClassName: {{ .Values.persistence.data.storageClass | quote }}
+    {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.data.size | quote }}
+  {{- end }}

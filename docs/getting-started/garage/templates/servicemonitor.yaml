@@ -1,0 +1,44 @@
+{{- if .Values.monitoring.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "garage.fullname" . }}
+  {{- if .Values.monitoring.metrics.serviceMonitor.namespace }}
+  namespace: {{ tpl .Values.monitoring.metrics.serviceMonitor.namespace . }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "garage.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  endpoints:
+    - port: metrics
+    {{- with .Values.monitoring.metrics.serviceMonitor.interval }}
+      interval: {{ . }}
+    {{- end }}
+    {{- with .Values.monitoring.metrics.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+    {{- end }}
+      honorLabels: true
+      path: {{ .Values.monitoring.metrics.serviceMonitor.path }}
+      scheme: {{ .Values.monitoring.metrics.serviceMonitor.scheme }}
+    {{- with .Values.monitoring.metrics.serviceMonitor.tlsConfig }}
+      tlsConfig:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.monitoring.metrics.serviceMonitor.relabelings }}
+      relabelings:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  jobLabel: "{{ .Release.Name }}"
+  selector:
+    matchLabels:
+      {{- include "garage.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+{{- end }}

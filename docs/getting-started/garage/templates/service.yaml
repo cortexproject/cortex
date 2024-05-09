@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "garage.fullname" . }}
+  labels:
+    {{- include "garage.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.s3.api.port }}
+      targetPort: 3900
+      protocol: TCP
+      name: s3-api
+    - port: {{ .Values.service.s3.web.port }}
+      targetPort: 3902
+      protocol: TCP
+      name: s3-web
+  selector:
+    {{- include "garage.selectorLabels" . | nindent 4 }}
+{{- if .Values.monitoring.metrics.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "garage.fullname" . }}-metrics
+  labels:
+    {{- include "garage.labels" . | nindent 4 }}
+  annotations:
+    prometheus.io/scrape: "true"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - port: 3903
+      targetPort: 3903
+      protocol: TCP
+      name: metrics
+  selector:
+    {{- include "garage.selectorLabels" . | nindent 4 }}
+{{- end }}

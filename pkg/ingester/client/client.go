@@ -73,10 +73,9 @@ func (c *closableHealthAndIngesterClient) Push(ctx context.Context, in *cortexpb
 
 func (c *closableHealthAndIngesterClient) handlePushRequest(mainFunc func() (*cortexpb.WriteResponse, error)) (*cortexpb.WriteResponse, error) {
 	currentInflight := c.inflightRequests.Inc()
-	c.inflightPushRequests.WithLabelValues(c.addr).Inc()
+	c.inflightPushRequests.WithLabelValues(c.addr).Set(float64(currentInflight))
 	defer func() {
-		c.inflightPushRequests.WithLabelValues(c.addr).Dec()
-		c.inflightRequests.Dec()
+		c.inflightPushRequests.WithLabelValues(c.addr).Set(float64(c.inflightRequests.Dec()))
 	}()
 	if c.maxInflightPushRequests > 0 && currentInflight > c.maxInflightPushRequests {
 		return nil, errTooManyInflightPushRequests

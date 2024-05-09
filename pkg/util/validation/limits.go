@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"math"
 	"regexp"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")

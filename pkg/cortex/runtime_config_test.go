@@ -37,7 +37,6 @@ overrides:
 		IngestionBurstSize:          15000,
 		MaxGlobalSeriesPerUser:      15000,
 		MaxGlobalSeriesPerMetric:    7000,
-		MaxSeriesPerQuery:           30000,
 		RulerMaxRulesPerRuleGroup:   20,
 		RulerMaxRuleGroupsPerTenant: 20,
 	}

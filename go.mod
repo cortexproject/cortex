@@ -268,7 +268,5 @@ replace github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 // https://github.com/thanos-io/thanos/blob/fdeea3917591fc363a329cbe23af37c6fff0b5f0/go.mod#L265
 replace gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 
-replace github.com/sercand/kuberesolver => github.com/sercand/kuberesolver/v5 v5.1.1
-
 // Pin kuberesolver/v5 to support new grpc version. Need to upgrade kuberesolver version on weaveworks/common.
 replace github.com/sercand/kuberesolver/v4 => github.com/sercand/kuberesolver/v5 v5.1.1

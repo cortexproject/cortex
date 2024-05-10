@@ -38,9 +38,39 @@ To get started with Cortex, follow these steps:
 
 If you have any questions about Cortex, you can:
 
-- Ask a question on the [Cortex Slack channel](https://cloud-native.slack.com/messages/cortex/).
+- Ask a question on the [Cortex Slack channel](https://cloud-native.slack.com/messages/cortex/). To invite yourself to
+  the CNCF Slack, visit http://slack.cncf.io/.
 - [File an issue](https://github.com/cortexproject/cortex/issues/new).
 - Email [cortex-users@lists.cncf.io](mailto:cortex-users@lists.cncf.io).
+
+Your feedback is always welcome.
+
+For security issues see https://github.com/cortexproject/cortex/security/policy
+
+## Engage with Our Community
+
+We invite you to participate in the bi-weekly Cortex Community Calls, an exciting opportunity to connect with fellow
+developers and enthusiasts. These meetings are held every alternate Thursday, alternating between 1200 UTC and 1700 UTC,
+providing a platform for open discussion, collaboration, and knowledge sharing.
+
+Our meeting notes are meticulously documented and can be
+accessed [here](https://docs.google.com/document/d/1shtXSAqp3t7fiC-9uZcKkq3mgwsItAJlH6YW6x1joZo/edit), offering a
+comprehensive overview of the topics discussed and decisions made.
+
+To ensure you never miss a meeting, we've made it easy for you to keep track:
+
+- View the Cortex Community Call schedule in your
+  browser [here](https://calendar.google.com/calendar/u/0/embed?src=cncf-cortex-maintainers@lists.cncf.io&ctz=UTC). The
+  displayed time zone is UTC.
+- If you're a Google Calendar user, you can seamlessly integrate the Cortex Community Call schedule into your personal
+  calendar.
+  Click [here](https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw) to add
+  the Cortex calendar.
+- Alternatively, download the .ics
+  file [here](https://calendar.google.com/calendar/ical/cncf-cortex-maintainers%40lists.cncf.io/public/basic.ics) for
+  use with any calendar application or service that supports the iCal format.
+
+Join us in shaping the future of Cortex, and let's build something amazing together!
 
 ## Further reading
 
@@ -137,3 +167,16 @@ There are several commercial services where you can use Cortex on-demand:
 ### Amazon Managed Service for Prometheus (AMP)
 
 [Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/) is a Prometheus-compatible monitoring service that makes it easy to monitor containerized applications at scale. It is a highly available, secure, and managed monitoring for your containers. Get started [here](https://console.aws.amazon.com/prometheus/home). To learn more about the AMP, reference our [documentation](https://docs.aws.amazon.com/prometheus/latest/userguide/what-is-Amazon-Managed-Service-Prometheus.html) and [Getting Started with AMP blog](https://aws.amazon.com/blogs/mt/getting-started-amazon-managed-service-for-prometheus/).
+
+## Emeritus Maintainers
+
+* Peter Štibraný @pstibrany
+* Marco Pracucci @pracucci
+* Bryan Boreham @bboreham
+* Goutham Veeramachaneni @gouthamve
+* Jacob Lisi @jtlisi
+* Tom Wilkie @tomwilkie
+
+## History of Cortex
+
+The Cortex project was started by Tom Wilkie (Grafana Labs' VP Product) and Julius Volz (Prometheus' co-founder) in June 2016.

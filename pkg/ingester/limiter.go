@@ -97,11 +97,6 @@ func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int
 	return errMaxMetadataPerUserLimitExceeded
 }
 
-// MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
-func (l *Limiter) MaxSeriesPerQuery(userID string) int {
-	return l.limits.MaxSeriesPerQuery(userID)
-}
-
 // FormatError returns the input error enriched with the actual limits for the given user.
 // It acts as pass-through if the input error is unknown.
 func (l *Limiter) FormatError(userID string, err error) error {

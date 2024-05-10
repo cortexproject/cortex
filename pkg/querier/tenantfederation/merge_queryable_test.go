@@ -446,11 +446,42 @@ func TestMergeQueryable_Select(t *testing.T) {
 					name:                "should return only series for team-a and team-c tenants when there is a not-equals matcher for the team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
 					expectedSeriesCount: 4,
+					expectedLabels: []labels.Labels{
+						{
+							{Name: "__tenant_id__", Value: "team-a"},
+							{Name: "instance", Value: "host1"},
+							{Name: "tenant-team-a", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-a"},
+							{Name: "instance", Value: "host2.team-a"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-c"},
+							{Name: "instance", Value: "host1"},
+							{Name: "tenant-team-c", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-c"},
+							{Name: "instance", Value: "host2.team-c"},
+						},
+					},
 				},
 				{
 					name:                "should return only series for team-b when there is an equals matcher for the team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
 					expectedSeriesCount: 2,
+					expectedLabels: []labels.Labels{
+						{
+							{Name: "__tenant_id__", Value: "team-b"},
+							{Name: "instance", Value: "host1"},
+							{Name: "tenant-team-b", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-b"},
+							{Name: "instance", Value: "host2.team-b"},
+						},
+					},
 				},
 				{
 					name:                "should return one series for each tenant when there is an equals matcher for the host1 instance",
@@ -516,6 +547,19 @@ func TestMergeQueryable_Select(t *testing.T) {
 					name:                "should return only series for team-b when there is an equals matcher for team-b tenant",
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
 					expectedSeriesCount: 2,
+					expectedLabels: []labels.Labels{
+						{
+							{Name: "__tenant_id__", Value: "team-b"},
+							{Name: "instance", Value: "host1"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+							{Name: "tenant-team-b", Value: "static"},
+						},
+						{
+							{Name: "__tenant_id__", Value: "team-b"},
+							{Name: "instance", Value: "host2.team-b"},
+							{Name: "original___tenant_id__", Value: "original-value"},
+						},
+					},
 				},
 				{
 					name:                "should return all series when there is an equals matcher for the original value of __tenant_id__ using the revised tenant label",

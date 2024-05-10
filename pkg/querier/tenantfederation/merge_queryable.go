@@ -339,7 +339,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 			return fmt.Errorf("unexpected type %T", jobIntf)
 		}
 		// Based on parent ctx here as we are using lazy querier.
-		newCtx := user.InjectOrgID(parentCtx, ids[job.pos])
+		newCtx := user.InjectOrgID(parentCtx, job.id)
 		seriesSets[job.pos] = &addLabelsSeriesSet{
 			upstream: job.querier.Select(newCtx, sortSeries, hints, filteredMatchers...),
 			labels: labels.Labels{

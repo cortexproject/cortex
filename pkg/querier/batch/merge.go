@@ -2,6 +2,7 @@ package batch
 
 import (
 	"container/heap"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"sort"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk"
@@ -36,7 +37,7 @@ func newMergeIterator(cs []GenericChunk) *mergeIterator {
 	}
 
 	for _, iter := range c.its {
-		if iter.Next(1) {
+		if iter.Next(1) != chunkenc.ValNone {
 			c.h = append(c.h, iter)
 			continue
 		}
@@ -50,7 +51,7 @@ func newMergeIterator(cs []GenericChunk) *mergeIterator {
 	return c
 }
 
-func (c *mergeIterator) Seek(t int64, size int) bool {
+func (c *mergeIterator) Seek(t int64, size int) chunkenc.ValueType {
 
 	// Optimisation to see if the seek is within our current caches batches.
 found:
@@ -74,14 +75,14 @@ found:
 		c.batches = c.batches[:0]
 
 		for _, iter := range c.its {
-			if iter.Seek(t, size) {
+			if iter.Seek(t, size) != chunkenc.ValNone {
 				c.h = append(c.h, iter)
 				continue
 			}
 
 			if err := iter.Err(); err != nil {
 				c.currErr = err
-				return false
+				return chunkenc.ValNone
 			}
 		}
 
@@ -91,7 +92,7 @@ found:
 	return c.buildNextBatch(size)
 }
 
-func (c *mergeIterator) Next(size int) bool {
+func (c *mergeIterator) Next(size int) chunkenc.ValueType {
 	// Pop the last built batch in a way that doesn't extend the slice.
 	if len(c.batches) > 0 {
 		copy(c.batches, c.batches[1:])
@@ -106,7 +107,7 @@ func (c *mergeIterator) nextBatchEndTime() int64 {
 	return batch.Timestamps[batch.Length-1]
 }
 
-func (c *mergeIterator) buildNextBatch(size int) bool {
+func (c *mergeIterator) buildNextBatch(size int) chunkenc.ValueType {
 	// All we need to do is get enough batches that our first batch's last entry
 	// is before all iterators next entry.
 	for len(c.h) > 0 && (len(c.batches) == 0 || c.nextBatchEndTime() >= c.h[0].AtTime()) {
@@ -114,14 +115,17 @@ func (c *mergeIterator) buildNextBatch(size int) bool {
 		c.batchesBuf = mergeStreams(c.batches, c.nextBatchBuf[:], c.batchesBuf, size)
 		c.batches = append(c.batches[:0], c.batchesBuf...)
 
-		if c.h[0].Next(size) {
+		if valType := c.h[0].Next(size); valType != chunkenc.ValNone {
 			heap.Fix(&c.h, 0)
 		} else {
 			heap.Pop(&c.h)
 		}
 	}
 
-	return len(c.batches) > 0
+	if len(c.batches) > 0 {
+		return c.batches[0].ValType
+	}
+	return chunkenc.ValNone
 }
 
 func (c *mergeIterator) AtTime() int64 {

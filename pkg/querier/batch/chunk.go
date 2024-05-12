@@ -2,6 +2,7 @@ package batch
 
 import (
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
@@ -27,11 +28,11 @@ func (i *chunkIterator) MaxCurrentChunkTime() int64 {
 
 // Seek advances the iterator forward to the value at or after
 // the given timestamp.
-func (i *chunkIterator) Seek(t int64, size int) bool {
+func (i *chunkIterator) Seek(t int64, size int) chunkenc.ValueType {
 	// We assume seeks only care about a specific window; if this chunk doesn't
 	// contain samples in that window, we can shortcut.
 	if i.chunk.MaxTime < t {
-		return false
+		return chunkenc.ValNone
 	}
 
 	// If the seek is to the middle of the current batch, and size fits, we can
@@ -42,23 +43,27 @@ func (i *chunkIterator) Seek(t int64, size int) bool {
 			i.batch.Index++
 		}
 		if i.batch.Index+size < i.batch.Length {
-			return true
+			return i.batch.ValType
 		}
 	}
 
-	if i.it.FindAtOrAfter(model.Time(t)) {
-		i.batch = i.it.Batch(size)
-		return i.batch.Length > 0
+	if valueType := i.it.FindAtOrAfter(model.Time(t)); valueType != chunkenc.ValNone {
+		i.batch = i.it.Batch(size, valueType)
+		if i.batch.Length > 0 {
+			return valueType
+		}
 	}
-	return false
+	return chunkenc.ValNone
 }
 
-func (i *chunkIterator) Next(size int) bool {
-	if i.it.Scan() {
-		i.batch = i.it.Batch(size)
-		return i.batch.Length > 0
+func (i *chunkIterator) Next(size int) chunkenc.ValueType {
+	if valueType := i.it.Scan(); valueType != chunkenc.ValNone {
+		i.batch = i.it.Batch(size, valueType)
+		if i.batch.Length > 0 {
+			return valueType
+		}
 	}
-	return false
+	return chunkenc.ValNone
 }
 
 func (i *chunkIterator) AtTime() int64 {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 )
 
 func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
@@ -26,6 +27,18 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
 		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
 		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusFloatHistogramChunk},
+		{numChunks: 1000, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusFloatHistogramChunk},
+		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusFloatHistogramChunk},
+		{numChunks: 100, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusFloatHistogramChunk},
+		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusFloatHistogramChunk},
+		{numChunks: 1, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusFloatHistogramChunk},
 	}
 
 	for _, scenario := range scenarios {
@@ -37,6 +50,7 @@ func BenchmarkNewChunkMergeIterator_CreateAndIterate(b *testing.B) {
 
 		chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
+		b.ResetTimer()
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 
@@ -90,6 +104,7 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 
 		chunks := createChunks(b, scenario.scrapeInterval, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
+		b.ResetTimer()
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 
@@ -105,20 +120,38 @@ func BenchmarkNewChunkMergeIterator_Seek(b *testing.B) {
 }
 
 func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
-	t.Parallel()
-	chunkOne := mkChunk(t, step, model.Time(1*step/time.Millisecond), 1, promchunk.PrometheusXorChunk)
-	chunkTwo := mkChunk(t, step, model.Time(10*step/time.Millisecond), 1, promchunk.PrometheusXorChunk)
-	chunks := []chunk.Chunk{chunkOne, chunkTwo}
+	histograms := histogram_util.GenerateTestHistograms(1000, 1000, 1, 5, 20)
+	for _, enc := range []promchunk.Encoding{
+		promchunk.PrometheusXorChunk,
+		promchunk.PrometheusHistogramChunk,
+		promchunk.PrometheusFloatHistogramChunk,
+	} {
+		valType := enc.ChunkValueType()
+		chunkOne := mkChunk(t, step, model.Time(1*step/time.Millisecond), 1, enc)
+		chunkTwo := mkChunk(t, step, model.Time(10*step/time.Millisecond), 1, enc)
+		chunks := []chunk.Chunk{chunkOne, chunkTwo}
 
-	sut := NewChunkMergeIterator(chunks, 0, 0)
+		sut := NewChunkMergeIterator(chunks, 0, 0)
 
-	// Following calls mimics Prometheus's query engine behaviour for VectorSelector.
-	require.True(t, sut.Next() != chunkenc.ValNone)
-	require.True(t, sut.Seek(0) != chunkenc.ValNone)
+		// Following calls mimics Prometheus's query engine behaviour for VectorSelector.
+		require.Equal(t, valType, sut.Next())
+		require.Equal(t, valType, sut.Seek(0))
 
-	actual, val := sut.At()
-	require.Equal(t, float64(1*time.Second/time.Millisecond), val) // since mkChunk use ts as value.
-	require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
+		switch enc {
+		case promchunk.PrometheusXorChunk:
+			actual, val := sut.At()
+			require.Equal(t, float64(1*time.Second/time.Millisecond), val) // since mkChunk use ts as value.
+			require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
+		case promchunk.PrometheusHistogramChunk:
+			actual, val := sut.AtHistogram(nil)
+			require.Equal(t, histograms[0], val)
+			require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
+		case promchunk.PrometheusFloatHistogramChunk:
+			actual, val := sut.AtFloatHistogram(nil)
+			require.Equal(t, histograms[0].ToFloat(nil), val)
+			require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
+		}
+	}
 }
 
 func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChunk, duplicationFactor int, enc promchunk.Encoding) []chunk.Chunk {

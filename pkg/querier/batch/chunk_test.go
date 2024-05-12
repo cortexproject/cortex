@@ -55,6 +55,7 @@ func mkChunk(t require.TestingT, step time.Duration, from model.Time, points int
 	pc, err := chunkenc.NewEmptyChunk(pe)
 	require.NoError(t, err)
 	appender, err := pc.Appender()
+	require.NoError(t, err)
 	ts := from
 
 	switch pe {

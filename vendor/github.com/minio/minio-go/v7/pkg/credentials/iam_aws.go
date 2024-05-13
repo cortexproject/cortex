@@ -31,7 +31,7 @@ import (
 	"strings"
 	"time"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
 )
 
 // DefaultExpiryWindow - Default expiry window.
@@ -308,7 +308,7 @@ func getEcsTaskCredentials(client *http.Client, endpoint, token string) (ec2Role
 	}
 
 	respCreds := ec2RoleCredRespBody{}
-	if err := jsoniter.NewDecoder(resp.Body).Decode(&respCreds); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&respCreds); err != nil {
 		return ec2RoleCredRespBody{}, err
 	}
 
@@ -418,7 +418,7 @@ func getCredentials(client *http.Client, endpoint string) (ec2RoleCredRespBody, 
 	}
 
 	respCreds := ec2RoleCredRespBody{}
-	if err := jsoniter.NewDecoder(resp.Body).Decode(&respCreds); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&respCreds); err != nil {
 		return ec2RoleCredRespBody{}, err
 	}
 

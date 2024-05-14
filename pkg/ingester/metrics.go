@@ -460,7 +460,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbSamplesAppended: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_samples_appended_total",
 			"Total number of appended samples.",
-			[]string{"type", "user"}, nil),
+			[]string{"user", "type"}, nil),
 		tsdbOutOfOrderSamplesAppended: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
 			"Total number of appended out of order samples.",

@@ -84,15 +84,15 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	limits.MaxSeriesPerLabelSet = []validation.MaxSeriesPerLabelSet{
 		{
-			LabelSet: map[string]string{
+			LabelSet: labels.FromMap(map[string]string{
 				"label1": "value1",
-			},
+			}),
 			Limit: 3,
 		},
 		{
-			LabelSet: map[string]string{
+			LabelSet: labels.FromMap(map[string]string{
 				"label2": "value2",
-			},
+			}),
 			Limit: 2,
 		},
 	}
@@ -122,8 +122,8 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Create first series within the limits
 	for _, set := range limits.MaxSeriesPerLabelSet {
 		lbls := []string{labels.MetricName, "metric_name"}
-		for k, v := range set.LabelSet {
-			lbls = append(lbls, k, v)
+		for _, lbl := range set.LabelSet {
+			lbls = append(lbls, lbl.Name, lbl.Value)
 		}
 		for i := 0; i < set.Limit; i++ {
 			_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
@@ -143,8 +143,8 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Should impose limits
 	for _, set := range limits.MaxSeriesPerLabelSet {
 		lbls := []string{labels.MetricName, "metric_name"}
-		for k, v := range set.LabelSet {
-			lbls = append(lbls, k, v)
+		for _, lbl := range set.LabelSet {
+			lbls = append(lbls, lbl.Name, lbl.Value)
 		}
 		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 			[]labels.Labels{labels.FromStrings(append(lbls, "newLabel", "newValue")...)}, samples, nil, nil, cortexpb.API))
@@ -164,20 +164,20 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	// Should apply composite limits
 	limits.MaxSeriesPerLabelSet = append(limits.MaxSeriesPerLabelSet,
-		validation.MaxSeriesPerLabelSet{LabelSet: map[string]string{
+		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			"comp1": "compValue1",
-		},
+		}),
 			Limit: 10,
 		},
-		validation.MaxSeriesPerLabelSet{LabelSet: map[string]string{
+		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			"comp2": "compValue2",
-		},
+		}),
 			Limit: 10,
 		},
-		validation.MaxSeriesPerLabelSet{LabelSet: map[string]string{
+		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			"comp1": "compValue1",
 			"comp2": "compValue2",
-		},
+		}),
 			Limit: 2,
 		},
 	)
@@ -224,10 +224,10 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	// Should bootstrap and apply limits when configuration change
 	limits.MaxSeriesPerLabelSet = append(limits.MaxSeriesPerLabelSet,
-		validation.MaxSeriesPerLabelSet{LabelSet: map[string]string{
+		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			labels.MetricName: "metric_name",
 			"comp2":           "compValue2",
-		},
+		}),
 			Limit: 3, // we already have 2 so we need to allow 1 more
 		},
 	)

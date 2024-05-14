@@ -77,10 +77,10 @@ type TimeWindow struct {
 }
 
 type MaxSeriesPerLabelSet struct {
-	Limit    int               `yaml:"limit" json:"limit" doc:"nocli"`
-	LabelSet map[string]string `yaml:"label_set" json:"label_set" doc:"nocli"`
-	Id       string            `yaml:"-" json:"-" doc:"nocli"`
-	Hash     uint64            `yaml:"-" json:"-" doc:"nocli"`
+	Limit    int           `yaml:"limit" json:"limit" doc:"nocli|description=The maximum number of active series per LabelSet before replication."`
+	LabelSet labels.Labels `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
+	Id       string        `yaml:"-" json:"-" doc:"nocli"`
+	Hash     uint64        `yaml:"-" json:"-" doc:"nocli"`
 }
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -115,7 +115,7 @@ type Limits struct {
 	MaxLocalSeriesPerMetric  int                    `yaml:"max_series_per_metric" json:"max_series_per_metric"`
 	MaxGlobalSeriesPerUser   int                    `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
 	MaxGlobalSeriesPerMetric int                    `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	MaxSeriesPerLabelSet     []MaxSeriesPerLabelSet `yaml:"max_series_per_label_set" json:"max_series_per_label_set" doc:"hidden"`
+	MaxSeriesPerLabelSet     []MaxSeriesPerLabelSet `yaml:"max_series_per_label_set" json:"max_series_per_label_set" doc:"nocli|description=[Experimental] The maximum number of active series per LabelSet, across the cluster before replication. Empty list to disable."`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -330,7 +330,7 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 
 func (l *Limits) calculateMaxSeriesPerLabelSetId() {
 	for k, limit := range l.MaxSeriesPerLabelSet {
-		limit.Id = labels.FromMap(limit.LabelSet).String()
+		limit.Id = limit.LabelSet.String()
 		limit.Hash = fnv1a.HashBytes64([]byte(limit.Id))
 		l.MaxSeriesPerLabelSet[k] = limit
 	}

@@ -136,8 +136,8 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 		defer s.Unlock()
 		if r, ok := s.valuesCounter[set.Hash]; !ok {
 			postings := make([]index.Postings, 0, len(set.LabelSet))
-			for k, v := range set.LabelSet {
-				p, err := ir.Postings(ctx, k, v)
+			for _, lbl := range set.LabelSet {
+				p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
 				if err != nil {
 					return 0, err
 				}
@@ -157,7 +157,7 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 
 			s.valuesCounter[set.Hash] = &labelSetCounterEntry{
 				count:  totalCount,
-				labels: labels.FromMap(set.LabelSet),
+				labels: set.LabelSet,
 			}
 			return totalCount, nil
 		} else {
@@ -176,7 +176,7 @@ func (m *labelSetCounter) increaseSeriesLabelSet(u *userTSDB, metric labels.Labe
 		} else {
 			s.valuesCounter[l.Hash] = &labelSetCounterEntry{
 				count:  1,
-				labels: labels.FromMap(l.LabelSet),
+				labels: l.LabelSet,
 			}
 		}
 		s.Unlock()

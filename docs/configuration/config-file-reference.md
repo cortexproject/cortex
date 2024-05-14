@@ -3168,6 +3168,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 
+# [Experimental] The maximum number of active series per LabelSet, across the
+# cluster before replication. Empty list to disable.
+[max_series_per_label_set: <list of MaxSeriesPerLabelSet> | default = []]
+
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
 # CLI flag: -ingester.max-metadata-per-user
@@ -4009,7 +4013,7 @@ The `ruler_config` configures the Cortex ruler.
 [external_url: <url> | default = ]
 
 # Labels to add to all alerts.
-[external_labels: <list of Label> | default = []]
+[external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 
 ruler_client:
   # gRPC client max receive message size (bytes).
@@ -5306,6 +5310,16 @@ otel:
     [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
+### `MaxSeriesPerLabelSet`
+
+```yaml
+# The maximum number of active series per LabelSet before replication.
+[limit: <int> | default = ]
+
+# LabelSet which the limit should be applied.
+[label_set: <map of string (labelName) to string (labelValue)> | default = []]
+```
+
 ### `PriorityDef`
 
 ```yaml
@@ -5349,12 +5363,4 @@ time_window:
 
 # name of the rule group
 [name: <string> | default = ""]
-```
-
-### `Label`
-
-```yaml
-[name: <string> | default = ""]
-
-[value: <string> | default = ""]
 ```

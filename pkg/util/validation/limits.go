@@ -79,8 +79,8 @@ type TimeWindow struct {
 type MaxSeriesPerLabelSet struct {
 	Limit    int               `yaml:"limit" json:"limit" doc:"nocli"`
 	LabelSet map[string]string `yaml:"label_set" json:"label_set" doc:"nocli"`
-	Id       string
-	Hash     uint64
+	Id       string            `yaml:"-" json:"-" doc:"nocli"`
+	Hash     uint64            `yaml:"-" json:"-" doc:"nocli"`
 }
 
 // Limits describe all the limits for users; can be used to describe global default

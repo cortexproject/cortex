@@ -5,10 +5,10 @@ import (
 	"math"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 var (

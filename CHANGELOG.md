@@ -10,6 +10,7 @@
 * [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
+* [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
 
 
 ## 1.17.0 2024-04-30

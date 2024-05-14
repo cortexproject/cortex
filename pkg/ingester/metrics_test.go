@@ -252,9 +252,9 @@ func TestTSDBMetrics(t *testing.T) {
         	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user3"} 102
         	# HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
         	# TYPE cortex_ingester_tsdb_head_samples_appended_total counter
-        	cortex_ingester_tsdb_head_samples_appended_total{type="user1",user="float"} 101
-        	cortex_ingester_tsdb_head_samples_appended_total{type="user2",user="float"} 101
-        	cortex_ingester_tsdb_head_samples_appended_total{type="user3",user="float"} 101
+			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user1"} 101
+			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user2"} 101
+			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user3"} 101
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
 			cortex_ingester_tsdb_checkpoint_deletions_failed_total 1586096
@@ -496,8 +496,8 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
         	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user2"} 102
         	# HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
         	# TYPE cortex_ingester_tsdb_head_samples_appended_total counter
-        	cortex_ingester_tsdb_head_samples_appended_total{type="user1",user="float"} 101
-        	cortex_ingester_tsdb_head_samples_appended_total{type="user2",user="float"} 101
+			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user1"} 101
+			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user2"} 101
 
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter

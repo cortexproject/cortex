@@ -1098,7 +1098,7 @@ namespaceOverride: ""
 ##
 revisionHistoryLimit: 10
 
-## Add a seperate remote image renderer deployment/service
+## Add a separate remote image renderer deployment/service
 imageRenderer:
   deploymentStrategy: {}
   # Enable the image-renderer deployment & service

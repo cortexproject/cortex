@@ -167,7 +167,7 @@ kubectl --namespace cortex port-forward deploy/cortex 3000
 ```
 
 1. Log into the Grafana instance at [http://localhost:3000](http://localhost:3000)
-1. Use the username `admin` and the password from the Kubernetes secret 
+1. Use the username `admin` and the password from the Kubernetes secret
 1. Navigate to the [Data Sources](http://localhost:3000/connections/datasources) page
 1. Add a new Prometheus Data Source
 1. Use `http://cortex-nginx/api/prom` as the URL

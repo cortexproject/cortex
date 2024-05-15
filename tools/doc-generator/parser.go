@@ -193,10 +193,12 @@ func parseConfig(block *configBlock, cfg interface{}, flags map[uintptr]*flag.Fl
 		if field.Type.Kind() == reflect.Slice {
 			sliceElementType := field.Type.Elem()
 			if sliceElementType.Kind() == reflect.Struct {
-				rootBlocks = append(rootBlocks, rootBlock{
-					name:       field.Type.Elem().Name(),
-					structType: field.Type.Elem(),
-				})
+				if field.Type.String() != "labels.Labels" {
+					rootBlocks = append(rootBlocks, rootBlock{
+						name:       field.Type.Elem().Name(),
+						structType: field.Type.Elem(),
+					})
+				}
 				sliceElementBlock := &configBlock{
 					name: field.Type.Elem().Name(),
 					desc: "",
@@ -286,6 +288,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "[]*relabel.Config":
 		return "relabel_config...", nil
+	case "labels.Labels":
+		return "map of string (labelName) to string (labelValue)", nil
 	}
 
 	// Fallback to auto-detection of built-in data types

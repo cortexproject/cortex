@@ -12,7 +12,9 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/segmentio/fasthash/fnv1a"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -74,6 +76,13 @@ type TimeWindow struct {
 	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
 }
 
+type MaxSeriesPerLabelSet struct {
+	Limit    int           `yaml:"limit" json:"limit" doc:"nocli|description=The maximum number of active series per LabelSet before replication."`
+	LabelSet labels.Labels `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
+	Id       string        `yaml:"-" json:"-" doc:"nocli"`
+	Hash     uint64        `yaml:"-" json:"-" doc:"nocli"`
+}
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
@@ -102,10 +111,11 @@ type Limits struct {
 
 	// Ingester enforced limits.
 	// Series
-	MaxLocalSeriesPerUser    int `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric  int `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxLocalSeriesPerUser    int                    `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric  int                    `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxGlobalSeriesPerUser   int                    `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric int                    `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxSeriesPerLabelSet     []MaxSeriesPerLabelSet `yaml:"max_series_per_label_set" json:"max_series_per_label_set" doc:"nocli|description=[Experimental] The maximum number of active series per LabelSet, across the cluster before replication. Empty list to disable."`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -285,6 +295,8 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
+	l.calculateMaxSeriesPerLabelSetId()
+
 	return nil
 }
 
@@ -311,7 +323,17 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	l.calculateMaxSeriesPerLabelSetId()
+
 	return nil
+}
+
+func (l *Limits) calculateMaxSeriesPerLabelSetId() {
+	for k, limit := range l.MaxSeriesPerLabelSet {
+		limit.Id = limit.LabelSet.String()
+		limit.Hash = fnv1a.HashBytes64([]byte(limit.Id))
+		l.MaxSeriesPerLabelSet[k] = limit
+	}
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
@@ -517,6 +539,11 @@ func (o *Overrides) OutOfOrderTimeWindow(userID string) model.Duration {
 // MaxGlobalSeriesPerMetric returns the maximum number of series allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerMetric
+}
+
+// MaxSeriesPerLabelSet returns the maximum number of series allowed per labelset across the cluster.
+func (o *Overrides) MaxSeriesPerLabelSet(userID string) []MaxSeriesPerLabelSet {
+	return o.GetOverridesForUser(userID).MaxSeriesPerLabelSet
 }
 
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching

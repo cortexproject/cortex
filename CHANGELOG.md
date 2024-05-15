@@ -9,6 +9,7 @@
 * [ENHANCEMENT] Distributor/Ring: Allow disabling detailed ring metrics by ring member. #5931
 * [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
+* [CHANGE] Query Frontend/Ruler: Omit empty data field in API response. #5953
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920
 * [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
 

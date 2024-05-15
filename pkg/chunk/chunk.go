@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"unsafe"
 )
 
 // Chunk contains encoded timeseries data
@@ -71,11 +72,11 @@ func (p *prometheusChunkIterator) Batch(size int, valType chunkenc.ValueType) Ba
 		case chunkenc.ValHistogram:
 			t, v := p.it.AtHistogram(nil)
 			batch.Timestamps[j] = t
-			batch.Histograms[j] = v
+			batch.HistogramValues[j] = unsafe.Pointer(v)
 		case chunkenc.ValFloatHistogram:
 			t, v := p.it.AtFloatHistogram(nil)
 			batch.Timestamps[j] = t
-			batch.FloatHistograms[j] = v
+			batch.HistogramValues[j] = unsafe.Pointer(v)
 		}
 		j++
 		if j < size && p.it.Next() == chunkenc.ValNone {

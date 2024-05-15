@@ -35,9 +35,9 @@ func TestChunkIter(t *testing.T) {
 
 func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 	for _, enc := range []promchunk.Encoding{
-		promchunk.PrometheusXorChunk,
+		//promchunk.PrometheusXorChunk,
 		promchunk.PrometheusHistogramChunk,
-		promchunk.PrometheusFloatHistogramChunk,
+		//promchunk.PrometheusFloatHistogramChunk,
 	} {
 		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {

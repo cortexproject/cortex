@@ -3,8 +3,10 @@ package batch
 import (
 	"strconv"
 	"testing"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk"
@@ -52,7 +54,23 @@ func TestStream(t *testing.T) {
 				t.Parallel()
 				result := make(batchStream, len(tc.input1)+len(tc.input2))
 				result = mergeStreams(tc.input1, tc.input2, result, promchunk.BatchSize)
-				require.Equal(t, batchStream(tc.output), result)
+				require.Equal(t, len(tc.output), len(result))
+				for j := 0; j < len(tc.output); j++ {
+					require.Equal(t, tc.output[j].ValType, result[j].ValType)
+					require.Equal(t, tc.output[j].Length, result[j].Length)
+					require.Equal(t, tc.output[j].Index, result[j].Index)
+					require.Equal(t, tc.output[j].Timestamps, result[j].Timestamps)
+					require.Equal(t, tc.output[j].Values, result[j].Values)
+					for k := 0; k < len(tc.output[j].HistogramValues); k++ {
+						switch tc.output[j].ValType {
+						case chunkenc.ValHistogram:
+							require.Equal(t, (*histogram.Histogram)(tc.output[j].HistogramValues[k]), (*histogram.Histogram)(result[j].HistogramValues[k]))
+						case chunkenc.ValFloatHistogram:
+							require.Equal(t, (*histogram.FloatHistogram)(tc.output[j].HistogramValues[k]), (*histogram.FloatHistogram)(result[j].HistogramValues[k]))
+						default:
+						}
+					}
+				}
 			})
 		}
 	})
@@ -66,9 +84,9 @@ func mkBatch(from int64, enc encoding.Encoding) promchunk.Batch {
 		case encoding.PrometheusXorChunk:
 			result.Values[i] = float64(from + i)
 		case encoding.PrometheusHistogramChunk:
-			result.Histograms[i] = testHistogram(int(from+i), 5, 20)
+			result.HistogramValues[i] = unsafe.Pointer(testHistogram(int(from+i), 5, 20))
 		case encoding.PrometheusFloatHistogramChunk:
-			result.FloatHistograms[i] = testHistogram(int(from+i), 5, 20).ToFloat(nil)
+			result.HistogramValues[i] = unsafe.Pointer(testHistogram(int(from+i), 5, 20).ToFloat(nil))
 		}
 	}
 	result.Length = promchunk.BatchSize

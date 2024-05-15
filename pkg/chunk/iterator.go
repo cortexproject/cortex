@@ -1,8 +1,9 @@
 package chunk
 
 import (
+	"unsafe"
+
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
@@ -13,12 +14,12 @@ type Iterator interface {
 	// Scans the next value in the chunk. Directly after the iterator has
 	// been created, the next value is the first value in the
 	// chunk. Otherwise, it is the value following the last value scanned or
-	// found (by one of the Find... methods). Returns false if either the
-	// end of the chunk is reached or an error has occurred.
+	// found (by one of the Find... methods). Returns chunkenc.ValNoe if either
+	// the end of the chunk is reached or an error has occurred.
 	Scan() chunkenc.ValueType
-	// Finds the oldest value at or after the provided time. Returns false
-	// if either the chunk contains no value at or after the provided time,
-	// or an error has occurred.
+	// Finds the oldest value at or after the provided time and returns the value type.
+	// Returns chunkenc.ValNone if either the chunk contains no value at or after
+	// the provided time, or an error has occurred.
 	FindAtOrAfter(model.Time) chunkenc.ValueType
 	// Returns a batch of the provisded size; NB not idempotent!  Should only be called
 	// once per Scan.
@@ -32,13 +33,14 @@ type Iterator interface {
 // 1 to 128.
 const BatchSize = 12
 
-// Batch is a sorted set of (timestamp, value) pairs.  They are intended to be
-// small, and passed by value.
+// Batch is a sorted set of (timestamp, value) pairs. They are intended to be small,
+// and passed by value. Value can vary depending on the chunk value type.
 type Batch struct {
-	Timestamps      [BatchSize]int64
-	Values          [BatchSize]float64
-	Histograms      [BatchSize]*histogram.Histogram
-	FloatHistograms [BatchSize]*histogram.FloatHistogram
+	Timestamps [BatchSize]int64
+	Values     [BatchSize]float64
+	// HistogramValues are pointers to store the value of either
+	// *histogram.Histogram or *histogram.FloatHistogram value.
+	HistogramValues [BatchSize]unsafe.Pointer
 	Index           int
 	Length          int
 	ValType         chunkenc.ValueType

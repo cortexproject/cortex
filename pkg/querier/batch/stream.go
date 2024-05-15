@@ -1,6 +1,8 @@
 package batch
 
 import (
+	"unsafe"
+
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
@@ -36,12 +38,12 @@ func (bs *batchStream) next() {
 
 func (bs *batchStream) atHistogram() (int64, *histogram.Histogram) {
 	b := &(*bs)[0]
-	return b.Timestamps[b.Index], b.Histograms[b.Index]
+	return b.Timestamps[b.Index], (*histogram.Histogram)(b.HistogramValues[b.Index])
 }
 
 func (bs *batchStream) atFloatHistogram() (int64, *histogram.FloatHistogram) {
 	b := &(*bs)[0]
-	return b.Timestamps[b.Index], b.FloatHistograms[b.Index]
+	return b.Timestamps[b.Index], (*histogram.FloatHistogram)(b.HistogramValues[b.Index])
 }
 
 func (bs *batchStream) atTime() int64 {
@@ -89,9 +91,13 @@ func mergeStreams(left, right batchStream, result batchStream, size int) batchSt
 		case chunkenc.ValFloat:
 			b.Timestamps[b.Index], b.Values[b.Index] = bs.at()
 		case chunkenc.ValHistogram:
-			b.Timestamps[b.Index], b.Histograms[b.Index] = bs.atHistogram()
+			t, v := bs.atHistogram()
+			b.Timestamps[b.Index] = t
+			b.HistogramValues[b.Index] = unsafe.Pointer(v)
 		case chunkenc.ValFloatHistogram:
-			b.Timestamps[b.Index], b.FloatHistograms[b.Index] = bs.atFloatHistogram()
+			t, v := bs.atFloatHistogram()
+			b.Timestamps[b.Index] = t
+			b.HistogramValues[b.Index] = unsafe.Pointer(v)
 		default:
 			panic("unsupported value type")
 		}

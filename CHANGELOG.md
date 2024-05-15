@@ -2,6 +2,10 @@
 
 ## master / unreleased
 
+## 1.17.1 2024-05-20
+
+* [CHANGE] Query Frontend/Ruler: Omit empty data field in API response. #5953
+
 ## 1.17.0 2024-04-30
 
 * [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645

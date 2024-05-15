@@ -337,7 +337,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusAccepted, w.Code)
-	require.Equal(t, "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}", w.Body.String())
+	require.Equal(t, "{\"status\":\"success\",\"errorType\":\"\",\"error\":\"\"}", w.Body.String())
 
 	// On Partial failures
 	req = requestFor(t, http.MethodDelete, "https://localhost:8080/api/v1/rules/namespace2", nil, "user1")
@@ -345,7 +345,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusInternalServerError, w.Code)
-	require.Equal(t, "{\"status\":\"error\",\"data\":null,\"errorType\":\"server_error\",\"error\":\"unable to delete rg\"}", w.Body.String())
+	require.Equal(t, "{\"status\":\"error\",\"errorType\":\"server_error\",\"error\":\"unable to delete rg\"}", w.Body.String())
 }
 
 func TestRuler_LimitsPerGroup(t *testing.T) {
@@ -430,7 +430,7 @@ rules:
 - record: up_rule
   expr: up{}
 `,
-			output: "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}",
+			output: "{\"status\":\"success\",\"errorType\":\"\",\"error\":\"\"}",
 		},
 		{
 			name:   "when exceeding the rule group limit after sending the first group",
@@ -490,7 +490,7 @@ rules:
   expr: |2+
     up{}
 `,
-			output: "{\"status\":\"success\",\"data\":null,\"errorType\":\"\",\"error\":\"\"}",
+			output: "{\"status\":\"success\",\"errorType\":\"\",\"error\":\"\"}",
 		},
 		{
 			name:   "when pushing group that CANNOT be safely converted from RuleGroupDesc to RuleGroup yaml",

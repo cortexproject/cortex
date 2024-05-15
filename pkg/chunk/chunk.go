@@ -1,12 +1,13 @@
 package chunk
 
 import (
+	"unsafe"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	"unsafe"
 )
 
 // Chunk contains encoded timeseries data

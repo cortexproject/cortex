@@ -1,8 +1,6 @@
 package chunk
 
 import (
-	"unsafe"
-
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -71,13 +69,9 @@ func (p *prometheusChunkIterator) Batch(size int, valType chunkenc.ValueType) Ba
 			batch.Timestamps[j] = t
 			batch.Values[j] = v
 		case chunkenc.ValHistogram:
-			t, v := p.it.AtHistogram(nil)
-			batch.Timestamps[j] = t
-			batch.HistogramValues[j] = unsafe.Pointer(v)
+			batch.Timestamps[j], batch.Histograms[j] = p.it.AtHistogram(nil)
 		case chunkenc.ValFloatHistogram:
-			t, v := p.it.AtFloatHistogram(nil)
-			batch.Timestamps[j] = t
-			batch.HistogramValues[j] = unsafe.Pointer(v)
+			batch.Timestamps[j], batch.FloatHistograms[j] = p.it.AtFloatHistogram(nil)
 		}
 		j++
 		if j < size && p.it.Next() == chunkenc.ValNone {

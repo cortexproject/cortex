@@ -1,9 +1,8 @@
 package chunk
 
 import (
-	"unsafe"
-
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
 
@@ -36,11 +35,10 @@ const BatchSize = 12
 // Batch is a sorted set of (timestamp, value) pairs. They are intended to be small,
 // and passed by value. Value can vary depending on the chunk value type.
 type Batch struct {
-	Timestamps [BatchSize]int64
-	Values     [BatchSize]float64
-	// HistogramValues are pointers to store the value of either
-	// *histogram.Histogram or *histogram.FloatHistogram value.
-	HistogramValues [BatchSize]unsafe.Pointer
+	Timestamps      [BatchSize]int64
+	Values          [BatchSize]float64
+	Histograms      [BatchSize]*histogram.Histogram
+	FloatHistograms [BatchSize]*histogram.FloatHistogram
 	Index           int
 	Length          int
 	ValType         chunkenc.ValueType

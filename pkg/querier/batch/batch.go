@@ -157,12 +157,12 @@ func (a *iteratorAdapter) Err() error {
 
 // AtHistogram implements chunkenc.Iterator.
 func (a *iteratorAdapter) AtHistogram(h *histogram.Histogram) (int64, *histogram.Histogram) {
-	return a.curr.Timestamps[a.curr.Index], (*histogram.Histogram)(a.curr.HistogramValues[a.curr.Index])
+	return a.curr.Timestamps[a.curr.Index], a.curr.Histograms[a.curr.Index]
 }
 
 // AtFloatHistogram implements chunkenc.Iterator.
 func (a *iteratorAdapter) AtFloatHistogram(h *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
-	return a.curr.Timestamps[a.curr.Index], (*histogram.FloatHistogram)(a.curr.HistogramValues[a.curr.Index])
+	return a.curr.Timestamps[a.curr.Index], a.curr.FloatHistograms[a.curr.Index]
 }
 
 // AtT implements chunkenc.Iterator.

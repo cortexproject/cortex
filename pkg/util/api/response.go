@@ -20,8 +20,8 @@ const (
 type Response struct {
 	Status    string       `json:"status"`
 	Data      interface{}  `json:"data,omitempty"`
-	ErrorType v1.ErrorType `json:"errorType"`
-	Error     string       `json:"error"`
+	ErrorType v1.ErrorType `json:"errorType,omitempty"`
+	Error     string       `json:"error,omitempty"`
 	Warnings  []string     `json:"warnings,omitempty"`
 }
 

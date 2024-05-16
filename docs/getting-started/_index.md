@@ -66,7 +66,7 @@ Now that you have Cortex running as a single instance, let's explore how to run 
 This example uses [Kind](https://kind.sigs.k8s.io) to set up:
 
 1. A Kubernetes cluster
-1. An instance of [Garage](https://garagehq.deuxfleurs.fr) for S3 storage
+1. An instance of [SeaweedFS](https://github.com/seaweedfs/seaweedfs/) for S3-compatible object storage
 1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics
 1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex
 1. An instance of [Grafana](https://grafana.com/) to visualize the metrics
@@ -91,52 +91,33 @@ $ helm repo add prometheus-community https://prometheus-community.github.io/helm
 $ cd docs/getting-started
 ```
 
-#### Configure Garage (S3)
+#### Configure SeaweedFS (S3)
 
 ```sh
-# We can emulate S3 with Garage, an open-source distributed object storage service tailored for self-hosting
-# The helm chart is copied from https://git.deuxfleurs.fr/Deuxfleurs/garage
-$ helm install --create-namespace --namespace cortex --wait garage ./garage
-```
-
-The instructions below were tweaked from https://garagehq.deuxfleurs.fr/documentation/cookbook/kubernetes/ to make it
-as easy as possible to set up the cluster with just copying and pasting.
-
-```sh
-# Get the id of the node
-$ ID=$(kubectl exec --namespace cortex -it garage-0 -- ./garage status | tail -n 1 | cut -f 1 -d ' ') && echo "ID: $ID"
+# Create a namespace
+$ kubectl create namespace cortex
 ```
 
 ```sh
-# Assign layout to node
-$ kubectl exec --namespace cortex -it garage-0 -- ./garage layout assign -z dc1 -c 100MB $ID
+# We can emulate S3 with SeaweedFS
+$ kubectl -n cortex apply -f seaweedfs.yaml
 ```
 
 ```sh
-# Apply layout changes
-$ kubectl exec --namespace cortex -it garage-0 -- ./garage layout apply --version 1
+# Port-forward to SeaweedFS to create a bucket
+$ kubectl -n cortex port-forward svc/seaweedfs 8333
 ```
 
-```sh
+```shell
 # Create a bucket
-$ kubectl exec --namespace cortex -it garage-0 -- ./garage bucket create cortex-bucket
-```
-
-```sh
-# Import existing key to make it work with provided values file.
-$ kubectl exec --namespace cortex -it garage-0 -- ./garage key import GK5bb23bcd66e5adfca6cb9999 f9660818b512b315af592fa69b48b9d0aa16baa76f85edb863b9a4d9762a68a7 -n cortex-app-key --yes
-```
-
-```sh
-# Allow the key to access the newly created bucket
-$ kubectl exec --namespace cortex -it garage-0 -- ./garage bucket allow --read --write --owner cortex-bucket --key cortex-app-key
+$ curl -X PUT http://localhost:8333/cortex-bucket
 ```
 
 #### Setup Cortex
 
 ```sh
 # Deploy Cortex using the provided values file which configures
-# - blocks storage to use the garage service
+# - blocks storage to use the seaweedfs service
 $ helm install --version=2.3.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
 ```
 

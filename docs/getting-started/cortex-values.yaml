@@ -80,11 +80,11 @@ config:
       max_send_msg_size: 10485760
   blocks_storage:
     s3: &s3
-      endpoint: garage.cortex.svc.cluster.local:3900
-      region: garage
+      endpoint: seaweedfs.cortex.svc.cluster.local:8333
+      region: baz
       bucket_name: cortex-bucket
-      access_key_id: GK5bb23bcd66e5adfca6cb9999
-      secret_access_key: f9660818b512b315af592fa69b48b9d0aa16baa76f85edb863b9a4d9762a68a7
+      access_key_id: foo
+      secret_access_key: bar
       insecure: true
     tsdb:
       dir: /data/tsdb

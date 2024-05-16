@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweedfs
+  labels:
+    app: seaweedfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seaweedfs
+  template:
+    metadata:
+      name: seaweedfs
+      labels:
+        app: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:3.67
+          imagePullPolicy: IfNotPresent
+          args:
+            - "server"
+            - "-s3"
+          ports:
+            - containerPort: 8333
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+spec:
+  selector:
+    app: seaweedfs
+  ports:
+    - protocol: TCP
+      port: 8333
+      targetPort: 8333
+  type: ClusterIP

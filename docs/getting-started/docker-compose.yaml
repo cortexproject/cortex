@@ -21,6 +21,11 @@ services:
       - ./cortex-config.yaml:/config/cortex-config.yaml:ro
     ports:
       - 9009:9009
+    healthcheck:
+        test: wget -qO- http://localhost:9009/ready
+        interval: 10s
+        timeout: 10s
+        retries: 3
   grafana:
     image: grafana/grafana:${GRAFANA_VERSION}
     ports:
@@ -33,3 +38,15 @@ services:
       - ./prometheus-config.yaml:/config/prometheus-config.yaml:ro
     ports:
       - 9090:9090
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION}
+    command:
+      - server
+      - -s3
+    ports:
+      - 8333:8333
+    healthcheck:
+      test: wget -qO- http://localhost:8333/status
+      interval: 10s
+      timeout: 10s
+      retries: 3

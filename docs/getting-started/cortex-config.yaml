@@ -3,6 +3,8 @@
 # This should not be used in production.  It is only for getting started
 # and development.
 
+target: all,compactor
+
 # Disable the requirement that every request to Cortex has a
 # X-Scope-OrgID header. `fake` will be substituted in instead.
 auth_enabled: false
@@ -45,32 +47,19 @@ ingester:
       replication_factor: 1
 
 blocks_storage:
+  s3: &s3
+    endpoint: seaweedfs:8333
+    region: baz
+    bucket_name: cortex-bucket
+    access_key_id: foo
+    secret_access_key: bar
+    insecure: true
   tsdb:
-    dir: /tmp/cortex/tsdb
-
+    dir: /data/tsdb
   bucket_store:
-    sync_dir: /tmp/cortex/tsdb-sync
-
-  # You can choose between local storage and Amazon S3, Google GCS and Azure storage. Each option requires additional configuration
-  # as shown below. All options can be configured via flags as well which might be handy for secret inputs.
-  backend: filesystem # s3, gcs, azure or filesystem are valid options
-    # s3:
-    #   bucket_name: cortex
-    #   endpoint: s3.dualstack.us-east-1.amazonaws.com
-    # Configure your S3 credentials below.
-    # secret_access_key: "TODO"
-  # access_key_id:     "TODO"
-  #  gcs:
-  #    bucket_name: cortex
-  #    service_account: # if empty or omitted Cortex will use your default service account as per Google's fallback logic
-  #  azure:
-  #    account_name:
-  #    account_key:
-  #    container_name:
-  #    endpoint_suffix:
-  #    max_retries: # Number of retries for recoverable errors (defaults to 20)
-  filesystem:
-    dir: ./data/tsdb
+    sync_dir: /data/tsdb-sync
+    bucket_index:
+      enabled: true
 
 compactor:
   data_dir: /tmp/cortex/compactor
@@ -85,6 +74,5 @@ ruler:
   enable_api: true
 
 ruler_storage:
-  backend: local
-  local:
-    directory: /tmp/cortex/rules
+  backend: s3
+  s3: *s3

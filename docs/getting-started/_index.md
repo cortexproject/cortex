@@ -28,16 +28,39 @@ intended for production environments or production use.
 
 This example uses [Docker Compose](https://docs.docker.com/compose/) to set up:
 
+1. An instance of [SeaweedFS](https://github.com/seaweedfs/seaweedfs/) for S3-compatible object storage
 1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics
 1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex
 1. An instance of [Grafana](https://grafana.com/) to visualize the metrics
 
 ### Instructions
 
+#### Start the services
+
 ```sh
 $ cd docs/getting-started
-$ docker-compose up -d
+$ docker-compose up -d --wait
 ```
+
+We can now access the following services:
+
+* [Cortex](http://localhost:9009)
+* [Prometheus](http://localhost:9090)
+* [Grafana](http://localhost:3000)
+* [SeaweedFS](http://localhost:8333)
+
+If everything is working correctly, Prometheus should be sending metrics that it is scraping to Cortex. Prometheus is
+configured to send metrics to Cortex via `remote_write`. Check out the `prometheus-config.yaml` file to see
+how this is configured.
+
+#### Configure SeaweedFS (S3)
+
+```sh
+# Create a bucket in SeaweedFS
+curl -X PUT http://localhost:8333/cortex-bucket
+```
+
+#### Configure Grafana
 
 1. Log into the Grafana instance at [http://localhost:3000](http://localhost:3000)
     * login credentials are `username: admin` and `password: admin`
@@ -50,8 +73,15 @@ $ docker-compose up -d
 1. Go to `Metrics Explore` to query metrics
     * Look for a compass icon on the left sidebar
     * Click `Metrics` for a dropdown list of all the available metrics
-1. Shutdown the services when finished
-    * Run `docker-compose down`
+
+If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
+via remote_write!
+
+### Clean up
+
+```sh
+$ docker-compose down
+```
 
 ## Running Cortex in microservice mode
 

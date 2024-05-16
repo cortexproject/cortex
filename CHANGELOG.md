@@ -8,6 +8,7 @@
 * [ENHANCEMENT] Distributor/Querier: Clean stale per-ingester metrics after ingester restarts. #5930
 * [ENHANCEMENT] Distributor/Ring: Allow disabling detailed ring metrics by ring member. #5931
 * [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
+* [ENHANCEMENT] Ruler: Add new ruler metric `cortex_ruler_rule_groups_in_store`. #5869
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
 * [CHANGE] Query Frontend/Ruler: Omit empty data field in API response. #5953 #5954
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920

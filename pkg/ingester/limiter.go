@@ -105,6 +105,8 @@ func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int
 	return errMaxMetadataPerUserLimitExceeded
 }
 
+// AssertMaxSeriesPerLabelSet limit has not been reached compared to the current
+// number of metrics with metadata in input and returns an error if so.
 func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels, f func(validation.MaxSeriesPerLabelSet) (int, error)) error {
 	m := l.maxSeriesPerLabelSet(userID, metric)
 	for _, limit := range m {

@@ -125,45 +125,49 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 		s.RUnlock()
 
 		// We still dont keep track of this label value so we need to backfill
-		ir, err := u.db.Head().Index()
-		if err != nil {
-			return 0, err
-		}
-
-		defer ir.Close()
-
-		s.Lock()
-		defer s.Unlock()
-		if r, ok := s.valuesCounter[set.Hash]; !ok {
-			postings := make([]index.Postings, 0, len(set.LabelSet))
-			for _, lbl := range set.LabelSet {
-				p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
-				if err != nil {
-					return 0, err
-				}
-				postings = append(postings, p)
-			}
-
-			p := index.Intersect(postings...)
-
-			totalCount := 0
-			for p.Next() {
-				totalCount++
-			}
-
-			if p.Err() != nil {
-				return 0, p.Err()
-			}
-
-			s.valuesCounter[set.Hash] = &labelSetCounterEntry{
-				count:  totalCount,
-				labels: set.LabelSet,
-			}
-			return totalCount, nil
-		} else {
-			return r.count, nil
-		}
+		return m.backFillLimit(ctx, u, set, s)
 	})
+}
+
+func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, limit validation.MaxSeriesPerLabelSet, s *labelSetCounterShard) (int, error) {
+	ir, err := u.db.Head().Index()
+	if err != nil {
+		return 0, err
+	}
+
+	defer ir.Close()
+
+	s.Lock()
+	defer s.Unlock()
+	if r, ok := s.valuesCounter[limit.Hash]; !ok {
+		postings := make([]index.Postings, 0, len(limit.LabelSet))
+		for _, lbl := range limit.LabelSet {
+			p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
+			if err != nil {
+				return 0, err
+			}
+			postings = append(postings, p)
+		}
+
+		p := index.Intersect(postings...)
+
+		totalCount := 0
+		for p.Next() {
+			totalCount++
+		}
+
+		if p.Err() != nil {
+			return 0, p.Err()
+		}
+
+		s.valuesCounter[limit.Hash] = &labelSetCounterEntry{
+			count:  totalCount,
+			labels: limit.LabelSet,
+		}
+		return totalCount, nil
+	} else {
+		return r.count, nil
+	}
 }
 
 func (m *labelSetCounter) increaseSeriesLabelSet(u *userTSDB, metric labels.Labels) {
@@ -195,24 +199,36 @@ func (m *labelSetCounter) decreaseSeriesLabelSet(u *userTSDB, metric labels.Labe
 	}
 }
 
-func (m *labelSetCounter) UpdateMetric(u *userTSDB, vec *prometheus.GaugeVec) {
-	currentLbsLimitHash := map[uint64]struct{}{}
+func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, vec *prometheus.GaugeVec) error {
+	currentLbsLimitHash := map[uint64]validation.MaxSeriesPerLabelSet{}
 	for _, l := range m.limiter.limits.MaxSeriesPerLabelSet(u.userID) {
-		currentLbsLimitHash[l.Hash] = struct{}{}
+		currentLbsLimitHash[l.Hash] = l
 	}
 
 	for i := 0; i < numMetricCounterShards; i++ {
 		s := m.shards[i]
 		s.RLock()
 		for h, entry := range s.valuesCounter {
-			// This limit no longer ecists
+			// This limit no longer exists
 			if _, ok := currentLbsLimitHash[h]; !ok {
 				vec.DeleteLabelValues(u.userID, entry.labels.String())
 				continue
 			}
-
+			delete(currentLbsLimitHash, h)
 			vec.WithLabelValues(u.userID, entry.labels.String()).Set(float64(entry.count))
 		}
 		s.RUnlock()
 	}
+
+	// Backfill all limits that are not being tracked yet
+	for _, l := range currentLbsLimitHash {
+		s := m.shards[util.HashFP(model.Fingerprint(l.Hash))%numMetricCounterShards]
+		count, err := m.backFillLimit(ctx, u, l, s)
+		if err != nil {
+			return err
+		}
+		vec.WithLabelValues(u.userID, l.LabelSet.String()).Set(float64(count))
+	}
+
+	return nil
 }

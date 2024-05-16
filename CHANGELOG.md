@@ -8,6 +8,7 @@
 * [ENHANCEMENT] Distributor/Querier: Clean stale per-ingester metrics after ingester restarts. #5930
 * [ENHANCEMENT] Distributor/Ring: Allow disabling detailed ring metrics by ring member. #5931
 * [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
+* [ENHANCEMENT] Ingester: Add a new `max_series_per_label_set` limit. This limit functions similarly to `max_series_per_metric`, but allowing users to define the maximum number of series per LabelSet. #5950
 * [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
 * [CHANGE] Query Frontend/Ruler: Omit empty data field in API response. #5953 #5954
 * [BUGFIX] Configsdb: Fix endline issue in db password. #5920

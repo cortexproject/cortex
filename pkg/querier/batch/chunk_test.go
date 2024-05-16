@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/util"
 	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 )
 
@@ -47,45 +47,8 @@ func forEncodings(t *testing.T, f func(t *testing.T, enc promchunk.Encoding)) {
 	}
 }
 
-func mkChunk(t require.TestingT, step time.Duration, from model.Time, points int, enc promchunk.Encoding) chunk.Chunk {
-	metric := labels.Labels{
-		{Name: model.MetricNameLabel, Value: "foo"},
-	}
-	pe := enc.PromChunkEncoding()
-	pc, err := chunkenc.NewEmptyChunk(pe)
-	require.NoError(t, err)
-	appender, err := pc.Appender()
-	require.NoError(t, err)
-	ts := from
-
-	switch pe {
-	case chunkenc.EncXOR:
-		for i := 0; i < points; i++ {
-			appender.Append(int64(ts), float64(ts))
-			ts = ts.Add(step)
-		}
-	case chunkenc.EncHistogram:
-		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points, 5, 20)
-		for i := 0; i < points; i++ {
-			_, _, appender, err = appender.AppendHistogram(nil, int64(ts), histograms[i], true)
-			require.NoError(t, err)
-			ts = ts.Add(step)
-		}
-	case chunkenc.EncFloatHistogram:
-		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points, 5, 20)
-		for i := 0; i < points; i++ {
-			_, _, appender, err = appender.AppendFloatHistogram(nil, int64(ts), histograms[i].ToFloat(nil), true)
-			require.NoError(t, err)
-			ts = ts.Add(step)
-		}
-	}
-
-	ts = ts.Add(-step) // undo the add that we did just before exiting the loop
-	return chunk.NewChunk(metric, pc, from, ts)
-}
-
 func mkGenericChunk(t require.TestingT, from model.Time, points int, enc promchunk.Encoding) GenericChunk {
-	ck := mkChunk(t, step, from, points, enc)
+	ck := util.GenerateChunk(t, step, from, points, enc)
 	return NewGenericChunk(int64(ck.From), int64(ck.Through), ck.NewIterator)
 }
 

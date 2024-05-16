@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
 	"io"
 	"math"
 	"net"
@@ -27,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -42,8 +42,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -52,11 +50,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+var (
+	encodings = []encoding.Encoding{
+		encoding.PrometheusXorChunk,
+		encoding.PrometheusHistogramChunk,
+		encoding.PrometheusFloatHistogramChunk,
+	}
 )
 
 func runTestQuery(ctx context.Context, t *testing.T, ing *Ingester, ty labels.MatchType, n, v string) (model.Matrix, *client.QueryRequest, error) {
@@ -143,7 +151,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(chunksDir, os.ModePerm))
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
-	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
@@ -376,7 +384,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Should persist between restarts
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	registry = prometheus.NewRegistry()
-	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
+	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry, true)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	ing.updateActiveSeries(ctx)
@@ -661,8 +669,9 @@ func TestIngester_Push(t *testing.T) {
 		disableActiveSeries       bool
 		maxExemplars              int
 		oooTimeWindow             time.Duration
+		disableNativeHistogram    bool
 	}{
-		"should record native histogram": {
+		"should record native histogram discarded": {
 			reqs: []*cortexpb.WriteRequest{
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
@@ -684,7 +693,8 @@ func TestIngester_Push(t *testing.T) {
 			expectedMetadataIngested: []*cortexpb.MetricMetadata{
 				{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 			},
-			additionalMetrics: []string{},
+			additionalMetrics:      []string{},
+			disableNativeHistogram: true,
 			expectedMetrics: `
 				# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 				# TYPE cortex_ingester_ingested_samples_total counter
@@ -1246,7 +1256,7 @@ func TestIngester_Push(t *testing.T) {
 			limits := defaultLimitsTestConfig()
 			limits.MaxExemplars = testData.maxExemplars
 			limits.OutOfOrderTimeWindow = model.Duration(testData.oooTimeWindow)
-			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry, !testData.disableNativeHistogram)
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -1798,7 +1808,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 						return instanceLimits
 					}
 
-					ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, nil, "", registry)
+					ingester, err := prepareIngesterWithBlocksStorageAndLimits(b, cfg, limits, nil, "", registry, true)
 					require.NoError(b, err)
 					require.NoError(b, services.StartAndAwaitRunning(context.Background(), ingester))
 					defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
@@ -2491,70 +2501,85 @@ func TestIngester_QueryStream(t *testing.T) {
 	// Create ingester.
 	cfg := defaultIngesterTestConfig(t)
 
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
-	require.NoError(t, err)
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
-
-	// Wait until it's ACTIVE.
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
-		return i.lifecycler.GetState()
-	})
-
-	// Push series.
-	ctx := user.InjectOrgID(context.Background(), userID)
-	lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
-	req, expectedResponseChunks := mockWriteRequest(t, lbls, 123000, 456)
-	_, err = i.Push(ctx, req)
-	require.NoError(t, err)
-
-	// Create a GRPC server used to query back the data.
-	serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
-	defer serv.GracefulStop()
-	client.RegisterIngesterServer(serv, i)
-
-	listener, err := net.Listen("tcp", "localhost:0")
-	require.NoError(t, err)
-
-	go func() {
-		require.NoError(t, serv.Serve(listener))
-	}()
-
-	// Query back the series using GRPC streaming.
-	c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
-	require.NoError(t, err)
-	defer c.Close()
-
-	queryRequest := &client.QueryRequest{
-		StartTimestampMs: 0,
-		EndTimestampMs:   200000,
-		Matchers: []*client.LabelMatcher{{
-			Type:  client.EQUAL,
-			Name:  model.MetricNameLabel,
-			Value: "foo",
-		}},
-	}
-
-	chunksTest := func(t *testing.T) {
-		s, err := c.QueryStream(ctx, queryRequest)
-		require.NoError(t, err)
-
-		count := 0
-		var lastResp *client.QueryStreamResponse
-		for {
-			resp, err := s.Recv()
-			if err == io.EOF {
-				break
-			}
+	for _, enc := range encodings {
+		t.Run(enc.String(), func(t *testing.T) {
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
 			require.NoError(t, err)
-			count += len(resp.Chunkseries)
-			lastResp = resp
-		}
-		require.Equal(t, 1, count)
-		require.Equal(t, expectedResponseChunks, lastResp)
-	}
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
-	t.Run("chunks", chunksTest)
+			// Wait until it's ACTIVE.
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+				return i.lifecycler.GetState()
+			})
+
+			// Push series.
+			ctx := user.InjectOrgID(context.Background(), userID)
+			lbls := labels.Labels{{Name: labels.MetricName, Value: "foo"}}
+			var (
+				req                    *cortexpb.WriteRequest
+				expectedResponseChunks *client.QueryStreamResponse
+			)
+			switch enc {
+			case encoding.PrometheusXorChunk:
+				req, expectedResponseChunks = mockWriteRequest(t, lbls, 123000, 456)
+			case encoding.PrometheusHistogramChunk:
+				req, expectedResponseChunks = mockHistogramWriteRequest(t, lbls, 123000, 456, false)
+			case encoding.PrometheusFloatHistogramChunk:
+				req, expectedResponseChunks = mockHistogramWriteRequest(t, lbls, 123000, 456, true)
+			}
+			_, err = i.Push(ctx, req)
+			require.NoError(t, err)
+
+			// Create a GRPC server used to query back the data.
+			serv := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+			defer serv.GracefulStop()
+			client.RegisterIngesterServer(serv, i)
+
+			listener, err := net.Listen("tcp", "localhost:0")
+			require.NoError(t, err)
+
+			go func() {
+				require.NoError(t, serv.Serve(listener))
+			}()
+
+			// Query back the series using GRPC streaming.
+			c, err := client.MakeIngesterClient(listener.Addr().String(), defaultClientTestConfig())
+			require.NoError(t, err)
+			defer c.Close()
+
+			queryRequest := &client.QueryRequest{
+				StartTimestampMs: 0,
+				EndTimestampMs:   200000,
+				Matchers: []*client.LabelMatcher{{
+					Type:  client.EQUAL,
+					Name:  model.MetricNameLabel,
+					Value: "foo",
+				}},
+			}
+
+			chunksTest := func(t *testing.T) {
+				s, err := c.QueryStream(ctx, queryRequest)
+				require.NoError(t, err)
+
+				count := 0
+				var lastResp *client.QueryStreamResponse
+				for {
+					resp, err := s.Recv()
+					if err == io.EOF {
+						break
+					}
+					require.NoError(t, err)
+					count += len(resp.Chunkseries)
+					lastResp = resp
+				}
+				require.Equal(t, 1, count)
+				require.Equal(t, expectedResponseChunks, lastResp)
+			}
+
+			t.Run("chunks", chunksTest)
+		})
+	}
 }
 
 func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
@@ -2781,11 +2806,66 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 	return req, expectedQueryStreamResChunks
 }
 
-func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
-	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), nil, "", registerer)
+func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int, timestampMs int64, float bool) (*cortexpb.WriteRequest, *client.QueryStreamResponse) {
+	var (
+		histograms []cortexpb.Histogram
+		h          *histogram.Histogram
+		fh         *histogram.FloatHistogram
+		c          chunkenc.Chunk
+	)
+	if float {
+		fh = histogram_util.GenerateTestFloatHistogram(value)
+		histograms = []cortexpb.Histogram{
+			cortexpb.FloatHistogramToHistogramProto(timestampMs, fh),
+		}
+		c = chunkenc.NewFloatHistogramChunk()
+	} else {
+		h = histogram_util.GenerateTestHistogram(value)
+		histograms = []cortexpb.Histogram{
+			cortexpb.HistogramToHistogramProto(timestampMs, h),
+		}
+		c = chunkenc.NewHistogramChunk()
+	}
+
+	app, err := c.Appender()
+	require.NoError(t, err)
+	if float {
+		_, _, _, err = app.AppendFloatHistogram(nil, timestampMs, fh, true)
+	} else {
+		_, _, _, err = app.AppendHistogram(nil, timestampMs, h, true)
+	}
+	require.NoError(t, err)
+	c.Compact()
+
+	req := cortexpb.ToWriteRequest([]labels.Labels{lbls}, nil, nil, histograms, cortexpb.API)
+	enc := int32(encoding.PrometheusHistogramChunk)
+	if float {
+		enc = int32(encoding.PrometheusFloatHistogramChunk)
+	}
+	expectedQueryStreamResChunks := &client.QueryStreamResponse{
+		Chunkseries: []client.TimeSeriesChunk{
+			{
+				Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
+				Chunks: []client.Chunk{
+					{
+						StartTimestampMs: timestampMs,
+						EndTimestampMs:   timestampMs,
+						Encoding:         enc,
+						Data:             c.Bytes(),
+					},
+				},
+			},
+		},
+	}
+
+	return req, expectedQueryStreamResChunks
 }
 
-func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer) (*Ingester, error) {
+func prepareIngesterWithBlocksStorage(t testing.TB, ingesterCfg Config, registerer prometheus.Registerer) (*Ingester, error) {
+	return prepareIngesterWithBlocksStorageAndLimits(t, ingesterCfg, defaultLimitsTestConfig(), nil, "", registerer, true)
+}
+
+func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config, limits validation.Limits, tenantLimits validation.TenantLimits, dataDir string, registerer prometheus.Registerer, nativeHistograms bool) (*Ingester, error) {
 	// Create a data dir if none has been provided.
 	if dataDir == "" {
 		dataDir = t.TempDir()
@@ -2801,6 +2881,7 @@ func prepareIngesterWithBlocksStorageAndLimits(t testing.TB, ingesterCfg Config,
 	ingesterCfg.BlocksStorageConfig.TSDB.Dir = dataDir
 	ingesterCfg.BlocksStorageConfig.Bucket.Backend = "filesystem"
 	ingesterCfg.BlocksStorageConfig.Bucket.Filesystem.Directory = bucketDir
+	ingesterCfg.BlocksStorageConfig.TSDB.EnableNativeHistograms = nativeHistograms
 
 	ingester, err := New(ingesterCfg, overrides, registerer, log.NewNopLogger())
 	if err != nil {

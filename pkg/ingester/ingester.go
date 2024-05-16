@@ -25,6 +25,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -1098,8 +1099,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
 
-		nativeHistogramCount += len(ts.Histograms)
-
 		for _, s := range ts.Samples {
 			var err error
 
@@ -1173,6 +1172,89 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			}
 
 			return nil, wrapWithUser(err, userID)
+		}
+
+		if i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms {
+			for _, hp := range ts.Histograms {
+				var (
+					err error
+					h   *histogram.Histogram
+					fh  *histogram.FloatHistogram
+				)
+
+				if hp.GetCountFloat() > 0 {
+					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
+				} else {
+					h = cortexpb.HistogramProtoToHistogram(hp)
+				}
+
+				if ref != 0 {
+					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+						succeededSamplesCount++
+						continue
+					}
+				} else {
+					// Copy the label set because both TSDB and the active series tracker may retain it.
+					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+						succeededSamplesCount++
+						continue
+					}
+				}
+
+				failedSamplesCount++
+
+				// Check if the error is a soft error we can proceed on. If so, we keep track
+				// of it, so that we can return it back to the distributor, which will return a
+				// 400 error to the client. The client (Prometheus) will not retry on 400, and
+				// we actually ingested all samples which haven't failed.
+				switch cause := errors.Cause(err); {
+				case errors.Is(cause, storage.ErrOutOfBounds):
+					sampleOutOfBoundsCount++
+					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
+					continue
+
+				case errors.Is(cause, storage.ErrOutOfOrderSample):
+					sampleOutOfOrderCount++
+					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
+					continue
+
+				case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
+					newValueForTimestampCount++
+					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
+					continue
+
+				case errors.Is(cause, storage.ErrTooOldSample):
+					sampleTooOldCount++
+					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
+					continue
+
+				case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
+					perUserSeriesLimitCount++
+					updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
+					continue
+
+				case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
+					perMetricSeriesLimitCount++
+					updateFirstPartial(func() error {
+						return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+					})
+					continue
+				case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
+					updateFirstPartial(func() error {
+						return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+					})
+					continue
+				}
+
+				// The error looks an issue on our side, so we should rollback
+				if rollbackErr := app.Rollback(); rollbackErr != nil {
+					level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
+				}
+				return nil, wrapWithUser(err, userID)
+			}
+		} else {
+			nativeHistogramCount += len(ts.Histograms)
 		}
 
 		if i.cfg.ActiveSeriesMetricsEnabled && succeededSamplesCount > oldSucceededSamplesCount {
@@ -1260,11 +1342,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
-	if nativeHistogramCount > 0 {
+	if !i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms && nativeHistogramCount > 0 {
 		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
 	}
 
-	// Distributor counts both samples and metadata, so for consistency ingester does the same.
+	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
 	i.ingestionRate.Add(int64(succeededSamplesCount + ingestedMetadata))
 
 	switch req.Source {
@@ -1853,6 +1935,10 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 			switch meta.Chunk.Encoding() {
 			case chunkenc.EncXOR:
 				ch.Encoding = int32(encoding.PrometheusXorChunk)
+			case chunkenc.EncHistogram:
+				ch.Encoding = int32(encoding.PrometheusHistogramChunk)
+			case chunkenc.EncFloatHistogram:
+				ch.Encoding = int32(encoding.PrometheusFloatHistogramChunk)
 			default:
 				return 0, 0, 0, errors.Errorf("unknown chunk encoding from TSDB chunk querier: %v", meta.Chunk.Encoding())
 			}
@@ -2018,6 +2104,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
+		EnableNativeHistograms:         i.cfg.BlocksStorageConfig.TSDB.EnableNativeHistograms,
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

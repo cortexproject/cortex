@@ -247,14 +247,20 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_tsdb_head_gc_duration_seconds_count 3
         	# HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
         	# TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
-        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user1"} 102
-        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user2"} 102
-        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user3"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="user1"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="user2"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="user3"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="histogram",user="user1"} 103
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="histogram",user="user2"} 103
+            cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="histogram",user="user3"} 103
         	# HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
         	# TYPE cortex_ingester_tsdb_head_samples_appended_total counter
 			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user1"} 101
 			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user2"} 101
 			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user3"} 101
+        	cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="user1"} 102
+        	cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="user2"} 102
+        	cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="user3"} 102
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
 			cortex_ingester_tsdb_checkpoint_deletions_failed_total 1586096
@@ -492,12 +498,16 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			cortex_ingester_tsdb_head_gc_duration_seconds_count 3
         	# HELP cortex_ingester_tsdb_head_out_of_order_samples_appended_total Total number of appended out of order samples.
         	# TYPE cortex_ingester_tsdb_head_out_of_order_samples_appended_total counter
-        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user1"} 102
-        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{user="user2"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="user1"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="float",user="user2"} 102
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="histogram",user="user1"} 103
+        	cortex_ingester_tsdb_head_out_of_order_samples_appended_total{type="histogram",user="user2"} 103
         	# HELP cortex_ingester_tsdb_head_samples_appended_total Total number of appended samples.
         	# TYPE cortex_ingester_tsdb_head_samples_appended_total counter
 			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user1"} 101
 			cortex_ingester_tsdb_head_samples_appended_total{type="float",user="user2"} 101
+        	cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="user1"} 102
+        	cortex_ingester_tsdb_head_samples_appended_total{type="histogram",user="user2"} 102
 
 			# HELP cortex_ingester_tsdb_checkpoint_deletions_failed_total Total number of TSDB checkpoint deletions that failed.
 			# TYPE cortex_ingester_tsdb_checkpoint_deletions_failed_total counter
@@ -813,13 +823,15 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Name: "prometheus_tsdb_head_samples_appended_total",
 		Help: "Total number of appended samples.",
 	}, []string{"type"})
-	samplesAppended.WithLabelValues("float").Add(101)
+	samplesAppended.WithLabelValues(sampleMetricTypeFloat).Add(101)
+	samplesAppended.WithLabelValues(sampleMetricTypeHistogram).Add(102)
 
-	outOfOrderSamplesAppended := promauto.With(r).NewCounter(prometheus.CounterOpts{
+	outOfOrderSamplesAppended := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_head_out_of_order_samples_appended_total",
 		Help: "Total number of appended out of order samples.",
-	})
-	outOfOrderSamplesAppended.Add(102)
+	}, []string{"type"})
+	outOfOrderSamplesAppended.WithLabelValues(sampleMetricTypeFloat).Add(102)
+	outOfOrderSamplesAppended.WithLabelValues(sampleMetricTypeHistogram).Add(103)
 
 	snapshotReplayErrorTotal := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_snapshot_replay_error_total",

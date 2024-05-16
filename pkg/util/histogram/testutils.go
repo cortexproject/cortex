@@ -53,3 +53,41 @@ func GenerateTestHistograms(from, step, numHistograms, numSpans, numBuckets int)
 	}
 	return histograms
 }
+
+func GenerateTestHistogram(i int) *histogram.Histogram {
+	bucketsPerSide := 10
+	spanLength := uint32(2)
+	// Given all bucket deltas are 1, sum bucketsPerSide + 1.
+	observationCount := bucketsPerSide * (1 + bucketsPerSide)
+
+	v := 10 + i
+	h := &histogram.Histogram{
+		CounterResetHint: histogram.GaugeType,
+		Count:            uint64(v + observationCount),
+		ZeroCount:        uint64(v),
+		ZeroThreshold:    1e-128,
+		Sum:              18.4 * float64(v+1),
+		Schema:           2,
+		NegativeSpans:    make([]histogram.Span, 5),
+		PositiveSpans:    make([]histogram.Span, 5),
+		NegativeBuckets:  make([]int64, bucketsPerSide),
+		PositiveBuckets:  make([]int64, bucketsPerSide),
+	}
+
+	for j := 0; j < 5; j++ {
+		s := histogram.Span{Offset: 1, Length: spanLength}
+		h.NegativeSpans[j] = s
+		h.PositiveSpans[j] = s
+	}
+
+	for j := 0; j < bucketsPerSide; j++ {
+		h.NegativeBuckets[j] = 1
+		h.PositiveBuckets[j] = 1
+	}
+
+	return h
+}
+
+func GenerateTestFloatHistogram(i int) *histogram.FloatHistogram {
+	return GenerateTestHistogram(i).ToFloat(nil)
+}

@@ -154,21 +154,39 @@ func SeriesSetToQueryResponse(s storage.SeriesSet) (*QueryResponse, error) {
 	for s.Next() {
 		series := s.At()
 		samples := []cortexpb.Sample{}
+		histograms := []cortexpb.Histogram{}
 		it = series.Iterator(it)
-		for it.Next() != chunkenc.ValNone {
-			t, v := it.At()
-			samples = append(samples, cortexpb.Sample{
-				TimestampMs: t,
-				Value:       v,
-			})
+		for valType := it.Next(); valType != chunkenc.ValNone; valType = it.Next() {
+			switch valType {
+			case chunkenc.ValFloat:
+				t, v := it.At()
+				samples = append(samples, cortexpb.Sample{
+					TimestampMs: t,
+					Value:       v,
+				})
+			case chunkenc.ValHistogram:
+				t, v := it.AtHistogram(nil)
+				histograms = append(histograms, cortexpb.HistogramToHistogramProto(t, v))
+			case chunkenc.ValFloatHistogram:
+				t, v := it.AtFloatHistogram(nil)
+				histograms = append(histograms, cortexpb.FloatHistogramToHistogramProto(t, v))
+			default:
+				panic("unhandled default case")
+			}
 		}
 		if err := it.Err(); err != nil {
 			return nil, err
 		}
-		result.Timeseries = append(result.Timeseries, cortexpb.TimeSeries{
-			Labels:  cortexpb.FromLabelsToLabelAdapters(series.Labels()),
-			Samples: samples,
-		})
+		ts := cortexpb.TimeSeries{
+			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
+		}
+		if len(samples) > 0 {
+			ts.Samples = samples
+		}
+		if len(histograms) > 0 {
+			ts.Histograms = histograms
+		}
+		result.Timeseries = append(result.Timeseries, ts)
 	}
 
 	return result, s.Err()

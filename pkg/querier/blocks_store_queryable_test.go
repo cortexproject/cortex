@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+
 	"io"
 	"sort"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
@@ -33,6 +35,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -1824,13 +1827,9 @@ func valuesFromSeries(name string, series ...labels.Labels) []string {
 }
 
 func TestCountSamplesAndChunks(t *testing.T) {
-	c := chunkenc.NewXORChunk()
-	appender, err := c.Appender()
-	require.NoError(t, err)
-	samples := 300
-	for i := 0; i < samples; i++ {
-		appender.Append(int64(i), float64(i))
-	}
+	floatChk := util.GenerateChunk(t, time.Second, model.Time(0), 100, encoding.PrometheusXorChunk)
+	histogramChk := util.GenerateChunk(t, time.Second, model.Time(0), 300, encoding.PrometheusHistogramChunk)
+	floatHistogramChk := util.GenerateChunk(t, time.Second, model.Time(0), 500, encoding.PrometheusFloatHistogramChunk)
 
 	for i, tc := range []struct {
 		serieses        []*storepb.Series
@@ -1844,13 +1843,13 @@ func TestCountSamplesAndChunks(t *testing.T) {
 						{
 							Raw: &storepb.Chunk{
 								Type: storepb.Chunk_XOR,
-								Data: c.Bytes(),
+								Data: floatChk.Data.Bytes(),
 							},
 						},
 					},
 				},
 			},
-			expectedSamples: uint64(samples),
+			expectedSamples: uint64(100),
 			expectedChunks:  1,
 		},
 		{
@@ -1860,20 +1859,48 @@ func TestCountSamplesAndChunks(t *testing.T) {
 						{
 							Raw: &storepb.Chunk{
 								Type: storepb.Chunk_XOR,
-								Data: c.Bytes(),
+								Data: floatChk.Data.Bytes(),
 							},
 						},
 						{
 							Raw: &storepb.Chunk{
-								Type: storepb.Chunk_XOR,
-								Data: c.Bytes(),
+								Type: storepb.Chunk_HISTOGRAM,
+								Data: histogramChk.Data.Bytes(),
 							},
 						},
 					},
 				},
 			},
-			expectedSamples: uint64(int64(samples) * 2),
+			expectedSamples: 400,
 			expectedChunks:  2,
+		},
+		{
+			serieses: []*storepb.Series{
+				{
+					Chunks: []storepb.AggrChunk{
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_XOR,
+								Data: floatChk.Data.Bytes(),
+							},
+						},
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_HISTOGRAM,
+								Data: histogramChk.Data.Bytes(),
+							},
+						},
+						{
+							Raw: &storepb.Chunk{
+								Type: storepb.Chunk_FLOAT_HISTOGRAM,
+								Data: floatHistogramChk.Data.Bytes(),
+							},
+						},
+					},
+				},
+			},
+			expectedSamples: 900,
+			expectedChunks:  3,
 		},
 	} {
 		t.Run(fmt.Sprintf("test_case_%d", i), func(t *testing.T) {

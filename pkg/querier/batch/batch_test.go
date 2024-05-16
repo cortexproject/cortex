@@ -11,6 +11,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/cortexproject/cortex/pkg/util"
 	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 )
 
@@ -127,8 +128,8 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 		promchunk.PrometheusFloatHistogramChunk,
 	} {
 		valType := enc.ChunkValueType()
-		chunkOne := mkChunk(t, step, model.Time(1*step/time.Millisecond), 1, enc)
-		chunkTwo := mkChunk(t, step, model.Time(10*step/time.Millisecond), 1, enc)
+		chunkOne := util.GenerateChunk(t, step, model.Time(1*step/time.Millisecond), 1, enc)
+		chunkTwo := util.GenerateChunk(t, step, model.Time(10*step/time.Millisecond), 1, enc)
 		chunks := []chunk.Chunk{chunkOne, chunkTwo}
 
 		sut := NewChunkMergeIterator(chunks, 0, 0)
@@ -140,7 +141,7 @@ func TestSeekCorrectlyDealWithSinglePointChunks(t *testing.T) {
 		switch enc {
 		case promchunk.PrometheusXorChunk:
 			actual, val := sut.At()
-			require.Equal(t, float64(1*time.Second/time.Millisecond), val) // since mkChunk use ts as value.
+			require.Equal(t, float64(1*time.Second/time.Millisecond), val) // since util.GenerateChunk use ts as value.
 			require.Equal(t, int64(1*time.Second/time.Millisecond), actual)
 		case promchunk.PrometheusHistogramChunk:
 			actual, val := sut.AtHistogram(nil)
@@ -160,7 +161,7 @@ func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChun
 	for d := 0; d < duplicationFactor; d++ {
 		for c := 0; c < numChunks; c++ {
 			minTime := step * time.Duration(c*numSamplesPerChunk)
-			result = append(result, mkChunk(b, step, model.Time(minTime.Milliseconds()), numSamplesPerChunk, enc))
+			result = append(result, util.GenerateChunk(b, step, model.Time(minTime.Milliseconds()), numSamplesPerChunk, enc))
 		}
 	}
 

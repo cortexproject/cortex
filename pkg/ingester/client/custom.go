@@ -37,7 +37,8 @@ func (m *QueryStreamResponse) ChunksSize() int {
 func (m *QueryStreamResponse) SamplesCount() (count int) {
 	for _, cs := range m.Chunkseries {
 		for _, c := range cs.Chunks {
-			if c.Encoding == int32(encoding.PrometheusXorChunk) {
+			switch c.Encoding {
+			case int32(encoding.PrometheusXorChunk), int32(encoding.PrometheusHistogramChunk), int32(encoding.PrometheusFloatHistogramChunk):
 				count += int(binary.BigEndian.Uint16(c.Data))
 			}
 		}

@@ -4,7 +4,7 @@
 
 ## 1.17.1 2024-05-20
 
-* [CHANGE] Query Frontend/Ruler: Omit empty data field in API response. #5953
+* [CHANGE] Query Frontend/Ruler: Omit empty data, errorType and error fields in API response. #5953 #5954
 
 ## 1.17.0 2024-04-30
 

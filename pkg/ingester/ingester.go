@@ -877,7 +877,7 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.stoppedMtx.RUnlock()
 
 		case <-activeSeriesTickerChan:
-			i.updateActiveSeries()
+			i.updateActiveSeries(ctx)
 		case <-maxInflightRequestResetTicker.C:
 			i.maxInflightQueryRequests.Tick()
 		case <-userTSDBConfigTicker.C:
@@ -929,7 +929,7 @@ func (i *Ingester) getMaxExemplars(userID string) int64 {
 	return int64(maxExemplarsFromLimits)
 }
 
-func (i *Ingester) updateActiveSeries() {
+func (i *Ingester) updateActiveSeries(ctx context.Context) {
 	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout)
 
 	for _, userID := range i.getTSDBUsers() {
@@ -940,7 +940,9 @@ func (i *Ingester) updateActiveSeries() {
 
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
-		userDB.labelSetCounter.UpdateMetric(userDB, i.metrics.activeSeriesPerLabelSet)
+		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics.activeSeriesPerLabelSet); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
+		}
 	}
 }
 
@@ -1054,18 +1056,19 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
-		succeededSamplesCount     = 0
-		failedSamplesCount        = 0
-		succeededExemplarsCount   = 0
-		failedExemplarsCount      = 0
-		startAppend               = time.Now()
-		sampleOutOfBoundsCount    = 0
-		sampleOutOfOrderCount     = 0
-		sampleTooOldCount         = 0
-		newValueForTimestampCount = 0
-		perUserSeriesLimitCount   = 0
-		perMetricSeriesLimitCount = 0
-		nativeHistogramCount      = 0
+		succeededSamplesCount       = 0
+		failedSamplesCount          = 0
+		succeededExemplarsCount     = 0
+		failedExemplarsCount        = 0
+		startAppend                 = time.Now()
+		sampleOutOfBoundsCount      = 0
+		sampleOutOfOrderCount       = 0
+		sampleTooOldCount           = 0
+		newValueForTimestampCount   = 0
+		perUserSeriesLimitCount     = 0
+		perLabelSetSeriesLimitCount = 0
+		perMetricSeriesLimitCount   = 0
+		nativeHistogramCount        = 0
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1150,6 +1153,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				})
 				continue
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
+				perLabelSetSeriesLimitCount++
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
 				})
@@ -1244,6 +1248,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 	if perMetricSeriesLimitCount > 0 {
 		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+	}
+	if perLabelSetSeriesLimitCount > 0 {
+		validation.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
 	if nativeHistogramCount > 0 {

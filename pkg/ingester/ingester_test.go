@@ -109,6 +109,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
+	registry.MustRegister(validation.DiscardedSamples)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
@@ -132,13 +133,13 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 		}
 	}
 
-	ing.updateActiveSeries()
+	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
 				# TYPE cortex_ingester_active_series_per_labelset gauge
 				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
 				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset"))
+	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
 
 	// Should impose limits
 	for _, set := range limits.MaxSeriesPerLabelSet {
@@ -154,13 +155,16 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 		require.ErrorContains(t, err, set.Id)
 	}
 
-	ing.updateActiveSeries()
+	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
 				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
 				# TYPE cortex_ingester_active_series_per_labelset gauge
 				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
 				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset"))
+	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
 
 	// Should apply composite limits
 	limits.MaxSeriesPerLabelSet = append(limits.MaxSeriesPerLabelSet,
@@ -187,6 +191,21 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, limits.UnmarshalJSON(b))
 	tenantLimits.setLimits(userID, &limits)
 
+	// Should backfill
+	ing.updateActiveSeries(ctx)
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
+				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
+				# TYPE cortex_ingester_active_series_per_labelset gauge
+				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",user="1"} 0
+				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\"}",user="1"} 0
+				cortex_ingester_active_series_per_labelset{labelset="{comp2=\"compValue2\"}",user="1"} 0
+				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
+				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
+	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
+
 	// Adding 5 metrics with only 1 label
 	for i := 0; i < 5; i++ {
 		lbls := []string{labels.MetricName, "metric_name", "comp1", "compValue1"}
@@ -211,8 +230,11 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 	require.ErrorContains(t, err, labels.FromStrings("comp1", "compValue1", "comp2", "compValue2").String())
 
-	ing.updateActiveSeries()
+	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+				# TYPE cortex_discarded_samples_total counter
+				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 3
 				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
 				# TYPE cortex_ingester_active_series_per_labelset gauge
 				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
@@ -220,7 +242,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",user="1"} 2
 				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\"}",user="1"} 7
 				cortex_ingester_active_series_per_labelset{labelset="{comp2=\"compValue2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset"))
+	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
 
 	// Should bootstrap and apply limits when configuration change
 	limits.MaxSeriesPerLabelSet = append(limits.MaxSeriesPerLabelSet,
@@ -249,7 +271,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
 	require.ErrorContains(t, err, labels.FromStrings(lbls...).String())
 
-	ing.updateActiveSeries()
+	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
 				# TYPE cortex_ingester_active_series_per_labelset gauge
@@ -267,7 +289,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, limits.UnmarshalJSON(b))
 	tenantLimits.setLimits(userID, &limits)
-	ing.updateActiveSeries()
+	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
 				# TYPE cortex_ingester_active_series_per_labelset gauge
@@ -281,7 +303,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	ing, err = prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
-	ing.updateActiveSeries()
+	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
 				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
 				# TYPE cortex_ingester_active_series_per_labelset gauge
@@ -1207,7 +1229,7 @@ func TestIngester_Push(t *testing.T) {
 
 			// Update active series for metrics check.
 			if !testData.disableActiveSeries {
-				i.updateActiveSeries()
+				i.updateActiveSeries(ctx)
 			}
 
 			// Append additional metrics to assert on.
@@ -1274,7 +1296,7 @@ func TestIngester_Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testi
 	}
 
 	// Update active series for metrics check.
-	i.updateActiveSeries()
+	i.updateActiveSeries(context.Background())
 
 	// Check tracked Prometheus metrics
 	expectedMetrics := `
@@ -1361,7 +1383,7 @@ func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Update active series for metrics check. This will remove inactive series.
-	i.updateActiveSeries()
+	i.updateActiveSeries(context.Background())
 
 	// Check tracked Prometheus metrics
 	expectedMetrics := `
@@ -3733,7 +3755,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	})
 
 	pushSingleSampleWithMetadata(t, i)
-	i.updateActiveSeries()
+	i.updateActiveSeries(context.Background())
 
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 
@@ -3774,7 +3796,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	})
 
 	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
-	i.updateActiveSeries()
+	i.updateActiveSeries(context.Background())
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load()) // Flushing removed all series from memory.
 
 	// Verify that user has disappeared from metrics.
@@ -3799,7 +3821,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 
 	// Pushing another sample will recreate TSDB.
 	pushSingleSampleWithMetadata(t, i)
-	i.updateActiveSeries()
+	i.updateActiveSeries(context.Background())
 
 	// User is back.
 	require.NoError(t, testutil.GatherAndCompare(r, strings.NewReader(`

@@ -969,7 +969,7 @@ github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
-# github.com/thanos-io/thanos v0.34.2-0.20240501161908-1e745af6720c
+# github.com/thanos-io/thanos v0.35.1-0.20240517203736-9e6cbd9fdd9d
 ## explicit; go 1.21
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -993,6 +993,7 @@ github.com/thanos-io/thanos/pkg/extgrpc/snappy
 github.com/thanos-io/thanos/pkg/extkingpin
 github.com/thanos-io/thanos/pkg/extprom
 github.com/thanos-io/thanos/pkg/extprom/http
+github.com/thanos-io/thanos/pkg/extpromql
 github.com/thanos-io/thanos/pkg/gate
 github.com/thanos-io/thanos/pkg/info/infopb
 github.com/thanos-io/thanos/pkg/losertree

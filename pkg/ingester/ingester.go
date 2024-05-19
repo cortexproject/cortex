@@ -111,6 +111,9 @@ type Config struct {
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
 
+	// UploadCompactedBlocksEnabled enables uploading compacted blocks.
+	UploadCompactedBlocksEnabled bool `yaml:"upload_compacted_blocks_enabled"`
+
 	// Injected at runtime and read from the distributor config, required
 	// to accurately apply global limits.
 	DistributorShardingStrategy string `yaml:"-"`
@@ -144,6 +147,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 
+	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.Float64Var(&cfg.DefaultLimits.MaxIngestionRate, "ingester.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that ingester will accept. This limit is per-ingester, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemoryTenants, "ingester.instance-limits.max-tenants", 0, "Max users that this ingester can hold. Requests from additional users will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
 	f.Int64Var(&cfg.DefaultLimits.MaxInMemorySeries, "ingester.instance-limits.max-series", 0, "Max series that this ingester can hold (across all tenants). Requests to create additional series will be rejected. This limit only works when using blocks engine. 0 = unlimited.")
@@ -2138,9 +2142,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			func() labels.Labels { return l },
 			metadata.ReceiveSource,
 			func() bool {
-				// There is no need to upload compacted blocks since OOO blocks
-				// won't be compacted due to overlap.
-				return false
+				return i.cfg.UploadCompactedBlocksEnabled
 			},
 			true, // Allow out of order uploads. It's fine in Cortex's context.
 			metadata.NoneFunc,

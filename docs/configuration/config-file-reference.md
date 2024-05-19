@@ -2928,6 +2928,10 @@ lifecycler:
 # CLI flag: -ingester.active-series-metrics-idle-timeout
 [active_series_metrics_idle_timeout: <duration> | default = 10m]
 
+# Enable uploading compacted blocks.
+# CLI flag: -ingester.upload-compacted-blocks-enabled
+[upload_compacted_blocks_enabled: <boolean> | default = true]
+
 instance_limits:
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected.

@@ -5,6 +5,7 @@
 ## 1.17.1 2024-05-20
 
 * [CHANGE] Query Frontend/Ruler: Omit empty data, errorType and error fields in API response. #5953 #5954
+* [ENHANCEMENT] Ingester: Added `upload_compacted_blocks_enabled` config to ingester to parameterize uploading compacted blocks. #5959
 
 ## 1.17.0 2024-04-30
 

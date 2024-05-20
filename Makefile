@@ -223,6 +223,7 @@ lint:
 		./pkg/ruler/...
 
 test:
+	go env
 	go test -tags netgo -timeout 30m -race -count 1 ./...
 
 cover:

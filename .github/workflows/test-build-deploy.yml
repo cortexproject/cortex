@@ -6,7 +6,8 @@ on:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
   pull_request:
-
+env:
+  GOMAXPROCS: 4
 jobs:
   lint:
     runs-on: ubuntu-20.04

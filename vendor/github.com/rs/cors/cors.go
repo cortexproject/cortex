@@ -26,6 +26,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/rs/cors/internal"
 )
 
 var headerVaryOrigin = []string{"Origin"}
@@ -49,13 +51,15 @@ type Options struct {
 	// takes the HTTP Request object and the origin as argument and returns true
 	// if allowed or false otherwise. If headers are used take the decision,
 	// consider using AllowOriginVaryRequestFunc instead. If this option is set,
-	// the content of `AllowedOrigins`, `AllowOriginFunc` are ignored.
+	// the contents of `AllowedOrigins`, `AllowOriginFunc` are ignored.
+	//
+	// Deprecated: use `AllowOriginVaryRequestFunc` instead.
 	AllowOriginRequestFunc func(r *http.Request, origin string) bool
 	// AllowOriginVaryRequestFunc is a custom function to validate the origin.
 	// It takes the HTTP Request object and the origin as argument and returns
 	// true if allowed or false otherwise with a list of headers used to take
 	// that decision if any so they can be added to the Vary header. If this
-	// option is set, the content of `AllowedOrigins`, `AllowOriginFunc` and
+	// option is set, the contents of `AllowedOrigins`, `AllowOriginFunc` and
 	// `AllowOriginRequestFunc` are ignored.
 	AllowOriginVaryRequestFunc func(r *http.Request, origin string) (bool, []string)
 	// AllowedMethods is a list of methods the client is allowed to use with
@@ -109,7 +113,11 @@ type Cors struct {
 	// Optional origin validator function
 	allowOriginFunc func(r *http.Request, origin string) (bool, []string)
 	// Normalized list of allowed headers
-	allowedHeaders []string
+	// Note: the Fetch standard guarantees that CORS-unsafe request-header names
+	// (i.e. the values listed in the Access-Control-Request-Headers header)
+	// are unique and sorted;
+	// see https://fetch.spec.whatwg.org/#cors-unsafe-request-header-names.
+	allowedHeaders internal.SortedSet
 	// Normalized list of allowed methods
 	allowedMethods []string
 	// Pre-computed normalized list of exposed headers
@@ -140,33 +148,29 @@ func New(options Options) *Cors {
 		c.Log = log.New(os.Stdout, "[cors] ", log.LstdFlags)
 	}
 
-	if options.AllowOriginVaryRequestFunc != nil {
+	// Allowed origins
+	switch {
+	case options.AllowOriginVaryRequestFunc != nil:
 		c.allowOriginFunc = options.AllowOriginVaryRequestFunc
-	} else if options.AllowOriginRequestFunc != nil {
+	case options.AllowOriginRequestFunc != nil:
 		c.allowOriginFunc = func(r *http.Request, origin string) (bool, []string) {
 			return options.AllowOriginRequestFunc(r, origin), nil
 		}
-	} else if options.AllowOriginFunc != nil {
+	case options.AllowOriginFunc != nil:
 		c.allowOriginFunc = func(r *http.Request, origin string) (bool, []string) {
 			return options.AllowOriginFunc(origin), nil
 		}
-	}
-
-	// Normalize options
-	// Note: for origins matching, the spec requires a case-sensitive matching.
-	// As it may error prone, we chose to ignore the spec here.
-
-	// Allowed Origins
-	if len(options.AllowedOrigins) == 0 {
+	case len(options.AllowedOrigins) == 0:
 		if c.allowOriginFunc == nil {
 			// Default is all origins
 			c.allowedOriginsAll = true
 		}
-	} else {
+	default:
 		c.allowedOrigins = []string{}
 		c.allowedWOrigins = []wildcard{}
 		for _, origin := range options.AllowedOrigins {
-			// Normalize
+			// Note: for origins matching, the spec requires a case-sensitive matching.
+			// As it may error prone, we chose to ignore the spec here.
 			origin = strings.ToLower(origin)
 			if origin == "*" {
 				// If "*" is present in the list, turn the whole list into a match all
@@ -185,15 +189,19 @@ func New(options Options) *Cors {
 	}
 
 	// Allowed Headers
+	// Note: the Fetch standard guarantees that CORS-unsafe request-header names
+	// (i.e. the values listed in the Access-Control-Request-Headers header)
+	// are lowercase; see https://fetch.spec.whatwg.org/#cors-unsafe-request-header-names.
 	if len(options.AllowedHeaders) == 0 {
 		// Use sensible defaults
-		c.allowedHeaders = []string{"Accept", "Content-Type", "X-Requested-With"}
+		c.allowedHeaders = internal.NewSortedSet("accept", "content-type", "x-requested-with")
 	} else {
-		c.allowedHeaders = convert(options.AllowedHeaders, http.CanonicalHeaderKey)
+		normalized := convert(options.AllowedHeaders, strings.ToLower)
+		c.allowedHeaders = internal.NewSortedSet(normalized...)
 		for _, h := range options.AllowedHeaders {
 			if h == "*" {
 				c.allowedHeadersAll = true
-				c.allowedHeaders = nil
+				c.allowedHeaders = internal.SortedSet{}
 				break
 			}
 		}
@@ -353,10 +361,12 @@ func (c *Cors) handlePreflight(w http.ResponseWriter, r *http.Request) {
 		c.logf("  Preflight aborted: method '%s' not allowed", reqMethod)
 		return
 	}
-	reqHeadersRaw := r.Header["Access-Control-Request-Headers"]
-	reqHeaders, reqHeadersEdited := convertDidCopy(splitHeaderValues(reqHeadersRaw), http.CanonicalHeaderKey)
-	if !c.areHeadersAllowed(reqHeaders) {
-		c.logf("  Preflight aborted: headers '%v' not allowed", reqHeaders)
+	// Note: the Fetch standard guarantees that at most one
+	// Access-Control-Request-Headers header is present in the preflight request;
+	// see step 5.2 in https://fetch.spec.whatwg.org/#cors-preflight-fetch-0.
+	reqHeaders, found := first(r.Header, "Access-Control-Request-Headers")
+	if found && !c.allowedHeadersAll && !c.allowedHeaders.Subsumes(reqHeaders[0]) {
+		c.logf("  Preflight aborted: headers '%v' not allowed", reqHeaders[0])
 		return
 	}
 	if c.allowedOriginsAll {
@@ -367,14 +377,10 @@ func (c *Cors) handlePreflight(w http.ResponseWriter, r *http.Request) {
 	// Spec says: Since the list of methods can be unbounded, simply returning the method indicated
 	// by Access-Control-Request-Method (if supported) can be enough
 	headers["Access-Control-Allow-Methods"] = r.Header["Access-Control-Request-Method"]
-	if len(reqHeaders) > 0 {
+	if found && len(reqHeaders[0]) > 0 {
 		// Spec says: Since the list of headers can be unbounded, simply returning supported headers
 		// from Access-Control-Request-Headers can be enough
-		if reqHeadersEdited || len(reqHeaders) != len(reqHeadersRaw) {
-			headers.Set("Access-Control-Allow-Headers", strings.Join(reqHeaders, ", "))
-		} else {
-			headers["Access-Control-Allow-Headers"] = reqHeadersRaw
-		}
+		headers["Access-Control-Allow-Headers"] = reqHeaders
 	}
 	if c.allowCredentials {
 		headers["Access-Control-Allow-Credentials"] = headerTrue
@@ -398,10 +404,10 @@ func (c *Cors) handleActualRequest(w http.ResponseWriter, r *http.Request) {
 	allowed, additionalVaryHeaders := c.isOriginAllowed(r, origin)
 
 	// Always set Vary, see https://github.com/rs/cors/issues/10
-	if vary, found := headers["Vary"]; found {
-		headers["Vary"] = append(vary, headerVaryOrigin[0])
-	} else {
+	if vary := headers["Vary"]; vary == nil {
 		headers["Vary"] = headerVaryOrigin
+	} else {
+		headers["Vary"] = append(vary, headerVaryOrigin[0])
 	}
 	if len(additionalVaryHeaders) > 0 {
 		headers.Add("Vary", strings.Join(convert(additionalVaryHeaders, http.CanonicalHeaderKey), ", "))
@@ -493,25 +499,4 @@ func (c *Cors) isMethodAllowed(method string) bool {
 		}
 	}
 	return false
-}
-
-// areHeadersAllowed checks if a given list of headers are allowed to used within
-// a cross-domain request.
-func (c *Cors) areHeadersAllowed(requestedHeaders []string) bool {
-	if c.allowedHeadersAll || len(requestedHeaders) == 0 {
-		return true
-	}
-	for _, header := range requestedHeaders {
-		found := false
-		for _, h := range c.allowedHeaders {
-			if h == header {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
 }

@@ -19,9 +19,9 @@ const (
 // Response defines the Prometheus response format.
 type Response struct {
 	Status    string       `json:"status"`
-	Data      interface{}  `json:"data"`
-	ErrorType v1.ErrorType `json:"errorType"`
-	Error     string       `json:"error"`
+	Data      interface{}  `json:"data,omitempty"`
+	ErrorType v1.ErrorType `json:"errorType,omitempty"`
+	Error     string       `json:"error,omitempty"`
 	Warnings  []string     `json:"warnings,omitempty"`
 }
 

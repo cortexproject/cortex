@@ -2,6 +2,12 @@
 
 ## master / unreleased
 
+## 1.17.1 2024-05-20
+
+* [CHANGE] Query Frontend/Ruler: Omit empty data, errorType and error fields in API response. #5953 #5954
+* [ENHANCEMENT] Ingester: Added `upload_compacted_blocks_enabled` config to ingester to parameterize uploading compacted blocks. #5959
+* [BUGFIX] Querier: Select correct tenant during query federation. #5943
+
 ## 1.17.0 2024-04-30
 
 * [CHANGE] Azure Storage: Upgraded objstore dependency and support Azure Workload Identity Authentication. Added `connection_string` to support authenticating via SAS token. Marked `msi_resource` config as deprecating. #5645

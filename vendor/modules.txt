@@ -339,7 +339,7 @@ github.com/efficientgo/tools/extkingpin
 # github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 ## explicit
 github.com/facette/natsort
-# github.com/fatih/color v1.15.0
+# github.com/fatih/color v1.16.0
 ## explicit; go 1.17
 github.com/fatih/color
 # github.com/felixge/fgprof v0.9.4
@@ -549,9 +549,11 @@ github.com/grpc-ecosystem/go-grpc-middleware/v2/util/metautils
 github.com/grpc-ecosystem/grpc-gateway/v2/internal/httprule
 github.com/grpc-ecosystem/grpc-gateway/v2/runtime
 github.com/grpc-ecosystem/grpc-gateway/v2/utilities
-# github.com/hashicorp/consul/api v1.28.2
+# github.com/hashicorp/consul/api v1.28.3
 ## explicit; go 1.19
 github.com/hashicorp/consul/api
+# github.com/hashicorp/consul/proto-public v0.6.1
+## explicit; go 1.19
 # github.com/hashicorp/errwrap v1.1.0
 ## explicit
 github.com/hashicorp/errwrap
@@ -655,7 +657,7 @@ github.com/mailru/easyjson/jwriter
 # github.com/mattn/go-colorable v0.1.13
 ## explicit; go 1.15
 github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.19
+# github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
 # github.com/matttproud/golang_protobuf_extensions v1.0.4

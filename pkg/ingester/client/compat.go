@@ -2,6 +2,8 @@ package client
 
 import (
 	"fmt"
+	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -66,41 +68,46 @@ func FromExemplarQueryRequest(req *ExemplarQueryRequest) (int64, int64, [][]*lab
 	return req.StartTimestampMs, req.EndTimestampMs, result, nil
 }
 
-// ToQueryResponse builds a QueryResponse proto.
-func ToQueryResponse(matrix model.Matrix) *QueryResponse {
-	resp := &QueryResponse{}
-	for _, ss := range matrix {
-		ts := cortexpb.TimeSeries{
-			Labels:  cortexpb.FromMetricsToLabelAdapters(ss.Metric),
-			Samples: make([]cortexpb.Sample, 0, len(ss.Values)),
-		}
-		for _, s := range ss.Values {
-			ts.Samples = append(ts.Samples, cortexpb.Sample{
-				Value:       float64(s.Value),
-				TimestampMs: int64(s.Timestamp),
-			})
-		}
-		resp.Timeseries = append(resp.Timeseries, ts)
-	}
-	return resp
-}
-
-// FromQueryResponse unpacks a QueryResponse proto.
-func FromQueryResponse(resp *QueryResponse) model.Matrix {
-	m := make(model.Matrix, 0, len(resp.Timeseries))
-	for _, ts := range resp.Timeseries {
+// MatrixFromSeriesSet unpacks a SeriesSet to a model.Matrix.
+func MatrixFromSeriesSet(set storage.SeriesSet) model.Matrix {
+	m := make(model.Matrix, 0)
+	for set.Next() {
+		s := set.At()
 		var ss model.SampleStream
-		ss.Metric = cortexpb.FromLabelAdaptersToMetric(ts.Labels)
-		ss.Values = make([]model.SamplePair, 0, len(ts.Samples))
-		for _, s := range ts.Samples {
+		ss.Metric = cortexpb.FromLabelAdaptersToMetric(cortexpb.FromLabelsToLabelAdapters(s.Labels()))
+		ss.Values = make([]model.SamplePair, 0)
+		it := s.Iterator(nil)
+		for it.Next() != chunkenc.ValNone {
+			t, v := it.At()
 			ss.Values = append(ss.Values, model.SamplePair{
-				Value:     model.SampleValue(s.Value),
-				Timestamp: model.Time(s.TimestampMs),
+				Value:     model.SampleValue(v),
+				Timestamp: model.Time(t),
 			})
 		}
 		m = append(m, &ss)
 	}
 
+	return m
+}
+
+// TimeSeriesFromSeriesSet unpacks a SeriesSet to a []cortexpb.TimeSeries.
+func TimeSeriesFromSeriesSet(set storage.SeriesSet) []cortexpb.TimeSeries {
+	var m []cortexpb.TimeSeries
+	for set.Next() {
+		s := set.At()
+		var ss cortexpb.TimeSeries
+		ss.Labels = cortexpb.FromLabelsToLabelAdapters(s.Labels())
+		ss.Samples = make([]cortexpb.Sample, 0)
+		it := s.Iterator(nil)
+		for it.Next() != chunkenc.ValNone {
+			t, v := it.At()
+			ss.Samples = append(ss.Samples, cortexpb.Sample{
+				Value:       v,
+				TimestampMs: t,
+			})
+		}
+		m = append(m, ss)
+	}
 	return m
 }
 
@@ -131,15 +138,6 @@ func FromMetricsForLabelMatchersRequest(req *MetricsForLabelMatchersRequest) (mo
 	from := model.Time(req.StartTimestampMs)
 	to := model.Time(req.EndTimestampMs)
 	return from, to, matchersSet, nil
-}
-
-// FromMetricsForLabelMatchersResponse unpacks a MetricsForLabelMatchersResponse proto
-func FromMetricsForLabelMatchersResponse(resp *MetricsForLabelMatchersResponse) []model.Metric {
-	metrics := []model.Metric{}
-	for _, m := range resp.Metric {
-		metrics = append(metrics, cortexpb.FromLabelAdaptersToMetric(m.Labels))
-	}
-	return metrics
 }
 
 // ToLabelValuesRequest builds a LabelValuesRequest proto

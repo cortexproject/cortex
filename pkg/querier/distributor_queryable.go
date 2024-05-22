@@ -147,12 +147,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 		return storage.ErrSeriesSet(err)
 	}
 
-	// we should sort the series if we need to merge them even if sortSeries is not required by the querier
-	sortSeries = sortSeries || (len(results.Timeseries) > 0 && len(results.Chunkseries) > 0)
 	sets := []storage.SeriesSet(nil)
-	if len(results.Timeseries) > 0 {
-		sets = append(sets, newTimeSeriesSeriesSet(sortSeries, results.Timeseries))
-	}
 
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
 	for _, result := range results.Chunkseries {

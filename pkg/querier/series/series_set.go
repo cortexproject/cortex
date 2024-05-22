@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/iterators"
 )
 
@@ -142,14 +141,14 @@ func MatrixToSeriesSet(sortSeries bool, m model.Matrix) storage.SeriesSet {
 }
 
 // MetricsToSeriesSet creates a storage.SeriesSet from a []metric.Metric
-func MetricsToSeriesSet(ctx context.Context, sortSeries bool, ms []metric.Metric) storage.SeriesSet {
+func MetricsToSeriesSet(ctx context.Context, sortSeries bool, ms []model.Metric) storage.SeriesSet {
 	series := make([]storage.Series, 0, len(ms))
 	for _, m := range ms {
 		if ctx.Err() != nil {
 			return storage.ErrSeriesSet(ctx.Err())
 		}
 		series = append(series, &ConcreteSeries{
-			labels: metricToLabels(m.Metric),
+			labels: metricToLabels(m),
 		})
 	}
 	return NewConcreteSeriesSet(sortSeries, series)

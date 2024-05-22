@@ -16,7 +16,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
@@ -32,8 +31,8 @@ type Distributor interface {
 	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
 	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error)
-	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
-	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
+	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]model.Metric, error)
+	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]model.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
@@ -123,7 +122,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 	// See: https://github.com/prometheus/prometheus/pull/8050
 	if sp != nil && sp.Func == "series" {
 		var (
-			ms  []metric.Metric
+			ms  []model.Metric
 			err error
 		)
 
@@ -234,7 +233,7 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, matcher
 	defer log.Span.Finish()
 
 	var (
-		ms  []metric.Metric
+		ms  []model.Metric
 		err error
 	)
 
@@ -250,7 +249,7 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, matcher
 	namesMap := make(map[string]struct{})
 
 	for _, m := range ms {
-		for name := range m.Metric {
+		for name := range m {
 			namesMap[string(name)] = struct{}{}
 		}
 	}

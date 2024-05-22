@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cortexproject/cortex/pkg/querier/batch"
-	"github.com/cortexproject/cortex/pkg/querier/series"
-	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+
 	"io"
 	"math"
 	"net"
@@ -50,9 +48,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/querier/batch"
+	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/ring"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -1236,7 +1237,9 @@ func TestIngester_Push(t *testing.T) {
 			require.NoError(t, err)
 
 			require.NotNil(t, set)
-			assert.Equal(t, testData.expectedIngested, client.TimeSeriesFromSeriesSet(set))
+			r, err := client.SeriesSetToQueryResponse(set)
+			require.NoError(t, err)
+			assert.Equal(t, testData.expectedIngested, r.Timeseries)
 
 			// Read back samples to see what has been really ingested
 			exemplarRes, err := i.QueryExemplars(ctx, &client.ExemplarQueryRequest{
@@ -2005,7 +2008,9 @@ func Test_Ingester_Query(t *testing.T) {
 			require.NoError(t, err)
 			set, err := seriesSetFromResponseStream(s)
 			require.NoError(t, err)
-			assert.ElementsMatch(t, testData.expected, client.TimeSeriesFromSeriesSet(set))
+			r, err := client.SeriesSetToQueryResponse(set)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, testData.expected, r.Timeseries)
 		})
 	}
 }
@@ -2024,7 +2029,9 @@ func TestIngester_Query_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	require.NoError(t, err)
 	set, err := seriesSetFromResponseStream(s)
 	require.NoError(t, err)
-	require.Len(t, client.TimeSeriesFromSeriesSet(set), 0)
+	r, err := client.SeriesSetToQueryResponse(set)
+	require.NoError(t, err)
+	require.Len(t, r.Timeseries, 0)
 
 	// Check if the TSDB has been created
 	_, tsdbCreated := i.TSDBState.dbs[userID]

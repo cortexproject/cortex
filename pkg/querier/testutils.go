@@ -66,7 +66,7 @@ func (m *MockLimitingDistributor) QueryStream(ctx context.Context, from, to mode
 	var (
 		queryLimiter = limiter.QueryLimiterFromContextWithFallback(ctx)
 	)
-	s := make([][]cortexpb.LabelAdapter, 0, len(m.response.Chunkseries)+len(m.response.Timeseries))
+	s := make([][]cortexpb.LabelAdapter, 0, len(m.response.Chunkseries))
 
 	response := &client.QueryStreamResponse{}
 	for _, series := range m.response.Chunkseries {
@@ -75,17 +75,6 @@ func (m *MockLimitingDistributor) QueryStream(ctx context.Context, from, to mode
 				if matcher.Matches(label.Value) {
 					s = append(s, series.Labels)
 					response.Chunkseries = append(response.Chunkseries, series)
-				}
-			}
-		}
-	}
-
-	for _, series := range m.response.Timeseries {
-		for _, label := range series.Labels {
-			for _, matcher := range matchers {
-				if matcher.Matches(label.Value) {
-					s = append(s, series.Labels)
-					response.Timeseries = append(response.Timeseries, series)
 				}
 			}
 		}

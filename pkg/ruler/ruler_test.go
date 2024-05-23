@@ -2145,7 +2145,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 		&client.QueryStreamResponse{
 			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Chunks: querier.ConvertToChunks(t, []cortexpb.Sample{}),
+					Chunks: []client.Chunk{},
 				},
 			},
 		}, nil)

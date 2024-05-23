@@ -41,15 +41,14 @@ import (
 
 // Config contains the configuration require to create a querier
 type Config struct {
-	MaxConcurrent             int           `yaml:"max_concurrent"`
-	Timeout                   time.Duration `yaml:"timeout"`
-	IngesterStreaming         bool          `yaml:"ingester_streaming" doc:"hidden"`
-	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
-	MaxSamples                int           `yaml:"max_samples"`
-	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
-	QueryStoreForLabels       bool          `yaml:"query_store_for_labels_enabled"`
-	AtModifierEnabled         bool          `yaml:"at_modifier_enabled" doc:"hidden"`
-	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
+	MaxConcurrent        int           `yaml:"max_concurrent"`
+	Timeout              time.Duration `yaml:"timeout"`
+	IngesterStreaming    bool          `yaml:"ingester_streaming" doc:"hidden"`
+	MaxSamples           int           `yaml:"max_samples"`
+	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	QueryStoreForLabels  bool          `yaml:"query_store_for_labels_enabled"`
+	AtModifierEnabled    bool          `yaml:"at_modifier_enabled" doc:"hidden"`
+	EnablePerStepStats   bool          `yaml:"per_step_stats_enabled"`
 
 	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
 	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
@@ -103,11 +102,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "querier.iterators", "Deprecated: Use iterators to execute query. This flag is no longer functional; Batch iterator is always enabled instead.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.batch-iterators", "Deprecated: Use batch iterators to execute query. This flag is no longer functional; Batch iterator is always enabled now.", util_log.Logger)
+	flagext.DeprecatedFlag(f, "querier.ingester-metadata-streaming", "Deprecated: Use streaming RPCs for metadata APIs from ingester.", util_log.Logger)
 
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Deprecated (Querying long-term store for labels will be always enabled in the future.): Query long-term store for series, label values and label names APIs.")
@@ -159,7 +158,7 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, promql.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
+	distributorQueryable := newDistributorQueryable(distributor, iteratorFunc, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {

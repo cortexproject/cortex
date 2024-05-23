@@ -1136,7 +1136,7 @@ func TestRulerKeepFiring(t *testing.T) {
 	ts := time.Now()
 	require.NoError(t, c.SetRuleGroup(alertRuleWithKeepFiringFor(groupName, ruleName, expression, model.Duration(10*time.Second)), namespace))
 	// Wait until rule group has tried to evaluate the rule.
-	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(2), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(5), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
 
 	updatedGroups, err := c.GetPrometheusRules(e2ecortex.RuleFilter{
 		RuleNames: []string{ruleName},

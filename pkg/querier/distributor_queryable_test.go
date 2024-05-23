@@ -313,9 +313,9 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 			t.Parallel()
 
 			metrics := []model.Metric{
-				model.Metric{"foo": "bar"},
-				model.Metric{"job": "baz"},
-				model.Metric{"job": "baz", "foo": "boom"},
+				{"foo": "bar"},
+				{"job": "baz"},
+				{"job": "baz", "foo": "boom"},
 			}
 			d := &MockDistributor{}
 			d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), someMatchers).

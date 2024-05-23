@@ -16,13 +16,10 @@ service Ingester {
   rpc QueryStream(QueryRequest) returns (stream QueryStreamResponse) {};
   rpc QueryExemplars(ExemplarQueryRequest) returns (ExemplarQueryResponse) {};
 
-  rpc LabelValues(LabelValuesRequest) returns (LabelValuesResponse) {};
   rpc LabelValuesStream(LabelValuesRequest) returns (stream LabelValuesStreamResponse) {};
-  rpc LabelNames(LabelNamesRequest) returns (LabelNamesResponse) {};
   rpc LabelNamesStream(LabelNamesRequest) returns (stream LabelNamesStreamResponse) {};
   rpc UserStats(UserStatsRequest) returns (UserStatsResponse) {};
   rpc AllUserStats(UserStatsRequest) returns (UsersStatsResponse) {};
-  rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
   rpc MetricsForLabelMatchersStream(MetricsForLabelMatchersRequest) returns (stream MetricsForLabelMatchersStreamResponse) {};
   rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
 }

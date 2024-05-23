@@ -242,21 +242,3 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 		})
 	}
 }
-
-func convertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
-	// We need to make sure that there is at least one chunk present,
-	// else no series will be selected.
-	chk := chunkenc.NewXORChunk()
-	appender, err := chk.Appender()
-	require.NoError(t, err)
-
-	for _, s := range samples {
-		appender.Append(s.TimestampMs, s.Value)
-	}
-
-	c := chunk.NewChunk(nil, chk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs))
-	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{c})
-	require.NoError(t, err)
-
-	return clientChunks
-}

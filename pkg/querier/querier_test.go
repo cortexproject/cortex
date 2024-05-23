@@ -177,14 +177,14 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "2"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "1"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 		},
 	}
@@ -326,35 +326,35 @@ func TestLimits(t *testing.T) {
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "2"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "1"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "orders", Value: "3"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "bar"},
 					{Name: "orders", Value: "2"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "bar"},
 					{Name: "orders", Value: "1"},
 				},
-				Chunks: convertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples),
 			},
 		},
 	}

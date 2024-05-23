@@ -2,6 +2,11 @@ package querier
 
 import (
 	"context"
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	"github.com/stretchr/testify/require"
+	"testing"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -102,4 +107,22 @@ func DefaultLimitsConfig() validation.Limits {
 	limits := validation.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
+}
+
+func ConvertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
+	// We need to make sure that there is at least one chunk present,
+	// else no series will be selected.
+	chk := chunkenc.NewXORChunk()
+	appender, err := chk.Appender()
+	require.NoError(t, err)
+
+	for _, s := range samples {
+		appender.Append(s.TimestampMs, s.Value)
+	}
+
+	c := chunk.NewChunk(nil, chk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs))
+	clientChunks, err := chunkcompat.ToChunks([]chunk.Chunk{c})
+	require.NoError(t, err)
+
+	return clientChunks
 }

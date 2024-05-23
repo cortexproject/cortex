@@ -2449,7 +2449,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 		i := int(client.HashAdd32(client.HashNew32(), i.lifecycler.ID) % 10)
 		return i, 10
 	}
-	ticker := util.NewSlottedTicker(infoFunc, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval)
+	ticker := util.NewSlottedTicker(infoFunc, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval, 1)
 	defer ticker.Stop()
 
 	for ctx.Err() == nil {

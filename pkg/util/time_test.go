@@ -193,28 +193,29 @@ func TestFindMinMaxTime(t *testing.T) {
 }
 
 func TestSlottedTicker(t *testing.T) {
+	t.Parallel()
 	testCases := map[string]struct {
 		duration   time.Duration
 		totalSlots int
 		slotNumber int
 	}{
 		"No Slots should spread across all the interval": {
-			duration:   100 * time.Millisecond,
+			duration:   300 * time.Millisecond,
 			totalSlots: 1,
 			slotNumber: 0,
 		},
 		"Get first slot": {
-			duration:   100 * time.Millisecond,
+			duration:   300 * time.Millisecond,
 			totalSlots: 5,
 			slotNumber: 0,
 		},
 		"Get 3th slot": {
-			duration:   100 * time.Millisecond,
+			duration:   300 * time.Millisecond,
 			totalSlots: 5,
 			slotNumber: 3,
 		},
 		"Get last slot": {
-			duration:   100 * time.Millisecond,
+			duration:   300 * time.Millisecond,
 			totalSlots: 5,
 			slotNumber: 4,
 		},
@@ -225,20 +226,21 @@ func TestSlottedTicker(t *testing.T) {
 			infoFunc := func() (int, int) {
 				return tc.slotNumber, tc.totalSlots
 			}
-			ticker := NewSlottedTicker(infoFunc, tc.duration)
-			tTime := <-ticker.C
+			ticker := NewSlottedTicker(infoFunc, tc.duration, 0)
 			slotSize := tc.duration.Milliseconds() / int64(tc.totalSlots)
-			slotShiftInMs := tTime.UnixMilli() % tc.duration.Milliseconds()
-			slot := slotShiftInMs / slotSize
 			successCount := 0
-			test.Poll(t, 2*time.Second, true, func() interface{} {
+
+			test.Poll(t, 5*time.Second, true, func() interface{} {
+				tTime := <-ticker.C
+				slotShiftInMs := tTime.UnixMilli() % tc.duration.Milliseconds()
+				slot := slotShiftInMs / slotSize
 				if slot == int64(tc.slotNumber) {
 					successCount++
 				} else {
 					successCount--
 				}
 
-				return successCount == 50
+				return successCount == 10
 			})
 			ticker.Stop()
 		})
@@ -246,23 +248,23 @@ func TestSlottedTicker(t *testing.T) {
 
 	t.Run("Change slot size", func(t *testing.T) {
 		slotSize := atomic.NewInt32(10)
-		d := 100 * time.Millisecond
+		d := 300 * time.Millisecond
 		infoFunc := func() (int, int) {
 			return 2, int(slotSize.Load())
 		}
 
-		ticker := NewSlottedTicker(infoFunc, d)
+		ticker := NewSlottedTicker(infoFunc, d, 0)
 
-		test.Poll(t, 2*time.Second, true, func() interface{} {
+		test.Poll(t, 5*time.Second, true, func() interface{} {
 			tTime := <-ticker.C
 			slotShiftInMs := tTime.UnixMilli() % d.Milliseconds()
-			return slotShiftInMs >= 20 && slotShiftInMs <= 30
+			return slotShiftInMs >= 60 && slotShiftInMs <= 90
 		})
 		slotSize.Store(5)
 		test.Poll(t, 2*time.Second, true, func() interface{} {
 			tTime := <-ticker.C
 			slotShiftInMs := tTime.UnixMilli() % d.Milliseconds()
-			return slotShiftInMs >= 40 && slotShiftInMs <= 60
+			return slotShiftInMs >= 120 && slotShiftInMs <= 180
 		})
 	})
 }

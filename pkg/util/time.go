@@ -98,8 +98,8 @@ func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.
 
 // PositiveJitter returns random duration from "0" to "input*variance" interval.
 func PositiveJitter(input time.Duration, variancePerc float64) time.Duration {
-	// No duration? No jitter.
-	if input == 0 {
+	// No duration or no variancePerc? No jitter.
+	if input == 0 || variancePerc == 0 {
 		return 0
 	}
 
@@ -162,9 +162,10 @@ type SlottedTicker struct {
 	shouldReset bool
 	ticker      *time.Ticker
 	sf          SlotInfoFunc
+	slotJitter  float64
 }
 
-func NewSlottedTicker(sf SlotInfoFunc, d time.Duration) *SlottedTicker {
+func NewSlottedTicker(sf SlotInfoFunc, d time.Duration, slotJitter float64) *SlottedTicker {
 	c := make(chan time.Time, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	st := &SlottedTicker{
@@ -173,6 +174,7 @@ func NewSlottedTicker(sf SlotInfoFunc, d time.Duration) *SlottedTicker {
 		d:           d,
 		sf:          sf,
 		shouldReset: true,
+		slotJitter:  slotJitter,
 	}
 	slitIndex, totalSlots := sf()
 	st.ticker = time.NewTicker(st.nextInterval())
@@ -208,12 +210,11 @@ func (t *SlottedTicker) Stop() {
 }
 
 func (t *SlottedTicker) nextInterval() time.Duration {
-	slitIndex, totalSlots := t.sf()
+	slotIndex, totalSlots := t.sf()
 
 	// Discover what time the last iteration started
 	lastStartTime := time.UnixMilli((time.Now().UnixMilli() / t.d.Milliseconds()) * t.d.Milliseconds())
-	slotSize := t.d / time.Duration(totalSlots)
-	offset := time.Duration((float64(slitIndex) / float64(totalSlots)) * float64(t.d))
+	offset := time.Duration((float64(slotIndex) / float64(totalSlots)) * float64(t.d))
 	// Lets offset the time of the iteration
 	lastStartTime = lastStartTime.Add(offset)
 
@@ -222,5 +223,6 @@ func (t *SlottedTicker) nextInterval() time.Duration {
 		lastStartTime = lastStartTime.Add(t.d)
 	}
 
-	return time.Until(lastStartTime) + PositiveJitter(slotSize, 1)
+	slotSize := t.d / time.Duration(totalSlots)
+	return time.Until(lastStartTime) + PositiveJitter(slotSize, t.slotJitter)
 }

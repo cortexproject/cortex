@@ -69,7 +69,7 @@ func FromExemplarQueryRequest(req *ExemplarQueryRequest) (int64, int64, [][]*lab
 }
 
 // MatrixFromSeriesSet unpacks a SeriesSet to a model.Matrix.
-func MatrixFromSeriesSet(set storage.SeriesSet) model.Matrix {
+func MatrixFromSeriesSet(set storage.SeriesSet) (model.Matrix, error) {
 	m := make(model.Matrix, 0)
 	for set.Next() {
 		s := set.At()
@@ -87,7 +87,7 @@ func MatrixFromSeriesSet(set storage.SeriesSet) model.Matrix {
 		m = append(m, &ss)
 	}
 
-	return m
+	return m, set.Err()
 }
 
 // ToQueryResponse builds a QueryResponse proto.

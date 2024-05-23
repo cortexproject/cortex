@@ -81,9 +81,9 @@ func runTestQueryTimes(ctx context.Context, t *testing.T, ing *Ingester, ty labe
 	if err != nil {
 		return nil, nil, err
 	}
-	res := client.MatrixFromSeriesSet(set)
+	res, err := client.MatrixFromSeriesSet(set)
 	sort.Sort(res)
-	return res, req, nil
+	return res, req, err
 }
 
 func seriesSetFromResponseStream(s *mockQueryStreamServer) (storage.SeriesSet, error) {

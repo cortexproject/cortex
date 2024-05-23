@@ -6,200 +6,191 @@ no_section_index_title: true
 slug: "getting-started"
 ---
 
-Cortex can be run as a single binary or as multiple independent microservices.
-The single-binary mode is easier to deploy and is aimed mainly at users wanting to try out Cortex or develop on it.
-The microservices mode is intended for production usage, as it allows you to independently scale different services and isolate failures.
+# Getting Started with Cortex
 
-This document will focus on single-process Cortex with the blocks storage.
-See [the architecture doc](../architecture.md) for more information about the microservices and [blocks operation](../blocks-storage/_index.md)
-for more information about the blocks storage.
+Cortex is a powerful platform software that can be run in two modes: as a single binary or as multiple
+independent [microservices](../architecture.md).
+This guide will help you get started with Cortex in single-binary mode using
+[blocks storage](../blocks-storage/_index.md).
 
-Separately from single process vs microservices decision, Cortex can be configured to use local storage or cloud storage (S3, GCS and Azure).
-Cortex can also make use of external Memcacheds and Redis for caching.
+## Prerequisites
 
-## Single instance, single process
+Cortex can be configured to use local storage or cloud storage (S3, GCS, and Azure). It can also utilize external
+Memcached and Redis instances for caching. This guide will focus on running Cortex as a single process with no
+dependencies.
 
-For simplicity and to get started, we'll run it as a [single process](../configuration/single-process-config-blocks-local.yaml) with no dependencies.
-You can reconfigure the config to use S3, GCS or Azure storage as shown in the file's comments.
+* [Docker Compose](https://docs.docker.com/compose/install/)
 
-```sh
-$ go build ./cmd/cortex
-$ ./cortex -config.file=./docs/configuration/single-process-config-blocks-local.yaml
-```
+## Running Cortex as a Single Instance
 
-It is not intended for production use.
+For simplicity, we'll start by running Cortex as a single process with no dependencies. This mode is not recommended or
+intended for production environments or production use.
 
-Clone and build prometheus
-```sh
-$ git clone https://github.com/prometheus/prometheus
-$ cd prometheus
-$ go build ./cmd/prometheus
-```
+This example uses [Docker Compose](https://docs.docker.com/compose/) to set up:
 
-Add the following to your Prometheus config (documentation/examples/prometheus.yml in Prometheus repo):
+1. An instance of [SeaweedFS](https://github.com/seaweedfs/seaweedfs/) for S3-compatible object storage
+1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics
+1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex
+1. An instance of [Grafana](https://grafana.com/) to visualize the metrics
 
-```yaml
-remote_write:
-- url: http://localhost:9009/api/v1/push
-```
+### Instructions
 
-And start Prometheus with that config file:
+#### Start the services
 
 ```sh
-$ ./prometheus --config.file=./documentation/examples/prometheus.yml
+$ cd docs/getting-started
+$ docker-compose up -d --wait
 ```
 
-Your Prometheus instance will now start pushing data to Cortex.  To query that data, start a Grafana instance:
+We can now access the following services:
+
+* [Cortex](http://localhost:9009)
+* [Prometheus](http://localhost:9090)
+* [Grafana](http://localhost:3000)
+* [SeaweedFS](http://localhost:8333)
+
+If everything is working correctly, Prometheus should be sending metrics that it is scraping to Cortex. Prometheus is
+configured to send metrics to Cortex via `remote_write`. Check out the `prometheus-config.yaml` file to see
+how this is configured.
+
+#### Configure SeaweedFS (S3)
 
 ```sh
-$ docker run --rm -d --name=grafana -p 3000:3000 grafana/grafana
+# Create a bucket in SeaweedFS
+curl -X PUT http://localhost:8333/cortex-bucket
 ```
 
-In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://host.docker.internal:9009/prometheus`).
+#### Configure Grafana
 
-If you are on a Linux machine, `http://host.docker.internal:9009` might not work for you.
-In this case, you will need to use the IP address of your host machine.
-You can usually get it by running `hostname -I | awk '{print $1}'` in your terminal.
-For example, if the IP is `192.168.1.100`, use `http://192.168.1.100:9009/prometheus`.
+1. Log into the Grafana instance at [http://localhost:3000](http://localhost:3000)
+    * login credentials are `username: admin` and `password: admin`
+    * There may be an additional screen on setting a new password. This can be skipped and is optional
+1. Navigate to the `Data Sources` page
+    * Look for a gear icon on the left sidebar and select `Data Sources`
+1. Add a new Prometheus Data Source
+    * Use `http://cortex:9009/api/prom` as the URL
+    * Click `Save & Test`
+1. Go to `Metrics Explore` to query metrics
+    * Look for a compass icon on the left sidebar
+    * Click `Metrics` for a dropdown list of all the available metrics
 
-**To clean up:** press CTRL-C in both terminals (for Cortex and Prometheus) and run the command below to stop Grafana:
+If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
+via remote_write!
+
+### Clean up
 
 ```sh
-$ docker stop grafana
+$ docker-compose down
 ```
 
-## Horizontally scale out
+## Running Cortex in microservice mode
 
-Next we're going to show how you can run a scale out Cortex cluster using Docker. We'll need:
+Now that you have Cortex running as a single instance, let's explore how to run Cortex in microservice mode.
 
-- A built Cortex image.
-- A Docker network to put these containers on so they can resolve each other by name.
-- A single node Consul instance to coordinate the Cortex cluster.
+### Prerequisites
+
+* [Kind](https://kind.sigs.k8s.io)
+* [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+* [Helm](https://helm.sh/docs/intro/install/)
+
+This example uses [Kind](https://kind.sigs.k8s.io) to set up:
+
+1. A Kubernetes cluster
+1. An instance of [SeaweedFS](https://github.com/seaweedfs/seaweedfs/) for S3-compatible object storage
+1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics
+1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex
+1. An instance of [Grafana](https://grafana.com/) to visualize the metrics
+
+### Setup Kind
 
 ```sh
-$ make ./cmd/cortex/.uptodate
-$ docker network create cortex
-$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 hashicorp/consul
+$ kind create cluster
 ```
 
-Next we'll run a couple of Cortex instances pointed at that Consul.  You'll note the Cortex configuration can be specified in either a config file or overridden on the command line.  See [the arguments documentation](../configuration/arguments.md) for more information about Cortex configuration options.
+### Configure Helm
 
 ```sh
-$ docker run -d --name=cortex1 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
-    -p 9001:9009 \
-    quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks-local.yaml \
-    -ring.store=consul \
-    -consul.hostname=consul:8500
-$ docker run -d --name=cortex2 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
-    -p 9002:9009 \
-    quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks-local.yaml \
-    -ring.store=consul \
-    -consul.hostname=consul:8500
+$ helm repo add cortex-helm https://cortexproject.github.io/cortex-helm-chart
+$ helm repo add grafana https://grafana.github.io/helm-charts
+$ helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 ```
 
-If you go to http://localhost:9001/ring (or http://localhost:9002/ring) you should see both Cortex nodes join the ring.
-
-To demonstrate the correct operation of Cortex clustering, we'll send samples
-to one of the instances and queries to another.  In production, you'd want to
-load balance both pushes and queries evenly among all the nodes.
-
-Point Prometheus at the first:
-
-```yaml
-remote_write:
-- url: http://localhost:9001/api/v1/push
-```
+### Instructions
 
 ```sh
-$ ./prometheus --config.file=./documentation/examples/prometheus.yml
+$ cd docs/getting-started
 ```
 
-And Grafana at the second:
+#### Configure SeaweedFS (S3)
 
 ```sh
-$ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
-```
-
-In [the Grafana UI](http://localhost:3000) (username/password admin/admin), add a Prometheus datasource for Cortex (`http://cortex2:9009/prometheus`).
-
-**To clean up:** CTRL-C the Prometheus process and run:
-
-```
-$ docker rm -f cortex1 cortex2 consul grafana
-$ docker network remove cortex
-```
-
-## High availability with replication
-
-In this last demo we'll show how Cortex can replicate data among three nodes,
-and demonstrate Cortex can tolerate a node failure without affecting reads and writes.
-
-First, create a network and run a new Consul and Grafana:
-
-```sh
-$ docker network create cortex
-$ docker run -d --name=consul --network=cortex -e CONSUL_BIND_INTERFACE=eth0 hashicorp/consul
-$ docker run -d --name=grafana --network=cortex -p 3000:3000 grafana/grafana
-```
-
-Then, launch 3 Cortex nodes with replication factor 3:
-
-```sh
-$ docker run -d --name=cortex1 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
-    -p 9001:9009 \
-    quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks-local.yaml \
-    -ring.store=consul \
-    -consul.hostname=consul:8500 \
-    -distributor.replication-factor=3
-$ docker run -d --name=cortex2 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
-    -p 9002:9009 \
-    quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks-local.yaml \
-    -ring.store=consul \
-    -consul.hostname=consul:8500 \
-    -distributor.replication-factor=3
-$ docker run -d --name=cortex3 --network=cortex \
-    -v $(pwd)/docs/configuration/single-process-config-blocks-local.yaml:/etc/single-process-config-blocks-local.yaml \
-    -p 9003:9009 \
-    quay.io/cortexproject/cortex \
-    -config.file=/etc/single-process-config-blocks-local.yaml \
-    -ring.store=consul \
-    -consul.hostname=consul:8500 \
-    -distributor.replication-factor=3
-```
-
-Configure Prometheus to send data to the first replica:
-
-```yaml
-remote_write:
-- url: http://localhost:9001/api/v1/push
+# Create a namespace
+$ kubectl create namespace cortex
 ```
 
 ```sh
-$ ./prometheus --config.file=./documentation/examples/prometheus.yml
+# We can emulate S3 with SeaweedFS
+$ kubectl -n cortex apply -f seaweedfs.yaml
 ```
 
-In Grafana, add a datasource for the 3rd Cortex replica (`http://cortex3:9009/prometheus`)
-and verify the same data appears in both Prometheus and Cortex.
-
-To show that Cortex can tolerate a node failure, hard kill one of the Cortex replicas:
-
-```
-$ docker rm -f cortex2
+```sh
+# Port-forward to SeaweedFS to create a bucket
+$ kubectl -n cortex port-forward svc/seaweedfs 8333
 ```
 
-You should see writes and queries continue to work without error.
-
-**To clean up:** CTRL-C the Prometheus process and run:
-
+```shell
+# Create a bucket
+$ curl -X PUT http://localhost:8333/cortex-bucket
 ```
-$ docker rm -f cortex1 cortex2 cortex3 consul grafana
-$ docker network remove cortex
+
+#### Setup Cortex
+
+```sh
+# Deploy Cortex using the provided values file which configures
+# - blocks storage to use the seaweedfs service
+$ helm install --version=2.3.0  --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
+```
+
+#### Setup Prometheus
+
+```sh
+# Deploy Prometheus to scrape metrics in the cluster and send them, via remote_write, to Cortex.
+$ helm install --version=25.20.1 --namespace cortex prometheus prometheus-community/prometheus -f prometheus-values.yaml
+```
+
+#### Setup Grafana
+
+```sh
+# Deploy Grafana to visualize the metrics that were sent to Cortex.
+$ helm install --version=7.3.9 --namespace cortex grafana grafana/grafana
+```
+
+#### Configure Grafana
+
+```sh
+# Get your 'admin' user password
+kubectl get secret --namespace cortex grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+```
+
+```sh
+# Port-forward to Grafana to visualize
+kubectl --namespace cortex port-forward deploy/cortex 3000
+```
+
+1. Log into the Grafana instance at [http://localhost:3000](http://localhost:3000)
+1. Use the username `admin` and the password from the Kubernetes secret
+1. Navigate to the [Data Sources](http://localhost:3000/connections/datasources) page
+1. Add a new Prometheus Data Source
+1. Use `http://cortex-nginx/api/prom` as the URL
+1. Click `Save & Test`
+1. Go to [Explore](http://localhost:3000/explore) to query metrics
+1. Click `Metrics` for a dropdown list of all the available metrics
+
+If everything is working correctly, then the metrics seen in Grafana were successfully sent from Prometheus to Cortex
+via remote_write!
+
+### Clean up
+
+```sh
+$ kind delete cluster
 ```

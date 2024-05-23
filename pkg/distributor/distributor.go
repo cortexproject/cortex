@@ -988,14 +988,15 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 	})
 }
 
-func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+// LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
+func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelValues", opentracing.Tags{
 		"name":  labelName,
 		"start": from.Unix(),
 		"end":   to.Unix(),
 	})
 	defer span.Finish()
-	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	rs, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1005,7 +1006,27 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 		return nil, err
 	}
 
-	resps, err := f(ctx, replicationSet, req)
+	resps, err := d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		stream, err := client.LabelValuesStream(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		defer stream.CloseSend() //nolint:errcheck
+		allLabelValues := []string{}
+		for {
+			resp, err := stream.Recv()
+
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			allLabelValues = append(allLabelValues, resp.LabelValues...)
+		}
+
+		return allLabelValues, nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -1024,52 +1045,14 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 	return r, nil
 }
 
-// LabelValuesForLabelName returns all the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-			resp, err := client.LabelValues(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			return resp.LabelValues, nil
-		})
-	}, matchers...)
-}
-
-// LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
-func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-			stream, err := client.LabelValuesStream(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			defer stream.CloseSend() //nolint:errcheck
-			allLabelValues := []string{}
-			for {
-				resp, err := stream.Recv()
-
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					return nil, err
-				}
-				allLabelValues = append(allLabelValues, resp.LabelValues...)
-			}
-
-			return allLabelValues, nil
-		})
-	}, matchers...)
-}
-
-func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error)) ([]string, error) {
+// LabelNamesStream returns all the label names.
+func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelNames", opentracing.Tags{
 		"start": from.Unix(),
 		"end":   to.Unix(),
 	})
 	defer span.Finish()
-	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	rs, err := d.GetIngestersForMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1078,7 +1061,27 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 		StartTimestampMs: int64(from),
 		EndTimestampMs:   int64(to),
 	}
-	resps, err := f(ctx, replicationSet, req)
+	resps, err := d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		stream, err := client.LabelNamesStream(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		defer stream.CloseSend() //nolint:errcheck
+		allLabelNames := []string{}
+		for {
+			resp, err := stream.Recv()
+
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			allLabelNames = append(allLabelNames, resp.LabelNames...)
+		}
+
+		return allLabelNames, nil
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -1098,116 +1101,9 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 	return r, nil
 }
 
-func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time) ([]string, error) {
-	return d.LabelNamesCommon(ctx, from, to, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-			stream, err := client.LabelNamesStream(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			defer stream.CloseSend() //nolint:errcheck
-			allLabelNames := []string{}
-			for {
-				resp, err := stream.Recv()
-
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					return nil, err
-				}
-				allLabelNames = append(allLabelNames, resp.LabelNames...)
-			}
-
-			return allLabelNames, nil
-		})
-	})
-}
-
-// LabelNames returns all the label names.
-func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time) ([]string, error) {
-	return d.LabelNamesCommon(ctx, from, to, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-			resp, err := client.LabelNames(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			return resp.LabelNames, nil
-		})
-	})
-}
-
-// MetricsForLabelMatchers gets the metrics that match said matchers
-func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
-		_, err := d.ForReplicationSet(ctx, rs, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-			resp, err := client.MetricsForLabelMatchers(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-				return nil, validation.LimitError(err.Error())
-			}
-			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
-			for _, m := range resp.Metric {
-				s = append(s, m.Labels)
-				m := cortexpb.FromLabelAdaptersToMetric(m.Labels)
-				fingerprint := m.Fingerprint()
-				mutex.Lock()
-				(*metrics)[fingerprint] = m
-				mutex.Unlock()
-			}
-			if err := queryLimiter.AddSeries(s...); err != nil {
-				return nil, validation.LimitError(err.Error())
-			}
-			return nil, nil
-		})
-
-		return err
-	}, matchers...)
-}
-
+// MetricsForLabelMatchersStream gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	return d.metricsForLabelMatchersCommon(ctx, from, through, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]model.Metric, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
-		_, err := d.ForReplicationSet(ctx, rs, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
-			stream, err := client.MetricsForLabelMatchersStream(ctx, req)
-			if err != nil {
-				return nil, err
-			}
-			defer stream.CloseSend() //nolint:errcheck
-			for {
-				resp, err := stream.Recv()
-				if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
-					return nil, validation.LimitError(err.Error())
-				}
-
-				if err == io.EOF {
-					break
-				} else if err != nil {
-					return nil, err
-				}
-				s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
-				for _, metric := range resp.Metric {
-					m := cortexpb.FromLabelAdaptersToMetricWithCopy(metric.Labels)
-					s = append(s, metric.Labels)
-					fingerprint := m.Fingerprint()
-					mutex.Lock()
-					(*metrics)[fingerprint] = m
-					mutex.Unlock()
-				}
-				if err := queryLimiter.AddSeries(s...); err != nil {
-					return nil, validation.LimitError(err.Error())
-				}
-			}
-
-			return nil, nil
-		})
-
-		return err
-	}, matchers...)
-}
-
-func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, through model.Time, f func(context.Context, ring.ReplicationSet, *ingester_client.MetricsForLabelMatchersRequest, *map[model.Fingerprint]model.Metric, *sync.Mutex, *limiter.QueryLimiter) error, matchers ...*labels.Matcher) ([]metric.Metric, error) {
-	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	rs, err := d.GetIngestersForMetadata(ctx)
 	queryLimiter := limiter.QueryLimiterFromContextWithFallback(ctx)
 	if err != nil {
 		return nil, err
@@ -1220,7 +1116,39 @@ func (d *Distributor) metricsForLabelMatchersCommon(ctx context.Context, from, t
 	mutex := sync.Mutex{}
 	metrics := map[model.Fingerprint]model.Metric{}
 
-	err = f(ctx, replicationSet, req, &metrics, &mutex, queryLimiter)
+	_, err = d.ForReplicationSet(ctx, rs, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		stream, err := client.MetricsForLabelMatchersStream(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		defer stream.CloseSend() //nolint:errcheck
+		for {
+			resp, err := stream.Recv()
+			if err := queryLimiter.AddDataBytes(resp.Size()); err != nil {
+				return nil, validation.LimitError(err.Error())
+			}
+
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return nil, err
+			}
+			s := make([][]cortexpb.LabelAdapter, 0, len(resp.Metric))
+			for _, met := range resp.Metric {
+				s = append(s, met.Labels)
+				m := cortexpb.FromLabelAdaptersToMetricWithCopy(met.Labels)
+				fingerprint := m.Fingerprint()
+				mutex.Lock()
+				metrics[fingerprint] = m
+				mutex.Unlock()
+			}
+			if err := queryLimiter.AddSeries(s...); err != nil {
+				return nil, validation.LimitError(err.Error())
+			}
+		}
+
+		return nil, nil
+	})
 
 	if err != nil {
 		return nil, err

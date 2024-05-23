@@ -1770,7 +1770,7 @@ func BenchmarkDistributor_GetLabelsValues(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err := ds[0].LabelValuesForLabelName(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__")
+				_, err := ds[0].LabelValuesForLabelNameStream(ctx, model.Time(time.Now().UnixMilli()), model.Time(time.Now().UnixMilli()), "__name__")
 				require.NoError(b, err)
 			}
 		})
@@ -2135,7 +2135,7 @@ func TestDistributor_MetricsForLabelMatchers_SingleSlowIngester(t *testing.T) {
 	}
 
 	for i := 0; i < 50; i++ {
-		_, err := ds[0].MetricsForLabelMatchers(ctx, now, now, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
+		_, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, mustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test"))
 		require.NoError(t, err)
 	}
 }
@@ -2299,25 +2299,6 @@ func TestDistributor_MetricsForLabelMatchers(t *testing.T) {
 				_, err := ds[0].Push(ctx, req)
 				require.NoError(t, err)
 			}
-
-			{
-				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
-
-				if testData.expectedErr != nil {
-					assert.ErrorIs(t, err, testData.expectedErr)
-					return
-				}
-
-				require.NoError(t, err)
-				assert.ElementsMatch(t, testData.expectedResult, metrics)
-
-				// Check how many ingesters have been queried.
-				// Due to the quorum the distributor could cancel the last request towards ingesters
-				// if all other ones are successful, so we're good either has been queried X or X-1
-				// ingesters.
-				assert.Contains(t, []int{testData.expectedIngesters, testData.expectedIngesters - 1}, countMockIngestersCalls(ingesters, "MetricsForLabelMatchers"))
-			}
-
 			{
 				metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
 				if testData.expectedErr != nil {
@@ -2405,7 +2386,7 @@ func BenchmarkDistributor_MetricsForLabelMatchers(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				now := model.Now()
-				metrics, err := ds[0].MetricsForLabelMatchers(ctx, now, now, testData.matchers...)
+				metrics, err := ds[0].MetricsForLabelMatchersStream(ctx, now, now, testData.matchers...)
 
 				if testData.expectedErr != nil {
 					assert.EqualError(b, err, testData.expectedErr.Error())

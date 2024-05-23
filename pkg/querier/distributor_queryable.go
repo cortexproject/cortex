@@ -28,19 +28,15 @@ import (
 type Distributor interface {
 	QueryStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) (*client.QueryStreamResponse, error)
 	QueryExemplars(ctx context.Context, from, to model.Time, matchers ...[]*labels.Matcher) (*client.ExemplarQueryResponse, error)
-	LabelValuesForLabelName(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
 	LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, label model.LabelName, matchers ...*labels.Matcher) ([]string, error)
-	LabelNames(context.Context, model.Time, model.Time) ([]string, error)
 	LabelNamesStream(context.Context, model.Time, model.Time) ([]string, error)
-	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
 	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error)
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, queryStoreForLabels bool) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, queryStoreForLabels bool) QueryableWithFilter {
 	return distributorQueryable{
 		distributor:          distributor,
-		streamingMetdata:     streamingMetdata,
 		iteratorFn:           iteratorFn,
 		queryIngestersWithin: queryIngestersWithin,
 		queryStoreForLabels:  queryStoreForLabels,
@@ -49,7 +45,6 @@ func newDistributorQueryable(distributor Distributor, streamingMetdata bool, ite
 
 type distributorQueryable struct {
 	distributor          Distributor
-	streamingMetdata     bool
 	iteratorFn           chunkIteratorFunc
 	queryIngestersWithin time.Duration
 	queryStoreForLabels  bool
@@ -60,7 +55,6 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		distributor:          d.distributor,
 		mint:                 mint,
 		maxt:                 maxt,
-		streamingMetadata:    d.streamingMetdata,
 		chunkIterFn:          d.iteratorFn,
 		queryIngestersWithin: d.queryIngestersWithin,
 		queryStoreForLabels:  d.queryStoreForLabels,
@@ -75,7 +69,6 @@ func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bo
 type distributorQuerier struct {
 	distributor          Distributor
 	mint, maxt           int64
-	streamingMetadata    bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration
 	queryStoreForLabels  bool
@@ -122,16 +115,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 	// In the recent versions of Prometheus, we pass in the hint but with Func set to "series".
 	// See: https://github.com/prometheus/prometheus/pull/8050
 	if sp != nil && sp.Func == "series" {
-		var (
-			ms  []metric.Metric
-			err error
-		)
-
-		if q.streamingMetadata {
-			ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
-		} else {
-			ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(minT), model.Time(maxT), matchers...)
-		}
+		ms, err := q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(minT), model.Time(maxT), matchers...)
 
 		if err != nil {
 			return storage.ErrSeriesSet(err)
@@ -192,17 +176,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 }
 
 func (q *distributorQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	var (
-		lvs []string
-		err error
-	)
-
-	if q.streamingMetadata {
-		lvs, err = q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
-	} else {
-		lvs, err = q.distributor.LabelValuesForLabelName(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
-	}
-
+	lvs, err := q.distributor.LabelValuesForLabelNameStream(ctx, model.Time(q.mint), model.Time(q.maxt), model.LabelName(name), matchers...)
 	return lvs, nil, err
 }
 
@@ -214,16 +188,7 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, matchers ...*labels
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.LabelNames")
 	defer log.Span.Finish()
 
-	var (
-		ln  []string
-		err error
-	)
-
-	if q.streamingMetadata {
-		ln, err = q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt))
-	} else {
-		ln, err = q.distributor.LabelNames(ctx, model.Time(q.mint), model.Time(q.maxt))
-	}
+	ln, err := q.distributor.LabelNamesStream(ctx, model.Time(q.mint), model.Time(q.maxt))
 
 	return ln, nil, err
 }
@@ -233,16 +198,7 @@ func (q *distributorQuerier) labelNamesWithMatchers(ctx context.Context, matcher
 	log, ctx := spanlogger.New(ctx, "distributorQuerier.labelNamesWithMatchers")
 	defer log.Span.Finish()
 
-	var (
-		ms  []metric.Metric
-		err error
-	)
-
-	if q.streamingMetadata {
-		ms, err = q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
-	} else {
-		ms, err = q.distributor.MetricsForLabelMatchers(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
-	}
+	ms, err := q.distributor.MetricsForLabelMatchersStream(ctx, model.Time(q.mint), model.Time(q.maxt), matchers...)
 
 	if err != nil {
 		return nil, nil, err

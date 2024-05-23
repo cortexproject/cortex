@@ -1440,15 +1440,6 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	return result, nil
 }
 
-// LabelValues returns all label values that are associated with a given label name.
-func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (*client.LabelValuesResponse, error) {
-	c := i.trackInflightQueryRequest()
-	defer c()
-	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
-	defer cleanup()
-	return resp, err
-}
-
 // LabelValuesStream returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) error {
 	c := i.trackInflightQueryRequest()
@@ -1525,15 +1516,6 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 	}, cleanup, nil
 }
 
-// LabelNames return all the label names.
-func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (*client.LabelNamesResponse, error) {
-	c := i.trackInflightQueryRequest()
-	defer c()
-	resp, cleanup, err := i.labelNamesCommon(ctx, req)
-	defer cleanup()
-	return resp, err
-}
-
 // LabelNamesStream return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) error {
 	c := i.trackInflightQueryRequest()
@@ -1605,13 +1587,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 	}, cleanup, nil
 }
 
-// MetricsForLabelMatchers returns all the metrics which match a set of matchers.
-func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (*client.MetricsForLabelMatchersResponse, error) {
-	result, cleanup, err := i.metricsForLabelMatchersCommon(ctx, req)
-	defer cleanup()
-	return result, err
-}
-
+// MetricsForLabelMatchersStream returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) error {
 	result, cleanup, err := i.metricsForLabelMatchersCommon(stream.Context(), req)
 	defer cleanup()

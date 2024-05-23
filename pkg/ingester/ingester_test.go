@@ -1796,9 +1796,14 @@ func Test_Ingester_LabelNames(t *testing.T) {
 	}
 
 	// Get label names
-	res, err := i.LabelNames(ctx, &client.LabelNamesRequest{})
+	streamServer := &mockStreamServer[*client.LabelNamesStreamResponse]{ctx: ctx}
+	err = i.LabelNamesStream(&client.LabelNamesRequest{}, streamServer)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, expected, res.LabelNames)
+	names := []string{}
+	for _, r := range streamServer.responses {
+		names = append(names, r.LabelNames...)
+	}
+	assert.ElementsMatch(t, expected, names)
 }
 
 func Test_Ingester_LabelValues(t *testing.T) {
@@ -1842,9 +1847,14 @@ func Test_Ingester_LabelValues(t *testing.T) {
 	// Get label values
 	for labelName, expectedValues := range expected {
 		req := &client.LabelValuesRequest{LabelName: labelName}
-		res, err := i.LabelValues(ctx, req)
+		streamServer := &mockStreamServer[*client.LabelValuesStreamResponse]{ctx: ctx}
+		err := i.LabelValuesStream(req, streamServer)
 		require.NoError(t, err)
-		assert.ElementsMatch(t, expectedValues, res.LabelValues)
+		values := []string{}
+		for _, r := range streamServer.responses {
+			values = append(values, r.LabelValues...)
+		}
+		assert.ElementsMatch(t, expectedValues, values)
 	}
 }
 
@@ -2003,10 +2013,14 @@ func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	userID := "test"
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req := &client.LabelValuesRequest{}
-
-	res, err := i.LabelValues(ctx, req)
+	streamServer := &mockStreamServer[*client.LabelValuesStreamResponse]{ctx: ctx}
+	err = i.LabelValuesStream(req, streamServer)
 	require.NoError(t, err)
-	assert.Equal(t, &client.LabelValuesResponse{}, res)
+	values := []string{}
+	for _, r := range streamServer.responses {
+		values = append(values, r.LabelValues...)
+	}
+	assert.Len(t, values, 0)
 
 	// Check if the TSDB has been created
 	_, tsdbCreated := i.TSDBState.dbs[userID]
@@ -2024,9 +2038,14 @@ func TestIngester_LabelNames_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), userID)
 	req := &client.LabelNamesRequest{}
 
-	res, err := i.LabelNames(ctx, req)
+	streamServer := &mockStreamServer[*client.LabelNamesStreamResponse]{ctx: ctx}
+	err = i.LabelNamesStream(req, streamServer)
 	require.NoError(t, err)
-	assert.Equal(t, &client.LabelNamesResponse{}, res)
+	names := []string{}
+	for _, r := range streamServer.responses {
+		names = append(names, r.LabelNames...)
+	}
+	assert.Len(t, names, 0)
 
 	// Check if the TSDB has been created
 	_, tsdbCreated := i.TSDBState.dbs[userID]
@@ -2120,7 +2139,7 @@ func TestIngester_getOrCreateTSDB_ShouldNotAllowToCreateTSDBIfIngesterStateIsNot
 	}
 }
 
-func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
+func Test_Ingester_MetricsForLabelMatchersStream(t *testing.T) {
 	fixtures := []struct {
 		lbls      labels.Labels
 		value     float64
@@ -2280,9 +2299,14 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			}
 			i.cfg.QueryStoreForLabels = testData.queryStoreForLabels
 			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
-			res, err := i.MetricsForLabelMatchers(ctx, req)
+			streamServer := &mockStreamServer[*client.MetricsForLabelMatchersStreamResponse]{ctx: ctx}
+			err = i.MetricsForLabelMatchersStream(req, streamServer)
 			require.NoError(t, err)
-			assert.ElementsMatch(t, testData.expected, res.Metric)
+			returned := []*cortexpb.Metric{}
+			for _, r := range streamServer.responses {
+				returned = append(returned, r.Metric...)
+			}
+			assert.ElementsMatch(t, testData.expected, returned)
 		})
 	}
 }
@@ -2311,12 +2335,17 @@ func Test_Ingester_MetricsForLabelMatchers_Deduplication(t *testing.T) {
 		},
 	}
 
-	res, err := i.MetricsForLabelMatchers(ctx, req)
+	streamServer := &mockStreamServer[*client.MetricsForLabelMatchersStreamResponse]{ctx: ctx}
+	err := i.MetricsForLabelMatchersStream(req, streamServer)
 	require.NoError(t, err)
-	require.Len(t, res.GetMetric(), numSeries)
+	seriesReturned := 0
+	for _, r := range streamServer.responses {
+		seriesReturned += len(r.Metric)
+	}
+	require.Equal(t, numSeries, seriesReturned)
 }
 
-func Benchmark_Ingester_MetricsForLabelMatchers(b *testing.B) {
+func Benchmark_Ingester_MetricsForLabelMatchersStream(b *testing.B) {
 	var (
 		userID              = "test"
 		numSeries           = 10000
@@ -2344,9 +2373,14 @@ func Benchmark_Ingester_MetricsForLabelMatchers(b *testing.B) {
 			}}},
 		}
 
-		res, err := i.MetricsForLabelMatchers(ctx, req)
+		streamServer := &mockStreamServer[*client.MetricsForLabelMatchersStreamResponse]{ctx: ctx}
+		err := i.MetricsForLabelMatchersStream(req, streamServer)
 		require.NoError(b, err)
-		require.Len(b, res.GetMetric(), numSeries)
+		seriesReturned := 0
+		for _, r := range streamServer.responses {
+			seriesReturned += len(r.Metric)
+		}
+		require.Equal(b, seriesReturned, numSeries)
 	}
 }
 
@@ -2585,16 +2619,19 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *co
 	return req
 }
 
-type mockQueryStreamServer struct {
+type mockStreamServer[T any] struct {
 	grpc.ServerStream
 	ctx context.Context
+
+	responses []T
 }
 
-func (m *mockQueryStreamServer) Send(response *client.QueryStreamResponse) error {
+func (m *mockStreamServer[T]) Send(response T) error {
+	m.responses = append(m.responses, response)
 	return nil
 }
 
-func (m *mockQueryStreamServer) Context() context.Context {
+func (m *mockStreamServer[T]) Context() context.Context {
 	return m.ctx
 }
 
@@ -2646,7 +2683,7 @@ func benchmarkQueryStream(b *testing.B) {
 		}},
 	}
 
-	mockStream := &mockQueryStreamServer{ctx: ctx}
+	mockStream := &mockStreamServer[*client.QueryStreamResponse]{ctx: ctx}
 
 	b.ResetTimer()
 

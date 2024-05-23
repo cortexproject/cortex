@@ -10,7 +10,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
-	"github.com/cortexproject/cortex/pkg/prom1/storage/metric"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -44,13 +43,13 @@ func (m *MockDistributor) LabelNamesStream(ctx context.Context, from, to model.T
 	args := m.Called(ctx, from, to)
 	return args.Get(0).([]string), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+func (m *MockDistributor) MetricsForLabelMatchers(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).([]metric.Metric), args.Error(1)
+	return args.Get(0).([]model.Metric), args.Error(1)
 }
-func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]metric.Metric, error) {
+func (m *MockDistributor) MetricsForLabelMatchersStream(ctx context.Context, from, to model.Time, matchers ...*labels.Matcher) ([]model.Metric, error) {
 	args := m.Called(ctx, from, to, matchers)
-	return args.Get(0).([]metric.Metric), args.Error(1)
+	return args.Get(0).([]model.Metric), args.Error(1)
 }
 
 func (m *MockDistributor) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {

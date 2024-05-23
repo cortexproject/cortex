@@ -102,6 +102,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "querier.iterators", "Deprecated: Use iterators to execute query. This flag is no longer functional; Batch iterator is always enabled instead.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.batch-iterators", "Deprecated: Use batch iterators to execute query. This flag is no longer functional; Batch iterator is always enabled now.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.ingester-metadata-streaming", "Deprecated: Use streaming RPCs for metadata APIs from ingester.", util_log.Logger)
 
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)

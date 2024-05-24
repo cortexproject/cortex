@@ -216,7 +216,7 @@ func checkQueries(
 			defer func() {
 				require.NoError(t, s.Stop(storeGateway))
 			}()
-			
+
 			// Start query-frontend.
 			queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", c.queryFrontendFlags, c.queryFrontendImage)
 			require.NoError(t, s.Start(queryFrontend))

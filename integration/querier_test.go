@@ -217,7 +217,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					require.NoError(t, s.StartAndWaitReady(compactor))
 				} else {
 					// Wait until the querier has discovered the uploaded blocks.
-					require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_blocks_meta_synced"))
+					require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
 				}
 
 				// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled

@@ -209,6 +209,14 @@ func checkQueries(
 
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
+			// Start store gateway.
+			storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), c.storeGatewayFlags, c.storeGatewayImage)
+
+			require.NoError(t, s.Start(storeGateway))
+			defer func() {
+				require.NoError(t, s.Stop(storeGateway))
+			}()
+			
 			// Start query-frontend.
 			queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", c.queryFrontendFlags, c.queryFrontendImage)
 			require.NoError(t, s.Start(queryFrontend))
@@ -226,18 +234,11 @@ func checkQueries(
 				require.NoError(t, s.Stop(querier))
 			}()
 
-			// Start store gateway.
-			storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), c.storeGatewayFlags, c.storeGatewayImage)
-
-			require.NoError(t, s.Start(storeGateway))
-			defer func() {
-				require.NoError(t, s.Stop(storeGateway))
-			}()
-
 			// Wait until querier and query-frontend are ready, and the querier has updated the ring.
 			require.NoError(t, s.WaitReady(querier, queryFrontend, storeGateway))
 			expectedTokens := float64((numIngesters + 1) * 512) // Ingesters and Store Gateway.
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(expectedTokens), "cortex_ring_tokens_total"))
+			require.NoError(t, storeGateway.WaitSumMetrics(e2e.Greater(0), "cortex_storegateway_bucket_sync_total"))
 
 			// Query the series.
 			for _, endpoint := range []string{queryFrontend.HTTPEndpoint(), querier.HTTPEndpoint()} {

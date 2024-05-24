@@ -21,8 +21,14 @@ var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by GitHub Actions too (see .github/workflows/test-build-deploy.yml).
 	previousVersionImages = map[string]func(map[string]string) map[string]string{
-		"quay.io/cortexproject/cortex:v1.13.1": nil,
-		"quay.io/cortexproject/cortex:v1.13.2": nil,
+		"quay.io/cortexproject/cortex:v1.13.1": func(m map[string]string) map[string]string {
+			m["-ingester.stream-chunks-when-using-blocks"] = "true"
+			return m
+		},
+		"quay.io/cortexproject/cortex:v1.13.2": func(m map[string]string) map[string]string {
+			m["-ingester.stream-chunks-when-using-blocks"] = "true"
+			return m
+		},
 		"quay.io/cortexproject/cortex:v1.14.0": nil,
 		"quay.io/cortexproject/cortex:v1.14.1": nil,
 		"quay.io/cortexproject/cortex:v1.15.0": nil,

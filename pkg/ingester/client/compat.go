@@ -84,6 +84,10 @@ func MatrixFromSeriesSet(set storage.SeriesSet) (model.Matrix, error) {
 				Timestamp: model.Time(t),
 			})
 		}
+		if it.Err() != nil {
+			return nil, it.Err()
+		}
+
 		m = append(m, &ss)
 	}
 

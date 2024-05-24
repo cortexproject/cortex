@@ -20,7 +20,7 @@ package minio
 import (
 	"context"
 	"crypto/md5"
-	fipssha256 "crypto/sha256"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
@@ -40,9 +40,7 @@ import (
 	"time"
 
 	md5simd "github.com/minio/md5-simd"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
-	"github.com/minio/sha256-simd"
 )
 
 func trimEtag(etag string) string {
@@ -563,9 +561,6 @@ func newMd5Hasher() md5simd.Hasher {
 }
 
 func newSHA256Hasher() md5simd.Hasher {
-	if encrypt.FIPS {
-		return &hashWrapper{Hash: fipssha256.New(), isSHA256: true}
-	}
 	return &hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
 }
 

@@ -1,12 +1,11 @@
 package batch
 
 import (
-	"github.com/cortexproject/cortex/pkg/chunk"
-	"github.com/cortexproject/cortex/pkg/chunk/encoding"
-	"github.com/cortexproject/cortex/pkg/querier/iterators"
-
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	"github.com/cortexproject/cortex/pkg/chunk"
 )
 
 // GenericChunk is a generic chunk used by the batch iterator, in order to make the batch
@@ -15,10 +14,10 @@ type GenericChunk struct {
 	MinTime int64
 	MaxTime int64
 
-	iterator func(reuse encoding.Iterator) encoding.Iterator
+	iterator func(reuse chunk.Iterator) chunk.Iterator
 }
 
-func NewGenericChunk(minTime, maxTime int64, iterator func(reuse encoding.Iterator) encoding.Iterator) GenericChunk {
+func NewGenericChunk(minTime, maxTime int64, iterator func(reuse chunk.Iterator) chunk.Iterator) GenericChunk {
 	return GenericChunk{
 		MinTime:  minTime,
 		MaxTime:  maxTime,
@@ -26,17 +25,17 @@ func NewGenericChunk(minTime, maxTime int64, iterator func(reuse encoding.Iterat
 	}
 }
 
-func (c GenericChunk) Iterator(reuse encoding.Iterator) encoding.Iterator {
+func (c GenericChunk) Iterator(reuse chunk.Iterator) chunk.Iterator {
 	return c.iterator(reuse)
 }
 
 // iterator iterates over batches.
 type iterator interface {
-	// Seek to the batch at (or after) time t.
-	Seek(t int64, size int) bool
+	// Seek to the batch at (or after) time t and returns chunk value type.
+	Seek(t int64, size int) chunkenc.ValueType
 
-	// Next moves to the next batch.
-	Next(size int) bool
+	// Next moves to the next batch and returns chunk value type.
+	Next(size int) chunkenc.ValueType
 
 	// AtTime returns the start time of the next batch.  Must only be called after
 	// Seek or Next have returned true.
@@ -45,9 +44,9 @@ type iterator interface {
 	// MaxCurrentChunkTime returns the max time on the current chunk.
 	MaxCurrentChunkTime() int64
 
-	// Batch returns the current batch.  Must only be called after Seek or Next
+	// Batch returns the current batch. Must only be called after Seek or Next
 	// have returned true.
-	Batch() encoding.Batch
+	Batch() chunk.Batch
 
 	Err() error
 }
@@ -56,7 +55,8 @@ type iterator interface {
 func NewChunkMergeIterator(chunks []chunk.Chunk, _, _ model.Time) chunkenc.Iterator {
 	converted := make([]GenericChunk, len(chunks))
 	for i, c := range chunks {
-		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.Data.NewIterator)
+		c := c
+		converted[i] = NewGenericChunk(int64(c.From), int64(c.Through), c.NewIterator)
 	}
 
 	return NewGenericChunkMergeIterator(converted)
@@ -73,42 +73,46 @@ func NewGenericChunkMergeIterator(chunks []GenericChunk) chunkenc.Iterator {
 // call to Next; on calls to Seek, resets batch size to 1.
 type iteratorAdapter struct {
 	batchSize  int
-	curr       encoding.Batch
+	curr       chunk.Batch
 	underlying iterator
 }
 
 func newIteratorAdapter(underlying iterator) chunkenc.Iterator {
-	return iterators.NewCompatibleChunksIterator(&iteratorAdapter{
+	return &iteratorAdapter{
 		batchSize:  1,
 		underlying: underlying,
-	})
+	}
 }
 
 // Seek implements chunkenc.Iterator.
-func (a *iteratorAdapter) Seek(t int64) bool {
+func (a *iteratorAdapter) Seek(t int64) chunkenc.ValueType {
 
 	// Optimisation: fulfill the seek using current batch if possible.
 	if a.curr.Length > 0 && a.curr.Index < a.curr.Length {
 		if t <= a.curr.Timestamps[a.curr.Index] {
 			//In this case, the interface's requirement is met, so state of this
 			//iterator does not need any change.
-			return true
+			return a.curr.ValType
 		} else if t <= a.curr.Timestamps[a.curr.Length-1] {
 			//In this case, some timestamp between current sample and end of batch can fulfill
 			//the seek. Let's find it.
 			for a.curr.Index < a.curr.Length && t > a.curr.Timestamps[a.curr.Index] {
 				a.curr.Index++
 			}
-			return true
+			return a.curr.ValType
 		} else if t <= a.underlying.MaxCurrentChunkTime() {
 			// In this case, some timestamp inside the current underlying chunk can fulfill the seek.
 			// In this case we will call next until we find the sample as it will be faster than calling
 			// `a.underlying.Seek` directly as this would cause the iterator to start from the beginning of the chunk.
 			// See: https://github.com/cortexproject/cortex/blob/f69452975877c67ac307709e5f60b8d20477764c/pkg/querier/batch/chunk.go#L26-L45
 			//      https://github.com/cortexproject/cortex/blob/f69452975877c67ac307709e5f60b8d20477764c/pkg/chunk/encoding/prometheus_chunk.go#L90-L95
-			for a.Next() {
+			for {
+				valType := a.Next()
+				if valType == chunkenc.ValNone {
+					break
+				}
 				if t <= a.curr.Timestamps[a.curr.Index] {
-					return true
+					return valType
 				}
 			}
 		}
@@ -116,24 +120,29 @@ func (a *iteratorAdapter) Seek(t int64) bool {
 
 	a.curr.Length = -1
 	a.batchSize = 1
-	if a.underlying.Seek(t, a.batchSize) {
+	if valType := a.underlying.Seek(t, a.batchSize); valType != chunkenc.ValNone {
 		a.curr = a.underlying.Batch()
-		return a.curr.Index < a.curr.Length
+		if a.curr.Index < a.curr.Length {
+			return a.curr.ValType
+		}
 	}
-	return false
+	return chunkenc.ValNone
 }
 
 // Next implements chunkenc.Iterator.
-func (a *iteratorAdapter) Next() bool {
+func (a *iteratorAdapter) Next() chunkenc.ValueType {
 	a.curr.Index++
-	for a.curr.Index >= a.curr.Length && a.underlying.Next(a.batchSize) {
+	for a.curr.Index >= a.curr.Length && a.underlying.Next(a.batchSize) != chunkenc.ValNone {
 		a.curr = a.underlying.Batch()
 		a.batchSize = a.batchSize * 2
-		if a.batchSize > encoding.BatchSize {
-			a.batchSize = encoding.BatchSize
+		if a.batchSize > chunk.BatchSize {
+			a.batchSize = chunk.BatchSize
 		}
 	}
-	return a.curr.Index < a.curr.Length
+	if a.curr.Index < a.curr.Length {
+		return a.curr.ValType
+	}
+	return chunkenc.ValNone
 }
 
 // At implements chunkenc.Iterator.
@@ -144,4 +153,19 @@ func (a *iteratorAdapter) At() (int64, float64) {
 // Err implements chunkenc.Iterator.
 func (a *iteratorAdapter) Err() error {
 	return nil
+}
+
+// AtHistogram implements chunkenc.Iterator.
+func (a *iteratorAdapter) AtHistogram(h *histogram.Histogram) (int64, *histogram.Histogram) {
+	return a.curr.Timestamps[a.curr.Index], a.curr.Histograms[a.curr.Index]
+}
+
+// AtFloatHistogram implements chunkenc.Iterator.
+func (a *iteratorAdapter) AtFloatHistogram(h *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
+	return a.curr.Timestamps[a.curr.Index], a.curr.FloatHistograms[a.curr.Index]
+}
+
+// AtT implements chunkenc.Iterator.
+func (a *iteratorAdapter) AtT() int64 {
+	return a.curr.Timestamps[a.curr.Index]
 }

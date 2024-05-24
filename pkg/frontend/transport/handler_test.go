@@ -471,6 +471,23 @@ func TestReportQueryStatsFormat(t *testing.T) {
 			},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
 		},
+		"should include query stats with store gateway stats": {
+			queryStats: &querier_stats.QueryStats{
+				Stats: querier_stats.Stats{
+					WallTime:                         3 * time.Second,
+					QueryStorageWallTime:             100 * time.Minute,
+					FetchedSeriesCount:               100,
+					FetchedChunksCount:               200,
+					FetchedSamplesCount:              300,
+					FetchedChunkBytes:                1024,
+					FetchedDataBytes:                 2048,
+					SplitQueries:                     10,
+					StoreGatewayTouchedPostingsCount: 20,
+					StoreGatewayTouchedPostingBytes:  200,
+				},
+			},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 store_gateway_touched_postings_count=20 store_gateway_touched_posting_bytes=200 query_storage_wall_time_seconds=6000`,
+		},
 	}
 
 	for testName, testData := range tests {

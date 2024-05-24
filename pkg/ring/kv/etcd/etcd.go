@@ -27,8 +27,9 @@ type Config struct {
 	EnableTLS   bool                   `yaml:"tls_enabled"`
 	TLS         cortextls.ClientConfig `yaml:",inline"`
 
-	UserName string `yaml:"username"`
-	Password string `yaml:"password"`
+	UserName            string `yaml:"username"`
+	Password            string `yaml:"password"`
+	PermitWithoutStream bool   `yaml:"ping-without-stream-allowed"`
 }
 
 // Clientv3Facade is a subset of all Etcd client operations that are required
@@ -59,6 +60,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
 	f.StringVar(&cfg.UserName, prefix+"etcd.username", "", "Etcd username.")
 	f.StringVar(&cfg.Password, prefix+"etcd.password", "", "Etcd password.")
+	f.BoolVar(&cfg.PermitWithoutStream, prefix+"etcd.ping-without-stream-allowed", true, "Send Keepalive pings with no streams.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix+"etcd", f)
 }
 
@@ -102,7 +104,7 @@ func New(cfg Config, codec codec.Codec, logger log.Logger) (*Client, error) {
 		//   to server without any active streams (enabled)
 		DialKeepAliveTime:    10 * time.Second,
 		DialKeepAliveTimeout: 2 * cfg.DialTimeout,
-		PermitWithoutStream:  true,
+		PermitWithoutStream:  cfg.PermitWithoutStream,
 		TLS:                  tlsConfig,
 		Username:             cfg.UserName,
 		Password:             cfg.Password,

@@ -32,6 +32,8 @@ func TestRoundTrip(t *testing.T) {
 				var err error
 				if r.RequestURI == query {
 					_, err = w.Write([]byte(responseBody))
+				} else if r.RequestURI == queryWithWarnings {
+					_, err = w.Write([]byte(responseBodyWithWarnings))
 				} else {
 					_, err = w.Write([]byte("bar"))
 				}

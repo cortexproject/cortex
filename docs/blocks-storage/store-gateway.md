@@ -1491,8 +1491,9 @@ blocks_storage:
     [ship_concurrency: <int> | default = 10]
 
     # How frequently does Cortex try to compact TSDB head. Block is only created
-    # if data covers smallest block range. Must be greater than 0 and max 5
-    # minutes.
+    # if data covers smallest block range. Must be greater than 0 and max 30
+    # minutes. Note that up to 50% jitter is added to the value for the first
+    # compaction to avoid ingesters compacting concurrently.
     # CLI flag: -blocks-storage.tsdb.head-compaction-interval
     [head_compaction_interval: <duration> | default = 1m]
 

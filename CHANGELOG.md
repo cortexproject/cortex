@@ -1,6 +1,21 @@
 # Changelog
 
 ## master / unreleased
+* [ENHANCEMENT] Query Frontend/Querier: Added store gateway postings touched count and touched size in Querier stats and log in Query Frontend. #5892
+* [ENHANCEMENT] Query Frontend/Querier: Returns `warnings` on prometheus query responses. #5916
+* [ENHANCEMENT] Ingester: Allowing to configure `-blocks-storage.tsdb.head-compaction-interval` flag up to 30 min and add a jitter on the first head compaction. #5919 #5928
+* [ENHANCEMENT] Distributor: Added `max_inflight_push_requests` config to ingester client to protect distributor from OOMKilled. #5917
+* [ENHANCEMENT] Distributor/Querier: Clean stale per-ingester metrics after ingester restarts. #5930
+* [ENHANCEMENT] Distributor/Ring: Allow disabling detailed ring metrics by ring member. #5931
+* [ENHANCEMENT] KV: Etcd Added etcd.ping-without-stream-allowed parameter to disable/enable  PermitWithoutStream #5933
+* [ENHANCEMENT] Ingester: Add a new `max_series_per_label_set` limit. This limit functions similarly to `max_series_per_metric`, but allowing users to define the maximum number of series per LabelSet. #5950
+* [ENHANCEMENT] Store Gateway: Log gRPC requests together with headers configured in `http_request_headers_to_log`. #5958
+* [ENHANCEMENT] Ingester: Added `upload_compacted_blocks_enabled` config to ingester to parameterize uploading compacted blocks.
+* [CHANGE] Upgrade Dockerfile Node version from 14x to 18x. #5906
+* [CHANGE] Query Frontend/Ruler: Omit empty data field in API response. #5953 #5954
+* [BUGFIX] Configsdb: Fix endline issue in db password. #5920
+* [BUGFIX] Ingester: Fix `user` and `type` labels for the `cortex_ingester_tsdb_head_samples_appended_total` TSDB metric. #5952
+
 
 ## 1.17.1 2024-05-20
 

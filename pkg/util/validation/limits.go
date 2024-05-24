@@ -12,10 +12,13 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/segmentio/fasthash/fnv1a"
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
@@ -73,6 +76,13 @@ type TimeWindow struct {
 	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
 }
 
+type MaxSeriesPerLabelSet struct {
+	Limit    int           `yaml:"limit" json:"limit" doc:"nocli|description=The maximum number of active series per LabelSet before replication."`
+	LabelSet labels.Labels `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
+	Id       string        `yaml:"-" json:"-" doc:"nocli"`
+	Hash     uint64        `yaml:"-" json:"-" doc:"nocli"`
+}
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
@@ -101,11 +111,11 @@ type Limits struct {
 
 	// Ingester enforced limits.
 	// Series
-	MaxSeriesPerQuery        int `yaml:"max_series_per_query" json:"max_series_per_query"`
-	MaxLocalSeriesPerUser    int `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric  int `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxGlobalSeriesPerUser   int `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric int `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxLocalSeriesPerUser    int                    `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric  int                    `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxGlobalSeriesPerUser   int                    `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric int                    `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxSeriesPerLabelSet     []MaxSeriesPerLabelSet `yaml:"max_series_per_label_set" json:"max_series_per_label_set" doc:"nocli|description=[Experimental] The maximum number of active series per LabelSet, across the cluster before replication. Empty list to disable."`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -171,6 +181,8 @@ type Limits struct {
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
+	flagext.DeprecatedFlag(f, "ingester.max-series-per-query", "Deprecated: The maximum number of series for which a query can fetch samples from each ingester. This limit is enforced only in the ingesters (when querying samples not flushed to the storage yet) and it's a per-instance limit. This limit is ignored when running the Cortex blocks storage. When running Cortex with blocks storage use -querier.max-fetched-series-per-query limit instead.", util_log.Logger)
+
 	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
@@ -193,7 +205,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 
-	f.IntVar(&l.MaxSeriesPerQuery, "ingester.max-series-per-query", 100000, "The maximum number of series for which a query can fetch samples from each ingester. This limit is enforced only in the ingesters (when querying samples not flushed to the storage yet) and it's a per-instance limit. This limit is ignored when running the Cortex blocks storage. When running Cortex with blocks storage use -querier.max-fetched-series-per-query limit instead.")
 	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
@@ -284,6 +295,8 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
+	l.calculateMaxSeriesPerLabelSetId()
+
 	return nil
 }
 
@@ -310,7 +323,17 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	l.calculateMaxSeriesPerLabelSetId()
+
 	return nil
+}
+
+func (l *Limits) calculateMaxSeriesPerLabelSetId() {
+	for k, limit := range l.MaxSeriesPerLabelSet {
+		limit.Id = limit.LabelSet.String()
+		limit.Hash = fnv1a.HashBytes64([]byte(limit.Id))
+		l.MaxSeriesPerLabelSet[k] = limit
+	}
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
@@ -493,11 +516,6 @@ func (o *Overrides) CreationGracePeriod(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).CreationGracePeriod)
 }
 
-// MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
-func (o *Overrides) MaxSeriesPerQuery(userID string) int {
-	return o.GetOverridesForUser(userID).MaxSeriesPerQuery
-}
-
 // MaxLocalSeriesPerUser returns the maximum number of series a user is allowed to store in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxLocalSeriesPerUser
@@ -521,6 +539,11 @@ func (o *Overrides) OutOfOrderTimeWindow(userID string) model.Duration {
 // MaxGlobalSeriesPerMetric returns the maximum number of series allowed per metric across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerMetric
+}
+
+// MaxSeriesPerLabelSet returns the maximum number of series allowed per labelset across the cluster.
+func (o *Overrides) MaxSeriesPerLabelSet(userID string) []MaxSeriesPerLabelSet {
+	return o.GetOverridesForUser(userID).MaxSeriesPerLabelSet
 }
 
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching

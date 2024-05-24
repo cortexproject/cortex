@@ -583,6 +583,9 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	bucketStoreReg := prometheus.NewRegistry()
 	bucketStoreOpts := []store.BucketStoreOption{
 		store.WithLogger(userLogger),
+		store.WithRequestLoggerFunc(func(ctx context.Context, logger log.Logger) log.Logger {
+			return util_log.HeadersFromContext(ctx, logger)
+		}),
 		store.WithRegistry(bucketStoreReg),
 		store.WithIndexCache(u.indexCache),
 		store.WithQueryGate(u.queryGate),

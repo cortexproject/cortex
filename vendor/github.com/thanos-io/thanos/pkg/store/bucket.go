@@ -42,7 +42,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/thanos-io/objstore"
-
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/indexheader"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -414,6 +413,8 @@ type BucketStore struct {
 	blockEstimatedMaxChunkFunc  BlockEstimator
 
 	indexHeaderLazyDownloadStrategy indexheader.LazyDownloadIndexHeaderFunc
+
+	requestLoggerFunc RequestLoggerFunc
 }
 
 func (s *BucketStore) validate() error {
@@ -447,6 +448,20 @@ type BucketStoreOption func(s *BucketStore)
 func WithLogger(logger log.Logger) BucketStoreOption {
 	return func(s *BucketStore) {
 		s.logger = logger
+	}
+}
+
+type RequestLoggerFunc func(ctx context.Context, log log.Logger) log.Logger
+
+func NoopRequestLoggerFunc(_ context.Context, logger log.Logger) log.Logger {
+	return logger
+}
+
+// WithRequestLoggerFunc sets the BucketStore to use the passed RequestLoggerFunc
+// to initialize logger during query time.
+func WithRequestLoggerFunc(loggerFunc RequestLoggerFunc) BucketStoreOption {
+	return func(s *BucketStore) {
+		s.requestLoggerFunc = loggerFunc
 	}
 }
 
@@ -584,6 +599,7 @@ func NewBucketStore(
 		seriesBatchSize:                 SeriesBatchSize,
 		sortingStrategy:                 sortingStrategyStore,
 		indexHeaderLazyDownloadStrategy: indexheader.AlwaysEagerDownloadIndexHeader,
+		requestLoggerFunc:               NoopRequestLoggerFunc,
 	}
 
 	for _, option := range options {
@@ -780,7 +796,6 @@ func (s *BucketStore) addBlock(ctx context.Context, meta *metadata.Meta) (err er
 
 	b, err := newBucketBlock(
 		ctx,
-		log.With(s.logger, "block", meta.ULID),
 		s.metrics,
 		meta,
 		s.bkt,
@@ -874,18 +889,39 @@ func (s *BucketStore) TSDBInfos() []infopb.TSDBInfo {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	infos := make([]infopb.TSDBInfo, 0, len(s.blocks))
+	infoMap := make(map[uint64][]infopb.TSDBInfo, len(s.blocks))
 	for _, b := range s.blocks {
-		infos = append(infos, infopb.TSDBInfo{
+		lbls := labels.FromMap(b.meta.Thanos.Labels)
+		hash := lbls.Hash()
+		infoMap[hash] = append(infoMap[hash], infopb.TSDBInfo{
 			Labels: labelpb.ZLabelSet{
-				Labels: labelpb.ZLabelsFromPromLabels(labels.FromMap(b.meta.Thanos.Labels)),
+				Labels: labelpb.ZLabelsFromPromLabels(lbls),
 			},
 			MinTime: b.meta.MinTime,
 			MaxTime: b.meta.MaxTime,
 		})
 	}
 
-	return infos
+	// join adjacent blocks so we emit less TSDBInfos
+	res := make([]infopb.TSDBInfo, 0, len(s.blocks))
+	for _, infos := range infoMap {
+		sort.Slice(infos, func(i, j int) bool { return infos[i].MinTime < infos[j].MinTime })
+
+		cur := infos[0]
+		for i, info := range infos {
+			if info.MinTime > cur.MaxTime {
+				res = append(res, cur)
+				cur = info
+				continue
+			}
+			cur.MaxTime = info.MaxTime
+			if i == len(infos)-1 {
+				res = append(res, cur)
+			}
+		}
+	}
+
+	return res
 }
 
 func (s *BucketStore) LabelSet() []labelpb.ZLabelSet {
@@ -1017,7 +1053,7 @@ func newBlockSeriesClient(
 ) *blockSeriesClient {
 	var chunkr *bucketChunkReader
 	if !req.SkipChunks {
-		chunkr = b.chunkReader()
+		chunkr = b.chunkReader(logger)
 	}
 
 	extLset := b.extLset
@@ -1033,7 +1069,7 @@ func newBlockSeriesClient(
 
 		mint:                   req.MinTime,
 		maxt:                   req.MaxTime,
-		indexr:                 b.indexReader(),
+		indexr:                 b.indexReader(logger),
 		chunkr:                 chunkr,
 		seriesLimiter:          seriesLimiter,
 		chunksLimiter:          chunksLimiter,
@@ -1449,6 +1485,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 		seriesLimiter = s.seriesLimiterFactory(s.metrics.queriesDropped.WithLabelValues("series", tenant))
 
 		queryStatsEnabled = false
+
+		logger = s.requestLoggerFunc(ctx, s.logger)
 	)
 
 	if req.Hints != nil {
@@ -1485,7 +1523,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 		blocks := bs.getFor(req.MinTime, req.MaxTime, req.MaxResolutionWindow, reqBlockMatchers)
 
 		if s.debugLogging {
-			debugFoundBlockSetOverview(s.logger, req.MinTime, req.MaxTime, req.MaxResolutionWindow, bs.labels, blocks)
+			debugFoundBlockSetOverview(logger, req.MinTime, req.MaxTime, req.MaxResolutionWindow, bs.labels, blocks)
 		}
 
 		for _, b := range blocks {
@@ -1501,7 +1539,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 
 			blockClient := newBlockSeriesClient(
 				srv.Context(),
-				s.logger,
+				log.With(logger, "block", blk.meta.ULID),
 				blk,
 				req,
 				seriesLimiter,
@@ -1613,7 +1651,7 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 		s.metrics.cachedPostingsCompressedSizeBytes.WithLabelValues(tenant).Add(float64(stats.CachedPostingsCompressedSizeSum))
 		s.metrics.postingsSizeBytes.WithLabelValues(tenant).Observe(float64(int(stats.PostingsFetchedSizeSum) + int(stats.PostingsTouchedSizeSum)))
 
-		level.Debug(s.logger).Log("msg", "stats query processed",
+		level.Debug(logger).Log("msg", "stats query processed",
 			"request", req,
 			"tenant", tenant,
 			"stats", fmt.Sprintf("%+v", stats), "err", err)
@@ -1640,13 +1678,8 @@ func (s *BucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store
 
 	// Merge the sub-results from each selected block.
 	tracing.DoInSpan(ctx, "bucket_store_merge_all", func(ctx context.Context) {
-		defer func() {
-			for _, resp := range respSets {
-				resp.Close()
-			}
-		}()
 		begin := time.Now()
-		set := NewDedupResponseHeap(NewProxyResponseHeap(respSets...))
+		set := NewResponseDeduplicator(NewProxyResponseLoserTree(respSets...))
 		for set.Next() {
 			at := set.At()
 			warn := at.GetWarning()
@@ -1734,6 +1767,12 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 			return nil, status.Error(codes.InvalidArgument, errors.Wrap(err, "translate request hints labels matchers").Error())
 		}
 	}
+	extLsetToRemove := make(map[string]struct{})
+	if len(req.WithoutReplicaLabels) > 0 {
+		for _, l := range req.WithoutReplicaLabels {
+			extLsetToRemove[l] = struct{}{}
+		}
+	}
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -1743,6 +1782,7 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 	var sets [][]string
 	var seriesLimiter = s.seriesLimiterFactory(s.metrics.queriesDropped.WithLabelValues("series", tenant))
 	var bytesLimiter = s.bytesLimiterFactory(s.metrics.queriesDropped.WithLabelValues("bytes", tenant))
+	var logger = s.requestLoggerFunc(ctx, s.logger)
 
 	for _, b := range s.blocks {
 		b := b
@@ -1764,7 +1804,8 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 
 		resHints.AddQueriedBlock(b.meta.ULID)
 
-		indexr := b.indexReader()
+		blockLogger := log.With(logger, "block", b.meta.ULID)
+		indexr := b.indexReader(blockLogger)
 
 		g.Go(func() error {
 			span, newCtx := tracing.StartSpan(gctx, "bucket_store_block_label_names", tracing.Tags{
@@ -1774,7 +1815,7 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 				"block.resolution": b.meta.Thanos.Downsample.Resolution,
 			})
 			defer span.Finish()
-			defer runutil.CloseWithLogOnErr(s.logger, indexr, "label names")
+			defer runutil.CloseWithLogOnErr(blockLogger, indexr, "label names")
 
 			var result []string
 			if len(reqSeriesMatchersNoExtLabels) == 0 {
@@ -1790,19 +1831,22 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 				// b.extLset is already sorted by label name, no need to sort it again.
 				extRes := make([]string, 0, b.extLset.Len())
 				b.extLset.Range(func(l labels.Label) {
-					extRes = append(extRes, l.Name)
+					if _, ok := extLsetToRemove[l.Name]; !ok {
+						extRes = append(extRes, l.Name)
+					}
 				})
 
 				result = strutil.MergeSlices(res, extRes)
 			} else {
 				seriesReq := &storepb.SeriesRequest{
-					MinTime:    req.Start,
-					MaxTime:    req.End,
-					SkipChunks: true,
+					MinTime:              req.Start,
+					MaxTime:              req.End,
+					SkipChunks:           true,
+					WithoutReplicaLabels: req.WithoutReplicaLabels,
 				}
 				blockClient := newBlockSeriesClient(
 					newCtx,
-					s.logger,
+					blockLogger,
 					b,
 					seriesReq,
 					seriesLimiter,
@@ -1815,7 +1859,7 @@ func (s *BucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesReq
 					s.metrics.seriesFetchDurationSum,
 					nil,
 					nil,
-					nil,
+					extLsetToRemove,
 					s.enabledLazyExpandedPostings,
 					s.metrics.lazyExpandedPostingsCount,
 					s.metrics.lazyExpandedPostingSizeBytes,
@@ -1917,6 +1961,11 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, errors.Wrap(err, "translate request labels matchers").Error())
 	}
+	for i := range req.WithoutReplicaLabels {
+		if req.Label == req.WithoutReplicaLabels[i] {
+			return &storepb.LabelValuesResponse{}, nil
+		}
+	}
 
 	tenant, _ := tenancy.GetTenantFromGRPCMetadata(ctx)
 
@@ -1944,6 +1993,7 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 	var sets [][]string
 	var seriesLimiter = s.seriesLimiterFactory(s.metrics.queriesDropped.WithLabelValues("series", tenant))
 	var bytesLimiter = s.bytesLimiterFactory(s.metrics.queriesDropped.WithLabelValues("bytes", tenant))
+	var logger = s.requestLoggerFunc(ctx, s.logger)
 
 	for _, b := range s.blocks {
 		b := b
@@ -1975,7 +2025,9 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 
 		resHints.AddQueriedBlock(b.meta.ULID)
 
-		indexr := b.indexReader()
+		blockLogger := log.With(logger, "block", b.meta.ULID)
+		indexr := b.indexReader(blockLogger)
+
 		g.Go(func() error {
 			span, newCtx := tracing.StartSpan(gctx, "bucket_store_block_label_values", tracing.Tags{
 				"block.id":         b.meta.ULID,
@@ -1984,7 +2036,7 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 				"block.resolution": b.meta.Thanos.Downsample.Resolution,
 			})
 			defer span.Finish()
-			defer runutil.CloseWithLogOnErr(s.logger, indexr, "label values")
+			defer runutil.CloseWithLogOnErr(blockLogger, indexr, "label values")
 
 			var result []string
 			if len(reqSeriesMatchersNoExtLabels) == 0 {
@@ -2001,13 +2053,14 @@ func (s *BucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesR
 				result = res
 			} else {
 				seriesReq := &storepb.SeriesRequest{
-					MinTime:    req.Start,
-					MaxTime:    req.End,
-					SkipChunks: true,
+					MinTime:              req.Start,
+					MaxTime:              req.End,
+					SkipChunks:           true,
+					WithoutReplicaLabels: req.WithoutReplicaLabels,
 				}
 				blockClient := newBlockSeriesClient(
 					newCtx,
-					s.logger,
+					blockLogger,
 					b,
 					seriesReq,
 					seriesLimiter,
@@ -2237,7 +2290,6 @@ func (s *bucketBlockSet) labelMatchers(matchers ...*labels.Matcher) ([]*labels.M
 // bucketBlock represents a block that is located in a bucket. It holds intermediate
 // state for the block on local disk.
 type bucketBlock struct {
-	logger     log.Logger
 	metrics    *bucketStoreMetrics
 	bkt        objstore.BucketReader
 	meta       *metadata.Meta
@@ -2264,7 +2316,6 @@ type bucketBlock struct {
 
 func newBucketBlock(
 	ctx context.Context,
-	logger log.Logger,
 	metrics *bucketStoreMetrics,
 	meta *metadata.Meta,
 	bkt objstore.BucketReader,
@@ -2289,7 +2340,6 @@ func newBucketBlock(
 	extLset := labels.FromMap(meta.Thanos.Labels)
 	relabelLabels := labels.NewBuilder(extLset).Set(block.BlockIDLabel, meta.ULID.String()).Labels()
 	b = &bucketBlock{
-		logger:                 logger,
 		metrics:                metrics,
 		bkt:                    bkt,
 		indexCache:             indexCache,
@@ -2328,12 +2378,12 @@ func (b *bucketBlock) indexFilename() string {
 	return path.Join(b.meta.ULID.String(), block.IndexFilename)
 }
 
-func (b *bucketBlock) readIndexRange(ctx context.Context, off, length int64) ([]byte, error) {
+func (b *bucketBlock) readIndexRange(ctx context.Context, off, length int64, logger log.Logger) ([]byte, error) {
 	r, err := b.bkt.GetRange(ctx, b.indexFilename(), off, length)
 	if err != nil {
 		return nil, errors.Wrap(err, "get range reader")
 	}
-	defer runutil.CloseWithLogOnErr(b.logger, r, "readIndexRange close range reader")
+	defer runutil.CloseWithLogOnErr(logger, r, "readIndexRange close range reader")
 
 	// Preallocate the buffer with the exact size so we don't waste allocations
 	// while progressively growing an initial small buffer. The buffer capacity
@@ -2346,7 +2396,7 @@ func (b *bucketBlock) readIndexRange(ctx context.Context, off, length int64) ([]
 	return buf.Bytes(), nil
 }
 
-func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length int64, chunkRanges byteRanges) (*[]byte, error) {
+func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length int64, chunkRanges byteRanges, logger log.Logger) (*[]byte, error) {
 	if seq < 0 || seq >= len(b.chunkObjs) {
 		return nil, errors.Errorf("unknown segment file for index %d", seq)
 	}
@@ -2356,7 +2406,7 @@ func (b *bucketBlock) readChunkRange(ctx context.Context, seq int, off, length i
 	if err != nil {
 		return nil, errors.Wrap(err, "get range reader")
 	}
-	defer runutil.CloseWithLogOnErr(b.logger, reader, "readChunkRange close range reader")
+	defer runutil.CloseWithLogOnErr(logger, reader, "readChunkRange close range reader")
 
 	// Get a buffer from the pool.
 	chunkBuffer, err := b.chunkPool.Get(chunkRanges.size())
@@ -2380,14 +2430,14 @@ func (b *bucketBlock) chunkRangeReader(ctx context.Context, seq int, off, length
 	return b.bkt.GetRange(ctx, b.chunkObjs[seq], off, length)
 }
 
-func (b *bucketBlock) indexReader() *bucketIndexReader {
+func (b *bucketBlock) indexReader(logger log.Logger) *bucketIndexReader {
 	b.pendingReaders.Add(1)
-	return newBucketIndexReader(b)
+	return newBucketIndexReader(b, logger)
 }
 
-func (b *bucketBlock) chunkReader() *bucketChunkReader {
+func (b *bucketBlock) chunkReader(logger log.Logger) *bucketChunkReader {
 	b.pendingReaders.Add(1)
-	return newBucketChunkReader(b)
+	return newBucketChunkReader(b, logger)
 }
 
 // matchRelabelLabels verifies whether the block matches the given matchers.
@@ -2424,9 +2474,10 @@ type bucketIndexReader struct {
 	loadedSeries    map[storage.SeriesRef][]byte
 
 	indexVersion int
+	logger       log.Logger
 }
 
-func newBucketIndexReader(block *bucketBlock) *bucketIndexReader {
+func newBucketIndexReader(block *bucketBlock, logger log.Logger) *bucketIndexReader {
 	r := &bucketIndexReader{
 		block: block,
 		dec: &index.Decoder{
@@ -2434,6 +2485,7 @@ func newBucketIndexReader(block *bucketBlock) *bucketIndexReader {
 		},
 		stats:        &queryStats{},
 		loadedSeries: map[storage.SeriesRef][]byte{},
+		logger:       logger,
 	}
 	return r
 }
@@ -2833,13 +2885,13 @@ func (r *bucketIndexReader) fetchExpandedPostingsFromCache(ctx context.Context, 
 	}()
 	// If failed to decode or expand cached postings, return and expand postings again.
 	if err != nil {
-		level.Error(r.block.logger).Log("msg", "failed to decode cached expanded postings, refetch postings", "id", r.block.meta.ULID.String(), "err", err)
+		level.Error(r.logger).Log("msg", "failed to decode cached expanded postings, refetch postings", "id", r.block.meta.ULID.String(), "err", err)
 		return false, nil, nil
 	}
 
 	ps, err := ExpandPostingsWithContext(ctx, p)
 	if err != nil {
-		level.Error(r.block.logger).Log("msg", "failed to expand cached expanded postings, refetch postings", "id", r.block.meta.ULID.String(), "err", err)
+		level.Error(r.logger).Log("msg", "failed to expand cached expanded postings, refetch postings", "id", r.block.meta.ULID.String(), "err", err)
 		return false, nil, nil
 	}
 
@@ -2979,7 +3031,7 @@ func (r *bucketIndexReader) fetchPostings(ctx context.Context, keys []labels.Lab
 			if err != nil {
 				return errors.Wrap(err, "read postings range")
 			}
-			defer runutil.CloseWithLogOnErr(r.block.logger, partReader, "readIndexRange close range reader")
+			defer runutil.CloseWithLogOnErr(r.logger, partReader, "readIndexRange close range reader")
 			brdr.Reset(partReader)
 
 			rdr := newPostingsReaderBuilder(ctx, brdr, ptrs[i:j], start, length)
@@ -3164,7 +3216,7 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []storage.Series
 		stats.DataDownloadedSizeSum += units.Base2Bytes(end - start)
 	}
 
-	b, err := r.block.readIndexRange(ctx, int64(start), int64(end-start))
+	b, err := r.block.readIndexRange(ctx, int64(start), int64(end-start), r.logger)
 	if err != nil {
 		return errors.Wrap(err, "read series range")
 	}
@@ -3188,7 +3240,7 @@ func (r *bucketIndexReader) loadSeries(ctx context.Context, ids []storage.Series
 
 			// Inefficient, but should be rare.
 			r.block.metrics.seriesRefetches.WithLabelValues(tenant).Inc()
-			level.Warn(r.block.logger).Log("msg", "series size exceeded expected size; refetching", "id", id, "series length", n+int(l), "maxSeriesSize", r.block.estimatedMaxSeriesSize)
+			level.Warn(r.logger).Log("msg", "series size exceeded expected size; refetching", "id", id, "series length", n+int(l), "maxSeriesSize", r.block.estimatedMaxSeriesSize)
 
 			// Fetch plus to get the size of next one if exists.
 			return r.loadSeries(ctx, ids[i:], true, uint64(id), uint64(id)+uint64(n+int(l)+1), bytesLimiter, tenant)
@@ -3378,17 +3430,19 @@ type bucketChunkReader struct {
 	chunkBytesMtx sync.Mutex
 	stats         *queryStats
 	chunkBytes    []*[]byte // Byte slice to return to the chunk pool on close.
+	logger        log.Logger
 
 	loadingChunksMtx  sync.Mutex
 	loadingChunks     bool
 	finishLoadingChks chan struct{}
 }
 
-func newBucketChunkReader(block *bucketBlock) *bucketChunkReader {
+func newBucketChunkReader(block *bucketBlock, logger log.Logger) *bucketChunkReader {
 	return &bucketChunkReader{
 		block:  block,
 		stats:  &queryStats{},
 		toLoad: make([][]loadIdx, len(block.chunkObjs)),
+		logger: logger,
 	}
 }
 
@@ -3495,7 +3549,7 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 	if err != nil {
 		return errors.Wrap(err, "get range reader")
 	}
-	defer runutil.CloseWithLogOnErr(r.block.logger, reader, "readChunkRange close range reader")
+	defer runutil.CloseWithLogOnErr(r.logger, reader, "readChunkRange close range reader")
 	bufReader := bufio.NewReaderSize(reader, r.block.estimatedMaxChunkSize)
 
 	stats.chunksFetchCount++
@@ -3575,7 +3629,7 @@ func (r *bucketChunkReader) loadChunks(ctx context.Context, res []seriesEntry, a
 		}
 		stats.DataDownloadedSizeSum += units.Base2Bytes(chunkLen)
 
-		nb, err := r.block.readChunkRange(ctx, seq, int64(pIdx.offset), int64(chunkLen), []byteRange{{offset: 0, length: chunkLen}})
+		nb, err := r.block.readChunkRange(ctx, seq, int64(pIdx.offset), int64(chunkLen), []byteRange{{offset: 0, length: chunkLen}}, r.logger)
 		if err != nil {
 			return errors.Wrapf(err, "preloaded chunk too small, expecting %d, and failed to fetch full chunk", chunkLen)
 		}

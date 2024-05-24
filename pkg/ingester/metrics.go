@@ -37,7 +37,8 @@ type ingesterMetrics struct {
 	memSeriesRemovedTotal   *prometheus.CounterVec
 	memMetadataRemovedTotal *prometheus.CounterVec
 
-	activeSeriesPerUser *prometheus.GaugeVec
+	activeSeriesPerUser     *prometheus.GaugeVec
+	activeSeriesPerLabelSet *prometheus.GaugeVec
 
 	// Global limit metrics
 	maxUsersGauge           prometheus.GaugeFunc
@@ -210,6 +211,11 @@ func newIngesterMetrics(r prometheus.Registerer,
 			}
 			return 0
 		}),
+
+		activeSeriesPerLabelSet: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_active_series_per_labelset",
+			Help: "Number of currently active series per user and labelset.",
+		}, []string{"user", "labelset"}),
 
 		// Not registered automatically, but only if activeSeriesEnabled is true.
 		activeSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -460,7 +466,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbSamplesAppended: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_samples_appended_total",
 			"Total number of appended samples.",
-			[]string{"type", "user"}, nil),
+			[]string{"user", "type"}, nil),
 		tsdbOutOfOrderSamplesAppended: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_out_of_order_samples_appended_total",
 			"Total number of appended out of order samples.",

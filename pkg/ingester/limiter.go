@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -16,6 +17,13 @@ var (
 	errMaxSeriesPerUserLimitExceeded     = errors.New("per-user series limit exceeded")
 	errMaxMetadataPerUserLimitExceeded   = errors.New("per-user metric metadata limit exceeded")
 )
+
+type errMaxSeriesPerLabelSetLimitExceeded struct {
+	error
+	id          string
+	localLimit  int
+	globalLimit int
+}
 
 // RingCount is the interface exposed by a ring implementation which allows
 // to count members
@@ -97,23 +105,44 @@ func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int
 	return errMaxMetadataPerUserLimitExceeded
 }
 
-// MaxSeriesPerQuery returns the maximum number of series a query is allowed to hit.
-func (l *Limiter) MaxSeriesPerQuery(userID string) int {
-	return l.limits.MaxSeriesPerQuery(userID)
+// AssertMaxSeriesPerLabelSet limit has not been reached compared to the current
+// number of metrics with metadata in input and returns an error if so.
+func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels, f func(validation.MaxSeriesPerLabelSet) (int, error)) error {
+	m := l.maxSeriesPerLabelSet(userID, metric)
+	for _, limit := range m {
+		maxFunc := func(string) int {
+			return limit.Limit
+		}
+		local := l.maxByLocalAndGlobal(userID, maxFunc, maxFunc)
+		if u, err := f(limit); err != nil {
+			return err
+		} else if u >= local {
+			return errMaxSeriesPerLabelSetLimitExceeded{
+				id:          limit.Id,
+				localLimit:  local,
+				globalLimit: limit.Limit,
+			}
+		}
+	}
+	return nil
 }
 
 // FormatError returns the input error enriched with the actual limits for the given user.
 // It acts as pass-through if the input error is unknown.
 func (l *Limiter) FormatError(userID string, err error) error {
-	switch err {
-	case errMaxSeriesPerUserLimitExceeded:
+	switch {
+	case errors.Is(err, errMaxSeriesPerUserLimitExceeded):
 		return l.formatMaxSeriesPerUserError(userID)
-	case errMaxSeriesPerMetricLimitExceeded:
+	case errors.Is(err, errMaxSeriesPerMetricLimitExceeded):
 		return l.formatMaxSeriesPerMetricError(userID)
-	case errMaxMetadataPerUserLimitExceeded:
+	case errors.Is(err, errMaxMetadataPerUserLimitExceeded):
 		return l.formatMaxMetadataPerUserError(userID)
-	case errMaxMetadataPerMetricLimitExceeded:
+	case errors.Is(err, errMaxMetadataPerMetricLimitExceeded):
 		return l.formatMaxMetadataPerMetricError(userID)
+	case errors.As(err, &errMaxSeriesPerLabelSetLimitExceeded{}):
+		e := errMaxSeriesPerLabelSetLimitExceeded{}
+		errors.As(err, &e)
+		return l.formatMaxSeriesPerLabelSetError(e)
 	default:
 		return err
 	}
@@ -153,6 +182,33 @@ func (l *Limiter) formatMaxMetadataPerMetricError(userID string) error {
 
 	return fmt.Errorf("per-metric metadata limit of %d exceeded, %s (local limit: %d global limit: %d actual local limit: %d)",
 		minNonZero(localLimit, globalLimit), l.AdminLimitMessage, localLimit, globalLimit, actualLimit)
+}
+
+func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded) error {
+	return fmt.Errorf("per-labelset series limit of %d exceeded (labelSet: %s, local limit: %d global limit: %d actual)",
+		minNonZero(err.globalLimit, err.localLimit), err.id, err.localLimit, err.globalLimit)
+}
+
+func (l *Limiter) maxSeriesPerLabelSet(userID string, metric labels.Labels) []validation.MaxSeriesPerLabelSet {
+	m := l.limits.MaxSeriesPerLabelSet(userID)
+
+	// returning early to not have any overhead
+	if len(m) == 0 {
+		return nil
+	}
+
+	r := make([]validation.MaxSeriesPerLabelSet, 0, len(m))
+outer:
+	for _, lbls := range m {
+		for _, lbl := range lbls.LabelSet {
+			// We did not find some of the labels on  the set
+			if v := metric.Get(lbl.Name); v != lbl.Value {
+				continue outer
+			}
+		}
+		r = append(r, lbls)
+	}
+	return r
 }
 
 func (l *Limiter) maxSeriesPerMetric(userID string) int {

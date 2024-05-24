@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/cortexproject/cortex/pkg/configs/db/memory"
 	"github.com/cortexproject/cortex/pkg/configs/db/postgres"
@@ -70,14 +71,11 @@ func New(cfg Config) (DB, error) {
 	}
 
 	if len(cfg.PasswordFile) != 0 {
-		if u.User == nil {
-			return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
-		}
-		passwordBytes, err := os.ReadFile(cfg.PasswordFile)
+		updatedURL, err := setPassword(u, cfg.PasswordFile)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read database password file: %v", err)
+			return nil, err
 		}
-		u.User = url.UserPassword(u.User.Username(), string(passwordBytes))
+		u = updatedURL
 	}
 
 	var d DB
@@ -87,10 +85,25 @@ func New(cfg Config) (DB, error) {
 	case "postgres":
 		d, err = postgres.New(u.String(), cfg.MigrationsDir)
 	default:
-		return nil, fmt.Errorf("Unknown database type: %s", u.Scheme)
+		return nil, fmt.Errorf("unknown database type: %s", u.Scheme)
 	}
 	if err != nil {
 		return nil, err
 	}
 	return traced{timed{d}}, nil
+}
+
+func setPassword(u *url.URL, passwordFile string) (*url.URL, error) {
+	if u.User == nil {
+		return nil, fmt.Errorf("--database.password-file requires username in --database.uri")
+	}
+
+	passwordBytes, err := os.ReadFile(passwordFile)
+	if err != nil {
+		return nil, fmt.Errorf("could not read database password file: %v", err)
+	}
+
+	passwordStr := strings.TrimSpace(string(passwordBytes))
+	u.User = url.UserPassword(u.User.Username(), passwordStr)
+	return u, nil
 }

@@ -1,7 +1,9 @@
 package batch
 
 import (
-	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
+
+	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
 
 type nonOverlappingIterator struct {
@@ -20,14 +22,14 @@ func newNonOverlappingIterator(chunks []GenericChunk) *nonOverlappingIterator {
 	return it
 }
 
-func (it *nonOverlappingIterator) Seek(t int64, size int) bool {
+func (it *nonOverlappingIterator) Seek(t int64, size int) chunkenc.ValueType {
 	for {
-		if it.iter.Seek(t, size) {
-			return true
+		if valType := it.iter.Seek(t, size); valType != chunkenc.ValNone {
+			return valType
 		} else if it.iter.Err() != nil {
-			return false
+			return chunkenc.ValNone
 		} else if !it.next() {
-			return false
+			return chunkenc.ValNone
 		}
 	}
 }
@@ -36,14 +38,14 @@ func (it *nonOverlappingIterator) MaxCurrentChunkTime() int64 {
 	return it.iter.MaxCurrentChunkTime()
 }
 
-func (it *nonOverlappingIterator) Next(size int) bool {
+func (it *nonOverlappingIterator) Next(size int) chunkenc.ValueType {
 	for {
-		if it.iter.Next(size) {
-			return true
+		if valType := it.iter.Next(size); valType != chunkenc.ValNone {
+			return valType
 		} else if it.iter.Err() != nil {
-			return false
+			return chunkenc.ValNone
 		} else if !it.next() {
-			return false
+			return chunkenc.ValNone
 		}
 	}
 }

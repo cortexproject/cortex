@@ -57,18 +57,6 @@ As chunks ingesters shut down, they flush chunks to the storage. They are then r
 to use blocks. Queriers cannot fetch recent chunks from ingesters directly (as blocks ingester don't reload chunks),
 and need to use storage instead.
 
-### Query-frontend
-
-Query-frontend needs to be reconfigured as follow:
-
-- `-querier.parallelise-shardable-queries=false`
-
-#### `-querier.parallelise-shardable-queries=false`
-
-Query frontend has an option `-querier.parallelise-shardable-queries` to split some incoming queries into multiple queries based on sharding factor used in v11 schema of chunk storage.
-As the description implies, it only works when using chunks storage.
-During and after the migration to blocks (and also after possible rollback), this option needs to be disabled otherwise query-frontend will generate queries that cannot be satisfied by blocks storage.
-
 ### Compactor and Store-gateway
 
 [Compactor](./compactor.md) and [store-gateway](./store-gateway.md) services should be deployed and successfully up and running before migrating ingesters.

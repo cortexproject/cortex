@@ -63,7 +63,7 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		"should fail on too high compaction interval": {
 			setup: func(cfg *BlocksStorageConfig) {
-				cfg.TSDB.HeadCompactionInterval = 10 * time.Minute
+				cfg.TSDB.HeadCompactionInterval = 40 * time.Minute
 			},
 			expectedErr: errInvalidCompactionInterval,
 		},

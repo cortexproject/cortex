@@ -2035,13 +2035,13 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{
-			Timeseries: []cortexpb.TimeSeries{
+			Chunkseries: []client.TimeSeriesChunk{
 				{
 					Labels: []cortexpb.LabelAdapter{
 						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
 						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
 					},
-					Samples: []cortexpb.Sample{{TimestampMs: downAtTimeMs, Value: float64(downAtActiveSec)}},
+					Chunks: querier.ConvertToChunks(t, []cortexpb.Sample{{TimestampMs: downAtTimeMs, Value: float64(downAtActiveSec)}}),
 				},
 			},
 		}, nil)
@@ -2143,9 +2143,9 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 	d := &querier.MockDistributor{}
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&client.QueryStreamResponse{
-			Timeseries: []cortexpb.TimeSeries{
+			Chunkseries: []client.TimeSeriesChunk{
 				{
-					Samples: []cortexpb.Sample{},
+					Chunks: []client.Chunk{},
 				},
 			},
 		}, nil)

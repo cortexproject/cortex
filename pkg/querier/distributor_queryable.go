@@ -147,13 +147,6 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 		return storage.ErrSeriesSet(err)
 	}
 
-	// we should sort the series if we need to merge them even if sortSeries is not required by the querier
-	sortSeries = sortSeries || (len(results.Timeseries) > 0 && len(results.Chunkseries) > 0)
-	sets := []storage.SeriesSet(nil)
-	if len(results.Timeseries) > 0 {
-		sets = append(sets, newTimeSeriesSeriesSet(sortSeries, results.Timeseries))
-	}
-
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
 	for _, result := range results.Chunkseries {
 		// Sometimes the ingester can send series that have no data.
@@ -176,18 +169,11 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries boo
 		})
 	}
 
-	if len(serieses) > 0 {
-		sets = append(sets, series.NewConcreteSeriesSet(sortSeries || len(sets) > 0, serieses))
-	}
-
-	if len(sets) == 0 {
+	if len(serieses) == 0 {
 		return storage.EmptySeriesSet()
 	}
-	if len(sets) == 1 {
-		return sets[0]
-	}
-	// Sets need to be sorted. Both series.NewConcreteSeriesSet and newTimeSeriesSeriesSet take care of that.
-	return storage.NewMergeSeriesSet(sets, storage.ChainedSeriesMerge)
+
+	return series.NewConcreteSeriesSet(sortSeries, serieses)
 }
 
 func (q *distributorQuerier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {

@@ -35,9 +35,6 @@ func (m *QueryStreamResponse) ChunksSize() int {
 }
 
 func (m *QueryStreamResponse) SamplesCount() (count int) {
-	for _, ts := range m.Timeseries {
-		count += len(ts.Samples)
-	}
 	for _, cs := range m.Chunkseries {
 		for _, c := range cs.Chunks {
 			if c.Encoding == int32(encoding.PrometheusXorChunk) {

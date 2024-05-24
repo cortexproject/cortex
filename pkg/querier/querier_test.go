@@ -168,24 +168,23 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 	}
 
 	db, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
-
 	distributor := &MockDistributor{}
 
 	unorderedResponse := client.QueryStreamResponse{
-		Timeseries: []cortexpb.TimeSeries{
+		Chunkseries: []client.TimeSeriesChunk{
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "2"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "1"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 		},
 	}
@@ -321,41 +320,41 @@ func TestLimits(t *testing.T) {
 	_, samples := mockTSDB(t, labelsSets, model.Time(start.Unix()*1000), int(chunks*samplesPerChunk), sampleRate, chunkOffset, int(samplesPerChunk))
 
 	streamResponse := client.QueryStreamResponse{
-		Timeseries: []cortexpb.TimeSeries{
+		Chunkseries: []client.TimeSeriesChunk{
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "2"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "1"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "orders", Value: "3"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "bar"},
 					{Name: "orders", Value: "2"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "bar"},
 					{Name: "orders", Value: "1"},
 				},
-				Samples: samples,
+				Chunks: ConvertToChunks(t, samples),
 			},
 		},
 	}

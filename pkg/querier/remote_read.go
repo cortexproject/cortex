@@ -6,9 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -53,7 +51,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 					End:   int64(to),
 				}
 				seriesSet := querier.Select(ctx, false, params, matchers...)
-				resp.Results[i], err = seriesSetToQueryResponse(seriesSet)
+				resp.Results[i], err = client.SeriesSetToQueryResponse(seriesSet)
 				errors <- err
 			}(i, qr)
 		}
@@ -74,31 +72,4 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 			level.Error(logger).Log("msg", "error sending remote read response", "err", err)
 		}
 	})
-}
-
-func seriesSetToQueryResponse(s storage.SeriesSet) (*client.QueryResponse, error) {
-	result := &client.QueryResponse{}
-
-	var it chunkenc.Iterator
-	for s.Next() {
-		series := s.At()
-		samples := []cortexpb.Sample{}
-		it = series.Iterator(it)
-		for it.Next() != chunkenc.ValNone {
-			t, v := it.At()
-			samples = append(samples, cortexpb.Sample{
-				TimestampMs: t,
-				Value:       v,
-			})
-		}
-		if err := it.Err(); err != nil {
-			return nil, err
-		}
-		result.Timeseries = append(result.Timeseries, cortexpb.TimeSeries{
-			Labels:  cortexpb.FromLabelsToLabelAdapters(series.Labels()),
-			Samples: samples,
-		})
-	}
-
-	return result, s.Err()
 }

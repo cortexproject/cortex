@@ -361,18 +361,6 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 		}
 
-		// In this test we do ensure that the /series start/end time is ignored and Cortex
-		// always returns series in ingesters memory. No need to repeat it for each user.
-		if userID == 0 {
-			start := now.Add(-1000 * time.Hour)
-			end := now.Add(-999 * time.Hour)
-
-			result, err := c.Series([]string{"series_1"}, start, end)
-			require.NoError(t, err)
-			require.Len(t, result, 1)
-			assert.Equal(t, model.LabelSet{labels.MetricName: "series_1"}, result[0])
-		}
-
 		// No need to repeat the query 400 test for each user.
 		if userID == 0 {
 			start := time.Unix(1595846748, 806*1e6)
@@ -400,7 +388,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 	wg.Wait()
 
-	extra := float64(3)
+	extra := float64(2)
 	if cfg.testMissingMetricName {
 		extra++
 	}

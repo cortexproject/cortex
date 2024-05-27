@@ -2184,7 +2184,6 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 		to                   int64
 		matchers             []*client.LabelMatchers
 		expected             []*cortexpb.Metric
-		queryStoreForLabels  bool
 		queryIngestersWithin time.Duration
 	}{
 		"should return an empty response if no metric match": {
@@ -2254,7 +2253,6 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 			expected: []*cortexpb.Metric{
 				{Labels: cortexpb.FromLabelsToLabelAdapters(fixtures[0].lbls)},
 			},
-			queryStoreForLabels:  true,
 			queryIngestersWithin: time.Hour,
 		},
 		"should not return duplicated metrics on overlapping matchers": {
@@ -2323,7 +2321,6 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 				EndTimestampMs:   testData.to,
 				MatchersSet:      testData.matchers,
 			}
-			i.cfg.QueryStoreForLabels = testData.queryStoreForLabels
 			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)

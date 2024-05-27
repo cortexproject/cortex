@@ -120,7 +120,6 @@ type Config struct {
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
 	// Injected at runtime and read from querier config.
-	QueryStoreForLabels  bool          `yaml:"-"`
 	QueryIngestersWithin time.Duration `yaml:"-"`
 
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
@@ -1426,7 +1425,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return &client.LabelValuesResponse{}, cleanup, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1506,7 +1505,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return &client.LabelNamesResponse{}, cleanup, nil
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1586,7 +1585,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return nil, cleanup, err
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryStoreForLabels, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2755,8 +2754,8 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // metadataQueryRange returns the best range to query for metadata queries based on the timerange in the ingester.
-func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryStoreForLabels bool, queryIngestersWithin time.Duration) (mint, maxt int64, err error) {
-	if queryIngestersWithin > 0 && queryStoreForLabels {
+func metadataQueryRange(queryStart, queryEnd int64, db *userTSDB, queryIngestersWithin time.Duration) (mint, maxt int64, err error) {
+	if queryIngestersWithin > 0 {
 		// If the feature for querying metadata from store-gateway is enabled,
 		// then we don't want to manipulate the mint and maxt.
 		return queryStart, queryEnd, nil

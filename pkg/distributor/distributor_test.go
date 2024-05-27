@@ -3589,9 +3589,6 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		limits:           &limits,
 	})
 
-	regs[0].MustRegister(validation.DiscardedSamples)
-	validation.DiscardedSamples.Reset()
-
 	// Push the series to the distributor
 	req := mockWriteRequest(inputSeries, 1, 1)
 	ctx := user.InjectOrgID(context.Background(), "userDistributorPushRelabelDropWillExportMetricOfDroppedSamples")
@@ -3615,7 +3612,6 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
 		`
-
 	require.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...))
 }
 

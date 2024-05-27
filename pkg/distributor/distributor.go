@@ -119,6 +119,8 @@ type Distributor struct {
 	ingesterQueryFailures            *prometheus.CounterVec
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+
+	validateMetrics *validation.ValidateMetrics
 }
 
 // Config contains the configuration required to
@@ -345,6 +347,8 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
+
+		validateMetrics: validation.NewValidateMetrics(reg),
 	}
 
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -437,7 +441,7 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 		level.Warn(d.log).Log("msg", "failed to remove cortex_distributor_deduped_samples_total metric for user", "user", userID, "err", err)
 	}
 
-	validation.DeletePerUserValidationMetrics(userID, d.log)
+	validation.DeletePerUserValidationMetrics(d.validateMetrics, userID, d.log)
 }
 
 // Called after distributor is asked to stop via StopAsync.
@@ -534,7 +538,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
-	if err := validation.ValidateLabels(limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -543,7 +547,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		// Only alloc when data present
 		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := validation.ValidateSample(limits, userID, ts.Labels, s); err != nil {
+			if err := validation.ValidateSample(d.validateMetrics, limits, userID, ts.Labels, s); err != nil {
 				return emptyPreallocSeries, err
 			}
 			samples = append(samples, s)
@@ -555,7 +559,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		// Only alloc when data present
 		exemplars = make([]cortexpb.Exemplar, 0, len(ts.Exemplars))
 		for _, e := range ts.Exemplars {
-			if err := validation.ValidateExemplar(userID, ts.Labels, e); err != nil {
+			if err := validation.ValidateExemplar(d.validateMetrics, userID, ts.Labels, e); err != nil {
 				// An exemplar validation error prevents ingesting samples
 				// in the same series object. However, because the current Prometheus
 				// remote write implementation only populates one or the other,
@@ -643,7 +647,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
-				validation.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numSamples))
+				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numSamples))
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
@@ -678,9 +682,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Ensure the request slice is reused if the request is rate limited.
 		cortexpb.ReuseSlice(req.Timeseries)
 
-		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
-		validation.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
-		validation.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedSamples))
+		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
+		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
 		// Return a 429 here to tell the client it is going too fast.
 		// Client may discard the data or slow down and re-send.
 		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
@@ -790,7 +794,7 @@ func (d *Distributor) prepareMetadataKeys(req *cortexpb.WriteRequest, limits *va
 	metadataKeys := make([]uint32, 0, len(req.Metadata))
 
 	for _, m := range req.Metadata {
-		err := validation.ValidateMetadata(limits, userID, m)
+		err := validation.ValidateMetadata(d.validateMetrics, limits, userID, m)
 
 		if err != nil {
 			if firstPartialErr == nil {
@@ -841,7 +845,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if len(l) == 0 {
 				// all labels are gone, samples will be discarded
-				validation.DiscardedSamples.WithLabelValues(
+				d.validateMetrics.DiscardedSamples.WithLabelValues(
 					validation.DroppedByRelabelConfiguration,
 					userID,
 				).Add(float64(len(ts.Samples)))
@@ -862,7 +866,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 
 		if len(ts.Labels) == 0 {
-			validation.DiscardedExemplars.WithLabelValues(
+			d.validateMetrics.DiscardedExemplars.WithLabelValues(
 				validation.DroppedByUserConfigurationOverride,
 				userID,
 			).Add(float64(len(ts.Samples)))

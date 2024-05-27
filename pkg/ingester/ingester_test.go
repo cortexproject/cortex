@@ -140,7 +140,6 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, tenantLimits, blocksDir, registry)
-	registry.MustRegister(validation.DiscardedSamples)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
@@ -1188,9 +1187,6 @@ func TestIngester_Push(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			registry := prometheus.NewRegistry()
-
-			registry.MustRegister(validation.DiscardedSamples)
-			validation.DiscardedSamples.Reset()
 
 			// Create a mocked ingester
 			cfg := defaultIngesterTestConfig(t)
@@ -4434,29 +4430,8 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		count := 100000
-		target := time.Second
-
-		// find right count to make sure that push takes given target duration.
-		for {
-			req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("test-%d", count)), count)
-
-			start := time.Now()
-			_, err := i.Push(ctx, req)
-			require.NoError(t, err)
-
-			elapsed := time.Since(start)
-			t.Log(count, elapsed)
-			if elapsed > time.Second {
-				break
-			}
-
-			count = int(float64(count) * float64(target/elapsed) * 1.5) // Adjust number of samples to hit our target push duration.
-		}
-
-		// Now repeat push with number of samples calibrated to our target.
+		count := 3500000
 		req := generateSamplesForLabel(labels.FromStrings(labels.MetricName, fmt.Sprintf("real-%d", count)), count)
-
 		// Signal that we're going to do the real push now.
 		close(startCh)
 

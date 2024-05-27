@@ -20,6 +20,9 @@ func TestValidateLabels(t *testing.T) {
 	cfg := new(Limits)
 	userID := "testUser"
 
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
+
 	cfg.MaxLabelValueLength = 25
 	cfg.MaxLabelNameLength = 25
 	cfg.MaxLabelNamesPerSeries = 2
@@ -93,13 +96,13 @@ func TestValidateLabels(t *testing.T) {
 			nil,
 		},
 	} {
-		err := ValidateLabels(cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
+		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 
-	DiscardedSamples.WithLabelValues("random reason", "different user").Inc()
+	validateMetrics.DiscardedSamples.WithLabelValues("random reason", "different user").Inc()
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
 			cortex_discarded_samples_total{reason="label_invalid",user="testUser"} 1
@@ -113,9 +116,9 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 
-	DeletePerUserValidationMetrics(userID, util_log.Logger)
+	DeletePerUserValidationMetrics(validateMetrics, userID, util_log.Logger)
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
@@ -124,7 +127,8 @@ func TestValidateLabels(t *testing.T) {
 
 func TestValidateExemplars(t *testing.T) {
 	userID := "testUser"
-
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
 	invalidExemplars := []cortexpb.Exemplar{
 		{
 			// Missing labels
@@ -142,13 +146,13 @@ func TestValidateExemplars(t *testing.T) {
 	}
 
 	for _, ie := range invalidExemplars {
-		err := ValidateExemplar(userID, []cortexpb.LabelAdapter{}, ie)
+		err := ValidateExemplar(validateMetrics, userID, []cortexpb.LabelAdapter{}, ie)
 		assert.NotNil(t, err)
 	}
 
-	DiscardedExemplars.WithLabelValues("random reason", "different user").Inc()
+	validateMetrics.DiscardedExemplars.WithLabelValues("random reason", "different user").Inc()
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_exemplars_total The total number of exemplars that were discarded.
 			# TYPE cortex_discarded_exemplars_total counter
 			cortex_discarded_exemplars_total{reason="exemplar_labels_missing",user="testUser"} 1
@@ -159,8 +163,8 @@ func TestValidateExemplars(t *testing.T) {
 		`), "cortex_discarded_exemplars_total"))
 
 	// Delete test user and verify only different remaining
-	DeletePerUserValidationMetrics(userID, util_log.Logger)
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	DeletePerUserValidationMetrics(validateMetrics, userID, util_log.Logger)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_exemplars_total The total number of exemplars that were discarded.
 			# TYPE cortex_discarded_exemplars_total counter
 			cortex_discarded_exemplars_total{reason="random reason",user="different user"} 1
@@ -171,7 +175,8 @@ func TestValidateMetadata(t *testing.T) {
 	cfg := new(Limits)
 	cfg.EnforceMetadataMetricName = true
 	cfg.MaxMetadataLength = 22
-
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
 
 	for _, c := range []struct {
@@ -206,14 +211,14 @@ func TestValidateMetadata(t *testing.T) {
 		},
 	} {
 		t.Run(c.desc, func(t *testing.T) {
-			err := ValidateMetadata(cfg, userID, c.metadata)
+			err := ValidateMetadata(validateMetrics, cfg, userID, c.metadata)
 			assert.Equal(t, c.err, err, "wrong error")
 		})
 	}
 
-	DiscardedMetadata.WithLabelValues("random reason", "different user").Inc()
+	validateMetrics.DiscardedMetadata.WithLabelValues("random reason", "different user").Inc()
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.
 			# TYPE cortex_discarded_metadata_total counter
 			cortex_discarded_metadata_total{reason="help_too_long",user="testUser"} 1
@@ -224,9 +229,9 @@ func TestValidateMetadata(t *testing.T) {
 			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
 	`), "cortex_discarded_metadata_total"))
 
-	DeletePerUserValidationMetrics(userID, util_log.Logger)
+	DeletePerUserValidationMetrics(validateMetrics, userID, util_log.Logger)
 
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer, strings.NewReader(`
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_metadata_total The total number of metadata that were discarded.
 			# TYPE cortex_discarded_metadata_total counter
 			cortex_discarded_metadata_total{reason="random reason",user="different user"} 1
@@ -238,10 +243,11 @@ func TestValidateLabelOrder(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
-
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
 
-	actual := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
+	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
@@ -259,10 +265,11 @@ func TestValidateLabelDuplication(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
-
+	reg := prometheus.NewRegistry()
+	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
 
-	actual := ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
+	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
 	}, false)
@@ -272,7 +279,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 	}, model.MetricNameLabel)
 	assert.Equal(t, expected, actual)
 
-	actual = ValidateLabels(cfg, userID, []cortexpb.LabelAdapter{
+	actual = ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},

@@ -1,7 +1,7 @@
 gobreaker
 =========
 
-[![GoDoc](https://godoc.org/github.com/sony/gobreaker?status.svg)](http://godoc.org/github.com/sony/gobreaker)
+[![GoDoc](https://godoc.org/github.com/sony/gobreaker?status.svg)](https://godoc.org/github.com/sony/gobreaker)
 
 [gobreaker][repo-url] implements the [Circuit Breaker pattern](https://msdn.microsoft.com/en-us/library/dn589784.aspx) in Go.
 

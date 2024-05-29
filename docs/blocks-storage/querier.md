@@ -117,12 +117,6 @@ querier:
   # CLI flag: -querier.query-ingesters-within
   [query_ingesters_within: <duration> | default = 0s]
 
-  # Deprecated (Querying long-term store for labels will be always enabled in
-  # the future.): Query long-term store for series, label values and label names
-  # APIs.
-  # CLI flag: -querier.query-store-for-labels-enabled
-  [query_store_for_labels_enabled: <boolean> | default = false]
-
   # Enable returning samples stats per steps in query response.
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]

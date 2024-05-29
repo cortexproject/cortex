@@ -47,7 +47,6 @@ type Config struct {
 	IngesterMetadataStreaming bool          `yaml:"ingester_metadata_streaming"`
 	MaxSamples                int           `yaml:"max_samples"`
 	QueryIngestersWithin      time.Duration `yaml:"query_ingesters_within"`
-	QueryStoreForLabels       bool          `yaml:"query_store_for_labels_enabled"`
 	AtModifierEnabled         bool          `yaml:"at_modifier_enabled" doc:"hidden"`
 	EnablePerStepStats        bool          `yaml:"per_step_stats_enabled"`
 
@@ -103,6 +102,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "querier.iterators", "Deprecated: Use iterators to execute query. This flag is no longer functional; Batch iterator is always enabled instead.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.batch-iterators", "Deprecated: Use batch iterators to execute query. This flag is no longer functional; Batch iterator is always enabled now.", util_log.Logger)
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, "querier.query-store-for-labels-enabled", "Deprecated: Querying long-term store is always enabled.", util_log.Logger)
 
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
@@ -110,7 +111,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", false, "Use streaming RPCs for metadata APIs from ingester.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.BoolVar(&cfg.QueryStoreForLabels, "querier.query-store-for-labels-enabled", false, "Deprecated (Querying long-term store for labels will be always enabled in the future.): Query long-term store for series, label values and label names APIs.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
@@ -159,7 +159,7 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, promql.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin, cfg.QueryStoreForLabels)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, iteratorFunc, cfg.QueryIngestersWithin)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {
@@ -261,7 +261,6 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			chunkIterFn:          chunkIterFn,
 			limits:               limits,
 			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
-			queryStoreForLabels:  cfg.QueryStoreForLabels,
 			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
 			distributor:          distributor,
 			stores:               stores,
@@ -277,12 +276,11 @@ type querier struct {
 	now         time.Time
 	mint, maxt  int64
 
-	limits              *validation.Overrides
-	maxQueryIntoFuture  time.Duration
-	queryStoreForLabels bool
-	distributor         QueryableWithFilter
-	stores              []QueryableWithFilter
-	limiterHolder       *limiterHolder
+	limits             *validation.Overrides
+	maxQueryIntoFuture time.Duration
+	distributor        QueryableWithFilter
+	stores             []QueryableWithFilter
+	limiterHolder      *limiterHolder
 
 	ignoreMaxQueryLength bool
 }
@@ -361,15 +359,6 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 		// if SelectHints is null, rely on minT, maxT of querier to scope in range for Select stmt
 		sp = &storage.SelectHints{Start: mint, End: maxt}
-	} else if sp.Func == "series" && !q.queryStoreForLabels {
-		// Else if the querier receives a 'series' query, it means only metadata is needed.
-		// Here we expect that metadataQuerier querier will handle that.
-		// Also, in the recent versions of Prometheus, we pass in the hint but with Func set to "series".
-		// See: https://github.com/prometheus/prometheus/pull/8050
-
-		// In this case, the query time range has already been validated when the querier has been
-		// created.
-		return metadataQuerier.Select(ctx, true, sp, matchers...)
 	}
 
 	// Validate query time range. Even if the time range has already been validated when we created
@@ -433,7 +422,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, _, _, _, _, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -443,10 +432,6 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
-
-	if !q.queryStoreForLabels {
-		return metadataQuerier.LabelValues(ctx, name, matchers...)
-	}
 
 	if len(queriers) == 1 {
 		return queriers[0].LabelValues(ctx, name, matchers...)
@@ -487,7 +472,7 @@ func (q querier) LabelValues(ctx context.Context, name string, matchers ...*labe
 }
 
 func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, _, _, _, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, _, _, _, _, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -497,10 +482,6 @@ func (q querier) LabelNames(ctx context.Context, matchers ...*labels.Matcher) ([
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
-
-	if !q.queryStoreForLabels {
-		return metadataQuerier.LabelNames(ctx, matchers...)
-	}
 
 	if len(queriers) == 1 {
 		return queriers[0].LabelNames(ctx, matchers...)

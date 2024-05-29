@@ -36,13 +36,12 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, queryStoreForLabels bool) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration) QueryableWithFilter {
 	return distributorQueryable{
 		distributor:          distributor,
 		streamingMetdata:     streamingMetdata,
 		iteratorFn:           iteratorFn,
 		queryIngestersWithin: queryIngestersWithin,
-		queryStoreForLabels:  queryStoreForLabels,
 	}
 }
 
@@ -51,7 +50,6 @@ type distributorQueryable struct {
 	streamingMetdata     bool
 	iteratorFn           chunkIteratorFunc
 	queryIngestersWithin time.Duration
-	queryStoreForLabels  bool
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -62,7 +60,6 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		streamingMetadata:    d.streamingMetdata,
 		chunkIterFn:          d.iteratorFn,
 		queryIngestersWithin: d.queryIngestersWithin,
-		queryStoreForLabels:  d.queryStoreForLabels,
 	}, nil
 }
 
@@ -77,7 +74,6 @@ type distributorQuerier struct {
 	streamingMetadata    bool
 	chunkIterFn          chunkIteratorFunc
 	queryIngestersWithin time.Duration
-	queryStoreForLabels  bool
 }
 
 // Select implements storage.Querier interface.
@@ -91,19 +87,11 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 		minT, maxT = sp.Start, sp.End
 	}
 
-	// If the querier receives a 'series' query, it means only metadata is needed.
-	// For the specific case where queryStoreForLabels is disabled
-	// we shouldn't apply the queryIngestersWithin time range manipulation.
-	// Otherwise we'll end up returning no series at all for
-	// older time ranges (while in Cortex we do ignore the start/end and always return
-	// series in ingesters).
-	shouldNotQueryStoreForMetadata := (sp != nil && sp.Func == "series" && !q.queryStoreForLabels)
-
-	// If queryIngestersWithin is enabled, we do manipulate the query mint to query samples up until
+	// We should manipulate the query mint to query samples up until
 	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
 	// optimization is particularly important for the blocks storage where the blocks retention in the
 	// ingesters could be way higher than queryIngestersWithin.
-	if q.queryIngestersWithin > 0 && !shouldNotQueryStoreForMetadata {
+	if q.queryIngestersWithin > 0 {
 		now := time.Now()
 		origMinT := minT
 		minT = max(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))

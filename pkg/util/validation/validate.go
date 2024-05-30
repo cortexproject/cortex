@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"net/http"
 	"strings"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 

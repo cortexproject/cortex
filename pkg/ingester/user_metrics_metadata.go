@@ -1,13 +1,13 @@
 package ingester
 
 import (
-	"github.com/cortexproject/cortex/pkg/util/validation"
 	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // userMetricsMetadata allows metric metadata of a tenant to be held by the ingester.

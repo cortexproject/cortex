@@ -2513,6 +2513,7 @@ func mockWriteRequest(lbls []labels.Labels, value float64, timestampMs int64) *c
 	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
 
+// nolint:unused
 func mockHistogramWriteRequest(lbls []labels.Labels, value int, timestampMs int64, float bool) *cortexpb.WriteRequest {
 	histograms := make([]cortexpb.Histogram, len(lbls))
 	for i := range lbls {

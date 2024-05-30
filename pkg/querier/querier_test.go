@@ -480,7 +480,7 @@ func TestQuerier(t *testing.T) {
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		for _, query := range queries {
-			t.Run(fmt.Sprintf("%s", query.query), func(t *testing.T) {
+			t.Run(fmt.Sprintf("thanosEngine=%s,query=%s", strconv.FormatBool(thanosEngine), query.query), func(t *testing.T) {
 				var queryEngine promql.QueryEngine
 				if thanosEngine {
 					queryEngine = engine.New(engine.Opts{

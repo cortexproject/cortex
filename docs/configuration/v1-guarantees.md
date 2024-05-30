@@ -109,3 +109,5 @@ Currently experimental features are:
   - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
+- Persistent tokens in the Ruler Ring:
+  - `-ruler.ring.tokens-file-path` (path) CLI flag

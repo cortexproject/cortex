@@ -43,6 +43,7 @@ type RingConfig struct {
 	HeartbeatTimeout     time.Duration `yaml:"heartbeat_timeout"`
 	ReplicationFactor    int           `yaml:"replication_factor"`
 	ZoneAwarenessEnabled bool          `yaml:"zone_awareness_enabled"`
+	TokensFilePath       string        `yaml:"tokens_file_path"`
 
 	// Instance details
 	InstanceID             string   `yaml:"instance_id" doc:"hidden"`
@@ -75,6 +76,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.FinalSleep, "ruler.ring.final-sleep", 0*time.Second, "The sleep seconds when ruler is shutting down. Need to be close to or larger than KV Store information propagation delay")
 	f.IntVar(&cfg.ReplicationFactor, "ruler.ring.replication-factor", 1, "EXPERIMENTAL: The replication factor to use when loading rule groups for API HA.")
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, "ruler.ring.zone-awareness-enabled", false, "EXPERIMENTAL: True to enable zone-awareness and load rule groups across different availability zones for API HA.")
+	f.StringVar(&cfg.TokensFilePath, "ruler.ring.tokens-file-path", "", "EXPERIMENTAL: File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}

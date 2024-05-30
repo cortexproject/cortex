@@ -111,3 +111,5 @@ Currently experimental features are:
 - OTLP Receiver
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
+- Native Histograms
+  - Ingestion can be enabled by setting `-blocks-storage.tsdb.enable-native-histograms=true` on Ingester.

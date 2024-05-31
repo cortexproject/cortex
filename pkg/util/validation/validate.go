@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -9,7 +10,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 
@@ -75,29 +75,42 @@ type ValidateMetrics struct {
 	DiscardedMetadata  *prometheus.CounterVec
 }
 
+func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
+	err := r.Register(c)
+	if err != nil && !errors.As(err, &prometheus.AlreadyRegisteredError{}) {
+		panic(err)
+	}
+}
+
 func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
+	discardedSamples := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_discarded_samples_total",
+			Help: "The total number of samples that were discarded.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedSamples)
+	discardedExemplars := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_discarded_exemplars_total",
+			Help: "The total number of exemplars that were discarded.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedExemplars)
+	discardedMetadata := prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_discarded_metadata_total",
+			Help: "The total number of metadata that were discarded.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedMetadata)
 	m := &ValidateMetrics{
-		DiscardedSamples: promauto.With(r).NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "cortex_discarded_samples_total",
-				Help: "The total number of samples that were discarded.",
-			},
-			[]string{discardReasonLabel, "user"},
-		),
-		DiscardedExemplars: promauto.With(r).NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "cortex_discarded_exemplars_total",
-				Help: "The total number of exemplars that were discarded.",
-			},
-			[]string{discardReasonLabel, "user"},
-		),
-		DiscardedMetadata: promauto.With(r).NewCounterVec(
-			prometheus.CounterOpts{
-				Name: "cortex_discarded_metadata_total",
-				Help: "The total number of metadata that were discarded.",
-			},
-			[]string{discardReasonLabel, "user"},
-		),
+		DiscardedSamples:   discardedSamples,
+		DiscardedExemplars: discardedExemplars,
+		DiscardedMetadata:  discardedMetadata,
 	}
 
 	return m

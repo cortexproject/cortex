@@ -166,7 +166,7 @@ jobs:
         # locally and the download time doesn't account in the test execution time, which is subject
         # to a timeout
         run: |
-          docker pull minio/minio:RELEASE.2021-10-13T00-23-17Z
+          docker pull minio/minio:RELEASE.2024-05-28T17-19-04Z
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then

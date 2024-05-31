@@ -372,6 +372,7 @@ func enableSharding(r *Ruler, ringStore kv.Client) error {
 	// chained via "next delegate").
 	delegate := ring.BasicLifecyclerDelegate(r)
 	delegate = ring.NewLeaveOnStoppingDelegate(delegate, r.logger)
+	delegate = ring.NewTokensPersistencyDelegate(r.cfg.Ring.TokensFilePath, ring.JOINING, delegate, r.logger)
 	delegate = ring.NewAutoForgetDelegate(r.cfg.Ring.HeartbeatTimeout*ringAutoForgetUnhealthyPeriods, delegate, r.logger)
 
 	rulerRingName := "ruler"

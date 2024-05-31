@@ -4262,6 +4262,11 @@ ring:
   # CLI flag: -ruler.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
+  # EXPERIMENTAL: File path where tokens are stored. If empty, tokens are not
+  # stored at shutdown and restored at startup.
+  # CLI flag: -ruler.ring.tokens-file-path
+  [tokens_file_path: <string> | default = ""]
+
   # Name of network interface to read address from.
   # CLI flag: -ruler.ring.instance-interface-names
   [instance_interface_names: <list of string> | default = [eth0 en0]]

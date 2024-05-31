@@ -4262,8 +4262,8 @@ ring:
   # CLI flag: -ruler.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
-  # File path where tokens are stored. If empty, tokens are not stored at
-  # shutdown and restored at startup.
+  # File path where tokens are stored. If empty, tokens are not
+  # stored at shutdown and restored at startup.
   # CLI flag: -ruler.ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 

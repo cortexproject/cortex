@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/index"
@@ -115,7 +114,7 @@ func newLabelSetCounter(limiter *Limiter) *labelSetCounter {
 }
 
 func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTSDB, metric labels.Labels) error {
-	return m.limiter.AssertMaxSeriesPerLabelSet(u.userID, metric, func(set validation.MaxSeriesPerLabelSet) (int, error) {
+	return m.limiter.AssertMaxSeriesPerLabelSet(u.userID, metric, func(set validation.LimitsPerLabelSet) (int, error) {
 		s := m.shards[util.HashFP(model.Fingerprint(set.Hash))%numMetricCounterShards]
 		s.RLock()
 		if r, ok := s.valuesCounter[set.Hash]; ok {
@@ -129,7 +128,7 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 	})
 }
 
-func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, limit validation.MaxSeriesPerLabelSet, s *labelSetCounterShard) (int, error) {
+func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, limit validation.LimitsPerLabelSet, s *labelSetCounterShard) (int, error) {
 	ir, err := u.db.Head().Index()
 	if err != nil {
 		return 0, err
@@ -171,7 +170,7 @@ func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, limit 
 }
 
 func (m *labelSetCounter) increaseSeriesLabelSet(u *userTSDB, metric labels.Labels) {
-	limits := m.limiter.maxSeriesPerLabelSet(u.userID, metric)
+	limits := m.limiter.limitsPerLabelSets(u.userID, metric)
 	for _, l := range limits {
 		s := m.shards[util.HashFP(model.Fingerprint(l.Hash))%numMetricCounterShards]
 		s.Lock()
@@ -188,7 +187,7 @@ func (m *labelSetCounter) increaseSeriesLabelSet(u *userTSDB, metric labels.Labe
 }
 
 func (m *labelSetCounter) decreaseSeriesLabelSet(u *userTSDB, metric labels.Labels) {
-	limits := m.limiter.maxSeriesPerLabelSet(u.userID, metric)
+	limits := m.limiter.limitsPerLabelSets(u.userID, metric)
 	for _, l := range limits {
 		s := m.shards[util.HashFP(model.Fingerprint(l.Hash))%numMetricCounterShards]
 		s.Lock()
@@ -199,9 +198,9 @@ func (m *labelSetCounter) decreaseSeriesLabelSet(u *userTSDB, metric labels.Labe
 	}
 }
 
-func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, vec *prometheus.GaugeVec) error {
-	currentLbsLimitHash := map[uint64]validation.MaxSeriesPerLabelSet{}
-	for _, l := range m.limiter.limits.MaxSeriesPerLabelSet(u.userID) {
+func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics *ingesterMetrics) error {
+	currentLbsLimitHash := map[uint64]validation.LimitsPerLabelSet{}
+	for _, l := range m.limiter.limits.LimitsPerLabelSet(u.userID) {
 		currentLbsLimitHash[l.Hash] = l
 	}
 
@@ -211,11 +210,13 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, vec *pr
 		for h, entry := range s.valuesCounter {
 			// This limit no longer exists
 			if _, ok := currentLbsLimitHash[h]; !ok {
-				vec.DeleteLabelValues(u.userID, entry.labels.String())
+				metrics.usagePerLabelSet.DeleteLabelValues(u.userID, "max_series", entry.labels.String())
+				metrics.limitsPerLabelSet.DeleteLabelValues(u.userID, "max_series", entry.labels.String())
 				continue
 			}
+			metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", entry.labels.String()).Set(float64(entry.count))
+			metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", entry.labels.String()).Set(float64(currentLbsLimitHash[h].Limits.MaxSeries))
 			delete(currentLbsLimitHash, h)
-			vec.WithLabelValues(u.userID, entry.labels.String()).Set(float64(entry.count))
 		}
 		s.RUnlock()
 	}
@@ -227,7 +228,8 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, vec *pr
 		if err != nil {
 			return err
 		}
-		vec.WithLabelValues(u.userID, l.LabelSet.String()).Set(float64(count))
+		metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", l.LabelSet.String()).Set(float64(count))
+		metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", l.LabelSet.String()).Set(float64(l.Limits.MaxSeries))
 	}
 
 	return nil

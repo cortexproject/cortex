@@ -13,6 +13,25 @@ option (gogoproto.unmarshaler_all) = true;
 message SampleStream {
   repeated cortexpb.LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metric", (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"];
   repeated cortexpb.Sample samples = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "values"];
+  repeated SampleHistogramPair histograms = 3 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "histograms"];
+}
+
+message SampleHistogramPair {
+  int64 timestamp_ms = 1;
+  SampleHistogram histogram = 2 [(gogoproto.nullable) = false];
+}
+
+message SampleHistogram {
+  double count = 1;
+  double sum = 2;
+  repeated HistogramBucket buckets = 3;
+}
+
+message HistogramBucket {
+  int32 boundaries = 1;
+  double lower = 2;
+  double upper = 3;
+  double count = 4;
 }
 
 message PrometheusResponseStats {

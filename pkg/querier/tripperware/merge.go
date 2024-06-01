@@ -30,7 +30,18 @@ func MergeSampleStreams(output map[string]SampleStream, sampleStreams []SampleSt
 				stream.Samples = sliceSamples(stream.Samples, existingEndTs)
 			} // else there is no overlap, yay!
 		}
+		// Same for histograms as for samples above.
+		if len(existing.Histograms) > 0 && len(stream.Histograms) > 0 {
+			existingEndTs := existing.Histograms[len(existing.Histograms)-1].GetTimestampMs()
+			if existingEndTs == stream.Histograms[0].GetTimestampMs() {
+				stream.Histograms = stream.Histograms[1:]
+			} else if existingEndTs > stream.Histograms[0].GetTimestampMs() {
+				stream.Histograms = sliceHistograms(stream.Histograms, existingEndTs)
+			}
+		}
 		existing.Samples = append(existing.Samples, stream.Samples...)
+		existing.Histograms = append(existing.Histograms, stream.Histograms...)
+
 		output[metric] = existing
 	}
 }
@@ -54,4 +65,24 @@ func sliceSamples(samples []cortexpb.Sample, minTs int64) []cortexpb.Sample {
 	})
 
 	return samples[searchResult:]
+}
+
+// sliceHistogram assumes given histogram are sorted by timestamp in ascending order and
+// return a sub slice whose first element's is the smallest timestamp that is strictly
+// bigger than the given minTs. Empty slice is returned if minTs is bigger than all the
+// timestamps in histogram.
+func sliceHistograms(histograms []SampleHistogramPair, minTs int64) []SampleHistogramPair {
+	if len(histograms) <= 0 || minTs < histograms[0].GetTimestampMs() {
+		return histograms
+	}
+
+	if len(histograms) > 0 && minTs > histograms[len(histograms)-1].GetTimestampMs() {
+		return histograms[len(histograms):]
+	}
+
+	searchResult := sort.Search(len(histograms), func(i int) bool {
+		return histograms[i].GetTimestampMs() > minTs
+	})
+
+	return histograms[searchResult:]
 }

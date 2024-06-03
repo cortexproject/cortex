@@ -14,19 +14,21 @@ import (
 // Metadata is kept as a set as it can come from multiple targets that Prometheus scrapes
 // with the same metric name.
 type userMetricsMetadata struct {
-	limiter *Limiter
-	metrics *ingesterMetrics
-	userID  string
+	limiter         *Limiter
+	metrics         *ingesterMetrics
+	validateMetrics *validation.ValidateMetrics
+	userID          string
 
 	mtx              sync.RWMutex
 	metricToMetadata map[string]metricMetadataSet
 }
 
-func newMetadataMap(l *Limiter, m *ingesterMetrics, userID string) *userMetricsMetadata {
+func newMetadataMap(l *Limiter, m *ingesterMetrics, v *validation.ValidateMetrics, userID string) *userMetricsMetadata {
 	return &userMetricsMetadata{
 		metricToMetadata: map[string]metricMetadataSet{},
 		limiter:          l,
 		metrics:          m,
+		validateMetrics:  v,
 		userID:           userID,
 	}
 }
@@ -42,7 +44,7 @@ func (mm *userMetricsMetadata) add(metric string, metadata *cortexpb.MetricMetad
 	if !ok {
 		// Verify that the user can create more metric metadata given we don't have a set for that metric name.
 		if err := mm.limiter.AssertMaxMetricsWithMetadataPerUser(mm.userID, len(mm.metricToMetadata)); err != nil {
-			validation.DiscardedMetadata.WithLabelValues(mm.userID, perUserMetadataLimit).Inc()
+			mm.validateMetrics.DiscardedMetadata.WithLabelValues(mm.userID, perUserMetadataLimit).Inc()
 			return makeLimitError(perUserMetadataLimit, mm.limiter.FormatError(mm.userID, err))
 		}
 		set = metricMetadataSet{}
@@ -50,7 +52,7 @@ func (mm *userMetricsMetadata) add(metric string, metadata *cortexpb.MetricMetad
 	}
 
 	if err := mm.limiter.AssertMaxMetadataPerMetric(mm.userID, len(set)); err != nil {
-		validation.DiscardedMetadata.WithLabelValues(mm.userID, perMetricMetadataLimit).Inc()
+		mm.validateMetrics.DiscardedMetadata.WithLabelValues(mm.userID, perMetricMetadataLimit).Inc()
 		return makeMetricLimitError(perMetricMetadataLimit, labels.FromStrings(labels.MetricName, metric), mm.limiter.FormatError(mm.userID, err))
 	}
 

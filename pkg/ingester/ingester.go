@@ -194,8 +194,10 @@ type Ingester struct {
 
 	cfg Config
 
-	metrics *ingesterMetrics
-	logger  log.Logger
+	metrics         *ingesterMetrics
+	validateMetrics *validation.ValidateMetrics
+
+	logger log.Logger
 
 	lifecycler         *ring.Lifecycler
 	limits             *validation.Overrides
@@ -659,6 +661,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		i.ingestionRate,
 		&i.inflightPushRequests,
 		&i.maxInflightQueryRequests)
+	i.validateMetrics = validation.NewValidateMetrics(registerer)
 
 	// Replace specific metrics which we can't directly track but we need to read
 	// them from the underlying system (ie. TSDB).
@@ -1235,29 +1238,29 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
 	if sampleOutOfBoundsCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
 	}
 	if sampleOutOfOrderCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
 	}
 	if sampleTooOldCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(sampleTooOld, userID).Add(float64(sampleTooOldCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleTooOld, userID).Add(float64(sampleTooOldCount))
 	}
 	if newValueForTimestampCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
 	}
 	if perUserSeriesLimitCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
 	}
 	if perMetricSeriesLimitCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
 	}
 	if perLabelSetSeriesLimitCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
 	if nativeHistogramCount > 0 {
-		validation.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(nativeHistogramCount))
 	}
 
 	// Distributor counts both samples and metadata, so for consistency ingester does the same.
@@ -2529,7 +2532,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	i.deleteUserMetadata(userID)
 	i.metrics.deletePerUserMetrics(userID)
 
-	validation.DeletePerUserValidationMetrics(userID, i.logger)
+	validation.DeletePerUserValidationMetrics(i.validateMetrics, userID, i.logger)
 
 	// And delete local data.
 	if err := os.RemoveAll(dir); err != nil {
@@ -2603,7 +2606,7 @@ func (i *Ingester) getOrCreateUserMetadata(userID string) *userMetricsMetadata {
 	// Ensure it was not created between switching locks.
 	userMetadata, ok := i.usersMetadata[userID]
 	if !ok {
-		userMetadata = newMetadataMap(i.limiter, i.metrics, userID)
+		userMetadata = newMetadataMap(i.limiter, i.metrics, i.validateMetrics, userID)
 		i.usersMetadata[userID] = userMetadata
 	}
 	return userMetadata

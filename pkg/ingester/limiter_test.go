@@ -2,10 +2,11 @@ package ingester
 
 import (
 	"errors"
-	"github.com/prometheus/prometheus/model/labels"
+
 	"math"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

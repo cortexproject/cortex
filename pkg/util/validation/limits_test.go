@@ -174,6 +174,37 @@ func TestLimitsTagsYamlMatchJson(t *testing.T) {
 	assert.Empty(t, mismatch, "expected no mismatched JSON and YAML tags")
 }
 
+func TestOverrides_LimitsPerLabelSet(t *testing.T) {
+	inputYAML := `
+limits_per_label_set:
+  - label_set:
+      labelName1: LabelValue1
+    limits:
+      max_series: 10
+`
+
+	limitsYAML := Limits{}
+	err := yaml.Unmarshal([]byte(inputYAML), &limitsYAML)
+	require.NoError(t, err)
+	require.Len(t, limitsYAML.LimitsPerLabelSet, 1)
+	require.Len(t, limitsYAML.LimitsPerLabelSet[0].LabelSet, 1)
+	require.Equal(t, limitsYAML.LimitsPerLabelSet[0].Limits.MaxSeries, 10)
+
+	duplicatedInputYAML := `
+limits_per_label_set:
+  - label_set:
+      labelName1: LabelValue1
+    limits:
+      max_series: 10
+  - label_set:
+      labelName1: LabelValue1
+    limits:
+      max_series: 10
+`
+	err = yaml.Unmarshal([]byte(duplicatedInputYAML), &limitsYAML)
+	require.Equal(t, err, errDuplicatePerLabelSetLimit)
+}
+
 func TestLimitsStringDurationYamlMatchJson(t *testing.T) {
 	inputYAML := `
 max_query_lookback: 1s

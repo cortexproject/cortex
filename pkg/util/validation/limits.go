@@ -24,6 +24,7 @@ import (
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
+var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
 
 // Supported values for enum limits
 const (
@@ -299,7 +300,9 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	l.calculateMaxSeriesPerLabelSetId()
+	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -327,17 +330,27 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	l.calculateMaxSeriesPerLabelSetId()
+	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (l *Limits) calculateMaxSeriesPerLabelSetId() {
+func (l *Limits) calculateMaxSeriesPerLabelSetId() error {
+	hMap := map[uint64]struct{}{}
+
 	for k, limit := range l.LimitsPerLabelSet {
 		limit.Id = limit.LabelSet.String()
 		limit.Hash = fnv1a.HashBytes64([]byte(limit.Id))
 		l.LimitsPerLabelSet[k] = limit
+		if _, ok := hMap[limit.Hash]; ok {
+			return errDuplicatePerLabelSetLimit
+		}
+		hMap[limit.Hash] = struct{}{}
 	}
+
+	return nil
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {

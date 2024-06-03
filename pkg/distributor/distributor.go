@@ -582,7 +582,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		for _, h := range ts.Histograms {
 			// TODO(yeya24): add other validations for native histogram.
 			// For example, Prometheus scrape has bucket limit and schema check.
-			if err := validation.ValidateSampleTimestamp(limits, userID, ts.Labels, h.TimestampMs); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
 				return emptyPreallocSeries, err
 			}
 		}

@@ -2503,7 +2503,7 @@ func TestIngester_QueryStream(t *testing.T) {
 
 	for _, enc := range encodings {
 		t.Run(enc.String(), func(t *testing.T) {
-			i, err := prepareIngesterWithBlocksStorage(t, cfg, nil)
+			i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck

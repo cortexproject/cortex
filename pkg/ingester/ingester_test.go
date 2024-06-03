@@ -415,7 +415,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, prometheus.NewRegistry())
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, prometheus.NewRegistry(), true)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -537,7 +537,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 	require.NoError(t, os.Mkdir(blocksDir, os.ModePerm))
 
 	blocksIngesterGenerator := func() *Ingester {
-		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, prometheus.NewRegistry())
+		ing, err := prepareIngesterWithBlocksStorageAndLimits(t, defaultIngesterTestConfig(t), limits, nil, blocksDir, prometheus.NewRegistry(), true)
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
@@ -4594,7 +4594,7 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 	dir := t.TempDir()
 	blocksDir := filepath.Join(dir, "blocks")
 	limits := defaultLimitsTestConfig()
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry(), true)
 	require.NoError(t, err)
 
 	maxExemplars := i.getMaxExemplars("someTenant")
@@ -4602,7 +4602,7 @@ func TestIngester_MaxExemplarsFallBack(t *testing.T) {
 
 	// set max exemplars value in limits, and re-initialize the ingester
 	limits.MaxExemplars = 5
-	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry())
+	i, err = prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, blocksDir, prometheus.NewRegistry(), true)
 	require.NoError(t, err)
 
 	// validate this value is picked up now

@@ -5319,7 +5319,8 @@ otel:
 ```yaml
 limits:
   # The maximum number of active series per LabelSet, across the cluster before
-  # replication.
+  # replication. Setting the value 0 will enable the monitoring (metrics) but
+  # would not enforce any limits.
   [max_series: <int> | default = ]
 
 # LabelSet which the limit should be applied.

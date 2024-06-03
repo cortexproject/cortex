@@ -78,7 +78,7 @@ type TimeWindow struct {
 }
 
 type LimitsPerLabelSetEntry struct {
-	MaxSeries int `yaml:"max_series" json:"max_series" doc:"nocli|description=The maximum number of active series per LabelSet, across the cluster before replication."`
+	MaxSeries int `yaml:"max_series" json:"max_series" doc:"nocli|description=The maximum number of active series per LabelSet, across the cluster before replication. Setting the value 0 will enable the monitoring (metrics) but would not enforce any limits."`
 }
 
 type LimitsPerLabelSet struct {

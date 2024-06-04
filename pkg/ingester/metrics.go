@@ -37,8 +37,9 @@ type ingesterMetrics struct {
 	memSeriesRemovedTotal   *prometheus.CounterVec
 	memMetadataRemovedTotal *prometheus.CounterVec
 
-	activeSeriesPerUser     *prometheus.GaugeVec
-	activeSeriesPerLabelSet *prometheus.GaugeVec
+	activeSeriesPerUser *prometheus.GaugeVec
+	limitsPerLabelSet   *prometheus.GaugeVec
+	usagePerLabelSet    *prometheus.GaugeVec
 
 	// Global limit metrics
 	maxUsersGauge           prometheus.GaugeFunc
@@ -212,10 +213,15 @@ func newIngesterMetrics(r prometheus.Registerer,
 			return 0
 		}),
 
-		activeSeriesPerLabelSet: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_ingester_active_series_per_labelset",
-			Help: "Number of currently active series per user and labelset.",
-		}, []string{"user", "labelset"}),
+		limitsPerLabelSet: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_limits_per_labelset",
+			Help: "Limits per user and labelset.",
+		}, []string{"user", "limit", "labelset"}),
+
+		usagePerLabelSet: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_usage_per_labelset",
+			Help: "Current usage per user and labelset.",
+		}, []string{"user", "limit", "labelset"}),
 
 		// Not registered automatically, but only if activeSeriesEnabled is true.
 		activeSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{

@@ -3172,9 +3172,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-series-per-metric
 [max_global_series_per_metric: <int> | default = 0]
 
-# [Experimental] The maximum number of active series per LabelSet, across the
-# cluster before replication. Empty list to disable.
-[max_series_per_label_set: <list of MaxSeriesPerLabelSet> | default = []]
+# [Experimental] Enable limits per LabelSet. Supported limits per labelSet:
+# [max_series]
+[limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
 
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
@@ -5314,11 +5314,14 @@ otel:
     [tls_insecure_skip_verify: <boolean> | default = false]
 ```
 
-### `MaxSeriesPerLabelSet`
+### `LimitsPerLabelSet`
 
 ```yaml
-# The maximum number of active series per LabelSet before replication.
-[limit: <int> | default = ]
+limits:
+  # The maximum number of active series per LabelSet, across the cluster before
+  # replication. Setting the value 0 will enable the monitoring (metrics) but
+  # would not enforce any limits.
+  [max_series: <int> | default = ]
 
 # LabelSet which the limit should be applied.
 [label_set: <map of string (labelName) to string (labelValue)> | default = []]

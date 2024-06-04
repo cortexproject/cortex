@@ -107,20 +107,20 @@ func (l *Limiter) AssertMaxMetricsWithMetadataPerUser(userID string, metrics int
 
 // AssertMaxSeriesPerLabelSet limit has not been reached compared to the current
 // number of metrics with metadata in input and returns an error if so.
-func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels, f func(validation.MaxSeriesPerLabelSet) (int, error)) error {
-	m := l.maxSeriesPerLabelSet(userID, metric)
+func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels, f func(validation.LimitsPerLabelSet) (int, error)) error {
+	m := l.limitsPerLabelSets(userID, metric)
 	for _, limit := range m {
-		maxFunc := func(string) int {
-			return limit.Limit
+		maxSeriesFunc := func(string) int {
+			return limit.Limits.MaxSeries
 		}
-		local := l.maxByLocalAndGlobal(userID, maxFunc, maxFunc)
+		local := l.maxByLocalAndGlobal(userID, maxSeriesFunc, maxSeriesFunc)
 		if u, err := f(limit); err != nil {
 			return err
 		} else if u >= local {
 			return errMaxSeriesPerLabelSetLimitExceeded{
 				id:          limit.Id,
 				localLimit:  local,
-				globalLimit: limit.Limit,
+				globalLimit: limit.Limits.MaxSeries,
 			}
 		}
 	}
@@ -189,15 +189,15 @@ func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLim
 		minNonZero(err.globalLimit, err.localLimit), err.id, err.localLimit, err.globalLimit)
 }
 
-func (l *Limiter) maxSeriesPerLabelSet(userID string, metric labels.Labels) []validation.MaxSeriesPerLabelSet {
-	m := l.limits.MaxSeriesPerLabelSet(userID)
+func (l *Limiter) limitsPerLabelSets(userID string, metric labels.Labels) []validation.LimitsPerLabelSet {
+	m := l.limits.LimitsPerLabelSet(userID)
 
 	// returning early to not have any overhead
 	if len(m) == 0 {
 		return nil
 	}
 
-	r := make([]validation.MaxSeriesPerLabelSet, 0, len(m))
+	r := make([]validation.LimitsPerLabelSet, 0, len(m))
 outer:
 	for _, lbls := range m {
 		for _, lbl := range lbls.LabelSet {

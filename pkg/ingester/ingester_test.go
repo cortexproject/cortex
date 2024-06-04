@@ -113,18 +113,22 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	userID := "1"
 	registry := prometheus.NewRegistry()
 
-	limits.MaxSeriesPerLabelSet = []validation.MaxSeriesPerLabelSet{
+	limits.LimitsPerLabelSet = []validation.LimitsPerLabelSet{
 		{
 			LabelSet: labels.FromMap(map[string]string{
 				"label1": "value1",
 			}),
-			Limit: 3,
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 3,
+			},
 		},
 		{
 			LabelSet: labels.FromMap(map[string]string{
 				"label2": "value2",
 			}),
-			Limit: 2,
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 2,
+			},
 		},
 	}
 	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
@@ -151,12 +155,12 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	samples := []cortexpb.Sample{{Value: 2, TimestampMs: 10}}
 
 	// Create first series within the limits
-	for _, set := range limits.MaxSeriesPerLabelSet {
+	for _, set := range limits.LimitsPerLabelSet {
 		lbls := []string{labels.MetricName, "metric_name"}
 		for _, lbl := range set.LabelSet {
 			lbls = append(lbls, lbl.Name, lbl.Value)
 		}
-		for i := 0; i < set.Limit; i++ {
+		for i := 0; i < set.Limits.MaxSeries; i++ {
 			_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 				[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
 			require.NoError(t, err)
@@ -165,14 +169,18 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
 
 	// Should impose limits
-	for _, set := range limits.MaxSeriesPerLabelSet {
+	for _, set := range limits.LimitsPerLabelSet {
 		lbls := []string{labels.MetricName, "metric_name"}
 		for _, lbl := range set.LabelSet {
 			lbls = append(lbls, lbl.Name, lbl.Value)
@@ -190,29 +198,39 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
 
 	// Should apply composite limits
-	limits.MaxSeriesPerLabelSet = append(limits.MaxSeriesPerLabelSet,
-		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet,
+		validation.LimitsPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			"comp1": "compValue1",
 		}),
-			Limit: 10,
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 10,
+			},
 		},
-		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
+		validation.LimitsPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			"comp2": "compValue2",
 		}),
-			Limit: 10,
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 10,
+			},
 		},
-		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
+		validation.LimitsPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			"comp1": "compValue1",
 			"comp2": "compValue2",
 		}),
-			Limit: 2,
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 2,
+			},
 		},
 	)
 
@@ -227,14 +245,21 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",user="1"} 0
-				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\"}",user="1"} 0
-				cortex_ingester_active_series_per_labelset{labelset="{comp2=\"compValue2\"}",user="1"} 0
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 0
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 0
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 0
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
 
 	// Adding 5 metrics with only 1 label
 	for i := 0; i < 5; i++ {
@@ -265,22 +290,31 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
 				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 3
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",user="1"} 2
-				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\"}",user="1"} 7
-				cortex_ingester_active_series_per_labelset{labelset="{comp2=\"compValue2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset", "cortex_discarded_samples_total"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+		`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total"))
 
 	// Should bootstrap and apply limits when configuration change
-	limits.MaxSeriesPerLabelSet = append(limits.MaxSeriesPerLabelSet,
-		validation.MaxSeriesPerLabelSet{LabelSet: labels.FromMap(map[string]string{
+	limits.LimitsPerLabelSet = append(limits.LimitsPerLabelSet,
+		validation.LimitsPerLabelSet{LabelSet: labels.FromMap(map[string]string{
 			labels.MetricName: "metric_name",
 			"comp2":           "compValue2",
 		}),
-			Limit: 3, // we already have 2 so we need to allow 1 more
+			Limits: validation.LimitsPerLabelSetEntry{
+				MaxSeries: 3, // we already have 2 so we need to allow 1 more
+			},
 		},
 	)
 
@@ -303,29 +337,41 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",user="1"} 2
-				cortex_ingester_active_series_per_labelset{labelset="{comp1=\"compValue1\"}",user="1"} 7
-				cortex_ingester_active_series_per_labelset{labelset="{comp2=\"compValue2\"}",user="1"} 3
-	`), "cortex_ingester_active_series_per_labelset"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 10
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{__name__=\"metric_name\", comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
+				cortex_ingester_usage_per_labelset{labelset="{comp1=\"compValue1\"}",limit="max_series",user="1"} 7
+				cortex_ingester_usage_per_labelset{labelset="{comp2=\"compValue2\"}",limit="max_series",user="1"} 3
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Should remove metrics when the limits is removed
-	limits.MaxSeriesPerLabelSet = limits.MaxSeriesPerLabelSet[:2]
+	limits.LimitsPerLabelSet = limits.LimitsPerLabelSet[:2]
 	b, err = json.Marshal(limits)
 	require.NoError(t, err)
 	require.NoError(t, limits.UnmarshalJSON(b))
 	tenantLimits.setLimits(userID, &limits)
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
 	// Should persist between restarts
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -335,11 +381,15 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	ing.updateActiveSeries(ctx)
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
-				# HELP cortex_ingester_active_series_per_labelset Number of currently active series per user and labelset.
-				# TYPE cortex_ingester_active_series_per_labelset gauge
-				cortex_ingester_active_series_per_labelset{labelset="{label1=\"value1\"}",user="1"} 3
-				cortex_ingester_active_series_per_labelset{labelset="{label2=\"value2\"}",user="1"} 2
-	`), "cortex_ingester_active_series_per_labelset"))
+				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
+				# TYPE cortex_ingester_limits_per_labelset gauge
+				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_limits_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+				# HELP cortex_ingester_usage_per_labelset Current usage per user and labelset.
+				# TYPE cortex_ingester_usage_per_labelset gauge
+				cortex_ingester_usage_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
+				cortex_ingester_usage_per_labelset{labelset="{label2=\"value2\"}",limit="max_series",user="1"} 2
+	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 	services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 }

@@ -2,9 +2,11 @@ package ingester
 
 import (
 	"errors"
+
 	"math"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -419,6 +421,90 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
+		})
+	}
+}
+
+func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
+
+	tests := map[string]struct {
+		limits                validation.Limits
+		expected              error
+		ringReplicationFactor int
+		ringIngesterCount     int
+		shardByAllLabels      bool
+		series                int
+	}{
+		"both local and global limit are disabled": {
+			ringReplicationFactor: 3,
+			ringIngesterCount:     10,
+			series:                200,
+			shardByAllLabels:      true,
+			limits: validation.Limits{
+				LimitsPerLabelSet: []validation.LimitsPerLabelSet{
+					{
+						LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+						Limits: validation.LimitsPerLabelSetEntry{
+							MaxSeries: 0,
+						},
+					},
+				},
+			},
+		},
+		"current number of series is above the limit": {
+			ringReplicationFactor: 3,
+			ringIngesterCount:     10,
+			series:                200,
+			shardByAllLabels:      true,
+			expected:              errMaxSeriesPerLabelSetLimitExceeded{globalLimit: 10, localLimit: 3},
+			limits: validation.Limits{
+				LimitsPerLabelSet: []validation.LimitsPerLabelSet{
+					{
+						LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+						Limits: validation.LimitsPerLabelSetEntry{
+							MaxSeries: 10,
+						},
+					},
+				},
+			},
+		},
+		"current number of series is below the limit and shard by all labels": {
+			ringReplicationFactor: 3,
+			ringIngesterCount:     10,
+			series:                2,
+			shardByAllLabels:      true,
+			limits: validation.Limits{
+				LimitsPerLabelSet: []validation.LimitsPerLabelSet{
+					{
+						LabelSet: labels.FromMap(map[string]string{"foo": "bar"}),
+						Limits: validation.LimitsPerLabelSetEntry{
+							MaxSeries: 10,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		testData := testData
+
+		t.Run(testName, func(t *testing.T) {
+			// Mock the ring
+			ring := &ringCountMock{}
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
+			ring.On("ZonesCount").Return(1)
+
+			// Mock limits
+			limits, err := validation.NewOverrides(testData.limits, nil)
+			require.NoError(t, err)
+
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			actual := limiter.AssertMaxSeriesPerLabelSet("test", labels.FromStrings("foo", "bar"), func(set validation.LimitsPerLabelSet) (int, error) {
+				return testData.series, nil
+			})
+
+			assert.Equal(t, actual, testData.expected)
 		})
 	}
 }

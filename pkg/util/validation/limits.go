@@ -24,6 +24,7 @@ import (
 var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
+var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
 
 // Supported values for enum limits
 const (
@@ -76,11 +77,15 @@ type TimeWindow struct {
 	End   model.Duration `yaml:"end" json:"end" doc:"nocli|description=End of the data select time window (including range selectors, modifiers and lookback delta) that the query should be within. If set to 0, it won't be checked.|default=0"`
 }
 
-type MaxSeriesPerLabelSet struct {
-	Limit    int           `yaml:"limit" json:"limit" doc:"nocli|description=The maximum number of active series per LabelSet before replication."`
-	LabelSet labels.Labels `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
-	Id       string        `yaml:"-" json:"-" doc:"nocli"`
-	Hash     uint64        `yaml:"-" json:"-" doc:"nocli"`
+type LimitsPerLabelSetEntry struct {
+	MaxSeries int `yaml:"max_series" json:"max_series" doc:"nocli|description=The maximum number of active series per LabelSet, across the cluster before replication. Setting the value 0 will enable the monitoring (metrics) but would not enforce any limits."`
+}
+
+type LimitsPerLabelSet struct {
+	Limits   LimitsPerLabelSetEntry `yaml:"limits" json:"limits" doc:"nocli"`
+	LabelSet labels.Labels          `yaml:"label_set" json:"label_set" doc:"nocli|description=LabelSet which the limit should be applied."`
+	Id       string                 `yaml:"-" json:"-" doc:"nocli"`
+	Hash     uint64                 `yaml:"-" json:"-" doc:"nocli"`
 }
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -111,11 +116,11 @@ type Limits struct {
 
 	// Ingester enforced limits.
 	// Series
-	MaxLocalSeriesPerUser    int                    `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric  int                    `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxGlobalSeriesPerUser   int                    `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric int                    `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	MaxSeriesPerLabelSet     []MaxSeriesPerLabelSet `yaml:"max_series_per_label_set" json:"max_series_per_label_set" doc:"nocli|description=[Experimental] The maximum number of active series per LabelSet, across the cluster before replication. Empty list to disable."`
+	MaxLocalSeriesPerUser    int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric  int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxGlobalSeriesPerUser   int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	LimitsPerLabelSet        []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -295,7 +300,9 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		return err
 	}
 
-	l.calculateMaxSeriesPerLabelSetId()
+	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -323,17 +330,27 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	l.calculateMaxSeriesPerLabelSetId()
+	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (l *Limits) calculateMaxSeriesPerLabelSetId() {
-	for k, limit := range l.MaxSeriesPerLabelSet {
+func (l *Limits) calculateMaxSeriesPerLabelSetId() error {
+	hMap := map[uint64]struct{}{}
+
+	for k, limit := range l.LimitsPerLabelSet {
 		limit.Id = limit.LabelSet.String()
 		limit.Hash = fnv1a.HashBytes64([]byte(limit.Id))
-		l.MaxSeriesPerLabelSet[k] = limit
+		l.LimitsPerLabelSet[k] = limit
+		if _, ok := hMap[limit.Hash]; ok {
+			return errDuplicatePerLabelSetLimit
+		}
+		hMap[limit.Hash] = struct{}{}
 	}
+
+	return nil
 }
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
@@ -541,9 +558,9 @@ func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerMetric
 }
 
-// MaxSeriesPerLabelSet returns the maximum number of series allowed per labelset across the cluster.
-func (o *Overrides) MaxSeriesPerLabelSet(userID string) []MaxSeriesPerLabelSet {
-	return o.GetOverridesForUser(userID).MaxSeriesPerLabelSet
+// LimitsPerLabelSet returns the user limits per labelset across the cluster.
+func (o *Overrides) LimitsPerLabelSet(userID string) []LimitsPerLabelSet {
+	return o.GetOverridesForUser(userID).LimitsPerLabelSet
 }
 
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching

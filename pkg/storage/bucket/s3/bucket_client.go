@@ -3,12 +3,12 @@ package s3
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"

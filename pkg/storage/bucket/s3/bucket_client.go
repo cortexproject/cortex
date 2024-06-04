@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/s3"
@@ -126,6 +127,10 @@ func (b *BucketWithRetries) retry(ctx context.Context, f func() error, operation
 		lastErr = f()
 		if lastErr == nil {
 			return nil
+		}
+		// No need to retry when context was already canceled.
+		if errors.Is(lastErr, context.Canceled) || errors.Is(lastErr, context.DeadlineExceeded) {
+			return lastErr
 		}
 		if b.bucket.IsObjNotFoundErr(lastErr) || b.bucket.IsAccessDeniedErr(lastErr) {
 			return lastErr

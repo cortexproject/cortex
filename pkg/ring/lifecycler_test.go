@@ -494,17 +494,17 @@ func TestCheckReady_CheckRingHealth(t *testing.T) {
 	}{
 		"should wait until the self instance is ACTIVE and healthy in the ring when 'check ring health' is disabled": {
 			checkRingHealthEnabled: false,
-			firstJoinAfter:         time.Second,
-			secondJoinAfter:        3 * time.Second,
-			expectedFirstMinReady:  time.Second,
-			expectedFirstMaxReady:  2 * time.Second,
+			firstJoinAfter:         1000 * time.Millisecond,
+			secondJoinAfter:        3000 * time.Millisecond,
+			expectedFirstMinReady:  900 * time.Millisecond,
+			expectedFirstMaxReady:  1900 * time.Millisecond,
 		},
 		"should wait until all instances are ACTIVE and healthy in the ring when 'check ring health' is enabled": {
 			checkRingHealthEnabled: true,
-			firstJoinAfter:         time.Second,
-			secondJoinAfter:        3 * time.Second,
-			expectedFirstMinReady:  3 * time.Second,
-			expectedFirstMaxReady:  4 * time.Second,
+			firstJoinAfter:         1000 * time.Millisecond,
+			secondJoinAfter:        3000 * time.Millisecond,
+			expectedFirstMinReady:  2900 * time.Millisecond,
+			expectedFirstMaxReady:  3900 * time.Millisecond,
 		},
 	}
 

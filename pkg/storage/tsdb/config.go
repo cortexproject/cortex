@@ -292,6 +292,18 @@ type BucketStoreConfig struct {
 
 	// Controls how many series to fetch per batch in Store Gateway. Default value is 10000.
 	SeriesBatchSize int `yaml:"series_batch_size"`
+
+	// Token bucket configs
+	PodDataBytesRateLimit      int64   `yaml:"pod_data_bytes_rate_limit"`
+	PodTokenBucketSize         int64   `yaml:"pod_token_bucket_size"`
+	UserTokenBucketSize        int64   `yaml:"user_token_bucket_size"`
+	RequestTokenBucketSize     int64   `yaml:"request_token_bucket_size"`
+	FetchedPostingsTokenFactor float64 `yaml:"fetched_postings_token_factor"`
+	TouchedPostingsTokenFactor float64 `yaml:"touched_postings_token_factor"`
+	FetchedSeriesTokenFactor   float64 `yaml:"fetched_series_token_factor"`
+	TouchedSeriesTokenFactor   float64 `yaml:"touched_series_token_factor"`
+	FetchedChunksTokenFactor   float64 `yaml:"fetched_chunks_token_factor"`
+	TouchedChunksTokenFactor   float64 `yaml:"touched_chunks_token_factor"`
 }
 
 // RegisterFlags registers the BucketStore flags
@@ -325,6 +337,16 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.LazyExpandedPostingsEnabled, "blocks-storage.bucket-store.lazy-expanded-postings-enabled", false, "If true, Store Gateway will estimate postings size and try to lazily expand postings if it downloads less data than expanding all postings.")
 	f.IntVar(&cfg.SeriesBatchSize, "blocks-storage.bucket-store.series-batch-size", store.SeriesBatchSize, "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.")
 	f.StringVar(&cfg.BlockDiscoveryStrategy, "blocks-storage.bucket-store.block-discovery-strategy", string(ConcurrentDiscovery), "One of "+strings.Join(supportedBlockDiscoveryStrategies, ", ")+". When set to concurrent, stores will concurrently issue one call per directory to discover active blocks in the bucket. The recursive strategy iterates through all objects in the bucket, recursively traversing into each directory. This avoids N+1 calls at the expense of having slower bucket iterations. bucket_index strategy can be used in Compactor only and utilizes the existing bucket index to fetch block IDs to sync. This avoids iterating the bucket but can be impacted by delays of cleaner creating bucket index.")
+	f.Int64Var(&cfg.PodDataBytesRateLimit, "blocks-storage.bucket-store.pod-data-bytes-rate-limit", int64(1*units.Gibibyte), "Overall data bytes rate limit for a pod")
+	f.Int64Var(&cfg.PodTokenBucketSize, "blocks-storage.bucket-store.pod-token-bucket-size", int64(820*units.Mebibyte), "Pod token bucket size")
+	f.Int64Var(&cfg.UserTokenBucketSize, "blocks-storage.bucket-store.user-token-bucket-size", int64(615*units.Mebibyte), "User token bucket size")
+	f.Int64Var(&cfg.RequestTokenBucketSize, "blocks-storage.bucket-store.request-token-bucket-size", int64(4*units.Mebibyte), "Request token bucket size")
+	f.Float64Var(&cfg.FetchedPostingsTokenFactor, "blocks-storage.bucket-store.fetched-postings-token-factor", 2, "Multiplication factor used for fetched postings token")
+	f.Float64Var(&cfg.TouchedPostingsTokenFactor, "blocks-storage.bucket-store.touched-postings-token-factor", 2, "Multiplication factor used for touched postings token")
+	f.Float64Var(&cfg.FetchedSeriesTokenFactor, "blocks-storage.bucket-store.fetched-series-token-factor", 2.5, "Multiplication factor used for fetched series token")
+	f.Float64Var(&cfg.TouchedSeriesTokenFactor, "blocks-storage.bucket-store.touched-series-token-factor", 10, "Multiplication factor used for touched series token")
+	f.Float64Var(&cfg.FetchedChunksTokenFactor, "blocks-storage.bucket-store.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
+	f.Float64Var(&cfg.TouchedChunksTokenFactor, "blocks-storage.bucket-store.touched-chunks-token-factor", 0, "Multiplication factor used for touched chunks token")
 }
 
 // Validate the config.

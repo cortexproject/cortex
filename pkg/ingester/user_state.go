@@ -208,14 +208,15 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 		s := m.shards[i]
 		s.RLock()
 		for h, entry := range s.valuesCounter {
+			lbls := entry.labels.String()
 			// This limit no longer exists
 			if _, ok := currentLbsLimitHash[h]; !ok {
-				metrics.usagePerLabelSet.DeleteLabelValues(u.userID, "max_series", entry.labels.String())
-				metrics.limitsPerLabelSet.DeleteLabelValues(u.userID, "max_series", entry.labels.String())
+				metrics.usagePerLabelSet.DeleteLabelValues(u.userID, "max_series", lbls)
+				metrics.limitsPerLabelSet.DeleteLabelValues(u.userID, "max_series", lbls)
 				continue
 			}
-			metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", entry.labels.String()).Set(float64(entry.count))
-			metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", entry.labels.String()).Set(float64(currentLbsLimitHash[h].Limits.MaxSeries))
+			metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(entry.count))
+			metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(currentLbsLimitHash[h].Limits.MaxSeries))
 			delete(currentLbsLimitHash, h)
 		}
 		s.RUnlock()
@@ -228,8 +229,9 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 		if err != nil {
 			return err
 		}
-		metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", l.LabelSet.String()).Set(float64(count))
-		metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", l.LabelSet.String()).Set(float64(l.Limits.MaxSeries))
+		lbls := l.LabelSet.String()
+		metrics.usagePerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(count))
+		metrics.limitsPerLabelSet.WithLabelValues(u.userID, "max_series", lbls).Set(float64(l.Limits.MaxSeries))
 	}
 
 	return nil

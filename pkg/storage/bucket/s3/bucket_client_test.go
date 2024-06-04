@@ -34,6 +34,14 @@ func TestBucketWithRetries_ShouldRetry(t *testing.T) {
 			err:        errKeyDenied,
 			retryCount: 1,
 		},
+		"should not retry when context canceled": {
+			err:        context.Canceled,
+			retryCount: 1,
+		},
+		"should not retry when context deadline exceeded": {
+			err:        context.DeadlineExceeded,
+			retryCount: 1,
+		},
 	}
 
 	for name, tc := range cases {

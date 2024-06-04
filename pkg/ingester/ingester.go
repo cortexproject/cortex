@@ -1083,6 +1083,65 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				firstPartialErr = errFn()
 			}
 		}
+
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels) (rollback bool) {
+			// Check if the error is a soft error we can proceed on. If so, we keep track
+			// of it, so that we can return it back to the distributor, which will return a
+			// 400 error to the client. The client (Prometheus) will not retry on 400, and
+			// we actually ingested all samples which haven't failed.
+			switch cause := errors.Cause(err); {
+			case errors.Is(cause, storage.ErrOutOfBounds):
+				sampleOutOfBoundsCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, storage.ErrOutOfOrderSample):
+				sampleOutOfOrderCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
+				newValueForTimestampCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, storage.ErrTooOldSample):
+				sampleTooOldCount++
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
+				perUserSeriesLimitCount++
+				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
+
+			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
+				perMetricSeriesLimitCount++
+				updateFirstPartial(func() error {
+					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+				})
+
+			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
+				perLabelSetSeriesLimitCount++
+				updateFirstPartial(func() error {
+					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
+				})
+
+			case errors.Is(cause, histogram.ErrHistogramSpanNegativeOffset):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, histogram.ErrHistogramSpansBucketsMismatch):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, histogram.ErrHistogramNegativeBucketCount):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, histogram.ErrHistogramCountNotBigEnough):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
+				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+
+			default:
+				rollback = true
+			}
+			return
+		}
 	)
 
 	// Walk the samples, appending them to the users database
@@ -1122,50 +1181,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			// Check if the error is a soft error we can proceed on. If so, we keep track
-			// of it, so that we can return it back to the distributor, which will return a
-			// 400 error to the client. The client (Prometheus) will not retry on 400, and
-			// we actually ingested all samples which haven't failed.
-			switch cause := errors.Cause(err); {
-			case errors.Is(cause, storage.ErrOutOfBounds):
-				sampleOutOfBoundsCount++
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
-				continue
-
-			case errors.Is(cause, storage.ErrOutOfOrderSample):
-				sampleOutOfOrderCount++
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
-				continue
-
-			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
-				newValueForTimestampCount++
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
-				continue
-
-			case errors.Is(cause, storage.ErrTooOldSample):
-				sampleTooOldCount++
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(s.TimestampMs), ts.Labels) })
-				continue
-
-			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
-				perUserSeriesLimitCount++
-				updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
-				continue
-
-			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
-				perMetricSeriesLimitCount++
-				updateFirstPartial(func() error {
-					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
-				})
-				continue
-			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
-				perLabelSetSeriesLimitCount++
-				updateFirstPartial(func() error {
-					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
-				})
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels); !rollback {
 				continue
 			}
-
 			// The error looks an issue on our side, so we should rollback
 			if rollbackErr := app.Rollback(); rollbackErr != nil {
 				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
@@ -1204,49 +1222,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedSamplesCount++
 
-				// Check if the error is a soft error we can proceed on. If so, we keep track
-				// of it, so that we can return it back to the distributor, which will return a
-				// 400 error to the client. The client (Prometheus) will not retry on 400, and
-				// we actually ingested all samples which haven't failed.
-				switch cause := errors.Cause(err); {
-				case errors.Is(cause, storage.ErrOutOfBounds):
-					sampleOutOfBoundsCount++
-					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
-					continue
-
-				case errors.Is(cause, storage.ErrOutOfOrderSample):
-					sampleOutOfOrderCount++
-					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
-					continue
-
-				case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
-					newValueForTimestampCount++
-					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
-					continue
-
-				case errors.Is(cause, storage.ErrTooOldSample):
-					sampleTooOldCount++
-					updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(hp.TimestampMs), ts.Labels) })
-					continue
-
-				case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
-					perUserSeriesLimitCount++
-					updateFirstPartial(func() error { return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause)) })
-					continue
-
-				case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
-					perMetricSeriesLimitCount++
-					updateFirstPartial(func() error {
-						return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
-					})
-					continue
-				case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
-					updateFirstPartial(func() error {
-						return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause))
-					})
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels); !rollback {
 					continue
 				}
-
 				// The error looks an issue on our side, so we should rollback
 				if rollbackErr := app.Rollback(); rollbackErr != nil {
 					level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)

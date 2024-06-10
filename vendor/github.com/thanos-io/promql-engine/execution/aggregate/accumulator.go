@@ -10,17 +10,25 @@ import (
 	"gonum.org/v1/gonum/floats"
 )
 
+type ValueType int
+
+const (
+	NoValue ValueType = iota
+	SingleTypeValue
+	MixedTypeValue
+)
+
 type accumulator interface {
 	Add(v float64, h *histogram.FloatHistogram)
 	Value() (float64, *histogram.FloatHistogram)
-	HasValue() bool
+	ValueType() ValueType
 	Reset(float64)
 }
 
 type vectorAccumulator interface {
 	AddVector(vs []float64, hs []*histogram.FloatHistogram)
 	Value() (float64, *histogram.FloatHistogram)
-	HasValue() bool
+	ValueType() ValueType
 	Reset(float64)
 }
 
@@ -70,9 +78,14 @@ func (s *sumAcc) Value() (float64, *histogram.FloatHistogram) {
 	return s.value, s.histSum
 }
 
-// HasValue for sum returns an empty result when floats are histograms are aggregated.
-func (s *sumAcc) HasValue() bool {
-	return s.hasFloatVal != (s.histSum != nil)
+func (s *sumAcc) ValueType() ValueType {
+	if s.hasFloatVal && s.histSum != nil {
+		return MixedTypeValue
+	}
+	if s.hasFloatVal || s.histSum != nil {
+		return SingleTypeValue
+	}
+	return NoValue
 }
 
 func (s *sumAcc) Reset(_ float64) {
@@ -117,8 +130,12 @@ func (c *maxAcc) Value() (float64, *histogram.FloatHistogram) {
 	return c.value, nil
 }
 
-func (c *maxAcc) HasValue() bool {
-	return c.hasValue
+func (c *maxAcc) ValueType() ValueType {
+	if c.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
 
 func (c *maxAcc) Reset(_ float64) {
@@ -162,8 +179,12 @@ func (c *minAcc) Value() (float64, *histogram.FloatHistogram) {
 	return c.value, nil
 }
 
-func (c *minAcc) HasValue() bool {
-	return c.hasValue
+func (c *minAcc) ValueType() ValueType {
+	if c.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
 
 func (c *minAcc) Reset(_ float64) {
@@ -197,8 +218,12 @@ func (c *groupAcc) Value() (float64, *histogram.FloatHistogram) {
 	return c.value, nil
 }
 
-func (c *groupAcc) HasValue() bool {
-	return c.hasValue
+func (c *groupAcc) ValueType() ValueType {
+	if c.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
 
 func (c *groupAcc) Reset(_ float64) {
@@ -231,10 +256,13 @@ func (c *countAcc) Value() (float64, *histogram.FloatHistogram) {
 	return c.value, nil
 }
 
-func (c *countAcc) HasValue() bool {
-	return c.hasValue
+func (c *countAcc) ValueType() ValueType {
+	if c.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
-
 func (c *countAcc) Reset(_ float64) {
 	c.hasValue = false
 	c.value = 0
@@ -290,10 +318,13 @@ func (a *avgAcc) Value() (float64, *histogram.FloatHistogram) {
 	return a.avg, nil
 }
 
-func (a *avgAcc) HasValue() bool {
-	return a.hasValue
+func (c *avgAcc) ValueType() ValueType {
+	if c.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
-
 func (a *avgAcc) Reset(_ float64) {
 	a.hasValue = false
 	a.count = 0
@@ -315,10 +346,13 @@ func (s *statAcc) Add(v float64, h *histogram.FloatHistogram) {
 	s.value += delta * (v - s.mean)
 }
 
-func (s *statAcc) HasValue() bool {
-	return s.hasValue
+func (s *statAcc) ValueType() ValueType {
+	if s.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
-
 func (s *statAcc) Reset(_ float64) {
 	s.hasValue = false
 	s.count = 0
@@ -375,8 +409,12 @@ func (q *quantileAcc) Value() (float64, *histogram.FloatHistogram) {
 	return Quantile(q.arg, q.points), nil
 }
 
-func (q *quantileAcc) HasValue() bool {
-	return q.hasValue
+func (q *quantileAcc) ValueType() ValueType {
+	if q.hasValue {
+		return SingleTypeValue
+	} else {
+		return NoValue
+	}
 }
 
 func (q *quantileAcc) Reset(f float64) {

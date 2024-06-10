@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/stats"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/warnings"
@@ -47,7 +48,6 @@ func (e *Execution) Series(ctx context.Context) ([]labels.Labels, error) {
 	start := time.Now()
 	defer func() {
 		e.AddExecutionTimeTaken(time.Since(start))
-		e.updateStats()
 	}()
 
 	return e.vectorSelector.Series(ctx)
@@ -79,12 +79,12 @@ func (e *Execution) Explain() (next []model.VectorOperator) {
 	return nil
 }
 
-func (e *Execution) updateStats() {
-	existingStats := e.query.Stats()
-	if existingStats == nil || existingStats.Samples == nil {
-		return
+func (e *Execution) Samples() *stats.QuerySamples {
+	if s := e.storage.query.Stats(); s != nil {
+		return s.Samples
 	}
-	e.IncrementSamplesAtStep(int(existingStats.Samples.TotalSamples), 0)
+
+	return nil
 }
 
 type storageAdapter struct {

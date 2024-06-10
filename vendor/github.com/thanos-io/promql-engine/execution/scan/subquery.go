@@ -6,7 +6,6 @@ package scan
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -22,8 +21,8 @@ import (
 type subqueryOperator struct {
 	model.OperatorTelemetry
 
-	next       model.VectorOperator
-	nextScalar model.VectorOperator
+	next    model.VectorOperator
+	paramOp model.VectorOperator
 
 	pool        *model.VectorPool
 	call        FunctionCall
@@ -42,9 +41,12 @@ type subqueryOperator struct {
 	lastVectors   []model.StepVector
 	lastCollected int
 	buffers       []*ringbuffer.RingBuffer[Value]
+
+	// params holds the function parameter for each step.
+	params []float64
 }
 
-func NewSubqueryOperator(pool *model.VectorPool, next, nextScalar model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
+func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
 	call, err := NewRangeVectorFunc(funcExpr.Func.Name)
 	if err != nil {
 		return nil, err
@@ -54,9 +56,9 @@ func NewSubqueryOperator(pool *model.VectorPool, next, nextScalar model.VectorOp
 		step = 1
 	}
 
-	oper := &subqueryOperator{
+	o := &subqueryOperator{
 		next:          next,
-		nextScalar:    nextScalar,
+		paramOp:       paramOp,
 		call:          call,
 		pool:          pool,
 		funcExpr:      funcExpr,
@@ -67,10 +69,11 @@ func NewSubqueryOperator(pool *model.VectorPool, next, nextScalar model.VectorOp
 		step:          step,
 		stepsBatch:    opts.StepsBatch,
 		lastCollected: -1,
+		params:        make([]float64, opts.StepsBatch),
 	}
-	oper.OperatorTelemetry = model.NewTelemetry(oper, opts.EnableAnalysis)
+	o.OperatorTelemetry = model.NewTelemetry(o, opts.EnableAnalysis)
 
-	return oper, nil
+	return o, nil
 }
 
 func (o *subqueryOperator) String() string {
@@ -78,7 +81,12 @@ func (o *subqueryOperator) String() string {
 }
 
 func (o *subqueryOperator) Explain() (next []model.VectorOperator) {
-	return []model.VectorOperator{o.next}
+	switch o.funcExpr.Func.Name {
+	case "quantile_over_time", "predict_linear":
+		return []model.VectorOperator{o.paramOp, o.next}
+	default:
+		return []model.VectorOperator{o.next}
+	}
 }
 
 func (o *subqueryOperator) GetPool() *model.VectorPool { return o.pool }
@@ -99,10 +107,15 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		return nil, err
 	}
 
-	scalarArgs, err := o.nextScalar.Next(ctx)
+	args, err := o.paramOp.Next(ctx)
 	if err != nil {
 		return nil, err
 	}
+	for i := range args {
+		o.params[i] = args[i].Samples[0]
+		o.paramOp.GetPool().PutStepVector(args[i])
+	}
+	o.paramOp.GetPool().PutVectors(args)
 
 	res := o.pool.GetVectorBatch()
 	for i := 0; o.currentStep <= o.maxt && i < o.stepsBatch; i++ {
@@ -146,15 +159,10 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 			o.next.GetPool().PutVectors(vectors)
 		}
 
-		scalarArg := math.NaN()
-		if len(scalarArgs) > 0 {
-			scalarArg = scalarArgs[i].Samples[0]
-		}
-
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
 			f, h, ok := o.call(FunctionArgs{
-				ScalarPoint: scalarArg,
+				ScalarPoint: o.params[i],
 				Samples:     rangeSamples.Samples(),
 				StepTime:    maxt + o.subQuery.Offset.Milliseconds(),
 				SelectRange: o.subQuery.Range.Milliseconds(),

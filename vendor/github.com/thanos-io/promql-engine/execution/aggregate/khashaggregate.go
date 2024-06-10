@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/exp/slices"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -116,9 +116,6 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 
 	if in == nil {
 		return nil, nil
-	}
-	if len(args) < len(in) {
-		return nil, errors.New("Scalar value NaN overflows int64")
 	}
 
 	a.once.Do(func() { err = a.init(ctx) })

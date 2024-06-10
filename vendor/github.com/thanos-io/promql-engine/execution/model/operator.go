@@ -26,7 +26,6 @@ func NewTelemetry(operator fmt.Stringer, enabled bool) OperatorTelemetry {
 		return NewTrackedTelemetry(operator)
 	}
 	return NewNoopTelemetry(operator)
-
 }
 
 type NoopTelemetry struct {

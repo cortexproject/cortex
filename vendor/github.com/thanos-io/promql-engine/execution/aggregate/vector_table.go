@@ -4,15 +4,19 @@
 package aggregate
 
 import (
+	"context"
 	"fmt"
 	"math"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type vectorTable struct {
@@ -49,16 +53,21 @@ func (t *vectorTable) aggregate(vector model.StepVector) {
 	t.accumulator.AddVector(vector.Samples, vector.Histograms)
 }
 
-func (t *vectorTable) toVector(pool *model.VectorPool) model.StepVector {
+func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
 	result := pool.GetStepVector(t.ts)
-	if !t.accumulator.HasValue() {
+	switch t.accumulator.ValueType() {
+	case NoValue:
 		return result
-	}
-	v, h := t.accumulator.Value()
-	if h == nil {
-		result.AppendSample(pool, 0, v)
-	} else {
-		result.AppendHistogram(pool, 0, h)
+	case SingleTypeValue:
+		v, h := t.accumulator.Value()
+		if h == nil {
+			result.AppendSample(pool, 0, v)
+		} else {
+			result.AppendHistogram(pool, 0, h)
+		}
+	case MixedTypeValue:
+		warn := annotations.New().Add(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}))
+		warnings.AddToContext(warn, ctx)
 	}
 	return result
 }

@@ -4,6 +4,7 @@
 package aggregate
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
@@ -11,11 +12,14 @@ import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/annotations"
 
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 // aggregateTable is a table that aggregates input samples into
@@ -28,7 +32,7 @@ type aggregateTable interface {
 	aggregate(vector model.StepVector)
 	// toVector writes out the accumulated result to the given vector and
 	// resets the table.
-	toVector(pool *model.VectorPool) model.StepVector
+	toVector(ctx context.Context, pool *model.VectorPool) model.StepVector
 	// reset resets the table with a new aggregation argument.
 	// The argument is currently used for quantile aggregation.
 	reset(arg float64)
@@ -106,16 +110,22 @@ func (t *scalarTable) reset(arg float64) {
 	t.ts = math.MinInt64
 }
 
-func (t *scalarTable) toVector(pool *model.VectorPool) model.StepVector {
+func (t *scalarTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
 	result := pool.GetStepVector(t.ts)
 	for i, v := range t.outputs {
-		if t.accumulators[i].HasValue() {
+		switch t.accumulators[i].ValueType() {
+		case NoValue:
+			continue
+		case SingleTypeValue:
 			f, h := t.accumulators[i].Value()
 			if h == nil {
 				result.AppendSample(pool, v.ID, f)
 			} else {
 				result.AppendHistogram(pool, v.ID, h)
 			}
+		case MixedTypeValue:
+			warn := annotations.New().Add(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}))
+			warnings.AddToContext(warn, ctx)
 		}
 	}
 	return result

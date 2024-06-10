@@ -465,7 +465,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 		return
 	}
 
-	conn, err := grpc.DialContext(ctx, req.frontendAddress, opts...)
+	conn, err := grpc.NewClient(req.frontendAddress, opts...)
 	if err != nil {
 		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "requestErr", requestErr)
 		return

@@ -193,7 +193,7 @@ func (w *querierWorker) AddressAdded(address string) {
 	}
 
 	level.Info(w.log).Log("msg", "adding connection", "addr", address)
-	conn, err := w.connect(context.Background(), address)
+	conn, err := w.connect(address)
 	if err != nil {
 		level.Error(w.log).Log("msg", "error connecting", "addr", address, "err", err)
 		return
@@ -259,14 +259,14 @@ func (w *querierWorker) resetConcurrency() {
 	}
 }
 
-func (w *querierWorker) connect(ctx context.Context, address string) (*grpc.ClientConn, error) {
+func (w *querierWorker) connect(address string) (*grpc.ClientConn, error) {
 	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
 	opts, err := w.cfg.GRPCClientConfig.DialOption(nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := grpc.DialContext(ctx, address, opts...)
+	conn, err := grpc.NewClient(address, opts...)
 	if err != nil {
 		return nil, err
 	}

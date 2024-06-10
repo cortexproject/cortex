@@ -107,7 +107,7 @@ func dialAlertmanagerClient(cfg grpcclient.Config, addr string, requestDuration 
 	if err != nil {
 		return nil, err
 	}
-	conn, err := grpc.Dial(addr, opts...)
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to dial alertmanager %s", addr)
 	}

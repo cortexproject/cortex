@@ -45,6 +45,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	histogram_util "github.com/cortexproject/cortex/pkg/util/histogram"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -341,13 +342,15 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		"cortex_distributor_ingester_queries_total",
 	}
 
-	d.receivedSamples.WithLabelValues("userA").Add(5)
-	d.receivedSamples.WithLabelValues("userB").Add(10)
+	d.receivedSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
+	d.receivedSamples.WithLabelValues("userB", sampleMetricTypeFloat).Add(10)
+	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogram).Add(15)
 	d.receivedExemplars.WithLabelValues("userA").Add(5)
 	d.receivedExemplars.WithLabelValues("userB").Add(10)
 	d.receivedMetadata.WithLabelValues("userA").Add(5)
 	d.receivedMetadata.WithLabelValues("userB").Add(10)
-	d.incomingSamples.WithLabelValues("userA").Add(5)
+	d.incomingSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
+	d.incomingSamples.WithLabelValues("userB", sampleMetricTypeHistogram).Add(6)
 	d.incomingExemplars.WithLabelValues("userA").Add(5)
 	d.incomingMetadata.WithLabelValues("userA").Add(5)
 	d.nonHASamples.WithLabelValues("userA").Add(5)
@@ -388,8 +391,9 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
-		cortex_distributor_received_samples_total{user="userA"} 5
-		cortex_distributor_received_samples_total{user="userB"} 10
+		cortex_distributor_received_samples_total{type="float",user="userA"} 5
+		cortex_distributor_received_samples_total{type="float",user="userB"} 10
+		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
 
 		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
 		# TYPE cortex_distributor_received_exemplars_total counter
@@ -398,7 +402,8 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
 		# TYPE cortex_distributor_samples_in_total counter
-		cortex_distributor_samples_in_total{user="userA"} 5
+		cortex_distributor_samples_in_total{type="float",user="userA"} 5
+		cortex_distributor_samples_in_total{type="histogram",user="userB"} 6
 
 		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
 		# TYPE cortex_distributor_exemplars_in_total counter
@@ -457,14 +462,16 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
-		cortex_distributor_received_samples_total{user="userB"} 10
+		cortex_distributor_received_samples_total{type="float",user="userB"} 10
+		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+
+        # HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
+        # TYPE cortex_distributor_samples_in_total counter
+        cortex_distributor_samples_in_total{type="histogram",user="userB"} 6
 
 		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
 		# TYPE cortex_distributor_received_exemplars_total counter
 		cortex_distributor_received_exemplars_total{user="userB"} 10
-
-		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
-		# TYPE cortex_distributor_samples_in_total counter
 
 		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
 		# TYPE cortex_distributor_exemplars_in_total counter
@@ -2506,6 +2513,22 @@ func mockWriteRequest(lbls []labels.Labels, value float64, timestampMs int64) *c
 	return cortexpb.ToWriteRequest(lbls, samples, nil, nil, cortexpb.API)
 }
 
+// nolint:unused
+func mockHistogramWriteRequest(lbls []labels.Labels, value int, timestampMs int64, float bool) *cortexpb.WriteRequest {
+	histograms := make([]cortexpb.Histogram, len(lbls))
+	for i := range lbls {
+		if float {
+			fh := histogram_util.GenerateTestFloatHistogram(value)
+			histograms[i] = cortexpb.FloatHistogramToHistogramProto(timestampMs, fh)
+			continue
+		}
+		h := histogram_util.GenerateTestHistogram(value)
+		histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, h)
+	}
+
+	return cortexpb.ToWriteRequest(lbls, nil, nil, histograms, cortexpb.API)
+}
+
 type prepConfig struct {
 	numIngesters, happyIngesters int
 	queryDelay                   time.Duration
@@ -3610,7 +3633,8 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 		cortex_discarded_samples_total{reason="relabel_configuration",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
-		cortex_distributor_received_samples_total{user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
+        cortex_distributor_received_samples_total{type="float",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 1
+        cortex_distributor_received_samples_total{type="histogram",user="userDistributorPushRelabelDropWillExportMetricOfDroppedSamples"} 0
 		`
 	require.NoError(t, testutil.GatherAndCompare(regs[0], strings.NewReader(expectedMetrics), metrics...))
 }

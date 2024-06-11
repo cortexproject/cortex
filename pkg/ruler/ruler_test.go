@@ -2041,7 +2041,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 						{Name: labels.MetricName, Value: "ALERTS_FOR_STATE"},
 						{Name: labels.AlertName, Value: mockRules["user1"][0].GetRules()[0].Alert},
 					},
-					Chunks: querier.ConvertToChunks(t, []cortexpb.Sample{{TimestampMs: downAtTimeMs, Value: float64(downAtActiveSec)}}),
+					Chunks: querier.ConvertToChunks(t, []cortexpb.Sample{{TimestampMs: downAtTimeMs, Value: float64(downAtActiveSec)}}, nil),
 				},
 			},
 		}, nil)

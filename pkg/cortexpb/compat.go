@@ -18,7 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 )
 
-// ToWriteRequest converts matched slices of Labels, Samples and Metadata into a WriteRequest proto.
+// ToWriteRequest converts matched slices of Labels, Samples, Metadata and Histograms into a WriteRequest proto.
 // It gets timeseries from the pool, so ReuseSlice() should be called when done.
 func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, histograms []Histogram, source WriteRequest_SourceEnum) *WriteRequest {
 	req := &WriteRequest{
@@ -27,13 +27,17 @@ func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMe
 		Source:     source,
 	}
 
-	for i, s := range samples {
+	i := 0
+	for i < len(samples) || i < len(histograms) {
 		ts := TimeseriesFromPool()
 		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)
-		ts.Samples = append(ts.Samples, s)
+		if i < len(samples) {
+			ts.Samples = append(ts.Samples, samples[i])
+		}
 		if i < len(histograms) {
 			ts.Histograms = append(ts.Histograms, histograms[i])
 		}
+		i++
 		req.Timeseries = append(req.Timeseries, PreallocTimeseries{TimeSeries: ts})
 	}
 

@@ -77,11 +77,10 @@ type query struct {
 }
 
 var (
-	encodings = []struct {
-		name string
-		e    promchunk.Encoding
-	}{
-		{"PrometheusXorChunk", promchunk.PrometheusXorChunk},
+	encodings = []promchunk.Encoding{
+		promchunk.PrometheusXorChunk,
+		promchunk.PrometheusHistogramChunk,
+		promchunk.PrometheusFloatHistogramChunk,
 	}
 
 	queries = []query{
@@ -177,14 +176,14 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "2"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "1"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 		},
 	}
@@ -326,35 +325,35 @@ func TestLimits(t *testing.T) {
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "2"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "order", Value: "1"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "foo"},
 					{Name: "orders", Value: "3"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "bar"},
 					{Name: "orders", Value: "2"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 			{
 				Labels: []cortexpb.LabelAdapter{
 					{Name: model.MetricNameLabel, Value: "bar"},
 					{Name: "orders", Value: "1"},
 				},
-				Chunks: ConvertToChunks(t, samples),
+				Chunks: ConvertToChunks(t, samples, nil),
 			},
 		},
 	}
@@ -481,31 +480,29 @@ func TestQuerier(t *testing.T) {
 	}
 	for _, thanosEngine := range []bool{false, true} {
 		for _, query := range queries {
-			for _, encoding := range encodings {
-				t.Run(fmt.Sprintf("%s/%s", query.query, encoding.name), func(t *testing.T) {
-					var queryEngine promql.QueryEngine
-					if thanosEngine {
-						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
-						})
-					} else {
-						queryEngine = promql.NewEngine(opts)
-					}
-					// Disable active query tracker to avoid mmap error.
-					cfg.ActiveQueryTrackerDir = ""
+			t.Run(fmt.Sprintf("thanosEngine=%s,query=%s", strconv.FormatBool(thanosEngine), query.query), func(t *testing.T) {
+				var queryEngine promql.QueryEngine
+				if thanosEngine {
+					queryEngine = engine.New(engine.Opts{
+						EngineOpts:        opts,
+						LogicalOptimizers: logicalplan.AllOptimizers,
+					})
+				} else {
+					queryEngine = promql.NewEngine(opts)
+				}
+				// Disable active query tracker to avoid mmap error.
+				cfg.ActiveQueryTrackerDir = ""
 
-					chunkStore, through := makeMockChunkStore(t, chunks)
-					distributor := mockDistibutorFor(t, chunkStore.chunks)
+				chunkStore, through := makeMockChunkStore(t, chunks, promchunk.PrometheusXorChunk)
+				distributor := mockDistibutorFor(t, chunkStore.chunks)
 
-					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-					require.NoError(t, err)
+				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
+				require.NoError(t, err)
 
-					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
-					testRangeQuery(t, queryable, queryEngine, through, query)
-				})
-			}
+				queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore)), UseAlwaysQueryable(db)}
+				queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger())
+				testRangeQuery(t, queryable, queryEngine, through, query)
+			})
 		}
 	}
 }
@@ -518,7 +515,7 @@ func TestQuerierMetric(t *testing.T) {
 	overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 	require.NoError(t, err)
 
-	chunkStore, _ := makeMockChunkStore(t, 24)
+	chunkStore, _ := makeMockChunkStore(t, 24, promchunk.PrometheusXorChunk)
 	distributor := mockDistibutorFor(t, chunkStore.chunks)
 
 	queryables := []QueryableWithFilter{}
@@ -627,47 +624,49 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	// Disable active query tracker to avoid mmap error.
 	cfg.ActiveQueryTrackerDir = ""
 	for _, thanosEngine := range []bool{true, false} {
-		for _, c := range testCases {
-			cfg.QueryIngestersWithin = c.queryIngestersWithin
-			t.Run(fmt.Sprintf("thanosEngine=%t,queryIngestersWithin=%v, test=%s", thanosEngine, c.queryIngestersWithin, c.name), func(t *testing.T) {
-				var queryEngine promql.QueryEngine
-				if thanosEngine {
-					queryEngine = engine.New(engine.Opts{
-						EngineOpts:        opts,
-						LogicalOptimizers: logicalplan.AllOptimizers,
-					})
-				} else {
-					queryEngine = promql.NewEngine(opts)
-				}
-
-				chunkStore, _ := makeMockChunkStore(t, 24)
-				distributor := &errDistributor{}
-
-				overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
-				require.NoError(t, err)
-
-				ctx := user.InjectOrgID(context.Background(), "0")
-				queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, nil, log.NewNopLogger())
-				query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
-				require.NoError(t, err)
-
-				r := query.Exec(ctx)
-				_, err = r.Matrix()
-
-				if c.hitIngester {
-					// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
-					// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
-					require.Error(t, err)
-					if !thanosEngine {
-						require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
+		for _, encoding := range encodings {
+			for _, c := range testCases {
+				cfg.QueryIngestersWithin = c.queryIngestersWithin
+				t.Run(fmt.Sprintf("thanosEngine=%t,encoding=%s,queryIngestersWithin=%v, test=%s", thanosEngine, encoding.String(), c.queryIngestersWithin, c.name), func(t *testing.T) {
+					var queryEngine promql.QueryEngine
+					if thanosEngine {
+						queryEngine = engine.New(engine.Opts{
+							EngineOpts:        opts,
+							LogicalOptimizers: logicalplan.AllOptimizers,
+						})
 					} else {
-						require.Equal(t, errDistributorError.Error(), err.Error())
+						queryEngine = promql.NewEngine(opts)
 					}
-				} else {
-					// If the ingester was hit, there would have been an error from errDistributor.
+
+					chunkStore, _ := makeMockChunkStore(t, 24, encoding)
+					distributor := &errDistributor{}
+
+					overrides, err := validation.NewOverrides(DefaultLimitsConfig(), nil)
 					require.NoError(t, err)
-				}
-			})
+
+					ctx := user.InjectOrgID(context.Background(), "0")
+					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(cfg, chunkStore))}, nil, log.NewNopLogger())
+					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
+					require.NoError(t, err)
+
+					r := query.Exec(ctx)
+					_, err = r.Matrix()
+
+					if c.hitIngester {
+						// If the ingester was hit, the distributor always returns errDistributorError. Prometheus
+						// wrap any Select() error into "expanding series", so we do wrap it as well to have a match.
+						require.Error(t, err)
+						if !thanosEngine {
+							require.Equal(t, errors.Wrap(errDistributorError, "expanding series").Error(), err.Error())
+						} else {
+							require.Equal(t, errDistributorError.Error(), err.Error())
+						}
+					} else {
+						// If the ingester was hit, there would have been an error from errDistributor.
+						require.NoError(t, err)
+					}
+				})
+			}
 		}
 	}
 }

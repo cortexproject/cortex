@@ -116,19 +116,19 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 	return m
 }
 
-// ValidateSample returns an err if the sample is invalid.
+// ValidateSampleTimestamp returns an err if the sample timestamp is invalid.
 // The returned error may retain the provided series labels.
-func ValidateSample(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, s cortexpb.Sample) ValidationError {
+func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, timestampMs int64) ValidationError {
 	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
 
-	if limits.RejectOldSamples && model.Time(s.TimestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
+	if limits.RejectOldSamples && model.Time(timestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
 		validateMetrics.DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
-		return newSampleTimestampTooOldError(unsafeMetricName, s.TimestampMs)
+		return newSampleTimestampTooOldError(unsafeMetricName, timestampMs)
 	}
 
-	if model.Time(s.TimestampMs) > model.Now().Add(time.Duration(limits.CreationGracePeriod)) {
+	if model.Time(timestampMs) > model.Now().Add(time.Duration(limits.CreationGracePeriod)) {
 		validateMetrics.DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
-		return newSampleTimestampTooNewError(unsafeMetricName, s.TimestampMs)
+		return newSampleTimestampTooNewError(unsafeMetricName, timestampMs)
 	}
 
 	return nil

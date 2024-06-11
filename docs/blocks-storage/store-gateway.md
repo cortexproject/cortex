@@ -1566,4 +1566,8 @@ blocks_storage:
     # be out-of-order.
     # CLI flag: -blocks-storage.tsdb.out-of-order-cap-max
     [out_of_order_cap_max: <int> | default = 32]
+
+    # [EXPERIMENTAL] True to enable native histogram.
+    # CLI flag: -blocks-storage.tsdb.enable-native-histograms
+    [enable_native_histograms: <boolean> | default = false]
 ```

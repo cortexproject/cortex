@@ -109,15 +109,36 @@ func DefaultLimitsConfig() validation.Limits {
 	return limits
 }
 
-func ConvertToChunks(t *testing.T, samples []cortexpb.Sample) []client.Chunk {
+func ConvertToChunks(t *testing.T, samples []cortexpb.Sample, histograms []*cortexpb.Histogram) []client.Chunk {
 	// We need to make sure that there is at least one chunk present,
 	// else no series will be selected.
-	chk := chunkenc.NewXORChunk()
-	appender, err := chk.Appender()
-	require.NoError(t, err)
+	var chk chunkenc.Chunk
+	if len(samples) > 0 {
+		chk = chunkenc.NewXORChunk()
+		appender, err := chk.Appender()
+		require.NoError(t, err)
 
-	for _, s := range samples {
-		appender.Append(s.TimestampMs, s.Value)
+		for _, s := range samples {
+			appender.Append(s.TimestampMs, s.Value)
+		}
+	} else if len(histograms) > 0 {
+		if histograms[0].IsFloatHistogram() {
+			chk = chunkenc.NewFloatHistogramChunk()
+			appender, err := chk.Appender()
+			require.NoError(t, err)
+			for _, h := range histograms {
+				_, _, _, err = appender.AppendFloatHistogram(nil, h.TimestampMs, cortexpb.FloatHistogramProtoToFloatHistogram(*h), true)
+			}
+			require.NoError(t, err)
+		} else {
+			chk = chunkenc.NewHistogramChunk()
+			appender, err := chk.Appender()
+			require.NoError(t, err)
+			for _, h := range histograms {
+				_, _, _, err = appender.AppendHistogram(nil, h.TimestampMs, cortexpb.HistogramProtoToHistogram(*h), true)
+			}
+			require.NoError(t, err)
+		}
 	}
 
 	c := chunk.NewChunk(nil, chk, model.Time(samples[0].TimestampMs), model.Time(samples[len(samples)-1].TimestampMs))

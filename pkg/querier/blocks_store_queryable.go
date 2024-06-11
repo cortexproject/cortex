@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"sort"
@@ -1162,7 +1163,10 @@ func countSamplesAndChunks(series ...*storepb.Series) (samplesCount, chunksCount
 		chunksCount += uint64(len(s.Chunks))
 		for _, c := range s.Chunks {
 			if c.Raw != nil {
-				samplesCount += uint64(c.Raw.XORNumSamples())
+				switch c.Raw.Type {
+				case storepb.Chunk_XOR, storepb.Chunk_HISTOGRAM, storepb.Chunk_FLOAT_HISTOGRAM:
+					samplesCount += uint64(binary.BigEndian.Uint16(c.Raw.Data))
+				}
 			}
 		}
 	}

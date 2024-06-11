@@ -3,7 +3,6 @@ package tsdb
 import (
 	"context"
 	"errors"
-	"sync"
 
 	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
@@ -35,16 +34,14 @@ type multiLevelCache struct {
 }
 
 func (m *multiLevelCache) StorePostings(blockID ulid.ULID, l labels.Label, v []byte, tenant string) {
-	wg := sync.WaitGroup{}
-	wg.Add(len(m.postingsCaches))
 	for _, c := range m.postingsCaches {
 		cache := c
-		go func() {
-			defer wg.Done()
+		if err := m.backfillProcessor.EnqueueAsync(func() {
 			cache.StorePostings(blockID, l, v, tenant)
-		}()
+		}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+			m.backfillDroppedPostings.Inc()
+		}
 	}
-	wg.Wait()
 }
 
 func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.ULID, keys []labels.Label, tenant string) (hits map[labels.Label][]byte, misses []labels.Label) {
@@ -106,16 +103,14 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 }
 
 func (m *multiLevelCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*labels.Matcher, v []byte, tenant string) {
-	wg := sync.WaitGroup{}
-	wg.Add(len(m.expandedPostingCaches))
 	for _, c := range m.expandedPostingCaches {
 		cache := c
-		go func() {
-			defer wg.Done()
+		if err := m.backfillProcessor.EnqueueAsync(func() {
 			cache.StoreExpandedPostings(blockID, matchers, v, tenant)
-		}()
+		}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+			m.backfillDroppedExpandedPostings.Inc()
+		}
 	}
-	wg.Wait()
 }
 
 func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID ulid.ULID, matchers []*labels.Matcher, tenant string) ([]byte, bool) {
@@ -144,16 +139,14 @@ func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID uli
 }
 
 func (m *multiLevelCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v []byte, tenant string) {
-	wg := sync.WaitGroup{}
-	wg.Add(len(m.seriesCaches))
 	for _, c := range m.seriesCaches {
 		cache := c
-		go func() {
-			defer wg.Done()
+		if err := m.backfillProcessor.EnqueueAsync(func() {
 			cache.StoreSeries(blockID, id, v, tenant)
-		}()
+		}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
+			m.backfillDroppedSeries.Inc()
+		}
 	}
-	wg.Wait()
 }
 
 func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []storage.SeriesRef, tenant string) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {

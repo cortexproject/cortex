@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -16,8 +17,10 @@ import (
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/jsonutil"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -84,27 +87,33 @@ type Request interface {
 }
 
 func decodeSampleStream(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
-	lbls := labels.Labels{}
-	samples := []cortexpb.Sample{}
+	ss := (*SampleStream)(ptr)
 	for field := iter.ReadObject(); field != ""; field = iter.ReadObject() {
 		switch field {
 		case "metric":
-			iter.ReadVal(&lbls)
+			metricString := iter.ReadAny().ToString()
+			lbls := labels.Labels{}
+			if err := json.UnmarshalFromString(metricString, &lbls); err != nil {
+				iter.ReportError("unmarshal SampleStream", err.Error())
+				return
+			}
+			ss.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
 		case "values":
-			for {
-				if !iter.ReadArray() {
-					break
-				}
+			for iter.ReadArray() {
 				s := cortexpb.Sample{}
 				cortexpb.SampleJsoniterDecode(unsafe.Pointer(&s), iter)
-				samples = append(samples, s)
+				ss.Samples = append(ss.Samples, s)
 			}
+		case "histograms":
+			for iter.ReadArray() {
+				h := SampleHistogramPair{}
+				unmarshalSampleHistogramPairJSON(unsafe.Pointer(&h), iter)
+				ss.Histograms = append(ss.Histograms, h)
+			}
+		default:
+			iter.ReportError("unmarshal SampleStream", fmt.Sprint("unexpected key:", field))
+			return
 		}
-	}
-
-	*(*SampleStream)(ptr) = SampleStream{
-		Samples: samples,
-		Labels:  cortexpb.FromLabelsToLabelAdapters(lbls),
 	}
 }
 
@@ -119,33 +128,34 @@ func encodeSampleStream(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 		return
 	}
 	stream.SetBuffer(append(stream.Buffer(), lbls...))
-	stream.WriteMore()
 
-	stream.WriteObjectField(`values`)
-	stream.WriteArrayStart()
-	for i, sample := range ss.Samples {
-		if i != 0 {
-			stream.WriteMore()
+	if len(ss.Samples) > 0 {
+		stream.WriteMore()
+		stream.WriteObjectField(`values`)
+		stream.WriteArrayStart()
+		for i, sample := range ss.Samples {
+			if i != 0 {
+				stream.WriteMore()
+			}
+			cortexpb.SampleJsoniterEncode(unsafe.Pointer(&sample), stream)
 		}
-		cortexpb.SampleJsoniterEncode(unsafe.Pointer(&sample), stream)
+		stream.WriteArrayEnd()
 	}
-	stream.WriteArrayEnd()
+
+	if len(ss.Histograms) > 0 {
+		stream.WriteMore()
+		stream.WriteObjectField(`histograms`)
+		stream.WriteArrayStart()
+		for i, h := range ss.Histograms {
+			if i > 0 {
+				stream.WriteMore()
+			}
+			marshalSampleHistogramPairJSON(unsafe.Pointer(&h), stream)
+		}
+		stream.WriteArrayEnd()
+	}
 
 	stream.WriteObjectEnd()
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (s *SampleStream) UnmarshalJSON(data []byte) error {
-	var stream struct {
-		Metric labels.Labels     `json:"metric"`
-		Values []cortexpb.Sample `json:"values"`
-	}
-	if err := json.Unmarshal(data, &stream); err != nil {
-		return err
-	}
-	s.Labels = cortexpb.FromLabelsToLabelAdapters(stream.Metric)
-	s.Samples = stream.Values
-	return nil
 }
 
 func PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
@@ -184,8 +194,14 @@ func PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode(ptr unsafe.Poi
 func init() {
 	jsoniter.RegisterTypeEncoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterEncode, func(unsafe.Pointer) bool { return false })
 	jsoniter.RegisterTypeDecoderFunc("tripperware.PrometheusResponseQueryableSamplesStatsPerStep", PrometheusResponseQueryableSamplesStatsPerStepJsoniterDecode)
-	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleStream", encodeSampleStream, func(unsafe.Pointer) bool { return false })
+	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleStream", encodeSampleStream, marshalJSONIsEmpty)
 	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleStream", decodeSampleStream)
+	jsoniter.RegisterTypeEncoderFunc("tripperware.SampleHistogramPair", marshalSampleHistogramPairJSON, marshalJSONIsEmpty)
+	jsoniter.RegisterTypeDecoderFunc("tripperware.SampleHistogramPair", unmarshalSampleHistogramPairJSON)
+}
+
+func marshalJSONIsEmpty(ptr unsafe.Pointer) bool {
+	return false
 }
 
 func EncodeTime(t int64) string {
@@ -265,4 +281,172 @@ func StatsMerge(stats map[int64]*PrometheusResponseQueryableSamplesStatsPerStep)
 	}
 
 	return result
+}
+
+// Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L84.
+func unmarshalSampleHistogramPairJSON(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
+	p := (*SampleHistogramPair)(ptr)
+	if !iter.ReadArray() {
+		iter.ReportError("unmarshal SampleHistogramPair", "SampleHistogramPair must be [timestamp, {histogram}]")
+		return
+	}
+	p.TimestampMs = int64(model.Time(iter.ReadFloat64() * float64(time.Second/time.Millisecond)))
+
+	if !iter.ReadArray() {
+		iter.ReportError("unmarshal SampleHistogramPair", "SamplePair missing histogram")
+		return
+	}
+	for key := iter.ReadObject(); key != ""; key = iter.ReadObject() {
+		switch key {
+		case "count":
+			f, err := strconv.ParseFloat(iter.ReadString(), 64)
+			if err != nil {
+				iter.ReportError("unmarshal SampleHistogramPair", "count of histogram is not a float")
+				return
+			}
+			p.Histogram.Count = f
+		case "sum":
+			f, err := strconv.ParseFloat(iter.ReadString(), 64)
+			if err != nil {
+				iter.ReportError("unmarshal SampleHistogramPair", "sum of histogram is not a float")
+				return
+			}
+			p.Histogram.Sum = f
+		case "buckets":
+			for iter.ReadArray() {
+				b, err := unmarshalHistogramBucket(iter)
+				if err != nil {
+					iter.ReportError("unmarshal HistogramBucket", err.Error())
+					return
+				}
+				p.Histogram.Buckets = append(p.Histogram.Buckets, b)
+			}
+		default:
+			iter.ReportError("unmarshal SampleHistogramPair", fmt.Sprint("unexpected key in histogram:", key))
+			return
+		}
+	}
+	if iter.ReadArray() {
+		iter.ReportError("unmarshal SampleHistogramPair", "SampleHistogramPair has too many values, must be [timestamp, {histogram}]")
+		return
+	}
+}
+
+// Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L252.
+func unmarshalHistogramBucket(iter *jsoniter.Iterator) (*HistogramBucket, error) {
+	b := HistogramBucket{}
+	if !iter.ReadArray() {
+		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+	}
+	boundaries, err := iter.ReadNumber().Int64()
+	if err != nil {
+		return nil, err
+	}
+	b.Boundaries = int32(boundaries)
+	if !iter.ReadArray() {
+		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+	}
+	f, err := strconv.ParseFloat(iter.ReadString(), 64)
+	if err != nil {
+		return nil, err
+	}
+	b.Lower = f
+	if !iter.ReadArray() {
+		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+	}
+	f, err = strconv.ParseFloat(iter.ReadString(), 64)
+	if err != nil {
+		return nil, err
+	}
+	b.Upper = f
+	if !iter.ReadArray() {
+		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+	}
+	f, err = strconv.ParseFloat(iter.ReadString(), 64)
+	if err != nil {
+		return nil, err
+	}
+	b.Count = f
+	if iter.ReadArray() {
+		return nil, errors.New("HistogramBucket has too many values, must be [boundaries, lower, upper, count]")
+	}
+	return &b, nil
+}
+
+// Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L137.
+func marshalSampleHistogramPairJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
+	p := *((*SampleHistogramPair)(ptr))
+	stream.WriteArrayStart()
+	stream.WriteFloat64(float64(p.TimestampMs) / float64(time.Second/time.Millisecond))
+	stream.WriteMore()
+	marshalHistogram(p.Histogram, stream)
+	stream.WriteArrayEnd()
+}
+
+// MarshalHistogram marshals a histogram value using the passed jsoniter stream.
+// It writes something like:
+//
+//	{
+//	    "count": "42",
+//	    "sum": "34593.34",
+//	    "buckets": [
+//	      [ 3, "-0.25", "0.25", "3"],
+//	      [ 0, "0.25", "0.5", "12"],
+//	      [ 0, "0.5", "1", "21"],
+//	      [ 0, "2", "4", "6"]
+//	    ]
+//	}
+//
+// The 1st element in each bucket array determines if the boundaries are
+// inclusive (AKA closed) or exclusive (AKA open):
+//
+//	0: lower exclusive, upper inclusive
+//	1: lower inclusive, upper exclusive
+//	2: both exclusive
+//	3: both inclusive
+//
+// The 2nd and 3rd elements are the lower and upper boundary. The 4th element is
+// the bucket count.
+// Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L329
+func marshalHistogram(h SampleHistogram, stream *jsoniter.Stream) {
+	stream.WriteObjectStart()
+	stream.WriteObjectField(`count`)
+	jsonutil.MarshalFloat(h.Count, stream)
+	stream.WriteMore()
+	stream.WriteObjectField(`sum`)
+	jsonutil.MarshalFloat(h.Sum, stream)
+
+	bucketFound := false
+	for _, bucket := range h.Buckets {
+		if bucket.Count == 0 {
+			continue // No need to expose empty buckets in JSON.
+		}
+		stream.WriteMore()
+		if !bucketFound {
+			stream.WriteObjectField(`buckets`)
+			stream.WriteArrayStart()
+		}
+		bucketFound = true
+		marshalHistogramBucket(*bucket, stream)
+	}
+
+	if bucketFound {
+		stream.WriteArrayEnd()
+	}
+	stream.WriteObjectEnd()
+}
+
+// marshalHistogramBucket writes something like: [ 3, "-0.25", "0.25", "3"]
+// See marshalHistogram to understand what the numbers mean.
+// Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L294.
+func marshalHistogramBucket(b HistogramBucket, stream *jsoniter.Stream) {
+	stream.WriteArrayStart()
+	stream.WriteInt32(b.Boundaries)
+	stream.WriteMore()
+	jsonutil.MarshalFloat(b.Lower, stream)
+	stream.WriteMore()
+	jsonutil.MarshalFloat(b.Upper, stream)
+	stream.WriteMore()
+	jsonutil.MarshalFloat(b.Count, stream)
+	stream.WriteArrayEnd()
 }

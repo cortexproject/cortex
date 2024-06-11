@@ -3,6 +3,7 @@ package ruler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"sync"
@@ -293,6 +294,8 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 		return n.notifier, nil
 	}
 
+	logger := log.With(r.logger, "user", userID)
+
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
 		Registerer:    userManagerRegistry,
@@ -309,9 +312,27 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			defer sp.Finish()
 			ctx = ot.ContextWithSpan(ctx, sp)
 			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
-			return ctxhttp.Do(ctx, client, req)
+			resp, err := ctxhttp.Do(ctx, client, req)
+			if err != nil {
+				level.Error(logger).Log("msg", "error occurred while sending alerts", "error", err)
+				return resp, err
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode/100 != 2 {
+				bodyBytes, err := io.ReadAll(resp.Body)
+				if err != nil {
+					level.Error(logger).Log("msg", "error reading response body", "error", err, "response code", resp.StatusCode)
+					return resp, err
+				}
+				customErrorMessage := string(bodyBytes)
+				if len(customErrorMessage) >= 150 {
+					customErrorMessage = customErrorMessage[:150]
+				}
+				level.Error(logger).Log("msg", "error occurred sending notification", "error", customErrorMessage, "response code", resp.StatusCode)
+			}
+			return resp, err
 		},
-	}, log.With(r.logger, "user", userID), userManagerRegistry, r.notifiersDiscoveryMetrics)
+	}, logger, userManagerRegistry, r.notifiersDiscoveryMetrics)
 
 	n.run()
 

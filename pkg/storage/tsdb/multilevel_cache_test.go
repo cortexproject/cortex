@@ -183,7 +183,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"StorePostings": {{bID, l1, v}},
 			},
 			enabledItems: [][]string{
-				{cacheTypeSeries},
+				{storecache.CacheTypeSeries},
 				{},
 			},
 			call: func(cache storecache.IndexCache) {
@@ -207,7 +207,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"StoreSeries": {{bID, storage.SeriesRef(1), v}},
 			},
 			enabledItems: [][]string{
-				{cacheTypePostings},
+				{storecache.CacheTypePostings},
 				{},
 			},
 			call: func(cache storecache.IndexCache) {
@@ -231,7 +231,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"StoreExpandedPostings": {{bID, []*labels.Matcher{matcher}, v}},
 			},
 			enabledItems: [][]string{
-				{cacheTypePostings},
+				{storecache.CacheTypePostings},
 				{},
 			},
 			call: func(cache storecache.IndexCache) {
@@ -295,7 +295,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiPostings": {map[labels.Label][]byte{l1: v, l2: v, l3: v2}, []labels.Label{}},
 			},
 			enabledItems: [][]string{
-				{cacheTypeSeries},
+				{storecache.CacheTypeSeries},
 				{},
 			},
 			call: func(cache storecache.IndexCache) {
@@ -374,7 +374,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchMultiSeries": {map[storage.SeriesRef][]byte{1: v, 2: v, 3: v2}, []storage.SeriesRef{}},
 			},
 			enabledItems: [][]string{
-				{cacheTypePostings},
+				{storecache.CacheTypePostings},
 				{},
 			},
 			call: func(cache storecache.IndexCache) {
@@ -430,7 +430,7 @@ func Test_MultiLevelCache(t *testing.T) {
 				"FetchExpandedPostings": {[]byte{}, true},
 			},
 			enabledItems: [][]string{
-				{cacheTypePostings},
+				{storecache.CacheTypePostings},
 				{},
 			},
 			call: func(cache storecache.IndexCache) {

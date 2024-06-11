@@ -1958,6 +1958,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># be out-of-order.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.tsdb.out-of-order-cap-max&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[out_of_order_cap_max&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;int&amp;gt; | default = 32]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># [EXPERIMENTAL] True to enable native histogram.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#8f5902;font-style:italic"># CLI flag: -blocks-storage.tsdb.enable-native-histograms&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#204a87;font-weight:bold">[enable_native_histograms&lt;/span>&lt;span style="color:#000;font-weight:bold">:&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline"> &lt;/span>&lt;span style="color:#000">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
 &lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="compactor_config">&lt;code>compactor_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>compactor_config&lt;/code> configures the compactor for the blocks storage.&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="background-color:#f8f8f8;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#8f5902;font-style:italic"># List of compaction time ranges.&lt;/span>&lt;span style="color:#f8f8f8;text-decoration:underline">
@@ -5837,6 +5841,11 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Persistent tokens in the Ruler Ring:
 &lt;ul>
 &lt;li>&lt;code>-ruler.ring.tokens-file-path&lt;/code> (path) CLI flag&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Native Histograms
+&lt;ul>
+&lt;li>Ingestion can be enabled by setting &lt;code>-blocks-storage.tsdb.enable-native-histograms=true&lt;/code> on Ingester.&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;/ul></description></item></channel></rss>

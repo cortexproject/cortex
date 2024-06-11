@@ -1183,7 +1183,7 @@ go.opentelemetry.io/otel/semconv/v1.17.0/httpconv
 go.opentelemetry.io/otel/semconv/v1.20.0
 go.opentelemetry.io/otel/semconv/v1.21.0
 go.opentelemetry.io/otel/semconv/v1.25.0
-# go.opentelemetry.io/otel/bridge/opentracing v1.26.0
+# go.opentelemetry.io/otel/bridge/opentracing v1.27.0
 ## explicit; go 1.21
 go.opentelemetry.io/otel/bridge/opentracing
 go.opentelemetry.io/otel/bridge/opentracing/migration

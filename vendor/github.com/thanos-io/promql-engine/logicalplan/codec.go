@@ -5,6 +5,8 @@ package logicalplan
 
 import (
 	"encoding/json"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type jsonNode struct {
@@ -53,6 +55,13 @@ func unmarshalNode(data []byte) (Node, error) {
 		v := &VectorSelector{}
 		if err := json.Unmarshal(t.Data, v); err != nil {
 			return nil, err
+		}
+		var err error
+		for i, m := range v.LabelMatchers {
+			v.LabelMatchers[i], err = labels.NewMatcher(m.Type, m.Name, m.Value)
+			if err != nil {
+				return nil, err
+			}
 		}
 		return v, nil
 	case MatrixSelectorNode:

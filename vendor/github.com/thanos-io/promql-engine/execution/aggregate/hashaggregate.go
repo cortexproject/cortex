@@ -84,12 +84,12 @@ func (a *aggregate) String() string {
 }
 
 func (a *aggregate) Explain() (next []model.VectorOperator) {
-	var ops []model.VectorOperator
-	ops = append(ops, a.next)
-	if a.paramOp != nil {
-		ops = append(ops, a.paramOp)
+	switch a.aggregation {
+	case parser.QUANTILE:
+		return []model.VectorOperator{a.paramOp, a.next}
+	default:
+		return []model.VectorOperator{a.next}
 	}
-	return ops
 }
 
 func (a *aggregate) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -125,20 +125,15 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		return nil, err
 	}
 
-	if a.paramOp != nil {
-		args, err := a.paramOp.Next(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for i := range a.params {
-			a.params[i] = math.NaN()
-			if i < len(args) && len(args[i].Samples) > 0 {
-				a.params[i] = args[i].Samples[0]
-				a.paramOp.GetPool().PutStepVector(args[i])
-			}
-		}
-		a.paramOp.GetPool().PutVectors(args)
+	args, err := a.paramOp.Next(ctx)
+	if err != nil {
+		return nil, err
 	}
+	for i := range args {
+		a.params[i] = args[i].Samples[0]
+		a.paramOp.GetPool().PutStepVector(args[i])
+	}
+	a.paramOp.GetPool().PutVectors(args)
 
 	for i, p := range a.params {
 		a.tables[i].reset(p)
@@ -174,7 +169,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		if a.tables[i].timestamp() == math.MinInt64 {
 			break
 		}
-		result = append(result, a.tables[i].toVector(a.vectorPool))
+		result = append(result, a.tables[i].toVector(ctx, a.vectorPool))
 	}
 	return result, nil
 }

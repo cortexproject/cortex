@@ -37,7 +37,7 @@ func dialStoreGatewayClient(clientCfg grpcclient.Config, addr string, requestDur
 		return nil, err
 	}
 
-	conn, err := grpc.Dial(addr, opts...)
+	conn, err := grpc.NewClient(addr, opts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to dial store-gateway %s", addr)
 	}

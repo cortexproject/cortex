@@ -4,8 +4,6 @@
 package engine
 
 import (
-	"math"
-
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/thanos-io/promql-engine/execution/model"
@@ -43,11 +41,14 @@ func (a *AnalyzeOutputNode) TotalSamples() int64 {
 
 func (a *AnalyzeOutputNode) PeakSamples() int64 {
 	var peak int64
-	for _, child := range a.Children {
-		peak = int64(math.Max(float64(peak), float64(child.PeakSamples())))
-	}
 	if a.OperatorTelemetry.Samples() != nil {
-		peak = int64(math.Max(float64(peak), float64(a.OperatorTelemetry.Samples().PeakSamples)))
+		peak = int64(a.OperatorTelemetry.Samples().PeakSamples)
+	}
+	for _, child := range a.Children {
+		childPeak := child.PeakSamples()
+		if childPeak > peak {
+			peak = childPeak
+		}
 	}
 	return peak
 }

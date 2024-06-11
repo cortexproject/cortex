@@ -4,7 +4,7 @@
 package prometheus
 
 import (
-	"runtime"
+	"context"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/storage"
@@ -16,27 +16,24 @@ import (
 	"github.com/thanos-io/promql-engine/query"
 )
 
-type prometheusScanners struct {
+type Scanners struct {
 	selectors *SelectorPool
 }
 
-func NewPrometheusScanners(queryable storage.Queryable) *prometheusScanners {
-	return &prometheusScanners{selectors: NewSelectorPool(queryable)}
+func NewPrometheusScanners(queryable storage.Queryable) *Scanners {
+	return &Scanners{selectors: NewSelectorPool(queryable)}
 }
 
-func (p prometheusScanners) NewVectorSelector(
+func (p Scanners) NewVectorSelector(
+	_ context.Context,
 	opts *query.Options,
 	hints storage.SelectHints,
 	logicalNode logicalplan.VectorSelector,
 ) (model.VectorOperator, error) {
-	numShards := runtime.GOMAXPROCS(0) / 2
-	if numShards < 1 {
-		numShards = 1
-	}
 	selector := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), logicalNode.VectorSelector.LabelMatchers, logicalNode.Filters, hints)
 
-	operators := make([]model.VectorOperator, 0, numShards)
-	for i := 0; i < numShards; i++ {
+	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
+	for i := 0; i < opts.DecodingConcurrency; i++ {
 		operator := exchange.NewConcurrent(
 			NewVectorSelector(
 				model.NewVectorPool(opts.StepsBatch),
@@ -46,25 +43,21 @@ func (p prometheusScanners) NewVectorSelector(
 				logicalNode.BatchSize,
 				logicalNode.SelectTimestamp,
 				i,
-				numShards,
+				opts.DecodingConcurrency,
 			), 2, opts)
 		operators = append(operators, operator)
 	}
 
-	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, logicalNode.BatchSize*int64(numShards), operators...), nil
+	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, logicalNode.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
 }
 
-func (p prometheusScanners) NewMatrixSelector(
+func (p Scanners) NewMatrixSelector(
+	_ context.Context,
 	opts *query.Options,
 	hints storage.SelectHints,
 	logicalNode logicalplan.MatrixSelector,
 	call logicalplan.FunctionCall,
 ) (model.VectorOperator, error) {
-	numShards := runtime.GOMAXPROCS(0) / 2
-	if numShards < 1 {
-		numShards = 1
-	}
-
 	arg := 0.0
 	switch call.Func.Name {
 	case "quantile_over_time":
@@ -84,8 +77,8 @@ func (p prometheusScanners) NewMatrixSelector(
 	vs := logicalNode.VectorSelector
 	filter := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), vs.LabelMatchers, vs.Filters, hints)
 
-	operators := make([]model.VectorOperator, 0, numShards)
-	for i := 0; i < numShards; i++ {
+	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
+	for i := 0; i < opts.DecodingConcurrency; i++ {
 		operator, err := NewMatrixSelector(
 			model.NewVectorPool(opts.StepsBatch),
 			filter,
@@ -96,7 +89,7 @@ func (p prometheusScanners) NewMatrixSelector(
 			vs.Offset,
 			vs.BatchSize,
 			i,
-			numShards,
+			opts.DecodingConcurrency,
 		)
 		if err != nil {
 			return nil, err
@@ -104,5 +97,5 @@ func (p prometheusScanners) NewMatrixSelector(
 		operators = append(operators, exchange.NewConcurrent(operator, 2, opts))
 	}
 
-	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, vs.BatchSize*int64(numShards), operators...), nil
+	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, vs.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
 }

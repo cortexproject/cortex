@@ -66,6 +66,7 @@ const (
 
 const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
+	errTSDBIngestWithTimestamp     = "err: %v. series=%s"               // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
 	errTSDBIngestExemplar          = "err: %v. timestamp=%s, series=%s, exemplar=%s"
 
@@ -2794,7 +2795,12 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 		return nil
 	}
 
-	return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
+	switch {
+	case errors.Is(ingestErr, storage.ErrDuplicateSampleForTimestamp):
+		return fmt.Errorf(errTSDBIngestWithTimestamp, ingestErr, cortexpb.FromLabelAdaptersToLabels(labels).String())
+	default:
+		return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
+	}
 }
 
 func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelAdapter) error {

@@ -85,7 +85,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 	}
 
 	level.Info(f.log).Log("msg", "adding connection to scheduler", "addr", address)
-	conn, err := f.connectToScheduler(context.Background(), address)
+	conn, err := f.connectToScheduler(address)
 	if err != nil {
 		level.Error(f.log).Log("msg", "error connecting to scheduler", "addr", address, "err", err)
 		return
@@ -126,14 +126,14 @@ func (f *frontendSchedulerWorkers) getWorkersCount() int {
 	return len(f.workers)
 }
 
-func (f *frontendSchedulerWorkers) connectToScheduler(ctx context.Context, address string) (*grpc.ClientConn, error) {
+func (f *frontendSchedulerWorkers) connectToScheduler(address string) (*grpc.ClientConn, error) {
 	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
 	opts, err := f.cfg.GRPCClientConfig.DialOption(nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := grpc.DialContext(ctx, address, opts...)
+	conn, err := grpc.NewClient(address, opts...)
 	if err != nil {
 		return nil, err
 	}

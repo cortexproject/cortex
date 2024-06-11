@@ -150,7 +150,7 @@ func newIntegrationClientServer(
 			assert.NoError(t, err, tc.name)
 			dialOptions = append([]grpc.DialOption{grpc.WithDefaultCallOptions(clientConfig.CallOptions()...)}, dialOptions...)
 
-			conn, err := grpc.Dial(grpcHost, dialOptions...)
+			conn, err := grpc.NewClient(grpcHost, dialOptions...)
 			assert.NoError(t, err, tc.name)
 			require.NoError(t, err, tc.name)
 			require.NoError(t, err, tc.name)

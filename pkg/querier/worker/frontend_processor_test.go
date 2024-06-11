@@ -21,7 +21,7 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 	defer cancel()
 
 	// We use random port here, hopefully without any gRPC server.
-	cc, err := grpc.DialContext(ctx, "localhost:999", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cc, err := grpc.NewClient("localhost:999", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	cfg := Config{}
@@ -55,7 +55,7 @@ func TestContextCancelStopsProcess(t *testing.T) {
 	defer cancel()
 
 	// We use random port here, hopefully without any gRPC server.
-	cc, err := grpc.DialContext(ctx, "localhost:999", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	cc, err := grpc.NewClient("localhost:999", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 
 	pm := newProcessorManager(ctx, &mockProcessor{}, cc, "test")

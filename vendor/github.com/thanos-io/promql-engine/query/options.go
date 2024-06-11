@@ -4,12 +4,10 @@
 package query
 
 import (
-	"context"
 	"time"
 )
 
 type Options struct {
-	Context                  context.Context
 	Start                    time.Time
 	End                      time.Time
 	Step                     time.Duration
@@ -18,6 +16,7 @@ type Options struct {
 	ExtLookbackDelta         time.Duration
 	NoStepSubqueryIntervalFn func(time.Duration) time.Duration
 	EnableAnalysis           bool
+	DecodingConcurrency      int
 }
 
 func (o *Options) NumSteps() int {
@@ -45,13 +44,13 @@ func (o *Options) WithEndTime(end time.Time) *Options {
 
 func NestedOptionsForSubquery(opts *Options, step, queryRange, offset time.Duration) *Options {
 	nOpts := &Options{
-		Context:                  opts.Context,
 		End:                      opts.End.Add(-offset),
 		LookbackDelta:            opts.LookbackDelta,
 		StepsBatch:               opts.StepsBatch,
 		ExtLookbackDelta:         opts.ExtLookbackDelta,
 		NoStepSubqueryIntervalFn: opts.NoStepSubqueryIntervalFn,
 		EnableAnalysis:           opts.EnableAnalysis,
+		DecodingConcurrency:      opts.DecodingConcurrency,
 	}
 	if step != 0 {
 		nOpts.Step = step

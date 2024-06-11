@@ -17,12 +17,10 @@ import (
 type multiLevelCache struct {
 	postingsCaches, seriesCaches, expandedPostingCaches []storecache.IndexCache
 
-	fetchLatency                    *prometheus.HistogramVec
-	backFillLatency                 *prometheus.HistogramVec
-	backfillProcessor               *cacheutil.AsyncOperationProcessor
-	backfillDroppedPostings         prometheus.Counter
-	backfillDroppedSeries           prometheus.Counter
-	backfillDroppedExpandedPostings prometheus.Counter
+	fetchLatency         *prometheus.HistogramVec
+	backFillLatency      *prometheus.HistogramVec
+	backfillProcessor    *cacheutil.AsyncOperationProcessor
+	backfillDroppedItems map[string]prometheus.Counter
 
 	maxBackfillItems int
 }
@@ -33,7 +31,7 @@ func (m *multiLevelCache) StorePostings(blockID ulid.ULID, l labels.Label, v []b
 		if err := m.backfillProcessor.EnqueueAsync(func() {
 			cache.StorePostings(blockID, l, v, tenant)
 		}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-			m.backfillDroppedPostings.Inc()
+			m.backfillDroppedItems[storecache.CacheTypePostings].Inc()
 		}
 	}
 }
@@ -83,12 +81,12 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 					m.postingsCaches[i].StorePostings(blockID, lbl, b, tenant)
 					cnt++
 					if cnt == m.maxBackfillItems {
-						m.backfillDroppedPostings.Add(float64(len(values) - cnt))
+						m.backfillDroppedItems[storecache.CacheTypePostings].Add(float64(len(values) - cnt))
 						return
 					}
 				}
 			}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-				m.backfillDroppedPostings.Add(float64(len(values)))
+				m.backfillDroppedItems[storecache.CacheTypePostings].Add(float64(len(values)))
 			}
 		}
 	}()
@@ -102,7 +100,7 @@ func (m *multiLevelCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*l
 		if err := m.backfillProcessor.EnqueueAsync(func() {
 			cache.StoreExpandedPostings(blockID, matchers, v, tenant)
 		}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-			m.backfillDroppedExpandedPostings.Inc()
+			m.backfillDroppedItems[storecache.CacheTypeExpandedPostings].Inc()
 		}
 	}
 }
@@ -121,7 +119,7 @@ func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID uli
 				if err := m.backfillProcessor.EnqueueAsync(func() {
 					m.expandedPostingCaches[i-1].StoreExpandedPostings(blockID, matchers, d, tenant)
 				}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-					m.backfillDroppedExpandedPostings.Inc()
+					m.backfillDroppedItems[storecache.CacheTypeExpandedPostings].Inc()
 				}
 				backFillTimer.ObserveDuration()
 			}
@@ -138,7 +136,7 @@ func (m *multiLevelCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v
 		if err := m.backfillProcessor.EnqueueAsync(func() {
 			cache.StoreSeries(blockID, id, v, tenant)
 		}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-			m.backfillDroppedSeries.Inc()
+			m.backfillDroppedItems[storecache.CacheTypeSeries].Inc()
 		}
 	}
 }
@@ -189,12 +187,12 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 					m.seriesCaches[i].StoreSeries(blockID, ref, b, tenant)
 					cnt++
 					if cnt == m.maxBackfillItems {
-						m.backfillDroppedSeries.Add(float64(len(values) - cnt))
+						m.backfillDroppedItems[storecache.CacheTypeSeries].Add(float64(len(values) - cnt))
 						return
 					}
 				}
 			}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
-				m.backfillDroppedSeries.Add(float64(len(values)))
+				m.backfillDroppedItems[storecache.CacheTypeSeries].Add(float64(len(values)))
 			}
 		}
 	}()
@@ -239,9 +237,11 @@ func newMultiLevelCache(reg prometheus.Registerer, cfg MultiLevelIndexCacheConfi
 			Help:    "Histogram to track latency to backfill items from multi level index cache",
 			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
 		}, []string{"item_type"}),
-		backfillDroppedPostings:         backfillDroppedItems.WithLabelValues(storecache.CacheTypePostings),
-		backfillDroppedSeries:           backfillDroppedItems.WithLabelValues(storecache.CacheTypeSeries),
-		backfillDroppedExpandedPostings: backfillDroppedItems.WithLabelValues(storecache.CacheTypeExpandedPostings),
-		maxBackfillItems:                cfg.MaxBackfillItems,
+		backfillDroppedItems: map[string]prometheus.Counter{
+			storecache.CacheTypePostings:         backfillDroppedItems.WithLabelValues(storecache.CacheTypePostings),
+			storecache.CacheTypeSeries:           backfillDroppedItems.WithLabelValues(storecache.CacheTypeSeries),
+			storecache.CacheTypeExpandedPostings: backfillDroppedItems.WithLabelValues(storecache.CacheTypeExpandedPostings),
+		},
+		maxBackfillItems: cfg.MaxBackfillItems,
 	}
 }

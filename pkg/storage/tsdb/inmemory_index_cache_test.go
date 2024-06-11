@@ -58,7 +58,7 @@ func TestInMemoryIndexCache_UpdateItem(t *testing.T) {
 		get func(storage.SeriesRef) ([]byte, bool)
 	}{
 		{
-			typ: cacheTypePostings,
+			typ: storecache.CacheTypePostings,
 			set: func(id storage.SeriesRef, b []byte) { cache.StorePostings(uid(id), lbl, b, tenancy.DefaultTenant) },
 			get: func(id storage.SeriesRef) ([]byte, bool) {
 				hits, _ := cache.FetchMultiPostings(ctx, uid(id), []labels.Label{lbl}, tenancy.DefaultTenant)
@@ -68,7 +68,7 @@ func TestInMemoryIndexCache_UpdateItem(t *testing.T) {
 			},
 		},
 		{
-			typ: cacheTypeSeries,
+			typ: storecache.CacheTypeSeries,
 			set: func(id storage.SeriesRef, b []byte) { cache.StoreSeries(uid(id), id, b, tenancy.DefaultTenant) },
 			get: func(id storage.SeriesRef) ([]byte, bool) {
 				hits, _ := cache.FetchMultiSeries(ctx, uid(id), []storage.SeriesRef{id}, tenancy.DefaultTenant)
@@ -78,7 +78,7 @@ func TestInMemoryIndexCache_UpdateItem(t *testing.T) {
 			},
 		},
 		{
-			typ: cacheTypeExpandedPostings,
+			typ: storecache.CacheTypeExpandedPostings,
 			set: func(id storage.SeriesRef, b []byte) {
 				cache.StoreExpandedPostings(uid(id), []*labels.Matcher{matcher}, b, tenancy.DefaultTenant)
 			},
@@ -128,7 +128,7 @@ func TestInMemoryIndexCacheSetOverflow(t *testing.T) {
 	}
 	cache, err := NewInMemoryIndexCacheWithConfig(log.NewNopLogger(), nil, nil, config)
 	testutil.Ok(t, err)
-	counter := cache.overflow.WithLabelValues(cacheTypeSeries)
+	counter := cache.overflow.WithLabelValues(storecache.CacheTypeSeries)
 	id := ulid.MustNew(ulid.Now(), nil)
 	// Insert a small value won't trigger item overflow.
 	cache.StoreSeries(id, 1, []byte("0"), tenancy.DefaultTenant)

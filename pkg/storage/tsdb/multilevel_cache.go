@@ -14,12 +14,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-const (
-	cacheTypePostings         string = "Postings"
-	cacheTypeExpandedPostings string = "ExpandedPostings"
-	cacheTypeSeries           string = "Series"
-)
-
 type multiLevelCache struct {
 	postingsCaches, seriesCaches, expandedPostingCaches []storecache.IndexCache
 
@@ -45,7 +39,7 @@ func (m *multiLevelCache) StorePostings(blockID ulid.ULID, l labels.Label, v []b
 }
 
 func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.ULID, keys []labels.Label, tenant string) (hits map[labels.Label][]byte, misses []labels.Label) {
-	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues(cacheTypePostings))
+	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues(storecache.CacheTypePostings))
 	defer timer.ObserveDuration()
 
 	misses = keys
@@ -75,7 +69,7 @@ func (m *multiLevelCache) FetchMultiPostings(ctx context.Context, blockID ulid.U
 	}
 
 	defer func() {
-		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypePostings))
+		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(storecache.CacheTypePostings))
 		defer backFillTimer.ObserveDuration()
 		for i, values := range backfillItems {
 			i := i
@@ -114,7 +108,7 @@ func (m *multiLevelCache) StoreExpandedPostings(blockID ulid.ULID, matchers []*l
 }
 
 func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID ulid.ULID, matchers []*labels.Matcher, tenant string) ([]byte, bool) {
-	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues(cacheTypeExpandedPostings))
+	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues(storecache.CacheTypeExpandedPostings))
 	defer timer.ObserveDuration()
 
 	for i, c := range m.expandedPostingCaches {
@@ -123,7 +117,7 @@ func (m *multiLevelCache) FetchExpandedPostings(ctx context.Context, blockID uli
 		}
 		if d, h := c.FetchExpandedPostings(ctx, blockID, matchers, tenant); h {
 			if i > 0 {
-				backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypeExpandedPostings))
+				backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(storecache.CacheTypeExpandedPostings))
 				if err := m.backfillProcessor.EnqueueAsync(func() {
 					m.expandedPostingCaches[i-1].StoreExpandedPostings(blockID, matchers, d, tenant)
 				}); errors.Is(err, cacheutil.ErrAsyncBufferFull) {
@@ -150,7 +144,7 @@ func (m *multiLevelCache) StoreSeries(blockID ulid.ULID, id storage.SeriesRef, v
 }
 
 func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULID, ids []storage.SeriesRef, tenant string) (hits map[storage.SeriesRef][]byte, misses []storage.SeriesRef) {
-	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues(cacheTypeSeries))
+	timer := prometheus.NewTimer(m.fetchLatency.WithLabelValues(storecache.CacheTypeSeries))
 	defer timer.ObserveDuration()
 
 	misses = ids
@@ -181,7 +175,7 @@ func (m *multiLevelCache) FetchMultiSeries(ctx context.Context, blockID ulid.ULI
 	}
 
 	defer func() {
-		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(cacheTypeSeries))
+		backFillTimer := prometheus.NewTimer(m.backFillLatency.WithLabelValues(storecache.CacheTypeSeries))
 		defer backFillTimer.ObserveDuration()
 		for i, values := range backfillItems {
 			i := i
@@ -231,9 +225,9 @@ func newMultiLevelCache(reg prometheus.Registerer, cfg MultiLevelIndexCacheConfi
 		Help: "Total number of items dropped due to async buffer full when backfilling multilevel cache ",
 	}, []string{"item_type"})
 	return &multiLevelCache{
-		postingsCaches:        filterCachesByItem(enabledItems, cacheTypePostings, c...),
-		seriesCaches:          filterCachesByItem(enabledItems, cacheTypeSeries, c...),
-		expandedPostingCaches: filterCachesByItem(enabledItems, cacheTypeExpandedPostings, c...),
+		postingsCaches:        filterCachesByItem(enabledItems, storecache.CacheTypePostings, c...),
+		seriesCaches:          filterCachesByItem(enabledItems, storecache.CacheTypeSeries, c...),
+		expandedPostingCaches: filterCachesByItem(enabledItems, storecache.CacheTypeExpandedPostings, c...),
 		backfillProcessor:     cacheutil.NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
 		fetchLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_store_multilevel_index_cache_fetch_duration_seconds",
@@ -245,9 +239,9 @@ func newMultiLevelCache(reg prometheus.Registerer, cfg MultiLevelIndexCacheConfi
 			Help:    "Histogram to track latency to backfill items from multi level index cache",
 			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
 		}, []string{"item_type"}),
-		backfillDroppedPostings:         backfillDroppedItems.WithLabelValues(cacheTypePostings),
-		backfillDroppedSeries:           backfillDroppedItems.WithLabelValues(cacheTypeSeries),
-		backfillDroppedExpandedPostings: backfillDroppedItems.WithLabelValues(cacheTypeExpandedPostings),
+		backfillDroppedPostings:         backfillDroppedItems.WithLabelValues(storecache.CacheTypePostings),
+		backfillDroppedSeries:           backfillDroppedItems.WithLabelValues(storecache.CacheTypeSeries),
+		backfillDroppedExpandedPostings: backfillDroppedItems.WithLabelValues(storecache.CacheTypeExpandedPostings),
 		maxBackfillItems:                cfg.MaxBackfillItems,
 	}
 }
